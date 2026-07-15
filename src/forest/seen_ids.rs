@@ -36,6 +36,7 @@ use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::hash_map::Entry;
 
 /// One collision endpoint — a node together with its originating
 /// layer. Both halves of a `CollisionRecord` are `Endpoint`s so the
@@ -84,12 +85,12 @@ pub(crate) enum EndpointOutcome {
 #[derive(Debug, Default)]
 pub(crate) struct SeenIds {
     /// Per-raw-id occurrence counter. Bumped inside [`Self::resolve`]
-    /// every time a raw id is handed out — first call returns
-    /// `raw_id`, second returns `raw_id.with(1)`, third `.with(2)`,
-    /// etc. Cleared each frame in [`Self::pre_record`]. Independent
-    /// of [`Self::curr`] so disambiguation doesn't depend on the
-    /// `(layer, node)` of the actual record — `widget_id`
-    /// gives the right id without peeking at `Tree::peek_next_id`.
+    /// when the raw id is already occupied. Candidate ids normally
+    /// progress through `raw_id.with(1)`, `.with(2)`, etc.; explicitly
+    /// occupied candidates are skipped. Cleared each frame in
+    /// [`Self::pre_record`]. Independent of the `(layer, node)` of the
+    /// actual record, so `widget_id` gives the right id without peeking
+    /// at `Tree::peek_next_id`.
     counters: FxHashMap<WidgetId, u32>,
     /// `final_id → Endpoint` of every widget actually opened this
     /// frame. Populated by [`Self::record_endpoint`] from
@@ -147,8 +148,8 @@ impl SeenIds {
     /// Eagerly resolve a raw id to its disambiguated final id.
     /// Common case (first occurrence of `raw_id` this frame) hits a
     /// single `curr.contains_key` probe and returns `raw_id`
-    /// unchanged — `counters` stays untouched. Collision case bumps
-    /// the per-raw-id counter and returns `raw_id.with(count)`.
+    /// unchanged — `counters` stays untouched. Collision case advances
+    /// the per-raw-id counter until `raw_id.with(count)` is vacant.
     /// Explicit collisions queue a [`PendingExplicitCollision`] so
     /// [`Self::record_endpoint`] can emit the magenta-overlay
     /// [`CollisionRecord`] once both endpoints exist.
@@ -169,9 +170,17 @@ impl SeenIds {
             // `widgets / frame`.
             return raw_id;
         }
-        let count = self.counters.entry(raw_id).or_insert(0);
-        *count += 1;
-        let final_id = raw_id.with(*count);
+        let (counters, curr) = (&mut self.counters, &self.curr);
+        let count = counters.entry(raw_id).or_insert(0);
+        let final_id = loop {
+            *count = count
+                .checked_add(1)
+                .expect("WidgetId occurrence counter overflowed");
+            let candidate = raw_id.with(*count);
+            if !curr.contains_key(&candidate) {
+                break candidate;
+            }
+        };
         if is_explicit {
             self.pending.push(PendingExplicitCollision {
                 first_raw_id: raw_id,
@@ -187,23 +196,19 @@ impl SeenIds {
     /// endpoint, so the caller can push a `CollisionRecord` —
     /// emitted to `Forest.collisions` for the magenta overlay.
     ///
-    /// Debug-asserts the `curr` slot is vacant via the `insert`
-    /// return — no separate `contains_key` probe needed.
-    /// Pathological inputs like `.id(X)`, `.id(X)`, `.id(X.with(1))`
-    /// would otherwise let the third widget overwrite the second's
-    /// endpoint; the assert catches it loudly in dev builds without
-    /// the cost of a disambiguation loop here on the hot path.
+    /// Panics if the `curr` slot is occupied. [`Self::resolve`] must
+    /// return an available id, and using the entry API enforces that
+    /// invariant without overwriting the existing endpoint.
     #[inline]
     pub(crate) fn record_endpoint(
         &mut self,
         final_id: WidgetId,
         endpoint: Endpoint,
     ) -> EndpointOutcome {
-        let prior = self.curr.insert(final_id, endpoint);
-        debug_assert!(
-            prior.is_none(),
-            "record_endpoint called twice for {final_id:?} — caller likely passed an explicit `.id(X.with(N))` that collides with a disambiguated auto/explicit slot",
-        );
+        let Entry::Vacant(entry) = self.curr.entry(final_id) else {
+            panic!("record_endpoint called twice for {final_id:?}");
+        };
+        entry.insert(endpoint);
         let Some(idx) = self
             .pending
             .iter()
@@ -303,6 +308,32 @@ mod tests {
     }
 
     #[test]
+    fn resolve_skips_occupied_occurrence_ids() {
+        let x = WidgetId::from_hash("x");
+
+        for occupied_slots in [1_u32, 2] {
+            let mut ids = SeenIds::default();
+            assert_eq!(open(&mut ids, x, true, 0), x);
+
+            for slot in 1..=occupied_slots {
+                let occupied = x.with(slot);
+                assert_eq!(open(&mut ids, occupied, true, slot), occupied);
+            }
+
+            let node = occupied_slots + 1;
+            let final_id = open(&mut ids, x, true, node);
+            assert_eq!(final_id, x.with(occupied_slots + 1));
+            assert_eq!(ids.curr.len(), (occupied_slots + 2) as usize);
+            assert_eq!(ids.curr[&x], ep(0));
+            for slot in 1..=occupied_slots {
+                assert_eq!(ids.curr[&x.with(slot)], ep(slot));
+            }
+            assert_eq!(ids.curr[&final_id], ep(node));
+            assert!(ids.pending.is_empty());
+        }
+    }
+
+    #[test]
     fn resolve_queues_pending_only_for_explicit_collisions() {
         let mut ids = SeenIds::default();
         let x = WidgetId::from_hash("x");
@@ -356,6 +387,20 @@ mod tests {
             ids.record_endpoint(second, ep(2)),
             EndpointOutcome::Recorded
         ));
+    }
+
+    #[test]
+    fn record_endpoint_rejects_duplicate_without_overwriting() {
+        let mut ids = SeenIds::default();
+        let x = WidgetId::from_hash("x");
+        ids.record_endpoint(x, ep(1));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ids.record_endpoint(x, ep(2));
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(ids.curr[&x], ep(1));
     }
 
     #[test]
