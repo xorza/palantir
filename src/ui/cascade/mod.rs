@@ -488,7 +488,7 @@ impl CascadesEngine {
 /// Fingerprint of everything [`CascadesEngine::run`] reads, cheaply.
 /// Equal fingerprints across two frames ⇒ identical cascade output, so
 /// `Ui::post_record` skips the run and reuses last frame's `Cascades`
-/// (O5 stage 0 — full-frame skip, gated on `Ui::prev_cascade_fp`).
+/// (O5 stage 0 — full-frame skip, gated on the frame runtime's cascade fingerprint).
 /// Folds:
 /// - the exact surface (a sub-quantum resize can hit the measure
 ///   cache yet still re-arrange, so the *exact* rect must be here);

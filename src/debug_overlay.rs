@@ -67,7 +67,10 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
         .last_pass_ms()
         .map(|ms| format!(" · gpu {ms:>5.2} ms"))
         .unwrap_or_default();
-    let label = format!("f {} · {:>4.0} fps{}", ui.frame_id, ui.fps_ema, gpu);
+    let label = format!(
+        "f {} · {:>4.0} fps{}",
+        ui.frame_runtime.frame_id, ui.frame_runtime.fps_ema, gpu
+    );
     let style = TextStyle {
         family: FontFamily::Mono,
         weight: FontWeight::Regular,

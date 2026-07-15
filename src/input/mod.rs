@@ -417,7 +417,7 @@ pub(crate) struct InputState {
     /// pointer flag for `Leave`) — idle frames pay nothing. Cleared
     /// in [`Self::drain_per_frame_queues`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
-    /// Frame clock (`Ui::time`) as of the last `Ui::frame`, refreshed
+    /// Frame-runtime clock as of the last `Ui::frame`, refreshed
     /// once per frame so input handlers running *between* frames stamp
     /// events on the same deterministic clock the rest of the crate uses
     /// (vs wall-clock `Instant`). Drives double-click timing.

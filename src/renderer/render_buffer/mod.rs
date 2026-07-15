@@ -111,7 +111,7 @@ pub(crate) struct RenderBuffer {
     /// so the text backend scales by this when emitting glyph quads.
     pub(crate) scale: f32,
     /// This frame's monotonic time (window-start `elapsed`), stamped by
-    /// `Frontend::build` from `Ui::time` (not derivable from `Display`).
+    /// `Frontend::build` from the `Ui` frame clock (not derivable from `Display`).
     /// The backend diffs it against each `GpuView`'s last paint to derive
     /// `GpuFrameCtx::dt`.
     pub(crate) time: Duration,

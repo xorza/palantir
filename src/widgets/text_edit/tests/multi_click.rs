@@ -27,7 +27,7 @@ fn double_and_triple_click_select_word_and_all() {
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
             |ui| f(ui),
         );
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
     }
 
     let mut ui = ui_at_no_cosmic(NARROW);

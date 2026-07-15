@@ -42,7 +42,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::ui::cascade::{Cascades, CascadesEngine, cascade_fingerprint};
 use crate::ui::damage::{Damage, DamageEngine, DamageInput};
-use crate::ui::frame::{FramePlan, FrameStamp, Wake, WakeReasons};
+use crate::ui::frame::{FramePlan, FrameRuntime, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
@@ -101,74 +101,10 @@ pub struct Ui {
     pub(crate) cascades_engine: CascadesEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
-    /// Effective per-frame dt fed into the animation integrators
-    /// (`AnimMapTyped::tick` / `spring::step`). Real wall-clock dt is
-    /// accumulated into [`Self::dt_accum`] and only spent here once
-    /// it crosses [`ANIM_SUBSTEP_DT`] — frames that don't spend
-    /// see `dt = 0.0` and `tick` short-circuits the advance. Without
-    /// this, NoVsync + `repaint_requested` spin the loop at 10s of
-    /// kHz, `dt` drops to ~10 µs, and `cur += vel·dt` falls below the
-    /// f32 ULP at pixel-scale positions — the spring integrator stalls
-    /// short of settle eps and the loop never terminates.
-    pub(crate) dt: f32,
-    /// Unspent wall-clock dt waiting to cross the fixed-step
-    /// threshold. See [`Self::dt`].
-    pub(crate) dt_accum: f32,
-    /// Bumped once per [`Self::run_frame`], before either pass —
-    /// pinned by `run_frame_pass_count_matches_action_trigger`.
-    pub(crate) frame_id: u64,
-    /// WindowRenderer-supplied monotonic timestamp for this frame.
-    pub(crate) time: Duration,
-    /// Time + display from the previous frame, or `None` before the
-    /// first frame. Drives `classify_frame` (surface-change detection)
-    /// and the paint-anim damage gate
-    /// (`anim.next_wake(prev.time) <= now` — a gate the damage engine
-    /// never consults on force-full frames, so no reset is needed
-    /// there). Updated at the bottom of `frame` on every path.
-    pub(crate) prev_stamp: Option<FrameStamp>,
-    /// Fingerprint of last frame's cascade inputs (all roots'
-    /// `subtree_hash` + exact surface + scroll offsets/zoom). When this
-    /// frame's fingerprint matches, the cascade output is provably
-    /// identical, so `post_record` skips `CascadesEngine::run` and reuses
-    /// last frame's `Ui::cascades` (O5 stage 0 — full-frame skip).
-    /// `None` before the first cascade run.
-    pub(crate) prev_cascade_fp: Option<u64>,
-    /// Test-only: did the most recent `post_record` actually run the
-    /// cascade, or skip it via [`Self::prev_cascade_fp`]? Pins the O5
-    /// stage-0 skip gate (fires on an unchanged frame, not on a change).
-    #[cfg(test)]
-    pub(crate) dbg_cascade_ran: bool,
-    /// EMA of `1/raw_dt` across frames. Zero on the first frame
-    /// (no prior `time` to diff against); updated in
-    /// [`Self::frame`]. Surfaced by the `frame_stats` debug overlay.
-    pub(crate) fps_ema: f32,
-    /// Set by [`Self::animate`] when an animation hasn't settled.
-    pub(crate) repaint_requested: bool,
-    /// Pending wake-up entries (absolute Ui-time, sorted ascending,
-    /// dedup'd). Each carries the OR'd set of [`WakeReasons`] that
-    /// asked for this deadline — when two requests coalesce into one
-    /// slot, their reasons merge so the frame-entry classifier sees
-    /// every cause that fired. Survive across frames; [`Self::frame`]
-    /// drains the prefix that has fired and reads `fired_reasons` to
-    /// pick the [`FrameProcessing`] path. Hosts read the earliest
-    /// pending entry off [`FrameReport::repaint_after`] and pair with
-    /// `winit::ControlFlow::WaitUntil` (or equivalent).
-    pub(crate) repaint_wakes: Vec<Wake>,
     pub(crate) anim: AnimMap,
-    /// Submission status of the last *painted* frame: set `false` at
-    /// the top of every [`Self::frame`] (pending), set `true` by
-    /// `WindowRenderer::render` after a successful submit / backbuffer
-    /// copy — and by `frame` itself on a Skip frame, which has nothing
-    /// to submit. `classify_frame` reads it to decide whether to
-    /// rewind the damage snapshot: `false` means the last frame never
-    /// reached the screen, so this frame escalates to `Full`. Starts
-    /// `false` (no prior frame to trust). NOT reset in `pre_record` —
-    /// `click_on_empty_bg_does_not_force_full` pins why.
-    pub(crate) frame_submitted: bool,
-    /// Set by [`Self::request_relayout`]; consumed by
-    /// `post_record` to trigger one re-record per
-    /// `run_frame`.
-    relayout_requested: bool,
+    /// Retained frame clock, wake queue, repaint/relayout flags, and prior-frame
+    /// validity state. Kept separate from the widget engines above.
+    pub(crate) frame_runtime: FrameRuntime,
     /// Window-open requests filed by [`Self::open_window`] during a
     /// frame. `WinitHost` drains this in `about_to_wait` (where it holds
     /// `&ActiveEventLoop`) and creates the windows synchronously. Not
@@ -212,8 +148,8 @@ pub struct Ui {
 impl std::fmt::Debug for Ui {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ui")
-            .field("frame_id", &self.frame_id)
-            .field("time", &self.time)
+            .field("frame_id", &self.frame_runtime.frame_id)
+            .field("time", &self.frame_runtime.time)
             .field("display", &self.display)
             .finish_non_exhaustive()
     }
@@ -241,8 +177,8 @@ impl Default for Ui {
 /// authoring API lives in the second `impl Ui` block below.
 impl Ui {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
-    /// animation tickers instead of teleporting; [`Self::time`]
-    /// still tracks the host's true clock.
+    /// animation tickers instead of teleporting; the frame runtime's
+    /// clock still tracks the host's true time.
     pub(crate) const MAX_DT: f32 = 0.1;
 
     /// Construct a per-window `Ui` from the host's shared [`HostContext`]
@@ -272,20 +208,8 @@ impl Ui {
             cascades_engine: Default::default(),
             display: Default::default(),
             damage_engine: Default::default(),
-            dt: 0.0,
-            dt_accum: 0.0,
-            frame_id: 0,
-            time: Duration::ZERO,
-            prev_stamp: None,
-            prev_cascade_fp: None,
-            #[cfg(test)]
-            dbg_cascade_ran: false,
-            fps_ema: 0.0,
-            repaint_requested: false,
-            repaint_wakes: Vec::new(),
             anim: Default::default(),
-            frame_submitted: false,
-            relayout_requested: false,
+            frame_runtime: Default::default(),
             pending_windows: Vec::new(),
             pending_closes: Vec::new(),
             wants_close: false,
@@ -299,7 +223,7 @@ impl Ui {
     /// The only public entry point for driving a frame. Runs `record`
     /// once, re-records on action input or `request_relayout`, paints
     /// the last pass. `stamp.time` is monotonic host time;
-    /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
+    /// the retained clock and frame id derive from it. See `docs/repaint.md`.
     pub fn frame(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         profiling::scope!("Ui::frame");
         // Frame arena is cleared inside `record_pass` (the only path
@@ -314,22 +238,22 @@ impl Ui {
             stamp.display.scale_factor,
         );
 
-        let first_frame = self.prev_stamp.is_none();
+        let first_frame = self.frame_runtime.prev_stamp.is_none();
         self.advance_clock(stamp.time);
         // Refresh the input clock so input handlers running before the
         // next frame timestamp double-clicks on this deterministic time.
-        self.input.frame_time = self.time;
+        self.input.frame_time = self.frame_runtime.time;
         let plan = self.classify_frame(stamp.display);
 
-        self.repaint_requested = false;
-        self.relayout_requested = false;
+        self.frame_runtime.repaint_requested = false;
+        self.frame_runtime.relayout_requested = false;
         self.display = stamp.display;
 
         // Pending until the renderer (`WindowRenderer::render_to_texture`)
         // confirms a successful submit. Tests driving `Ui::frame` directly must
-        // ack via `ui.frame_submitted = true` or the next
+        // ack via `ui.frame_runtime.frame_submitted = true` or the next
         // frame's `classify_frame` will force a `Full`.
-        self.frame_submitted = false;
+        self.frame_runtime.frame_submitted = false;
 
         let processing = match plan {
             FramePlan::PaintOnly => {
@@ -376,18 +300,18 @@ impl Ui {
                     // would trigger the existing `double_layout` arm
                     // *on top of* the warmup, giving three record
                     // passes on frame 1 instead of two.
-                    self.relayout_requested = false;
-                    self.repaint_requested = false;
+                    self.frame_runtime.relayout_requested = false;
+                    self.frame_runtime.repaint_requested = false;
                 }
                 let action_flag = {
                     profiling::scope!("Ui::record_pass.A");
                     self.record_pass(&mut record)
                 };
-                let double_layout = action_flag || self.relayout_requested;
+                let double_layout = action_flag || self.frame_runtime.relayout_requested;
                 if double_layout {
                     profiling::scope!(
                         "Ui::record_pass.B",
-                        if self.relayout_requested {
+                        if self.frame_runtime.relayout_requested {
                             "relayout"
                         } else {
                             "action"
@@ -413,13 +337,13 @@ impl Ui {
         // recorded so nothing was removed — pass an empty set
         // instead of stale state from the previous frame.
         let surface = self.display.logical_rect();
-        let prev_time = self.prev_stamp.map(|s| s.time);
+        let prev_time = self.frame_runtime.prev_stamp.map(|s| s.time);
         let input = DamageInput {
             forest: &self.forest,
             cascades: &self.cascades,
             surface,
             prev_time,
-            now: self.time,
+            now: self.frame_runtime.time,
         };
         let damage = match plan {
             FramePlan::PaintOnly => self.damage_engine.compute_paint_only(input),
@@ -443,7 +367,7 @@ impl Ui {
         // here — otherwise `frame_submitted` stays false and the next
         // paint frame's `classify_frame` escalates to `Full`.
         if damage.is_skip() {
-            self.frame_submitted = true;
+            self.frame_runtime.frame_submitted = true;
         }
 
         // Re-queue the next paint-anim boundary regardless of path.
@@ -452,15 +376,15 @@ impl Ui {
         // gives the next quantum boundary — without this, PaintOnly
         // drains the queued ANIM wake without replacing it and the
         // caret freezes until input forces a FullRecord.
-        if let Some(min_wake) = self.forest.min_paint_anim_wake(self.time) {
+        if let Some(min_wake) = self.forest.min_paint_anim_wake(self.frame_runtime.time) {
             self.schedule_wake(min_wake, WakeReasons::ANIM);
         }
 
-        self.prev_stamp = Some(stamp);
+        self.frame_runtime.prev_stamp = Some(stamp);
 
         FrameReport {
-            repaint_requested: self.repaint_requested,
-            repaint_after: self.repaint_wakes.first().map(|w| w.deadline),
+            repaint_requested: self.frame_runtime.repaint_requested,
+            repaint_after: self.frame_runtime.repaint_wakes.first().map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, self.theme.window_clear),
             processing,
         }
@@ -477,31 +401,31 @@ impl Ui {
         // multi-second stall as exactly `1/MAX_DT` fps, hiding the
         // hitches the readout exists to surface. Only the animation
         // integrator below wants the clamp.
-        let true_dt = now.saturating_sub(self.time).as_secs_f32();
+        let true_dt = now.saturating_sub(self.frame_runtime.time).as_secs_f32();
         let raw_dt = true_dt.min(Self::MAX_DT);
         // EMA over instantaneous fps. First frame: raw_dt is `now`
         // (vs ZERO), giving an absurd reading; skip the update there.
         // Coefficient 0.1 ≈ ~10-frame window — smooth enough that
         // the readout doesn't jitter wildly, fast enough to track
         // real frame-rate drops.
-        if self.frame_id > 0 && true_dt > EPS {
+        if self.frame_runtime.frame_id > 0 && true_dt > EPS {
             let inst = 1.0 / true_dt;
-            self.fps_ema = if self.fps_ema == 0.0 {
+            self.frame_runtime.fps_ema = if self.frame_runtime.fps_ema == 0.0 {
                 inst
             } else {
-                self.fps_ema * 0.9 + inst * 0.1
+                self.frame_runtime.fps_ema * 0.9 + inst * 0.1
             };
         }
-        self.dt_accum += raw_dt;
-        self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
-            let spent = self.dt_accum;
-            self.dt_accum = 0.0;
+        self.frame_runtime.dt_accum += raw_dt;
+        self.frame_runtime.dt = if self.frame_runtime.dt_accum >= ANIM_SUBSTEP_DT {
+            let spent = self.frame_runtime.dt_accum;
+            self.frame_runtime.dt_accum = 0.0;
             spent
         } else {
             0.0
         };
-        self.time = now;
-        self.frame_id += 1;
+        self.frame_runtime.time = now;
+        self.frame_runtime.frame_id += 1;
     }
 
     /// Drain wakes whose deadline has fired and decide whether this
@@ -513,23 +437,26 @@ impl Ui {
     fn classify_frame(&mut self, display: Display) -> FramePlan {
         // `repaint_wakes` is sorted ascending, so fired = prefix slice.
         let fired_count = self
+            .frame_runtime
             .repaint_wakes
-            .partition_point(|w| w.deadline <= self.time);
+            .partition_point(|w| w.deadline <= self.frame_runtime.time);
         let fired_reasons = self
+            .frame_runtime
             .repaint_wakes
             .drain(..fired_count)
             .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
 
         let display_changed = self
+            .frame_runtime
             .prev_stamp
             .is_some_and(|prev| !prev.display.raster_eq(&display));
-        let frame_skipped = !self.frame_submitted;
+        let frame_skipped = !self.frame_runtime.frame_submitted;
         let force_full = display_changed || frame_skipped;
         if force_full {
             tracing::debug!(
                 display_changed,
                 frame_skipped,
-                first_frame = self.prev_stamp.is_none(),
+                first_frame = self.frame_runtime.prev_stamp.is_none(),
                 "damage.invalidate_prev"
             );
         }
@@ -539,8 +466,8 @@ impl Ui {
             InputPolicy::OnDelta => self.input.repaint_requested_since_last_frame,
         };
         let paint_only = !force_full
-            && self.prev_stamp.is_some()
-            && !self.repaint_requested
+            && self.frame_runtime.prev_stamp.is_some()
+            && !self.frame_runtime.repaint_requested
             && !input_forces_record
             // An OS close request is surfaced to the app only during
             // record (`Ui::close_requested` + the `keep_open` veto), so
@@ -615,7 +542,7 @@ impl Ui {
     /// Shared inserter for [`Self::request_repaint_after`] (REAL) and
     /// paint-anim quantum boundaries (ANIM, filed from
     /// [`Self::post_record`]). Maintains the sorted-ascending
-    /// invariant on [`Self::repaint_wakes`], coalesces requests within
+    /// invariant on [`FrameRuntime::repaint_wakes`], coalesces requests within
     /// one display-refresh interval onto the later deadline, and OR-merges
     /// reasons when two requests land on the same slot. Merging is
     /// what lets the frame-entry classifier see a wake that *both* an
@@ -624,26 +551,24 @@ impl Ui {
     fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
         let coalesce = coalesce_dt_for_refresh(self.display.refresh_millihertz);
         let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;
-        let pos = self
-            .repaint_wakes
-            .partition_point(|w| w.deadline < deadline);
+        let wakes = &mut self.frame_runtime.repaint_wakes;
+        let pos = wakes.partition_point(|w| w.deadline < deadline);
         // Coalesce to the later of (existing, requested) — collapse
         // bursts into a single wake at the back of the window to avoid
         // unnecessary host wakes. pos is at-or-later than deadline (keep
         // its deadline, merge our reasons in — `coalesce` is never zero,
         // so an exact match lands here too); pos-1 is earlier (overwrite
         // with ours, but keep merged reasons).
-        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos].deadline) {
-            self.repaint_wakes[pos].reasons = self.repaint_wakes[pos].reasons.merge(reasons);
+        if pos < wakes.len() && near(wakes[pos].deadline) {
+            wakes[pos].reasons = wakes[pos].reasons.merge(reasons);
             return;
         }
-        if pos > 0 && near(self.repaint_wakes[pos - 1].deadline) {
-            self.repaint_wakes[pos - 1].deadline = deadline;
-            self.repaint_wakes[pos - 1].reasons =
-                self.repaint_wakes[pos - 1].reasons.merge(reasons);
+        if pos > 0 && near(wakes[pos - 1].deadline) {
+            wakes[pos - 1].deadline = deadline;
+            wakes[pos - 1].reasons = wakes[pos - 1].reasons.merge(reasons);
             return;
         }
-        self.repaint_wakes.insert(pos, Wake { deadline, reasons });
+        wakes.insert(pos, Wake { deadline, reasons });
     }
 
     /// Record-half of `frame`: finalize hashes, run measure / arrange,
@@ -682,15 +607,15 @@ impl Ui {
             &self.layout_engine.scroll_states,
             self.display,
         );
-        let skip = self.prev_cascade_fp == Some(fp);
+        let skip = self.frame_runtime.prev_cascade_fp == Some(fp);
         #[cfg(test)]
         {
-            self.dbg_cascade_ran = !skip;
+            self.frame_runtime.dbg_cascade_ran = !skip;
         }
         if skip {
             return;
         }
-        self.prev_cascade_fp = Some(fp);
+        self.frame_runtime.prev_cascade_fp = Some(fp);
         self.cascades_engine
             .run(&self.forest, &self.layout, &mut self.cascades);
     }
@@ -805,7 +730,7 @@ impl Ui {
     /// realize their record-time inputs were stale). Capped at one
     /// re-record per `run_frame`.
     pub fn request_relayout(&mut self) {
-        self.relayout_requested = true;
+        self.frame_runtime.relayout_requested = true;
     }
 
     /// Monotonic time of the current frame, accumulated from the
@@ -818,7 +743,7 @@ impl Ui {
     /// continuous motion like `Spinner`'s rides `PaintAnim` instead —
     /// sampled at encode time, no record-time clock read.)
     pub fn now(&self) -> Duration {
-        self.time
+        self.frame_runtime.time
     }
 
     /// Request the mouse cursor shown for this window. Per record pass,
@@ -844,9 +769,9 @@ impl Ui {
             "request_repaint @ {}:{} (frame={})",
             caller.file(),
             caller.line(),
-            self.frame_id,
+            self.frame_runtime.frame_id,
         );
-        self.repaint_requested = true;
+        self.frame_runtime.repaint_requested = true;
     }
 
     /// Schedule a one-shot wake at `now + after`. The entry persists
@@ -866,9 +791,9 @@ impl Ui {
             after,
             caller.file(),
             caller.line(),
-            self.frame_id,
+            self.frame_runtime.frame_id,
         );
-        let deadline = self.time.saturating_add(after);
+        let deadline = self.frame_runtime.time.saturating_add(after);
         self.schedule_wake(deadline, WakeReasons::REAL);
     }
 
@@ -1016,7 +941,7 @@ impl Ui {
         paint: Rc<RefCell<dyn GpuPaint>>,
         repaint: bool,
     ) {
-        let frame_id = self.frame_id;
+        let frame_id = self.frame_runtime.frame_id;
         let entry = match self.gpu_views.entry(id) {
             Entry::Occupied(e) => {
                 let entry = e.into_mut();
@@ -1266,12 +1191,16 @@ impl Ui {
             }
             return target;
         };
-        let r = self
-            .anim
-            .typed_mut::<V>()
-            .tick(id, slot, target, spec, self.dt, self.frame_id);
+        let r = self.anim.typed_mut::<V>().tick(
+            id,
+            slot,
+            target,
+            spec,
+            self.frame_runtime.dt,
+            self.frame_runtime.frame_id,
+        );
         if !r.settled {
-            self.repaint_requested = true;
+            self.frame_runtime.repaint_requested = true;
         }
         r.current
     }
@@ -1455,8 +1384,8 @@ pub mod test_support {
         /// first frame classifies by coverage like any other (small
         /// content ⇒ `Partial`, from the all-Vacant walk).
         fn mark_warm_for_test(&mut self) {
-            self.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
-            self.frame_submitted = true;
+            self.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
+            self.frame_runtime.frame_submitted = true;
         }
 
         /// One frame at `size`, time frozen at zero.
@@ -1468,7 +1397,7 @@ pub mod test_support {
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
         pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             self.run_at(size, record);
-            self.frame_submitted = true;
+            self.frame_runtime.frame_submitted = true;
         }
 
         /// Ack the just-run frame as presented — mirrors what the host
@@ -1478,7 +1407,7 @@ pub mod test_support {
         /// [`crate::renderer::frontend::Frontend::build_for_test`]
         /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
         pub fn mark_frame_submitted(&mut self) {
-            self.frame_submitted = true;
+            self.frame_runtime.frame_submitted = true;
         }
 
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
