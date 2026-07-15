@@ -1,4 +1,4 @@
-use crate::{forest::tree::NodeId, widgets::text_edit::tests::*};
+use crate::{forest::tree::node::NodeId, widgets::text_edit::tests::*};
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {

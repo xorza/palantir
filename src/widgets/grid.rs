@@ -1,4 +1,5 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::track::GridDef;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
@@ -35,13 +36,8 @@ impl Grid {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        // Mode_payload is patched at `show()` time once `grid.push_def`
-        // returns the real index. Initialize with a sentinel that
-        // `Tree::open_node_prologue`'s bounds-check rejects, so any code
-        // path that reaches the tree without going through `show()` panics
-        // loudly.
         let mut element = Element::new(LayoutMode::Grid);
-        element.mode_payload = PENDING_GRID_IDX;
+        element.set_grid_def(GridDefId::PENDING);
         Self {
             element,
             def: GridDef {
@@ -108,9 +104,9 @@ impl Grid {
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let active_layer = ui.forest.current_layer();
-        let idx = ui.forest.trees[active_layer].grid.push_def(self.def);
+        let id = ui.forest.trees[active_layer].push_grid_def(self.def);
         let mut element = self.element;
-        element.mode_payload = idx;
+        element.set_grid_def(id);
 
         // Theme fallback for chrome / clip — see `Panel::show`.
         let chrome = resolve_container_chrome(
@@ -134,11 +130,6 @@ impl Configure for Grid {
         &mut self.element
     }
 }
-
-/// `LayoutMode::Grid(PENDING_GRID_IDX)` marks a `Grid` whose `grid_def` index
-/// has not yet been bound. `show()` overwrites it; if it ever reaches
-/// `Tree::push_node` unpatched, the bounds check there panics.
-const PENDING_GRID_IDX: u16 = u16::MAX;
 
 fn empty_tracks() -> Rc<[Track]> {
     thread_local! {

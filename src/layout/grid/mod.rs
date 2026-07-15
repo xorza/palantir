@@ -1,5 +1,5 @@
-use crate::forest::element::LayoutMode;
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::tree::Tree;
+use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
@@ -7,6 +7,7 @@ use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
     AxisAlignPair, TextCtx, place_axis, resolved_axis_align, zero_subtree,
 };
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
@@ -15,7 +16,7 @@ use glam::Vec2;
 use std::ops::Range;
 use std::rc::Rc;
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum HugKind {
     Max,
     Min,
@@ -35,6 +36,7 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
 /// [`prepare_axis_scratch_at`] after it adopts the def into per-depth
 /// scratch. Carries no behavior; exists so call-site destructuring
 /// names the scalars instead of relying on tuple position.
+#[derive(Debug)]
 struct GridShape {
     n_rows: usize,
     n_cols: usize,
@@ -54,10 +56,10 @@ struct GridShape {
 fn prepare_axis_scratch_at(
     layout: &mut LayoutEngine,
     tree: &Tree,
-    idx: u16,
+    idx: GridDefId,
     depth: usize,
 ) -> GridShape {
-    let def = &tree.grid.defs[idx as usize];
+    let def = &tree.grid_defs[usize::from(idx)];
     let n_rows = def.rows.len();
     let n_cols = def.cols.len();
     let rows = def.rows.clone();
@@ -84,7 +86,7 @@ fn prepare_axis_scratch_at(
 /// and inflating the grid's `desired.h`. Measure-only — arrange must
 /// preserve these. Pinned by
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
-fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
+fn reset_hugs_for(layout: &mut LayoutEngine, idx: GridDefId) {
     let hugs = &mut layout.scratch.grid.hugs;
     for (axis, kind) in HUG_ORDER {
         hugs.slice_mut(idx, axis, kind).fill(0.0);
@@ -100,6 +102,7 @@ fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
 /// Per-track content-driven `[min, max]` Hug ranges live in
 /// `GridHugStore` (durable across the whole layout pass); they're passed
 /// into `resolve_axis` as slices alongside this scratch.
+#[derive(Debug)]
 pub(crate) struct AxisScratch {
     pub(crate) tracks: Rc<[Track]>,
     pub(crate) sizes: Vec<f32>,
@@ -122,7 +125,7 @@ impl Default for AxisScratch {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct HugBound {
     idx: usize,
     lo: f32,
@@ -217,7 +220,7 @@ impl GridDepthStack {
 /// falls back to re-resolving (the cache-hit-ancestor path).
 ///
 /// Capacity retained across frames.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct GridHugStore {
     max_pool: Vec<f32>,
     min_pool: Vec<f32>,
@@ -233,7 +236,7 @@ pub(crate) struct GridHugStore {
     slots: Vec<GridHugSlot>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct GridHugSlot {
     rows: Span,
     cols: Span,
@@ -246,7 +249,7 @@ impl GridHugStore {
         self.sizes_pool.clear();
         self.totals_pool.clear();
         self.slots.clear();
-        for def in &tree.grid.defs {
+        for def in &tree.grid_defs {
             let rows = self.alloc(def.rows.len());
             let cols = self.alloc(def.cols.len());
             self.slots.push(GridHugSlot { rows, cols });
@@ -262,8 +265,8 @@ impl GridHugStore {
         Span::new(start, n as u32)
     }
 
-    fn axis_slice(&self, idx: u16, axis: Axis) -> Range<usize> {
-        let slot = self.slots[idx as usize];
+    fn axis_slice(&self, idx: GridDefId, axis: Axis) -> Range<usize> {
+        let slot = self.slots[usize::from(idx)];
         let s = match axis {
             Axis::X => slot.cols,
             Axis::Y => slot.rows,
@@ -271,7 +274,7 @@ impl GridHugStore {
         s.range()
     }
 
-    pub(crate) fn slice(&self, idx: u16, axis: Axis, kind: HugKind) -> &[f32] {
+    pub(crate) fn slice(&self, idx: GridDefId, axis: Axis, kind: HugKind) -> &[f32] {
         let r = self.axis_slice(idx, axis);
         match kind {
             HugKind::Max => &self.max_pool[r],
@@ -279,7 +282,7 @@ impl GridHugStore {
         }
     }
 
-    pub(crate) fn slice_mut(&mut self, idx: u16, axis: Axis, kind: HugKind) -> &mut [f32] {
+    pub(crate) fn slice_mut(&mut self, idx: GridDefId, axis: Axis, kind: HugKind) -> &mut [f32] {
         let r = self.axis_slice(idx, axis);
         match kind {
             HugKind::Max => &mut self.max_pool[r],
@@ -290,7 +293,11 @@ impl GridHugStore {
     /// Both pools' slices for one `(idx, axis)` in one call. Single
     /// slot lookup; the borrow checker splits the `&mut self` because
     /// `min_pool` and `max_pool` are separate fields.
-    pub(crate) fn slice_mut_pair(&mut self, idx: u16, axis: Axis) -> (&mut [f32], &mut [f32]) {
+    pub(crate) fn slice_mut_pair(
+        &mut self,
+        idx: GridDefId,
+        axis: Axis,
+    ) -> (&mut [f32], &mut [f32]) {
         let r = self.axis_slice(idx, axis);
         (&mut self.min_pool[r.clone()], &mut self.max_pool[r])
     }
@@ -305,7 +312,7 @@ impl GridHugStore {
     /// Persisted resolved track sizes for `(idx, axis)` from the last
     /// measure. Empty-equivalent until measure writes via
     /// `record_resolution`.
-    pub(crate) fn sizes_slice(&self, idx: u16, axis: Axis) -> &[f32] {
+    pub(crate) fn sizes_slice(&self, idx: GridDefId, axis: Axis) -> &[f32] {
         let r = self.axis_slice(idx, axis);
         &self.sizes_pool[r]
     }
@@ -314,8 +321,8 @@ impl GridHugStore {
     /// Returns `0.0` for grids that haven't been measured this frame
     /// (e.g. cache-hit descendants); arrange treats that as "no
     /// persisted state" and re-resolves.
-    pub(crate) fn total_used(&self, idx: u16, axis: Axis) -> f32 {
-        self.totals_pool[idx as usize][Self::axis_total_idx(axis)]
+    pub(crate) fn total_used(&self, idx: GridDefId, axis: Axis) -> f32 {
+        self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)]
     }
 
     /// Snapshot the just-resolved `(sizes, total)` for `(idx, axis)`
@@ -323,10 +330,16 @@ impl GridHugStore {
     /// without re-running `resolve_axis`. Caller passes the same
     /// `total` it just handed to `resolve_axis` plus the resolved
     /// `sizes` slice from the per-depth scratch.
-    pub(crate) fn record_resolution(&mut self, idx: u16, axis: Axis, total: f32, sizes: &[f32]) {
+    pub(crate) fn record_resolution(
+        &mut self,
+        idx: GridDefId,
+        axis: Axis,
+        total: f32,
+        sizes: &[f32],
+    ) {
         let r = self.axis_slice(idx, axis);
         self.sizes_pool[r].copy_from_slice(sizes);
-        self.totals_pool[idx as usize][Self::axis_total_idx(axis)] = total;
+        self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)] = total;
     }
 
     /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
@@ -340,7 +353,7 @@ impl GridHugStore {
         for i in subtree {
             let core = layouts[i];
             if core.mode == LayoutMode::Grid {
-                let idx = core.mode_payload;
+                let idx = core.grid_def_id();
                 for (axis, kind) in HUG_ORDER {
                     out.extend_from_slice(self.slice(idx, axis, kind));
                 }
@@ -359,7 +372,7 @@ impl GridHugStore {
         for i in subtree {
             let core = layouts[i];
             if core.mode == LayoutMode::Grid {
-                let idx = core.mode_payload;
+                let idx = core.grid_def_id();
                 for (axis, kind) in HUG_ORDER {
                     let dst = self.slice_mut(idx, axis, kind);
                     let n = dst.len();
@@ -395,7 +408,7 @@ pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    idx: u16,
+    idx: GridDefId,
     inner_avail: Size,
     tc: &TextCtx<'_>,
     out: &mut Layout,
@@ -411,7 +424,7 @@ fn measure_inner(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    idx: u16,
+    idx: GridDefId,
     depth: usize,
     inner_avail: Size,
     tc: &TextCtx<'_>,
@@ -642,7 +655,7 @@ pub(crate) fn arrange(
     tree: &Tree,
     node: NodeId,
     inner: Rect,
-    idx: u16,
+    idx: GridDefId,
     out: &mut Layout,
 ) {
     let depth = layout.scratch.grid.depth_stack.enter();
@@ -655,7 +668,7 @@ fn arrange_inner(
     tree: &Tree,
     node: NodeId,
     inner: Rect,
-    idx: u16,
+    idx: GridDefId,
     depth: usize,
     out: &mut Layout,
 ) {
@@ -810,7 +823,7 @@ fn span_size(sizes: &[f32], span: Span, gap: f32) -> f32 {
 fn resolve_or_reuse(
     a: &mut AxisScratch,
     hugs: &mut GridHugStore,
-    idx: u16,
+    idx: GridDefId,
     axis: Axis,
     total: f32,
     gap: f32,
@@ -1025,12 +1038,12 @@ pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    idx: u16,
+    idx: GridDefId,
     axis: Axis,
     req: LenReq,
     tc: &TextCtx<'_>,
 ) -> f32 {
-    let def = &tree.grid.defs[idx as usize];
+    let def = &tree.grid_defs[usize::from(idx)];
     // An empty dimension means no cells, so the grid measures to
     // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
     // *both* axes — a declared `Fixed` track on the non-empty axis

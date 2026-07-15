@@ -64,89 +64,86 @@ fn layout_mode_size() {
 fn layout_core_round_trips_mode_align_visibility() {
     use crate::forest::visibility::Visibility;
     use crate::layout::types::align::{Align, HAlign, VAlign};
-    let cases: &[(LayoutMode, u16, Align, Visibility)] = &[
+    let cases: &[(LayoutMode, ModePayload, Align, Visibility)] = &[
         (
             LayoutMode::Leaf,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::HStack,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Left, VAlign::Center),
             Visibility::Hidden,
         ),
         (
             LayoutMode::Grid,
-            42,
+            ModePayload::grid(GridDefId::from_index(42)),
             Align::new(HAlign::Right, VAlign::Bottom),
             Visibility::Collapsed,
         ),
         (
             LayoutMode::Scroll,
-            LayoutMode::SCROLL_PAN_Y,
+            ModePayload::scroll(ScrollSpec::VERTICAL),
             Align::new(HAlign::Center, VAlign::Top),
             Visibility::Visible,
         ),
         (
             LayoutMode::Scroll,
-            LayoutMode::SCROLL_PAN_X,
+            ModePayload::scroll(ScrollSpec::HORIZONTAL),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::Scroll,
-            LayoutMode::SCROLL_PAN_X | LayoutMode::SCROLL_PAN_Y,
+            ModePayload::scroll(ScrollSpec::BOTH),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Hidden,
         ),
         (
             LayoutMode::WrapHStack,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::WrapVStack,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::ZStack,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::Canvas,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::VStack,
-            0,
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
             LayoutMode::Grid,
-            65535,
+            ModePayload::grid(GridDefId::PENDING),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
     ];
     for &(mode, payload, align, vis) in cases {
-        let core = LayoutCore {
-            size: Sizes::default(),
-            padding: Spacing::ZERO,
-            margin: Spacing::ZERO,
-            mode_payload: payload,
-            bits: LayoutCore::pack_bits(align, vis),
-            mode,
-        };
+        let mut element = Element::new(mode);
+        element.mode_payload = payload;
+        element.align = align;
+        element.visibility = vis;
+        let core = LayoutCore::from_element(&element);
         assert_eq!(core.mode, mode, "mode for {mode:?}/{align:?}/{vis:?}");
         assert_eq!(core.mode_payload, payload, "payload for {mode:?}");
         assert_eq!(core.align(), align, "align for {mode:?}/{align:?}/{vis:?}");

@@ -6,7 +6,7 @@ use glam::Vec2;
 use soa_rs::Soars;
 
 /// One mesh draw within a group. Vertex/index slices live in the
-/// frame's [`FrameArena::meshes`](crate::forest::frame_arena::FrameArena::meshes);
+/// frame's [`FrameArena::meshes`](crate::frame_arena::FrameArena::meshes);
 /// the per-instance transform + tint live alongside as
 /// [`MeshDrawRow::instance`] (same row in the SoA, separate column).
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -14,8 +14,8 @@ pub(crate) mod zstack;
 #[cfg(test)]
 mod cross_driver_tests;
 
-use crate::forest::Layer;
-use crate::forest::per_layer::PerLayer;
+use crate::forest::layer::Layer;
+use crate::forest::layer::PerLayer;
 use crate::forest::tree::Tree;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};

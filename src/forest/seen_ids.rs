@@ -32,37 +32,10 @@
 //!    final `curr`, and without the fold their state/anim/text rows
 //!    would leak and resume stale if the widget later reappeared.
 
-use crate::forest::Layer;
-use crate::forest::tree::NodeId;
-use crate::primitives::widget_id::WidgetId;
+use crate::forest::layer::Layer;
+use crate::forest::tree::node::NodeId;
+use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
-use std::hash::{BuildHasherDefault, Hasher};
-
-/// Passthrough `Hasher` for `WidgetId`. `WidgetId` is already a 64-bit
-/// FxHash, so re-running it through `FxHasher` adds ~20 cycles per
-/// insert with no distribution benefit (the input bits are already
-/// avalanche-mixed). This stores the single `write_u64` call and
-/// returns it from `finish`. Other `write*` paths are unreachable
-/// because `WidgetId`'s derived `Hash` impl only writes its `u64`.
-#[derive(Default)]
-pub(crate) struct IdHasher(u64);
-
-impl Hasher for IdHasher {
-    #[inline]
-    fn finish(&self) -> u64 {
-        self.0
-    }
-    #[inline]
-    fn write_u64(&mut self, n: u64) {
-        self.0 = n;
-    }
-    fn write(&mut self, _bytes: &[u8]) {
-        unreachable!("IdHasher only sees write_u64 from WidgetId's derived Hash impl");
-    }
-}
-
-pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHasher>>;
 
 /// One collision endpoint — a node together with its originating
 /// layer. Both halves of a `CollisionRecord` are `Endpoint`s so the
@@ -73,6 +46,12 @@ pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHashe
 pub(crate) struct Endpoint {
     pub(crate) layer: Layer,
     pub(crate) node: NodeId,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CollisionRecord {
+    pub(crate) first: Endpoint,
+    pub(crate) second: Endpoint,
 }
 
 /// One side of a queued explicit-collision pair. The first endpoint
@@ -88,7 +67,7 @@ struct PendingExplicitCollision {
 
 /// Outcome of [`SeenIds::record_endpoint`] — either the endpoint
 /// recorded cleanly, or it completed a queued explicit-collision
-/// pair (caller pushes a [`crate::forest::CollisionRecord`] from the
+/// pair (caller pushes a [`CollisionRecord`] from the
 /// two endpoints).
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum EndpointOutcome {
@@ -102,7 +81,7 @@ pub(crate) enum EndpointOutcome {
     ExplicitCollision { first: Endpoint, second: Endpoint },
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct SeenIds {
     /// Per-raw-id occurrence counter. Bumped inside [`Self::resolve`]
     /// every time a raw id is handed out — first call returns
@@ -172,7 +151,7 @@ impl SeenIds {
     /// the per-raw-id counter and returns `raw_id.with(count)`.
     /// Explicit collisions queue a [`PendingExplicitCollision`] so
     /// [`Self::record_endpoint`] can emit the magenta-overlay
-    /// [`crate::forest::CollisionRecord`] once both endpoints exist.
+    /// [`CollisionRecord`] once both endpoints exist.
     ///
     /// **Contract**: the matching [`Self::record_endpoint`] for an
     /// earlier `resolve(raw_id)` must run before the next
@@ -285,7 +264,7 @@ impl SeenIds {
 #[cfg(test)]
 mod tests {
     use crate::forest::seen_ids::*;
-    use crate::forest::tree::NodeId;
+    use crate::forest::tree::node::NodeId;
 
     fn ep(node: u32) -> Endpoint {
         Endpoint {

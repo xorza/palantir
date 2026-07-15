@@ -1,9 +1,10 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, Salt};
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::scroll::{ScrollLayoutState, TrackPage};
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -285,7 +286,7 @@ struct ScrollWrappers {
 /// field fails to compile here, forcing the decision whether it lands
 /// on `outer` (sizing/placement) or `inner` (layout/panel knobs).
 /// `Scroll::show` patches the remaining inner fields it computes per
-/// frame (`salt`, the reservation `margin`, `mode_payload` fit bits,
+/// frame (`salt`, the reservation `margin`, layout fit flags,
 /// `clip` — read off `flags` before this runs — and the pan
 /// `transform`).
 fn scroll_wrappers(element: Element) -> ScrollWrappers {
@@ -363,17 +364,17 @@ pub struct Scroll {
 impl Scroll {
     #[track_caller]
     pub fn vertical() -> Self {
-        Self::with_axes(LayoutMode::SCROLL_PAN_Y)
+        Self::with_axes(ScrollSpec::VERTICAL)
     }
 
     #[track_caller]
     pub fn horizontal() -> Self {
-        Self::with_axes(LayoutMode::SCROLL_PAN_X)
+        Self::with_axes(ScrollSpec::HORIZONTAL)
     }
 
     #[track_caller]
     pub fn both() -> Self {
-        Self::with_axes(LayoutMode::SCROLL_PAN_X | LayoutMode::SCROLL_PAN_Y)
+        Self::with_axes(ScrollSpec::BOTH)
     }
 
     /// Paint chrome for the inner scroll surface (background under
@@ -389,9 +390,9 @@ impl Scroll {
     }
 
     #[track_caller]
-    fn with_axes(pan_mask: u16) -> Self {
+    fn with_axes(spec: ScrollSpec) -> Self {
         let mut element = Element::new(LayoutMode::Scroll);
-        element.mode_payload = pan_mask;
+        element.set_scroll_spec(spec);
         // Both bits: `SCROLL` for pan, `PINCH` for touchpad zoom.
         // Zoom is gated again at consumption time by
         // `self.zoom.is_some()`, but the routing has to be on
@@ -469,12 +470,11 @@ impl Scroll {
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let id = ui.widget_id(&self.element);
         let mode = self.element.mode;
-        let pan_payload = self.element.mode_payload;
         assert!(
             matches!(mode, LayoutMode::Scroll),
             "Scroll widget must carry LayoutMode::Scroll",
         );
-        let pan = LayoutMode::pan_mask_from_payload(pan_payload);
+        let pan = self.element.scroll_spec().pan_mask();
         if self.zoom.is_some() {
             assert!(
                 pan.x && pan.y,
@@ -702,14 +702,11 @@ impl Scroll {
         // widget (bounded by `max_size`/available, scrolling past the
         // cap); `Fill`/`Fixed` keep the content-independent viewport.
         let user = self.element.size;
-        let mut inner_payload = self.element.mode_payload;
-        if pan.x && matches!(user.w(), Sizing::Hug) {
-            inner_payload |= LayoutMode::SCROLL_FIT_X;
-        }
-        if pan.y && matches!(user.h(), Sizing::Hug) {
-            inner_payload |= LayoutMode::SCROLL_FIT_Y;
-        }
-        inner.mode_payload = inner_payload;
+        let fit = glam::BVec2::new(
+            pan.x && matches!(user.w(), Sizing::Hug),
+            pan.y && matches!(user.h(), Sizing::Hug),
+        );
+        inner.set_scroll_spec(self.element.scroll_spec().with_fit(fit));
         inner.salt = Salt::Verbatim(scroll_id);
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
         let inner_chrome = self.chrome;

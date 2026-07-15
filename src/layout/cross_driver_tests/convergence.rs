@@ -13,9 +13,9 @@
 use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::tree::NodeId;
+use crate::forest::layer::Layer;
+use crate::forest::tree::node::NodeId;
 use crate::layout::types::sizing::Sizing;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;

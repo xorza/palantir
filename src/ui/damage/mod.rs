@@ -50,15 +50,16 @@
 //! builds skip the per-node `Vec::push` entirely; tests and benches
 //! assert on it through this gate.
 
+use crate::common::content_hash::ContentHash;
 use crate::forest::Forest;
-use crate::forest::rollups::ContentHash;
-use crate::forest::seen_ids::WidgetIdMap;
+use crate::forest::tree::Tree;
 use crate::forest::tree::iter::TreeItem;
+use crate::forest::tree::node::NodeId;
 use crate::forest::tree::node::SubtreeEnd;
-use crate::forest::tree::{NodeId, Tree};
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
+use crate::primitives::widget_id::WidgetIdMap;
 use crate::ui::cascade::CascadeInputHash;
 use crate::ui::cascade::{Cascades, Paint, PaintArena};
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
@@ -107,7 +108,7 @@ pub(crate) struct NodeSnapshot {
     pub(crate) subtree_hash: ContentHash,
     /// Fingerprint of last frame's cascade inputs at this node (parent
     /// transform/clip/disabled/invisible + own arranged rect). See
-    /// [`crate::forest::rollups::CascadeInputHash`].
+    /// [`CascadeInputHash`].
     pub(crate) cascade_input: CascadeInputHash,
     /// Paint-order position: the immediate parent's `WidgetId` bits,
     /// or the layer discriminant for a root. A widget reparented (or
@@ -598,7 +599,7 @@ impl PaintSnapArena {
     /// order and reseat into `scratch`, then swap.
     pub(crate) fn compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
         self.scratch.clear();
-        for (_layer, tree) in forest.iter_paint_order() {
+        for (_layer, tree) in forest.trees.iter_paint_order() {
             for wid in tree.records.widget_id() {
                 let Some(snap) = prev.get_mut(wid) else {
                     continue;
@@ -737,7 +738,7 @@ impl DamageEngine {
         #[cfg(any(test, feature = "internals"))]
         let subtree_skips_out = &mut self.subtree_skips;
 
-        for (layer, tree) in forest.iter_paint_order() {
+        for (layer, tree) in forest.trees.iter_paint_order() {
             let layer_cascades = &cascades.layers[layer];
             let cascade_inputs = layer_cascades.cascade_inputs.as_slice();
             let node_hashes = tree.rollups.node.as_slice();
@@ -1339,7 +1340,7 @@ fn extend_predamaged(
     // widget's rect (every entry was Vacant), and a paint-anim rect
     // is always a sub-rect of its owner — nothing new to add.
     let Some(prev) = prev_time else { return };
-    for (layer, tree) in forest.iter_paint_order() {
+    for (layer, tree) in forest.trees.iter_paint_order() {
         let arena = &cascades.layers[layer].paint_arena;
         let paints = &arena.rows;
         let node_spans = &arena.node_spans;

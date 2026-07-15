@@ -1,6 +1,6 @@
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel};

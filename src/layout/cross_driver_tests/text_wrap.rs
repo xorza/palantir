@@ -1,13 +1,14 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::WidgetId;
-use crate::forest::Layer;
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, Salt};
+use crate::forest::layer::Layer;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::NodeId;
+use crate::forest::tree::node::NodeId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::{chat_message, two_hug_cols_with_wrap};
 use crate::layout::support::TextCtx;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
@@ -769,7 +770,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
 /// rect shorter than its content, visibly clipping at the bottom.
 #[test]
 fn fill_panel_grows_to_contain_wrapped_content_on_y() {
-    use crate::forest::tree::NodeId;
+    use crate::forest::tree::node::NodeId;
     use crate::widgets::panel::Panel;
     fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut inner = NodeId(0);

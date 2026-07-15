@@ -1,12 +1,14 @@
 pub(crate) mod hash;
 pub(crate) mod lower;
+pub(crate) mod paint;
 pub(crate) mod record;
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::hash_str;
-use crate::forest::frame_arena::FrameArena;
-use crate::forest::rollups::ContentHash;
 use crate::forest::shapes::hash::compute_record_hash;
-use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
+use crate::forest::shapes::paint::ShapeStroke;
+use crate::forest::shapes::record::ShapeRecord;
+use crate::frame_arena::FrameArena;
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
@@ -26,7 +28,7 @@ use crate::shape::Shape;
 /// its bytes on the record itself (`SmolStr`), while `Interned`
 /// references `FrameArena::fmt_scratch` via a `Span`. Cleared per
 /// frame, capacity retained.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
     /// Per-shape authoring hash, parallel to `records`. Computed once

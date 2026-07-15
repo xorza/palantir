@@ -1,7 +1,8 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;
@@ -226,7 +227,8 @@ impl<'a> Splitter<'a> {
 
         let layer = ui.forest.current_layer();
         let mut element = self.element;
-        element.mode_payload = ui.forest.trees[layer].grid.push_def(grid_def);
+        let grid_def_id = ui.forest.trees[layer].push_grid_def(grid_def);
+        element.set_grid_def(grid_def_id);
         ui.node(id, element, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 

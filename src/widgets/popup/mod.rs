@@ -1,6 +1,7 @@
-use crate::forest::Layer;
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
+use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::ui::Ui;

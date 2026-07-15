@@ -8,9 +8,10 @@
 //! discriminants come from the explicit `= N` annotations on
 //! [`ShapeRecord`].
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::forest::rollups::ContentHash;
-use crate::forest::shapes::record::{ShapeBrush, ShapeRecord};
+use crate::forest::shapes::paint::ShapeBrush;
+use crate::forest::shapes::record::ShapeRecord;
 use crate::primitives::image::ImageFit;
 use std::hash::{Hash, Hasher as _};
 

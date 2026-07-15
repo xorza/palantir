@@ -23,17 +23,21 @@
 //! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
 
 use crate::ClipMode;
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::forest::Chrome;
-use crate::forest::element::{BoundsExtras, Element, LayoutMode, PanelExtras};
-use crate::forest::rollups::{ContentHash, SubtreeRollups};
+use crate::forest::element::Element;
+use crate::forest::element::columns::{BoundsExtras, PanelExtras};
 use crate::forest::shapes::Shapes;
 use crate::forest::shapes::lower;
-use crate::forest::shapes::record::ChromeRow;
+use crate::forest::shapes::lower::ChromeInput;
+use crate::forest::shapes::paint::ChromeRow;
+use crate::forest::tree::extras::{ExtrasIdx, Slot};
 use crate::forest::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
-use crate::forest::tree::node::{NodeRecord, SubtreeEnd};
+use crate::forest::tree::node::{NodeId, NodeRecord, SubtreeEnd};
 use crate::forest::tree::paint_anims::PaintAnims;
 use crate::forest::tree::recording::{OpenFrame, RecordingScratch, RootSlot};
+use crate::forest::tree::rollups::SubtreeRollups;
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::track::GridDef;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::span::Span;
@@ -41,74 +45,6 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct NodeId(pub(crate) u32);
-
-impl NodeId {
-    #[inline]
-    pub(crate) fn idx(self) -> usize {
-        self.0 as usize
-    }
-}
-
-/// Niche-encoded dense-table slot. `u16::MAX` means "absent"; any
-/// other value is an index into a `*_table` `Vec`. Constructed by
-/// [`Slot::push`] off a `Vec::len()`; resolved at read time via
-/// [`Slot::get`] which folds the sentinel check into an `Option<usize>`.
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct Slot(u16);
-
-impl Slot {
-    pub(crate) const ABSENT: Self = Self(u16::MAX);
-
-    /// `len`-derived constructor. Pair with `Vec::push(v)` so the
-    /// resulting `Slot` indexes the entry that push wrote. Release
-    /// `assert!` because silent truncation at `len ≥ u16::MAX` would
-    /// collide with [`Slot::ABSENT`] and corrupt the table mapping —
-    /// invariant per AGENTS.md's "default to release assert!".
-    #[inline]
-    pub(crate) fn from_len(len: usize) -> Self {
-        assert!(
-            len < Self::ABSENT.0 as usize,
-            "Slot exhausted — {} entries fill the sparse-column frame; index would collide with Slot::ABSENT (got {len})",
-            Self::ABSENT.0 as usize,
-        );
-        Self(len as u16)
-    }
-
-    /// `Some(idx)` if this slot points at a real entry, `None` if
-    /// absent. Single sentinel-compare folded into the `Option`.
-    #[inline]
-    pub(crate) fn get(self) -> Option<usize> {
-        (self.0 != Self::ABSENT.0).then_some(self.0 as usize)
-    }
-}
-
-impl Default for Slot {
-    #[inline]
-    fn default() -> Self {
-        Self::ABSENT
-    }
-}
-
-/// Packed per-node "extras" slot index for the side tables. One 6-byte
-/// row per node lives in `Tree::extras_idx`; that single contiguous
-/// push replaces what was previously three `Vec<u16>::push` calls.
-/// Each field is a [`Slot`] — niche-encoded `u16::MAX` for absent,
-/// otherwise a dense index into the matching `*_table` `Vec`.
-///
-/// Packing wins on both ends: `Tree::open_node` does one packed store
-/// instead of three 2-byte stores into separate `Vec<u16>`, and the
-/// hash / damage walks read all three slots from the same cache line.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ExtrasIdx {
-    pub(crate) bounds: Slot,
-    pub(crate) panel: Slot,
-    pub(crate) chrome: Slot,
-}
 
 /// A single layer's arena. Per-layer trees live on
 /// [`crate::forest::Forest`] and share no record/shape storage —
@@ -128,7 +64,7 @@ pub(crate) struct ExtrasIdx {
 /// - `shape_span`  — span into the flat shape buffer covering this node's
 ///   subtree (parent + descendants); the gap between children's
 ///   sub-ranges holds the parent's direct shapes in record order.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
     pub(crate) records: Soa<NodeRecord>,
@@ -155,8 +91,7 @@ pub(crate) struct Tree {
     /// `FrameArena`.
     pub(crate) shapes: Shapes,
 
-    // -- Frame-scoped sub-storage ----------------------------------------
-    pub(crate) grid: GridArena,
+    pub(crate) grid_defs: Vec<GridDef>,
 
     // -- Roots -----------------------------------------------------------
     /// Top-level root slots in this tree, in record order. Each slot's
@@ -199,7 +134,7 @@ impl Tree {
         self.chrome_table.clear();
         self.shapes.clear();
         self.paint_anims.clear();
-        self.grid.clear();
+        self.grid_defs.clear();
         self.roots.clear();
     }
 
@@ -239,7 +174,7 @@ impl Tree {
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
         let chrome_tab = self.chrome_table.as_slice();
-        let grid_defs = &self.grid.defs;
+        let grid_defs = &self.grid_defs;
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
 
@@ -311,8 +246,8 @@ impl Tree {
                 }
             }
             if layouts[i].mode == LayoutMode::Grid {
-                let idx = layouts[i].mode_payload;
-                grid_defs[idx as usize].hash(&mut h);
+                let id = layouts[i].grid_def_id();
+                grid_defs[usize::from(id)].hash(&mut h);
             }
             let node_hash = h.finish();
             node_out[i] = ContentHash(node_hash);
@@ -340,6 +275,12 @@ impl Tree {
         NodeId(self.records.len() as u32)
     }
 
+    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> GridDefId {
+        let id = GridDefId::from_index(self.grid_defs.len());
+        self.grid_defs.push(def);
+        id
+    }
+
     /// Push a node as a child of the currently-open node (or as a new
     /// root if `scratch.open_frames` is empty) and make it the new tip.
     /// Root mints stamp `scratch.pending_anchor` onto the new
@@ -365,7 +306,7 @@ impl Tree {
         new_id: NodeId,
         widget_id: WidgetId,
         mut element: Element,
-        chrome: Option<Chrome<'_>>,
+        chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
         debug_assert_eq!(
             new_id.0 as usize,
@@ -390,10 +331,10 @@ impl Tree {
             });
         }
         if matches!(element.mode, LayoutMode::Grid) {
+            let id = element.grid_def_id();
             assert!(
-                (element.mode_payload as usize) < self.grid.defs.len(),
-                "LayoutMode::Grid idx {} references no grid_def — only Grid::show should push grid nodes",
-                element.mode_payload,
+                usize::from(id) < self.grid_defs.len(),
+                "LayoutMode::Grid id {id:?} references no grid_def — only Grid::show should push grid nodes",
             );
         }
 
@@ -409,7 +350,7 @@ impl Tree {
             ex.panel = Slot::from_len(self.panel_table.len());
             self.panel_table.push(cols.panel);
         }
-        if let Some(Chrome { bg, arena, atlas }) = chrome {
+        if let Some(ChromeInput { bg, arena, atlas }) = chrome {
             // Chrome stroke paints fully inside the node's arranged
             // rect (see `quad.wgsl` SDF stroke band). Inflate `padding`
             // by `stroke.width` on every side so children sit inside
@@ -480,7 +421,7 @@ impl Tree {
             if parent_layout.mode != LayoutMode::Grid {
                 return;
             }
-            let def = &self.grid.defs[parent_layout.mode_payload as usize];
+            let def = &self.grid_defs[usize::from(parent_layout.grid_def_id())];
             let n_rows = def.rows.len();
             let n_cols = def.cols.len();
             if n_rows > 0 && n_cols > 0 {
@@ -599,40 +540,18 @@ impl Tree {
     }
 }
 
-/// Frame-scoped grid storage: track defs (one per `Grid` panel),
-/// addressed by `LayoutMode::Grid(u16)`. Per-track hug arrays live on
-/// `Layout` since the tree is read-only after recording.
-/// Capacity is retained across frames; data is cleared per frame.
-#[derive(Default)]
-pub(crate) struct GridArena {
-    pub(crate) defs: Vec<GridDef>,
-}
-
-impl GridArena {
-    fn clear(&mut self) {
-        self.defs.clear();
-    }
-
-    pub(crate) fn push_def(&mut self, def: GridDef) -> u16 {
-        assert!(
-            self.defs.len() < u16::MAX as usize,
-            "more than 65 535 Grid panels in a single frame",
-        );
-        let idx = self.defs.len() as u16;
-        self.defs.push(def);
-        idx
-    }
-}
-
+pub(crate) mod extras;
 pub(crate) mod iter;
 pub(crate) mod node;
 pub(crate) mod paint_anims;
 pub(crate) mod recording;
+pub(crate) mod rollups;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
     use crate::forest::shapes::record::ShapeRecord;
+    use crate::forest::tree::node::NodeId;
     use crate::forest::tree::*;
 
     impl Tree {

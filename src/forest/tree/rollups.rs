@@ -1,49 +1,7 @@
-//! Per-node authoring-hash computation. Walks every field that affects
-//! rendering output and folds it into a 64-bit `FxHash`. Captures the
-//! "what the user typed" snapshot for a node — the inputs, not the
-//! derived layout output (`rect`, `desired`).
-//!
-//! Feeds the damage pass in `src/ui/damage/`: each frame's hash is
-//! diffed against the prev-frame snapshot keyed by `WidgetId`.
-//!
-//! All `f32` fields hash via `to_bits()` — exact bit equality, not
-//! `==`-equality, so `0.0` vs `-0.0` hash differently (over-eager dirty
-//! marking, fine for our use). NaN handling is consistent for the same
-//! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
-//! in builders enforce non-negative sizes etc.).
-//!
-//! # Producer catalogue
-//!
-//! Every authoring hash that feeds a cross-frame cache is produced
-//! once, where its inputs become immutable. Consumers read precomputed
-//! `u64`s rather than re-walking fields. Sites:
-//!
-//! | What                                  | Producer site                                   | Consumer                                |
-//! | ------------------------------------- | ----------------------------------------------- | --------------------------------------- |
-//! | Per-shape canonical hash              | `forest::shapes::Shapes::add`                   | `Tree::compute_hashes`, damage diff     |
-//! | Per-chrome canonical hash             | `forest::shapes::lower::background`             | `Tree::compute_hashes`, damage diff     |
-//! | Per-text bytes hash                   | `common::hash::hash_str`                        | `ShapeRecord::Text.text_hash`           |
-//! | Per-gradient content hash             | `forest::shapes::lower::grad_hash`              | `ShapeRecord::*.fill_grad_hash`         |
-//! | Per-polyline content hash             | `forest::shapes::lower::polyline`               | `ShapeRecord::Polyline.content_hash`    |
-//! | Per-mesh content hash                 | `primitives::mesh::Mesh::content_hash`          | `ShapeRecord::Mesh.content_hash`        |
-//! | Per-node + per-subtree rollup         | `forest::tree::Tree::compute_hashes`            | damage diff, measure cache              |
-//! | Per-cascade input hash                | `ui::cascade::finish_cascade_input`             | damage subtree-skip predicate           |
-//!
-//! Adding an authoring field that should invalidate caches: pick the
-//! producer above whose output the field belongs to, and extend its
-//! fold. The downstream `Hash` impls (`ChromeRow`, `ShapeRecord`,
-//! `BoundsExtras`, `PanelExtras`, `LayoutCore::hash_with_flags`,
-//! `GridDef`) only walk fields that aren't already covered by a
-//! pre-baked sub-hash.
+//! Per-node and per-subtree authoring-hash columns populated when a
+//! recorded tree is finalized.
 
-/// Authoring-hash newtype. A 64-bit `FxHash` over the inputs that
-/// affect rendering output for one node — *not* the derived layout
-/// output. Wrapping `u64` rather than passing it bare prevents
-/// confusion with `WidgetId` / other 64-bit handles in signatures
-/// like `shape_unbounded(wid: WidgetId, hash: ContentHash, …)`.
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ContentHash(pub(crate) u64);
+use crate::common::content_hash::ContentHash;
 
 /// Per-node hash columns populated by [`crate::forest::Tree::post_record`].
 /// Both slices index by `NodeId.0` and are length `records.len()`
@@ -68,7 +26,7 @@ pub(crate) struct ContentHash(pub(crate) u64);
 /// question (empty span means "no rows" — no chrome, no shapes, and
 /// no children, since child markers occupy rows too), so the bitset
 /// was removed.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<ContentHash>,
     pub(crate) subtree: Vec<ContentHash>,

@@ -7,8 +7,8 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 
 use crate::TextStyle;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;

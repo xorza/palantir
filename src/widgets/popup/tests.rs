@@ -169,7 +169,9 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     ui.run_at(SURFACE, |ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        ui.forest.trees[crate::forest::Layer::Popup].records.len(),
+        ui.forest.trees[crate::forest::layer::Layer::Popup]
+            .records
+            .len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );
@@ -185,7 +187,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
 ///   can't sit at the anchor without overflowing.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
-    use crate::forest::Layer;
+    use crate::forest::layer::Layer;
     let anchor = Vec2::new(20.0, 30.0);
     let cases: &[(Sizing, Sizing, Size, Vec2)] = &[
         (Sizing::Hug, Sizing::Hug, Size::new(100.0, 60.0), anchor),
@@ -247,7 +249,7 @@ fn popup_body_sizing_matches_sizing_mode() {
 /// lets the body keep its full size and flip cleanly.
 #[test]
 fn popup_near_bottom_flips_upward() {
-    use crate::forest::Layer;
+    use crate::forest::layer::Layer;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // 20 px of room below.
     let content = Size::new(120.0, 200.0); // Body wants ~200 tall.
@@ -301,7 +303,7 @@ fn popup_near_bottom_flips_upward() {
 /// that the painted position equals the laid-out position.
 #[test]
 fn popup_flip_reaches_cascade_not_just_layout() {
-    use crate::forest::Layer;
+    use crate::forest::layer::Layer;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // near the bottom → must flip.
     let content = Size::new(120.0, 200.0);

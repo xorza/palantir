@@ -220,7 +220,7 @@ pub(crate) struct PaintAnimEntry {
 
 /// Per-tree paint-animation registry. Pushed in lockstep with the
 /// shape buffer; cleared per frame.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct PaintAnims {
     /// Live anim entries, in registration order. Iterated by
     /// `Forest::min_paint_anim_wake` (next-wake fold) and

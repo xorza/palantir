@@ -1,7 +1,8 @@
 use crate::forest::Forest;
-use crate::forest::Layer;
-use crate::forest::element::{LayoutCore, LayoutMode};
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::element::columns::LayoutCore;
+use crate::forest::layer::Layer;
+use crate::forest::tree::Tree;
+use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
 use crate::layout::cache::{MeasureCache, SubtreeArenas, quantize_available};
 use crate::layout::grid::GridContext;
@@ -13,6 +14,7 @@ use crate::layout::support::{
     zero_subtree,
 };
 use crate::layout::types::align::HAlign;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
@@ -675,14 +677,14 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, tc, out),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, tc, out),
             LayoutMode::Grid => {
-                grid::measure(self, tree, node, style.mode_payload, inner_avail, tc, out)
+                grid::measure(self, tree, node, style.grid_def_id(), inner_avail, tc, out)
             }
             // Scroll viewport. INF-axis measure of children; the
             // driver also writes the panned-axis content extent into
             // the persistent `ScrollLayoutState` row (see
-            // `scroll::measure`). Pan mask carried in `mode_payload`.
+            // `scroll::measure`).
             LayoutMode::Scroll => {
-                scroll::measure(self, tree, node, inner_avail, style.mode_payload, tc, out)
+                scroll::measure(self, tree, node, inner_avail, style.scroll_spec(), tc, out)
             }
         }
     }
@@ -717,14 +719,14 @@ impl LayoutEngine {
             LayoutMode::WrapVStack => wrapstack::arrange(self, tree, node, inner, Axis::Y, out),
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner, out),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner, out),
-            LayoutMode::Grid => grid::arrange(self, tree, node, inner, style.mode_payload, out),
+            LayoutMode::Grid => grid::arrange(self, tree, node, inner, style.grid_def_id(), out),
             LayoutMode::Scroll => scroll::arrange(
                 self,
                 tree,
                 node,
                 parent_outer,
                 inner,
-                style.mode_payload,
+                style.scroll_spec(),
                 out,
             ),
         }

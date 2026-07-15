@@ -28,14 +28,14 @@
 //! and releases its arena ranges; the slots stay as garbage until the
 //! next compact.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::live_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
-use crate::forest::rollups::ContentHash;
-use crate::forest::seen_ids::WidgetIdMap;
 use crate::layout::ShapedText;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
+use crate::primitives::widget_id::WidgetIdMap;
 use glam::IVec2;
 use std::ops::Range;
 

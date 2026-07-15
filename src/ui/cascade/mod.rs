@@ -11,12 +11,13 @@ use crate::common::hash::Hasher;
 use crate::display::Display;
 use crate::forest::Forest;
 
-use crate::forest::per_layer::PerLayer;
-use crate::forest::rollups::ContentHash;
-use crate::forest::seen_ids::{Endpoint, WidgetIdMap};
+use crate::common::content_hash::ContentHash;
+use crate::forest::layer::PerLayer;
+use crate::forest::seen_ids::Endpoint;
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
+use crate::forest::tree::Tree;
 use crate::forest::tree::iter::{TreeItem, TreeItems};
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::tree::node::NodeId;
 use crate::input::sense::Sense;
 use crate::layout::scroll::ScrollStates;
 use crate::layout::{LayerLayout, Layout};
@@ -24,6 +25,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
+use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
@@ -431,7 +433,7 @@ impl CascadesEngine {
         cascades.entries.clear();
         cascades.entries.reserve(total);
 
-        for (layer, tree) in forest.iter_paint_order() {
+        for (layer, tree) in forest.trees.iter_paint_order() {
             let layer_layout = &layout.layers[layer];
             let n = tree.records.len();
             let entries_base = cascades.entries.len() as u32;
@@ -497,7 +499,7 @@ pub(crate) fn cascade_fingerprint(
     h.write_u32(display.physical.x);
     h.write_u32(display.physical.y);
     h.write_u32(display.scale_factor.to_bits());
-    for (layer, tree) in forest.iter_paint_order() {
+    for (layer, tree) in forest.trees.iter_paint_order() {
         // Layer discriminant: an identical root subtree migrating
         // between side layers (Popup → Tooltip) must not alias, or
         // the skip reuses per-layer columns sized for the old

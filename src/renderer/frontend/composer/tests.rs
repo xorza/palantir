@@ -1,5 +1,5 @@
 use crate::display::Display;
-use crate::forest::frame_arena::FrameArenaInner;
+use crate::frame_arena::FrameArenaInner;
 use crate::primitives::span::Span;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
@@ -581,7 +581,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
 /// to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
-    use crate::forest::shapes::record::LoweredGradient;
+    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
@@ -622,7 +622,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 /// frames and across multiple emitting widgets.
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
-    use crate::forest::shapes::record::LoweredGradient;
+    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
@@ -2594,7 +2594,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
 /// prior scene.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
-    use crate::forest::shapes::record::LoweredGradient;
+    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::color::ColorF16;
     use crate::primitives::fill_wire::{FillKind, LutRow};
@@ -2829,7 +2829,7 @@ fn clear_fold_resets_across_frames() {
 /// does NOT disqualify (the skip is coverage-based, not opacity-based).
 #[test]
 fn quad_fast_path_flag_cases() {
-    use crate::forest::shapes::record::LoweredGradient;
+    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::fill_wire::{FillKind, LutRow};
 

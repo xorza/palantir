@@ -39,7 +39,7 @@
 //! authoring boundary instead; the payload's own `is_noop` still
 //! gates degenerate geometry (point count / width).
 
-use crate::forest::shapes::record::ShapeStroke;
+use crate::forest::shapes::paint::ShapeStroke;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};

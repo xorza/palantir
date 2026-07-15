@@ -10,11 +10,10 @@ use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::time::{ANIM_SUBSTEP_DT, coalesce_dt_for_refresh};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::display::Display;
-use crate::forest::Chrome;
 use crate::forest::Forest;
-use crate::forest::Layer;
-use crate::forest::element::{Element, LayoutMode};
-use crate::forest::seen_ids::WidgetIdMap;
+use crate::forest::element::Element;
+use crate::forest::layer::Layer;
+use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::host::context::HostContext;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
@@ -28,11 +27,13 @@ use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::TextCtx;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::ImageHandle;
 
@@ -1167,7 +1168,7 @@ impl Ui {
         chrome: Option<&Background>,
         f: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        let chrome = chrome.map(|bg| Chrome {
+        let chrome = chrome.map(|bg| ChromeInput {
             bg,
             arena: &self.ctx.frame_arena,
             atlas: &self.ctx.caches.gradients,
@@ -1368,8 +1369,8 @@ pub mod test_support {
     #![allow(dead_code)]
     use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
-    use crate::forest::Layer;
-    use crate::forest::tree::NodeId;
+    use crate::forest::layer::Layer;
+    use crate::forest::tree::node::NodeId;
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;

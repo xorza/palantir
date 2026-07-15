@@ -1,4 +1,4 @@
-use crate::forest::Layer;
+use crate::forest::layer::Layer;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::ui::Ui;

@@ -1,4 +1,5 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
 use crate::ui::Ui;
@@ -93,8 +94,8 @@ impl Configure for GpuView {
 mod tests {
     use super::*;
     use crate::Ui;
-    use crate::forest::Layer;
     use crate::forest::element::Configure;
+    use crate::forest::layer::Layer;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;

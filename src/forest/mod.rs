@@ -4,13 +4,13 @@
 //! and never interleaves.
 
 use crate::forest::element::Element;
-use crate::forest::frame_arena::FrameArena;
-use crate::forest::per_layer::PerLayer;
-use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
+use crate::forest::layer::{Layer, PerLayer};
+use crate::forest::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
+use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::Tree;
 use crate::forest::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::forest::tree::recording::{Placement, RecordingScratch};
-use crate::primitives::background::Background;
+use crate::frame_arena::FrameArena;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
@@ -18,98 +18,18 @@ use crate::shape::Shape;
 use glam::Vec2;
 use std::time::Duration;
 
-/// One explicit-id collision recorded this frame. Both endpoints
-/// carry their own `Layer` because the colliding ids can straddle a
-/// `push_layer` boundary (e.g. same `.id_salt(...)` in Main and in a
-/// Popup body). Resolved at recording time from `SeenIds.curr`.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct CollisionRecord {
-    pub(crate) first: Endpoint,
-    pub(crate) second: Endpoint,
-}
-
-/// Background paint inputs for a chromed node, threaded by reference
-/// from `Ui::node` through [`Forest::open_node`] to `Tree::open_node`
-/// (which lowers it via `shapes::lower::background`) so the 168 B
-/// `Background` isn't copied on every chromed widget every frame.
-/// `None` chrome means no background paint.
-#[derive(Clone, Copy)]
-pub(crate) struct Chrome<'a> {
-    pub(crate) bg: &'a Background,
-    pub(crate) arena: &'a FrameArena,
-    pub(crate) atlas: &'a GradientAtlas,
-}
-
 pub(crate) mod element;
-pub(crate) mod frame_arena;
-pub(crate) mod per_layer;
-pub(crate) mod rollups;
+pub(crate) mod layer;
 pub(crate) mod seen_ids;
 pub(crate) mod shapes;
 pub(crate) mod tree;
 pub(crate) mod visibility;
 
-/// Paint / hit-test order across layers. Lower variants paint first
-/// (under) and hit-test last (under). Total order — popups beat the
-/// main tree, modals beat popups, tooltips beat modals, debug beats
-/// everything.
-///
-/// `#[repr(u8)]` + the contiguous variant layout means `layer.idx()`
-/// is a valid index into `[T; Layer::COUNT]` per-layer storage. With
-/// the forest topology each variant owns its own [`tree::Tree`] arena.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
-pub enum Layer {
-    #[default]
-    Main = 0,
-    Popup = 1,
-    Modal = 2,
-    Tooltip = 3,
-    Debug = 4,
-}
-
-impl Layer {
-    /// Paint order (low → high). Iterate trees in this order so layers
-    /// paint bottom-up; reverse for topmost-first hit-test traversal.
-    /// Must list every variant in discriminant order — `idx()`, the
-    /// derived `Ord` (the `push_layer` nesting check), and `PerLayer`
-    /// storage all key off the discriminant, and the const assert
-    /// below pins the array to it.
-    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
-        Layer::Main,
-        Layer::Popup,
-        Layer::Modal,
-        Layer::Tooltip,
-        Layer::Debug,
-    ];
-
-    /// Discriminant as a `usize` — the canonical key into per-layer
-    /// `[T; Layer::COUNT]` arrays. Repeats the `repr(u8)` discriminant
-    /// in `usize` form so call sites don't sprinkle `as usize` casts
-    /// (each of which reads like a fallible narrowing even though
-    /// it's branchless).
-    #[inline]
-    pub(crate) const fn idx(self) -> usize {
-        self as usize
-    }
-}
-
-const _: () = {
-    let mut i = 0;
-    while i < Layer::PAINT_ORDER.len() {
-        assert!(
-            Layer::PAINT_ORDER[i] as usize == i,
-            "Layer::PAINT_ORDER must match the discriminant order",
-        );
-        i += 1;
-    }
-};
-
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
 /// `add_shape`, `close_node` to `trees[current_layer.idx()]`.
 /// Pipeline passes iterate trees via [`Forest::iter_paint_order`];
 /// known-layer access indexes `trees[layer]` directly.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Forest {
     pub(crate) trees: PerLayer<Tree>,
     /// Per-layer recording-only state (ancestor stack + pending
@@ -220,7 +140,7 @@ impl Forest {
         &mut self,
         widget_id: WidgetId,
         element: Element,
-        chrome: Option<Chrome<'_>>,
+        chrome: Option<ChromeInput<'_>>,
     ) {
         let layer = self.current_layer();
         let node = self.trees[layer].peek_next_id();
@@ -411,12 +331,5 @@ impl Forest {
             .open_frames
             .last()
             .map(|f| tree.records.widget_id()[f.node.idx()])
-    }
-
-    /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing
-    /// each with its layer tag. Pipeline passes consume this to
-    /// process layers bottom-up.
-    pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &Tree)> {
-        self.trees.iter_paint_order()
     }
 }

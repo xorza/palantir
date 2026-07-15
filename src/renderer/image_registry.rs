@@ -20,7 +20,7 @@
 //! stateful lifecycle.
 //!
 //! Single-threaded `Rc<RefCell<…>>` (same pattern as
-//! [`FrameArena`](crate::forest::frame_arena::FrameArena)). Cheap to
+//! [`FrameArena`](crate::frame_arena::FrameArena)). Cheap to
 //! clone; the inner state is shared.
 
 use crate::primitives::image::Image;

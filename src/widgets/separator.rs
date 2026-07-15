@@ -1,5 +1,6 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
 use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -89,8 +90,8 @@ impl Configure for Separator {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
-    use crate::forest::Layer;
     use crate::forest::element::Configure;
+    use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::panel::Panel;
     use crate::widgets::separator::Separator;

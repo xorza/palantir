@@ -3,9 +3,10 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use crate::forest::element::LayoutCore;
+use crate::forest::element::columns::LayoutCore;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::tree::Tree;
+use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;

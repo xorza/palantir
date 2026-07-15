@@ -17,8 +17,8 @@
 //! unaware of scrollbars and of the outer ZStack the widget wraps it
 //! in.
 
-use crate::forest::element::LayoutMode;
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::tree::Tree;
+use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
@@ -31,6 +31,7 @@ use rustc_hash::FxHashMap;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::stack;
 use crate::layout::support::TextCtx;
+use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::zstack;
 
 // ---------------------------------------------------------------------------
@@ -284,7 +285,7 @@ pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 // Measure / arrange dispatch
 // ---------------------------------------------------------------------------
 
-/// Measure dispatch arm for [`LayoutMode::Scroll`]. Single
+/// Measure dispatch arm for [`crate::LayoutMode::Scroll`]. Single
 /// child-measurement pass with `INF` on the panned axes — no
 /// reservation, no awareness of bars. Records the panned-axis content
 /// extent into the persistent state row, and returns the
@@ -300,17 +301,17 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    mode_payload: u16,
+    spec: ScrollSpec,
     tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
-    let pan = LayoutMode::pan_mask_from_payload(mode_payload);
+    let pan = spec.pan_mask();
     // A panned axis the user sized `Hug` "fits" to content (reports its
     // content extent below); `Fill`/`Fixed` keep the content-independent
     // viewport (reports zero). The `Scroll` widget encodes the user's
     // per-axis `Sizing` into these bits, so `Hug` means the same "size to
     // content" here as it does for every other widget.
-    let fit = LayoutMode::scroll_fit_from_payload(mode_payload);
+    let fit = spec.fit_mask();
     let child_avail = Size::new(
         if pan.x { f32::INFINITY } else { inner_avail.w },
         if pan.y { f32::INFINITY } else { inner_avail.h },
@@ -345,7 +346,7 @@ pub(crate) fn measure(
     )
 }
 
-/// Arrange dispatch arm for [`LayoutMode::Scroll`]. Delegates to
+/// Arrange dispatch arm for [`crate::LayoutMode::Scroll`]. Delegates to
 /// stack/zstack arrange so children land in `inner` (already deflated
 /// by user padding), then writes the layout-derived fields onto the
 /// state row: `viewport` is `inner.size`, overflow follows from
@@ -357,10 +358,10 @@ pub(crate) fn arrange(
     node: NodeId,
     parent_outer: Size,
     inner: Rect,
-    mode_payload: u16,
+    spec: ScrollSpec,
     out: &mut Layout,
 ) {
-    let pan = LayoutMode::pan_mask_from_payload(mode_payload);
+    let pan = spec.pan_mask();
     if pan.x && pan.y {
         zstack::arrange(layout, tree, node, inner, out);
     } else if pan.y {

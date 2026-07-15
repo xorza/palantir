@@ -21,6 +21,7 @@ pub(crate) mod debug_overlay;
 /// the host layer; not owned by any one subsystem.
 pub(crate) mod display;
 pub mod forest;
+pub(crate) mod frame_arena;
 pub mod host;
 pub mod input;
 pub mod layout;
@@ -55,7 +56,7 @@ pub mod text_backend_internals {
     pub use crate::renderer::render_buffer::text::TextRun;
 }
 
-pub use forest::frame_arena::FrameArena;
+pub use frame_arena::FrameArena;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
@@ -66,8 +67,8 @@ pub use animation::{AnimSlot, AnimSpec};
 pub use aperture_anim_derive::Animatable;
 pub use debug_overlay::DebugOverlayConfig;
 pub use display::Display;
-pub use forest::Layer;
-pub use forest::element::{Configure, Element, LayoutMode};
+pub use forest::element::{Configure, Element};
+pub use forest::layer::Layer;
 pub use forest::visibility::Visibility;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host — the offscreen peer of
@@ -92,6 +93,7 @@ pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
+pub use layout::types::layout_mode::LayoutMode;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;
@@ -177,14 +179,14 @@ pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowIcon, WindowTok
 
 #[cfg(test)]
 mod hot_struct_sizes {
+    use crate::common::content_hash::ContentHash;
     use crate::forest::element::Element;
-    use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
-    use crate::forest::rollups::ContentHash;
-    use crate::forest::shapes::record::{
-        ChromeRow, LoweredGradient, LoweredShadow, ShapeRecord, ShapeStroke,
-    };
-    use crate::forest::tree::ExtrasIdx;
+    use crate::forest::element::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
+    use crate::forest::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
+    use crate::forest::shapes::record::ShapeRecord;
+    use crate::forest::tree::extras::ExtrasIdx;
     use crate::forest::tree::node::NodeRecord;
+    use crate::frame_arena::LoweredGradient;
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;

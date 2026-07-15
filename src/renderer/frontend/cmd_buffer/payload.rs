@@ -1,6 +1,6 @@
 //! Typed command discriminants and Pod payload records.
 
-use crate::forest::shapes::record::LoweredGradient;
+use crate::frame_arena::LoweredGradient;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
@@ -223,7 +223,7 @@ impl DrawTextPayload {
 /// (the owner-rect top-left) before the active push-transform stack.
 /// `bbox` is in the same owner-local space.
 ///
-/// [`FrameArena`]: crate::forest::frame_arena::FrameArena
+/// [`FrameArena`]: crate::frame_arena::FrameArena
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -269,7 +269,7 @@ impl DrawPolylinePayload {
 /// into the per-instance translate so the vertex stream stays
 /// content-stable across frames.
 ///
-/// [`FrameArena`]: crate::forest::frame_arena::FrameArena
+/// [`FrameArena`]: crate::frame_arena::FrameArena
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]

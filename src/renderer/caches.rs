@@ -4,7 +4,7 @@
 //! is cheap and every clone observes the same state.
 //!
 //! Lifetime: app-global, shared by every window and the one backend. Distinct
-//! from [`crate::forest::frame_arena::FrameArena`] which is per-frame scratch.
+//! from [`crate::frame_arena::FrameArena`] which is per-frame scratch.
 
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;

@@ -1,10 +1,9 @@
-use crate::forest::frame_arena::FrameArenaInner;
-use crate::forest::seen_ids::WidgetIdMap;
-use crate::forest::shapes::record::{
-    LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
-};
+use crate::forest::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush};
+use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
+use crate::forest::tree::Tree;
 use crate::forest::tree::iter::TreeItem;
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::tree::node::NodeId;
+use crate::frame_arena::{FrameArenaInner, LoweredGradient};
 use crate::layout::LayerLayout;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
@@ -13,6 +12,7 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
+use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
@@ -125,7 +125,7 @@ pub(crate) fn encode(
     // pad + rounding-slack derivation lives next to the scissor math in
     // `renderer::damage::damage_cull_margin` so the two can't drift.
     let damage_cull_margin = damage_cull_margin(ui.display.scale_factor);
-    for (layer, tree) in ui.forest.iter_paint_order() {
+    for (layer, tree) in ui.forest.trees.iter_paint_order() {
         let layer_cascades = &ui.cascades.layers[layer];
         let ctx = LayerCtx {
             tree,

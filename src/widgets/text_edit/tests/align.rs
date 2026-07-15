@@ -9,9 +9,9 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
-use crate::forest::Layer;
+use crate::forest::layer::Layer;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::NodeId;
+use crate::forest::tree::node::NodeId;
 use crate::input::keyboard::KeyboardEvent;
 use crate::primitives::transform::TranslateScale;
 use crate::widgets::text_edit::tests::*;
@@ -531,7 +531,7 @@ mod per_line {
     /// aligned but glyphs sit at x = 0.
     #[test]
     fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
-        use crate::forest::Layer;
+        use crate::forest::layer::Layer;
         let mut ui = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut node = None;
@@ -641,7 +641,7 @@ mod per_line {
     /// and render left-aligned regardless of `text_align`.
     #[test]
     fn placeholder_per_line_aligns_under_wrap() {
-        use crate::forest::Layer;
+        use crate::forest::layer::Layer;
         use crate::forest::shapes::record::ShapeRecord;
         let mut ui = cosmic_ui();
         let mut buf = String::new();

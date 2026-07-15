@@ -529,8 +529,8 @@ fn drag_num_edit_string_and_parse_round_trip() {
 fn editing_a_long_value_holds_the_field_width() {
     use super::DragValue;
     use crate::Ui;
-    use crate::forest::Layer;
     use crate::forest::element::Configure;
+    use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
     use crate::widgets::panel::Panel;
@@ -544,7 +544,7 @@ fn editing_a_long_value_holds_the_field_width() {
     // condition where the width-cap matters. The chip shows "1.985"; the
     // editor seeds the full-precision value on entry and must scroll it
     // inside the chip's width rather than grow the row.
-    let render = |ui: &mut Ui, v: &mut f64| -> crate::forest::tree::NodeId {
+    let render = |ui: &mut Ui, v: &mut f64| -> crate::forest::tree::node::NodeId {
         let mut node = None;
         Panel::hstack()
             .id(WidgetId::from_hash("dv-row"))

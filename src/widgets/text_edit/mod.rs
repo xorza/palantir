@@ -1,6 +1,7 @@
 use crate::common::clipboard::{get, set};
 use crate::common::platform::{PLATFORM, Platform};
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
+use crate::layout::types::layout_mode::LayoutMode;
 
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};

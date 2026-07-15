@@ -18,7 +18,7 @@
 //!
 //! [`Ui`]: crate::Ui
 
-use crate::forest::rollups::ContentHash;
+use crate::common::content_hash::ContentHash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;

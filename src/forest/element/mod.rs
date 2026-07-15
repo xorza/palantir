@@ -1,397 +1,24 @@
-//! Per-node element data: `Element` (the per-widget builder form) and
-//! the columns `Tree` stores it in:
-//!
-//! - `widget_id` — identity. Hit-test, state map, damage diff.
-//! - `LayoutCore` — mode, size, padding, margin, align, visibility.
-//!   Read by every measure / arrange / alignment pass.
-//! - `NodeFlags` — 1-byte packed sense / disabled / clip / focusable.
-//!   Read densely by cascade / encoder / hit-test.
-//! - `BoundsExtras` — sparse side table for transform / position /
-//!   grid / min_size / max_size. Allocated only when one differs
-//!   from `BoundsExtras::DEFAULT`.
-//! - `PanelExtras` — sparse side table for gap / line_gap / justify /
-//!   child_align. Allocated only when one differs from `DEFAULT`.
-//!
-//! Paint chrome (`Background`, 168 B) lives **outside** `Element`:
-//! widgets that paint a background carry their own
-//! `chrome: Option<Background>` field and pass it as a side-channel
-//! argument through `Ui::node` → `Forest::open_node` →
-//! `Tree::open_node`, where it lands in the per-tree `chrome_table`
-//! (with `is_noop` filtered out at push). Keeps the 168 B out of the
-//! hot ~128 B per-widget `Element` copy.
-//!
-//! Fan-out from `Element` to the dense columns happens once in
-//! `Element::into_columns`. Adding a field is two local edits: append
-//! to the column type and route it in `into_columns`. `Configure`
-//! (trait below) provides one chained setter per field on `Element`.
+//! Public element authoring data and the builder configuration surface.
 
+pub(crate) mod columns;
+
+use crate::forest::element::columns::{
+    BoundsExtras, ElementColumns, Gaps, LayoutCore, NodeFlags, PanelExtras,
+};
 use crate::forest::visibility::Visibility;
 use crate::input::sense::Sense;
-use crate::layout::types::{
-    align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
-    justify::Justify, sizing::Sizes,
-};
+use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::grid_cell::GridCell;
+use crate::layout::types::justify::Justify;
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ModePayload, ScrollSpec};
+use crate::layout::types::sizing::Sizes;
+use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use glam::Vec2;
-use half::f16;
 use std::hash::Hash;
-
-/// `(gap, line_gap)` packed as two `f16` lanes in `[u16; 2]` (4 bytes).
-/// Lane order: `gap | line_gap`. Same f16 contract as
-/// `primitives::corners::Corners` and `primitives::spacing::Spacing`:
-/// lossless for integer values up to 2048, ~0.25 px error at 4096. UI
-/// gaps never approach that ceiling.
-#[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct Gaps([u16; 2]);
-
-impl std::fmt::Debug for Gaps {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Gaps")
-            .field("gap", &self.gap())
-            .field("line_gap", &self.line_gap())
-            .finish()
-    }
-}
-
-impl std::hash::Hash for Gaps {
-    /// Hash both lanes as one `u32` — one hasher call instead of two
-    /// `write_u32(...to_bits())`s the previous f32 pair used.
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u32(u32::from_ne_bytes(bytemuck::cast(self.0)));
-    }
-}
-
-impl Gaps {
-    pub(crate) const ZERO: Self = Self([0; 2]);
-
-    #[inline]
-    pub(crate) fn gap(self) -> f32 {
-        f16::from_bits(self.0[0]).to_f32()
-    }
-
-    #[inline]
-    pub(crate) fn line_gap(self) -> f32 {
-        f16::from_bits(self.0[1]).to_f32()
-    }
-
-    #[inline]
-    pub(crate) fn set_gap(&mut self, v: f32) {
-        self.0[0] = f16::from_f32(v).to_bits();
-    }
-
-    #[inline]
-    pub(crate) fn set_line_gap(&mut self, v: f32) {
-        self.0[1] = f16::from_f32(v).to_bits();
-    }
-}
-
-/// How a node arranges its children. Stored as a direct byte field
-/// on `Element::mode` and `LayoutCore::mode`; the tree itself treats
-/// it as an opaque tag. `#[repr(u8)]` keeps the discriminants stable
-/// for hashing and bytewise reads.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LayoutMode {
-    Leaf = 0,
-    HStack = 1,
-    VStack = 2,
-    /// HStack with overflow wrap: children flow left-to-right; when the
-    /// next child wouldn't fit in the remaining main-axis space, wrap to
-    /// a new row below. Each row's cross-axis size = max child cross
-    /// in that row. `gap` spaces siblings within a row; `line_gap`
-    /// spaces rows. Justify applies per row. `Sizing::Fill` on main is
-    /// treated as `Hug` (no row-leftover distribution today).
-    WrapHStack = 3,
-    /// VStack with overflow wrap: same model as `WrapHStack`, axes
-    /// swapped (children flow top-to-bottom; wrap to a new column on
-    /// the right).
-    WrapVStack = 4,
-    /// Children all laid out at the same position (top-left of inner rect),
-    /// each sized per its own `Sizing`. Used by `Panel`.
-    ZStack = 5,
-    /// Children placed at their declared `position` (parent-inner coords).
-    /// Each child sized per its desired (intrinsic) size. Canvas hugs to the
-    /// bounding box of placed children.
-    Canvas = 6,
-    /// WPF-style grid. The grid def's arena idx lives in
-    /// `LayoutCore.mode_payload` (frame-local, only meaningful when the
-    /// mode tag is `Grid`). Cap is 65 535 grids per frame (`grid_defs`
-    /// is cleared each frame).
-    Grid = 7,
-    /// Scroll viewport. Pan mask rides in `LayoutCore.mode_payload`:
-    /// bit 0 = pan X, bit 1 = pan Y. Three legal payloads
-    /// (`0b01` H-only, `0b10` V-only, `0b11` both) — encoded via
-    /// [`Self::SCROLL_PAN_X`] / [`Self::SCROLL_PAN_Y`]. Children laid
-    /// out as Stack on the non-panned axis (single-axis) or ZStack
-    /// (both-axes pan). The widget builder sets `transform` for pan
-    /// and `clip` so children render within the rect.
-    ///
-    /// **Hashing**: unlike `Grid` (whose `mode_payload` is a frame-local
-    /// arena idx, deliberately excluded), a `Scroll`'s `mode_payload`
-    /// (pan mask + the per-axis fit bits [`Self::SCROLL_FIT_X`] /
-    /// [`Self::SCROLL_FIT_Y`], derived from the user's
-    /// `Hug`/`Fill`/`Fixed` `Sizing`) *is* folded into the subtree hash
-    /// (see [`LayoutCore::hash_with_flags`]). So swapping the pan mask or
-    /// toggling a pan-axis between `Hug` and `Fill`/`Fixed` at runtime on
-    /// the same `WidgetId` correctly busts the MeasureCache.
-    Scroll = 8,
-}
-
-impl LayoutMode {
-    /// `mode_payload` bit for pan-on-X under [`Self::Scroll`].
-    pub(crate) const SCROLL_PAN_X: u16 = 0b01;
-    /// `mode_payload` bit for pan-on-Y under [`Self::Scroll`].
-    pub(crate) const SCROLL_PAN_Y: u16 = 0b10;
-    /// `mode_payload` bits: per-axis "fit to content". A `Hug`-sized
-    /// scroll axis reports its content extent (instead of zero) so the
-    /// viewport sizes to content like any other `Hug` widget (bounded by
-    /// `max_size`/available, scrolling past the cap). Set automatically by
-    /// the `Scroll` widget from the user's per-axis `Sizing`; independent
-    /// of the pan-mask bits.
-    pub(crate) const SCROLL_FIT_X: u16 = 0b0100;
-    pub(crate) const SCROLL_FIT_Y: u16 = 0b1000;
-
-    /// Decode the per-axis fit bits (see [`Self::SCROLL_FIT_X`]) from a
-    /// [`Self::Scroll`] `mode_payload`.
-    #[inline]
-    pub(crate) fn scroll_fit_from_payload(payload: u16) -> glam::BVec2 {
-        glam::BVec2::new(
-            payload & Self::SCROLL_FIT_X != 0,
-            payload & Self::SCROLL_FIT_Y != 0,
-        )
-    }
-
-    /// Decode a [`Self::Scroll`] `mode_payload` into the per-axis
-    /// pan mask. Caller is responsible for gating on `mode ==
-    /// LayoutMode::Scroll` first; passing a Grid payload returns
-    /// nonsense (it'd interpret the low bits of the def idx as a
-    /// pan mask).
-    #[inline]
-    pub(crate) fn pan_mask_from_payload(payload: u16) -> glam::BVec2 {
-        glam::BVec2::new(
-            payload & Self::SCROLL_PAN_X != 0,
-            payload & Self::SCROLL_PAN_Y != 0,
-        )
-    }
-}
-
-/// Per-node bounds + parent-relative placement. Set on any
-/// `Element` (leaf or panel) whose builder customizes one of these fields.
-/// Lifted into a sparse side-table so leaves that touch none of these stay
-/// at zero per-node bytes here.
-///
-/// Stored as `Vec<BoundsExtras>` — 32 B per row, 2 entries per cache line.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct BoundsExtras {
-    pub(crate) position: Vec2,
-    pub(crate) grid: GridCell,
-    /// Lower clamp on the resolved outer size. Default `Size::ZERO`.
-    pub(crate) min_size: Size,
-    /// Upper clamp on the resolved outer size. Default `Size::INF`.
-    pub(crate) max_size: Size,
-}
-
-/// Panel-only knobs. Read by stack/wrap/grid/zstack drivers on the parent
-/// node — leaves never touch them. Sparse so leaves don't allocate.
-///
-/// `transform` lives here (not on `BoundsExtras`) because **only `Panel`
-/// and `Grid` expose `.transform()` in the public API** — every
-/// transformed node is already a panel that typically customizes
-/// `gap`/`justify`/`child_align`, so the field amortizes against an
-/// already-allocated row. Keeps `ExtrasIdx` at 6 B (one fewer slot) and
-/// avoids a separate `transform_table` sparse column.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct PanelExtras {
-    /// Within-line gap (HStack/VStack/WrapHStack/WrapVStack) + between-line
-    /// gap (WrapHStack/WrapVStack only) packed as two f16 lanes.
-    pub(crate) gaps: Gaps,
-    /// Main-axis distribution of leftover space (HStack/VStack only).
-    pub(crate) justify: Justify,
-    /// Default alignment applied to children with `Auto` axis (panels only).
-    pub(crate) child_align: Align,
-    /// Pan/zoom transform applied to the node's body — child subtrees
-    /// AND any shape recorded on the node via `Ui::add_shape`. Chrome
-    /// (background) is unaffected; it paints in parent space, above
-    /// any clip pushed by this node. Layout runs in untransformed
-    /// space; cascade composes this with the ancestor transform for
-    /// paint/hit-test. `TranslateScale::IDENTITY` is the no-op
-    /// sentinel — same convention as `Stroke::ZERO` / `Shadow::NONE` /
-    /// `Background::is_noop`; cascade filters identity at read time
-    /// rather than carrying an `Option` discriminant.
-    pub(crate) transform: TranslateScale,
-}
-
-/// Straight field-by-field hash. `BoundsExtras` carries no transform —
-/// the per-panel `transform` lives on [`PanelExtras`], which folds it
-/// into its own `Hash` impl.
-impl std::hash::Hash for BoundsExtras {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write(bytemuck::bytes_of(&self.position));
-        self.grid.hash(h);
-        self.min_size.hash(h);
-        self.max_size.hash(h);
-    }
-}
-
-/// Includes `transform`: under the [`crate::widgets::Panel::transform`]
-/// contract a self-transform shift moves this node's direct shapes,
-/// so it has to dirty the node's hash. Identity is filtered out so a
-/// panel that never touched `.transform()` still hashes to the
-/// transform-less byte pattern (and dominantly no-transform layouts
-/// pay zero bytes here).
-impl std::hash::Hash for PanelExtras {
-    /// Pack `(gaps, child_align, justify)` into one `u64` write —
-    /// gaps occupies the low 32 bits (already a packed `[u16; 2]`),
-    /// child_align byte at bit 32, justify byte at bit 40. Transform
-    /// folds in separately because `TranslateScale` doesn't pack into
-    /// the same `u64`.
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        let gaps_u32 = u32::from_ne_bytes(bytemuck::cast(self.gaps.0));
-        let packed = (gaps_u32 as u64)
-            | ((self.child_align.raw() as u64) << 32)
-            | ((self.justify as u64) << 40);
-        h.write_u64(packed);
-        if !self.transform.is_noop() {
-            h.write_u8(1);
-            h.write(bytemuck::bytes_of(&self.transform));
-        } else {
-            h.write_u8(0);
-        }
-    }
-}
-
-impl BoundsExtras {
-    pub(crate) const DEFAULT: Self = Self {
-        position: Vec2::ZERO,
-        grid: GridCell {
-            row: 0,
-            col: 0,
-            row_span: 1,
-            col_span: 1,
-        },
-        min_size: Size::ZERO,
-        max_size: Size::INF,
-    };
-
-    /// True when nothing has been customized — push_node skips the side-table
-    /// allocation in this case. Exact equality against `DEFAULT` so adding a
-    /// field only requires updating `DEFAULT`; no separate predicate to keep
-    /// in sync. `#[inline]` is load-bearing: `Tree::open_node` calls this
-    /// every node, and without it rustc emits a PLT indirect call that
-    /// dominated the function's self-time (was ~5% of frame combined with
-    /// `PanelExtras::is_default`).
-    #[inline]
-    pub(crate) fn is_default(&self) -> bool {
-        self == &Self::DEFAULT
-    }
-}
-
-impl PanelExtras {
-    pub(crate) const DEFAULT: Self = Self {
-        gaps: Gaps::ZERO,
-        justify: Justify::Start,
-        child_align: Align::new(HAlign::Auto, VAlign::Auto),
-        transform: TranslateScale::IDENTITY,
-    };
-
-    #[inline]
-    pub(crate) fn is_default(&self) -> bool {
-        self == &Self::DEFAULT
-    }
-}
-
-impl Default for BoundsExtras {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-impl Default for PanelExtras {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-/// Per-node layout column, stored in `Tree::layout`. Read by every
-/// pass that runs measure/arrange/alignment math. Held tight so the
-/// layout pass pulls only what it reads. `mode` is a direct byte
-/// (`#[repr(u8)] LayoutMode`); `bits` packs align(6b) + visibility(2b);
-/// the Grid arena idx rides in `mode_payload` (zero for non-Grid).
-/// Total 28 B, 2 entries per cache line. Packed paint/input flags
-/// (sense / disabled / clip / focusable) live in `Tree::attrs` — a
-/// separate 1-byte/node column read by cascade / encoder / hit-test.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct LayoutCore {
-    pub(crate) size: Sizes,
-    pub(crate) padding: Spacing,
-    pub(crate) margin: Spacing,
-    /// `LayoutMode::Grid` arena index. Zero (and ignored) otherwise.
-    pub(crate) mode_payload: u16,
-    /// Packed `align(6) | vis(2)`. Direct decode via `align()` /
-    /// `visibility()`.
-    pub(crate) bits: u8,
-    pub(crate) mode: LayoutMode,
-}
-
-impl LayoutCore {
-    const ALIGN_MASK: u8 = 0b11_1111;
-    const VIS_SHIFT: u8 = 6;
-    const VIS_MASK: u8 = 0b11 << Self::VIS_SHIFT;
-
-    #[inline]
-    pub(crate) const fn pack_bits(align: Align, vis: Visibility) -> u8 {
-        (align.raw() & Self::ALIGN_MASK) | (((vis as u8) << Self::VIS_SHIFT) & Self::VIS_MASK)
-    }
-
-    #[inline(always)]
-    pub(crate) fn align(&self) -> Align {
-        Align::from_raw(self.bits & Self::ALIGN_MASK)
-    }
-
-    #[inline(always)]
-    pub(crate) fn visibility(&self) -> Visibility {
-        let raw = (self.bits & Self::VIS_MASK) >> Self::VIS_SHIFT;
-        // SAFETY: `pack_bits` is the only constructor and writes only
-        // `Visibility as u8` (0/1/2) into `VIS_MASK`. Branchless decode
-        // — `visibility()` is read on every node every measure/arrange.
-        unsafe { std::mem::transmute::<u8, Visibility>(raw) }
-    }
-
-    /// Fused write of `LayoutCore` + `NodeFlags` into one tail buffer.
-    /// `compute_hashes` calls this so the per-node flags byte rides
-    /// alongside the packed bits instead of producing a separate
-    /// `NodeFlags::hash` → `write_u8` fold. Saves one hasher call per
-    /// node per frame.
-    ///
-    /// `mode_payload` is hashed **only for `Scroll`**, where it carries
-    /// stable semantics (pan mask + fit bits) — so a runtime pan/fit
-    /// change busts the MeasureCache. For `Grid` it's the frame-local
-    /// arena idx (shifts with sibling order every frame), so hashing it
-    /// would bust the cache every frame; it stays excluded and the Grid
-    /// def's content is hashed separately at `NodeExit` via `GridDef::hash`.
-    #[inline]
-    pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
-        h.write_u64(self.size.as_u64());
-        h.write_u64(self.padding.as_u64());
-        h.write_u64(self.margin.as_u64());
-        let [flags_lo, flags_hi] = flags.bits.to_ne_bytes();
-        let tail = u32::from_ne_bytes([self.bits, self.mode as u8, flags_lo, flags_hi]);
-        h.write_u32(tail);
-        if matches!(self.mode, LayoutMode::Scroll) {
-            h.write_u16(self.mode_payload);
-        }
-    }
-}
-
-const _: () = assert!(
-    (Visibility::Collapsed as u8) <= (LayoutCore::VIS_MASK >> LayoutCore::VIS_SHIFT),
-    "Visibility discriminant exceeds 2 bits",
-);
 
 /// Recipe for an [`Element`]'s `WidgetId`. Mirrors egui's
 /// `Option<Id>` "raw `id_salt`, resolve at `Ui::widget_id`"
@@ -473,7 +100,6 @@ impl Salt {
 /// mode-specific (only certain parents read these), interaction, and paint.
 #[derive(Clone, Copy, Debug)]
 pub struct Element {
-    // ---- Identity + layout-algorithm selector --------------------------------
     /// Recipe for this node's `WidgetId`. Resolution happens inside
     /// [`crate::Ui::node`] (and the parallel [`crate::Ui::widget_id`]
     /// callable by widgets that need the recorded id pre-`node` for
@@ -485,17 +111,14 @@ pub struct Element {
     pub(crate) mode: LayoutMode,
     /// `LayoutMode::Grid` arena idx. Set by `Grid::show` once the def is
     /// pushed; ignored for every other `mode`.
-    pub(crate) mode_payload: u16,
+    pub(crate) mode_payload: ModePayload,
 
-    // ---- Own size + alignment (read by every parent layout) ------------------
     pub(crate) size: Sizes,
     pub(crate) min_size: Size,
     pub(crate) max_size: Size,
     pub(crate) padding: Spacing,
     pub(crate) margin: Spacing,
 
-    // ---- Mode-specific: only read when the parent or self has the right mode.
-    // Inert otherwise.
     /// Within-line gap + between-line gap packed as two f16 lanes.
     /// `gaps.gap()` (HStack/VStack/WrapHStack/WrapVStack) is the
     /// sibling spacing; `gaps.line_gap()` (WrapHStack/WrapVStack only)
@@ -521,7 +144,6 @@ pub struct Element {
     /// to — fan-out is a single `u16` copy.
     pub(crate) flags: NodeFlags,
 
-    // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
     /// layout but suppresses paint + input; `Collapsed` zeros the slot and
     /// skips the subtree everywhere. Lives on `LayoutCore` (not `NodeFlags`)
@@ -535,20 +157,35 @@ pub struct Element {
     /// composes its own pivot by pre/post-translation.
     pub(crate) transform: TranslateScale,
 }
-
-/// Per-node columns derived from one `Element`. Single fan-out point —
-/// `Tree::open_node` calls `Element::into_columns` once and moves each
-/// field into its column. Adding an `Element` field is a one-line edit
-/// here (one in the new column type, one routing line in `into_columns`).
-pub(crate) struct ElementColumns {
-    pub(crate) widget_id: WidgetId,
-    pub(crate) layout: LayoutCore,
-    pub(crate) attrs: NodeFlags,
-    pub(crate) bounds: BoundsExtras,
-    pub(crate) panel: PanelExtras,
-}
-
 impl Element {
+    pub(crate) fn set_grid_def(&mut self, id: GridDefId) {
+        assert_eq!(
+            self.mode,
+            LayoutMode::Grid,
+            "grid payload set on {:?}",
+            self.mode
+        );
+        self.mode_payload = ModePayload::grid(id);
+    }
+
+    pub(crate) fn grid_def_id(&self) -> GridDefId {
+        self.mode_payload.grid_def_id(self.mode)
+    }
+
+    pub(crate) fn set_scroll_spec(&mut self, spec: ScrollSpec) {
+        assert_eq!(
+            self.mode,
+            LayoutMode::Scroll,
+            "scroll payload set on {:?}",
+            self.mode,
+        );
+        self.mode_payload = ModePayload::scroll(spec);
+    }
+
+    pub(crate) fn scroll_spec(&self) -> ScrollSpec {
+        self.mode_payload.scroll_spec(self.mode)
+    }
+
     /// Build an `Element` with a call-site-derived auto id. `#[track_caller]`
     /// propagates through every widget constructor that's also marked
     /// `#[track_caller]`, so `Foo::new()` at the user's source line yields a
@@ -564,7 +201,7 @@ impl Element {
         Self {
             salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
-            mode_payload: 0,
+            mode_payload: ModePayload::NONE,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -592,14 +229,7 @@ impl Element {
     pub(crate) fn into_columns(self, widget_id: WidgetId) -> ElementColumns {
         ElementColumns {
             widget_id,
-            layout: LayoutCore {
-                size: self.size,
-                padding: self.padding,
-                margin: self.margin,
-                mode_payload: self.mode_payload,
-                bits: LayoutCore::pack_bits(self.align, self.visibility),
-                mode: self.mode,
-            },
+            layout: LayoutCore::from_element(&self),
             attrs: self.flags,
             bounds: BoundsExtras {
                 position: self.position,
@@ -743,7 +373,7 @@ pub trait Configure: Sized {
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
-    /// Ignored when any child has `Sizing::Fill` on the main axis.
+    /// Ignored when any child has [`crate::Sizing::Fill`] on the main axis.
     fn justify(mut self, j: Justify) -> Self {
         self.element_mut().justify = j;
         self
@@ -823,72 +453,6 @@ impl Configure for Element {
         self
     }
 }
-
-/// Packed paint/input flags, two bytes.
-///
-/// `bits`: 0-4=sense bitflags (HOVER|CLICK|DRAG|SCROLL|PINCH),
-/// 5=disabled, 6-7=clip mode, 8=focusable. `Element` uses the same
-/// packed form during recording; fan-out is a single `u16` copy.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct NodeFlags {
-    pub(crate) bits: u16,
-}
-
-impl NodeFlags {
-    const SENSE_MASK: u16 = 0b1_1111;
-    const DISABLED: u16 = 1 << 5;
-    const CLIP_SHIFT: u16 = 6;
-    const CLIP_MASK: u16 = 0b11 << Self::CLIP_SHIFT;
-    const FOCUSABLE: u16 = 1 << 8;
-
-    #[inline]
-    pub(crate) fn sense(self) -> Sense {
-        Sense::from_bits_truncate((self.bits & Self::SENSE_MASK) as u8)
-    }
-    #[inline]
-    pub(crate) fn is_disabled(self) -> bool {
-        self.bits & Self::DISABLED != 0
-    }
-    #[inline]
-    pub(crate) fn clip_mode(self) -> ClipMode {
-        match (self.bits & Self::CLIP_MASK) >> Self::CLIP_SHIFT {
-            0 => ClipMode::None,
-            1 => ClipMode::Rect,
-            2 => ClipMode::Rounded,
-            _ => unreachable!(),
-        }
-    }
-    #[inline]
-    pub(crate) fn is_focusable(self) -> bool {
-        self.bits & Self::FOCUSABLE != 0
-    }
-
-    #[inline]
-    pub(crate) fn set_sense(&mut self, s: Sense) {
-        self.bits = (self.bits & !Self::SENSE_MASK) | ((s.bits() as u16) & Self::SENSE_MASK);
-    }
-    #[inline]
-    pub(crate) fn set_disabled(&mut self, v: bool) {
-        self.bits = (self.bits & !Self::DISABLED) | (if v { Self::DISABLED } else { 0 });
-    }
-    #[inline]
-    pub(crate) fn set_clip(&mut self, c: ClipMode) {
-        self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u16) << Self::CLIP_SHIFT);
-    }
-    #[inline]
-    pub(crate) fn set_focusable(&mut self, v: bool) {
-        self.bits = (self.bits & !Self::FOCUSABLE) | (if v { Self::FOCUSABLE } else { 0 });
-    }
-}
-
-const _: () = assert!(
-    (ClipMode::Rounded as u16) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
-    "ClipMode discriminant exceeds 2 bits",
-);
-const _: () = assert!(
-    Sense::all().bits() as u16 <= NodeFlags::SENSE_MASK,
-    "Sense uses more than 5 bits",
-);
 
 #[cfg(test)]
 mod tests;

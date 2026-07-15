@@ -13,7 +13,8 @@
 //! `place_axis` with the `Auto-stretches-Fill` rule makes Fill children
 //! grow to that height (CSS `align-items: stretch` default).
 
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::tree::Tree;
+use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;

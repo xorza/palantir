@@ -1,9 +1,19 @@
 //! Per-NodeId record stored in `Tree`'s SoA arena.
 
-use crate::forest::element::{LayoutCore, NodeFlags};
+use crate::forest::element::columns::{LayoutCore, NodeFlags};
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use soa_rs::Soars;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct NodeId(pub(crate) u32);
+
+impl NodeId {
+    #[inline]
+    pub(crate) fn idx(self) -> usize {
+        self.0 as usize
+    }
+}
 
 /// Per-NodeId record. One push per `open_node`, finalized by
 /// `close_node`. Stored as `Soa<NodeRecord>` on `Tree.records` so
