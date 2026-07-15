@@ -1,6 +1,6 @@
 //! Lowered-paint GPU-wire vocabulary: the packed `u32` markers a
 //! `Brush` lowers into for the shader. Kept at the primitives layer so
-//! the shape store (`forest::shapes`), the frame arena, and the
+//! the shape store (`forest::shapes`), the record store, and the
 //! renderer all depend *down* on one definition instead of `forest`
 //! reaching up into `renderer`. The matching gradient *axis* lives in
 //! [`crate::primitives::brush::FillAxis`]; the actual LUT atlas texture

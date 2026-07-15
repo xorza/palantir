@@ -1,5 +1,4 @@
 use crate::display::Display;
-use crate::frame_arena::FrameArenaInner;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};
@@ -9,6 +8,7 @@ use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
+use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
@@ -498,7 +498,7 @@ impl Composer {
     pub(crate) fn compose(
         &mut self,
         cmds: &RenderCmdBuffer,
-        arena: &FrameArenaInner,
+        payloads: &RecordPayloads,
         display: Display,
         out: &mut RenderBuffer,
     ) {
@@ -819,7 +819,7 @@ impl Composer {
                     if !self.enter_higher_kind(PaintTier::Mesh, mesh_urect, out) {
                         continue;
                     }
-                    // Verts already live in FrameArena owner-local;
+                    // Verts already live in RecordStore owner-local;
                     // span passes through to `MeshDraw` verbatim. The
                     // per-instance translate folds in both the owner
                     // origin and the active push-transform stack so the
@@ -1049,12 +1049,12 @@ impl Composer {
                     let pts_end = pts_start + p.points_len as usize;
                     let cs_start = p.colors_start as usize;
                     let cs_end = cs_start + p.colors_len as usize;
-                    let src_points = &arena.polyline_points[pts_start..pts_end];
-                    let src_colors = &arena.polyline_colors[cs_start..cs_end];
+                    let src_points = &payloads.polyline_points[pts_start..pts_end];
+                    let src_colors = &payloads.polyline_colors[cs_start..cs_end];
 
                     // Transform points into physical-px. Owner-local
                     // origin is folded in here so points stay owner-
-                    // local in the arena (cross-frame stable). No
+                    // local in the record store (cross-frame stable). No
                     // pixel-snap — snapping stroke verts shifts thin
                     // lines off-axis. Hairline regime (<1 phys px) is
                     // the shader's trapezoid-plateau coverage.

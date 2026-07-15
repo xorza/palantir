@@ -408,7 +408,7 @@ impl ColorF16 {
         Color { r, g, b, a }
     }
 
-    /// The 8 storage bytes as one `u64` — used by the frame arena's
+    /// The 8 storage bytes as one `u64` — used by the record store's
     /// solid-fill payload packing where a `ColorF16` rides in a `u64`
     /// slot alongside the gradient-hash alternative.
     #[inline]

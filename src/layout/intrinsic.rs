@@ -308,18 +308,18 @@ mod tests {
         const SENTINEL: f32 = 1234.5;
         ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-        let arena = ui.frame_arena.inner();
+        let payloads = ui.record_store.borrow();
         let v = ui.layout_engine.intrinsic(
             &ui.forest.trees[Layer::Main],
             child,
             Axis::X,
             LenReq::MinContent,
             &TextCtx {
-                bytes: &arena.fmt_scratch,
+                bytes: &payloads.fmt_scratch,
                 shaper: &ui.ctx.shaper,
             },
         );
-        drop(arena);
+        drop(payloads);
         assert_eq!(
             v, SENTINEL,
             "cache hit must return the stored value verbatim, not recompute"
@@ -358,18 +358,18 @@ mod tests {
             entry[slot] = f32::NAN;
         }
 
-        let arena = ui.frame_arena.inner();
+        let payloads = ui.record_store.borrow();
         let _ = ui.layout_engine.intrinsic(
             &ui.forest.trees[Layer::Main],
             root,
             Axis::X,
             LenReq::MaxContent,
             &TextCtx {
-                bytes: &arena.fmt_scratch,
+                bytes: &payloads.fmt_scratch,
                 shaper: &ui.ctx.shaper,
             },
         );
-        drop(arena);
+        drop(payloads);
 
         assert!(
             !ui.layout_engine.scratch.intrinsics[root.idx()][slot].is_nan(),

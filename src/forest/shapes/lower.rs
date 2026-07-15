@@ -1,8 +1,8 @@
 //! Authoring → storage lowering: turns user-facing [`Shape`] inputs
 //! and [`Background`] chrome into the [`ShapeRecord`] / [`ChromeRow`]
 //! forms the tree stores. Bulk payload bytes (polyline points/colors,
-//! gradients) append to the shared [`FrameArena`]; functions that
-//! never touch the arena (e.g. [`triangle`]) don't take it.
+//! gradients) append to the shared [`RecordStore`]; functions that
+//! never touch the store (e.g. [`triangle`]) don't take it.
 //!
 //! Entry points: [`super::Shapes::add`] dispatches shapes here;
 //! `Tree::open_node` calls [`background`] for chrome.
@@ -13,7 +13,6 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher as FxHasher;
 use crate::forest::shapes::paint::{ChromeRow, LoweredShadow, ShapeBrush, ShapeStroke};
 use crate::forest::shapes::record::ShapeRecord;
-use crate::frame_arena::{FrameArena, LoweredGradient};
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
@@ -24,6 +23,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
+use crate::record_store::{LoweredGradient, RecordStore};
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::render_buffer::curve::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
@@ -34,15 +34,15 @@ use std::hash::Hasher;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeInput<'a> {
     pub(crate) bg: &'a Background,
-    pub(crate) arena: &'a FrameArena,
+    pub(crate) store: &'a RecordStore,
     pub(crate) atlas: &'a GradientAtlas,
 }
 
 /// Result of lowering a user-side `Brush`. `brush` is the storage form
-/// (`Solid` inline or `Gradient(id)` indexing into the arena's
+/// (`Solid` inline or `Gradient(id)` indexing into the store's
 /// gradient pool); `hash` is the pre-computed content hash so the
 /// caller can stamp it into a `ShapeRecord` / `ChromeRow` without
-/// threading the arena into their `Hash` impls. `hash == 0` for
+/// threading the store into their `Hash` impls. `hash == 0` for
 /// `Solid` (no gradient payload to identify).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LoweredBrush {
@@ -54,7 +54,7 @@ pub(crate) struct LoweredBrush {
 /// then the gradient's `Hash` impl (which hashes f32 canon-bits).
 /// Lets `ShapeRecord::Hash` stay context-free — we capture the hash
 /// at lowering and stamp it on the record alongside the
-/// `GradientId`, so downstream cache keys don't need the arena.
+/// `GradientId`, so downstream cache keys don't need the store.
 #[inline]
 fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
     let mut h = FxHasher::new();
@@ -65,11 +65,11 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
 
 /// Lower a user-side `Brush` to the storage form: `Solid` stays
 /// inline, gradients register their stops with the atlas, push a
-/// [`LoweredGradient`] onto the arena's pool, and return an indexing
+/// [`LoweredGradient`] onto the store's pool, and return an indexing
 /// `ShapeBrush::Gradient`. The pre-computed content hash is returned
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
-pub(crate) fn brush(arena: &FrameArena, b: &Brush, atlas: &GradientAtlas) -> LoweredBrush {
+pub(crate) fn brush(store: &RecordStore, b: &Brush, atlas: &GradientAtlas) -> LoweredBrush {
     let (kind, axis, stops, interp, hash) = match b {
         Brush::Solid(c) => {
             return LoweredBrush {
@@ -91,9 +91,9 @@ pub(crate) fn brush(arena: &FrameArena, b: &Brush, atlas: &GradientAtlas) -> Low
         }
     };
     let row = atlas.register_stops(stops, interp);
-    let mut a = arena.inner_mut();
-    let id = a.gradients.len() as u32;
-    a.gradients.push(LoweredGradient { axis, row, kind });
+    let mut payloads = store.borrow_mut();
+    let id = payloads.gradients.len() as u32;
+    payloads.gradients.push(LoweredGradient { axis, row, kind });
     LoweredBrush {
         brush: ShapeBrush::Gradient(id),
         hash,
@@ -106,11 +106,11 @@ pub(crate) fn brush(arena: &FrameArena, b: &Brush, atlas: &GradientAtlas) -> Low
 /// reference — `Background` is 168 B and the recording chain
 /// threads it through 4 functions; the per-field reads below copy
 /// the small fields locally as needed.
-pub(crate) fn background(arena: &FrameArena, bg: &Background, atlas: &GradientAtlas) -> ChromeRow {
+pub(crate) fn background(store: &RecordStore, bg: &Background, atlas: &GradientAtlas) -> ChromeRow {
     let LoweredBrush {
         brush: fill,
         hash: fill_grad_hash,
-    } = brush(arena, &bg.fill, atlas);
+    } = brush(store, &bg.fill, atlas);
     let stroke = ShapeStroke::from(&bg.stroke);
     let corners = bg.corners;
     let shadow: LoweredShadow = bg.shadow.into();
@@ -161,14 +161,14 @@ pub(crate) fn background(arena: &FrameArena, bg: &Background, atlas: &GradientAt
 }
 
 /// Lower a (points, colors, width) authoring shape into a
-/// `ShapeRecord::Polyline`: copy points and colors into the arena,
+/// `ShapeRecord::Polyline`: copy points and colors into the store,
 /// compute the content hash. Only `Shape::Polyline` routes through
 /// this — the one multi-segment stroke with interior joins; every
 /// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
 /// `ShapeRecord::Curve`/`Arc` directly. Both render on the GPU
 /// curve pipeline.
 pub(crate) fn polyline(
-    arena: &FrameArena,
+    store: &RecordStore,
     points: &[Vec2],
     colors: PolylineColors<'_>,
     width: f32,
@@ -188,20 +188,21 @@ pub(crate) fn polyline(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"
     );
-    let mut a = arena.inner_mut();
-    let p_start = a.polyline_points.len() as u32;
-    let c_start = a.polyline_colors.len() as u32;
+    let mut payloads = store.borrow_mut();
+    let p_start = payloads.polyline_points.len() as u32;
+    let c_start = payloads.polyline_colors.len() as u32;
     let (&first, rest) = points.split_first().unwrap();
     let mut lo = first;
     let mut hi = first;
-    a.polyline_points.reserve(points.len());
-    a.polyline_points.push(first);
+    payloads.polyline_points.reserve(points.len());
+    payloads.polyline_points.push(first);
     for &p in rest {
-        a.polyline_points.push(p);
+        payloads.polyline_points.push(p);
         lo = lo.min(p);
         hi = hi.max(p);
     }
-    a.polyline_colors
+    payloads
+        .polyline_colors
         .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
     let bbox = inflate_stroke_bbox(lo, hi, width, cap, join);
 
@@ -239,7 +240,7 @@ pub(crate) fn polyline(
 /// `Radial`/`Conic` panic at lowering (no meaningful axis on a
 /// 1-D stroke).
 pub(crate) fn cubic_bezier(
-    arena: &FrameArena,
+    store: &RecordStore,
     ctrl: [Vec2; 4],
     width: f32,
     brush: Brush,
@@ -247,7 +248,7 @@ pub(crate) fn cubic_bezier(
     atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
-    let lowered = self::brush(arena, &brush, atlas);
+    let lowered = self::brush(store, &brush, atlas);
     curve_inner(ctrl, width, lowered, cap)
 }
 
@@ -255,7 +256,7 @@ pub(crate) fn cubic_bezier(
 /// through [`cubic_bezier`]'s path. Exact reparameterization:
 /// `q1' = q0 + 2/3·(c - q0)`, `q2' = q2 + 2/3·(c - q2)`.
 pub(crate) fn quadratic_bezier(
-    arena: &FrameArena,
+    store: &RecordStore,
     ctrl: [Vec2; 3],
     width: f32,
     brush: Brush,
@@ -265,7 +266,7 @@ pub(crate) fn quadratic_bezier(
     assert_curve_brush(&brush);
     let [p0, c, p2] = ctrl;
     let cubic = quadratic_to_cubic(p0, c, p2);
-    let lowered = self::brush(arena, &brush, atlas);
+    let lowered = self::brush(store, &brush, atlas);
     curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap)
 }
 
@@ -275,7 +276,7 @@ pub(crate) fn quadratic_bezier(
 /// brush) runs linearly from `a` to `b`. The composer's flatness
 /// fast-path keeps the collinear cubic a single GPU instance.
 pub(crate) fn line(
-    arena: &FrameArena,
+    store: &RecordStore,
     a: Vec2,
     b: Vec2,
     width: f32,
@@ -284,7 +285,7 @@ pub(crate) fn line(
     atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
-    let lowered = self::brush(arena, &brush, atlas);
+    let lowered = self::brush(store, &brush, atlas);
     let third = (b - a) / 3.0;
     curve_inner([a, a + third, b - third, b], width, lowered, cap)
 }
@@ -298,7 +299,7 @@ pub(crate) fn line(
 /// pixels and double-blend a translucent stroke.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn arc(
-    arena: &FrameArena,
+    store: &RecordStore,
     center: Vec2,
     radius: f32,
     start_angle: f32,
@@ -313,7 +314,7 @@ pub(crate) fn arc(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
     );
-    let lowered = self::brush(arena, &brush, atlas);
+    let lowered = self::brush(store, &brush, atlas);
     let a1 = start_angle + sweep;
     let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
     let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));
@@ -336,7 +337,7 @@ pub(crate) fn arc(
 /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
 /// `radius + AA fringe` (the SDF offsets the shape outward by `radius`;
 /// the stroke is inner-edge and adds no outward reach), so damage and
-/// clip-cull cover the rounded, antialiased extent. No arena needed
+/// clip-cull cover the rounded, antialiased extent. No store needed
 /// (no gradient to register).
 pub(crate) fn triangle(
     a: Vec2,

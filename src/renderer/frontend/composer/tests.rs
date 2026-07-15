@@ -1,5 +1,4 @@
 use crate::display::Display;
-use crate::frame_arena::FrameArenaInner;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::span::Span;
@@ -7,6 +6,7 @@ use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
+use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, DrawMeshPayload, DrawPolylinePayload,
@@ -61,15 +61,15 @@ fn params(scale: f32, physical: UVec2) -> Display {
 }
 
 fn run(
-    build: impl FnOnce(&mut RenderCmdBuffer, &mut FrameArenaInner),
+    build: impl FnOnce(&mut RenderCmdBuffer, &mut RecordPayloads),
     display: &Display,
 ) -> RenderBuffer {
     let mut buffer = RenderCmdBuffer::default();
-    let mut arena = FrameArenaInner::default();
-    build(&mut buffer, &mut arena);
+    let mut payloads = RecordPayloads::default();
+    build(&mut buffer, &mut payloads);
     let mut composer = composer();
     let mut out = render_buffer();
-    composer.compose(&buffer, &arena, *display, &mut out);
+    composer.compose(&buffer, &payloads, *display, &mut out);
     out
 }
 
@@ -509,7 +509,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     // viewport would fold into the clear instead of emitting a quad.
     composer.compose(
         &buffer,
-        &FrameArenaInner::default(),
+        &RecordPayloads::default(),
         params(1.0, UVec2::new(200, 200)),
         &mut out,
     );
@@ -574,9 +574,9 @@ fn windowed_rect_is_not_an_opaque_cover() {
 /// to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
-    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::fill_wire::FillKind;
+    use crate::record_store::LoweredGradient;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g =
@@ -600,7 +600,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     let mut out = render_buffer();
     composer.compose(
         &buffer,
-        &FrameArenaInner::default(),
+        &RecordPayloads::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );
@@ -615,9 +615,9 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 /// frames and across multiple emitting widgets.
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
-    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
+    use crate::record_store::LoweredGradient;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
@@ -640,7 +640,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     let mut out = render_buffer();
     composer.compose(
         &buffer,
-        &FrameArenaInner::default(),
+        &RecordPayloads::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );
@@ -1048,11 +1048,11 @@ fn compose_rounded_clip_change_splits_text_batch() {
 #[test]
 fn compose_polyline_between_texts_splits_text_batch() {
     let buf = run(
-        |b, arena| {
+        |b, payloads| {
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             polyline_cmd(
                 b,
-                arena,
+                payloads,
                 &[Vec2::new(0.0, 25.0), Vec2::new(100.0, 25.0)],
                 &[Color::WHITE],
                 ColorMode::Single,
@@ -1082,7 +1082,7 @@ fn compose_polyline_between_texts_splits_text_batch() {
 #[allow(clippy::too_many_arguments)]
 fn polyline_cmd(
     b: &mut RenderCmdBuffer,
-    arena: &mut FrameArenaInner,
+    payloads: &mut RecordPayloads,
     points: &[Vec2],
     colors: &[Color],
     mode: ColorMode,
@@ -1090,10 +1090,10 @@ fn polyline_cmd(
     cap: LineCap,
     join: LineJoin,
 ) {
-    let p_start = arena.polyline_points.len() as u32;
-    arena.polyline_points.extend_from_slice(points);
-    let c_start = arena.polyline_colors.len() as u32;
-    arena
+    let p_start = payloads.polyline_points.len() as u32;
+    payloads.polyline_points.extend_from_slice(points);
+    let c_start = payloads.polyline_colors.len() as u32;
+    payloads
         .polyline_colors
         .extend(colors.iter().map(|&c| ColorU8::from(c)));
     let mut lo = points[0];
@@ -1136,10 +1136,10 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         Vec2::new(160.0, 40.0),
     ];
     let buf = run(
-        |b, arena| {
+        |b, payloads| {
             polyline_cmd(
                 b,
-                arena,
+                payloads,
                 &pts,
                 &[Color::WHITE],
                 ColorMode::Single,
@@ -1209,10 +1209,10 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
     use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
     let emit = |pts: [Vec2; 3]| {
         run(
-            |b, arena| {
+            |b, payloads| {
                 polyline_cmd(
                     b,
-                    arena,
+                    payloads,
                     &pts,
                     &[Color::WHITE],
                     ColorMode::Single,
@@ -1280,10 +1280,10 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         Vec2::new(110.0, 10.0),
     ];
     let buf = run(
-        |b, arena| {
+        |b, payloads| {
             polyline_cmd(
                 b,
-                arena,
+                payloads,
                 &pts,
                 &[red, green, green, blue],
                 ColorMode::PerPoint,
@@ -1313,10 +1313,10 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     // drops the degenerate segment's color (index 1), so the kept
     // segments paint colors 0 and 2 and the chrome their midpoint.
     let buf = run(
-        |b, arena| {
+        |b, payloads| {
             polyline_cmd(
                 b,
-                arena,
+                payloads,
                 &pts,
                 &[red, green, blue],
                 ColorMode::PerSegment,
@@ -1359,12 +1359,12 @@ fn compose_spins_polyline_about_bbox_center() {
     // point of the segment, so a correct spin keeps the AABB centred.
     let aabb = |rotation: f32| -> (Vec2, Vec2) {
         let mut buffer = RenderCmdBuffer::default();
-        let mut arena = FrameArenaInner::default();
-        let p_start = arena.polyline_points.len() as u32;
-        arena.polyline_points.push(Vec2::new(15.0, 50.0));
-        arena.polyline_points.push(Vec2::new(85.0, 50.0));
-        let c_start = arena.polyline_colors.len() as u32;
-        arena.polyline_colors.push(Color::WHITE.into());
+        let mut payloads = RecordPayloads::default();
+        let p_start = payloads.polyline_points.len() as u32;
+        payloads.polyline_points.push(Vec2::new(15.0, 50.0));
+        payloads.polyline_points.push(Vec2::new(85.0, 50.0));
+        let c_start = payloads.polyline_colors.len() as u32;
+        payloads.polyline_colors.push(Color::WHITE.into());
         buffer.draw_polyline(DrawPolylinePayload {
             bbox: rect(0.0, 0.0, 100.0, 100.0),
             origin: Vec2::ZERO,
@@ -1381,7 +1381,12 @@ fn compose_spins_polyline_about_bbox_center() {
         });
         let mut composer = composer();
         let mut out = render_buffer();
-        composer.compose(&buffer, &arena, params(1.0, UVec2::new(200, 200)), &mut out);
+        composer.compose(
+            &buffer,
+            &payloads,
+            params(1.0, UVec2::new(200, 200)),
+            &mut out,
+        );
         // GPU path: the polyline emits one segment instance whose
         // p0/p3 lanes carry the transformed (spun) endpoints.
         assert_eq!(out.curves.len(), 1, "one segment instance");
@@ -2570,7 +2575,7 @@ fn prune_steady_state_across_repeated_compose_calls() {
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = render_buffer();
-        composer.compose(&buffer, &FrameArenaInner::default(), display, &mut out);
+        composer.compose(&buffer, &RecordPayloads::default(), display, &mut out);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
 }
@@ -2598,7 +2603,7 @@ fn rect_inflated_round_trips_with_deflated_by_uniform() {
 #[test]
 fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
-        |b, arena| {
+        |b, payloads| {
             // Node label.
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             // A polyline far from everything closes the text batch
@@ -2607,7 +2612,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             // flush).
             polyline_cmd(
                 b,
-                arena,
+                payloads,
                 &[Vec2::new(0.0, 400.0), Vec2::new(50.0, 400.0)],
                 &[Color::WHITE],
                 ColorMode::Single,
@@ -2648,10 +2653,10 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
 /// prior scene.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
-    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::color::ColorF16;
     use crate::primitives::fill_wire::{FillKind, LutRow};
+    use crate::record_store::LoweredGradient;
 
     let vp = UVec2::new(200, 200);
     let bg = Color::rgb(0.14, 0.16, 0.22);
@@ -2854,23 +2859,23 @@ fn clear_fold_resets_across_frames() {
     let display = params(1.0, UVec2::new(200, 200));
     let mut composer = composer();
     let mut out = render_buffer();
-    let arena = FrameArenaInner::default();
+    let payloads = RecordPayloads::default();
 
     let mut covered = RenderCmdBuffer::default();
     draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
     draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
 
-    composer.compose(&covered, &arena, display, &mut out);
+    composer.compose(&covered, &payloads, display, &mut out);
     assert!(out.clear_override.is_some(), "frame 1 folds");
     assert_eq!(out.quads.len(), 1);
 
-    composer.compose(&covered, &arena, display, &mut out);
+    composer.compose(&covered, &payloads, display, &mut out);
     assert!(out.clear_override.is_some(), "steady state re-folds");
     assert_eq!(out.quads.len(), 1);
 
     let mut uncovered = RenderCmdBuffer::default();
     draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
-    composer.compose(&uncovered, &arena, display, &mut out);
+    composer.compose(&uncovered, &payloads, display, &mut out);
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);
 }
@@ -2883,9 +2888,9 @@ fn clear_fold_resets_across_frames() {
 /// does NOT disqualify (the skip is coverage-based, not opacity-based).
 #[test]
 fn quad_fast_path_flag_cases() {
-    use crate::frame_arena::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::fill_wire::{FillKind, LutRow};
+    use crate::record_store::LoweredGradient;
 
     let solid = |c: Color| BrushSource::Solid(c.into());
     let opaque = Color::rgb(0.5, 0.5, 0.5);

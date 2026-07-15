@@ -575,7 +575,7 @@ impl<'a> TextEdit<'a> {
             let (display, color) = if text_ptr.is_empty() {
                 (placeholder.clone().into(), placeholder_color)
             } else {
-                // Intern the live buffer into the retained frame arena
+                // Intern the live buffer into the retained record store
                 // (a memcpy into `fmt_scratch`, not a per-frame `String`
                 // allocation that scales with buffer length).
                 (ui.intern(text_ptr), look.text.color)

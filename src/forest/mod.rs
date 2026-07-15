@@ -10,9 +10,9 @@ use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::Tree;
 use crate::forest::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::forest::tree::recording::{Placement, RecordingScratch};
-use crate::frame_arena::FrameArena;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::record_store::RecordStore;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
@@ -198,7 +198,7 @@ impl Forest {
     pub(crate) fn add_shape(
         &mut self,
         shape: Shape<'_>,
-        arena: &FrameArena,
+        store: &RecordStore,
         atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer();
@@ -206,7 +206,7 @@ impl Forest {
         // No `paint_anims.by_shape` bookkeeping on the unanimated path —
         // `PaintAnims` lazily grows the column only when a real anim
         // shows up. Saves one `Vec::push` per shape every frame.
-        if self.trees[layer].shapes.add(shape, arena, atlas).is_some() {
+        if self.trees[layer].shapes.add(shape, store, atlas).is_some() {
             self.scratch[layer]
                 .open_frames
                 .last_mut()
@@ -240,7 +240,7 @@ impl Forest {
         &mut self,
         shape: Shape<'_>,
         anim: PaintAnim,
-        arena: &FrameArena,
+        store: &RecordStore,
         atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer();
@@ -248,7 +248,7 @@ impl Forest {
         // Disjoint borrow: `trees` and `scratch` are separate fields.
         let tree = &mut self.trees[layer];
         let frame = self.scratch[layer].open_frames.last_mut().unwrap();
-        let Some(shape_idx) = tree.shapes.add(shape, arena, atlas) else {
+        let Some(shape_idx) = tree.shapes.add(shape, store, atlas) else {
             return;
         };
         let row = frame.paint_rows;

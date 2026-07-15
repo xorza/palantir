@@ -1,6 +1,5 @@
 //! Typed command discriminants and Pod payload records.
 
-use crate::frame_arena::LoweredGradient;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
@@ -9,13 +8,14 @@ use crate::primitives::{
     corners::Corners,
     rect::Rect,
 };
+use crate::record_store::LoweredGradient;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 
 /// Cmd-buffer brush input. `Solid` carries an 8-byte `ColorF16`;
 /// `Gradient` carries the pre-baked 16-byte `LoweredGradient` (atlas
-/// row + axis + kind) produced at shape-lowering time. No arena
+/// row + axis + kind) produced at shape-lowering time. No payload
 /// indirection — registration with the gradient atlas already
 /// happened upstream.
 #[derive(Clone, Copy, Debug)]
@@ -90,10 +90,10 @@ pub(crate) enum CmdKind {
     DrawShadow,
     DrawText,
     /// Mesh paint cmd. Payload: [`DrawMeshPayload`]. Vertex/index
-    /// rows live in the frame arena and are sliced by the payload's spans.
+    /// rows live in `RecordPayloads` and are sliced by the payload's spans.
     DrawMesh,
     /// Stroked polyline paint cmd. Payload:
-    /// [`DrawPolylinePayload`]. Point arena lives in the frame arena,
+    /// [`DrawPolylinePayload`]. Point storage lives in `RecordPayloads`,
     /// sliced by the payload's span. Composer transforms + DPI-scales
     /// the points, then emits one `CurveInstance` per kept segment
     /// plus one join-chrome instance per interior joint into
@@ -214,7 +214,7 @@ impl DrawTextPayload {
 }
 
 /// Stroked polyline payload. `width` is logical px. Points + colors
-/// live on the host's [`FrameArena`] (`polyline_points` /
+/// live in the window's [`RecordPayloads`] (`polyline_points` /
 /// `polyline_colors`) — the cmd buffer only carries the spans.
 /// `colors_len` is 1 (broadcast), `points_len` (per-point), or
 /// `points_len - 1` (per-segment), selected by `color_mode`.
@@ -223,7 +223,7 @@ impl DrawTextPayload {
 /// (the owner-rect top-left) before the active push-transform stack.
 /// `bbox` is in the same owner-local space.
 ///
-/// [`FrameArena`]: crate::frame_arena::FrameArena
+/// [`RecordPayloads`]: crate::record_store::RecordPayloads
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -263,13 +263,13 @@ impl DrawPolylinePayload {
     }
 }
 
-/// Mesh draw payload. Vertex/index data lives on the host's
-/// [`FrameArena`] (`meshes`); the cmd buffer only carries the spans
+/// Mesh draw payload. Vertex/index data lives in the window's
+/// [`RecordPayloads`] (`meshes`); the cmd buffer only carries the spans
 /// (owner-local). The composer folds `origin` (owner-rect top-left)
 /// into the per-instance translate so the vertex stream stays
 /// content-stable across frames.
 ///
-/// [`FrameArena`]: crate::frame_arena::FrameArena
+/// [`RecordPayloads`]: crate::record_store::RecordPayloads
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]

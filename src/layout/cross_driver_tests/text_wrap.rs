@@ -156,7 +156,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
+            bytes: &ui.record_store.borrow().fmt_scratch,
             shaper: &ui.ctx.shaper,
         },
     );
@@ -166,7 +166,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MinContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
+            bytes: &ui.record_store.borrow().fmt_scratch,
             shaper: &ui.ctx.shaper,
         },
     );
@@ -176,7 +176,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::Y,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
+            bytes: &ui.record_store.borrow().fmt_scratch,
             shaper: &ui.ctx.shaper,
         },
     );
@@ -419,7 +419,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
+            bytes: &ui.record_store.borrow().fmt_scratch,
             shaper: &ui.ctx.shaper,
         },
     );
@@ -429,7 +429,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MinContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
+            bytes: &ui.record_store.borrow().fmt_scratch,
             shaper: &ui.ctx.shaper,
         },
     );
@@ -492,7 +492,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &probe.frame_arena.inner().fmt_scratch,
+            bytes: &probe.record_store.borrow().fmt_scratch,
             shaper: &probe.ctx.shaper,
         },
     );
@@ -566,7 +566,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &probe.frame_arena.inner().fmt_scratch,
+            bytes: &probe.record_store.borrow().fmt_scratch,
             shaper: &probe.ctx.shaper,
         },
     );

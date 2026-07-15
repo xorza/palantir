@@ -15,7 +15,6 @@ use crate::forest::element::Element;
 use crate::forest::layer::Layer;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::paint_anims::PaintAnim;
-use crate::frame_arena::FrameArena;
 use crate::host::context::HostContext;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
@@ -35,6 +34,7 @@ use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetIdMap;
+use crate::record_store::RecordStore;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::ImageHandle;
 
@@ -73,9 +73,9 @@ pub struct Ui {
     /// the redraw epoch and the encoder looks the view up here by the node's
     /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
     pub(crate) gpu_views: WidgetIdMap<GpuViewEntry>,
-    /// This window's retained record arena. Cleared only when a record pass
+    /// This window's retained record store. Cleared only when a record pass
     /// rebuilds the forest; `PaintOnly` keeps it paired with the retained tree.
-    pub(crate) frame_arena: FrameArena,
+    pub(crate) record_store: RecordStore,
     /// App-global shared state cloned from the host at construction: the
     /// render resources (`ctx.shaper` / `ctx.caches` / `ctx.pass_stats`) and
     /// the host state behind it (the live-window set,
@@ -131,16 +131,16 @@ impl Ui {
     pub(crate) const MAX_DT: f32 = 0.1;
 
     /// Construct a per-window `Ui` from the host's shared [`HostContext`] and
-    /// the window's [`FrameArena`]. Through the context the `Ui` shares the
+    /// the window's [`RecordStore`]. Through the context the `Ui` shares the
     /// same `TextShaper` the wgpu backend uses (so layout-time measurement and
     /// render-time shaping hit one buffer cache), the render caches +
     /// GPU-stats, and the app-global host state (live-window set + debug
-    /// overlay). The arena is shared only with this window's renderer so
+    /// overlay). The store is shared only with this window's renderer so
     /// retained shape spans remain valid across other windows' record passes.
-    pub(crate) fn new(ctx: &HostContext, frame_arena: FrameArena) -> Self {
+    pub(crate) fn new(ctx: &HostContext, record_store: RecordStore) -> Self {
         Self {
             ctx: ctx.clone(),
-            frame_arena,
+            record_store,
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
@@ -165,9 +165,9 @@ impl Ui {
     /// the retained clock and frame id derive from it.
     pub fn frame(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         profiling::scope!("Ui::frame");
-        // Frame arena is cleared inside `record_pass` (the only path
+        // Record payloads are cleared inside `record_pass` (the only path
         // that repopulates it). PaintOnly frames must NOT clear: the
-        // live `tree.shapes` from last frame still references arena
+        // live `tree.shapes` from last frame still references record payloads
         // contents by index (gradients, polyline points/colors, mesh
         // verts/indices, interned text spans). Clearing here would
         // leave dangling indices the encoder then dereferences.
@@ -433,7 +433,7 @@ impl Ui {
             // index into it (gradients / polyline points+colors /
             // meshes / interned text). Clear in lockstep with
             // `forest.pre_record` — both refill during user record.
-            self.frame_arena.clear();
+            self.record_store.clear();
             self.forest.pre_record();
             // Subscription set is rebuilt from scratch each full record
             // pass — symmetric to `Sense` on a node. Widgets re-assert
@@ -521,9 +521,9 @@ impl Ui {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
-        let arena = self.frame_arena.inner();
+        let payloads = self.record_store.borrow();
         let tc = TextCtx {
-            bytes: &arena.fmt_scratch,
+            bytes: &payloads.fmt_scratch,
             shaper: &self.ctx.shaper,
         };
         self.layout_engine.run(
@@ -532,7 +532,7 @@ impl Ui {
             self.display.logical_rect(),
             &mut self.layout,
         );
-        drop(arena);
+        drop(payloads);
         // O5 stage 0: skip the cascade when nothing feeding it changed.
         // The cascade is a pure function of subtree authoring + arranged
         // rects, and the arranged rects are determined by (subtree_hash,
@@ -856,7 +856,7 @@ impl Ui {
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         self.forest
-            .add_shape(shape, &self.frame_arena, &self.ctx.caches.gradients);
+            .add_shape(shape, &self.record_store, &self.ctx.caches.gradients);
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
@@ -910,7 +910,7 @@ impl Ui {
         self.forest.add_gpu_view(entry.epoch);
     }
 
-    /// Format `args` directly into the record-pass text arena and return
+    /// Format `args` directly into the record-pass text storage and return
     /// a frame-local [`InternedStr`]. Pass the returned value to
     /// any widget that takes `impl Into<InternedStr>`
     /// (Text/Button/MenuItem) — the bytes are already in the destination
@@ -925,10 +925,10 @@ impl Ui {
     /// and convert it into `InternedStr` on every pass.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
-        self.frame_arena.intern_fmt(args)
+        self.record_store.intern_fmt(args)
     }
 
-    /// Copy `s` into the record-pass text arena and return a frame-local
+    /// Copy `s` into the record-pass text storage and return a frame-local
     /// [`InternedStr`]. Format-less twin of
     /// [`Self::fmt`] for plain `&str` borrows whose lifetime doesn't
     /// reach `'static` — turns a per-frame `String` allocation into a
@@ -936,7 +936,7 @@ impl Ui {
     /// frame-scoped invalidation rules as [`Self::fmt`].
     #[must_use]
     pub fn intern(&mut self, s: &str) -> InternedStr {
-        self.frame_arena.intern_str(s)
+        self.record_store.intern_str(s)
     }
 
     /// Append `shape` to the active node and register `anim` against
@@ -948,7 +948,7 @@ impl Ui {
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
     pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
         self.forest
-            .add_shape_animated(shape, anim, &self.frame_arena, &self.ctx.caches.gradients);
+            .add_shape_animated(shape, anim, &self.record_store, &self.ctx.caches.gradients);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
@@ -1035,7 +1035,7 @@ impl Ui {
     ) -> R {
         let chrome = chrome.map(|bg| ChromeInput {
             bg,
-            arena: &self.frame_arena,
+            store: &self.record_store,
             atlas: &self.ctx.caches.gradients,
         });
         self.forest.open_node(id, element, chrome);
@@ -1254,12 +1254,12 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
-    /// Standalone `Ui` with a mono-fallback shaper and private frame arena.
+    /// Standalone `Ui` with a mono-fallback shaper and private record store.
     /// Shipping code receives its `Ui` from a host and must not construct a
     /// disconnected one.
     impl Default for Ui {
         fn default() -> Self {
-            Self::new(&HostContext::default(), FrameArena::default())
+            Self::new(&HostContext::default(), RecordStore::default())
         }
     }
 
@@ -1294,7 +1294,7 @@ pub mod test_support {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
             let ctx = HostContext::new(SHARED.with(|c| c.clone()));
-            let mut ui = Self::new(&ctx, FrameArena::default());
+            let mut ui = Self::new(&ctx, RecordStore::default());
             ui.mark_warm_for_test();
             ui
         }
@@ -1499,8 +1499,8 @@ pub mod test_support {
             };
             let plan = RenderPlan { clear, kind };
             let mut cmds = RenderCmdBuffer::default();
-            let arena = self.frame_arena.inner();
-            encode(self, &arena, plan, &mut cmds);
+            let payloads = self.record_store.borrow();
+            encode(self, &payloads, plan, &mut cmds);
             cmds
         }
     }

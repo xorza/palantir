@@ -34,9 +34,9 @@ use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
 use self::viewport::{ViewportPush, build_damage_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::frame_arena::FrameArenaInner;
 use crate::host::context::HostContext;
 use crate::primitives::urect::URect;
+use crate::record_store::RecordPayloads;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -122,7 +122,7 @@ pub(crate) struct SubmissionTargets<'a> {
 #[derive(Debug)]
 pub(crate) struct Submission<'a> {
     pub(crate) targets: SubmissionTargets<'a>,
-    pub(crate) arena: &'a FrameArenaInner,
+    pub(crate) payloads: &'a RecordPayloads,
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) plan: RenderPlan,
     pub(crate) debug_overlay: DebugOverlayConfig,
@@ -417,7 +417,7 @@ impl WgpuBackend {
                     backbuffer: via_backbuffer,
                     stencil: stencil_view,
                 },
-            arena,
+            payloads,
             buffer,
             plan,
             debug_overlay,
@@ -533,8 +533,8 @@ impl WgpuBackend {
             self.quad.upload(&mut ctx, &buffer.quads);
             self.mesh.upload(
                 &mut ctx,
-                &arena.meshes.vertices,
-                &arena.meshes.indices,
+                &payloads.meshes.vertices,
+                &payloads.meshes.indices,
                 buffer.meshes.instance(),
             );
             self.image

@@ -2,7 +2,7 @@
 //! recorder. [`HostContext`](context::HostContext) is the app-global shared
 //! bag every window's `Ui` and the one shared `WgpuBackend` clone from;
 //! [`WindowRenderer`](window_renderer::WindowRenderer) owns each window's
-//! frame arena and drives frames through that backend; [`winit`] and
+//! record store and drives frames through that backend; [`winit`] and
 //! [`offscreen`] are the two
 //! drivers (swapchain windows / render-to-texture); [`clock`] is the injected
 //! per-frame time source. The backend-agnostic *vocabulary* the recorder

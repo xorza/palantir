@@ -184,7 +184,7 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
-/// plus a standalone `Frontend` sharing the `Ui`'s frame arena. One
+/// plus a standalone `Frontend` sharing the `Ui`'s record store. One
 /// `frame` runs record → measure → arrange → cascade → damage and then,
 /// when the frame produced a render plan, encode + compose — **stopping
 /// before any GPU submit**. No `wgpu::Device` is ever created, so the

@@ -143,7 +143,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         }
         // Geometry + style hashed inline — every input lives on the
         // record, so no lowering-time content hash is needed (unlike
-        // `Polyline`/`Mesh`, whose payload bytes live on the arena).
+        // `Polyline`/`Mesh`, whose payload bytes live in the record store).
         // `bbox` derives from geometry + width + cap and is excluded.
         // Brush folded separately so strokes with the same geometry
         // but different fills don't collide; the tag byte above keeps

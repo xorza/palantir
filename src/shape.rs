@@ -83,7 +83,7 @@ pub enum Shape<'a> {
     },
     /// Stroked polyline with per-vertex or per-segment coloring. The
     /// framework copies `points` and `colors` into the active tree's
-    /// per-frame arenas at `add_shape` time, so the borrows only have
+    /// record stores at `add_shape` time, so the borrows only have
     /// to outlive the call. `colors` length is constrained by `mode`
     /// (see [`PolylineColors`]); mismatches debug-assert.
     Polyline {

@@ -39,13 +39,13 @@ pub(crate) enum ShapeRecord {
         stroke: ShapeStroke,
         /// Pre-computed content hash of `fill` when it's a gradient,
         /// 0 for solid. Lets `ShapeRecord::Hash` stay context-free —
-        /// otherwise we'd need to thread the `gradients` arena into
+        /// otherwise we'd need to thread the gradient payloads into
         /// every hash call (subtree rollups, measure cache). The hash
-        /// is computed once at lowering time by `frame_arena::grad_hash`.
+        /// is computed once at lowering time by `record_store::grad_hash`.
         fill_grad_hash: u64,
     } = 0,
     /// Stroked polyline. `points`/`colors` index into the
-    /// `FrameArena`'s `polyline_points` / `polyline_colors`. `colors`
+    /// `RecordPayloads`' `polyline_points` / `polyline_colors`. `colors`
     /// length depends on `color_mode`: 1 for `Single`,
     /// `points.len()` for `PerPoint`, `points.len() - 1` for
     /// `PerSegment`. `content_hash` summarizes points+colors+mode
@@ -112,7 +112,7 @@ pub(crate) enum ShapeRecord {
         weight: FontWeight,
     } = 2,
     /// User-supplied colored triangle mesh. Vertex/index data lives on
-    /// the `FrameArena`'s `meshes` pool; these spans index into its
+    /// the `RecordPayloads`' `meshes` pool; these spans index into its
     /// vertex/index vecs. `content_hash` summarizes
     /// vertex+index bytes for cache identity — two frames with
     /// identical mesh content share a hash even though their span
@@ -131,7 +131,7 @@ pub(crate) enum ShapeRecord {
         content_hash: u64,
     } = 3,
     /// Gaussian-blurred rounded rect — drop / inset shadow. All
-    /// parameters are inline scalars; no payload arena. With
+    /// parameters are inline scalars; no retained payloads. With
     /// `local_rect = None` the shadow shadows the owner's full
     /// arranged rect; with `Some(r)` it shadows the owner-relative
     /// rect `r`. Encoder inflates the paint bbox by

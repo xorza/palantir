@@ -3,7 +3,6 @@ use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
 use crate::forest::tree::Tree;
 use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::node::NodeId;
-use crate::frame_arena::{FrameArenaInner, LoweredGradient};
 use crate::layout::LayerLayout;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
@@ -14,6 +13,7 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
+use crate::record_store::{LoweredGradient, RecordPayloads};
 use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
@@ -52,7 +52,7 @@ fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
 }
 
 /// Build a `BrushSource` from a lowered `ShapeBrush` + the per-frame
-/// gradient arena. `Solid` stays inline; `Gradient(id)` reads the
+/// gradient payloads. `Solid` stays inline; `Gradient(id)` reads the
 /// pre-baked `LoweredGradient` (row + axis + kind already finalised
 /// at shape-lowering time) — no per-encode dispatch.
 #[inline]
@@ -107,7 +107,7 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 #[profiling::function]
 pub(crate) fn encode(
     ui: &Ui,
-    arena: &FrameArenaInner,
+    payloads: &RecordPayloads,
     plan: RenderPlan,
     out: &mut RenderCmdBuffer,
 ) {
@@ -120,7 +120,7 @@ pub(crate) fn encode(
 
     let viewport = ui.display.logical_rect();
     let now = ui.frame_runtime.time;
-    let gradients = arena.gradients.as_slice();
+    let gradients = payloads.gradients.as_slice();
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in
     // `renderer::damage::damage_cull_margin` so the two can't drift.
@@ -315,7 +315,7 @@ fn emit_one_shape(
             bbox,
             content_hash: _,
         } => {
-            // Points + colors live in the window's FrameArena; spans
+            // Points + colors live in the window's RecordStore; spans
             // are forwarded verbatim. Owner-local convention — the
             // composer folds `origin` into the per-point transform.
             let rotation = paint_mod.rotation;
@@ -348,7 +348,7 @@ fn emit_one_shape(
             bbox,
             content_hash: _,
         } => {
-            // Verts live in the window's FrameArena owner-local;
+            // Verts live in the window's RecordStore owner-local;
             // composer folds `origin` into the per-instance translate.
             // No per-frame copy here.
             let origin = resolve_local_rect(owner_rect, *local_rect).min;

@@ -664,8 +664,8 @@ mod per_line {
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
-        let arena = ui.frame_arena.inner();
-        let bytes = arena.fmt_scratch.as_str();
+        let payloads = ui.record_store.borrow();
+        let bytes = payloads.fmt_scratch.as_str();
         let tree = &ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => Some((*align, text.as_str(bytes).to_owned())),

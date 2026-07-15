@@ -8,9 +8,9 @@ use crate::common::hash::hash_str;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::paint::ShapeStroke;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::frame_arena::FrameArena;
 use crate::primitives::interned_str::InternedStrRepr;
 use crate::primitives::span::Span;
+use crate::record_store::RecordStore;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
 
@@ -22,12 +22,13 @@ use crate::shape::Shape;
 /// [`crate::forest::tree::iter::TreeItems`] interleaves.
 ///
 /// Bulk variable-length payloads (mesh verts/indices, polyline
-/// points/colors, gradients) live on the `FrameArena` passed into
+/// points/colors, gradients) live on the `RecordStore` passed into
 /// [`Self::add`]; `ShapeRecord` variants reference them via spans /
 /// ids. `ShapeRecord::Text.text` is the asymmetric case — it holds
 /// an [`InternedStr`](crate::InternedStr) inline: `Owned` carries
 /// its bytes on the record itself (`SmolStr`), while `Interned`
-/// references `FrameArena::fmt_scratch` via a generation-stamped
+/// references [`RecordPayloads::fmt_scratch`](crate::record_store::RecordPayloads::fmt_scratch)
+/// via a generation-stamped
 /// `Span`. Cleared per record pass, capacity retained.
 #[derive(Debug, Default)]
 pub(crate) struct Shapes {
@@ -53,7 +54,7 @@ impl Shapes {
     /// Lower a user-facing [`Shape`] and append it to `records`:
     /// passthrough for rect/text, cubic promotion for beziers,
     /// span-stamping for the variable-length variants (polyline /
-    /// mesh) whose payload bytes land on the [`FrameArena`].
+    /// mesh) whose payload bytes land on the [`RecordStore`].
     ///
     /// Single canonical noop gate for the shape buffer — drops any
     /// shape whose authoring inputs would emit no visible pixels
@@ -70,7 +71,7 @@ impl Shapes {
     pub(crate) fn add(
         &mut self,
         shape: Shape<'_>,
-        arena: &FrameArena,
+        store: &RecordStore,
         atlas: &GradientAtlas,
     ) -> Option<u32> {
         if shape.is_noop() {
@@ -86,7 +87,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = lower::brush(arena, &fill, atlas);
+                let lowered = lower::brush(store, &fill, atlas);
                 ShapeRecord::RoundedRect {
                     local_rect,
                     corners,
@@ -101,7 +102,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = lower::brush(arena, &fill, atlas);
+                let lowered = lower::brush(store, &fill, atlas);
                 ShapeRecord::WindowedRect {
                     local_rect,
                     corners,
@@ -124,14 +125,14 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::line(arena, a, b, width, brush, cap, atlas),
+            } => lower::line(store, a, b, width, brush, cap, atlas),
             Shape::Polyline {
                 points,
                 colors,
                 width,
                 cap,
                 join,
-            } => lower::polyline(arena, points, colors, width, cap, join),
+            } => lower::polyline(store, points, colors, width, cap, join),
             Shape::CubicBezier {
                 p0,
                 p1,
@@ -140,7 +141,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::cubic_bezier(arena, [p0, p1, p2, p3], width, brush, cap, atlas),
+            } => lower::cubic_bezier(store, [p0, p1, p2, p3], width, brush, cap, atlas),
             Shape::QuadraticBezier {
                 p0,
                 p1,
@@ -148,7 +149,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::quadratic_bezier(arena, [p0, p1, p2], width, brush, cap, atlas),
+            } => lower::quadratic_bezier(store, [p0, p1, p2], width, brush, cap, atlas),
             Shape::Arc {
                 center,
                 radius,
@@ -158,7 +159,7 @@ impl Shapes {
                 brush,
                 cap,
             } => lower::arc(
-                arena,
+                store,
                 center,
                 radius,
                 start_angle,
@@ -182,7 +183,7 @@ impl Shapes {
                 // Each carrier costs only its hash compute:
                 // - `Interned` reuses the hash captured at `Ui::fmt` time.
                 // - `Owned` hashes the bytes once at lowering; the bytes
-                //   stay where they are (no memcpy into the text arena,
+                //   stay where they are (no memcpy into the text store,
                 //   no per-shape allocation).
                 let text_hash = match &text.0 {
                     InternedStrRepr::Interned {
@@ -190,7 +191,7 @@ impl Shapes {
                         record_pass_generation,
                         ..
                     } => {
-                        arena.assert_text_generation(*record_pass_generation);
+                        store.assert_text_generation(*record_pass_generation);
                         *hash
                     }
                     InternedStrRepr::Owned(s) => hash_str(s),
@@ -238,11 +239,11 @@ impl Shapes {
                 local_rect,
                 tint,
             } => {
-                let mut a = arena.inner_mut();
-                let v_start = a.meshes.vertices.len() as u32;
-                a.meshes.vertices.extend_from_slice(&mesh.vertices);
-                let i_start = a.meshes.indices.len() as u32;
-                a.meshes.indices.extend_from_slice(&mesh.indices);
+                let mut payloads = store.borrow_mut();
+                let v_start = payloads.meshes.vertices.len() as u32;
+                payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
+                let i_start = payloads.meshes.indices.len() as u32;
+                payloads.meshes.indices.extend_from_slice(&mesh.indices);
                 let content_hash = mesh.content_hash();
                 let bbox = mesh.bbox();
                 ShapeRecord::Mesh {

@@ -210,7 +210,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     );
     // A Line rides the GPU curve pipeline (degenerate cubic), so it
     // emits a DrawCurve — not a DrawPolyline — and never touches the
-    // polyline points arena.
+    // polyline point payloads.
     let curves = cmds
         .iter()
         .filter(|command| matches!(command, Command::DrawCurve(_)))
@@ -224,9 +224,9 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "lines no longer lower to polylines"
     );
     assert_eq!(
-        ui.frame_arena.inner().polyline_points.len(),
+        ui.record_store.borrow().polyline_points.len(),
         0,
-        "the points arena stays untouched by lines"
+        "the point payloads stay untouched by lines"
     );
 }
 

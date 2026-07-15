@@ -21,11 +21,11 @@ pub(crate) mod debug_overlay;
 /// the host layer; not owned by any one subsystem.
 pub(crate) mod display;
 pub mod forest;
-pub(crate) mod frame_arena;
 pub mod host;
 pub mod input;
 pub mod layout;
 pub mod primitives;
+pub(crate) mod record_store;
 pub mod renderer;
 pub(crate) mod shape;
 pub mod text;
@@ -64,7 +64,7 @@ pub mod cascade_bench {
     pub use crate::ui::cascade::bench::bench;
 }
 
-pub use frame_arena::FrameArena;
+pub use record_store::RecordStore;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
@@ -194,12 +194,12 @@ mod hot_struct_sizes {
     use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::extras::ExtrasIdx;
     use crate::forest::tree::node::NodeRecord;
-    use crate::frame_arena::LoweredGradient;
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
+    use crate::record_store::LoweredGradient;
     use crate::renderer::backend::text::GlyphInstance;
     use crate::renderer::frontend::cmd_buffer::payload::{
         DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
