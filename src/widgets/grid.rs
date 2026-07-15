@@ -24,8 +24,8 @@ use std::sync::OnceLock;
 /// literals (`[Track::fixed(40.0), ...]`) are accepted via
 /// `Into<Rc<[Track]>>` and allocate once per frame for that grid.
 ///
-/// See `docs/grid.md` for the algorithm and explicit non-goals (no
-/// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
+/// The layout driver documents the three-phase solver and its explicit
+/// non-goals: no Auto-vs-Star cycle, `SharedSizeScope`, or auto-flow.
 #[derive(Debug)]
 pub struct Grid {
     element: Element,

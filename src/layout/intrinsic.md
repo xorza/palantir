@@ -16,8 +16,8 @@ Two patterns motivate the API:
   wrapped text reshapes at that width, not at the natural unbroken
   width.
 
-Both are pinned by tests in `src/widgets/tests.rs` and demonstrated in
-the `text layouts` tab of `examples/showcase`.
+Both are pinned by tests in `src/layout/cross_driver_tests/` and
+demonstrated in the `text layouts` tab of `src/bin/showcase`.
 
 ## LenReq
 
@@ -104,13 +104,10 @@ the result. The answer is a pure function of the subtree — it doesn't
 depend on the parent's available width or the arranged rect — so
 intra-frame caching is sound.
 
-Cross-frame caching is **deferred**. Cosmic already caches text shapes
-across frames keyed on content hash, which covers the expensive part of
-leaf intrinsics for free. Container intrinsics are cheap arithmetic;
-re-running them per frame is fine until profiles say otherwise. When the
-persistent `Id → Any` state map lands (AGENTS.md §Status), revisit
-keying on `WidgetId` plus a content/topology hash, which is the model
-Yoga/Taffy use.
+Cross-frame reuse comes from `MeasureCache::lookup_root_intrinsic`, keyed
+by `WidgetId` plus subtree hash and independent of the incoming available
+size. On a miss, this per-frame cache prevents repeated recursion within
+the current layout pass. Cosmic's own cache still covers text shaping.
 
 ## Grid `Auto` track sizing under constraint
 
@@ -210,9 +207,8 @@ way (property grid pattern). Beyond this, the native panel set is
 
 If demand for richer flex/grid features (percentage flex-basis, wrap,
 align-content, CSS Grid `minmax`/`repeat`/named areas) ever arrives,
-the cheapest path is opt-in Taffy alongside the native panels —
-`references/taffy.md` §7 has the integration sketch. We'll pick a
-direction when the first user demand arrives.
+the cheapest path is opt-in Taffy alongside the native panels. We'll
+pick a direction when the first concrete demand arrives.
 
 ## Height-given-width
 
@@ -252,6 +248,3 @@ shape.
 - **Baseline alignment.** Not part of intrinsics; would attach to
   `Layout` if needed.
 - **Aspect-ratio constraints.** Separate concern.
-- **Cross-frame caching.** Cosmic's text-shape cache covers the
-  expensive part. Re-add if a profile shows container intrinsic
-  recomputation dominating.

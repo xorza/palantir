@@ -21,7 +21,7 @@
 //! Windows are addressed by a caller-chosen [`WindowToken`]; winit's
 //! opaque `WindowId` stays internal for event routing. The app opens /
 //! closes windows from inside `frame` via [`Ui::open_window`] /
-//! [`Ui::close_window`] (see `docs/roadmap/multiwindow.md`).
+//! [`Ui::close_window`].
 //!
 //! Submodules: [`config`] ([`WinitHostConfig`]), [`handle`]
 //! ([`HostHandle`] + [`UserEvent`]), [`gpu`] (the shared wgpu context).

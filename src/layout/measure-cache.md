@@ -4,8 +4,7 @@ WPF-style short-circuit: skip a node's measure when neither its
 authoring inputs nor its incoming `available` size changed since last
 frame. Composes with damage. The only cross-frame cache in the render
 path — encode and compose were both removed after benches showed they
-contributed < 1% (see `docs/encode-cache-investigation.md`,
-`docs/compose-cache-under-scroll.md`).
+contributed < 1%.
 
 Code lives in `cache/` (this directory's sibling).
 
@@ -56,22 +55,13 @@ validity, plus the rect-stability contract via
 
 ## Bench
 
-`benches/measure_cache.rs` covers `flat` (1000 leaves, depth 1) and
-`nested` (3200 nodes, depth 4) with `cached` vs `forced_miss`
-variants.
-
-| workload | cached | forced_miss |
-| --- | --- | --- |
-| flat   | 85.0 µs  | 112.7 µs |
-| nested | 375.5 µs | 496.2 µs |
-
-Steady-state cache hits dominate by ~25 % on the nested workload.
-Per-snapshot memory footprint on that workload is ~77 KB across the
-arenas and the `FxHashMap` index.
+`benches/caches.rs` compares `cached` and `forced_miss` arms for both a
+representative measure workload and a heavier clipped/text-shaped tree.
+Criterion output is the source of truth for current timings.
 
 The cross-frame intrinsic-query cache landed as `root_intrinsics` on
 the snapshot (above) — it reuses the subtree root's intrinsic, which
 covers the dominant `children_max_intrinsic` re-walk; a full
 per-descendant intrinsic snapshot is still open. Remaining future-work
 items (real-workload validation, cold-cache mitigations, coarser
-quantization) live in `docs/roadmap/caches.md`.
+quantization) remain profile-driven.

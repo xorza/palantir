@@ -14,8 +14,7 @@
 //! Ratio of `cached / forced_miss` quantifies what MeasureCache buys
 //! on a comparable workload. See `src/layout/measure-cache.md`. The
 //! encode and compose caches were removed after their contributions
-//! turned out to be < 1% — see `docs/cache-history/encode.md` and
-//! `docs/cache-history/compose.md`.
+//! turned out to be < 1%.
 //!
 //! Requires the `internals` feature for reach-in helpers like
 //! `Ui::clear_measure_cache`. Run with

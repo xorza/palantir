@@ -307,8 +307,7 @@ impl RadialGradient {
 /// implement colour-wheel / hue-rotation visuals where straight
 /// linear-RGB interpolation gives the most predictable hue sweep;
 /// Oklab can shift the perceived hue at the midpoint. (A future
-/// `Oklch{hue}` interp would be the truly right default — see
-/// `docs/roadmap/brushes.md`.)
+/// `Oklch{hue}` interp would be the truly right default.)
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConicGradient {
     pub center: Vec2,
@@ -440,9 +439,8 @@ gradient_common!(LinearGradient, RadialGradient, ConicGradient);
 /// `Solid(Color)` is the hot 99% path — 16 B inline, animation-lerpable.
 /// `Linear`/`Radial`/`Conic` carry their geometry inline (~80 B);
 /// gradient morph animations snap across variants and across distinct
-/// gradients of the same variant (see `docs/roadmap/brushes.md` "Future
-/// work: gradient morph animation"). Stroke-with-gradient is still
-/// solid-only; lowering sites call `as_solid().expect(...)` for stroke.
+/// gradients of the same variant. Stroke-with-gradient is still solid-only;
+/// lowering sites call `as_solid().expect(...)` for stroke.
 // `Brush` is intentionally **not `Copy`** — the gradient variants
 // carry a 40 B `ArrayVec<[Stop; 8]>` and the whole enum is 60 B. The
 // recording chain used to thread `Brush` (often inside `Background`)
@@ -494,9 +492,8 @@ impl Brush {
     #[inline]
     #[track_caller]
     pub fn expect_solid(&self) -> Color {
-        self.as_solid().expect(
-            "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
-        )
+        self.as_solid()
+            .expect("gradient brush rendering is not implemented for strokes")
     }
 }
 
@@ -554,8 +551,7 @@ impl Animatable for Brush {
         // `Brush: Copy`, but the trait now requires only `Clone`.
         match (&a, &b) {
             (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(Color::lerp(*x, *y, t)),
-            // Gradient morphs snap; see docs/roadmap/brushes.md
-            // "Future work: gradient morph animation."
+            // Gradient morphs snap until interpolation between gradient payloads exists.
             _ => {
                 if t >= 1.0 {
                     b

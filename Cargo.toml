@@ -3,7 +3,7 @@ name = "aperture"
 version = "0.3.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
-exclude = ["AGENTS.md", "CLAUDE.md", "tmp/", "references/"]
+exclude = ["AGENTS.md", "CLAUDE.md", ".tmp/"]
 
 [lints.rust]
 missing_debug_implementations = "deny"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Clone reference UI frameworks into ./tmp for offline study.
+# Clone reference UI frameworks into ./.tmp for offline study.
 # Re-runnable: skips repos that are already cloned, fetches updates otherwise.
 # All clones are shallow (--depth 1) to save disk and bandwidth.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="$ROOT/tmp"
+DEST="$ROOT/.tmp"
 mkdir -p "$DEST"
 cd "$DEST"
 

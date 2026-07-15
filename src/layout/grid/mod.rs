@@ -394,8 +394,8 @@ impl GridHugStore {
 /// each `Σ spanned-track sizes` (or `∞` if any spanned track is unresolved —
 /// the WPF infinity trick → child reports intrinsic), then resolves Hug
 /// tracks from span-1 children's desired sizes. Star tracks contribute 0 to
-/// the grid's content size — final star sizes only resolve in arrange. See
-/// `docs/grid.md`.
+/// the grid's content size — final star sizes only resolve in arrange. The
+/// full constraint solver is documented on [`resolve_axis`].
 ///
 /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
 /// and gets clobbered by sibling grids between this measure and the

@@ -26,10 +26,8 @@
 //! per shape in the common (no-anim) frame.
 //!
 //! [`PaintAnim::BlinkOpacity`] (alpha) and [`PaintAnim::Spin`] (rotation)
-//! ship today; the pulse / marquee variants in `docs/roadmap/paint-tick.md`
-//! need further encoder transform-mod plumbing and land in a follow-up.
-//!
-//! See `docs/roadmap/paint-tick.md` for the full design.
+//! ship today; pulse or marquee variants would need further encoder
+//! transform-mod plumbing.
 
 use crate::primitives::approx::approx_zero;
 use std::f32::consts::TAU;
