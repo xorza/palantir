@@ -214,8 +214,8 @@ mod hot_struct_sizes {
     use crate::ui::cascade::CascadeInputHash;
     use crate::ui::cascade::EntryRow;
     use crate::ui::cascade::Paint;
-    use crate::ui::damage::NodeSnapshot;
     use crate::ui::damage::region::DamageRegion;
+    use crate::ui::damage::snapshot::NodeSnapshot;
 
     /// Single source of truth for the per-frame hot-struct inventory.
     /// Each entry is `Type => "name": expected_size / expected_align`.
@@ -296,7 +296,7 @@ mod hot_struct_sizes {
         Paint => "cascade::Paint": 24 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,
-        NodeSnapshot => "damage::NodeSnapshot": 40 / 8,
+        NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
         PushClipPayload => "cmd::PushClipPayload": 24 / 4,
         DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
