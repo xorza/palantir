@@ -193,7 +193,7 @@ fn clipboard_shortcuts_apply_keypresses() {
 /// the Cmd/Ctrl+V shortcut.
 #[test]
 fn paste_strips_newlines() {
-    use crate::widgets::text_edit::sanitize_single_line;
+    use crate::widgets::text_edit::model::sanitize_single_line;
     let cases: &[(&str, &str)] = &[
         ("ab\ncd", "ab cd"),
         ("ab\rcd", "ab cd"),
