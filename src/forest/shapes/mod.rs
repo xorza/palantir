@@ -9,6 +9,7 @@ use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::paint::ShapeStroke;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::frame_arena::FrameArena;
+use crate::primitives::interned_str::InternedStrRepr;
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
@@ -26,8 +27,8 @@ use crate::shape::Shape;
 /// ids. `ShapeRecord::Text.text` is the asymmetric case — it holds
 /// an [`InternedStr`](crate::InternedStr) inline: `Owned` carries
 /// its bytes on the record itself (`SmolStr`), while `Interned`
-/// references `FrameArena::fmt_scratch` via a `Span`. Cleared per
-/// frame, capacity retained.
+/// references `FrameArena::fmt_scratch` via a generation-stamped
+/// `Span`. Cleared per record pass, capacity retained.
 #[derive(Debug, Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
@@ -178,15 +179,21 @@ impl Shapes {
                 family,
                 weight,
             } => {
-                use crate::primitives::interned_str::InternedStr;
                 // Each carrier costs only its hash compute:
                 // - `Interned` reuses the hash captured at `Ui::fmt` time.
                 // - `Owned` hashes the bytes once at lowering; the bytes
                 //   stay where they are (no memcpy into the text arena,
                 //   no per-shape allocation).
-                let text_hash = match &text {
-                    InternedStr::Interned { hash, .. } => *hash,
-                    InternedStr::Owned(s) => hash_str(s),
+                let text_hash = match &text.0 {
+                    InternedStrRepr::Interned {
+                        hash,
+                        record_pass_generation,
+                        ..
+                    } => {
+                        arena.assert_text_generation(*record_pass_generation);
+                        *hash
+                    }
+                    InternedStrRepr::Owned(s) => hash_str(s),
                 };
                 ShapeRecord::Text {
                     local_origin,

@@ -87,8 +87,9 @@ pub(crate) enum ShapeRecord {
         /// User-facing [`InternedStr`](crate::InternedStr), moved
         /// in at lowering. No carrier is normalised away — `Owned`
         /// moves its `SmolStr` (inline up to 23 B, no realloc, dropped
-        /// at next frame's `Shapes::clear`), `Interned` carries the
-        /// span+hash from [`Ui::fmt`](crate::Ui::fmt) unchanged.
+        /// at the next record pass's `Shapes::clear`), `Interned`
+        /// carries the validated span+hash from
+        /// [`Ui::fmt`](crate::Ui::fmt) unchanged.
         /// `text_hash` is the pre-computed FxHash for context-free
         /// `Hash for ShapeRecord`.
         text: InternedStr,

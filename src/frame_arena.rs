@@ -1,6 +1,6 @@
 //! Per-frame bulk geometry arena. Owned by `WindowRenderer`, cloned (cheap, Rc)
 //! into every subsystem that touches per-frame mesh / polyline / fmt
-//! bytes (`Ui`, `Frontend`, `WgpuBackend`). Cleared at frame start.
+//! bytes (`Ui`, `Frontend`, `WgpuBackend`). Cleared at record-pass start.
 //!
 //! Replaces the previous three-step copy (user `Mesh` →
 //! `Tree.shapes.payloads` → `RenderCmdBuffer.shape_payloads` →
@@ -55,6 +55,10 @@ pub struct FrameArena(Rc<RefCell<FrameArenaInner>>);
 /// spans recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default, Debug)]
 pub(crate) struct FrameArenaInner {
+    /// Incremented by every [`FrameArena::clear`]. Frame-local text
+    /// handles capture this value so a later record pass cannot reuse
+    /// their span and cached hash against replacement bytes.
+    record_pass_generation: u64,
     /// User-supplied mesh geometry (`Shape::Mesh`), written at record
     /// time only — compose reads the arena, never appends.
     pub(crate) meshes: Mesh,
@@ -74,13 +78,12 @@ pub(crate) struct FrameArenaInner {
     /// needs the arena (not the originating tree) to resolve a
     /// gradient id.
     pub(crate) gradients: Vec<LoweredGradient>,
-    /// `Ui::fmt` formatter scratch. The `InternedStr::Interned { span }`
-    /// handle returned by [`FrameArena::intern_fmt`] points into this
-    /// buffer; the `Borrowed` / `Owned` carriers don't touch it (they
-    /// keep bytes inline on `ShapeRecord::Text`). Cross-tree on purpose
-    /// so `Interned` handles survive `Ui::layer(...)` scopes. Cleared
-    /// per frame, capacity retained — steady-state `ui.fmt(...)` flows
-    /// skip the `format!() → String` allocation entirely.
+    /// `Ui::fmt` formatter scratch. Frame-local handles returned by
+    /// [`FrameArena::intern_fmt`] point into this buffer; owned text
+    /// keeps its bytes inline on `ShapeRecord::Text`. Cross-tree on
+    /// purpose so handles survive `Ui::layer(...)` scopes. Cleared per
+    /// record pass, capacity retained — steady-state `ui.fmt(...)`
+    /// flows skip the `format!() → String` allocation entirely.
     pub(crate) fmt_scratch: String,
 }
 
@@ -100,9 +103,15 @@ impl FrameArena {
         self.0.borrow_mut()
     }
 
-    /// Drop all per-frame storage. Run once at frame start.
+    /// Drop all record-pass storage and invalidate its text handles.
+    /// PaintOnly skips this so the retained tree and arena generation
+    /// remain valid together.
     pub(crate) fn clear(&self) {
         let mut a = self.0.borrow_mut();
+        a.record_pass_generation = a
+            .record_pass_generation
+            .checked_add(1)
+            .expect("FrameArena record-pass generation overflowed");
         a.meshes.clear();
         a.polyline_points.clear();
         a.polyline_colors.clear();
@@ -110,24 +119,25 @@ impl FrameArena {
         a.fmt_scratch.clear();
     }
 
-    /// Copy `s` into the per-frame text arena and return an
-    /// `InternedStr::Interned` handle. Backs [`crate::Ui::intern`] for
-    /// the format-less case (plain `&str` borrow, no `format_args!`).
+    /// Copy `s` into the record-pass text arena and return a frame-local
+    /// [`InternedStr`]. Backs [`crate::Ui::intern`] for the format-less
+    /// case (plain `&str` borrow, no `format_args!`).
     #[must_use]
     pub(crate) fn intern_str(&self, s: &str) -> InternedStr {
         let mut a = self.0.borrow_mut();
         let start = a.fmt_scratch.len();
         a.fmt_scratch.push_str(s);
         let hash = hash_str(s);
-        InternedStr::Interned {
-            span: Span::new(start as u32, s.len() as u32),
+        InternedStr::frame_local(
+            Span::new(start as u32, s.len() as u32),
             hash,
-        }
+            a.record_pass_generation,
+        )
     }
 
-    /// Format `args` directly into the per-frame text arena and return
-    /// an `InternedStr::Interned` handle that spans the freshly-written
-    /// bytes. Backs [`crate::Ui::fmt`].
+    /// Format `args` directly into the record-pass text arena and return
+    /// a frame-local [`InternedStr`] spanning the freshly-written bytes.
+    /// Backs [`crate::Ui::fmt`].
     #[must_use]
     pub(crate) fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr {
         let mut a = self.0.borrow_mut();
@@ -136,9 +146,21 @@ impl FrameArena {
         let end = a.fmt_scratch.len();
         let bytes = &a.fmt_scratch.as_str()[start..end];
         let hash = hash_str(bytes);
-        InternedStr::Interned {
-            span: Span::new(start as u32, (end - start) as u32),
+        InternedStr::frame_local(
+            Span::new(start as u32, (end - start) as u32),
             hash,
-        }
+            a.record_pass_generation,
+        )
+    }
+
+    /// Enforce that a frame-local text handle belongs to the active
+    /// record pass before its cached hash enters the shape tree.
+    #[inline]
+    pub(crate) fn assert_text_generation(&self, generation: u64) {
+        assert_eq!(
+            generation,
+            self.0.borrow().record_pass_generation,
+            "frame-local text reused after arena reset",
+        );
     }
 }

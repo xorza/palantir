@@ -1039,29 +1039,26 @@ impl Ui {
         self.forest.add_gpu_view(entry.epoch);
     }
 
-    /// Format `args` directly into the per-frame text arena and return
-    /// an [`InternedStr::Interned`] handle. Pass the returned value to
+    /// Format `args` directly into the record-pass text arena and return
+    /// a frame-local [`InternedStr`]. Pass the returned value to
     /// any widget that takes `impl Into<InternedStr>`
     /// (Text/Button/MenuItem) — the bytes are already in the destination
     /// buffer, so lowering is zero-copy and steady-state authoring of
     /// dynamic labels skips per-call `String` allocations.
     ///
-    /// **Frame-scoped.** The handle is invalidated by the next
-    /// [`Self::frame`] call (the arena clears at frame start). Don't
-    /// store it in `state_mut::<T>(...)` or any cross-frame state — the
-    /// span will silently point at the wrong bytes next frame. For
+    /// **Record-pass-scoped.** The next record pass invalidates the
+    /// handle, including a settling pass inside the same [`Self::frame`]
+    /// call. Reuse then panics during text lowering. PaintOnly starts no
+    /// record pass, so its retained tree and handles remain valid. For
     /// persistent strings store the original `String` / `&'static str`
-    /// and `.into()` it back into `InternedStr` each frame. The type
-    /// signature can't express this constraint, so the borrow checker
-    /// won't catch a misuse — `#[must_use]` is a hint that the result
-    /// is meant to be consumed in the same frame.
+    /// and convert it into `InternedStr` on every pass.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
         self.ctx.frame_arena.intern_fmt(args)
     }
 
-    /// Copy `s` into the per-frame text arena and return an
-    /// [`InternedStr::Interned`] handle. Format-less twin of
+    /// Copy `s` into the record-pass text arena and return a frame-local
+    /// [`InternedStr`]. Format-less twin of
     /// [`Self::fmt`] for plain `&str` borrows whose lifetime doesn't
     /// reach `'static` — turns a per-frame `String` allocation into a
     /// memcpy into the retained `fmt_scratch` buffer. Same

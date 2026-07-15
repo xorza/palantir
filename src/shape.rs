@@ -155,7 +155,7 @@ pub enum Shape<'a> {
         /// can't compute.
         local_origin: Option<Vec2>,
         /// Moved into `ShapeRecord` at lowering and lives there until
-        /// the next frame's `Shapes::clear`. Static literals
+        /// the next record pass's `Shapes::clear`. Static literals
         /// (`Button::new().label("foo")`) wrap zero-cost via
         /// `SmolStr::new_static`; short owned strings inline on the
         /// stack; long ones sit behind `Arc<str>`. Transient `&str`
