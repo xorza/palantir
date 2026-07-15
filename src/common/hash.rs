@@ -22,7 +22,7 @@ use rustc_hash::FxHasher;
 use std::hash::Hasher as _;
 
 /// Canonical FxHash of a `str`'s bytes — the text-content hash behind
-/// `ShapeRecord::Text.text_hash` and `InternedStr::Interned.hash`.
+/// `ShapeRecord::Text.text_hash` and frame-local `InternedStr` hashes.
 /// Computed at intern time (`Ui::fmt` / `Ui::intern`) or at lowering
 /// time (`Shapes::add`'s `Owned` arm); both sites MUST route through
 /// this one function or the damage / text-cache keys drift apart.

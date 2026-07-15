@@ -14,7 +14,7 @@ use crate::ui::damage::Damage;
 use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -1161,6 +1161,58 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
 
+#[test]
+fn frame_local_text_lowers_in_its_record_pass() {
+    use crate::common::hash::hash_str;
+    use crate::forest::shapes::record::ShapeRecord;
+
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, |ui| {
+        let label = ui.fmt(format_args!("same-pass {}", 7));
+        Text::new(label)
+            .id(WidgetId::from_hash("same-pass"))
+            .show(ui);
+    });
+
+    let arena = ui.ctx.frame_arena.inner();
+    assert_eq!(arena.fmt_scratch, "same-pass 7");
+    assert_eq!(ui.forest.trees[Layer::Main].shapes.records.len(), 1);
+    match &ui.forest.trees[Layer::Main].shapes.records[0] {
+        ShapeRecord::Text {
+            text, text_hash, ..
+        } => {
+            assert_eq!(text.as_str(&arena.fmt_scratch), "same-pass 7");
+            assert_eq!(*text_hash, hash_str("same-pass 7"));
+        }
+        shape => panic!("expected text shape, got {shape:?}"),
+    }
+}
+
+#[test]
+#[should_panic(expected = "frame-local text reused after arena reset")]
+fn frame_local_text_rejects_reuse_between_record_passes_in_one_frame() {
+    let mut ui = Ui::default();
+    let mut retained = None;
+    let mut pass = 0;
+
+    ui.run_at(SURFACE, |ui| {
+        pass += 1;
+        if pass == 1 {
+            let label = ui.intern("first");
+            retained = Some(label.clone());
+            Text::new(label)
+                .id(WidgetId::from_hash("frame-local"))
+                .show(ui);
+        } else {
+            assert_eq!(pass, 2, "cold first frame must record exactly twice");
+            let _replacement = ui.intern("other");
+            Text::new(retained.as_ref().unwrap().clone())
+                .id(WidgetId::from_hash("frame-local"))
+                .show(ui);
+        }
+    });
+}
+
 /// Regression: `Ui::frame` used to clear `frame_arena` unconditionally
 /// at entry, including on `PaintOnly` frames. But on PaintOnly the
 /// record pass is skipped, so `tree.shapes` retains last frame's
@@ -1170,11 +1222,11 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 /// panicked on the first gradient lookup with
 /// `index out of bounds: the len is 0 but the index is N`.
 /// Fix: clear inside `record_pass` instead (only fires when we're
-/// rebuilding shapes). This test pins it by recording a gradient
-/// background + an animated shape (to force PaintOnly on frame 1)
-/// and then re-running the encoder against the retained shapes.
+/// rebuilding shapes). This test pins it with retained gradient and
+/// frame-local text arena entries plus an animated shape that forces
+/// PaintOnly on frame 1, then re-runs the encoder.
 #[test]
-fn paint_only_preserves_gradient_arena_for_retained_shapes() {
+fn paint_only_preserves_frame_arena_for_retained_shapes() {
     use crate::primitives::brush::{Brush, LinearGradient};
     use crate::ui::frame_report::FrameProcessing;
 
@@ -1197,6 +1249,10 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
                     ..Default::default()
                 })
                 .show(ui);
+            let label = ui.fmt(format_args!("retained {}", 7));
+            Text::new(label)
+                .id(WidgetId::from_hash("retained-text"))
+                .show(ui);
             // Animated shape, drives the PaintOnly wake on frame 1.
             add_blink_shape(ui, half);
         });
@@ -1212,6 +1268,7 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
     });
     ui.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
+    assert_eq!(ui.ctx.frame_arena.inner().fmt_scratch, "retained 7");
 
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, `arena.gradients`
@@ -1226,6 +1283,11 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
         1,
         "PaintOnly must preserve arena.gradients so retained \
          ShapeBrush::Gradient indices remain valid",
+    );
+    assert_eq!(
+        ui.ctx.frame_arena.inner().fmt_scratch,
+        "retained 7",
+        "PaintOnly must preserve bytes referenced by retained frame-local text",
     );
 
     // Indirect pin: re-run the encoder against the retained tree

@@ -20,9 +20,9 @@ use glam::Vec2;
 
 /// Read-only context every layout method threads through the
 /// measure / arrange / intrinsic recursion. Bundles the text shaper
-/// with the per-frame text-byte arena (the byte slice that
-/// `ShapeRecord::Text::text`'s `InternedStr::Interned` span resolves
-/// against — see [`InternedStr::as_str`](crate::InternedStr::as_str)).
+/// with the record-pass text-byte arena (the byte slice that a
+/// frame-local `ShapeRecord::Text::text` span resolves against — see
+/// [`InternedStr::as_str`](crate::InternedStr::as_str)).
 /// Single parameter slot instead of `(text_bytes: &str, text:
 /// &TextShaper)` everywhere keeps driver signatures readable.
 #[derive(Copy, Clone)]

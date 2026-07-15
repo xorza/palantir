@@ -125,7 +125,7 @@ pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::ImageHandle;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
-// The owned string type behind `InternedStr::Owned`. Re-exported as the
+// The owned string type behind `InternedStr`. Re-exported as the
 // canonical owned-text carrier for consumers that keep their own strings and
 // hand them to widgets via `Into<InternedStr>` (alloc-free clone), rather than
 // storing the frame-local `InternedStr` themselves.
