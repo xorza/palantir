@@ -25,6 +25,7 @@ use aperture::{Display, FrameStamp, Ui};
 use fixture::{FormState, build_ui};
 use glam::UVec2;
 use std::hint::black_box;
+use std::time::Duration;
 
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -56,19 +57,15 @@ fn main() {
     let mut state = FormState::default();
 
     for _ in 0..WARMUP_FRAMES {
-        black_box(
-            ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), |ui| {
-                build_ui(&mut state, NODE_SCALE, ui)
-            }),
-        );
+        black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+            build_ui(&mut state, NODE_SCALE, ui)
+        }));
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        black_box(
-            ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), |ui| {
-                build_ui(&mut state, NODE_SCALE, ui)
-            }),
-        );
+        black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+            build_ui(&mut state, NODE_SCALE, ui)
+        }));
     }
     let after = dhat::HeapStats::get();
 

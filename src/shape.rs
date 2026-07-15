@@ -14,6 +14,7 @@ use crate::primitives::{
 use crate::renderer::image_registry::ImageHandle;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
+use std::f32::consts::TAU;
 
 /// User-facing paint primitive. Pushed into the active tree via
 /// [`crate::Ui::add_shape`], which copies the data into the per-frame
@@ -335,7 +336,7 @@ impl<'a> Shape<'a> {
     /// A stroked full circle — [`Self::arc`] with a `2π` sweep, which
     /// closes seamlessly under the default `Butt` cap.
     pub fn circle(center: Vec2, radius: f32, width: f32) -> Self {
-        Shape::arc(center, radius, 0.0, std::f32::consts::TAU, width)
+        Shape::arc(center, radius, 0.0, TAU, width)
     }
 
     /// A `shadow` of the owner's full rect. Chain [`Self::at`] to shadow a

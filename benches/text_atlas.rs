@@ -45,6 +45,7 @@ use aperture::text_backend_internals::{BenchText, GpuCtx, Queue, TextRun, make_r
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use pollster::FutureExt;
+use wgpu::util::StagingBelt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -248,7 +249,7 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
-        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         // Two priming frames so every glyph is in the atlas.
         for _ in 0..2 {
             run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
@@ -284,7 +285,7 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
-        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         // Prime the cycle so the LRU has all rungs resident before the
         // measured loop starts evicting + re-inserting.
         for step in 0..WARM_SCALE_CYCLE {
@@ -304,7 +305,7 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
-        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         let stride = 5.0 * TEXT_SCALE_STEP;
         for step in 0..WARM_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * stride;
@@ -323,7 +324,7 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
-        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         for step in 0..CHURN_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
             run_frame(g, &mut backend, &mut belt, &view, &runs, scale);

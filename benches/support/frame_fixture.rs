@@ -12,6 +12,7 @@
 //! same workload a human can eyeball through the visual example.
 
 use std::cell::OnceCell;
+use std::f32::consts::FRAC_PI_2;
 use std::rc::Rc;
 
 use aperture::{
@@ -505,7 +506,7 @@ fn add_shape_gallery(ui: &mut Ui) {
         local_rect: Some(Rect::new(4.0, 42.0, 60.0, 30.0)),
         corners: Corners::all(6.0),
         fill: Brush::Linear(LinearGradient::two_stop(
-            std::f32::consts::FRAC_PI_2,
+            FRAC_PI_2,
             ColorU8::hex(0x1a1a2e),
             ColorU8::hex(0x4c5cdb),
         )),

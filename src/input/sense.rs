@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use std::time::Duration;
 
 bitflags! {
     /// Which pointer interactions a widget participates in. Widgets
@@ -83,7 +84,7 @@ pub const DRAG_THRESHOLD: f32 = 4.0;
 /// is user-configurable but defaults to the same neighborhood, and
 /// Linux has no system-wide value to read. Tracked per-button on
 /// [`crate::input::Capture`].
-pub const DOUBLE_CLICK_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
+pub const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for the second
 /// to still count as a double-click. A slow drift past this reads as two

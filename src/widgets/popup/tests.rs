@@ -10,6 +10,7 @@
 //!   while `Block` swallows it silently.
 
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
@@ -169,9 +170,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     ui.run_at(SURFACE, |ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        ui.forest.trees[crate::forest::layer::Layer::Popup]
-            .records
-            .len(),
+        ui.forest.trees[Layer::Popup].records.len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );

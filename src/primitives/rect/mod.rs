@@ -1,4 +1,5 @@
 use crate::primitives::{corners::Corners, size::Size, spacing::Spacing};
+use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;
 
 #[repr(C)]
@@ -115,7 +116,7 @@ impl Rect {
         // radius for a quarter-circle arc. Multiplying a corner
         // radius by this gives the distance from the bounding-box
         // corner inward to the arc's 45° point.
-        const KAPPA: f32 = 1.0 - core::f32::consts::FRAC_1_SQRT_2;
+        const KAPPA: f32 = 1.0 - FRAC_1_SQRT_2;
         // Single SIMD f16x4→f32x4 unpack — `tl()`/`tr()`/`br()`/`bl()`
         // would each issue an independent f16→f32 conversion.
         let [tl, tr, br, bl] = corners.as_array();

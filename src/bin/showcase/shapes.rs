@@ -9,6 +9,7 @@ use crate::support;
 use crate::support::{cell_row, demo_cell};
 use aperture::{Brush, Color, ColorU8, Corners, LinearGradient, Mesh, Shape, Stroke, Ui};
 use glam::Vec2;
+use std::f32::consts::{FRAC_PI_2, PI};
 
 pub fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
@@ -96,7 +97,7 @@ fn window_mask(ui: &mut Ui) {
         local_rect: None,
         corners: Corners::ZERO,
         fill: Brush::Linear(LinearGradient::two_stop(
-            std::f32::consts::FRAC_PI_2,
+            FRAC_PI_2,
             ColorU8::hex(0x1a1a2e),
             ColorU8::hex(0x4c5cdb),
         )),
@@ -141,7 +142,7 @@ fn polygon_star(ui: &mut Ui) {
     let r_inner = 22.0_f32;
     let mut pts = Vec::with_capacity(10);
     for i in 0..10 {
-        let theta = -std::f32::consts::FRAC_PI_2 + i as f32 * std::f32::consts::PI / 5.0;
+        let theta = -FRAC_PI_2 + i as f32 * PI / 5.0;
         let r = if i % 2 == 0 { r_outer } else { r_inner };
         pts.push(Vec2::new(cx + r * theta.cos(), cy + r * theta.sin()));
     }

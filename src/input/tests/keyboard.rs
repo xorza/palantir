@@ -3,7 +3,7 @@ use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use crate::{FocusPolicy, Ui};
-use winit::event::WindowEvent;
+use winit::event::{Ime, WindowEvent};
 use winit::keyboard::{Key as WK, NamedKey};
 
 #[test]
@@ -101,7 +101,7 @@ fn from_winit_ime_commit_routing() {
     for (label, s) in cases {
         let mut got = String::new();
         InputEvent::from_winit(
-            &WindowEvent::Ime(winit::event::Ime::Commit((*s).into())),
+            &WindowEvent::Ime(Ime::Commit((*s).into())),
             1.0,
             |ev| match ev {
                 InputEvent::Text(chunk) => got.push_str(chunk.as_str()),

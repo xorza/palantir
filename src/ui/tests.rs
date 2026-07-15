@@ -16,6 +16,8 @@ use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
@@ -66,7 +68,7 @@ fn add_blink_shape(ui: &mut Ui, half: Duration) {
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut ui = Ui::for_test();
-    let button_node = std::cell::Cell::new(NodeId(0));
+    let button_node = Cell::new(NodeId(0));
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let a_node = Button::new().id(WidgetId::from_hash("dup")).show(ui).node();
@@ -248,8 +250,7 @@ fn cascade_visible_to_relayout_pass() {
 
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
-        let probe_resp: std::cell::RefCell<Option<ResponseSnapshot>> =
-            std::cell::RefCell::new(None);
+        let probe_resp: std::cell::RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
                 Frame::new()
@@ -491,7 +492,7 @@ fn text_reshape_skipped_when_unchanged() {
         Grid::new()
             .id(WidgetId::from_hash("g"))
             .size((Sizing::Fixed(200.0), Sizing::Hug))
-            .cols(std::rc::Rc::from([Track::hug(), Track::fill()]))
+            .cols(Rc::from([Track::hug(), Track::fill()]))
             .show(ui, |ui| {
                 Text::new("label")
                     .id(WidgetId::from_hash("hug-col-text"))
@@ -1301,7 +1302,6 @@ fn input_policy_routes_paint_only_gate() {
             });
     }
 
-    // --- OnDelta: inert pointer move keeps the PaintOnly fast path.
     {
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::OnDelta;
@@ -1333,7 +1333,6 @@ fn input_policy_routes_paint_only_gate() {
         assert!(!ui.input.repaint_requested_since_last_frame);
     }
 
-    // --- Always: same inert move upgrades the frame to SingleLayout.
     {
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::Always;
@@ -1351,7 +1350,6 @@ fn input_policy_routes_paint_only_gate() {
         );
     }
 
-    // --- OnDelta: action input still records. KeyDown now wakes
     // only with focus or a chord subscriber, so prime focus first.
     {
         use crate::primitives::widget_id::WidgetId;
@@ -1381,7 +1379,6 @@ fn input_policy_routes_paint_only_gate() {
     }
 }
 
-// --- Cold-start warmup record -----------------------------------------
 //
 // Pin the first-frame behavior added to `Ui::frame`: when the
 // recorder has never run before, do a blackout record pass (input

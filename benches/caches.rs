@@ -31,6 +31,7 @@ use aperture::{
 };
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
+use std::time::Duration;
 
 const GROUPS: usize = 100;
 const ROWS_PER_GROUP: usize = 10;
@@ -171,18 +172,18 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function("measure/cached", |b| {
         let mut ui = Ui::for_test();
-        let _ = ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build);
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build);
         b.iter(|| {
-            black_box(ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build));
+            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), build));
         });
     });
 
     group.bench_function("measure/forced_miss", |b| {
         let mut ui = Ui::for_test();
-        let _ = ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build);
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build);
         b.iter(|| {
             ui.clear_measure_cache();
-            black_box(ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build));
+            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), build));
         });
     });
 
@@ -191,30 +192,18 @@ fn bench(c: &mut Criterion) {
     // baseline for the measure cache.
     group.bench_function("heavy/measure/cached", |b| {
         let mut ui = Ui::for_test_text();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_heavy,
-        );
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build_heavy);
         b.iter(|| {
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                build_heavy,
-            ));
+            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), build_heavy));
         });
     });
 
     group.bench_function("heavy/measure/forced_miss", |b| {
         let mut ui = Ui::for_test_text();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_heavy,
-        );
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build_heavy);
         b.iter(|| {
             ui.clear_measure_cache();
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                build_heavy,
-            ));
+            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), build_heavy));
         });
     });
 

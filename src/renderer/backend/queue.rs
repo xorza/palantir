@@ -6,6 +6,8 @@
 //! shadowed method inlines straight into `wgpu::Queue::write_texture` and
 //! `Deref<Target = wgpu::Queue>` covers everything else.
 
+#[cfg(feature = "internals")]
+use crate::renderer::backend::write_stats;
 use std::ops::Deref;
 
 /// Newtype owning a `wgpu::Queue`. Construct via `Queue::new` from a
@@ -30,7 +32,7 @@ impl Queue {
         size: wgpu::Extent3d,
     ) {
         #[cfg(feature = "internals")]
-        crate::renderer::backend::write_stats::record_texture(data.len() as u64);
+        write_stats::record_texture(data.len() as u64);
         self.0.write_texture(texture, data, data_layout, size);
     }
 }

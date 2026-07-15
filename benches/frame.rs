@@ -62,7 +62,9 @@ use std::fs::OpenOptions;
 use std::hint::black_box;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const SCALE: f32 = 2.0;
@@ -181,8 +183,6 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
     })
 }
 
-// ── CPU bench (deviceless) ────────────────────────────────────────────
-
 /// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
 /// plus a standalone `Frontend` sharing the `Ui`'s frame arena. One
 /// `frame` runs record → measure → arrange → cascade → damage and then,
@@ -207,7 +207,7 @@ impl CpuHarness {
         let mut h = Self {
             ui,
             frontend,
-            start: std::time::Instant::now(),
+            start: Instant::now(),
         };
         h.ui.theme.window_clear = WINDOW_CLEAR;
         h
@@ -330,8 +330,6 @@ fn assert_partial_invariant() {
         report.plan,
     );
 }
-
-// ── GPU bench (full pipeline) ─────────────────────────────────────────
 
 /// Shared GPU-arm scaffolding: build a fresh `OffscreenHost`, run 4
 /// warmup frames with `PollType::Wait`, then hand criterion the same
@@ -810,7 +808,7 @@ fn bench_annotation() -> String {
 }
 
 fn now_label() -> String {
-    std::process::Command::new("date")
+    Command::new("date")
         .args(["-u", "+%Y-%m-%d %H:%M:%SZ"])
         .output()
         .ok()
@@ -829,8 +827,8 @@ fn now_label() -> String {
 // `results` runs last to prepend the per-machine row.
 fn config() -> Criterion {
     Criterion::default()
-        .measurement_time(std::time::Duration::from_secs(12))
-        .warm_up_time(std::time::Duration::from_secs(3))
+        .measurement_time(Duration::from_secs(12))
+        .warm_up_time(Duration::from_secs(3))
 }
 
 criterion_group! {

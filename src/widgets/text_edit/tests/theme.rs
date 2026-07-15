@@ -261,8 +261,6 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     );
 }
 
-// -- Selection: painted highlight + drag-select ---------------------
-
 #[test]
 fn no_selection_paints_no_highlight_rect() {
     // Focused TextEdit with no selection paints exactly one

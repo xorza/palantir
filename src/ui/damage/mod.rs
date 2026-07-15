@@ -64,6 +64,7 @@ use crate::ui::cascade::CascadeInputHash;
 use crate::ui::cascade::{Cascades, Paint, PaintArena};
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::FxHashSet;
+use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
@@ -520,9 +521,9 @@ impl PaintSnapArena {
             let (pk, prow) = prev_keyed[pi];
             let (ck, crow) = curr_keyed[ci];
             match pk.cmp(&ck) {
-                std::cmp::Ordering::Less => pi += 1,
-                std::cmp::Ordering::Greater => ci += 1,
-                std::cmp::Ordering::Equal => {
+                Ordering::Less => pi += 1,
+                Ordering::Greater => ci += 1,
+                Ordering::Equal => {
                     // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
                     // screens are never `==` — confirm before pairing.
                     if prev_slice[prow as usize] == curr_paints[crow as usize] {

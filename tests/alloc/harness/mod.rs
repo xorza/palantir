@@ -21,6 +21,7 @@ pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
 use aperture::{Display, FrameStamp, Ui};
+use std::time::Duration;
 
 /// Mono-fallback `Ui` for the alloc audits — `Ui::default` is the
 /// self-contained constructor (mono shaper + private arena + fresh
@@ -107,7 +108,7 @@ where
 
 #[inline]
 fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, scene: &mut S) {
-    let _ = ui.frame(FrameStamp::new(DISPLAY, std::time::Duration::ZERO), scene);
+    let _ = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), scene);
 }
 
 fn fail_audit(

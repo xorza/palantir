@@ -1,5 +1,5 @@
 use crate::primitives::half_simd::F16x4;
-use crate::primitives::lane_serde::LaneCodec;
+use crate::primitives::lane_serde::{self, LaneCodec};
 use crate::primitives::num::Num;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -61,13 +61,13 @@ impl LaneCodec for Corners {
 
 impl serde::Serialize for Corners {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        crate::primitives::lane_serde::serialize(self, s)
+        lane_serde::serialize(self, s)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Corners {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        crate::primitives::lane_serde::deserialize(d)
+        lane_serde::deserialize(d)
     }
 }
 
@@ -180,6 +180,7 @@ impl From<Size> for Corners {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::approx::EPS;
     use crate::primitives::corners::*;
 
     /// Wrap in a tiny struct so we can use TOML — top-level must be a table.
@@ -253,12 +254,9 @@ mod tests {
             Corners::all(-0.0).approx_zero(),
             "-0.0 lanes (sign bit set)"
         );
+        assert!(Corners::all(EPS * 0.5).approx_zero(), "sub-EPS positive",);
         assert!(
-            Corners::all(crate::primitives::approx::EPS * 0.5).approx_zero(),
-            "sub-EPS positive",
-        );
-        assert!(
-            !Corners::all(crate::primitives::approx::EPS * 10.0).approx_zero(),
+            !Corners::all(EPS * 10.0).approx_zero(),
             "10×EPS must NOT register as zero",
         );
         // One asymmetric lane above EPS — short-circuit must not

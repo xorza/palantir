@@ -40,6 +40,7 @@ use crate::forest::tree::rollups::SubtreeRollups;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::track::GridDef;
 use crate::primitives::approx::noop_f32;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -66,10 +67,8 @@ use std::hash::{Hash, Hasher as _};
 ///   sub-ranges holds the parent's direct shapes in record order.
 #[derive(Debug, Default)]
 pub(crate) struct Tree {
-    // -- Per-NodeId mandatory columns ------------------------------------
     pub(crate) records: Soa<NodeRecord>,
 
-    // -- Per-NodeId packed extras idx + dense tables ---------------------
     /// One row per node; each `u16` field indexes the matching dense
     /// `*_table` `Vec` (or holds `Slot::ABSENT`). See
     /// [`ExtrasIdx`] for the packing rationale.
@@ -84,7 +83,6 @@ pub(crate) struct Tree {
     /// drop the visual no-op slices; the radius survives.
     pub(crate) chrome_table: Vec<ChromeRow>,
 
-    // -- Shapes ----------------------------------------------------------
     /// Flat per-frame shape buffer. Records are indexed via
     /// `NodeRecord.shape_span`; variable-length payloads (mesh
     /// verts/indices, polyline points/colors, gradients) live on the
@@ -93,14 +91,12 @@ pub(crate) struct Tree {
 
     pub(crate) grid_defs: Vec<GridDef>,
 
-    // -- Roots -----------------------------------------------------------
     /// Top-level root slots in this tree, in record order. Each slot's
     /// `first_node` indexes `records`; pipeline passes iterate the
     /// slice. Empty when no nodes were recorded into this tree this
     /// frame.
     pub(crate) roots: Vec<RootSlot>,
 
-    // -- Paint-anim registry ----------------------------------------------
     /// Shape-keyed paint animation registrations. Pushed in lockstep
     /// with `shapes.records` via `Forest::add_shape{,_animated}`,
     /// cleared in `pre_record`. Stateless: sampling is a pure function
@@ -108,7 +104,6 @@ pub(crate) struct Tree {
     /// stored. See [`PaintAnims`] and `docs/roadmap/paint-tick.md`.
     pub(crate) paint_anims: PaintAnims,
 
-    // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 }
 
@@ -362,8 +357,7 @@ impl Tree {
             if !noop_f32(bg.stroke.width) {
                 let s = bg.stroke.width;
                 let [l, t, r, b] = cols.layout.padding.as_array();
-                cols.layout.padding =
-                    crate::primitives::spacing::Spacing::new(l + s, t + s, r + s, b + s);
+                cols.layout.padding = Spacing::new(l + s, t + s, r + s, b + s);
             }
             // Tree-storage noop gate for chrome — mirrors `Shapes::add`
             // for the shape buffer and `cmd_buffer::draw_*` for emits.

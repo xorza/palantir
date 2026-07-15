@@ -153,8 +153,6 @@ fn paint_bar(ui: &mut Ui, points: &[Vec2]) {
     );
 }
 
-// ── demo app ──────────────────────────────────────────────────────────
-
 struct Demo {
     volume: i32,
     count: i32,

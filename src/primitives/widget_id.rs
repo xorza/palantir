@@ -2,6 +2,7 @@ use rustc_hash::FxHasher;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::hash::{Hash, Hasher};
+use std::panic::Location;
 
 #[derive(Debug, Default)]
 pub(crate) struct IdHasher(u64);
@@ -79,7 +80,7 @@ impl WidgetId {
     /// stable across frames.
     #[track_caller]
     pub const fn auto_stable() -> Self {
-        let l = std::panic::Location::caller();
+        let l = Location::caller();
         let mut h: u64 = FNV_OFFSET;
         h = fnv1a_extend_str(h, l.file());
         h = fnv1a_extend_u32(h, l.line());

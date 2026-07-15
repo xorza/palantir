@@ -218,7 +218,7 @@ impl InputEvent {
         scale_factor: f32,
         mut emit: impl FnMut(InputEvent),
     ) {
-        use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+        use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
         let s = scale_factor.max(f32::EPSILON);
         match event {
             WindowEvent::CursorMoved { position, .. } => {
@@ -268,7 +268,7 @@ impl InputEvent {
             // chunk fits without losing the typed text. Char (not grapheme)
             // boundaries are sufficient for byte safety; consumers
             // re-assemble at append time.
-            WindowEvent::Ime(winit::event::Ime::Commit(s)) => {
+            WindowEvent::Ime(Ime::Commit(s)) => {
                 emit_text_chunks(s, &mut emit);
             }
             WindowEvent::ModifiersChanged(m) => emit(InputEvent::ModifiersChanged(

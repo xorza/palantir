@@ -247,7 +247,7 @@ impl Default for Theme {
 
 #[cfg(test)]
 mod tests {
-    use crate::input::response::ResponseState;
+    use crate::input::response::{ButtonPhase, ButtonState, ResponseState};
     use crate::primitives::corners::Corners;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
@@ -385,11 +385,11 @@ mod tests {
         // case sets the left capture + hover.
         let s = |hovered, pressed: bool, disabled| ResponseState {
             hovered,
-            left: crate::input::response::ButtonState {
+            left: ButtonState {
                 phase: if pressed {
-                    crate::input::response::ButtonPhase::Held
+                    ButtonPhase::Held
                 } else {
-                    crate::input::response::ButtonPhase::Idle
+                    ButtonPhase::Idle
                 },
                 ..Default::default()
             },

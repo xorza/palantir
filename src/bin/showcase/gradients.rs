@@ -11,6 +11,7 @@ use aperture::{
     Panel, RadialGradient, Sizing, Spread, Stop, Ui,
 };
 use glam::Vec2;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
 const NAVY: ColorU8 = ColorU8::hex(0x1a1a2e);
 const BLUE: ColorU8 = ColorU8::hex(0x4c5cdb);
@@ -74,22 +75,14 @@ fn horizontal(ui: &mut Ui) {
 fn vertical(ui: &mut Ui) {
     gradient_frame(
         ui,
-        linear_filled(LinearGradient::two_stop(
-            std::f32::consts::FRAC_PI_2,
-            NAVY,
-            BLUE,
-        )),
+        linear_filled(LinearGradient::two_stop(FRAC_PI_2, NAVY, BLUE)),
     );
 }
 
 fn diagonal(ui: &mut Ui) {
     gradient_frame(
         ui,
-        linear_filled(LinearGradient::two_stop(
-            std::f32::consts::FRAC_PI_4,
-            ORANGE,
-            YELLOW,
-        )),
+        linear_filled(LinearGradient::two_stop(FRAC_PI_4, ORANGE, YELLOW)),
     );
 }
 
@@ -153,7 +146,7 @@ fn conic_wheel(ui: &mut Ui) {
 fn conic_rotated(ui: &mut Ui) {
     let g = ConicGradient::new(
         Vec2::splat(0.5),
-        std::f32::consts::FRAC_PI_2,
+        FRAC_PI_2,
         [
             Stop::new(0.0, NAVY),
             Stop::new(0.5, YELLOW),

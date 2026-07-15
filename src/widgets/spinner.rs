@@ -131,6 +131,8 @@ fn comet_brush(base: Color) -> LinearGradient {
 
 #[cfg(test)]
 mod tests {
+    use std::f32::consts::TAU;
+
     use crate::primitives::color::{Color, ColorU8};
     use crate::widgets::spinner::{ArcGeometry, SWEEP, arc_geometry, comet_brush};
     use glam::Vec2;
@@ -150,7 +152,7 @@ mod tests {
         // width ≥ size: radius clamps to 0 instead of going negative.
         assert_eq!(arc_geometry(4.0, 8.0).radius, 0.0);
         // The recorded sweep leaves a visible gap (not a full circle).
-        const { assert!(SWEEP < std::f32::consts::TAU) };
+        const { assert!(SWEEP < TAU) };
     }
 
     /// Comet trail: tail transparent, head the full color, rgb equal on
