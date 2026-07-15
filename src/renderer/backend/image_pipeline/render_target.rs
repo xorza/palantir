@@ -17,6 +17,7 @@ pub(crate) const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8
 #[derive(Debug, Default)]
 pub(crate) struct GpuViewTargets {
     entries: FxHashMap<TextureId, RenderTarget>,
+    submit_epoch: u64,
 }
 
 impl GpuViewTargets {
@@ -33,9 +34,21 @@ impl GpuViewTargets {
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
     ) {
+        self.submit_epoch = self
+            .submit_epoch
+            .checked_add(1)
+            .expect("GpuView target submit epoch overflowed");
+        let submit_epoch = self.submit_epoch;
         for draw in frame_targets {
             let target = self.ensure(
-                ctx.device, draw.id, draw.used, owner, textures, layout, sampler,
+                ctx.device,
+                draw.id,
+                draw.used,
+                owner,
+                submit_epoch,
+                textures,
+                layout,
+                sampler,
             );
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
@@ -66,7 +79,7 @@ impl GpuViewTargets {
             target.last_paint = Some(now);
         }
         self.entries.retain(|id, target| {
-            let keep = keep_target(target.owner, *id, owner, frame_targets);
+            let keep = keep_target(target.owner, target.submit_epoch, owner, submit_epoch);
             if !keep {
                 textures.bindings.remove(id);
             }
@@ -81,6 +94,7 @@ impl GpuViewTargets {
         id: TextureId,
         size: UVec2,
         owner: RenderOwnerId,
+        submit_epoch: u64,
         textures: &mut ImageTextures,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
@@ -89,6 +103,7 @@ impl GpuViewTargets {
             Entry::Occupied(entry) => {
                 let target = entry.into_mut();
                 target.owner = owner;
+                target.submit_epoch = submit_epoch;
                 if target.size != size {
                     let allocated = allocate(device, layout, sampler, size);
                     target.view = allocated.view;
@@ -104,6 +119,7 @@ impl GpuViewTargets {
                     view: allocated.view,
                     size,
                     owner,
+                    submit_epoch,
                     initialized: false,
                     last_paint: None,
                 })
@@ -117,6 +133,7 @@ struct RenderTarget {
     view: wgpu::TextureView,
     size: UVec2,
     owner: RenderOwnerId,
+    submit_epoch: u64,
     initialized: bool,
     last_paint: Option<Duration>,
 }
@@ -154,67 +171,45 @@ fn allocate(
 
 fn keep_target(
     entry_owner: RenderOwnerId,
-    id: TextureId,
+    entry_submit_epoch: u64,
     owner: RenderOwnerId,
-    frame_targets: &[RenderTargetDraw],
+    submit_epoch: u64,
 ) -> bool {
-    entry_owner != owner || frame_targets.iter().any(|draw| draw.id == id)
+    entry_owner != owner || entry_submit_epoch == submit_epoch
 }
 
 #[cfg(test)]
 mod tests {
     use super::keep_target;
-    use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
-    use crate::renderer::render_buffer::image::RenderTargetDraw;
     use crate::renderer::render_buffer::owner::RenderOwnerId;
-    use crate::renderer::texture_id::TextureId;
-    use glam::UVec2;
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    #[derive(Debug)]
-    struct NoopPaint;
-
-    impl GpuPaint for NoopPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-    }
-
-    fn draw(id: u64) -> RenderTargetDraw {
-        RenderTargetDraw {
-            id: TextureId(id),
-            used: UVec2::ONE,
-            paint: GpuPaintRef(Rc::new(RefCell::new(NoopPaint))),
-        }
-    }
 
     fn evicted(
-        entries: &[(u64, RenderOwnerId)],
+        entries: &[(u64, RenderOwnerId, u64)],
         owner: RenderOwnerId,
-        frame_targets: &[RenderTargetDraw],
+        submit_epoch: u64,
     ) -> Vec<u64> {
         entries
             .iter()
-            .filter(|(id, entry_owner)| {
-                !keep_target(*entry_owner, TextureId(*id), owner, frame_targets)
+            .filter(|(_, entry_owner, entry_submit_epoch)| {
+                !keep_target(*entry_owner, *entry_submit_epoch, owner, submit_epoch)
             })
-            .map(|(id, _)| *id)
+            .map(|(id, _, _)| *id)
             .collect()
     }
 
     #[test]
-    fn eviction_is_owner_scoped() {
+    fn eviction_uses_current_submit_epoch_and_is_owner_scoped() {
         let a = RenderOwnerId::reserve();
         let b = RenderOwnerId::reserve();
-        let entries = [(1, a), (3, a), (2, b)];
+        let entries = [(1, a, 7), (3, a, 6), (2, b, 4)];
         let cases = [
-            (a, vec![draw(1), draw(3)], vec![]),
-            (a, vec![draw(1)], vec![3]),
-            (b, vec![draw(2)], vec![]),
-            (b, vec![], vec![2]),
-            (a, vec![], vec![1, 3]),
+            (a, 7, vec![3]),
+            (a, 8, vec![1, 3]),
+            (b, 4, vec![]),
+            (b, 5, vec![2]),
         ];
-        for (owner, frame, expected) in cases {
-            assert_eq!(evicted(&entries, owner, &frame), expected);
+        for (owner, submit_epoch, expected) in cases {
+            assert_eq!(evicted(&entries, owner, submit_epoch), expected);
         }
     }
 }

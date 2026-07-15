@@ -25,6 +25,8 @@ use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 mod occlusion;
 mod text_grid;
 
@@ -330,13 +332,16 @@ impl Composer {
         b
     }
 
-    /// `true` when `bounds` doesn't intersect the active scissor — the
-    /// caller should skip emission. Identical reject shape at every
-    /// shape-draw site; centralising it keeps each handler from
-    /// growing its own variant.
-    fn cull_against_active_clip(&self, bounds: URect) -> bool {
-        self.current_scissor
-            .is_some_and(|s| bounds.intersect(s).is_none())
+    /// `true` when `bounds` has no viewport area or doesn't intersect
+    /// the active scissor — the caller should skip emission. Identical
+    /// reject shape at every shape-draw site; centralising it keeps each
+    /// handler from growing its own variant.
+    fn cull_bounds(&self, bounds: URect) -> bool {
+        bounds.w == 0
+            || bounds.h == 0
+            || self
+                .current_scissor
+                .is_some_and(|s| bounds.intersect(s).is_none())
     }
 
     /// Cull a higher-kind (mesh / image / curve) draw against the active
@@ -353,15 +358,14 @@ impl Composer {
     ///
     /// Polyline calls this only after its kept-point walk proves the
     /// stroke emits geometry (an all-coincident polyline must not split
-    /// the batch), gated behind an early
-    /// [`Self::cull_against_active_clip`].
+    /// the batch), gated behind an early [`Self::cull_bounds`].
     fn enter_higher_kind(
         &mut self,
         tier: PaintTier,
         scissor: URect,
         out: &mut RenderBuffer,
     ) -> bool {
-        if self.cull_against_active_clip(scissor) {
+        if self.cull_bounds(scissor) {
             return false;
         }
         self.close_batch(out);
@@ -386,9 +390,14 @@ impl Composer {
     /// an overlapping recorded draw) — the caller must flush so the
     /// earlier draw renders in an earlier group.
     fn higher_kind_conflict(&self, tier: PaintTier, rect: URect) -> bool {
-        self.higher_kind_rects
-            .iter()
-            .any(|e| tier < e.tier && e.rect.intersect(rect).is_some())
+        let first_conflicting_tier = match tier {
+            PaintTier::Mesh => PaintTier::Image,
+            PaintTier::Image => PaintTier::Curve,
+            PaintTier::Curve => return false,
+        };
+        self.higher_kind_rects.iter().any(|entry| {
+            entry.tier >= first_conflicting_tier && entry.rect.intersect(rect).is_some()
+        })
     }
 
     /// Conservative overlap of `rect` against every recorded higher-kind
@@ -621,7 +630,7 @@ impl Composer {
                     // entirely outside the active scissor. The GPU
                     // would scissor it away anyway; this saves the
                     // `quads.push` + per-quad math.
-                    if self.cull_against_active_clip(quad_urect) {
+                    if self.cull_bounds(quad_urect) {
                         continue;
                     }
                     self.quad_forces_flush(quad_urect, out);
@@ -696,7 +705,7 @@ impl Composer {
                     let world_rect = current_transform.apply_rect(p.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
-                    if self.cull_against_active_clip(quad_urect) {
+                    if self.cull_bounds(quad_urect) {
                         continue;
                     }
                     // Shadow quads use a 2σ-deflated rect for the
@@ -755,7 +764,7 @@ impl Composer {
                     let tri_urect = urect_from_phys(rect.min, rect.max(), viewport_phys);
                     // Triangle is a quad-tier draw (lowest paint kind), so it
                     // culls + flushes exactly like `DrawRect`.
-                    if self.cull_against_active_clip(tri_urect) {
+                    if self.cull_bounds(tri_urect) {
                         continue;
                     }
                     self.quad_forces_flush(tri_urect, out);
@@ -1032,7 +1041,7 @@ impl Composer {
                         scale,
                         viewport_phys,
                     );
-                    if self.cull_against_active_clip(bbox_scissor) {
+                    if self.cull_bounds(bbox_scissor) {
                         continue;
                     }
 

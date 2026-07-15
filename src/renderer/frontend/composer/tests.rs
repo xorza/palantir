@@ -188,18 +188,15 @@ fn cull_keeps_drawrect_partially_inside_active_clip() {
 }
 
 #[test]
-fn cull_does_not_apply_without_active_clip() {
-    // No `PushClip` ⇒ no scissor active. Even far-offscreen draws
-    // emit; the GPU's viewport scissor handles culling. Pin so a
-    // future tightening doesn't silently start dropping unscissored
-    // draws.
+fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
     let buf = run(
         |b, _arena| {
-            draw(b, rect(1000.0, 1000.0, 50.0, 50.0));
+            draw(b, rect(-10.0, -10.0, 20.0, 20.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
+    assert_eq!(buf.groups.len(), 1);
 }
 
 fn mesh(buf: &mut RenderCmdBuffer, bbox: Rect) {
@@ -1440,6 +1437,27 @@ fn compose_culled_mesh_between_texts_keeps_one_batch() {
     );
 }
 
+#[test]
+fn compose_culls_non_text_draws_outside_each_viewport_edge_without_clip() {
+    let buf = run(
+        |b, _arena| {
+            draw(b, rect(-40.0, 10.0, 10.0, 10.0));
+            mesh(b, rect(10.0, -40.0, 10.0, 10.0));
+            image(b, rect(240.0, 10.0, 10.0, 10.0));
+            curve(b, rect(10.0, 240.0, 10.0, 10.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert!(buf.quads.is_empty());
+    assert!(buf.meshes.is_empty());
+    assert!(buf.images.is_empty());
+    assert!(buf.curves.is_empty());
+    assert!(buf.groups.is_empty());
+    assert!(buf.mesh_batches.is_empty());
+    assert!(buf.image_batches.is_empty());
+    assert!(buf.curve_batches.is_empty());
+}
+
 /// Pin: a quad that overlaps prior batch text closes the batch — the
 /// merged batch would otherwise paint that text over the occluding
 /// quad. Two groups, two text batches; quad in the middle.
@@ -1988,6 +2006,47 @@ fn compose_mesh_image_record_order_gates_group_split() {
     );
     assert_eq!(buf.image_batches[0].last_group, 0);
     assert_eq!(buf.mesh_batches[0].last_group, 1);
+}
+
+#[test]
+fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
+    let buf = run(
+        |b, _| {
+            image(b, rect(10.0, 10.0, 30.0, 30.0));
+            curve(b, rect(0.0, 0.0, 100.0, 100.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 1, "image then curve: replay == record");
+    assert_eq!(buf.image_batches[0].last_group, 0);
+    assert_eq!(buf.curve_batches[0].last_group, 0);
+
+    let buf = run(
+        |b, _| {
+            curve(b, rect(0.0, 0.0, 100.0, 100.0));
+            image(b, rect(10.0, 10.0, 30.0, 30.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(
+        buf.groups.len(),
+        2,
+        "curve then image: replay inverts record",
+    );
+    assert_eq!(buf.curve_batches[0].last_group, 0);
+    assert_eq!(buf.image_batches[0].last_group, 1);
+
+    let buf = run(
+        |b, _| {
+            curve(b, rect(0.0, 50.0, 100.0, 0.0));
+            curve(b, rect(0.0, 50.0, 100.0, 0.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 1, "same-tier order is stable");
+    assert_eq!(buf.curves.len(), 2);
+    assert_eq!(buf.curve_batches.len(), 1);
+    assert_eq!(buf.curve_batches[0].last_group, 0);
 }
 
 /// Non-overlapping mixed kinds never conflict — record order between
