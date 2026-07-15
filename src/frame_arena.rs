@@ -157,7 +157,7 @@ impl FrameArena {
     /// record pass before its cached hash enters the shape tree.
     #[inline]
     pub(crate) fn assert_text_generation(&self, generation: u64) {
-        assert_eq!(
+        debug_assert_eq!(
             generation,
             self.0.borrow().record_pass_generation,
             "frame-local text reused after arena reset",

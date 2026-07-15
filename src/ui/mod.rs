@@ -193,7 +193,7 @@ impl Ui {
         // contents by index (gradients, polyline points/colors, mesh
         // verts/indices, interned text spans). Clearing here would
         // leave dangling indices the encoder then dereferences.
-        assert!(
+        debug_assert!(
             stamp.display.scale_factor >= EPS,
             "Display::scale_factor must be ≥ EPSILON; got {}",
             stamp.display.scale_factor,
@@ -319,7 +319,7 @@ impl Ui {
         // must return `Damage::Full`. The walk itself is still
         // load-bearing (seeds `prev` for frame 2's incremental diff)
         // so we keep the call; the assert just pins the invariant.
-        assert!(
+        debug_assert!(
             !first_frame || matches!(damage, Damage::Full),
             "first frame must produce Damage::Full; got {damage:?}",
         );

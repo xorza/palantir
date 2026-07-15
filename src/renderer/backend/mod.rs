@@ -466,7 +466,7 @@ impl WgpuBackend {
         // means plan and draw list disagree. Degrading to a Full pass would
         // clear the target under a Partial-culled draw list, erasing
         // undamaged content; crash instead.
-        assert!(
+        debug_assert!(
             !damage_scissors.is_empty() || !matches!(plan.kind, RenderKind::Partial { .. }),
             "Partial plan produced no damage scissors"
         );
@@ -1078,7 +1078,7 @@ impl WgpuBackend {
         backbuffer: &Backbuffer,
         surface_tex: &wgpu::Texture,
     ) {
-        assert!(
+        debug_assert!(
             backbuffer.size == surface_tex.size()
                 && backbuffer.tex.format() == surface_tex.format(),
             "skip-copy backbuffer doesn't match the target — a Skip frame \

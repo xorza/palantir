@@ -22,7 +22,7 @@ impl GridDefId {
     pub(crate) const PENDING: Self = Self(u16::MAX);
 
     pub(crate) fn from_index(index: usize) -> Self {
-        assert!(
+        debug_assert!(
             index < u16::MAX as usize,
             "more than 65 535 Grid panels in a single frame",
         );
@@ -62,7 +62,7 @@ impl ScrollSpec {
 
     pub(crate) fn with_fit(mut self, fit: BVec2) -> Self {
         let pan = self.pan_mask();
-        assert!(
+        debug_assert!(
             (!fit.x || pan.x) && (!fit.y || pan.y),
             "Scroll fit axes must be a subset of its pan axes",
         );
@@ -89,7 +89,7 @@ impl ModePayload {
     }
 
     pub(crate) fn grid_def_id(self, mode: LayoutMode) -> GridDefId {
-        assert_eq!(
+        debug_assert_eq!(
             mode,
             LayoutMode::Grid,
             "grid payload read from {mode:?} node",
@@ -98,7 +98,7 @@ impl ModePayload {
     }
 
     pub(crate) fn scroll_spec(self, mode: LayoutMode) -> ScrollSpec {
-        assert_eq!(
+        debug_assert_eq!(
             mode,
             LayoutMode::Scroll,
             "scroll payload read from {mode:?} node",

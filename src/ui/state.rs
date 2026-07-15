@@ -92,7 +92,7 @@ impl<T> Store<T> {
             Some(&idx) => idx as usize,
             None => {
                 let idx = self.data.len();
-                assert!(idx < u32::MAX as usize, "StateMap store overflow");
+                debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
                 self.data.push(init());
                 self.owners.push(id);
                 self.map.insert(id, idx as u32);

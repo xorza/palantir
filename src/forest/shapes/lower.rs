@@ -184,7 +184,7 @@ pub(crate) fn polyline(
     // `Shape::is_noop` drops < 2-point polylines before lowering
     // (`Shapes::add` gates on it), so a degenerate slice here is a
     // caller bug, not an input case.
-    assert!(
+    debug_assert!(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"
     );
@@ -294,7 +294,7 @@ pub(crate) fn line(
 /// evaluates the exact circle, so the record stores center/radius/
 /// angles verbatim. `brush` follows the curve contract (`Solid` /
 /// `Linear` sampled along the sweep; `Radial`/`Conic` rejected).
-/// `|sweep| ≤ 2π` is hard-asserted: a longer sweep would repaint
+/// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
 /// pixels and double-blend a translucent stroke.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn arc(
@@ -309,7 +309,7 @@ pub(crate) fn arc(
     atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
-    assert!(
+    debug_assert!(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
     );

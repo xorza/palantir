@@ -290,12 +290,12 @@ impl Composer {
         // (multiple batches can anchor to the same group when a mesh
         // splits mid-group), and their `texts` spans concatenate
         // without gaps in `out.texts`.
-        assert!(
+        debug_assert!(
             out.text_batches
                 .last()
                 .is_none_or(|prev| prev.last_group <= b.last_group),
         );
-        assert!(
+        debug_assert!(
             out.text_batches
                 .last()
                 .is_none_or(|prev| prev.texts.start + prev.texts.len == b.texts_start),

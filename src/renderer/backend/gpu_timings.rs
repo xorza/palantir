@@ -235,7 +235,7 @@ impl GpuTimings {
     /// Per-batch mode only. Called immediately after
     /// `begin_render_pass`.
     pub(crate) fn pass_begin(&self, pass: &mut wgpu::RenderPass<'_>) {
-        assert!(self.inside_passes);
+        debug_assert!(self.inside_passes);
         self.inner.next_index.set(0);
         self.inner.current_kind.set(None);
         self.inner.segment_kinds.borrow_mut().clear();
@@ -277,7 +277,7 @@ impl GpuTimings {
     /// Per-batch mode only. Called immediately before the pass is
     /// dropped.
     pub(crate) fn pass_end(&self, pass: &mut wgpu::RenderPass<'_>) {
-        assert!(self.inside_passes);
+        debug_assert!(self.inside_passes);
         let idx = self.inner.next_index.get();
         pass.write_timestamp(&self.timestamp_query_set, idx);
         let final_kind = self.inner.current_kind.get().unwrap_or(BatchKind::Setup);

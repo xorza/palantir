@@ -374,7 +374,7 @@ impl LayoutEngine {
         surface: Rect,
         out: &mut Layout,
     ) {
-        assert_eq!(
+        debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
@@ -449,7 +449,7 @@ impl LayoutEngine {
                 self.arrange(tree, root, size, Rect { min: origin, size }, out);
             }
         }
-        assert_eq!(
+        debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
@@ -490,7 +490,7 @@ impl LayoutEngine {
             let curr_end = curr_start + hit.arenas.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
-            assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
+            debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
             restore_after_cache_hit(
                 &mut self.scratch,

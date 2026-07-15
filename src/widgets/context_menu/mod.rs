@@ -125,8 +125,8 @@ impl ContextMenu {
 
         // Id is derived from `for_id` so per-site state pairs with the
         // trigger; a caller-supplied `.id_salt(...)` would be silently
-        // dropped — hard-assert instead (mirrors `Tooltip`).
-        assert!(
+        // dropped — debug-assert instead (mirrors `Tooltip`).
+        debug_assert!(
             matches!(self.element.salt, Salt::Auto(_)),
             "ContextMenu does not honor `.id(...)` / `.id_salt(...)` — its id is \
              derived from the trigger so per-site state stays paired. Drop the override.",

@@ -445,7 +445,7 @@ impl WindowRenderer {
     ) {
         let size = target.size();
         let display_phys = self.ui.display.physical;
-        assert!(
+        debug_assert!(
             size.width == display_phys.x && size.height == display_phys.y,
             "render_to_texture: target size {}x{} doesn't match the display physical \
              size ({}x{}) that `cpu_frame` ran against — scissor / viewport math \
@@ -514,7 +514,7 @@ impl WindowRenderer {
                 // at this size/format — so a recreate under Partial means the
                 // freshness invariant broke. Escalating here couldn't fix it:
                 // the draw list was already Partial-culled in `cpu_frame`.
-                assert!(
+                debug_assert!(
                     !recreated || matches!(plan.kind, RenderKind::Full),
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"

@@ -75,6 +75,7 @@ impl Grid {
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
     pub fn gap(mut self, g: f32) -> Self {
+        debug_assert!(g >= 0.0, "Grid gap must be non-negative, got {g}");
         self.def.row_gap = g;
         self.def.col_gap = g;
         self
@@ -82,6 +83,10 @@ impl Grid {
 
     /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
     pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
+        debug_assert!(
+            row_gap >= 0.0 && col_gap >= 0.0,
+            "Grid gaps must be non-negative, got row={row_gap}, col={col_gap}",
+        );
         self.def.row_gap = row_gap;
         self.def.col_gap = col_gap;
         self
@@ -137,4 +142,35 @@ fn empty_tracks() -> Rc<[Track]> {
         static EMPTY: OnceLock<Rc<[Track]>> = const { OnceLock::new() };
     }
     EMPTY.with(|cell| cell.get_or_init(|| Rc::from(Vec::<Track>::new())).clone())
+}
+
+#[cfg(all(test, debug_assertions))]
+mod tests {
+    use super::Grid;
+
+    #[test]
+    fn gaps_validate_and_store_values() {
+        let uniform = Grid::new().gap(0.0);
+        assert_eq!(uniform.def.row_gap, 0.0);
+        assert_eq!(uniform.def.col_gap, 0.0);
+
+        let asymmetric = Grid::new().gap_xy(3.0, 5.0);
+        assert_eq!(asymmetric.def.row_gap, 3.0);
+        assert_eq!(asymmetric.def.col_gap, 5.0);
+
+        let invalid: [fn(Grid) -> Grid; 5] = [
+            |grid| grid.gap(-1.0),
+            |grid| grid.gap(f32::NAN),
+            |grid| grid.gap_xy(-1.0, 0.0),
+            |grid| grid.gap_xy(0.0, -1.0),
+            |grid| grid.gap_xy(0.0, f32::NAN),
+        ];
+
+        for (index, case) in invalid.into_iter().enumerate() {
+            assert!(
+                std::panic::catch_unwind(|| case(Grid::new())).is_err(),
+                "invalid gap case {index} must panic in debug builds",
+            );
+        }
+    }
 }

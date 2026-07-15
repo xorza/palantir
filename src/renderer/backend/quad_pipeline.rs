@@ -330,7 +330,7 @@ impl QuadPipeline {
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        assert!(
+        debug_assert!(
             self.last_clear.is_some(),
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"

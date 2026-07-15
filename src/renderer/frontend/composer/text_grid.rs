@@ -118,9 +118,9 @@ impl TextRectGrid {
         // Tile buckets store rect indices as `u16`. Past 65 535 text
         // rects in one batch the cast would wrap and the grid would
         // point at the wrong rect — a silent paint-order corruption.
-        // Far above any real text-dense batch, but assert rather than
-        // truncate (the field comments anticipate spreadsheet grids).
-        assert!(
+        // Far above any real text-dense batch; debug builds reject it
+        // rather than truncate.
+        debug_assert!(
             self.rects.len() < u16::MAX as usize,
             "TextRectGrid batch exceeded {} rects — u16 index would wrap",
             u16::MAX,
