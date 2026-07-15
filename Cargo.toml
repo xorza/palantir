@@ -119,6 +119,11 @@ name = "composer"
 harness = false
 required-features = ["internals"]
 
+[[bench]]
+name = "cascade"
+harness = false
+required-features = ["internals"]
+
 [features]
 # Exposes `internals::*` (cache reset + introspection helpers used by
 # `benches/`). Tests get the same module without the feature because

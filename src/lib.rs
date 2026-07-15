@@ -59,6 +59,10 @@ pub mod text_backend_internals {
 pub mod composer_bench {
     pub use crate::renderer::frontend::composer::bench::bench;
 }
+#[cfg(feature = "internals")]
+pub mod cascade_bench {
+    pub use crate::ui::cascade::bench::bench;
+}
 
 pub use frame_arena::FrameArena;
 
