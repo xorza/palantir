@@ -2,7 +2,8 @@
 //! ([`Ui`](crate::Ui)) and the windowing host
 //! ([`WinitHost`](crate::WinitHost)). Both depend *into* this module and
 //! neither back out, so the recorder never reaches up into the winit
-//! backend — `WindowConfig` deliberately carries no winit/wgpu types.
+//! backend — [`WindowMailbox`] and `WindowConfig` deliberately carry no
+//! winit/wgpu types.
 
 use glam::{IVec2, UVec2};
 
@@ -182,6 +183,29 @@ pub enum CursorIcon {
 pub(crate) struct PendingWindow {
     pub(crate) token: WindowToken,
     pub(crate) config: WindowConfig,
+}
+
+/// Deferred requests from `Ui` to its host plus per-draw window-manager
+/// facts flowing back into `Ui`. Retained vectors keep a steady window set
+/// allocation-free; the remaining fields are refreshed or consumed at the
+/// host frame boundary.
+#[derive(Debug, Default)]
+pub(crate) struct WindowMailbox {
+    /// Open requests survive the frame boundary until the host can create
+    /// windows on its event-loop thread.
+    pub(crate) pending_windows: Vec<PendingWindow>,
+    /// Close requests drained alongside [`Self::pending_windows`].
+    pub(crate) pending_closes: Vec<WindowToken>,
+    /// Whether the OS requested that this window close for the current draw.
+    pub(crate) wants_close: bool,
+    /// Whether app code vetoed the current close request.
+    pub(crate) close_vetoed: bool,
+    /// Host-reported outer position in physical pixels; unavailable on Wayland.
+    pub(crate) position: Option<IVec2>,
+    /// Host-reported maximized state.
+    pub(crate) maximized: bool,
+    /// Last cursor requested during a record pass; retained across PaintOnly.
+    pub(crate) cursor: CursorIcon,
 }
 
 #[cfg(test)]

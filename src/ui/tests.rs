@@ -15,7 +15,7 @@ use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
-use glam::{UVec2, Vec2};
+use glam::{IVec2, UVec2, Vec2};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
@@ -1157,11 +1157,11 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // read `close_requested` (and veto via `keep_open`) during record,
     // so an anim-wake frame escalates to Full while `wants_close` is
     // set — and drops back to PaintOnly once it clears.
-    ui.wants_close = true;
+    ui.window_mailbox.wants_close = true;
     let r3 = ui.frame(FrameStamp::new(display, half * 3), |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
     ui.frame_runtime.frame_submitted = true;
-    ui.wants_close = false;
+    ui.window_mailbox.wants_close = false;
     let r4 = ui.frame(FrameStamp::new(display, half * 4), |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
@@ -1753,28 +1753,31 @@ fn window_requests_queue_and_survive_the_frame() {
 
     // Filed during record, still pending after the frame returned —
     // nothing in the frame pipeline clears them.
-    assert_eq!(ui.pending_windows.len(), 1);
-    assert_eq!(ui.pending_windows[0].token, open);
-    assert_eq!(ui.pending_windows[0].config.title, "inspector");
-    assert_eq!(ui.pending_closes, vec![close]);
+    assert_eq!(ui.window_mailbox.pending_windows.len(), 1);
+    assert_eq!(ui.window_mailbox.pending_windows[0].token, open);
+    assert_eq!(
+        ui.window_mailbox.pending_windows[0].config.title,
+        "inspector"
+    );
+    assert_eq!(ui.window_mailbox.pending_closes, vec![close]);
 
     // A quiet frame (no new requests) must not drop the still-undrained
     // queue — the host might not have ticked between these two frames.
     ui.run_at(SURFACE, |_| {});
     assert_eq!(
-        ui.pending_windows.len(),
+        ui.window_mailbox.pending_windows.len(),
         1,
         "queue must outlive a quiet frame"
     );
-    assert_eq!(ui.pending_closes, vec![close]);
+    assert_eq!(ui.window_mailbox.pending_closes, vec![close]);
 
     // The host drains by `append`/`drain`-ing the vecs; emulate that and
     // confirm a third frame leaves them empty (no re-queue).
-    ui.pending_windows.clear();
-    ui.pending_closes.clear();
+    ui.window_mailbox.pending_windows.clear();
+    ui.window_mailbox.pending_closes.clear();
     ui.run_at(SURFACE, |_| {});
-    assert!(ui.pending_windows.is_empty());
-    assert!(ui.pending_closes.is_empty());
+    assert!(ui.window_mailbox.pending_windows.is_empty());
+    assert!(ui.window_mailbox.pending_closes.is_empty());
 
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
@@ -1782,6 +1785,13 @@ fn window_requests_queue_and_survive_the_frame() {
     ui.ctx.set_open_windows([open]);
     assert!(ui.window_open(open));
     assert!(!ui.window_open(close), "only `open` is live");
+
+    ui.window_mailbox.position = Some(IVec2::new(-120, 48));
+    ui.window_mailbox.maximized = true;
+    let geometry = ui.window_geometry();
+    assert_eq!(geometry.inner_size, SURFACE);
+    assert_eq!(geometry.outer_position, Some(IVec2::new(-120, 48)));
+    assert!(geometry.maximized);
 }
 
 /// The OS-close veto protocol between the host and app code:
@@ -1801,11 +1811,11 @@ fn close_request_veto_protocol() {
             "no close pending ⇒ close_requested() false"
         );
     });
-    assert!(!ui.close_vetoed);
+    assert!(!ui.window_mailbox.close_vetoed);
 
     // Host signals a close; an app that vetoes keeps the window open.
-    ui.wants_close = true;
-    ui.close_vetoed = false;
+    ui.window_mailbox.wants_close = true;
+    ui.window_mailbox.close_vetoed = false;
     ui.run_at(SURFACE, |ui| {
         assert!(
             ui.close_requested(),
@@ -1814,10 +1824,10 @@ fn close_request_veto_protocol() {
         ui.keep_open();
     });
     assert!(
-        ui.close_vetoed,
+        ui.window_mailbox.close_vetoed,
         "keep_open must set the veto the host reads"
     );
-    let should_close = ui.wants_close && !ui.close_vetoed;
+    let should_close = ui.window_mailbox.wants_close && !ui.window_mailbox.close_vetoed;
     assert!(
         !should_close,
         "a vetoed request must NOT resolve to a close"
@@ -1825,12 +1835,12 @@ fn close_request_veto_protocol() {
 
     // Same signal, app ignores it: resolves to a real close. (The host
     // resets the veto before every draw.)
-    ui.close_vetoed = false;
+    ui.window_mailbox.close_vetoed = false;
     ui.run_at(SURFACE, |ui| {
         assert!(ui.close_requested());
     });
-    assert!(!ui.close_vetoed, "untouched ⇒ no veto");
-    let should_close = ui.wants_close && !ui.close_vetoed;
+    assert!(!ui.window_mailbox.close_vetoed, "untouched ⇒ no veto");
+    let should_close = ui.window_mailbox.wants_close && !ui.window_mailbox.close_vetoed;
     assert!(should_close, "an un-vetoed request must resolve to a close");
 }
 
@@ -1963,8 +1973,8 @@ fn open_window_dedups_by_token_within_a_frame() {
     ui.open_window(WindowToken(7), cfg("first"));
     ui.open_window(WindowToken(7), cfg("second"));
     ui.open_window(WindowToken(8), cfg("other"));
-    assert_eq!(ui.pending_windows.len(), 2);
-    assert_eq!(ui.pending_windows[0].token, WindowToken(7));
-    assert_eq!(ui.pending_windows[0].config.title, "second");
-    assert_eq!(ui.pending_windows[1].token, WindowToken(8));
+    assert_eq!(ui.window_mailbox.pending_windows.len(), 2);
+    assert_eq!(ui.window_mailbox.pending_windows[0].token, WindowToken(7));
+    assert_eq!(ui.window_mailbox.pending_windows[0].config.title, "second");
+    assert_eq!(ui.window_mailbox.pending_windows[1].token, WindowToken(8));
 }

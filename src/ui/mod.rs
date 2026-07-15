@@ -46,8 +46,10 @@ use crate::ui::frame::{FramePlan, FrameRuntime, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
-use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowGeometry, WindowToken};
-use glam::{IVec2, UVec2};
+use crate::window::{
+    CursorIcon, PendingWindow, WindowConfig, WindowGeometry, WindowMailbox, WindowToken,
+};
+use glam::UVec2;
 use std::cell::{RefCell, RefMut};
 use std::collections::hash_map::Entry;
 use std::panic::Location;
@@ -105,44 +107,9 @@ pub struct Ui {
     /// Retained frame clock, wake queue, repaint/relayout flags, and prior-frame
     /// validity state. Kept separate from the widget engines above.
     pub(crate) frame_runtime: FrameRuntime,
-    /// Window-open requests filed by [`Self::open_window`] during a
-    /// frame. `WinitHost` drains this in `about_to_wait` (where it holds
-    /// `&ActiveEventLoop`) and creates the windows synchronously. Not
-    /// cleared by `frame` — it persists across the frame boundary until
-    /// the host drains it. Retained Vec, capacity reused, so steady
-    /// state (no window churn) is alloc-free. Inert in headless contexts
-    /// with no `WinitHost` to drain it.
-    pub(crate) pending_windows: Vec<PendingWindow>,
-    /// Window-close requests filed by [`Self::close_window`]; drained
-    /// alongside [`Self::pending_windows`]. Same retained-Vec contract.
-    pub(crate) pending_closes: Vec<WindowToken>,
-    /// Set by the host for the frame where the OS asked to close this
-    /// window (titlebar X). Read by app code through
-    /// [`Self::close_requested`]; the window auto-closes after the frame
-    /// unless the app calls [`Self::keep_open`]. Host-managed per draw —
-    /// never touched by `frame`'s internal passes. Always `false` in
-    /// headless / offscreen contexts (no OS window to close).
-    pub(crate) wants_close: bool,
-    /// Set by [`Self::keep_open`] to veto this frame's pending auto-close.
-    /// Reset by the host before each draw; read back after the frame.
-    pub(crate) close_vetoed: bool,
-    /// This window's outer position in physical pixels, refreshed by the
-    /// host before each draw; `None` where the platform doesn't report it
-    /// (Wayland) or in headless contexts. The window-manager half of
-    /// [`Self::window_geometry`] — the size half is derived from
-    /// [`Self::display`], not stored twice.
-    pub(crate) window_position: Option<IVec2>,
-    /// Whether this window is currently maximized, refreshed by the host
-    /// before each draw. The other window-manager fact
-    /// [`Self::window_geometry`] carries.
-    pub(crate) window_maximized: bool,
-    /// The mouse cursor widgets requested this frame via
-    /// [`Self::set_cursor`] (last writer wins, matching record z-order).
-    /// Reset to [`CursorIcon::Default`] at the top of each record pass —
-    /// *not* per frame, so PaintOnly frames (no record) retain the last
-    /// recorded request and the host's change-detection sees no flicker.
-    /// Applied by the host after the frame; inert in headless contexts.
-    pub(crate) cursor: CursorIcon,
+    /// Deferred open/close requests and host-refreshed close, geometry, and
+    /// cursor state. Inert in headless contexts without a windowing host.
+    pub(crate) window_mailbox: WindowMailbox,
 }
 
 impl std::fmt::Debug for Ui {
@@ -210,13 +177,7 @@ impl Ui {
             damage_engine: Default::default(),
             anim: Default::default(),
             frame_runtime: Default::default(),
-            pending_windows: Vec::new(),
-            pending_closes: Vec::new(),
-            wants_close: false,
-            close_vetoed: false,
-            window_position: None,
-            window_maximized: false,
-            cursor: CursorIcon::default(),
+            window_mailbox: Default::default(),
         }
     }
 
@@ -475,7 +436,7 @@ impl Ui {
             // would skip the record and the host would close the window
             // with the veto unconsulted (a spinner's every-frame ANIM
             // wake makes that deterministic, a caret blink a race).
-            && !self.wants_close
+            && !self.window_mailbox.wants_close
             && fired_reasons.is_anim_only();
         if paint_only {
             FramePlan::PaintOnly
@@ -508,7 +469,7 @@ impl Ui {
             // re-asserted by whoever still wants it this pass; reset
             // here (not per frame) so PaintOnly frames keep the last
             // recorded cursor instead of flickering back to the arrow.
-            self.cursor = CursorIcon::default();
+            self.window_mailbox.cursor = CursorIcon::default();
             // Snapshot whether any widget interaction is possible this
             // frame; `response_for` skips its per-button capture scans for
             // every widget when none is (the common idle frame).
@@ -754,7 +715,7 @@ impl Ui {
     /// (typically off its hover/drag response). The host applies it
     /// after the frame, only on change; ignored in headless contexts.
     pub fn set_cursor(&mut self, cursor: CursorIcon) {
-        self.cursor = cursor;
+        self.window_mailbox.cursor = cursor;
     }
 
     /// Ask the host to schedule another frame after this one. Cleared
@@ -817,11 +778,18 @@ impl Ui {
     /// is the backend-agnostic [`WindowConfig`] (title + size); the
     /// window inherits the app-global GPU settings from startup.
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
-        if let Some(p) = self.pending_windows.iter_mut().find(|p| p.token == token) {
+        if let Some(p) = self
+            .window_mailbox
+            .pending_windows
+            .iter_mut()
+            .find(|p| p.token == token)
+        {
             p.config = config;
             return;
         }
-        self.pending_windows.push(PendingWindow { token, config });
+        self.window_mailbox
+            .pending_windows
+            .push(PendingWindow { token, config });
     }
 
     /// Request that the window addressed by `token` close. Deferred like
@@ -829,7 +797,7 @@ impl Ui {
     /// last window closing exits the event loop. No-op if `token` names
     /// no live window, or in headless contexts.
     pub fn close_window(&mut self, token: WindowToken) {
-        self.pending_closes.push(token);
+        self.window_mailbox.pending_closes.push(token);
     }
 
     /// `true` for the single frame where the OS asked to close this window
@@ -849,14 +817,14 @@ impl Ui {
     ///
     /// Always `false` in headless / offscreen contexts (no OS window).
     pub fn close_requested(&self) -> bool {
-        self.wants_close
+        self.window_mailbox.wants_close
     }
 
     /// Veto the auto-close pending from this frame's [`Self::close_requested`].
     /// The window stays open past this frame; close it for real later with
     /// [`Self::close_window`]. A no-op when no close was requested.
     pub fn keep_open(&mut self) {
-        self.close_vetoed = true;
+        self.window_mailbox.close_vetoed = true;
     }
 
     /// This window's live geometry for persist-and-restore across launches.
@@ -875,8 +843,8 @@ impl Ui {
                 (logical.w.round() as u32).max(1),
                 (logical.h.round() as u32).max(1),
             ),
-            outer_position: self.window_position,
-            maximized: self.window_maximized,
+            outer_position: self.window_mailbox.position,
+            maximized: self.window_mailbox.maximized,
         }
     }
 

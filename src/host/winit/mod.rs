@@ -353,20 +353,20 @@ where
             .and_then(|m| m.refresh_rate_millihertz());
         // Surface any pending OS close request to the app for this frame;
         // it may veto (`Ui::keep_open`) to prompt instead of closing.
-        win.renderer.ui.wants_close = win.close_requested;
-        win.renderer.ui.close_vetoed = false;
+        win.renderer.ui.window_mailbox.wants_close = win.close_requested;
+        win.renderer.ui.window_mailbox.close_vetoed = false;
         // Refresh the window-manager facts the app persists (position +
         // maximized); the size half of `Ui::window_geometry` is derived
         // from the `Display` this frame already builds, so it isn't read or
         // stored twice. Reading fresh each draw makes a `Moved`/`Maximized`
         // handler unnecessary — every quit path passes through a draw, so
         // the close frame captures the final values.
-        win.renderer.ui.window_position = win
+        win.renderer.ui.window_mailbox.position = win
             .window
             .outer_position()
             .ok()
             .map(|p| IVec2::new(p.x, p.y));
-        win.renderer.ui.window_maximized = win.window.is_maximized();
+        win.renderer.ui.window_mailbox.maximized = win.window.is_maximized();
         win.next = win.renderer.frame(
             &mut run.backend,
             FrameTarget {
@@ -379,9 +379,9 @@ where
             || window.pre_present_notify(),
         );
         // Apply the frame's cursor request, only on change — the request
-        // is sticky across PaintOnly frames (see `Ui::cursor`), so this
+        // is sticky across PaintOnly frames (see `Ui::window_mailbox`), so this
         // stays quiet while the pointer rests on a widget.
-        let cursor = win.renderer.ui.cursor;
+        let cursor = win.renderer.ui.window_mailbox.cursor;
         if cursor != win.cursor {
             win.window.set_cursor(winit_cursor(cursor));
             win.cursor = cursor;
@@ -392,11 +392,11 @@ where
         // handles removal + the all-windows-closed exit uniformly.
         if win.close_requested {
             win.close_requested = false;
-            if !win.renderer.ui.close_vetoed {
-                win.renderer.ui.pending_closes.push(token);
+            if !win.renderer.ui.window_mailbox.close_vetoed {
+                win.renderer.ui.window_mailbox.pending_closes.push(token);
             }
         }
-        win.renderer.ui.wants_close = false;
+        win.renderer.ui.window_mailbox.wants_close = false;
     }
 
     /// Build a winit window + surface + `WindowRenderer` for `token` and
@@ -460,8 +460,8 @@ where
         let mut opens: Vec<PendingWindow> = Vec::new();
         let mut closes: Vec<WindowToken> = Vec::new();
         for win in self.windows.values_mut() {
-            opens.append(&mut win.renderer.ui.pending_windows);
-            closes.append(&mut win.renderer.ui.pending_closes);
+            opens.append(&mut win.renderer.ui.window_mailbox.pending_windows);
+            closes.append(&mut win.renderer.ui.window_mailbox.pending_closes);
         }
         // Closes first, so a same-frame close + open of one token
         // recreates the window instead of tripping `spawn_window`'s
