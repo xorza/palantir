@@ -87,7 +87,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // Drive the encoder and check the emitted quads. The two overlay
     // quads should be stroked, magenta-ish, and rect-equal to the two
     // colliding buttons' arranged rects.
-    // Share Ui's frame arena so any mesh/polyline bytes pushed at
+    // Share Ui's record store so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the WindowRenderer wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
@@ -160,7 +160,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // Each endpoint's rect must come from its own layer's `LayerLayout`.
     let main_rect = ui.layout[Layer::Main].rect[pair.first.node.idx()];
     let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.idx()];
-    // Share Ui's frame arena so any mesh/polyline bytes pushed at
+    // Share Ui's record store so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the WindowRenderer wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
@@ -297,7 +297,7 @@ fn empty_ui_drives_a_frame_safely() {
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
-    // No mesh/polyline bytes were recorded, so the Ui arena is empty.
+    // No mesh/polyline bytes were recorded, so the Ui record store is empty.
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(
         &ui,
@@ -1179,14 +1179,14 @@ fn frame_local_text_lowers_in_its_record_pass() {
             .show(ui);
     });
 
-    let arena = ui.frame_arena.inner();
-    assert_eq!(arena.fmt_scratch, "same-pass 7");
+    let payloads = ui.record_store.borrow();
+    assert_eq!(payloads.fmt_scratch, "same-pass 7");
     assert_eq!(ui.forest.trees[Layer::Main].shapes.records.len(), 1);
     match &ui.forest.trees[Layer::Main].shapes.records[0] {
         ShapeRecord::Text {
             text, text_hash, ..
         } => {
-            assert_eq!(text.as_str(&arena.fmt_scratch), "same-pass 7");
+            assert_eq!(text.as_str(&payloads.fmt_scratch), "same-pass 7");
             assert_eq!(*text_hash, hash_str("same-pass 7"));
         }
         shape => panic!("expected text shape, got {shape:?}"),
@@ -1194,7 +1194,7 @@ fn frame_local_text_lowers_in_its_record_pass() {
 }
 
 #[test]
-#[should_panic(expected = "frame-local text reused after arena reset")]
+#[should_panic(expected = "frame-local text reused after record store reset")]
 fn frame_local_text_rejects_reuse_between_record_passes_in_one_frame() {
     let mut ui = Ui::default();
     let mut retained = None;
@@ -1218,20 +1218,20 @@ fn frame_local_text_rejects_reuse_between_record_passes_in_one_frame() {
     });
 }
 
-/// Regression: `Ui::frame` used to clear `frame_arena` unconditionally
+/// Regression: `Ui::frame` used to clear `record_store` unconditionally
 /// at entry, including on `PaintOnly` frames. But on PaintOnly the
 /// record pass is skipped, so `tree.shapes` retains last frame's
-/// `ShapeRecord`s — which reference arena contents by index
+/// `ShapeRecord`s — which reference record payloads by index
 /// (`ShapeBrush::Gradient(id)`, polyline/mesh spans, `InternedStr`
 /// spans). Clearing left those indices dangling; the encoder then
 /// panicked on the first gradient lookup with
 /// `index out of bounds: the len is 0 but the index is N`.
 /// Fix: clear inside `record_pass` instead (only fires when we're
 /// rebuilding shapes). This test pins it with retained gradient and
-/// frame-local text arena entries plus an animated shape that forces
+/// frame-local text entries plus an animated shape that forces
 /// PaintOnly on frame 1, then re-runs the encoder.
 #[test]
-fn paint_only_preserves_frame_arena_for_retained_shapes() {
+fn paint_only_preserves_record_store_for_retained_shapes() {
     use crate::primitives::brush::{Brush, LinearGradient};
     use crate::ui::frame_report::FrameProcessing;
 
@@ -1240,7 +1240,7 @@ fn paint_only_preserves_frame_arena_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             // Gradient-filled chrome: `lower::background` pushes a
-            // `LoweredGradient` into `arena.gradients` every record
+            // `LoweredGradient` into `RecordPayloads::gradients` every record
             // pass, and the resulting `ChromeRow` stores the index.
             Frame::new()
                 .id(WidgetId::from_hash("grad_bg"))
@@ -1266,17 +1266,17 @@ fn paint_only_preserves_frame_arena_for_retained_shapes() {
     let mut ui = Ui::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
 
-    // Frame 0: full record. Populates `arena.gradients` and stamps
+    // Frame 0: full record. Populates the gradient payloads and stamps
     // `ShapeBrush::Gradient(0)` into the chrome row for the frame.
     let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
     ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
-    assert_eq!(ui.frame_arena.inner().fmt_scratch, "retained 7");
+    assert_eq!(ui.record_store.borrow().fmt_scratch, "retained 7");
 
     // Frame 1 at the blink boundary: only the anim wake fires →
-    // PaintOnly. With the old (buggy) clear, `arena.gradients`
+    // PaintOnly. With the old (buggy) clear, the gradient payloads
     // would be empty here and the encoder below would panic.
     let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
@@ -1284,19 +1284,19 @@ fn paint_only_preserves_frame_arena_for_retained_shapes() {
     // Direct pin: the gradient pushed during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        ui.frame_arena.inner().gradients.len(),
+        ui.record_store.borrow().gradients.len(),
         1,
-        "PaintOnly must preserve arena.gradients so retained \
+        "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",
     );
     assert_eq!(
-        ui.frame_arena.inner().fmt_scratch,
+        ui.record_store.borrow().fmt_scratch,
         "retained 7",
         "PaintOnly must preserve bytes referenced by retained frame-local text",
     );
 
     // Indirect pin: re-run the encoder against the retained tree
-    // + arena. With the bug, this panicked on `gradients[id]`.
+    // + record store. With the bug, this panicked on `gradients[id]`.
     let _ = ui.encode_cmds();
 }
 

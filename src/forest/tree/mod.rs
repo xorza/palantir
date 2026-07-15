@@ -86,7 +86,7 @@ pub(crate) struct Tree {
     /// Flat per-frame shape buffer. Records are indexed via
     /// `NodeRecord.shape_span`; variable-length payloads (mesh
     /// verts/indices, polyline points/colors, gradients) live on the
-    /// `FrameArena`.
+    /// `RecordStore`.
     pub(crate) shapes: Shapes,
 
     pub(crate) grid_defs: Vec<GridDef>,
@@ -345,7 +345,7 @@ impl Tree {
             ex.panel = Slot::from_len(self.panel_table.len());
             self.panel_table.push(cols.panel);
         }
-        if let Some(ChromeInput { bg, arena, atlas }) = chrome {
+        if let Some(ChromeInput { bg, store, atlas }) = chrome {
             // Chrome stroke paints fully inside the node's arranged
             // rect (see `quad.wgsl` SDF stroke band). Inflate `padding`
             // by `stroke.width` on every side so children sit inside
@@ -364,7 +364,7 @@ impl Tree {
             let needs_chrome_row =
                 !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::background(arena, bg, atlas);
+                let row = lower::background(store, bg, atlas);
                 ex.chrome = Slot::from_len(self.chrome_table.len());
                 self.chrome_table.push(row);
             }

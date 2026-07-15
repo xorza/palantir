@@ -1,7 +1,7 @@
 use crate::display::Display;
-use crate::frame_arena::FrameArenaInner;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
+use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
 use crate::renderer::frontend::composer::Composer;
@@ -15,7 +15,7 @@ use std::time::Duration;
 #[derive(Debug)]
 struct CurveComposeBench {
     cmds: RenderCmdBuffer,
-    arena: FrameArenaInner,
+    payloads: RecordPayloads,
     composer: Composer,
     out: RenderBuffer,
     display: Display,
@@ -43,7 +43,7 @@ impl CurveComposeBench {
         }
         Self {
             cmds,
-            arena: FrameArenaInner::default(),
+            payloads: RecordPayloads::default(),
             composer: Composer::new(8192),
             out: RenderBuffer::new(RenderOwnerId::reserve()),
             display: Display::from_physical(UVec2::splat(128), 1.0),
@@ -52,7 +52,7 @@ impl CurveComposeBench {
 
     fn compose(&mut self) -> usize {
         self.composer
-            .compose(&self.cmds, &self.arena, self.display, &mut self.out);
+            .compose(&self.cmds, &self.payloads, self.display, &mut self.out);
         self.out.curves.len()
     }
 }

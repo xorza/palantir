@@ -78,7 +78,7 @@ impl<'a> Stepper<'a> {
             *self.value = (*self.value + self.step).min(self.max);
         }
 
-        // Intern the formatted number into the per-frame arena (no
+        // Intern the formatted number into the record store (no
         // lingering `String` alloc) and reuse the theme's text style.
         let label = ui.intern(&self.value.to_string());
         let label_style = ui.theme.text;

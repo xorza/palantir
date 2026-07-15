@@ -31,9 +31,9 @@ pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextRun>,
     /// Scene-wide mesh rows, SoA-stored. The underlying vertex/index
-    /// bytes live in the frame's
-    /// [`FrameArena::meshes`](crate::frame_arena::FrameArena::meshes);
-    /// each row's `draw` field carries spans into that arena, and the
+    /// bytes live in the recording's
+    /// [`RecordPayloads::meshes`](crate::record_store::RecordPayloads::meshes);
+    /// each row's `draw` field carries spans into those payloads, and the
     /// `instance` field carries the Pod GPU state the backend uploads
     /// verbatim (read as a contiguous `&[MeshInstance]` via
     /// `meshes.instance()`).

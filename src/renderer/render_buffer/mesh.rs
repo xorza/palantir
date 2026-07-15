@@ -1,4 +1,4 @@
-//! Mesh arena spans and per-draw GPU instance data.
+//! Mesh payload spans and per-draw GPU instance data.
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::span::Span;
@@ -6,7 +6,7 @@ use glam::Vec2;
 use soa_rs::Soars;
 
 /// One mesh draw within a group. Vertex/index slices live in the
-/// frame's [`FrameArena::meshes`](crate::frame_arena::FrameArena::meshes);
+/// recording's [`RecordPayloads::meshes`](crate::record_store::RecordPayloads::meshes);
 /// the per-instance transform + tint live alongside as
 /// [`MeshDrawRow::instance`] (same row in the SoA, separate column).
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,11 +1,11 @@
 //! Lowered paint data shared by shape records and node chrome.
 
 use crate::common::content_hash::ContentHash;
-use crate::frame_arena::GradientId;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
+use crate::record_store::GradientId;
 use glam::Vec2;
 use half::f16;
 

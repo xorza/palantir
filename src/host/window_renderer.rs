@@ -8,7 +8,7 @@
 //! pipelines, glyph + gradient atlases, the image texture cache, the
 //! device/queue — live on the **one** shared `WgpuBackend` the host passes
 //! into every method; render caches, shaper, and the GPU-stats handle live on
-//! the [`HostContext`]. The frame arena is per-window and retained alongside
+//! the [`HostContext`]. The record store is per-window and retained alongside
 //! this window's tree. So N windows render through one GPU renderer without
 //! sharing frame-local geometry.
 //!
@@ -21,9 +21,9 @@
 
 use std::time::Instant;
 
-use crate::frame_arena::FrameArena;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::context::HostContext;
+use crate::record_store::RecordStore;
 use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
@@ -37,10 +37,10 @@ use crate::{Display, FrameReport, FrameStamp};
 #[derive(Debug)]
 pub struct WindowRenderer {
     pub ui: Ui,
-    /// Per-window record arena retained in lockstep with `ui.forest`. The `Ui`
+    /// Per-window record store retained in lockstep with `ui.forest`. The `Ui`
     /// holds an `Rc` clone for record-time writes; frontend and backend phases
     /// borrow this canonical handle explicitly.
-    frame_arena: FrameArena,
+    record_store: RecordStore,
     /// Per-window CPU encode/compose scratch with its own retained
     /// `RenderBuffer` — this window's draw list.
     frontend: Frontend,
@@ -243,10 +243,10 @@ impl WindowRendererBuilder<'_> {
     }
 
     pub(crate) fn build(self) -> WindowRenderer {
-        let frame_arena = FrameArena::default();
+        let record_store = RecordStore::default();
         WindowRenderer {
-            ui: Ui::new(self.ctx, frame_arena.clone()),
-            frame_arena,
+            ui: Ui::new(self.ctx, record_store.clone()),
+            record_store,
             frontend: Frontend::new(self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
@@ -263,7 +263,7 @@ impl WindowRendererBuilder<'_> {
 impl WindowRenderer {
     /// Start building a per-window renderer from the shared [`HostContext`]:
     /// its `Ui` shares the context's shaper / caches / GPU-stats handle and
-    /// receives a fresh per-window frame arena. The `Ui` also shares the context's
+    /// receives a fresh per-window record store. The `Ui` also shares the context's
     /// app-global host state (live-window set + debug overlay) so all windows
     /// agree. `max_texture_dim` is the device's `max_texture_dimension_2d`
     /// (fixed for its lifetime), handed to the `Frontend` to cap `GpuView`
@@ -428,8 +428,8 @@ impl WindowRenderer {
         // compose, and resolve `GpuView` targets, all reading the now-frozen
         // `Ui` immutably. Skip frames build nothing.
         if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
-            let arena = self.frame_arena.inner();
-            self.frontend.build(&self.ui, &arena, plan);
+            let payloads = self.record_store.borrow();
+            self.frontend.build(&self.ui, &payloads, plan);
         }
         CpuFrame { report, mode }
     }
@@ -496,14 +496,14 @@ impl WindowRenderer {
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
-                let arena = self.frame_arena.inner();
+                let payloads = self.record_store.borrow();
                 gpu.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: None,
                         stencil: stencil_view,
                     },
-                    arena: &arena,
+                    payloads: &payloads,
                     buffer: &self.frontend.buffer,
                     plan,
                     debug_overlay,
@@ -525,14 +525,14 @@ impl WindowRenderer {
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"
                 );
-                let arena = self.frame_arena.inner();
+                let payloads = self.record_store.borrow();
                 gpu.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: self.backbuffer.as_ref(),
                         stencil: stencil_view,
                     },
-                    arena: &arena,
+                    payloads: &payloads,
                     buffer: &self.frontend.buffer,
                     plan,
                     debug_overlay,
@@ -746,7 +746,7 @@ mod present_mode_tests {
 }
 
 #[cfg(test)]
-mod frame_arena_tests {
+mod record_store_tests {
     use std::time::Duration;
 
     use glam::{UVec2, Vec2};
@@ -767,7 +767,7 @@ mod frame_arena_tests {
     use crate::{Configure, Display};
 
     #[derive(Debug, PartialEq)]
-    struct ArenaSnapshot {
+    struct RecordPayloadSnapshot {
         mesh_vertices: Vec<MeshVertex>,
         mesh_indices: Vec<u32>,
         polyline_points: Vec<Vec2>,
@@ -775,14 +775,14 @@ mod frame_arena_tests {
         text: String,
     }
 
-    fn snapshot(renderer: &WindowRenderer) -> ArenaSnapshot {
-        let arena = renderer.frame_arena.inner();
-        ArenaSnapshot {
-            mesh_vertices: arena.meshes.vertices.clone(),
-            mesh_indices: arena.meshes.indices.clone(),
-            polyline_points: arena.polyline_points.clone(),
-            polyline_colors: arena.polyline_colors.clone(),
-            text: arena.fmt_scratch.clone(),
+    fn snapshot(renderer: &WindowRenderer) -> RecordPayloadSnapshot {
+        let payloads = renderer.record_store.borrow();
+        RecordPayloadSnapshot {
+            mesh_vertices: payloads.meshes.vertices.clone(),
+            mesh_indices: payloads.meshes.indices.clone(),
+            polyline_points: payloads.polyline_points.clone(),
+            polyline_colors: payloads.polyline_colors.clone(),
+            text: payloads.fmt_scratch.clone(),
         }
     }
 
@@ -815,10 +815,10 @@ mod frame_arena_tests {
             });
     }
 
-    /// A record pass in one window must not replace the arena retained by
+    /// A record pass in one window must not replace the payloads retained by
     /// another window's animation-only frame.
     #[test]
-    fn interleaved_window_paint_only_preserves_geometry_arena() {
+    fn interleaved_window_paint_only_preserves_record_payloads() {
         let ctx = HostContext::new(TextShaper::default());
         let mut window_a = WindowRenderer::builder(&ctx, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))

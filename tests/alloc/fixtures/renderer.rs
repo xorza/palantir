@@ -43,7 +43,7 @@ fn many_rects_compose_alloc_free() {
 }
 
 /// Static polyline pushed every frame. Slice borrows are copied into
-/// the tree's per-frame arena at `add_shape` time, so the closure can
+/// the window's record store at `add_shape` time, so the closure can
 /// hold the `Vec` and hand `&points[..]` to the shape variant. Pins
 /// the composer's polyline point/kept scratch reuse.
 #[test]

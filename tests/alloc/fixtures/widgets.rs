@@ -103,7 +103,7 @@ fn static_text_label_alloc_free() {
 
 /// A `TextEdit` with a stable buffer must record alloc-free in steady
 /// state. Pins the fix that routes the display text through the retained
-/// frame arena (`Ui::intern`) instead of cloning the buffer into a fresh
+/// record store (`Ui::intern`) instead of cloning the buffer into a fresh
 /// `String` every frame — the latter allocated proportional to buffer
 /// length on each record pass.
 #[test]
