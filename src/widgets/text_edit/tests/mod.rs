@@ -1,4 +1,4 @@
-use crate::widgets::text_edit::{
+use crate::widgets::text_edit::model::{
     Editor, KeyOutcome, TextEditState, next_grapheme_boundary, next_word_boundary,
     prev_grapheme_boundary, prev_word_boundary, word_range_at,
 };
