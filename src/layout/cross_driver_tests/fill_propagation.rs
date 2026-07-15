@@ -7,9 +7,9 @@ use crate::shape::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::tree::NodeId;
+use crate::forest::layer::Layer;
+use crate::forest::tree::node::NodeId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};

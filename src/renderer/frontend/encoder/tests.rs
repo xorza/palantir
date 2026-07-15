@@ -1,6 +1,6 @@
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;

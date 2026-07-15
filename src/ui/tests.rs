@@ -1,9 +1,9 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::display::Display;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::tree::NodeId;
+use crate::forest::layer::Layer;
+use crate::forest::tree::node::NodeId;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;

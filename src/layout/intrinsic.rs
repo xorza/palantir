@@ -12,12 +12,14 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use crate::forest::element::LayoutMode;
-use crate::forest::tree::{NodeId, Tree};
+use crate::forest::element::columns::LayoutCore;
+use crate::forest::tree::Tree;
+use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size};
 use crate::layout::types::align::HAlign;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::shape::TextWrap;
@@ -100,16 +102,7 @@ pub(crate) fn compute(
         Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
             let pad = axis.spacing(style.padding);
-            content_intrinsic(
-                engine,
-                tree,
-                node,
-                axis,
-                req,
-                tc,
-                style.mode,
-                style.mode_payload,
-            ) + pad
+            content_intrinsic(engine, tree, node, axis, req, tc, style) + pad
         }
     };
 
@@ -135,10 +128,9 @@ fn content_intrinsic(
     axis: Axis,
     req: LenReq,
     tc: &TextCtx<'_>,
-    mode: LayoutMode,
-    mode_payload: u16,
+    style: LayoutCore,
 ) -> f32 {
-    match mode {
+    match style.mode {
         LayoutMode::Leaf => leaf(tree, node, axis, req, tc),
         LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, req, tc),
         LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, tc),
@@ -146,14 +138,14 @@ fn content_intrinsic(
         LayoutMode::WrapVStack => wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, req, tc),
         LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, req, tc),
         LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, req, tc),
-        LayoutMode::Grid => grid::intrinsic(engine, tree, node, mode_payload, axis, req, tc),
+        LayoutMode::Grid => grid::intrinsic(engine, tree, node, style.grid_def_id(), axis, req, tc),
         // Scroll viewports "want" zero on every panned axis — sizing
         // comes from the viewport's own `Sizing`, never from content.
         // The non-panned axis falls back to a stack intrinsic on the
         // panned axis (pan-Y → stack on Y, pan-X → stack on X). If
         // both axes pan, the answer is unconditionally zero.
         LayoutMode::Scroll => {
-            let pan = LayoutMode::pan_mask_from_payload(mode_payload);
+            let pan = style.scroll_spec().pan_mask();
             let pan_axis = match axis {
                 Axis::X => pan.x,
                 Axis::Y => pan.y,
@@ -236,12 +228,12 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
 
 #[cfg(test)]
 mod tests {
-    use crate::forest::tree::NodeId;
+    use crate::forest::tree::node::NodeId;
     use crate::layout::intrinsic::*;
 
     use crate::Ui;
-    use crate::forest::Layer;
     use crate::forest::element::Configure;
+    use crate::forest::layer::Layer;
     use crate::layout::support::TextCtx;
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::{panel::Panel, text::Text};

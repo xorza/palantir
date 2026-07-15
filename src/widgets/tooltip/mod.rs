@@ -1,7 +1,8 @@
-use crate::forest::Layer;
 use crate::forest::element::Salt;
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
+use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -36,7 +37,7 @@ static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
     std::sync::LazyLock::new(|| WidgetId::from_hash("aperture.tooltip.global"));
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
-/// [`crate::forest::Layer::Tooltip`] after the pointer has rested
+/// [`crate::forest::layer::Layer::Tooltip`] after the pointer has rested
 /// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
 /// seconds. A short warmup window (configured on the theme) keeps
 /// subsequent tooltips instant after one was dismissed, so scanning a

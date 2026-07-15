@@ -5,8 +5,8 @@
 
 use crate::Ui;
 use crate::display::Display;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;

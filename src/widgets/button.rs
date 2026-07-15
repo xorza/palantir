@@ -1,6 +1,7 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;

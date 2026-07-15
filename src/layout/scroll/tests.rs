@@ -4,8 +4,8 @@
 //! (driver doesn't fire; row keeps last frame's `content`).
 
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -276,7 +276,7 @@ fn fill_scroll_does_not_grow_hug_parent() {
 
 /// Toggling a scroll's pan-axis `Sizing` (`Hug` ⇄ `Fill`) on the **same
 /// `WidgetId`** across frames busts the `MeasureCache`: the fit bits ride
-/// `mode_payload`, which is folded into the subtree hash for `Scroll`.
+/// scroll specification, which is folded into the subtree hash.
 /// Frame 1 (`Hug`) fits its 150px content; frame 2 (`Fill`) collapses in
 /// the `Hug` parent. Without the payload hashing, the inner viewport's
 /// hash (its own `Sizing` is a constant `Fill`) wouldn't change and the

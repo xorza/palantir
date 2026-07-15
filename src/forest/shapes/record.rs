@@ -1,224 +1,18 @@
 use crate::InternedStr;
-use crate::forest::rollups::ContentHash;
+use crate::forest::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
 use crate::layout::types::align::Align;
-use crate::primitives::brush::FillAxis;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::ColorF16;
 use crate::primitives::corners::Corners;
-use crate::primitives::fill_wire::FillKind;
-use crate::primitives::fill_wire::LutRow;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::rect::Rect;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::stroke::Stroke;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::text_in_rect;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
-use half::f16;
-use std::hash::Hash;
-
-/// Frame-local handle into [`crate::forest::frame_arena::FrameArena::gradients`].
-/// Stable only within one frame — cleared alongside the rest of the
-/// frame arena in `FrameArena::clear`.
-pub(crate) type GradientId = u32;
-
-/// Lowered fill. Solid carries 8-byte `ColorF16` (down from 16 B
-/// `Color`); gradient atlas row + axis + kind are pre-baked at
-/// lowering time and stored in the per-frame `FrameArena.gradients`
-/// arena via an index. The encoder/composer pipe `ColorF16` straight
-/// to the GPU vertex attribute (`Uint32x2` + `unpack2x16float`) —
-/// stays linear end-to-end, no sRGB cubic anywhere.
-#[derive(Clone, Copy, Debug, Hash)]
-pub(crate) enum ShapeBrush {
-    Solid(ColorF16),
-    Gradient(GradientId),
-}
-
-/// Lowered stroke. Gradient strokes are a non-goal — every downstream
-/// consumer already calls `Brush::expect_solid()`. Storage is packed:
-/// `ColorF16` (8 B linear-RGB) + f16 width (2 B) = **10 B**, align 2.
-/// Lossy storage is fine: strokes don't animate inside the row
-/// (frame-local snapshot of the user-space animation output) and
-/// f16 precision is well below display quantization.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ShapeStroke {
-    pub(crate) color: ColorF16,
-    pub(crate) width_f16: u16,
-}
-
-impl ShapeStroke {
-    #[inline]
-    pub(crate) fn width(self) -> f32 {
-        f16::from_bits(self.width_f16).to_f32()
-    }
-
-    /// True when no pixels would paint: zero/negative width or
-    /// fully-transparent colour. Mirrors `Stroke::is_noop` but stays
-    /// in the packed form — no f16 → f32 conversion for the colour
-    /// arm (alpha is checked via the shared `noop_f16_bits` bit-trick
-    /// inside `ColorF16::is_noop`).
-    #[inline]
-    pub(crate) fn is_noop(self) -> bool {
-        // f16 bits with sign masked, compared against the EPS bit
-        // pattern. Width `≤ EPS` (or NaN, which masks above EPS) reads
-        // as "noop"; matches `noop_f32`'s semantics modulo NaN.
-        use crate::primitives::approx::noop_f16_bits;
-        noop_f16_bits(self.width_f16) || self.color.is_noop()
-    }
-}
-
-impl From<&Stroke> for ShapeStroke {
-    #[inline]
-    fn from(s: &Stroke) -> Self {
-        Self {
-            color: ColorF16::from(s.brush.expect_solid()),
-            width_f16: f16::from_f32(s.width).to_bits(),
-        }
-    }
-}
-
-impl From<Stroke> for ShapeStroke {
-    #[inline]
-    fn from(s: Stroke) -> Self {
-        Self::from(&s)
-    }
-}
-
-impl From<ShapeStroke> for Stroke {
-    #[inline]
-    fn from(s: ShapeStroke) -> Self {
-        Stroke::solid(Color::from(s.color), s.width())
-    }
-}
-
-/// Lowered chrome row stored in `Tree.chrome_table`. The user-facing
-/// `Background` is 168 B (inline `Brush` + `Stroke` with inline
-/// `Brush`); this row keeps the same fields in their lowered forms.
-/// Same lifecycle as shape records — written at `open_node` (when the
-/// node carries chrome), cleared per frame. Gradient handle indexes
-/// into `FrameArena.gradients` (the same arena `ShapeBrush::Gradient`
-/// uses), so chrome and shape paints share storage.
-///
-/// `hash` is the canonical authoring fingerprint, pre-computed at
-/// lowering time (`shapes::lower::background`) over `fill` +
-/// `stroke` + `radius` + `shadow`. Read at damage diff time via the
-/// chrome row of [`crate::ui::cascade::Paint`], and folded into the
-/// owner node's hash in [`crate::forest::tree::Tree::compute_hashes`]
-/// as a single `u64` write — no second per-chrome hash walk.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ChromeRow {
-    pub(crate) fill: ShapeBrush,
-    pub(crate) stroke: ShapeStroke,
-    pub(crate) corners: Corners,
-    pub(crate) shadow: LoweredShadow,
-    /// Canonical authoring hash. See struct docs.
-    pub(crate) hash: ContentHash,
-}
-
-/// Lowered shadow. The user-facing `Shadow` is 36 B (linear `Color` +
-/// 2 `Vec2`s + 2 `f32`s + bool); this stores the same authoring data
-/// in 18 B via `ColorF16` and a 4-lane f16 geom block. Used in
-/// `ChromeRow.shadow` and `ShapeRecord::Shadow`. Same lifecycle as
-/// the rest of the row.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LoweredShadow {
-    pub(crate) color: ColorF16,
-    /// `[offset.x, offset.y, blur, spread]` as f16 lanes. Unpacked
-    /// at read time via the batched slice path — single SIMD on
-    /// targets with hardware f16 support.
-    pub(crate) geom_f16: [u16; 4],
-    /// Inset flag stored as u16 (not bool) so the struct has no
-    /// padding bytes — required for `Pod`.
-    pub(crate) inset_flag: u16,
-}
-
-/// Unpacked f16 geom lanes from `LoweredShadow`. Single batched-SIMD
-/// unpack feeds all three named fields; consumers destructure rather
-/// than juggle a `[f32; 4]`.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ShadowGeom {
-    pub(crate) offset: Vec2,
-    pub(crate) blur: f32,
-    pub(crate) spread: f32,
-}
-
-impl LoweredShadow {
-    /// True when no pixels would paint — same gate as `Shadow::is_noop`,
-    /// keyed on the alpha lane via `approx::noop_f16_bits` (shared
-    /// bit-trick — see that fn for the IEEE 754 rationale).
-    #[inline]
-    pub(crate) fn is_noop(self) -> bool {
-        self.color.is_noop()
-    }
-
-    /// Unpack the four f16 geom lanes at once via the shared SIMD
-    /// helper (single `vcvtph2ps` on x86 F16C, `fcvtl` on aarch64-fp16).
-    /// Bypasses `half::HalfFloatSliceExt::convert_to_f32_slice`, which
-    /// gates every call on a runtime `is_x86_feature_detected!("f16c")`
-    /// lookup + an out-of-line dispatch — visible at ~1.4% self in the
-    /// `frame` bench.
-    #[inline]
-    pub(crate) fn geom(self) -> ShadowGeom {
-        use crate::primitives::half_simd::f16x4_to_f32x4;
-        let out = f16x4_to_f32x4(self.geom_f16);
-        ShadowGeom {
-            offset: Vec2::new(out[0], out[1]),
-            blur: out[2],
-            spread: out[3],
-        }
-    }
-
-    #[inline]
-    pub(crate) fn inset(self) -> bool {
-        self.inset_flag != 0
-    }
-}
-
-impl From<Shadow> for LoweredShadow {
-    /// Quantize a user-facing `Shadow` into the packed form. Uses the
-    /// shared `f16x4_from_f32x4` helper — single `vcvtps2ph` on F16C,
-    /// no runtime feature dispatch per call.
-    #[inline]
-    fn from(s: Shadow) -> Self {
-        use crate::primitives::half_simd::f16x4_from_f32x4;
-        let geom_f16 = f16x4_from_f32x4([s.offset.x, s.offset.y, s.blur, s.spread]);
-        Self {
-            color: s.color.into(),
-            geom_f16,
-            inset_flag: s.inset as u16,
-        }
-    }
-}
-
-impl std::hash::Hash for LoweredShadow {
-    /// One `write()` over the 18 storage bytes. Pod-friendly, single
-    /// hasher dispatch.
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
-    }
-}
-
-/// Pre-baked gradient stored in the per-frame arena. The stops have
-/// already been registered with the gradient atlas at lowering time
-/// (yielding `row`); the per-variant geometry has been packed into
-/// `axis`; `kind` carries both the variant tag and the spread mode.
-/// Downstream consumers (encoder, cmd buffer, composer) just pass
-/// these three fields through to the GPU `Quad` — no per-encode
-/// dispatch, no per-compose atlas lookup.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LoweredGradient {
-    pub(crate) axis: FillAxis,
-    pub(crate) row: LutRow,
-    pub(crate) kind: FillKind,
-}
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
 /// keys (which write the discriminant into the hash) stay stable
@@ -637,8 +431,10 @@ pub(crate) fn text_paint_bbox_local(
 mod tests {
     use crate::forest::shapes::hash::compute_record_hash;
     use crate::forest::shapes::record::*;
+    use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
     use crate::primitives::size::Size;
+    use crate::primitives::stroke::Stroke;
     use glam::Vec2;
 
     /// A mesh whose vertex hull overflows its owner box (a rotated / scaled

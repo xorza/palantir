@@ -8,9 +8,9 @@ use crate::shape::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::tree::NodeId;
+use crate::forest::layer::Layer;
+use crate::forest::tree::node::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;

@@ -1,7 +1,8 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;

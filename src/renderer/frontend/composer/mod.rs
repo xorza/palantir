@@ -1,5 +1,5 @@
 use crate::display::Display;
-use crate::forest::frame_arena::FrameArenaInner;
+use crate::frame_arena::FrameArenaInner;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};

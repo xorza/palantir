@@ -1,7 +1,7 @@
 use crate::Ui;
-use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::tree::NodeId;
+use crate::forest::layer::Layer;
+use crate::forest::tree::node::NodeId;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
@@ -3054,7 +3054,8 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 /// strings' bboxes.
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
-    use crate::forest::element::{Element, LayoutMode, Salt};
+    use crate::forest::element::{Element, Salt};
+    use crate::layout::types::layout_mode::LayoutMode;
     use crate::primitives::size::Size;
     use crate::shape::{Shape, TextWrap};
     use crate::text::{FontFamily, FontWeight};
@@ -3173,7 +3174,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 #[test]
 fn direct_shape_on_clipped_node_clips_to_own_mask() {
     use crate::Shape;
-    use crate::forest::Layer;
+    use crate::forest::layer::Layer;
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
     // WindowRenderer panel: 80×40, padding 4 each side via background. The

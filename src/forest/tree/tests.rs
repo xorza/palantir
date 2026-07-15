@@ -1,9 +1,9 @@
 use crate::Ui;
-use crate::forest::Layer;
+use crate::common::content_hash::ContentHash;
 use crate::forest::element::Configure;
-use crate::forest::rollups::ContentHash;
+use crate::forest::layer::Layer;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::NodeId;
+use crate::forest::tree::node::NodeId;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;

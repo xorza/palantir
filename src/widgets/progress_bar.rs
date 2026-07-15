@@ -1,4 +1,5 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, Salt};
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -96,8 +97,8 @@ fn fill_weights(fraction: f32) -> WeightSplit {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
-    use crate::forest::Layer;
     use crate::forest::element::Configure;
+    use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::panel::Panel;
     use crate::widgets::progress_bar::{ProgressBar, fill_weights};

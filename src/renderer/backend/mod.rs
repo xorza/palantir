@@ -34,7 +34,7 @@ use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
 use self::viewport::{ViewportPush, build_damage_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::forest::frame_arena::FrameArena;
+use crate::frame_arena::FrameArena;
 use crate::host::context::HostContext;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::text::TextBackend;

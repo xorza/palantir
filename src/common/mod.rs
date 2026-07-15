@@ -3,6 +3,7 @@
 //! `crate::common::<sub>::<item>`.
 
 pub(crate) mod clipboard;
+pub(crate) mod content_hash;
 pub(crate) mod hash;
 pub(crate) mod live_arena;
 pub(crate) mod platform;

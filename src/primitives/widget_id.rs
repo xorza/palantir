@@ -1,5 +1,28 @@
 use rustc_hash::FxHasher;
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
 use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Default)]
+pub(crate) struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    fn write_u64(&mut self, n: u64) {
+        self.0 = n;
+    }
+
+    fn write(&mut self, _bytes: &[u8]) {
+        unreachable!("IdHasher only sees write_u64 from WidgetId's derived Hash impl");
+    }
+}
+
+pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHasher>>;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]

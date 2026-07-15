@@ -7,10 +7,9 @@
 
 use soa_rs::Soa;
 
-use crate::forest::element::LayoutCore;
+use crate::forest::element::columns::LayoutCore;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::NodeId;
-use crate::forest::tree::node::{NodeRecord, SubtreeEnd};
+use crate::forest::tree::node::{NodeId, NodeRecord, SubtreeEnd};
 use crate::forest::visibility::Visibility;
 use crate::primitives::span::Span;
 

@@ -1,8 +1,9 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::background::Background;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;

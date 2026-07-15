@@ -7,7 +7,7 @@
 
 use glam::Vec2;
 
-use crate::forest::tree::NodeId;
+use crate::forest::tree::node::NodeId;
 use crate::primitives::size::Size;
 
 /// One entry on the recording ancestor stack
@@ -37,7 +37,7 @@ pub(crate) struct OpenFrame {
 /// `&Tree` is type-prevented from reaching transient state — `Tree`
 /// itself is the finalized output. Cleared by `Forest::pre_record`;
 /// drained at every top-level `close_node`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct RecordingScratch {
     /// Ancestor stack for the currently-open scope. Empty outside the
     /// `pre_record` ↔ root `close_node` window. Capacity retained across

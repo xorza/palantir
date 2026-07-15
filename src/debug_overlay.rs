@@ -8,8 +8,8 @@
 //! (dirties its own small rect every frame, Main scene damage is
 //! untouched).
 
-use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::layer::Layer;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;

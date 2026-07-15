@@ -13,8 +13,9 @@
 //! [`crate::forest::shapes::lower`].
 
 use crate::common::hash::hash_str;
-use crate::forest::shapes::record::LoweredGradient;
+use crate::primitives::brush::FillAxis;
 use crate::primitives::color::ColorU8;
+use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::span::Span;
@@ -22,6 +23,18 @@ use glam::Vec2;
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::Write as _;
 use std::rc::Rc;
+
+/// Frame-local handle into [`FrameArenaInner::gradients`].
+pub(crate) type GradientId = u32;
+
+/// Pre-baked gradient payload stored in the arena that owns its lifetime.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LoweredGradient {
+    pub(crate) axis: FillAxis,
+    pub(crate) row: LutRow,
+    pub(crate) kind: FillKind,
+}
 
 /// Shared per-frame arena. `WindowRenderer` constructs one and clones it into
 /// every subsystem (`Ui`, `Frontend`, `WgpuBackend`). Phases run

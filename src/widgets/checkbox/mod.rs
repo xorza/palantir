@@ -1,5 +1,6 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;

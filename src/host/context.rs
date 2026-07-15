@@ -18,7 +18,7 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::forest::frame_arena::FrameArena;
+use crate::frame_arena::FrameArena;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
 use crate::text::TextShaper;

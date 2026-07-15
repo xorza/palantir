@@ -1,4 +1,4 @@
-use crate::forest::shapes::record::ShapeStroke;
+use crate::forest::shapes::paint::ShapeStroke;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;

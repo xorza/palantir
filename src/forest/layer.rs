@@ -1,11 +1,44 @@
-//! `PerLayer<T>` — fixed-size `[T; Layer::COUNT]` keyed by [`Layer`]
-//! directly so call sites don't sprinkle `.idx()`. Used by `Forest`
-//! (trees), `Layout` (per-layer layout columns), and `Cascades`
-//! (per-layer cascade rows + paint arenas).
+//! Layer ordering and fixed per-layer storage.
 
-use crate::forest::Layer;
 use std::array;
 use strum::EnumCount as _;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
+pub enum Layer {
+    #[default]
+    Main = 0,
+    Popup = 1,
+    Modal = 2,
+    Tooltip = 3,
+    Debug = 4,
+}
+
+impl Layer {
+    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
+        Layer::Main,
+        Layer::Popup,
+        Layer::Modal,
+        Layer::Tooltip,
+        Layer::Debug,
+    ];
+
+    #[inline]
+    pub(crate) const fn idx(self) -> usize {
+        self as usize
+    }
+}
+
+const _: () = {
+    let mut i = 0;
+    while i < Layer::PAINT_ORDER.len() {
+        assert!(
+            Layer::PAINT_ORDER[i] as usize == i,
+            "Layer::PAINT_ORDER must match the discriminant order",
+        );
+        i += 1;
+    }
+};
 
 /// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`]. Implements
 /// `Index<Layer>` / `IndexMut<Layer>` for the natural sugar,

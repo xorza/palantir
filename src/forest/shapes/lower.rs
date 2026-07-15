@@ -9,12 +9,11 @@
 //!
 //! [`Shape`]: crate::shape::Shape
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher as FxHasher;
-use crate::forest::frame_arena::FrameArena;
-use crate::forest::rollups::ContentHash;
-use crate::forest::shapes::record::{
-    ChromeRow, LoweredGradient, LoweredShadow, ShapeBrush, ShapeRecord, ShapeStroke,
-};
+use crate::forest::shapes::paint::{ChromeRow, LoweredShadow, ShapeBrush, ShapeStroke};
+use crate::forest::shapes::record::ShapeRecord;
+use crate::frame_arena::{FrameArena, LoweredGradient};
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
@@ -30,6 +29,13 @@ use crate::renderer::render_buffer::curve::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
 use std::hash::Hasher;
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChromeInput<'a> {
+    pub(crate) bg: &'a Background,
+    pub(crate) arena: &'a FrameArena,
+    pub(crate) atlas: &'a GradientAtlas,
+}
 
 /// Result of lowering a user-side `Brush`. `brush` is the storage form
 /// (`Solid` inline or `Gradient(id)` indexing into the arena's

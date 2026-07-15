@@ -6,8 +6,8 @@ use crate::widgets::text_edit::tests::*;
 #[test]
 fn caret_blinks_on_and_off_while_focused() {
     use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::NodeId;
     use crate::forest::tree::iter::{TreeItem, TreeItems};
+    use crate::forest::tree::node::NodeId;
     use std::time::Duration;
 
     fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
