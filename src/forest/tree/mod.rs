@@ -303,7 +303,7 @@ impl Tree {
         mut element: Element,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
-        debug_assert_eq!(
+        assert_eq!(
             new_id.0 as usize,
             self.records.len(),
             "Tree::open_node received a NodeId that doesn't match the next slot",
