@@ -19,6 +19,7 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
+use crate::frame_arena::FrameArenaInner;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::encode;
@@ -57,15 +58,10 @@ impl Frontend {
 
     /// Encode → compose into the staged output buffer.
     #[profiling::function]
-    pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) {
-        // One shared borrow spans both passes — encode and compose only
-        // read the arena (stroke expansion happens on the GPU), so no
-        // mutable window is needed and neither pass can deadlock-panic
-        // against another shared reader.
-        let arena = ui.ctx.frame_arena.inner();
-        encode(ui, &arena, plan, &mut self.cmds);
+    pub(crate) fn build(&mut self, ui: &Ui, arena: &FrameArenaInner, plan: RenderPlan) {
+        encode(ui, arena, plan, &mut self.cmds);
         self.composer
-            .compose(&self.cmds, &arena, ui.display, &mut self.buffer);
+            .compose(&self.cmds, arena, ui.display, &mut self.buffer);
         // Stamp the frame clock for the backend's per-GpuView `dt` (not
         // derivable from `Display`, so it doesn't ride `start_frame`).
         self.buffer.time = ui.frame_runtime.time;
@@ -100,7 +96,8 @@ pub mod test_support {
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
         pub fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
-            self.build(ui, plan);
+            let arena = ui.frame_arena.inner();
+            self.build(ui, &arena, plan);
         }
     }
 }

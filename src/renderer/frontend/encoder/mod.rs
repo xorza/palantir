@@ -315,7 +315,7 @@ fn emit_one_shape(
             bbox,
             content_hash: _,
         } => {
-            // Points + colors live in the host's FrameArena; spans
+            // Points + colors live in the window's FrameArena; spans
             // are forwarded verbatim. Owner-local convention — the
             // composer folds `origin` into the per-point transform.
             let rotation = paint_mod.rotation;
@@ -348,7 +348,7 @@ fn emit_one_shape(
             bbox,
             content_hash: _,
         } => {
-            // Verts live in the host's FrameArena owner-local;
+            // Verts live in the window's FrameArena owner-local;
             // composer folds `origin` into the per-instance translate.
             // No per-frame copy here.
             let origin = resolve_local_rect(owner_rect, *local_rect).min;

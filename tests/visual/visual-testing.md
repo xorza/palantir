@@ -18,8 +18,9 @@ a failing diff.
   exact match.
 - Replacing layout/unit tests — this is a coarse backstop, not a substitute
   for `#[test]`s that pin semantics.
-- Animation / multi-frame capture — one captured frame per fixture (a few
-  fixtures render N frames to settle state first, but still capture one).
+- General-purpose animation capture — fixtures normally capture one frame;
+  targeted state-transition tests may compare multiple captures when the
+  cross-frame behavior itself is the contract.
 
 ## Running
 
@@ -59,7 +60,8 @@ tests/visual/
 │   ├── scroll.rs        scrollbar visuals + warm-cache parity
 │   ├── damage.rs        DamageEngine visualization fixtures
 │   ├── format_change.rs surface-format-change recreate path
-│   └── hidpi.rs         scale > 1.0 scenes
+│   ├── hidpi.rs         scale > 1.0 scenes
+│   └── multi_window.rs  interleaved retained-frame ownership
 ├── golden/              gitignored — per-machine PNG references, auto-created on first run
 ├── output/              gitignored — diff artifacts written on failure
 └── visual-testing.md    this file
@@ -74,7 +76,9 @@ tests/visual/
   clear, scene)` returns an `RgbaImage`. Helpers: `render_after_settle(N, …)`
   for fixtures that need warmup frames before capture (e.g. scrollbars reading
   populated state), `render_with_overlay(cfg, …)` for the damage-vis tests.
-  Private `readback()` honors the 256-byte row alignment.
+  `TwoWindowHarness` drives two `WindowRenderer`s through one backend for
+  retained-state interleaving checks. Private `readback()` honors the 256-byte
+  row alignment.
 - **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }`, default
   `(2, 0.001)`: a pixel passes if every channel is within `per_channel`, and
   the image passes if the differing-pixel ratio stays under `max_ratio`.
@@ -123,6 +127,10 @@ fixtures loosen it for glyph AA).
   the switch with no re-upload).
 - **`hidpi`** — a complex multi-region dashboard at scale 2.0 (header /
   sidebar / 2×2 cards / footer).
+- **`multi_window`** — records different mesh, polyline, and frame-local text
+  payload lengths in two windows sharing one backend, then asserts window A's
+  spinner-driven `PaintOnly` pixels exactly match its first render after
+  window B records in between (assert-only).
 - **`main`** — a clear-color readback sanity check (sRGB round-trip).
 
 ### Adding a fixture

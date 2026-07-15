@@ -15,6 +15,7 @@ use crate::forest::element::Element;
 use crate::forest::layer::Layer;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::paint_anims::PaintAnim;
+use crate::frame_arena::FrameArena;
 use crate::host::context::HostContext;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
@@ -60,10 +61,6 @@ use std::time::Duration;
 /// logical pixels (DIPs); `Display::scale_factor` converts to
 /// physical at the wgpu boundary. Frame scheduling state lives in
 /// [`FrameRuntime`].
-///
-/// `Default` builds a self-contained `Ui` with mono-fallback shaper
-/// and a private frame arena. Hosts that need to share the shaper /
-/// arena with the wgpu backend use [`Self::new`] instead.
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
@@ -76,16 +73,17 @@ pub struct Ui {
     /// the redraw epoch and the encoder looks the view up here by the node's
     /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
     pub(crate) gpu_views: WidgetIdMap<GpuViewEntry>,
+    /// This window's retained record arena. Cleared only when a record pass
+    /// rebuilds the forest; `PaintOnly` keeps it paired with the retained tree.
+    pub(crate) frame_arena: FrameArena,
     /// App-global shared state cloned from the host at construction: the
-    /// render resources (`ctx.shaper` / `ctx.frame_arena` / `ctx.caches` /
-    /// `ctx.pass_stats`) and the host state behind it (the live-window set,
+    /// render resources (`ctx.shaper` / `ctx.caches` / `ctx.pass_stats`) and
+    /// the host state behind it (the live-window set,
     /// read by [`Self::window_open`], and the debug overlay, read at submit
     /// time + by `Ui::frame` for the FPS readout, toggled via
     /// [`Self::debug_overlay_mut`]). One handle so a new shared field
     /// doesn't touch every `Ui` constructor; the wgpu backend clones the
-    /// same context (render handles only), so both see one set. A
-    /// standalone `Ui::default()` builds a fresh private context that no
-    /// backend or host writes to.
+    /// same context (render handles only), so both see one set.
     pub(crate) ctx: HostContext,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
@@ -122,22 +120,6 @@ impl std::fmt::Debug for Ui {
     }
 }
 
-/// Standalone `Ui` with a fresh private [`HostContext`] (mono-fallback
-/// shaper, its own arena, no backend or host writing to it). Delegates to
-/// [`Ui::new`] so the field list lives in one place.
-///
-/// **Test / bench only** — gated out of the shipping build so a stray
-/// `Ui::default()` (disconnected from any backend) can't slip into app
-/// code, which never constructs a `Ui` itself (the host hands one to
-/// `App::frame`). The alloc audit + the `alloc_free` / `input_throughput`
-/// benches reach it by opting into `internals`.
-#[cfg(any(test, feature = "internals"))]
-impl Default for Ui {
-    fn default() -> Self {
-        Self::new(&HostContext::default())
-    }
-}
-
 /// Construction + host-driven frame lifecycle: `frame` and the private
 /// record / clock / classify / cascade / finalize passes it runs. User
 /// code never calls these directly — `WindowRenderer` drives them. The widget
@@ -148,21 +130,17 @@ impl Ui {
     /// clock still tracks the host's true time.
     pub(crate) const MAX_DT: f32 = 0.1;
 
-    /// Construct a per-window `Ui` from the host's shared [`HostContext`]
-    /// — a clone of which the `Ui` keeps. Through it the `Ui` shares the
-    /// same `TextShaper` the wgpu backend uses (so layout-time measurement
-    /// and render-time shaping hit one buffer cache), the same `FrameArena`
-    /// the `Frontend` + `WgpuBackend` see (so every phase reads one set of
-    /// per-frame mesh / polyline bytes), the render caches + GPU-stats, and
-    /// the app-global host state (live-window set + debug overlay) every
-    /// window shares. [`crate::WindowRenderer::new`] calls this.
-    ///
-    /// Tests / standalone callers usually want [`Self::default`] (gated to
-    /// test / `internals`), which builds an isolated `Ui` with mono fallback
-    /// shaper + its own private arena.
-    pub(crate) fn new(ctx: &HostContext) -> Self {
+    /// Construct a per-window `Ui` from the host's shared [`HostContext`] and
+    /// the window's [`FrameArena`]. Through the context the `Ui` shares the
+    /// same `TextShaper` the wgpu backend uses (so layout-time measurement and
+    /// render-time shaping hit one buffer cache), the render caches +
+    /// GPU-stats, and the app-global host state (live-window set + debug
+    /// overlay). The arena is shared only with this window's renderer so
+    /// retained shape spans remain valid across other windows' record passes.
+    pub(crate) fn new(ctx: &HostContext, frame_arena: FrameArena) -> Self {
         Self {
             ctx: ctx.clone(),
+            frame_arena,
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
@@ -455,7 +433,7 @@ impl Ui {
             // index into it (gradients / polyline points+colors /
             // meshes / interned text). Clear in lockstep with
             // `forest.pre_record` — both refill during user record.
-            self.ctx.frame_arena.clear();
+            self.frame_arena.clear();
             self.forest.pre_record();
             // Subscription set is rebuilt from scratch each full record
             // pass — symmetric to `Sense` on a node. Widgets re-assert
@@ -543,7 +521,7 @@ impl Ui {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
-        let arena = self.ctx.frame_arena.inner();
+        let arena = self.frame_arena.inner();
         let tc = TextCtx {
             bytes: &arena.fmt_scratch,
             shaper: &self.ctx.shaper,
@@ -878,7 +856,7 @@ impl Ui {
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         self.forest
-            .add_shape(shape, &self.ctx.frame_arena, &self.ctx.caches.gradients);
+            .add_shape(shape, &self.frame_arena, &self.ctx.caches.gradients);
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
@@ -947,7 +925,7 @@ impl Ui {
     /// and convert it into `InternedStr` on every pass.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
-        self.ctx.frame_arena.intern_fmt(args)
+        self.frame_arena.intern_fmt(args)
     }
 
     /// Copy `s` into the record-pass text arena and return a frame-local
@@ -958,7 +936,7 @@ impl Ui {
     /// frame-scoped invalidation rules as [`Self::fmt`].
     #[must_use]
     pub fn intern(&mut self, s: &str) -> InternedStr {
-        self.ctx.frame_arena.intern_str(s)
+        self.frame_arena.intern_str(s)
     }
 
     /// Append `shape` to the active node and register `anim` against
@@ -969,12 +947,8 @@ impl Ui {
     /// itself was noop-collapsed (zero stroke + transparent fill,
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
     pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
-        self.forest.add_shape_animated(
-            shape,
-            anim,
-            &self.ctx.frame_arena,
-            &self.ctx.caches.gradients,
-        );
+        self.forest
+            .add_shape_animated(shape, anim, &self.frame_arena, &self.ctx.caches.gradients);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
@@ -1061,7 +1035,7 @@ impl Ui {
     ) -> R {
         let chrome = chrome.map(|bg| ChromeInput {
             bg,
-            arena: &self.ctx.frame_arena,
+            arena: &self.frame_arena,
             atlas: &self.ctx.caches.gradients,
         });
         self.forest.open_node(id, element, chrome);
@@ -1280,6 +1254,15 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
+    /// Standalone `Ui` with a mono-fallback shaper and private frame arena.
+    /// Shipping code receives its `Ui` from a host and must not construct a
+    /// disconnected one.
+    impl Default for Ui {
+        fn default() -> Self {
+            Self::new(&HostContext::default(), FrameArena::default())
+        }
+    }
+
     impl Ui {
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
         pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
@@ -1311,7 +1294,7 @@ pub mod test_support {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
             let ctx = HostContext::new(SHARED.with(|c| c.clone()));
-            let mut ui = Self::new(&ctx);
+            let mut ui = Self::new(&ctx, FrameArena::default());
             ui.mark_warm_for_test();
             ui
         }
@@ -1516,7 +1499,7 @@ pub mod test_support {
             };
             let plan = RenderPlan { clear, kind };
             let mut cmds = RenderCmdBuffer::default();
-            let arena = self.ctx.frame_arena.inner();
+            let arena = self.frame_arena.inner();
             encode(self, &arena, plan, &mut cmds);
             cmds
         }

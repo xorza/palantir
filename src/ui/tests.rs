@@ -91,7 +91,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // record time are visible at compose / upload — the WindowRenderer wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
-    frontend.build(
+    frontend.build_for_test(
         &ui,
         RenderPlan {
             clear: ui.theme.window_clear,
@@ -164,7 +164,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // record time are visible at compose / upload — the WindowRenderer wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
-    frontend.build(
+    frontend.build_for_test(
         &ui,
         RenderPlan {
             clear: ui.theme.window_clear,
@@ -297,9 +297,9 @@ fn empty_ui_drives_a_frame_safely() {
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
-    // No mesh/polyline bytes recorded → a private frontend arena works.
+    // No mesh/polyline bytes were recorded, so the Ui arena is empty.
     let mut frontend = Frontend::for_test();
-    frontend.build(
+    frontend.build_for_test(
         &ui,
         RenderPlan {
             clear: ui.theme.window_clear,
@@ -1179,7 +1179,7 @@ fn frame_local_text_lowers_in_its_record_pass() {
             .show(ui);
     });
 
-    let arena = ui.ctx.frame_arena.inner();
+    let arena = ui.frame_arena.inner();
     assert_eq!(arena.fmt_scratch, "same-pass 7");
     assert_eq!(ui.forest.trees[Layer::Main].shapes.records.len(), 1);
     match &ui.forest.trees[Layer::Main].shapes.records[0] {
@@ -1273,7 +1273,7 @@ fn paint_only_preserves_frame_arena_for_retained_shapes() {
     });
     ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
-    assert_eq!(ui.ctx.frame_arena.inner().fmt_scratch, "retained 7");
+    assert_eq!(ui.frame_arena.inner().fmt_scratch, "retained 7");
 
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, `arena.gradients`
@@ -1284,13 +1284,13 @@ fn paint_only_preserves_frame_arena_for_retained_shapes() {
     // Direct pin: the gradient pushed during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        ui.ctx.frame_arena.inner().gradients.len(),
+        ui.frame_arena.inner().gradients.len(),
         1,
         "PaintOnly must preserve arena.gradients so retained \
          ShapeBrush::Gradient indices remain valid",
     );
     assert_eq!(
-        ui.ctx.frame_arena.inner().fmt_scratch,
+        ui.frame_arena.inner().fmt_scratch,
         "retained 7",
         "PaintOnly must preserve bytes referenced by retained frame-local text",
     );

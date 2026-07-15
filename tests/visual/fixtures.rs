@@ -9,6 +9,7 @@ mod gpu_view;
 mod hidpi;
 mod image;
 mod layout;
+mod multi_window;
 mod scroll;
 mod text;
 mod widgets;

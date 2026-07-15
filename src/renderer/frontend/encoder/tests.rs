@@ -224,7 +224,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "lines no longer lower to polylines"
     );
     assert_eq!(
-        ui.ctx.frame_arena.inner().polyline_points.len(),
+        ui.frame_arena.inner().polyline_points.len(),
         0,
         "the points arena stays untouched by lines"
     );

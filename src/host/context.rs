@@ -1,13 +1,13 @@
 //! [`HostContext`] — the app-global shared state cloned into every
 //! window's [`Ui`](crate::ui::Ui): the GPU-agnostic render resources (text
-//! shaper, per-frame arena, CPU-side render caches, GPU-stats handle) plus
+//! shaper, CPU-side render caches, GPU-stats handle) plus
 //! the host state (live-window set + debug overlay). One per app, owned by
 //! the windowing host ([`WinitHost`](crate::WinitHost) /
 //! [`OffscreenHost`](crate::host::offscreen::OffscreenHost)).
 //!
 //! It's a passive bag, not a factory: the host builds one, hands it to
 //! `WgpuBackend::new` (which clones the render handles it needs) and to
-//! `Ui::new` / `Frontend::new`. Every field is a cheap Rc/Arc-backed
+//! `Ui::new`. Every field is a cheap Rc/Arc-backed
 //! handle, so all clones point at one shared set — including the host
 //! state, which rides a single `Rc<RefCell<>>`. Single-threaded by
 //! construction (the event loop and every window's frame run on one
@@ -18,19 +18,17 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::frame_arena::FrameArena;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
 use crate::text::TextShaper;
 use crate::window::WindowToken;
 
-/// Shared, app-global state cloned into every window's `Ui` + `Frontend`
-/// and (the render handles) into the one shared backend. Cloning is cheap —
-/// every field is an Rc/Arc-backed handle pointing at one set.
+/// Shared, app-global state cloned into every window's `Ui` and, for the
+/// render handles, into the one shared backend. Cloning is cheap — every field
+/// is an Rc/Arc-backed handle pointing at one set.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct HostContext {
     pub(crate) shaper: TextShaper,
-    pub(crate) frame_arena: FrameArena,
     pub(crate) caches: RenderCaches,
     pub(crate) pass_stats: GpuPassStats,
     /// App-global host state (live-window set + debug overlay) behind one
