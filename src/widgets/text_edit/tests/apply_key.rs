@@ -104,6 +104,182 @@ fn apply_key_cases() {
     }
 }
 
+#[derive(Debug)]
+struct ExternalReplacementCase {
+    label: &'static str,
+    replacement: &'static str,
+    caret: usize,
+    selection: Option<usize>,
+    drag_anchor: Option<usize>,
+    key: KeyPress,
+    repaired_caret: usize,
+    repaired_selection: Option<usize>,
+    repaired_drag_anchor: Option<usize>,
+    expected_text: &'static str,
+    expected_caret: usize,
+    expected_selection: Option<usize>,
+}
+
+#[test]
+fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
+    fn word_nav(key: Key) -> KeyPress {
+        let mut keypress = press(key);
+        match PLATFORM {
+            Platform::Mac => keypress.mods.alt = true,
+            _ => keypress.mods.ctrl = true,
+        }
+        keypress
+    }
+
+    let cases = [
+        // Old buffer "a" left caret byte 1. The longer replacement
+        // "é" keeps 1 in bounds but makes it an interior UTF-8 byte.
+        ExternalReplacementCase {
+            label: "backspace_after_longer_multibyte_replacement",
+            replacement: "é",
+            caret: 1,
+            selection: None,
+            drag_anchor: None,
+            key: press(Key::Backspace),
+            repaired_caret: 0,
+            repaired_selection: None,
+            repaired_drag_anchor: None,
+            expected_text: "é",
+            expected_caret: 0,
+            expected_selection: None,
+        },
+        ExternalReplacementCase {
+            label: "delete_after_four_byte_replacement",
+            replacement: "🦀x",
+            caret: 3,
+            selection: None,
+            drag_anchor: None,
+            key: press(Key::Delete),
+            repaired_caret: 0,
+            repaired_selection: None,
+            repaired_drag_anchor: None,
+            expected_text: "x",
+            expected_caret: 0,
+            expected_selection: None,
+        },
+        // Old ASCII "abc" and replacement "éx" are both three bytes.
+        // Both persisted anchors at byte 1 must repair before deletion.
+        ExternalReplacementCase {
+            label: "selection_and_drag_anchor_after_same_length_replacement",
+            replacement: "éx",
+            caret: 3,
+            selection: Some(1),
+            drag_anchor: Some(1),
+            key: press(Key::Backspace),
+            repaired_caret: 3,
+            repaired_selection: Some(0),
+            repaired_drag_anchor: Some(0),
+            expected_text: "",
+            expected_caret: 0,
+            expected_selection: None,
+        },
+        ExternalReplacementCase {
+            label: "delete_selection_with_repaired_caret",
+            replacement: "éx",
+            caret: 1,
+            selection: Some(3),
+            drag_anchor: None,
+            key: press(Key::Delete),
+            repaired_caret: 0,
+            repaired_selection: Some(3),
+            repaired_drag_anchor: None,
+            expected_text: "",
+            expected_caret: 0,
+            expected_selection: None,
+        },
+        ExternalReplacementCase {
+            label: "word_right_after_multibyte_replacement",
+            replacement: "é word",
+            caret: 1,
+            selection: None,
+            drag_anchor: None,
+            key: word_nav(Key::ArrowRight),
+            repaired_caret: 0,
+            repaired_selection: None,
+            repaired_drag_anchor: None,
+            expected_text: "é word",
+            expected_caret: 2,
+            expected_selection: None,
+        },
+        ExternalReplacementCase {
+            label: "word_left_after_multibyte_replacement",
+            replacement: "aé",
+            caret: 2,
+            selection: None,
+            drag_anchor: None,
+            key: word_nav(Key::ArrowLeft),
+            repaired_caret: 1,
+            repaired_selection: None,
+            repaired_drag_anchor: None,
+            expected_text: "aé",
+            expected_caret: 0,
+            expected_selection: None,
+        },
+    ];
+
+    for case in cases {
+        let mut text = String::from(case.replacement);
+        let mut state = TextEditState {
+            caret: case.caret,
+            selection: case.selection,
+            drag_anchor: case.drag_anchor,
+            ..Default::default()
+        };
+
+        state.normalize(&text);
+        assert_eq!(
+            state.caret, case.repaired_caret,
+            "{}: repair caret",
+            case.label
+        );
+        assert_eq!(
+            state.selection, case.repaired_selection,
+            "{}: repair selection",
+            case.label,
+        );
+        assert_eq!(
+            state.drag_anchor, case.repaired_drag_anchor,
+            "{}: repair drag anchor",
+            case.label,
+        );
+        assert!(
+            text.is_char_boundary(state.caret),
+            "{}: repaired caret boundary",
+            case.label
+        );
+        assert!(
+            state
+                .selection
+                .is_none_or(|offset| text.is_char_boundary(offset)),
+            "{}: repaired selection boundary",
+            case.label,
+        );
+
+        apply_key(&mut text, &mut state, case.key);
+        assert_eq!(text, case.expected_text, "{}: edited text", case.label);
+        assert_eq!(
+            state.caret, case.expected_caret,
+            "{}: final caret",
+            case.label
+        );
+        assert_eq!(
+            state.selection, case.expected_selection,
+            "{}: final selection",
+            case.label,
+        );
+        assert!(
+            text.is_char_boundary(state.caret),
+            "{}: final caret boundary",
+            case.label
+        );
+    }
+}
+
 /// Type one char via the real (cap-aware) `apply_key`.
 fn type_char(s: &mut String, state: &mut TextEditState, c: char, max: Option<usize>) {
     Editor::new(s, state, false, max).apply_key(press(Key::Char(c)));

@@ -57,9 +57,9 @@ const REDO: Shortcut = Shortcut::ctrl_shift('Z');
 /// byte cursors and `&buffer[..caret]` is the natural prefix-measure
 /// path). All widget-driven mutations step grapheme-cluster boundaries
 /// (which are themselves codepoint-aligned), so the caret should never
-/// land mid-codepoint. WindowRenderer code that mutates the buffer between
-/// frames may shrink it past `caret`; `show()` clamps at the top each
-/// frame.
+/// land mid-codepoint. Application code may replace the buffer between
+/// frames, so `show()` repairs every persisted byte offset to the nearest
+/// preceding UTF-8 boundary before processing input.
 #[derive(Clone, Default, Debug)]
 pub(crate) struct TextEditState {
     pub(crate) caret: usize,
@@ -504,39 +504,30 @@ impl TextEditState {
         Some(a.min(self.caret)..a.max(self.caret))
     }
 
-    /// Clamp caret + selection anchor into `0..=len` and collapse an
-    /// empty selection (`Some(caret)`) to `None`. Pure repair — safe to
-    /// call before our own mutations (the host-owned buffer may have
-    /// been shrunk externally between frames) as well as after.
-    fn clamp_in_bounds(&mut self, len: usize) {
-        self.caret = self.caret.min(len);
-        if let Some(a) = self.selection {
-            self.selection = Some(a.min(len));
+    fn repair_offset(text: &str, offset: usize) -> usize {
+        let mut offset = offset.min(text.len());
+        while !text.is_char_boundary(offset) {
+            offset -= 1;
         }
+        offset
+    }
+
+    /// Repair every persisted byte offset against the current host-owned
+    /// buffer. Offsets beyond the end clamp to `len`; offsets inside a
+    /// UTF-8 code point walk backward to its start (at most three bytes).
+    /// Then collapse an empty selection. Safe both before input, when the
+    /// application may have replaced the buffer, and after our mutations.
+    fn normalize(&mut self, text: &str) {
+        self.caret = Self::repair_offset(text, self.caret);
+        self.selection = self
+            .selection
+            .map(|offset| Self::repair_offset(text, offset));
+        self.drag_anchor = self
+            .drag_anchor
+            .map(|offset| Self::repair_offset(text, offset));
         if self.selection == Some(self.caret) {
             self.selection = None;
         }
-    }
-
-    /// Re-establish the caret/selection invariants at the end of an
-    /// input pass — the single choke point the scattered mutation sites
-    /// answer to. Clamps into range + collapses the empty selection,
-    /// then asserts both offsets sit on UTF-8 boundaries. The boundary
-    /// half is a `debug_assert` (not a release `assert`/repair): a
-    /// mid-codepoint offset from one of our own edits is a logic bug,
-    /// but the buffer is host-owned, so a release crash on an external
-    /// buffer swap would be asserting on user input.
-    fn normalize(&mut self, text: &str) {
-        self.clamp_in_bounds(text.len());
-        debug_assert!(
-            text.is_char_boundary(self.caret),
-            "TextEdit caret {} off a UTF-8 boundary",
-            self.caret,
-        );
-        debug_assert!(
-            self.selection.is_none_or(|a| text.is_char_boundary(a)),
-            "TextEdit selection anchor off a UTF-8 boundary",
-        );
     }
 }
 
@@ -1389,10 +1380,10 @@ fn handle_input(
     let caret_before = state.caret;
     let sel_before = state.selection;
     let was_focused = state.prev_focused;
-    // Clamp caret + anchor. WindowRenderer code may have shrunk `*text`
-    // between frames; an OOB anchor would corrupt the selection range
-    // derivation.
-    state.clamp_in_bounds(text.len());
+    // Repair persisted byte offsets before any range/slice operation.
+    // Application code may have replaced `*text` with a same-length or
+    // longer string whose UTF-8 boundaries differ from the prior frame.
+    state.normalize(text);
     let mut ed = Editor::new(text, state, ctx.multiline, max_chars);
 
     // Select-all-on-focus: the frame focus lands (and no press this frame — a
