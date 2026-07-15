@@ -660,7 +660,7 @@ pub(crate) struct TextCacheKey {
 impl TextCacheKey {
     /// Sentinel returned by the mono fallback. Real keys always carry a
     /// nonzero text hash, so that field alone tags validity.
-    pub const INVALID: Self = Self {
+    pub(crate) const INVALID: Self = Self {
         text_hash: 0,
         size_q: 0,
         max_w_q: 0,
@@ -671,7 +671,7 @@ impl TextCacheKey {
         fit_q: 0,
     };
 
-    pub const fn is_invalid(self) -> bool {
+    pub(crate) const fn is_invalid(self) -> bool {
         self.text_hash == 0
     }
 }

@@ -21,6 +21,7 @@ use glam::Vec2;
 /// Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]) —
 /// chrome via `unchecked.pick(state)` / `checked.pick(state)`, check
 /// glyph color from `indicator`, geometry from `box_size` etc.
+#[derive(Debug)]
 pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,

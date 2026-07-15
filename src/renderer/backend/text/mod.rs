@@ -476,7 +476,7 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub mod test_support {
     //! Bench/test reach-in surface for driving prepare → flush → render
     //! without `WindowRenderer`'s full record/measure/cascade/encode pipeline.
@@ -484,11 +484,12 @@ pub mod test_support {
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
-    use crate::renderer::backend::gpu_ctx::GpuCtx;
+    use crate::renderer::backend::gpu_ctx::test_support::GpuCtx;
     use crate::renderer::backend::pipeline_utils::StencilVariant;
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::ViewportPush;
-    use crate::renderer::render_buffer::text::TextRun;
+    use crate::renderer::render_buffer::text::TextRun as InnerTextRun;
+    use crate::renderer::render_buffer::text::test_support::TextRun;
 
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
@@ -516,11 +517,12 @@ pub mod test_support {
 
         /// Append-mode prepare into batch 0.
         pub fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) {
-            self.backend.prepare_batch(ctx, scale, 0, runs);
+            self.backend
+                .prepare_batch(&mut ctx.0, scale, 0, TextRun::inner_slice(runs));
         }
 
         pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-            self.backend.flush(ctx);
+            self.backend.flush(&mut ctx.0);
         }
 
         pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
@@ -553,6 +555,29 @@ pub mod test_support {
         scale: f32,
         color: ColorU8,
     ) -> TextRun {
+        TextRun::new(make_inner_run(
+            shaper,
+            text,
+            font_size_px,
+            line_height_px,
+            origin,
+            viewport,
+            scale,
+            color,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn make_inner_run(
+        shaper: &TextShaper,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        origin: Vec2,
+        viewport: UVec2,
+        scale: f32,
+        color: ColorU8,
+    ) -> InnerTextRun {
         let m = shaper.measure(
             text,
             ShapeParams {
@@ -564,7 +589,7 @@ pub mod test_support {
                 halign: HAlign::Auto,
             },
         );
-        TextRun {
+        InnerTextRun {
             key: m.key,
             origin,
             bounds: URect::new(0, 0, viewport.x, viewport.y),
@@ -627,7 +652,7 @@ mod gpu_regression {
     use crate::primitives::color::ColorU8;
     use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
-    use crate::renderer::backend::text::test_support::make_run;
+    use crate::renderer::backend::text::test_support::make_inner_run;
     use crate::renderer::render_buffer::text::TextRun;
 
     const PHYSICAL: UVec2 = UVec2::new(640, 480);
@@ -706,7 +731,7 @@ mod gpu_regression {
         let shaper = TextShaper::with_bundled_fonts();
         let mut backend = TextBackend::new(&device, shaper.clone());
 
-        let runs = [make_run(
+        let runs = [make_inner_run(
             &shaper,
             "File",
             14.0,
@@ -798,7 +823,7 @@ mod gpu_regression {
 
         let color_a = ColorU8::rgba(240, 240, 240, 255);
         let color_b = ColorU8::rgba(200, 100, 50, 255);
-        let run_a = make_run(
+        let run_a = make_inner_run(
             &shaper,
             "File",
             14.0,
@@ -808,7 +833,7 @@ mod gpu_regression {
             1.0,
             color_a,
         );
-        let run_b = make_run(
+        let run_b = make_inner_run(
             &shaper,
             "File",
             14.0,
@@ -866,7 +891,7 @@ mod gpu_regression {
 
         // Three 3-glyph lines at line_height 16 px, origin (0, 0):
         // line tops sit at 0 / 16 / 32.
-        let mut run = make_run(
+        let mut run = make_inner_run(
             &shaper,
             "abc\ndef\nxyz",
             14.0,
@@ -957,7 +982,7 @@ mod gpu_regression {
         let shaper = TextShaper::with_bundled_fonts();
         let mut backend = TextBackend::new(&device, shaper.clone());
 
-        let runs = [make_run(
+        let runs = [make_inner_run(
             &shaper,
             " ",
             14.0,

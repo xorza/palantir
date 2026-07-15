@@ -6,7 +6,7 @@
 /// `set_scissor_rect(x, y, w, h)` without arithmetic.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct URect {
+pub(crate) struct URect {
     pub x: u32,
     pub y: u32,
     pub w: u32,
@@ -21,7 +21,7 @@ impl std::hash::Hash for URect {
 }
 
 impl URect {
-    pub const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
+    pub(crate) const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
         Self { x, y, w, h }
     }
 
@@ -29,7 +29,7 @@ impl URect {
     /// don't overlap (touching edges don't count). Used by the
     /// damage-rendering backend to combine the per-frame damage scissor
     /// with each group's existing clip scissor.
-    pub const fn intersect(self, other: Self) -> Option<Self> {
+    pub(crate) const fn intersect(self, other: Self) -> Option<Self> {
         let x0 = if self.x > other.x { self.x } else { other.x };
         let y0 = if self.y > other.y { self.y } else { other.y };
         let a_max_x = self.x + self.w;
@@ -54,7 +54,7 @@ impl URect {
     /// (the [`Default`]) acts as identity — `default.union(x) == x` —
     /// so callers can fold an empty accumulator without a special
     /// "first element" branch.
-    pub const fn union(self, other: Self) -> Self {
+    pub(crate) const fn union(self, other: Self) -> Self {
         if self.w == 0 || self.h == 0 {
             return other;
         }
@@ -81,7 +81,7 @@ impl URect {
     /// returning a (possibly zero-sized) rect. Used by the composer's
     /// clip stack where parent-child overlap is the common case and a
     /// zero-sized result is treated as "skip this group."
-    pub const fn clamp_to(self, parent: Self) -> Self {
+    pub(crate) const fn clamp_to(self, parent: Self) -> Self {
         let x0 = if self.x > parent.x { self.x } else { parent.x };
         let y0 = if self.y > parent.y { self.y } else { parent.y };
         let a_max_x = self.x + self.w;
@@ -103,7 +103,7 @@ impl URect {
     /// by the composer's shadow overlap check, where the outer-σ rim
     /// of a Gaussian shadow is visually negligible and shouldn't
     /// trigger text-batch flushes for nearby text.
-    pub const fn deflated(self, inset: u32) -> Self {
+    pub(crate) const fn deflated(self, inset: u32) -> Self {
         Self {
             x: self.x + inset,
             y: self.y + inset,
@@ -121,7 +121,7 @@ impl URect {
 /// bytemuck hash input.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct URect16 {
+pub(crate) struct URect16 {
     pub x: u16,
     pub y: u16,
     pub w: u16,
@@ -137,7 +137,7 @@ impl std::hash::Hash for URect16 {
 
 impl URect16 {
     /// Saturating constructor from `u32` components.
-    pub const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
+    pub(crate) const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
         Self {
             x: sat_u16(x),
             y: sat_u16(y),
@@ -148,7 +148,7 @@ impl URect16 {
 
     /// Widen to [`URect`] for boundary code (wgpu `set_scissor_rect`,
     /// glyphon `TextBounds`).
-    pub const fn to_urect(self) -> URect {
+    pub(crate) const fn to_urect(self) -> URect {
         URect {
             x: self.x as u32,
             y: self.y as u32,

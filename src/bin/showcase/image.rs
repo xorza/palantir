@@ -89,7 +89,7 @@ fn handles(ui: &Ui) -> (ImageHandle, ImageHandle, ImageHandle) {
     })
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let (checker, gradient, sprite) = handles(ui);
     support::page(ui, |ui| {
         cell_row(ui, "fits", |ui| {

@@ -30,6 +30,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// ```ignore
 /// Text::new("hi").style(TextStyle { color: red, ..ui.theme.text })
 /// ```
+#[derive(Debug)]
 pub struct Text {
     element: Element,
     text: InternedStr,

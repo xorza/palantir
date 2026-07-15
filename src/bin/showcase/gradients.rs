@@ -20,7 +20,7 @@ const YELLOW: ColorU8 = ColorU8::hex(0xfacc15);
 const RED: ColorU8 = ColorU8::hex(0xff5e44);
 const GREEN: ColorU8 = ColorU8::hex(0x46c46c);
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
         cell_row(ui, "row1", |ui| {
             demo_cell(ui, "linear — horizontal", horizontal);

@@ -17,10 +17,8 @@
 
 use crate::renderer::backend::queue::Queue;
 
-// Public because the feature-gated `text_backend_internals` bench surface
-// exposes this context from `lib.rs`.
 #[derive(Debug)]
-pub struct GpuCtx<'a> {
+pub(crate) struct GpuCtx<'a> {
     pub(crate) device: &'a wgpu::Device,
     pub(crate) queue: &'a Queue,
     pub(crate) belt: &'a mut wgpu::util::StagingBelt,
@@ -28,7 +26,7 @@ pub struct GpuCtx<'a> {
 }
 
 impl<'a> GpuCtx<'a> {
-    pub fn new(
+    pub(crate) fn new(
         device: &'a wgpu::Device,
         queue: &'a Queue,
         belt: &'a mut wgpu::util::StagingBelt,
@@ -52,5 +50,25 @@ impl<'a> GpuCtx<'a> {
         };
         let mut view = self.belt.write_buffer(self.encoder, dst, offset, size);
         view.copy_from_slice(bytes);
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod test_support {
+    use crate::renderer::backend::gpu_ctx::GpuCtx as InnerGpuCtx;
+    use crate::renderer::backend::queue::test_support::Queue;
+
+    #[derive(Debug)]
+    pub struct GpuCtx<'a>(pub(crate) InnerGpuCtx<'a>);
+
+    impl<'a> GpuCtx<'a> {
+        pub fn new(
+            device: &'a wgpu::Device,
+            queue: &'a Queue,
+            belt: &'a mut wgpu::util::StagingBelt,
+            encoder: &'a mut wgpu::CommandEncoder,
+        ) -> Self {
+            Self(InnerGpuCtx::new(device, &queue.0, belt, encoder))
+        }
     }
 }

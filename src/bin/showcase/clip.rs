@@ -27,7 +27,7 @@ fn card() -> Background {
     }
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
         support::header(
             ui,

@@ -26,9 +26,9 @@ use aperture::{
 // Each include site (bench / example) only uses one constant; the other
 // looks dead via #[path] inclusion.
 #[allow(dead_code)]
-pub const BENCH_SCALE: usize = 32;
+pub(crate) const BENCH_SCALE: usize = 32;
 #[allow(dead_code)]
-pub const VISUAL_SCALE: usize = 6;
+pub(crate) const VISUAL_SCALE: usize = 6;
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
@@ -38,7 +38,7 @@ pub const VISUAL_SCALE: usize = 6;
 /// node is sized `Fixed(120.0)` so the changing digits don't shift
 /// sibling layout — the damage rect collapses to that single node's
 /// arranged box.
-pub struct FormState {
+pub(crate) struct FormState {
     pub name: String,
     pub notes: String,
     pub enabled: bool,
@@ -80,7 +80,7 @@ impl Default for FormState {
     }
 }
 
-pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
+pub(crate) fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
     let sidebar_items = 5 * scale;
     let chat_messages = 2 * scale;
     let canvas_dots = 3 * scale;

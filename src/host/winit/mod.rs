@@ -184,11 +184,24 @@ pub struct WinitHost<T: 'static> {
     proxy: EventLoopProxy<UserEvent<T>>,
 }
 
+impl<T: 'static> std::fmt::Debug for WinitHost<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WinitHost")
+            .field("bootstrapped", &self.bootstrap.is_none())
+            .field("running", &self.running.is_some())
+            .field("pending_tasks", &self.pending_tasks.len())
+            .field("windows", &self.windows.len())
+            .field("event_loop", &self.event_loop.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
 /// Builder for [`WinitHost`] — see [`WinitHost::builder`]. The bootstrap
 /// window's `first_token` comes from that constructor; the startup tunables
 /// (the first window's [`WindowConfig`] plus the app-global GPU knobs)
 /// default and are set here. The app builder closure is the terminal argument
 /// to [`Self::build`].
+#[derive(Debug)]
 pub struct WinitHostBuilder<T> {
     first_token: WindowToken,
     config: WinitHostConfig,

@@ -20,6 +20,7 @@ use std::ops::RangeInclusive;
 /// frame's arranged width (one-frame lag, invisible at interactive
 /// rates). Visuals come from [`crate::SliderTheme`] (theme slot
 /// `slider`).
+#[derive(Debug)]
 pub struct Slider<'a> {
     element: Element,
     value: &'a mut f32,

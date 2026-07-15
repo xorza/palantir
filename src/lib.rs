@@ -50,10 +50,10 @@ pub mod write_stats {
 }
 #[cfg(feature = "internals")]
 pub mod text_backend_internals {
-    pub use crate::renderer::backend::gpu_ctx::GpuCtx;
-    pub use crate::renderer::backend::queue::Queue;
+    pub use crate::renderer::backend::gpu_ctx::test_support::GpuCtx;
+    pub use crate::renderer::backend::queue::test_support::Queue;
     pub use crate::renderer::backend::text::test_support::{BenchText, make_run};
-    pub use crate::renderer::render_buffer::text::TextRun;
+    pub use crate::renderer::render_buffer::text::test_support::TextRun;
 }
 
 pub use frame_arena::FrameArena;

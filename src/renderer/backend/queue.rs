@@ -14,17 +14,17 @@ use std::ops::Deref;
 /// `wgpu::Queue` handed in by the host; pass `&Queue` to pipelines
 /// instead of `&wgpu::Queue`.
 #[derive(Debug)]
-pub struct Queue(wgpu::Queue);
+pub(crate) struct Queue(wgpu::Queue);
 
 impl Queue {
-    pub fn new(inner: wgpu::Queue) -> Self {
+    pub(crate) fn new(inner: wgpu::Queue) -> Self {
         Self(inner)
     }
 
     /// Counted shadow of [`wgpu::Queue::write_texture`]. Records the
     /// length of the source byte slice as the upload size.
     #[inline]
-    pub fn write_texture(
+    pub(crate) fn write_texture(
         &self,
         texture: wgpu::TexelCopyTextureInfo<'_>,
         data: &[u8],
@@ -45,5 +45,28 @@ impl Deref for Queue {
     type Target = wgpu::Queue;
     fn deref(&self) -> &wgpu::Queue {
         &self.0
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod test_support {
+    use crate::renderer::backend::queue::Queue as InnerQueue;
+    use std::ops::Deref;
+
+    #[derive(Debug)]
+    pub struct Queue(pub(crate) InnerQueue);
+
+    impl Queue {
+        pub fn new(inner: wgpu::Queue) -> Self {
+            Self(InnerQueue::new(inner))
+        }
+    }
+
+    impl Deref for Queue {
+        type Target = wgpu::Queue;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
     }
 }

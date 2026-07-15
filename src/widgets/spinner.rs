@@ -31,6 +31,7 @@ const SPEED: f32 = 4.5;
 /// geometry is rebuilt. The arc renders natively on the GPU (exact
 /// circle, adaptive subdivision), so it stays smooth at any size and
 /// DPI; the comet fade is a linear gradient sampled along the sweep.
+#[derive(Debug)]
 pub struct Spinner {
     element: Element,
     size: Option<f32>,

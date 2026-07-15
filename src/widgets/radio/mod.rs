@@ -22,6 +22,7 @@ use crate::widgets::{Response, WidgetEntry, enter_widget};
 /// `Sense::CLICK` hit target spanning the whole row. Visuals come
 /// from `theme.radio` ([`crate::ToggleTheme`]); the pip paints as a
 /// pill (`box_size * 0.5` radius) regardless of `box_radius`.
+#[derive(Debug)]
 pub struct RadioButton<'a, T: PartialEq> {
     element: Element,
     current: &'a mut T,

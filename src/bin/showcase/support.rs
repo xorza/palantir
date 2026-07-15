@@ -14,16 +14,16 @@ use aperture::{
 use std::hash::Hash;
 
 /// Teal-blue. Default swatch when one color is enough.
-pub const A: Color = Color::hex(0x4cd3ff);
+pub(crate) const A: Color = Color::hex(0x4cd3ff);
 /// Orange. Pair with `A` for "two distinct things".
-pub const B: Color = Color::hex(0xffa63d);
+pub(crate) const B: Color = Color::hex(0xffa63d);
 /// Green.
-pub const C: Color = Color::hex(0xd9ff57);
+pub(crate) const C: Color = Color::hex(0xd9ff57);
 /// Purple.
-pub const D: Color = Color::hex(0xd897ff);
+pub(crate) const D: Color = Color::hex(0xd897ff);
 
 /// Standard swatch fill — colored rect with a 4 px corner radius.
-pub fn swatch_bg(c: Color) -> Background {
+pub(crate) fn swatch_bg(c: Color) -> Background {
     Background {
         fill: c.into(),
         corners: Corners::all(4.0),
@@ -33,7 +33,7 @@ pub fn swatch_bg(c: Color) -> Background {
 
 /// Recessed demo-surface fill, one shade darker than the showcase card
 /// (`#343434`) so a demo's bounds read against the surrounding card.
-pub fn panel_bg() -> Background {
+pub(crate) fn panel_bg() -> Background {
     Background {
         fill: Color::hex(0x252525).into(),
         corners: Corners::all(4.0),
@@ -43,7 +43,7 @@ pub fn panel_bg() -> Background {
 
 /// Light demo surface — for content that only reads against a light
 /// backdrop (drop shadows, dark strokes).
-pub fn light_panel_bg() -> Background {
+pub(crate) fn light_panel_bg() -> Background {
     Background {
         fill: Color::hex(0xc8ccd2).into(),
         corners: Corners::all(4.0),
@@ -53,7 +53,7 @@ pub fn light_panel_bg() -> Background {
 
 /// Raised interactive surface: dark fill + hairline stroke. Used for
 /// popup bodies, right-click targets, and similar chrome-like demos.
-pub fn surface_bg() -> Background {
+pub(crate) fn surface_bg() -> Background {
     Background {
         fill: Color::hex(0x2a2a2a).into(),
         stroke: Stroke::solid(Color::hex(0x4a4a4a), 1.0),
@@ -63,13 +63,13 @@ pub fn surface_bg() -> Background {
 }
 
 /// 12 px caption, default color. Used for section titles and small labels.
-pub fn caption_style() -> TextStyle {
+pub(crate) fn caption_style() -> TextStyle {
     TextStyle::default().with_font_size(12.0)
 }
 
 /// Near-black text for placing on top of a bright swatch fill — a
 /// legibility requirement, not decoration.
-pub fn on_swatch_text() -> TextStyle {
+pub(crate) fn on_swatch_text() -> TextStyle {
     TextStyle::default()
         .with_font_size(13.0)
         .with_color(Color::hex(0x1a1a1a))
@@ -77,7 +77,7 @@ pub fn on_swatch_text() -> TextStyle {
 
 /// Page root: fills the shell's central card. No padding — the card
 /// already pads 16.
-pub fn page(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn page(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -86,7 +86,7 @@ pub fn page(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
 }
 
 /// One-line page description under the tab bar — 13 px, wraps.
-pub fn header(ui: &mut Ui, text: &'static str) {
+pub(crate) fn header(ui: &mut Ui, text: &'static str) {
     Text::new(text)
         .id_salt(("page-header", text))
         .style(TextStyle::default().with_font_size(13.0))
@@ -96,7 +96,7 @@ pub fn header(ui: &mut Ui, text: &'static str) {
 
 /// Title + body pair: a small caption above a child block. No card
 /// decoration — the surrounding showcase panel already contains the demo.
-pub fn section<H: Hash + Copy>(
+pub(crate) fn section<H: Hash + Copy>(
     ui: &mut Ui,
     id: H,
     title: &'static str,
@@ -116,7 +116,7 @@ pub fn section<H: Hash + Copy>(
 }
 
 /// Horizontal row of controls, hugging its content height.
-pub fn row<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn row<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))
@@ -125,7 +125,7 @@ pub fn row<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)) {
 }
 
 /// Row of [`demo_cell`]s sharing the parent's leftover height equally.
-pub fn cell_row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn cell_row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -135,18 +135,18 @@ pub fn cell_row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
 
 /// Captioned demo cell: label above a recessed FILL surface the body
 /// paints into. The caption makes paint demos self-describing.
-pub fn demo_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn demo_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     demo_cell_on(ui, label, panel_bg(), body);
 }
 
 /// [`demo_cell`] on the light surface — for shadow/dark-stroke content.
-pub fn demo_cell_light(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn demo_cell_light(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     demo_cell_on(ui, label, light_panel_bg(), body);
 }
 
 /// Caption above a bare FILL body — for demos that paint their own
 /// surface (clip cards, gradients) where a recessed bg would double up.
-pub fn captioned_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
+pub(crate) fn captioned_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .id_salt(label)
         .size((Sizing::FILL, Sizing::FILL))

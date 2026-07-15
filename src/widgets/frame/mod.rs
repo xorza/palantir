@@ -9,6 +9,7 @@ use crate::widgets::Response;
 /// bg swatches. Chrome + clip behavior come from
 /// [`Self::background`] / [`Configure::clip_rect`] /
 /// [`Configure::clip_rounded`].
+#[derive(Debug)]
 pub struct Frame {
     element: Element,
     chrome: Option<Background>,

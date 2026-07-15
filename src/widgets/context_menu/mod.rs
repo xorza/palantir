@@ -52,6 +52,7 @@ pub(crate) struct ContextMenuState {
 /// `.padding(...)`, `.gap(...)`, `.background(...)`, etc. on the menu
 /// body. Theme-driven defaults fill in any field the caller leaves
 /// untouched (`chrome`, `padding`, `min_size.w`).
+#[derive(Debug)]
 pub struct ContextMenu {
     for_id: WidgetId,
     element: Element,
@@ -201,6 +202,7 @@ impl Configure for ContextMenu {
 /// synthesize a click (so `if item.left.clicked() { … }` fires) AND
 /// close the menu, mirroring native menu behaviour. Disabled rows
 /// don't intercept.
+#[derive(Debug)]
 pub struct MenuItem {
     element: Element,
     label: InternedStr,

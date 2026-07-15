@@ -9,7 +9,7 @@ use crate::support::{cell_row, demo_cell};
 use aperture::{Brush, Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 use glam::Vec2;
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
         cell_row(ui, "row1", |ui| {
             demo_cell(ui, "widths 1–8 px", widths);

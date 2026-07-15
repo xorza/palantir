@@ -20,7 +20,7 @@ fn output_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-pub fn assert_matches_golden(name: &str, actual: &RgbaImage, tol: Tolerance) {
+pub(crate) fn assert_matches_golden(name: &str, actual: &RgbaImage, tol: Tolerance) {
     let golden = golden_path(name);
     let force = std::env::var_os("UPDATE_GOLDEN").is_some_and(|v| !v.is_empty());
 

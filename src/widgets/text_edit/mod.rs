@@ -682,6 +682,7 @@ fn update_scroll(
 /// widget mutates in place. State row carries only caret/selection so
 /// host-side buffer mutations between frames are visible immediately
 /// (the widget clamps `caret <= text.len()` at the top of every show).
+#[derive(Debug)]
 pub struct TextEdit<'a> {
     element: Element,
     text: &'a mut String,

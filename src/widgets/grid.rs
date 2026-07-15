@@ -26,6 +26,7 @@ use std::sync::OnceLock;
 ///
 /// See `docs/grid.md` for the algorithm and explicit non-goals (no
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
+#[derive(Debug)]
 pub struct Grid {
     element: Element,
     def: GridDef,

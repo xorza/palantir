@@ -15,7 +15,7 @@ use aperture::{
     WidgetId,
 };
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let buf_a_id = WidgetId::from_hash("textedit_showcase__buffer_a");
     let buf_b_id = WidgetId::from_hash("textedit_showcase__buffer_b");
     let buf_ml_id = WidgetId::from_hash("textedit_showcase__buffer_ml");

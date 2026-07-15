@@ -18,6 +18,7 @@ use crate::widgets::{InnerResponse, Response, resolve_container_chrome};
 /// — pure layout. The `theme.panel_background` / `theme.panel_clip`
 /// fields supply a framework-wide fallback for any panel that didn't
 /// set its own.
+#[derive(Debug)]
 pub struct Panel {
     element: Element,
     chrome: Option<Background>,
