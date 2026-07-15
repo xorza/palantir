@@ -273,7 +273,7 @@ fn erf_approx(x: f32) -> f32 {
 // shadow. For σ > 0 we use the SDF distance as the input to an erf,
 // which is exact for an axis-aligned half-plane and a smooth
 // approximation for a rounded rect (the same trick Evan Wallace's
-// shader uses; see `references/vello.md` §3).
+// shader uses).
 fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
     if (sigma <= BLUR_EPS) {
         return clamp(0.5 - d, 0.0, 1.0);

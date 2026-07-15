@@ -12,8 +12,7 @@
 //!   radius shrunk by the stroke inset so corners stay concentric.
 //! - **premultiplied alpha**: translucent polylines over a magenta
 //!   backdrop; correct blending yields muted mixes, the historical
-//!   straight-alpha-into-premul bug yields over-bright colors (see
-//!   `docs/review-wgsl-shaders.md` A1).
+//!   straight-alpha-into-premul bug yields over-bright colors.
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, swatch_bg};

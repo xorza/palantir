@@ -868,7 +868,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
         "translucent polyline over magenta backdrop should blend to ~grey \
          (g - max(r,b) ≈ 0 under correct premul); got rgb=({r}, {g}, {b}), \
          green-dominance={dominant_green}. mesh.wgsl::fs probably forgot to \
-         premultiply (see docs/review-wgsl-shaders.md A1)."
+         premultiply."
     );
 }
 

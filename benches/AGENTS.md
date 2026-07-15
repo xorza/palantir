@@ -547,7 +547,7 @@ not stalling — so wins come from **executing fewer instructions**
 (algorithmic / less per-frame recompute), not cache or branch tuning.
 The metric groups are confirmation; let the IBS flat report + callgraph
 drive. (This is why the O1 intrinsic-cache win came from *deleting* a
-sibling re-walk, not microarch tuning — see `docs/cpu-arm-profiling.md`.)
+sibling re-walk, not microarchitecture tuning.)
 
 **Drill order:**
 

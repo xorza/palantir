@@ -101,7 +101,7 @@ pub(crate) struct Tree {
     /// with `shapes.records` via `Forest::add_shape{,_animated}`,
     /// cleared in `pre_record`. Stateless: sampling is a pure function
     /// of `Duration now` at encode time, so no per-entry timestamp is
-    /// stored. See [`PaintAnims`] and `docs/roadmap/paint-tick.md`.
+    /// stored. See [`PaintAnims`].
     pub(crate) paint_anims: PaintAnims,
 
     pub(crate) rollups: SubtreeRollups,

@@ -176,7 +176,7 @@ fn compositions(ui: &mut Ui) {
                         ui,
                         "alice-1",
                         support::A,
-                        "Hey! Did you finish reading docs/intrinsics.md last night?",
+                        "Hey! Did you finish reading src/layout/intrinsic.md last night?",
                     );
                     chat_row(
                         ui,

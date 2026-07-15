@@ -1,10 +1,8 @@
 # Animations — design
 
-Implementation: `src/animation/`. Roadmap (deferred work + open
-questions): `docs/roadmap/animations.md`. This doc captures the
-durable design rationale — what posture we picked, what we
-deliberately didn't build, and the one load-bearing architectural
-split.
+Implementation: `src/animation/`. This doc captures the durable design
+rationale — what posture we picked, what we deliberately didn't build,
+and the one load-bearing architectural split.
 
 ## Posture
 

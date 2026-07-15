@@ -1,6 +1,6 @@
 //! CPU occlusion pruning: drop quads in a scissor group that are fully
 //! covered by a later opaque quad in the same group. Pure prune — no
-//! pipeline / shader changes. See `docs/roadmap/occlusion-pruning.md`.
+//! pipeline or shader changes.
 
 use crate::primitives::rect::Rect;
 use crate::renderer::render_buffer::RenderBuffer;

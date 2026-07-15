@@ -2074,7 +2074,7 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
 //
 // Pruning drops a quad iff a later quad in the same group fully
 // covers its painted extent (`q.rect.inflated(stroke/2)`) under
-// `Rect::contains_rect`. See `docs/roadmap/occlusion-pruning.md`.
+// `Rect::contains_rect`.
 
 #[test]
 fn prune_drops_quad_fully_covered_by_later_opaque_quad() {

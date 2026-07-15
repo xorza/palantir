@@ -58,8 +58,8 @@ use std::time::Duration;
 
 /// Recorder + input/response broker. All public coordinates are
 /// logical pixels (DIPs); `Display::scale_factor` converts to
-/// physical at the wgpu boundary. See `docs/repaint.md` for the
-/// frame-lifecycle rationale.
+/// physical at the wgpu boundary. Frame scheduling state lives in
+/// [`FrameRuntime`].
 ///
 /// `Default` builds a self-contained `Ui` with mono-fallback shaper
 /// and a private frame arena. Hosts that need to share the shaper /
@@ -184,7 +184,7 @@ impl Ui {
     /// The only public entry point for driving a frame. Runs `record`
     /// once, re-records on action input or `request_relayout`, paints
     /// the last pass. `stamp.time` is monotonic host time;
-    /// the retained clock and frame id derive from it. See `docs/repaint.md`.
+    /// the retained clock and frame id derive from it.
     pub fn frame(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         profiling::scope!("Ui::frame");
         // Frame arena is cleared inside `record_pass` (the only path

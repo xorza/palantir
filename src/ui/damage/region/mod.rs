@@ -33,10 +33,6 @@
 //! them. A cluster of N nearby rects collapses gradually as each
 //! absorption grows the candidate's area, reducing the next
 //! candidate-vs-existing cost.
-//!
-//! See `docs/roadmap/damage-merge-research.md` for cost-model
-//! derivation and `multi-rect-damage.md` for the wider design
-//! survey.
 
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
@@ -53,8 +49,8 @@ pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 /// 20 000 px² — same value as Iced; high enough to collapse near
 /// pairs (axis-adjacent, gap-of-one-stride, animation-frame pairs)
 /// without merging two unrelated tiny corners. The 2-cell GPU-bench
-/// crossover on Apple Silicon (`docs/roadmap/damage-merge-research.md`)
-/// sits near 7 000 px² for an isolated pair, but real workloads
+/// crossover on Apple Silicon sits near 7 000 px² for an isolated pair,
+/// but real workloads
 /// form clusters where each merge eliminates one *additional* pass —
 /// the budget is per-pair-cost, so cluster total overdraw can run
 /// somewhat higher in practice.

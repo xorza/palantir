@@ -28,7 +28,7 @@ use bytemuck::{Pod, Zeroable};
 /// fields rather than an embedded `Stroke` so the user-facing `Stroke`
 /// is free to carry non-`Pod` paint sources (`Brush`); the composer
 /// translates the user `Stroke` into these GPU fields. Stroke-as-
-/// gradient is a slice-2 non-goal (see `docs/roadmap/brushes-slice-2-plan.md`).
+/// gradient is not supported.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {

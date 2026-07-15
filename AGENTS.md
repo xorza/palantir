@@ -13,7 +13,7 @@ State-of-the-art UI framework, craft-driven. **No external consumers, no publish
 - **API ergonomics matter.** Builder chains read like prose, defaults are right, surprise behavior gets a pinning test. When in doubt, prioritize call-site readability.
 - **Optimize aggressively when motivated.** Micro-wins (struct packing, const fns, scratch reuse, cache layout) are encouraged even without a workload demanding them.
 - **Ship in measurable slices.** One feature with tests + a showcase section (on the matching tab — tabs group related features, e.g. all form controls share `controls`) beats a half-finished cluster. If a change is structurally complex with no motivating workload, say "too early" and shelve with a note rather than ship speculation.
-- **Docs are starting positions, not commitments.** Treat `docs/*.md`, `references/*`, and this file as evolving and possibly wrong. When a doc contradicts user intent or current code, double-question rather than defer — flag the conflict, ask, and update the doc.
+- **Docs are starting positions, not commitments.** Treat `docs/*.md`, colocated module docs, and this file as evolving and possibly wrong. When a doc contradicts user intent or current code, double-question rather than defer — flag the conflict, ask, and update the doc.
 
 ## Code style
 
@@ -75,33 +75,33 @@ Widget _state_ (scroll offset, text cursor, animation) lives in `StateMap` on `U
 - `examples/` — `dump_theme` (theme TOML round-trip), `counter`, `frame_visual`, `custom_widget` (a `Stepper` authored from the public API — the widget-authoring surface's compile-time proof)
 - `tests/alloc/` — per-frame allocation audit suite (a `CountingAllocator` global allocator + shared fixtures/harness; see `tests/alloc/alloc-testing.md`); integration-level sibling to the `alloc_free` bench, run via `cargo test --test alloc --features internals` (reaches the `internals`-gated `Ui::default`)
 - `tests/visual/` — headless wgpu → PNG → golden-diff suite (`cargo test --test visual --features internals`); the canonical eyeball-replacement for rendering changes. Golden PNGs are gitignored and per-machine (auto-created on first run); after an intentional render change, regenerate with `UPDATE_GOLDEN=1 cargo test --test visual --features internals <filter>` and inspect the diff artifacts under `tests/visual/output/<name>/` first. Full reference: `tests/visual/visual-testing.md`
-- `benches/` — criterion (alloc_free, alloc_free_gpu, alloc_resize, caches, damage, frame, input_throughput, text_atlas; all require `--features internals` — they construct via the `internals`-gated `Ui::default` / `Ui::for_test*` — **except `alloc_free_gpu`**, which drives only the public `OffscreenHost` headless path and needs no features); `docs/` — in-flight notes + `roadmap/` (per-feature design notes); the **Architecture** section above is the full rationale
+- `benches/` — criterion (alloc_free, alloc_free_gpu, alloc_resize, caches, cascade, composer, damage, frame, input_throughput, text_atlas, text_shape; all require `--features internals` — they construct via the `internals`-gated `Ui::default` / `Ui::for_test*` — **except `alloc_free_gpu`**, which drives only the public `OffscreenHost` headless path and needs no features); `docs/` — in-flight notes and media; durable subsystem rationale lives in colocated module docs, while the **Architecture** section above is the crate-wide source of truth
 
 Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/renderer/backend/text/`), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned to caret versions (lockfile is source of truth).
 
-## References
+## Source investigation
 
-`./references/` has 29 per-framework notes + a cross-cutting synthesis. **Read `references/SUMMARY.md` first** — it indexes every doc, takes positions on Aperture's design choices, lists anti-patterns + open questions. Each per-framework doc cites `tmp/` source with `file:line` and ends with copy/avoid/simplify recommendations. SUMMARY's "Quick-lookup matrix" (§13) maps task → docs.
+The Architecture section above and colocated module docs are the tracked design record. Do not rely on absent or locally held design notes.
 
-**Use `./tmp/` for any in-project scratch — log captures, traces, intermediate
-build artifacts.** The whole directory is gitignored (`**/tmp/`) and lives
+**Use `./.tmp/` for any in-project scratch — log captures, traces, intermediate
+build artifacts.** The whole directory is gitignored (`**/.tmp/`) and lives
 inside the project root, so writes don't trigger the "out-of-tree access"
 permission prompt that `/tmp/` does. Reuse a stable filename
-(`tmp/showcase.log`, `tmp/trace-foo.txt`) so the latest run overwrites
+(`.tmp/showcase.log`, `.tmp/trace-foo.txt`) so the latest run overwrites
 the previous; don't accumulate dated artifacts.
 
-The same `./tmp/` also holds the reference source clones, populated by
-`./scripts/fetch-refs.sh` (re-runnable). Go to `tmp/<crate>/` only when
-a reference note doesn't cover the question. Most relevant by topic:
+The same `./.tmp/` also holds reference source clones populated by
+`./scripts/fetch-refs.sh` (re-runnable). Go to `.tmp/<crate>/` only when
+the current code and module docs do not answer the question. Most relevant by topic:
 
-- **Layout / measure-arrange** → `tmp/wpf` (the model we emulate), `tmp/taffy`, `tmp/morphorm`, `tmp/yoga`, `tmp/clay` (arena tree)
-- **Immediate-mode patterns** → `tmp/egui`, `tmp/imgui`, `tmp/clay`, `tmp/nuklear`
-- **wgpu renderer / batching** → `tmp/egui` (`crates/egui-wgpu`), `tmp/iced` (`wgpu` crate), `tmp/quirky`, `tmp/vello`, `tmp/wgpu`
-- **Text** → `tmp/cosmic-text`, `tmp/parley`
-- **Vector shapes** → `tmp/lyon`, `tmp/kurbo`, `tmp/vello`
-- **Reactive / retained Rust UIs (contrast)** → `tmp/iced`, `tmp/xilem`, `tmp/dioxus`, `tmp/floem`, `tmp/slint`, `tmp/makepad`
+- **Layout / measure-arrange** → `.tmp/wpf` (the model we emulate), `.tmp/taffy`, `.tmp/morphorm`, `.tmp/yoga`, `.tmp/clay` (arena tree)
+- **Immediate-mode patterns** → `.tmp/egui`, `.tmp/imgui`, `.tmp/clay`, `.tmp/nuklear`
+- **wgpu renderer / batching** → `.tmp/egui` (`crates/egui-wgpu`), `.tmp/iced` (`wgpu` crate), `.tmp/quirky`, `.tmp/vello`, `.tmp/wgpu`
+- **Text** → `.tmp/cosmic-text`, `.tmp/parley`
+- **Vector shapes** → `.tmp/lyon`, `.tmp/kurbo`, `.tmp/vello`
+- **Reactive / retained Rust UIs (contrast)** → `.tmp/iced`, `.tmp/xilem`, `.tmp/dioxus`, `.tmp/floem`, `.tmp/slint`, `.tmp/makepad`
 
-For dependency API lookups (signatures, version-specific behavior, internal types), grep `tmp/<crate>/src` first — same version Aperture builds against, faster than `cargo doc`. Fall back to `~/.cargo/registry/src/...` only if not in `fetch-refs.sh`.
+For dependency API lookups (signatures, version-specific behavior, internal types), grep `.tmp/<crate>/src` first — same version Aperture builds against, faster than `cargo doc`. Fall back to `~/.cargo/registry/src/...` only if not in `fetch-refs.sh`.
 
 ## Before reporting work as done
 

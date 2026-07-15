@@ -15,8 +15,7 @@ struct VsIn {
     // **Straight alpha in, premultiplied alpha out.** `color` and
     // `tint` carry straight-alpha values; `fs` premultiplies at
     // output to match the pipeline's `PREMULTIPLIED_ALPHA_BLENDING`
-    // blend state. See the shared shader contract in
-    // `docs/review-wgsl-shaders.md` A2 and AGENTS.md "Colour pipeline".
+    // blend state. See AGENTS.md "Colour pipeline" for the shared contract.
     @location(1) color: vec4<f32>,
     // Per-instance transform + tint. `physical = pos * scale + translate`;
     // `out_color = color * tint` (straight × straight, premultiplied at fs).
