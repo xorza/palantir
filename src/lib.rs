@@ -55,6 +55,10 @@ pub mod text_backend_internals {
     pub use crate::renderer::backend::text::test_support::{BenchText, make_run};
     pub use crate::renderer::render_buffer::text::test_support::TextRun;
 }
+#[cfg(feature = "internals")]
+pub mod composer_bench {
+    pub use crate::renderer::frontend::composer::bench::bench;
+}
 
 pub use frame_arena::FrameArena;
 

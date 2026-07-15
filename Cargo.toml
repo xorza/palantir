@@ -22,6 +22,7 @@ bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
 encase = "0.12"
 cosmic-text = "0.19"
+criterion = { version = "0.8", optional = true }
 fixedbitset = "0.5"
 glam = { version = "0.33", features = ["bytemuck", "encase", "serde"] }
 etagere = "0.3"
@@ -48,7 +49,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 backtrace = "0.3"
-criterion = "0.8"
 dhat = "0.3"
 gethostname = "1.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -114,11 +114,16 @@ name = "damage"
 harness = false
 required-features = ["internals"]
 
+[[bench]]
+name = "composer"
+harness = false
+required-features = ["internals"]
+
 [features]
 # Exposes `internals::*` (cache reset + introspection helpers used by
 # `benches/`). Tests get the same module without the feature because
 # `cfg(test)` is also gated on.
-internals = []
+internals = ["dep:criterion"]
 # Profiler backends — pick one. Off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
