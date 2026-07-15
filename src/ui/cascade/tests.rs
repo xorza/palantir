@@ -363,3 +363,63 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
         "spacer's ZERO seed must not drag the rollup's min to the origin",
     );
 }
+
+#[test]
+fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
+    use crate::input::sense::Sense;
+    use crate::widgets::frame::Frame;
+
+    let inert = WidgetId::from_hash("inert");
+    let hover = WidgetId::from_hash("hover");
+    let focus = WidgetId::from_hash("focus");
+    let disabled = WidgetId::from_hash("disabled");
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::splat(100), |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size(Sizing::Fixed(100.0))
+            .show(ui, |ui| {
+                Frame::new().id(inert).size(Sizing::FILL).show(ui);
+                Frame::new()
+                    .id(hover)
+                    .size(Sizing::FILL)
+                    .sense(Sense::HOVER)
+                    .show(ui);
+                Frame::new()
+                    .id(focus)
+                    .size(Sizing::FILL)
+                    .focusable(true)
+                    .show(ui);
+                Frame::new()
+                    .id(disabled)
+                    .size(Sizing::FILL)
+                    .sense(Sense::CLICK)
+                    .focusable(true)
+                    .disabled(true)
+                    .show(ui);
+            });
+    });
+
+    assert_eq!(
+        ui.cascades.hit_entries,
+        [
+            ui.cascades.entry_idx_of(hover).unwrap(),
+            ui.cascades.entry_idx_of(focus).unwrap(),
+        ],
+    );
+    let pos = Vec2::splat(50.0);
+    assert_eq!(ui.cascades.hit_test(pos, Sense::hovers), Some(hover),);
+    assert_eq!(ui.cascades.hit_test(pos, Sense::clicks), None);
+    assert_eq!(ui.cascades.hit_test_focusable(pos), Some(focus));
+    let targets = ui
+        .cascades
+        .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);
+    assert_eq!(targets.hover, Some(hover));
+    assert_eq!(targets.scroll, None);
+    assert_eq!(targets.pinch, None);
+
+    ui.run_at_acked(UVec2::splat(100), |ui| {
+        Frame::new().id(inert).size(Sizing::FILL).show(ui);
+    });
+    assert!(ui.cascades.hit_entries.is_empty());
+}

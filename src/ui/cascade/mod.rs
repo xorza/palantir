@@ -32,6 +32,9 @@ use glam::Vec2;
 use soa_rs::{Soa, Soars};
 use std::hash::Hasher as _;
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 /// Per-node fingerprint of cascade inputs flowing in from ancestors
 /// (parent transform/clip/disabled/invisible) plus the node's own
 /// arranged rect, packed with the resolved `invisible` bit. Folded
@@ -124,9 +127,10 @@ impl PaintArena {
 
 /// One hit-test row. Stored as `Soa<EntryRow>` on
 /// [`Cascades::entries`] so each field becomes its own contiguous
-/// slice — the hot reverse-scan in `hit_test*` reads `rect` and the
-/// flags but ignores `widget_id` / `layout_rect` until a match
-/// surfaces. Same cache argument as aperture's
+/// slice. Hit tests use [`Cascades::hit_entries`] to visit only rows
+/// that can interact, reading `rect` and the relevant flags while
+/// ignoring `widget_id` / `layout_rect` until a match surfaces. Same
+/// cache argument as aperture's
 /// `Tree.records: Soa<NodeRecord>`.
 #[derive(Soars, Clone, Copy, Debug)]
 #[soa_derive(Debug)]
@@ -134,10 +138,10 @@ pub(crate) struct EntryRow {
     /// Author-supplied id. Read once per hit-test match.
     pub widget_id: WidgetId,
     /// Visible screen rect (post-transform, clipped by ancestor clip).
-    /// Hit-test reads every row.
+    /// Read for rows referenced by [`Cascades::hit_entries`].
     pub rect: Rect,
     /// Pointer interactions this row participates in (`HOVER` / `CLICK`
-    /// / `DRAG` / `SCROLL`). Hit-test reads every row.
+    /// / `DRAG` / `SCROLL`).
     pub sense: Sense,
     /// Focus eligibility — checked by the focusable hit-test only.
     pub focusable: bool,
@@ -290,12 +294,16 @@ pub(crate) struct Cascades {
     pub(crate) layers: PerLayer<LayerCascades>,
     /// Pre-order hit-test rows in SoA form — each field is its own
     /// contiguous slice (`entries.rect()`, `entries.sense()`,
-    /// `entries.id`, …) so the hot reverse-scan in
-    /// `hit_test*` only pulls rect + flags into cache and pays the
-    /// `WidgetId` / `layout_rect` load only on a match. Layers
-    /// append in paint order so reverse iteration yields topmost-
-    /// first.
+    /// `entries.id`, …), keeping response lookups node-aligned while
+    /// hit tests reach interactive rows through [`Self::hit_entries`].
+    /// Layers append in paint order so reverse iteration yields
+    /// topmost-first.
     pub(crate) entries: Soa<EntryRow>,
+    /// Entry indices whose effective `sense` is nonempty or which are
+    /// focusable, in the same paint order as [`Self::entries`]. Hit tests
+    /// reverse-scan this compact list while response lookup retains the
+    /// full node-aligned entry table.
+    pub(crate) hit_entries: Vec<u32>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
     /// ([`crate::input::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
@@ -344,7 +352,8 @@ impl Cascades {
     fn hit_first(&self, pos: Vec2, gate: impl Fn(usize) -> bool) -> Option<WidgetId> {
         let rects = self.entries.rect();
         let ids = self.entries.widget_id();
-        for i in (0..rects.len()).rev() {
+        for &entry_idx in self.hit_entries.iter().rev() {
+            let i = entry_idx as usize;
             if gate(i) && rects[i].contains(pos) {
                 return Some(ids[i]);
             }
@@ -378,7 +387,8 @@ impl Cascades {
         let mut hover = None;
         let mut scroll = None;
         let mut pinch = None;
-        for i in (0..rects.len()).rev() {
+        for &entry_idx in self.hit_entries.iter().rev() {
+            let i = entry_idx as usize;
             if !rects[i].contains(pos) {
                 continue;
             }
@@ -422,8 +432,9 @@ pub(crate) struct CascadesEngine {
 
 impl CascadesEngine {
     /// Walk every tree in paint order; produce one `Cascade` row per
-    /// node in each tree's slot, and append a global hit entry per
-    /// node. Reads the layout pass's output, writes into `cascades`.
+    /// node in each tree's slot, and index the rows that can receive
+    /// pointer or focus input. Reads the layout pass's output, writes
+    /// into `cascades`.
     /// Root placement (`RootSlot.placement`) is already baked into the
     /// arranged rects by the layout pass, so no parent-transform
     /// plumbing is needed here — trees never share NodeId space.
@@ -432,6 +443,7 @@ impl CascadesEngine {
         let total: usize = forest.trees.0.iter().map(|t| t.records.len()).sum();
         cascades.entries.clear();
         cascades.entries.reserve(total);
+        cascades.hit_entries.clear();
 
         for (layer, tree) in forest.trees.iter_paint_order() {
             let layer_layout = &layout.layers[layer];
@@ -444,6 +456,7 @@ impl CascadesEngine {
                 layer_layout,
                 &mut cascades.layers[layer],
                 &mut cascades.entries,
+                &mut cascades.hit_entries,
                 &mut self.stack,
             );
             // Invariant guarding `Cascades::entry_idx_of`'s
@@ -562,6 +575,7 @@ fn run_tree(
     layout: &LayerLayout,
     lc: &mut LayerCascades,
     entries: &mut Soa<EntryRow>,
+    hit_entries: &mut Vec<u32>,
     stack: &mut Vec<Frame>,
 ) {
     let n = tree.records.len() as u32;
@@ -683,6 +697,9 @@ fn run_tree(
             attrs.sense()
         };
         let focusable = !cascaded_off && attrs.is_focusable();
+        if sense != Sense::NONE || focusable {
+            hit_entries.push(entries.len() as u32);
+        }
         entries.push(EntryRow {
             widget_id: wid,
             rect: visible_rect,
