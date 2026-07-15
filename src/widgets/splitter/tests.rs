@@ -240,27 +240,43 @@ fn divider_requests_the_resize_cursor() {
     let mut ratio = 0.5;
     frame_with(&mut ui, &mut ratio);
     frame_with(&mut ui, &mut ratio);
-    assert_eq!(ui.cursor, CursorIcon::Default, "idle frame keeps the arrow");
+    assert_eq!(
+        ui.window_mailbox.cursor,
+        CursorIcon::Default,
+        "idle frame keeps the arrow"
+    );
 
     // Hovering the grab bar ([197.5, 203.5) at ratio 0.5) requests the
     // horizontal-resize cursor.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.5, 50.0)));
     frame_with(&mut ui, &mut ratio);
-    assert_eq!(ui.cursor, CursorIcon::EwResize, "hover shows resize");
+    assert_eq!(
+        ui.window_mailbox.cursor,
+        CursorIcon::EwResize,
+        "hover shows resize"
+    );
 
     // Mid-drag the pointer leaves the thin bar; the cursor must hold
     // until release (drag-first, since `hovered` is capture-gated).
     ui.press_at(Vec2::new(200.5, 50.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 50.0)));
     frame_with(&mut ui, &mut ratio);
-    assert_eq!(ui.cursor, CursorIcon::EwResize, "drag holds resize off-bar");
+    assert_eq!(
+        ui.window_mailbox.cursor,
+        CursorIcon::EwResize,
+        "drag holds resize off-bar"
+    );
 
     // Release with the pointer over a pane: the per-record-pass reset
     // returns the arrow because nothing re-requests.
     ui.release_left();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     frame_with(&mut ui, &mut ratio);
-    assert_eq!(ui.cursor, CursorIcon::Default, "leave resets to the arrow");
+    assert_eq!(
+        ui.window_mailbox.cursor,
+        CursorIcon::Default,
+        "leave resets to the arrow"
+    );
 
     // A vertical splitter's divider asks for the other axis.
     let mut ui = Ui::for_test();
@@ -279,7 +295,7 @@ fn divider_requests_the_resize_cursor() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.5)));
     frame(&mut ui, &mut ratio);
     assert_eq!(
-        ui.cursor,
+        ui.window_mailbox.cursor,
         CursorIcon::NsResize,
         "column split resizes vertically"
     );
