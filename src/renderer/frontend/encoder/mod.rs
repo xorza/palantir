@@ -272,7 +272,7 @@ fn emit_one_shape(
             ..
         } => {
             let span = ctx.layout.text_spans[id.idx()];
-            assert!(
+            debug_assert!(
                 text_ordinal < span.len,
                 "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
                 span.len,

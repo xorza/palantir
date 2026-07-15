@@ -122,7 +122,7 @@ impl DamageRegion {
         // before damage runs. Asserting at the one site that divides by surface
         // area lets `Damage::new` stay a pure classifier (no surface needed).
         let surface_area = surface.area();
-        assert!(
+        debug_assert!(
             surface_area > EPS,
             "damage collapsed against a degenerate surface: {surface:?}"
         );

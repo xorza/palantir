@@ -36,7 +36,7 @@ impl Span {
         if self.len == 0 {
             Self::default()
         } else {
-            assert!(
+            debug_assert!(
                 self.start >= base,
                 "Span::rebased: non-empty span start={} < base={}",
                 self.start,

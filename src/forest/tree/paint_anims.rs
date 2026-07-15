@@ -254,7 +254,7 @@ impl PaintAnims {
     /// `entries` cap so a `u16` index always fits in `by_shape`.
     pub(crate) fn push_entry(&mut self, shape_idx: u32, entry: PaintAnimEntry) {
         let idx = self.entries.len();
-        assert!(
+        debug_assert!(
             idx < PAINT_ANIM_NONE as usize,
             "more than {PAINT_ANIM_NONE} paint-anim entries in one tree — bump by_shape to u32",
         );

@@ -128,9 +128,9 @@ impl<'r> Tooltip<'r> {
 
         // State keying needs `bubble_id` for the StateMap row to live
         // alongside the trigger's lifecycle. A caller-supplied id via
-        // `.id_salt(...)` would silently be overwritten — hard-assert
+        // `.id_salt(...)` would silently be overwritten — debug-assert
         // instead of swallowing the bug.
-        assert!(
+        debug_assert!(
             matches!(self.element.salt, Salt::Auto(_)),
             "Tooltip does not honor `.id(...)` / `.id_salt(...)` — the id is \
              derived from the trigger's response so per-trigger state stays \

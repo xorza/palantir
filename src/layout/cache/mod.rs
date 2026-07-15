@@ -151,7 +151,7 @@ fn quantize_axis(v: f32) -> i32 {
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     // Layout invariants keep `available` in `[0, ∞)`; pin the contract
     // here so a future regression trips early.
-    assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
+    debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
     IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 
@@ -190,11 +190,11 @@ impl NodeArenas {
 
     fn acquire(&mut self, len: u32) {
         self.live += len as usize;
-        assert!(self.live <= self.desired.len());
+        debug_assert!(self.live <= self.desired.len());
     }
 
     pub(crate) fn release(&mut self, len: u32) {
-        assert!(self.live >= len as usize);
+        debug_assert!(self.live >= len as usize);
         self.live -= len as usize;
     }
 
@@ -314,8 +314,8 @@ impl MeasureCache {
         root_intrinsics: [f32; SLOT_COUNT],
         arenas: SubtreeArenas<'_>,
     ) {
-        assert_eq!(arenas.desired.len(), arenas.text_spans.len());
-        assert!(!arenas.desired.is_empty(), "snapshot must include the root");
+        debug_assert_eq!(arenas.desired.len(), arenas.text_spans.len());
+        debug_assert!(!arenas.desired.is_empty(), "snapshot must include the root");
         let new_len = arenas.desired.len() as u32;
         let new_hugs_len = arenas.hugs.len() as u32;
         let new_text_len = arenas.text_shapes.len() as u32;

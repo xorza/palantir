@@ -113,7 +113,7 @@ impl ExactSizeIterator for Commands<'_> {}
 
 impl RenderCmdBuffer {
     pub(crate) fn iter(&self) -> Commands<'_> {
-        assert_eq!(self.kinds.len(), self.starts.len());
+        debug_assert_eq!(self.kinds.len(), self.starts.len());
         Commands {
             buffer: self,
             index: 0,
@@ -403,7 +403,7 @@ impl RenderCmdBuffer {
         const { assert!(size_of::<T>().is_multiple_of(4)) };
         let start = start as usize;
         let n_words = size_of::<T>() / 4;
-        assert!(start + n_words <= self.data.len());
+        debug_assert!(start + n_words <= self.data.len());
         let words = &self.data[start..start + n_words];
         // `pod_read_unaligned` so payloads with align >4 (e.g.
         // `DrawTextPayload` via `TextCacheKey: u64`) work even though

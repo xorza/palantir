@@ -112,7 +112,6 @@ pub(crate) struct EncodedCache {
     /// `sweep` compacts when dead bytes exceed live ones (see
     /// `COMPACT_RATIO`).
     pub(crate) arena: Vec<EncodedGlyph>,
-    /// A cache hit emits each row's instance without walking cosmic,
     /// A cache hit emits `arena` straight out without walking cosmic,
     /// so the atlas slots backing the run would never get their LRU
     /// `last_use` bumped — `evict_one` could then reclaim a slot still
@@ -280,7 +279,7 @@ pub(crate) fn encode_batch<'a>(
                 // colour was added without growing `EncodedKey`, and the
                 // encoded cache would alias runs differing only in glyph
                 // colour.
-                assert!(
+                debug_assert!(
                     glyph.color_opt.is_none(),
                     "per-glyph colour override requires folding colour into EncodedKey",
                 );
@@ -355,7 +354,7 @@ pub(crate) fn encode_batch<'a>(
 /// high bit carries `content_type` (atlases cap at 16384 = 14 bits).
 #[inline]
 pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
-    assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
+    debug_assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
     (u as u32) | ((kind as u32) << 15) | ((v as u32) << 16)
 }
 

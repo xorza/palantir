@@ -67,11 +67,11 @@ impl SubtreeEnd {
     /// A just-opened node: end is `id + 1` (covers only itself); the
     /// grid flag is set iff the node is itself a `LayoutMode::Grid`.
     /// Descendants fold their ends in via [`Self::merge_child`] at
-    /// close. Release `assert!` on the 31-bit ceiling — a future
-    /// overflow would corrupt the flag, so fail loudly.
+    /// close. The debug assertion on the 31-bit ceiling catches a future
+    /// overflow before it corrupts the flag.
     #[inline]
     pub(crate) fn new_open(id: u32, is_grid: bool) -> Self {
-        assert!(
+        debug_assert!(
             id & SUBTREE_GRID_FLAG == 0,
             "NodeId {id} exhausted the 31-bit arena (high bit is the grid flag)",
         );

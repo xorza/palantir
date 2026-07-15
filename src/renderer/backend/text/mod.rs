@@ -253,7 +253,7 @@ impl TextBackend {
         batch_idx: usize,
         runs: &[TextRun],
     ) {
-        assert_eq!(
+        debug_assert_eq!(
             batch_idx,
             self.ranges.len(),
             "text batches must be prepared once in contiguous order",
@@ -393,7 +393,7 @@ impl TextBackend {
 
     pub(crate) fn post_record(&mut self) {
         if self.ranges.is_empty() {
-            assert!(self.instances.is_empty());
+            debug_assert!(self.instances.is_empty());
             return;
         }
         self.atlas.end_frame();

@@ -159,7 +159,7 @@ pub struct Element {
 }
 impl Element {
     pub(crate) fn set_grid_def(&mut self, id: GridDefId) {
-        assert_eq!(
+        debug_assert_eq!(
             self.mode,
             LayoutMode::Grid,
             "grid payload set on {:?}",
@@ -173,7 +173,7 @@ impl Element {
     }
 
     pub(crate) fn set_scroll_spec(&mut self, spec: ScrollSpec) {
-        assert_eq!(
+        debug_assert_eq!(
             self.mode,
             LayoutMode::Scroll,
             "scroll payload set on {:?}",

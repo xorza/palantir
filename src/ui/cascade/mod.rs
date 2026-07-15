@@ -464,10 +464,8 @@ impl CascadesEngine {
             // `tree.records` must push exactly one `EntryRow`. An
             // early-continue / skip-invisible optimization inside
             // `run_tree` that doesn't push would silently shift every
-            // later widget's entry by one. Release `assert!` —
-            // `n + entries_base` is already loaded, the equality is a
-            // single compare.
-            assert_eq!(
+            // later widget's entry by one.
+            debug_assert_eq!(
                 cascades.entries.len() as u32 - entries_base,
                 n as u32,
                 "run_tree pushed {} entries for layer with {n} nodes — every record must push exactly one row to keep entries_base + node.0 valid",
@@ -1005,7 +1003,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                     align,
                     ..
                 } => {
-                    assert!(
+                    debug_assert!(
                         text_ord < text_span.len,
                         "cascade saw a text shape without a matching ShapedText entry — \
                          leaf_content_size and the cascade walk are out of sync",

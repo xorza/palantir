@@ -455,7 +455,7 @@ impl Scroll {
     /// at record time that the scroll pans on both axes (built via
     /// [`Scroll::both`]) — uniform scale on a single-axis scroll has no
     /// clean answer (cross-axis content escapes the viewport with no way
-    /// to reach it). Caller bug, hard error.
+    /// to reach it). Debug builds reject the caller bug.
     pub fn with_zoom(mut self) -> Self {
         self.zoom = Some(ZoomConfig::default());
         self
@@ -470,13 +470,13 @@ impl Scroll {
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let id = ui.widget_id(&self.element);
         let mode = self.element.mode;
-        assert!(
+        debug_assert!(
             matches!(mode, LayoutMode::Scroll),
             "Scroll widget must carry LayoutMode::Scroll",
         );
         let pan = self.element.scroll_spec().pan_mask();
         if self.zoom.is_some() {
-            assert!(
+            debug_assert!(
                 pan.x && pan.y,
                 "Scroll::with_zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
             );

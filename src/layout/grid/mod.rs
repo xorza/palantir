@@ -193,7 +193,7 @@ impl GridDepthStack {
     }
 
     fn exit(&mut self) {
-        assert!(self.depth > 0, "GridDepthStack::exit underflow");
+        debug_assert!(self.depth > 0, "GridDepthStack::exit underflow");
         self.depth -= 1;
     }
 
@@ -381,7 +381,7 @@ impl GridHugStore {
                 }
             }
         }
-        assert_eq!(
+        debug_assert_eq!(
             pos,
             hugs.len(),
             "snapshot hug slice length disagrees with current subtree's grid descendants \
@@ -792,7 +792,7 @@ fn sum_spanned_known(sizes: &[f32], resolved: &FixedBitSet, span: Span) -> f32 {
 }
 
 fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {
-    assert_eq!(sizes.len(), out.len());
+    debug_assert_eq!(sizes.len(), out.len());
     let mut acc = 0.0f32;
     for (i, &s) in sizes.iter().enumerate() {
         out[i] = acc;

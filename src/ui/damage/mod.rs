@@ -823,7 +823,7 @@ fn build_row_extents(node: NodeId, tree: &Tree, arena: &PaintArena, out: &mut Ve
             }
         });
     }
-    assert_eq!(
+    debug_assert_eq!(
         out.len(),
         node_span.len as usize,
         "row extents out of sync with the owner's paint span",
@@ -908,7 +908,7 @@ fn extend_predamaged(
             // one row per chrome/shape/child in the same record order,
             // so the slot must exist — a miss means the cascade emit
             // and the recording counter drifted apart.
-            assert!(
+            debug_assert!(
                 e.row < node_span.len,
                 "paint-anim row {} out of the owner's {} paint rows",
                 e.row,

@@ -339,7 +339,7 @@ impl CosmicMeasure {
             halign: _,
         } = params;
         let w = max_width_px.expect("measure_truncated requires a finite width");
-        assert!(
+        debug_assert!(
             matches!(fit, LineFit::Clip | LineFit::Ellipsis),
             "measure_truncated requires Clip or Ellipsis",
         );

@@ -297,7 +297,7 @@ impl TextShaper {
                 "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
             ),
         };
-        assert!(
+        debug_assert!(
             entry.get().hash == hash,
             "shape_wrap on a stale entry — shape_unbounded must run first with the current hash",
         );

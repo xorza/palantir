@@ -94,14 +94,14 @@ impl Forest {
     #[profiling::function]
     pub(crate) fn post_record(&mut self) {
         let active = self.current_layer();
-        assert_eq!(
+        debug_assert_eq!(
             active,
             Layer::Main,
             "post_record called with active layer {active:?} — Ui::layer body forgot to return",
         );
         for layer in Layer::PAINT_ORDER {
             let scratch = &self.scratch[layer];
-            assert!(
+            debug_assert!(
                 scratch.open_frames.is_empty(),
                 "post_record: layer {layer:?} has {} node(s) still open — a widget builder forgot close_node",
                 scratch.open_frames.len(),
@@ -185,7 +185,7 @@ impl Forest {
     /// only attach to a currently-open node, so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
     fn assert_node_open(&self, layer: Layer, what: &str) {
-        assert!(
+        debug_assert!(
             !self.scratch[layer].open_frames.is_empty(),
             "{what} called with no open node",
         );
@@ -276,13 +276,13 @@ impl Forest {
         // also clobber the single per-layer `pending_anchor` slot.
         // Strictly increasing ⇒ each layer appears at most once on the
         // stack, so that slot stays single-occupancy without a guard.
-        assert!(
+        debug_assert!(
             layer > active,
             "Ui::layer({layer:?}) must rank above the current scope ({active:?}) \
              in Layer::PAINT_ORDER — a nested layer painting under its parent is a bug",
         );
         let scratch = &mut self.scratch[layer];
-        assert!(
+        debug_assert!(
             scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
@@ -296,7 +296,7 @@ impl Forest {
             .pop()
             .expect("pop_layer without matching push_layer");
         let scratch = &mut self.scratch[layer];
-        assert!(
+        debug_assert!(
             scratch.open_frames.is_empty(),
             "Ui::layer body left {} node(s) open in layer {:?}",
             scratch.open_frames.len(),

@@ -144,7 +144,7 @@ impl Tree {
         // Encoder treats `idx >= by_shape.len()` as "no anim". Sanity
         // check: the table can never legitimately exceed the shape
         // buffer.
-        assert!(
+        debug_assert!(
             self.paint_anims.by_shape.len() <= self.shapes.records.len(),
             "paint_anims.by_shape exceeds shapes.records",
         );
@@ -303,7 +303,7 @@ impl Tree {
         mut element: Element,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
-        assert_eq!(
+        debug_assert_eq!(
             new_id.0 as usize,
             self.records.len(),
             "Tree::open_node received a NodeId that doesn't match the next slot",
@@ -327,7 +327,7 @@ impl Tree {
         }
         if matches!(element.mode, LayoutMode::Grid) {
             let id = element.grid_def_id();
-            assert!(
+            debug_assert!(
                 usize::from(id) < self.grid_defs.len(),
                 "LayoutMode::Grid id {id:?} references no grid_def — only Grid::show should push grid nodes",
             );
@@ -387,9 +387,8 @@ impl Tree {
         // per-node SoA columns and must agree on `len`; a missed push
         // silently shifts every later node's index. (The `bounds`/`panel`/
         // `chrome` tables are `Slot`-indexed and sparse, so they're not
-        // 1:1 with `records`.) One integer compare per node — cheap enough
-        // to keep in release per the invariant-assert convention.
-        assert_eq!(self.extras_idx.len(), self.records.len());
+        // 1:1 with `records`.)
+        debug_assert_eq!(self.extras_idx.len(), self.records.len());
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         // This child contributes one marker row to the parent's paint
@@ -424,7 +423,7 @@ impl Tree {
                 let col = c.col as usize;
                 let row_span = c.row_span as usize;
                 let col_span = c.col_span as usize;
-                assert!(
+                debug_assert!(
                     row < n_rows
                         && col < n_cols
                         && row_span >= 1

@@ -60,7 +60,7 @@ pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks:
     }
     for batch in &buffer.text_batches {
         let group = batch.last_group as usize;
-        assert!(
+        debug_assert!(
             clips[batch.rounded_clips.range()] == clips[buffer.groups[group].rounded_clips.range()],
             "text batch chain decorrelated from its last_group's chain"
         );

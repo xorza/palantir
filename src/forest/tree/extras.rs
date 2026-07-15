@@ -9,7 +9,7 @@ impl Slot {
 
     #[inline]
     pub(crate) fn from_len(len: usize) -> Self {
-        assert!(
+        debug_assert!(
             len < Self::ABSENT.0 as usize,
             "Slot exhausted — {} entries fill the sparse-column frame; index would collide with Slot::ABSENT (got {len})",
             Self::ABSENT.0 as usize,
