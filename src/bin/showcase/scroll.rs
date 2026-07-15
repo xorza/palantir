@@ -20,7 +20,7 @@ impl Default for State {
     }
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::scroll::state");
     let s = ui.state_mut::<State>(state_id);
     let mut h = s.h;

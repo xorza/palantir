@@ -11,11 +11,11 @@ use aperture::{Button, Configure, Panel, Sizing, Text, Ui};
 
 /// State threaded through the entire showcase frame. Lives on `State`
 /// in `main.rs` and is handed to `build` by the central dispatcher.
-pub struct AppState {
+pub(crate) struct AppState {
     pub counter: i32,
 }
 
-pub fn build(ui: &mut Ui, app: &mut AppState) {
+pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {
     Panel::vstack()
         .auto_id()
         .gap(12.0)

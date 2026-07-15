@@ -23,6 +23,7 @@ use aperture::{
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
+#[derive(Debug)]
 pub struct Stepper<'a> {
     element: Element,
     value: &'a mut i32,

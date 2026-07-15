@@ -9,7 +9,7 @@ use rayon::prelude::*;
 /// any R/G/B/A channel deviates by more than `per_channel`; the image
 /// passes when the fraction of differing pixels is ≤ `max_ratio`.
 #[derive(Clone, Copy, Debug)]
-pub struct Tolerance {
+pub(crate) struct Tolerance {
     pub per_channel: u8,
     pub max_ratio: f32,
 }
@@ -24,7 +24,7 @@ impl Default for Tolerance {
 }
 
 #[derive(Debug)]
-pub struct DiffReport {
+pub(crate) struct DiffReport {
     pub max_channel_delta: u8,
     pub differing_pixels: u32,
     pub differing_ratio: f32,
@@ -32,7 +32,7 @@ pub struct DiffReport {
 }
 
 impl DiffReport {
-    pub fn passes(&self, tol: Tolerance) -> bool {
+    pub(crate) fn passes(&self, tol: Tolerance) -> bool {
         self.differing_ratio <= tol.max_ratio
     }
 }
@@ -40,7 +40,7 @@ impl DiffReport {
 /// Compare two equal-sized RGBA images. The diff image marks each
 /// differing pixel red (alpha 255) and dims the rest of the `actual`
 /// image to 25% so failures pop visually.
-pub fn diff(actual: &RgbaImage, expected: &RgbaImage, tol: Tolerance) -> DiffReport {
+pub(crate) fn diff(actual: &RgbaImage, expected: &RgbaImage, tol: Tolerance) -> DiffReport {
     assert_eq!(
         actual.dimensions(),
         expected.dimensions(),

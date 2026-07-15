@@ -15,6 +15,7 @@ use crate::widgets::theme::progress_bar::ProgressBarTheme;
 /// resolved track width without the widget knowing it at record time.
 /// Visuals come from [`crate::ProgressBarTheme`] (theme slot
 /// `progress_bar`).
+#[derive(Debug)]
 pub struct ProgressBar {
     element: Element,
     fraction: f32,

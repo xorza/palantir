@@ -34,6 +34,16 @@ pub enum UserEvent<T> {
     Quit,
 }
 
+impl<T> std::fmt::Debug for UserEvent<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Repaint(token) => f.debug_tuple("Repaint").field(token).finish(),
+            Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
+            Self::Quit => f.write_str("Quit"),
+        }
+    }
+}
+
 /// Thread-safe handle to a running [`WinitHost<T>`](super::WinitHost).
 /// Cheaply `Clone`; send to background threads so they can poke the UI
 /// without owning it. `T` is the host's app type — only
@@ -84,5 +94,22 @@ impl<T: 'static> HostHandle<T> {
     /// no further frames are scheduled.
     pub fn quit(&self) {
         let _ = self.proxy.send_event(UserEvent::Quit);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UserEvent;
+    use crate::window::WindowToken;
+
+    #[test]
+    fn user_event_debug_formats_every_variant_without_an_app_bound() {
+        let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7));
+        let task = UserEvent::RunOnMain(Box::new(|_: &mut ()| true));
+        let quit: UserEvent<()> = UserEvent::Quit;
+
+        assert_eq!(format!("{repaint:?}"), "Repaint(WindowToken(7))");
+        assert_eq!(format!("{task:?}"), "RunOnMain(..)");
+        assert_eq!(format!("{quit:?}"), "Quit");
     }
 }

@@ -201,6 +201,7 @@ impl<'a> std::ops::Deref for DragValueResponse<'a> {
 /// the commit frame, so the deferred caller still observes it. A gesture
 /// that ends while the widget is disabled (or, for a pending edit, no
 /// longer editable) is dropped, not committed.
+#[derive(Debug)]
 pub struct DragValue<'a> {
     element: Element,
     value: DragNum<'a>,

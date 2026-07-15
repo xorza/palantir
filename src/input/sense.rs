@@ -76,7 +76,7 @@ impl Sense {
 /// latches as a drag. Under this, the gesture is still a click. Once
 /// crossed, the latch holds for the press lifetime and the release
 /// no longer emits a click. Mouse-sized — touch will want larger.
-pub const DRAG_THRESHOLD: f32 = 4.0;
+pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// Maximum interval between two clicks on the same widget for the
 /// second one to be reported as a double-click. 500 ms matches the
@@ -84,10 +84,10 @@ pub const DRAG_THRESHOLD: f32 = 4.0;
 /// is user-configurable but defaults to the same neighborhood, and
 /// Linux has no system-wide value to read. Tracked per-button on
 /// [`crate::input::Capture`].
-pub const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
+pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for the second
 /// to still count as a double-click. A slow drift past this reads as two
 /// separate clicks — matches native behaviour and `TextEdit`'s
 /// `MULTI_CLICK_RADIUS`. Tracked per-button on [`crate::input::Capture`].
-pub const DOUBLE_CLICK_RADIUS: f32 = 5.0;
+pub(crate) const DOUBLE_CLICK_RADIUS: f32 = 5.0;

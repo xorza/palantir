@@ -227,7 +227,7 @@ pub(crate) struct BufferLookup<'a> {
 }
 
 impl<'a> BufferLookup<'a> {
-    pub fn get(&self, key: TextCacheKey) -> Option<&'a Buffer> {
+    pub(crate) fn get(&self, key: TextCacheKey) -> Option<&'a Buffer> {
         if key.is_invalid() {
             return None;
         }

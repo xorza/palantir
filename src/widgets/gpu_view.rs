@@ -38,6 +38,15 @@ pub struct GpuView {
     repaint: bool,
 }
 
+impl std::fmt::Debug for GpuView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GpuView")
+            .field("element", &self.element)
+            .field("repaint", &self.repaint)
+            .finish_non_exhaustive()
+    }
+}
+
 impl GpuView {
     /// New view backed by `paint` (the app's renderer). The framework calls
     /// [`GpuPaint::init`] once (when the device is first available) and

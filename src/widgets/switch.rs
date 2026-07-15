@@ -26,6 +26,7 @@ const TRACK_ASPECT: f32 = 1.75;
 /// Layout mirrors [`crate::Checkbox`]: `HStack [track, label]`, one
 /// `Sense::CLICK` hit target. The track is a `Canvas` so the knob can be
 /// absolutely positioned; the knob's x animates through [`Ui::animate`].
+#[derive(Debug)]
 pub struct Switch<'a> {
     element: Element,
     value: &'a mut bool,

@@ -18,9 +18,7 @@ use glam::Vec2;
 /// `TextRun` slices via `bytemuck`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-// Public because the feature-gated `text_backend_internals` bench surface
-// exposes shaped runs from `lib.rs`.
-pub struct TextRun {
+pub(crate) struct TextRun {
     pub(crate) key: TextCacheKey,
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
@@ -49,5 +47,24 @@ impl std::hash::Hash for TextRun {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod test_support {
+    use crate::renderer::render_buffer::text::TextRun as InnerTextRun;
+
+    #[repr(transparent)]
+    #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+    pub struct TextRun(pub(crate) InnerTextRun);
+
+    impl TextRun {
+        pub(crate) fn new(inner: InnerTextRun) -> Self {
+            Self(inner)
+        }
+
+        pub(crate) fn inner_slice(runs: &[Self]) -> &[InnerTextRun] {
+            bytemuck::cast_slice(runs)
+        }
     }
 }

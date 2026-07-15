@@ -64,14 +64,14 @@ thread_local! {
     static COSMIC: TextShaper = TextShaper::with_bundled_fonts();
 }
 
-pub struct Harness {
+pub(crate) struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pub host: OffscreenHost,
 }
 
 impl Harness {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
         // Fresh target texture per render() → must fill the whole target each
@@ -91,7 +91,7 @@ impl Harness {
         }
     }
 
-    pub fn render(
+    pub(crate) fn render(
         &mut self,
         physical: UVec2,
         scale: f32,
@@ -107,7 +107,7 @@ impl Harness {
     /// readback). A change in `format` from the previous call is
     /// auto-detected by the renderer (forces a full repaint at the new
     /// format). Used by the format-change fixture.
-    pub fn render_to_format(
+    pub(crate) fn render_to_format(
         &mut self,
         format: wgpu::TextureFormat,
         physical: UVec2,
@@ -153,7 +153,7 @@ impl Harness {
     /// Used by fixtures whose state populates over multiple frames
     /// (scrollbars reading their populated `ScrollState`, damage
     /// seeding `DamageEngine.prev`).
-    pub fn render_after_settle<F: FnMut(&mut Ui) + Copy>(
+    pub(crate) fn render_after_settle<F: FnMut(&mut Ui) + Copy>(
         &mut self,
         settle_frames: u32,
         physical: UVec2,
@@ -170,7 +170,7 @@ impl Harness {
     /// Render one frame with `debug_overlay` set to `overlay`, then
     /// clear it again. Used by damage fixtures that flip the overlay
     /// only for the captured frame.
-    pub fn render_with_overlay(
+    pub(crate) fn render_with_overlay(
         &mut self,
         overlay: DebugOverlayConfig,
         physical: UVec2,

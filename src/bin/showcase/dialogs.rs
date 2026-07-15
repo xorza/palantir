@@ -37,7 +37,7 @@ fn exit_state_id() -> WidgetId {
     WidgetId::from_hash("showcase::dialogs::exit-state")
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let state_id = state_id();
     let options = ["Apple", "Banana", "Cherry", "Durian", "Elderberry"];
 
@@ -137,7 +137,7 @@ pub fn build(ui: &mut Ui) {
 /// Wire into the window's frame after the page content. With no pending
 /// changes the OS close proceeds untouched; with changes it vetoes and
 /// prompts. `win` is the window closed for real once the user confirms.
-pub fn intercept(ui: &mut Ui, win: WindowToken) {
+pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
     let id = exit_state_id();
     if ui.close_requested() && ui.state_mut::<ExitState>(id).pretend_dirty {
         ui.keep_open();

@@ -26,6 +26,7 @@ const BLOCK: Sense = Sense::CLICK
 /// pressing Esc sets [`ModalResponse::dismissed`] — the host flips its
 /// own open flag. Clicks on the card itself are absorbed, so interacting
 /// with dialog content never closes it.
+#[derive(Debug)]
 pub struct Modal {
     element: Element,
     chrome: Option<Background>,

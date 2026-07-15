@@ -31,24 +31,24 @@ pub(crate) struct F16x4(pub(crate) [u16; 4]);
 
 impl F16x4 {
     /// All-zero lanes (`0.0` in f16). Also the `Default`.
-    pub const ZERO: Self = Self([0; 4]);
+    pub(crate) const ZERO: Self = Self([0; 4]);
 
     /// Pack four runtime f32 lanes — single SIMD instruction on
     /// F16C/fp16 targets, scalar fallback elsewhere.
     #[inline]
-    pub fn from_lanes(lanes: [f32; 4]) -> Self {
+    pub(crate) fn from_lanes(lanes: [f32; 4]) -> Self {
         Self(f16x4_from_f32x4(lanes))
     }
 
     /// Unpack all four lanes to f32 at once via the batched slice path.
     #[inline]
-    pub fn lanes(self) -> [f32; 4] {
+    pub(crate) fn lanes(self) -> [f32; 4] {
         f16x4_to_f32x4(self.0)
     }
 
     /// Per-lane f32 multiply, re-quantized through the f16 round-trip.
     #[inline]
-    pub fn scaled(self, k: f32) -> Self {
+    pub(crate) fn scaled(self, k: f32) -> Self {
         let [a, b, c, d] = self.lanes();
         Self::from_lanes([a * k, b * k, c * k, d * k])
     }
@@ -56,7 +56,7 @@ impl F16x4 {
     /// The 8 storage bytes as one `u64` — lets wrappers hash with a
     /// single hasher write instead of four `write_u16`s.
     #[inline]
-    pub fn as_u64(self) -> u64 {
+    pub(crate) fn as_u64(self) -> u64 {
         u64::from_ne_bytes(bytemuck::cast(self.0))
     }
 }

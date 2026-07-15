@@ -12,7 +12,7 @@ use crate::support::{cell_row, demo_cell_light};
 use aperture::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
 use glam::Vec2;
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
         cell_row(ui, "row1", |ui| {
             demo_cell_light(ui, "soft — elevation 2", soft);

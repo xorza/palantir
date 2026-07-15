@@ -21,7 +21,7 @@ fn body_style() -> TextStyle {
     TextStyle::default().with_font_size(14.0)
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
         support::header(
             ui,

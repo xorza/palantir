@@ -12,7 +12,7 @@ struct Demo {
     wide: bool,
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("anim-demo");
     let mut clicked = false;
 

@@ -89,7 +89,7 @@ struct CubeGpu {
 /// The app's persistent renderer. `spin` accumulates the auto-rotation;
 /// `yaw`/`pitch` are driven by drag. `'static` (no borrows) so it can
 /// live behind the `Rc<RefCell<…>>` the framework holds across frames.
-pub struct Cube {
+pub(crate) struct Cube {
     gpu: Option<CubeGpu>,
     spin: f32,
     yaw: f32,
@@ -97,7 +97,7 @@ pub struct Cube {
 }
 
 impl Cube {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             gpu: None,
             spin: 0.0,
@@ -300,7 +300,7 @@ impl GpuPaint for Cube {
 /// Showcase page. `cube` persists across frames in `State` (the device
 /// isn't available at construction, so its GPU resources build lazily on
 /// first paint).
-pub fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
+pub(crate) fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
     // A GpuView re-renders on every painted frame, so keep frames coming to
     // animate the spin.
     ui.request_repaint();

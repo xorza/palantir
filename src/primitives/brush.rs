@@ -31,19 +31,19 @@ impl FillAxis {
     /// `FillKind == SOLID`, so the value doesn't matter — keep it
     /// zeroed so Pod-byte cache keys are deterministic for solid
     /// quads.
-    pub const ZERO: Self = Self(F16x4::ZERO);
+    pub(crate) const ZERO: Self = Self(F16x4::ZERO);
 
     /// Build from four runtime f32 lanes via the batched f16 slice
     /// path. Single SIMD instruction on F16C/fp16 targets.
     #[inline]
-    pub fn from_lanes(a: f32, b: f32, c: f32, d: f32) -> Self {
+    pub(crate) fn from_lanes(a: f32, b: f32, c: f32, d: f32) -> Self {
         Self(F16x4::from_lanes([a, b, c, d]))
     }
 
     /// All four lanes unpacked at once via the batched slice path —
     /// matches `Corners::as_array`.
     #[inline]
-    pub fn lanes(self) -> [f32; 4] {
+    pub(crate) fn lanes(self) -> [f32; 4] {
         self.0.lanes()
     }
 
@@ -51,7 +51,7 @@ impl FillAxis {
     /// `current_transform.scale` multiply path. Re-quantizes via the
     /// scalar f16 round-trip.
     #[inline]
-    pub fn scaled(self, s: f32) -> Self {
+    pub(crate) fn scaled(self, s: f32) -> Self {
         Self(self.0.scaled(s))
     }
 }

@@ -9,6 +9,7 @@ use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::resolve_look;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 
+#[derive(Debug)]
 pub struct Button {
     element: Element,
     style: Option<ButtonTheme>,

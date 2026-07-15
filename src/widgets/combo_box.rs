@@ -35,6 +35,7 @@ struct ComboState {
 /// The trigger chrome reuses [`crate::Theme::button`]; the list reuses
 /// the context-menu panel + [`MenuItem`] rows
 /// ([`crate::Theme::context_menu`]).
+#[derive(Debug)]
 pub struct ComboBox<'a> {
     element: Element,
     selected: &'a mut usize,

@@ -38,6 +38,7 @@ pub enum ClickOutside {
 ///
 /// Lives on the stack for the duration of one [`Popup::show`] call —
 /// no ambient `Ui` state, no nested-popup signal-leak.
+#[derive(Debug)]
 pub struct PopupHandle {
     requested: Cell<bool>,
 }
@@ -96,6 +97,7 @@ impl PopupResponse {
 ///
 /// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
+#[derive(Debug)]
 pub struct Popup {
     anchor: Vec2,
     click_outside: ClickOutside,

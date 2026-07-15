@@ -51,7 +51,7 @@ impl Default for State {
     }
 }
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::controls::state");
     let mut s = std::mem::take(ui.state_mut::<State>(state_id));
 

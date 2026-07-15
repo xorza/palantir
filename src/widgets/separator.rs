@@ -16,6 +16,7 @@ use crate::widgets::Response;
 /// explicit [`Configure::size`] replaces that default entirely — the
 /// given size describes the rule's box and `thickness` is ignored.
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
+#[derive(Debug)]
 pub struct Separator {
     element: Element,
     horizontal: bool,

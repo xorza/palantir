@@ -542,7 +542,7 @@ pub(crate) mod recording;
 pub(crate) mod rollups;
 
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::node::NodeId;
@@ -550,7 +550,7 @@ pub mod test_support {
 
     impl Tree {
         /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
-        pub fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
+        pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
             self.tree_items(node).filter_map(|item| match item {
                 TreeItem::ShapeRecord(_, s) => Some(s),
                 TreeItem::Child(_) => None,

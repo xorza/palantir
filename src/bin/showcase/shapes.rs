@@ -11,7 +11,7 @@ use aperture::{Brush, Color, ColorU8, Corners, LinearGradient, Mesh, Shape, Stro
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI};
 
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {
         cell_row(ui, "row1", |ui| {
             demo_cell(ui, "triangle — sharp fill", sharp);

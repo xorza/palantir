@@ -41,7 +41,7 @@ fn instance() -> &'static Mutex<Inner> {
 /// Current clipboard contents. Reads the OS clipboard when
 /// available, otherwise the in-memory cache. Allocates one `String`
 /// per call (OS clipboard text isn't borrowable across the mutex).
-pub fn get() -> String {
+pub(crate) fn get() -> String {
     #[allow(unused_mut)]
     let mut g = instance().lock().expect("clipboard mutex poisoned");
     #[cfg(not(test))]
@@ -56,7 +56,7 @@ pub fn get() -> String {
 /// Overwrite the clipboard with `s`. Writes to the OS clipboard and
 /// mirrors into the cache; the cache backs `get` when the OS *read*
 /// (not write) fails or the OS backend is absent.
-pub fn set(s: &str) {
+pub(crate) fn set(s: &str) {
     #[allow(unused_mut)]
     let mut g = instance().lock().expect("clipboard mutex poisoned");
     #[cfg(not(test))]

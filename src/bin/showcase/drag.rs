@@ -9,7 +9,7 @@ use glam::Vec2;
 /// drag-delta-applied position with no caller-side anchor tracking.
 /// The actively-dragged card is recorded last so it paints on top of
 /// any overlap.
-pub fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui) {
     let cards = [
         ("card.a", Vec2::new(40.0, 40.0), support::A),
         ("card.b", Vec2::new(220.0, 120.0), support::B),
