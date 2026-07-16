@@ -21,6 +21,7 @@ pub use crate::bench::frame::fixture::FrameFixture;
 pub use crate::bench::frame::text_ui;
 pub use crate::bench::input::bench as input;
 pub use crate::bench::layout::cache::bench as layout_caches;
+pub use crate::bench::renderer::backend::curve::bench as curve_pipeline;
 pub use crate::bench::renderer::backend::text::bench as text_atlas;
 pub use crate::bench::renderer::frontend::composer::bench as composer;
 pub use crate::bench::text::bench as text_shape;

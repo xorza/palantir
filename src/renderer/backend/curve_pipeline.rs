@@ -1,10 +1,11 @@
 //! GPU side of native parametric strokes (cubic beziers + circular
-//! arcs — see `CurveInstance::kind`). One `draw` per scissor
+//! arcs — see `CurveInstance::kind`). One `draw_indexed` per scissor
 //! group covers every `CurveInstance` in the group's `GroupBatch` —
-//! the vertex shader subdivides each instance into
+//! an immutable index buffer subdivides each instance into
 //! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE)
-//! chords (96 vertices per instance, no index buffer) and offsets the
-//! strip perpendicular to the tangent for stroking + AA.
+//! chords while reusing 34 cross-section vertices across 96 indices;
+//! the vertex shader offsets the strip perpendicular to the tangent
+//! for stroking + AA.
 //!
 //! Same stencil-variant pattern as [`MeshPipeline`] /
 //! [`ImagePipeline`]: rounded-clip frames use a stencil-test pipeline,
@@ -26,14 +27,38 @@ use crate::renderer::render_buffer::curve::{
     SEGMENTS_PER_INSTANCE,
 };
 use crate::shape::LineCap;
+use wgpu::util::DeviceExt;
 
-/// Vertex count per instance — every instance is a 16-segment strip,
-/// 6 vertices per segment (two triangles), no index buffer.
-const VERTICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
+const INDICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
+const UNIQUE_VERTICES_PER_INSTANCE: u16 = 2 * (SEGMENTS_PER_INSTANCE as u16 + 1);
+const CURVE_INDICES: [u16; INDICES_PER_INSTANCE as usize] = curve_indices();
+
+const fn curve_indices() -> [u16; INDICES_PER_INSTANCE as usize] {
+    let mut indices = [0; INDICES_PER_INSTANCE as usize];
+    let mut segment = 0;
+    while segment < SEGMENTS_PER_INSTANCE as u16 {
+        let vertex = 2 * segment;
+        let offset = 6 * segment as usize;
+        indices[offset] = vertex;
+        indices[offset + 1] = vertex + 2;
+        indices[offset + 2] = vertex + 1;
+        indices[offset + 3] = vertex + 1;
+        indices[offset + 4] = vertex + 2;
+        indices[offset + 5] = vertex + 3;
+        segment += 1;
+    }
+    indices
+}
+
+const _: () = {
+    assert!(INDICES_PER_INSTANCE == 96);
+    assert!(UNIQUE_VERTICES_PER_INSTANCE == 34);
+};
 
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
     instance_buffer: DynamicBuffer<CurveInstance>,
+    index_buffer: wgpu::Buffer,
     /// Curve shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
@@ -71,9 +96,15 @@ impl CurvePipeline {
 
         let instance_buffer =
             DynamicBuffer::<CurveInstance>::vertex(device, "aperture.curve.instances", 64);
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("aperture.curve.indices"),
+            contents: bytemuck::cast_slice(&CURVE_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
         Self {
             instance_buffer,
+            index_buffer,
             shader,
         }
     }
@@ -124,18 +155,17 @@ impl CurvePipeline {
         pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
+        pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
     }
 
-    /// Issue one non-indexed instanced draw covering every instance in
-    /// the span (no index buffer — `vertex_index` maps directly to the
-    /// 6 corners of each of `SEGMENTS_PER_INSTANCE` quads). This is the
-    /// "one draw call per scissor group" terminus — the entire
-    /// curve group batch lands as a single GPU draw call.
+    /// Issue one indexed instanced draw covering every instance in the
+    /// span. This is the "one draw call per scissor group" terminus —
+    /// the entire curve group batch lands as a single GPU draw call.
     pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, instances: std::ops::Range<u32>) {
         if instances.start == instances.end {
             return;
         }
-        pass.draw(0..VERTICES_PER_INSTANCE, instances);
+        pass.draw_indexed(0..INDICES_PER_INSTANCE, 0, instances);
     }
 }
 
@@ -186,5 +216,38 @@ fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {
         array_stride: std::mem::size_of::<CurveInstance>() as u64,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &CURVE_INSTANCE_ATTRS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::backend::curve_pipeline::{
+        CURVE_INDICES, INDICES_PER_INSTANCE, UNIQUE_VERTICES_PER_INSTANCE,
+    };
+    use crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE;
+
+    #[test]
+    fn curve_indices_tile_adjacent_cross_sections() {
+        assert_eq!(CURVE_INDICES.len(), INDICES_PER_INSTANCE as usize);
+        assert_eq!(
+            CURVE_INDICES.iter().copied().max(),
+            Some(UNIQUE_VERTICES_PER_INSTANCE - 1)
+        );
+        for segment in 0..SEGMENTS_PER_INSTANCE as u16 {
+            let vertex = 2 * segment;
+            let offset = 6 * segment as usize;
+            assert_eq!(
+                &CURVE_INDICES[offset..offset + 6],
+                &[
+                    vertex,
+                    vertex + 2,
+                    vertex + 1,
+                    vertex + 1,
+                    vertex + 2,
+                    vertex + 3
+                ],
+                "segment {segment}"
+            );
+        }
     }
 }

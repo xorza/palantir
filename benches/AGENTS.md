@@ -14,6 +14,7 @@ APERTURE_BENCH_MODE=both APERTURE_BENCH_NOTE='baseline' cargo bench --bench fram
 APERTURE_BENCH_MODE=cpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
 APERTURE_BENCH_MODE=gpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
 cargo bench --bench caches --features internals        # gated benches
+cargo bench --bench curve_pipeline --features internals # curve GPU evidence + frame wall time
 ```
 
 `frame` refuses to run without both:
@@ -73,6 +74,11 @@ requires `--features internals` because its implementation or shared fixture
 lives behind the single source-level `bench` facade. `alloc_free_gpu` still
 drives only the public `OffscreenHost` rendering path; the feature supplies
 its source-level workload, not renderer reach-ins.
+
+`curve_pipeline` renders fixed cubic-strip and polyline-join workloads through
+the public offscreen host. Its Criterion cases measure complete frame wall time;
+the pre-case report isolates median curve-batch GPU time and vertex invocation
+counts for the static-index keep-or-revert decision.
 
 ## Allocation invariants (three benches)
 

@@ -1,9 +1,9 @@
 // Native parametric stroke pipeline (cubic beziers, circular arcs,
 // polyline segments, and polyline join chrome). One
-// `draw(96, instance_count)` per scissor group; each instance
-// describes a sub-range of one stroke and the vertex shader expands
-// it into 16 quads (192 indices via the shared per-vertex
-// `vertex_index`). No index buffer, no per-instance CPU tessellation.
+// `draw_indexed(96, instance_count)` per scissor group; each instance
+// describes a sub-range of one stroke. A static index buffer builds 16
+// quads from 34 cross-section vertices, with no per-instance CPU
+// tessellation.
 //
 // Basis kinds. `kind` selects how the geometry lanes are read:
 // KIND_CUBIC evaluates the `p0..p3` cubic; KIND_ARC evaluates
@@ -233,27 +233,10 @@ fn stroke_pos_tan(in: VsIn, t: f32) -> PosTan {
     return cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, t);
 }
 
-// (corner_t, side) lookup for the two-triangle quad. Replaces a 6-way
-// switch — branchless on every backend.
-const CORNERS = array<vec2<f32>, 6>(
-    vec2<f32>(0.0, -1.0),
-    vec2<f32>(1.0, -1.0),
-    vec2<f32>(0.0,  1.0),
-    vec2<f32>(0.0,  1.0),
-    vec2<f32>(1.0, -1.0),
-    vec2<f32>(1.0,  1.0),
-);
-
 @vertex
 fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
-    let seg = vid / 6u;
-    let corner = vid % 6u;
-    // Triangle layout per quad (two triangles, CCW after the Y-flip
-    // in NDC). `t_off` is the segment-local parameter (0 at the start
-    // edge, 1 at the end edge); `side` is the strip-half marker (-1/+1).
-    let c = CORNERS[corner];
-    let t_off = c.x;
-    let side = c.y;
+    let section = vid / 2u;
+    let side = select(-1.0, 1.0, (vid & 1u) != 0u);
     let half_w = max(in.width * 0.5, 0.0) + HALF_FRINGE;
 
     var out: VsOut;
@@ -269,9 +252,8 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     var phys: vec2<f32>;
 
     if (in.kind >= KIND_JOIN_ROUND) {
-        // Join chrome: one billboard quad around the joint point
-        // P = p0; the other 15 quads collapse to P (zero area, no
-        // fragments). The composer ships the face-plane normals
+        // Join chrome: tile the strip's 16 quads across one billboard
+        // around P = p0. The composer ships the face-plane normals
         // pre-oriented in the neighbor lanes (`p1 = -d_a`,
         // `p2 = d_b`, both unit) — they pass straight through to the
         // clip varyings. The fragment does all the shaping; the quad
@@ -284,15 +266,13 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
             let cos_half = 0.5 * length(in.p2 - in.p1);
             r_bb = half_w * min(1.0 / max(cos_half, 1.0e-4), MITER_LIMIT) + 1.0;
         }
-        phys = p;
-        if (seg == 0u) {
-            phys = p + vec2<f32>(mix(-r_bb, r_bb, t_off), side * r_bb);
-        }
+        let section_t = f32(section) * INV_N;
+        phys = p + vec2<f32>(mix(-r_bb, r_bb, section_t), side * r_bb);
         out.jv0 = vec4<f32>(in.p1, in.p2);
         out.jv1 = vec4<f32>(p, p);
         flags |= FLAG_CLIP | FLAG_JOIN | ((in.kind - KIND_JOIN_ROUND) << 4u);
     } else {
-        let local_t = (f32(seg) + t_off) * INV_N;
+        let local_t = f32(section) * INV_N;
         let t = mix(in.t_range.x, in.t_range.y, local_t);
         let pt = stroke_pos_tan(in, t);
         let pos = pt.pos;
@@ -304,13 +284,8 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         if (cap_start == CAP_ROUND || cap_end == CAP_ROUND) {
             flags |= FLAG_ROUND_CAP;
         }
-        // Cap extension. Only the leading edge of segment 0 of the
-        // first sub-instance (and the trailing edge of the last
-        // segment of the last sub-instance) shifts; everything else
-        // stays put.
-        let is_first_cap_seg = (seg == 0u) && (in.t_range.x < T_END_EPS);
-        let is_last_cap_seg = (seg == SEGMENTS_PER_INSTANCE - 1u)
-            && (in.t_range.y > 1.0 - T_END_EPS);
+        let has_start_cap = in.t_range.x < T_END_EPS;
+        let has_end_cap = in.t_range.y > 1.0 - T_END_EPS;
         var cap_shift: f32 = 0.0;
         // `cap_t` must lerp to zero exactly at the endpoint cross-
         // section, so a cap segment's body edge carries -chord (not
@@ -320,20 +295,20 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         // r through the whole segment, visibly necking thin caps
         // (~chord^2 / stroke width).
         var cap_t: f32 = 0.0;
-        if (cap_start != CAP_BUTT && is_first_cap_seg) {
-            if (t_off == 0.0) {
+        if (cap_start != CAP_BUTT && has_start_cap) {
+            if (section == 0u) {
                 cap_shift = -half_w;
                 cap_t = half_w;
-            } else {
+            } else if (section == 1u) {
                 let lead = stroke_pos_tan(in, in.t_range.x);
                 cap_t = -distance(pos, lead.pos);
             }
         }
-        if (cap_end != CAP_BUTT && is_last_cap_seg) {
-            if (t_off == 1.0) {
+        if (cap_end != CAP_BUTT && has_end_cap) {
+            if (section == SEGMENTS_PER_INSTANCE) {
                 cap_shift = half_w;
                 cap_t = half_w;
-            } else {
+            } else if (section == SEGMENTS_PER_INSTANCE - 1u) {
                 let trail = stroke_pos_tan(in, in.t_range.y);
                 cap_t = -distance(pos, trail.pos);
             }
