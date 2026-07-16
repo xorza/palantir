@@ -29,9 +29,17 @@ use crate::primitives::{rect::Rect, size::Size};
 /// the child's main-axis desired size; `x` is the cross contribution
 /// the line should hug to, zero for Fill-on-cross children (CSS flex
 /// parity — Fill stretches to the row, doesn't drive its height).
+#[derive(Clone, Copy, Debug)]
 struct ChildPack {
     m: f32,
     x: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct LinePack {
+    main: f32,
+    cross: f32,
+    occupied: bool,
 }
 
 #[inline]
@@ -47,11 +55,11 @@ fn child_pack(axis: Axis, child_size: Sizes, d: Size) -> ChildPack {
 }
 
 /// True iff appending a child of main-axis extent `m` to the current
-/// line would push it past `main_avail`. The first child on a line
-/// (`line_main == 0`) never wraps — it always sets the line's start.
+/// line would push it past `main_avail`. The first child on an empty
+/// line never wraps — it always sets the line's start.
 #[inline]
-fn would_wrap(line_main: f32, gap: f32, m: f32, main_avail: f32) -> bool {
-    line_main > 0.0 && line_main + gap + m > main_avail
+fn would_wrap(line: LinePack, gap: f32, m: f32, main_avail: f32) -> bool {
+    line.occupied && line.main + gap + m > main_avail
 }
 
 /// Advance the line-packing state by one child. When the child won't fit
@@ -62,25 +70,27 @@ fn would_wrap(line_main: f32, gap: f32, m: f32, main_avail: f32) -> bool {
 /// where lines break.
 #[inline]
 fn pack_child(
-    line_main: &mut f32,
-    line_cross: &mut f32,
+    line: &mut LinePack,
     gap: f32,
     main_avail: f32,
     pack: ChildPack,
     mut complete_line: impl FnMut(f32, f32),
 ) {
     let ChildPack { m, x } = pack;
-    if would_wrap(*line_main, gap, m, main_avail) {
-        complete_line(*line_main, *line_cross);
-        *line_main = m;
-        *line_cross = x;
-    } else {
-        *line_main = if *line_main > 0.0 {
-            *line_main + gap + m
-        } else {
-            m
+    if would_wrap(*line, gap, m, main_avail) {
+        complete_line(line.main, line.cross);
+        *line = LinePack {
+            main: m,
+            cross: x,
+            occupied: true,
         };
-        *line_cross = line_cross.max(x);
+    } else {
+        if line.occupied {
+            line.main += gap;
+        }
+        line.main += m;
+        line.cross = line.cross.max(x);
+        line.occupied = true;
     }
 }
 
@@ -129,8 +139,7 @@ pub(crate) fn measure(
     let layouts = tree.records.layout();
     let mut max_line_main = 0.0f32;
     let mut total_cross = 0.0f32;
-    let mut line_main = 0.0f32;
-    let mut line_cross = 0.0f32;
+    let mut line = LinePack::default();
     let mut line_count = 0usize;
 
     let mut complete_line = |lm: f32, lx: f32| {
@@ -147,18 +156,11 @@ pub(crate) fn measure(
             out,
         );
         let pack = child_pack(axis, layouts[c.idx()].size, d);
-        pack_child(
-            &mut line_main,
-            &mut line_cross,
-            gap,
-            main_avail,
-            pack,
-            &mut complete_line,
-        );
+        pack_child(&mut line, gap, main_avail, pack, &mut complete_line);
     }
     // Flush last line.
-    if line_main > 0.0 {
-        complete_line(line_main, line_cross);
+    if line.occupied {
+        complete_line(line.main, line.cross);
     }
     // `n_lines - 1` line gaps between lines.
     if line_count > 1 {
@@ -193,8 +195,7 @@ pub(crate) fn arrange(
     // IDs.
     let layouts = tree.records.layout();
     let line_start = layout.scratch.wrap.pool.len() as u32;
-    let mut line_main = 0.0f32;
-    let mut line_cross = 0.0f32;
+    let mut line = LinePack::default();
     let mut cross_cursor = axis.cross_v(inner.min);
     let mut first_line = true;
 
@@ -278,24 +279,21 @@ pub(crate) fn arrange(
         // On wrap, `pack_child` places the just-finished line (which
         // empties the pool back to this depth's start); the child that
         // triggered the wrap is then pushed as the new line's first node.
-        pack_child(
-            &mut line_main,
-            &mut line_cross,
-            gap,
-            main_avail,
-            pack,
-            |lm, lx| place_line(layout, out, lm, lx, &mut cross_cursor, &mut first_line),
-        );
+        pack_child(&mut line, gap, main_avail, pack, |lm, lx| {
+            place_line(layout, out, lm, lx, &mut cross_cursor, &mut first_line)
+        });
         layout.scratch.wrap.pool.push(c);
     }
-    place_line(
-        layout,
-        out,
-        line_main,
-        line_cross,
-        &mut cross_cursor,
-        &mut first_line,
-    );
+    if line.occupied {
+        place_line(
+            layout,
+            out,
+            line.main,
+            line.cross,
+            &mut cross_cursor,
+            &mut first_line,
+        );
+    }
 }
 
 /// Intrinsic size on `query_axis` under `req`. Approximate for the wrap
