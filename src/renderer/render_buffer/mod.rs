@@ -81,8 +81,8 @@ pub(crate) struct RenderBuffer {
     /// cursor. Each instance is one [`CurveInstance`] basis kind —
     /// a `[t0, t1]` sub-range of a cubic/arc (adaptive count from
     /// on-screen length), a polyline segment, or joint chrome. The
-    /// pipeline draws all instances in a batch with one non-indexed
-    /// instanced draw.
+    /// pipeline draws all instances in a batch with one indexed
+    /// instanced draw over its immutable strip indices.
     pub(crate) curves: Vec<CurveInstance>,
     pub(crate) curve_batches: Vec<GroupBatch>,
     /// Flat pool of rounded-clip mask geometry. `DrawGroup.rounded_clips`

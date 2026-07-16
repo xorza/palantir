@@ -121,12 +121,11 @@ pub(crate) enum RenderStep {
     /// `RenderBuffer.images.draws`). The pipeline switches the per-image
     /// bind group between draws.
     ImageBatch { batch: usize },
-    /// Bind the stroke pipeline + issue a single non-indexed instanced
-    /// draw covering every `CurveInstance` in the referenced batch
-    /// (the vertex shader expands each instance's quads from
-    /// `vertex_index` — no index buffer). One `CurveBatch { batch }`
-    /// step → one bind → one `draw`. This is the "one draw call per
-    /// scissor group" the architecture targets for native GPU strokes.
+    /// Bind the stroke pipeline + issue a single indexed instanced draw
+    /// covering every `CurveInstance` in the referenced batch. One
+    /// `CurveBatch { batch }` step → one bind → one `draw_indexed`. This
+    /// is the "one draw call per scissor group" the architecture targets
+    /// for native GPU strokes.
     CurveBatch { batch: usize },
 }
 

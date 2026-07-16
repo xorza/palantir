@@ -98,6 +98,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "curve_pipeline"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "text_shape"
 harness = false
 required-features = ["internals"]
