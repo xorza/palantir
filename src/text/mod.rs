@@ -4,8 +4,8 @@
 //!
 //! - [`CosmicMeasure`] — real shaping via `cosmic-text`, with a per-key
 //!   shaped-buffer cache. The wgpu backend reuses these `Buffer`s in its
-//!   text prepare/append path, so each visible string is shaped exactly
-//!   once across its lifetime.
+//!   text prepare/append path. The frontend reconstructs an evicted entry
+//!   from its retained text shape before emitting the compact cache key.
 //! - [`mono_measure`] — deterministic placeholder metric used when no
 //!   `CosmicMeasure` is installed (default in [`Ui`]). Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry
@@ -148,22 +148,12 @@ pub(crate) struct ShaperInner {
     /// quantization is layout policy chosen at the call site. Read by
     /// tests via [`test_support::has_reuse_entry`].
     pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
-    /// Reusable scratch for [`Self::end_frame`]: every `TextCacheKey`
-    /// referenced by a live `reuse` entry this frame — the pin set
-    /// handed to `CosmicMeasure::end_frame_evict`. Retained across
-    /// frames so the eviction pass allocates nothing.
-    cosmic_pins: FxHashSet<TextCacheKey>,
 }
 
-/// Max *unpinned* cosmic buffers retained after a frame's
-/// [`ShaperInner::end_frame`]. Pinned entries (referenced by a live
-/// `reuse` entry) are always kept; this caps only the stale remainder —
-/// past rotation widths and continuous-drag orphans. Generous enough
-/// that a bounded multi-size rotation (the `frame/resizing_cpu`
-/// workload) stays entirely under budget and never reshapes, while a
-/// continuous window-edge drag is bounded instead of growing without
-/// limit.
-const STALE_BUFFER_BUDGET: usize = 2048;
+/// Max cosmic buffers retained after per-frame maintenance. Missing entries
+/// are restored from retained text shapes at encode, so the cache needs no
+/// separate live-layout allowance.
+const BUFFER_BUDGET: usize = 2048;
 
 /// Bundled text-shaping parameters, threaded through the `TextShaper` /
 /// `CosmicMeasure` query surface so every call carries one value instead
@@ -505,11 +495,25 @@ impl TextShaper {
 
     /// Per-frame maintenance hook. Called once per frame from
     /// `Ui::finalize_frame`, **after** [`Self::sweep_removed`] has pruned
-    /// dead `reuse` entries. Currently bounds the cosmic buffer cache
-    /// (drag-orphan eviction); the home for any future per-frame text
-    /// upkeep. No-op on the mono fallback.
+    /// dead `reuse` entries. Currently bounds the reconstructible cosmic
+    /// buffer LRU; the home for future per-frame text upkeep. No-op on the
+    /// mono fallback.
     pub(crate) fn end_frame(&self) {
         self.inner.borrow_mut().end_frame();
+    }
+
+    /// Ensure the shaped buffer referenced by an emitted text run exists.
+    /// The retained source text makes any LRU eviction recoverable here.
+    pub(crate) fn ensure_buffer(&self, text: &str, key: TextCacheKey) {
+        if key.is_invalid() {
+            return;
+        }
+        self.inner
+            .borrow_mut()
+            .cosmic
+            .as_mut()
+            .expect("valid TextCacheKey requires a cosmic text shaper")
+            .ensure_buffer(text, key);
     }
 
     /// Run `body` against a [`RenderSplit`] of the inner cosmic state
@@ -528,36 +532,13 @@ impl TextShaper {
 }
 
 impl ShaperInner {
-    /// Per-frame maintenance. Pins every `TextCacheKey` a live `reuse`
-    /// entry can return this frame (the only keys the renderer looks up)
-    /// and hands them to `CosmicMeasure::end_frame_evict`, which drops
-    /// unpinned surplus above [`STALE_BUFFER_BUDGET`]. The pin invariant
-    /// is what makes eviction safe: after `record_pass` every renderable
-    /// key lives in `reuse`, so a pinned key is never evicted out from
-    /// under the render pass — and a `reuse`-hit that returns a stored
-    /// key without re-touching cosmic still can't dangle.
+    /// Bound the ordinary content cache. Layout and reuse entries may retain
+    /// evicted keys because the encoder reconstructs every emitted run.
     fn end_frame(&mut self) {
         let Some(cosmic) = self.cosmic.as_mut() else {
             return;
         };
-        // Cheap pre-gate: rebuilding the pin set is O(reuse) hashset
-        // inserts every frame, so skip it unless the cache could actually
-        // be over budget. Each `reuse` entry pins at most 2 keys, so
-        // `2 * reuse.len()` upper-bounds the pin count; if the cache
-        // hasn't outgrown that plus a full stale budget there is nothing
-        // to evict and `end_frame_evict`'s own (exact) gate would no-op
-        // anyway. Either way `gen` still advances so recency stays ordered.
-        if cosmic.over_budget(2 * self.reuse.len() + STALE_BUFFER_BUDGET) {
-            self.cosmic_pins.clear();
-            for e in self.reuse.values() {
-                self.cosmic_pins.insert(e.unbounded.key);
-                if let Some(w) = &e.wrap {
-                    self.cosmic_pins.insert(w.result.key);
-                }
-            }
-            cosmic.end_frame_evict(&self.cosmic_pins, STALE_BUFFER_BUDGET);
-        }
-        cosmic.advance_frame();
+        cosmic.end_frame_evict(BUFFER_BUDGET);
     }
 
     fn dispatch_direct(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
@@ -952,6 +933,23 @@ pub mod test_support {
         /// `true` iff a reuse entry exists for `(wid, ordinal)`.
         pub fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.inner.borrow().reuse.contains_key(&(wid, ordinal))
+        }
+
+        pub fn has_cosmic_buffer(&self, key: TextCacheKey) -> bool {
+            self.inner
+                .borrow()
+                .cosmic
+                .as_ref()
+                .is_some_and(|cosmic| cosmic.buffer_for(key).is_some())
+        }
+
+        pub fn evict_cosmic_buffers(&self, max_keep: usize) {
+            self.inner
+                .borrow_mut()
+                .cosmic
+                .as_mut()
+                .expect("cosmic buffer eviction requires a cosmic text shaper")
+                .end_frame_evict(max_keep);
         }
 
         /// Drive the production unbounded-then-truncate sequence at one width.

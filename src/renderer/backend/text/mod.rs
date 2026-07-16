@@ -307,7 +307,7 @@ impl TextBackend {
                     let r = &runs[m.run_idx as usize];
                     let buffer = lookup
                         .get(r.key)
-                        .expect("valid text key missing from pinned render lookup");
+                        .expect("valid text key missing after frontend ensure");
                     ResolvedRun {
                         buffer,
                         origin: r.origin,
