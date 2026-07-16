@@ -13,6 +13,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher as FxHasher;
 use crate::forest::shapes::paint::{ChromeRow, LoweredShadow, ShapeBrush, ShapeStroke};
 use crate::forest::shapes::record::ShapeRecord;
+use crate::primitives::approx;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
@@ -232,15 +233,18 @@ pub(crate) fn polyline(
     payloads
         .polyline_colors
         .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
+    let lowered_colors = &payloads.polyline_colors[c_start as usize..];
     let bbox = inflate_stroke_bbox(lo, hi, width, cap, join);
 
     // Hash contract for polyline records: no variant tag needed —
     // polylines are the only shape lowering into this record, and
     // `compute_record_hash` writes the record tag anyway.
     let mut h = FxHasher::new();
-    h.write(bytemuck::cast_slice(points));
-    h.write(bytemuck::cast_slice(color_slice));
-    let style = (width.to_bits() as u64) << 24
+    for &point in points {
+        approx::hash_visual_vec2(point, &mut h);
+    }
+    h.write(bytemuck::cast_slice(lowered_colors));
+    let style = (approx::canon_bits(width) as u64) << 24
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
         | (join as u64);

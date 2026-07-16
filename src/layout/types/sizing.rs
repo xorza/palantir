@@ -1,5 +1,4 @@
-use crate::primitives::num::Num;
-use crate::primitives::size::Size;
+use crate::primitives::{approx, num::Num, size::Size};
 
 /// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
 /// Fill = Star (take remainder, distributed by `weight` across Fill siblings).
@@ -44,6 +43,16 @@ impl Sizing {
             "Sizing out of range: {self:?}",
         );
     }
+
+    #[inline]
+    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+        let (tag, value) = match *self {
+            Sizing::Fixed(value) => (0u8, value),
+            Sizing::Hug => (1, 0.0),
+            Sizing::Fill(value) => (2, value),
+        };
+        h.write_u64((tag as u64) | ((approx::canon_bits(value) as u64) << 8));
+    }
 }
 
 impl<T: Num> From<T> for Sizing {
@@ -63,7 +72,7 @@ impl std::hash::Hash for Sizing {
             Sizing::Hug => (1, 0.0),
             Sizing::Fill(w) => (2, w),
         };
-        h.write_u64((tag as u64) | ((v.to_bits() as u64) << 8));
+        h.write_u64((tag as u64) | ((approx::eq_bits(v) as u64) << 8));
     }
 }
 
@@ -107,7 +116,7 @@ const fn encode_sizing(s: Sizing) -> u32 {
         Sizing::Hug => (SIZING_TAG_HUG, 0.0),
         Sizing::Fill(w) => (SIZING_TAG_FILL, w),
     };
-    (tag << SIZING_TAG_SHIFT) | (v.to_bits() >> 2)
+    (tag << SIZING_TAG_SHIFT) | (approx::eq_bits(v) >> 2)
 }
 
 #[inline]
@@ -192,5 +201,31 @@ impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for Sizes {
 impl From<Size> for Sizes {
     fn from(s: Size) -> Self {
         Self::new(Sizing::Fixed(s.w), Sizing::Fixed(s.h))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::layout::types::sizing::{Sizes, Sizing};
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn hash_value(value: impl Hash) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn signed_zero_sizing_and_sizes_share_equality_and_hashes() {
+        let positive = Sizing::Fixed(0.0);
+        let negative = Sizing::Fixed(-0.0);
+        assert_eq!(positive, negative);
+        assert_eq!(hash_value(positive), hash_value(negative));
+
+        let positive = Sizes::new(positive, Sizing::Hug);
+        let negative = Sizes::new(negative, Sizing::Hug);
+        assert_eq!(positive, negative);
+        assert_eq!(hash_value(positive), hash_value(negative));
     }
 }

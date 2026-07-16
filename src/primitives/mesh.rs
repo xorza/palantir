@@ -1,6 +1,6 @@
-use crate::primitives::color::ColorU8;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::{approx, color::ColorU8};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use rustc_hash::FxHasher;
@@ -107,15 +107,18 @@ impl Mesh {
         self.vertices.is_empty() || self.indices.len() < 3 || !self.indices.len().is_multiple_of(3)
     }
 
-    /// Stable hash of vertex + index bytes. Memoized — repeat calls on
-    /// an unmutated mesh return the cached value. Mutating through any
+    /// Stable visual hash of vertices + indices. Memoized — repeat calls
+    /// on an unmutated mesh return the cached value. Mutating through any
     /// public method invalidates the cache.
     pub fn content_hash(&self) -> u64 {
         if let Some(h) = self.cached_hash.get() {
             return h;
         }
         let mut h = FxHasher::default();
-        h.write(bytemuck::cast_slice(self.vertices.as_slice()));
+        for vertex in &self.vertices {
+            approx::hash_visual_vec2(vertex.pos, &mut h);
+            h.write_u32(vertex.color.to_u32());
+        }
         h.write(bytemuck::cast_slice(self.indices.as_slice()));
         let v = h.finish();
         self.cached_hash.set(Some(v));
@@ -311,6 +314,16 @@ mod tests {
         let a = red_tri();
         let b = red_tri();
         assert_eq!(a.content_hash(), b.content_hash());
+
+        let make = |first| Mesh::filled_triangle(first, Vec2::X, Vec2::Y, Color::WHITE);
+        assert_eq!(
+            make(Vec2::ZERO).content_hash(),
+            make(Vec2::new(approx::EPS * 0.5, -approx::EPS * 0.5)).content_hash(),
+        );
+        assert_ne!(
+            make(Vec2::ZERO).content_hash(),
+            make(Vec2::new(approx::EPS * 2.0, 0.0)).content_hash(),
+        );
     }
 
     #[test]

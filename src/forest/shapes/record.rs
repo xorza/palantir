@@ -432,6 +432,7 @@ pub(crate) fn text_paint_bbox_local(
 mod tests {
     use crate::forest::shapes::hash::compute_record_hash;
     use crate::forest::shapes::record::*;
+    use crate::primitives::approx::EPS;
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
     use crate::primitives::size::Size;
@@ -536,6 +537,24 @@ mod tests {
             content_hash: 0xdead_beef,
         };
         assert_eq!(compute_record_hash(&a), compute_record_hash(&b));
+
+        let with_rect = |rect| ShapeRecord::Mesh {
+            local_rect: Some(rect),
+            tint,
+            vertices: Span::new(0, 3),
+            indices: Span::new(0, 3),
+            bbox: Rect::ZERO,
+            content_hash: 0xdead_beef,
+        };
+        let zero = compute_record_hash(&with_rect(Rect::ZERO));
+        assert_eq!(
+            zero,
+            compute_record_hash(&with_rect(Rect::new(EPS * 0.5, -EPS * 0.5, EPS, -EPS,))),
+        );
+        assert_ne!(
+            zero,
+            compute_record_hash(&with_rect(Rect::new(EPS * 2.0, 0.0, 0.0, 0.0))),
+        );
     }
 
     #[test]

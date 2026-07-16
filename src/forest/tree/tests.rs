@@ -7,16 +7,17 @@ use crate::forest::tree::Tree;
 use crate::forest::tree::node::NodeId;
 use crate::forest::tree::recording::RecordingScratch;
 use crate::layout::types::{justify::Justify, layout_mode::LayoutMode, sizing::Sizing};
+use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::Command;
-use crate::shape::{LineCap, Shape};
+use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
@@ -243,6 +244,38 @@ fn same_authoring_produces_same_hash() {
             .node()
     };
     assert_eq!(record_hash(build), record_hash(build));
+}
+
+#[test]
+fn polyline_hash_uses_visual_points_and_lowered_colors() {
+    fn build(ui: &mut Ui, points: &[Vec2], color: Color) -> NodeId {
+        Panel::canvas()
+            .id(WidgetId::from_hash("polyline"))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Polyline {
+                    points,
+                    colors: PolylineColors::Single(color),
+                    width: 2.0,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
+                });
+            })
+            .node()
+    }
+
+    let base_points = [Vec2::ZERO, Vec2::new(10.0, 0.0)];
+    let noisy_points = [Vec2::new(EPS * 0.5, -EPS * 0.5), Vec2::new(10.0, 0.0)];
+    let color_a = Color::linear_rgb(0.5, 0.25, 0.75);
+    let color_b = Color::linear_rgb(0.5001, 0.2501, 0.7501);
+    assert_ne!(color_a, color_b);
+    assert_eq!(ColorU8::from(color_a), ColorU8::from(color_b));
+
+    let baseline = record_hash(|ui| build(ui, &base_points, color_a));
+    assert_eq!(
+        baseline,
+        record_hash(|ui| build(ui, &noisy_points, color_a)),
+    );
+    assert_eq!(baseline, record_hash(|ui| build(ui, &base_points, color_b)),);
 }
 
 #[test]
@@ -574,6 +607,13 @@ fn self_transform_change_flips_node_hash() {
     let h_sub_a = record_subtree_hash(|ui| build(ui, t_a));
     let h_sub_b = record_subtree_hash(|ui| build(ui, t_b));
     assert_ne!(h_sub_a, h_sub_b, "self transform MUST change subtree hash");
+
+    let identity = TranslateScale::IDENTITY;
+    let visual_noop = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
+    assert_eq!(
+        record_hash(|ui| build(ui, identity)),
+        record_hash(|ui| build(ui, visual_noop)),
+    );
 }
 
 /// `LayoutMode::Grid(idx)` carries a frame-local arena slot. Per-node
