@@ -106,7 +106,7 @@ impl State {
 }
 
 impl App for State {
-    fn frame(&mut self, win: WindowToken, ui: &mut Ui) {
+    fn record(&mut self, win: WindowToken, ui: &mut Ui) {
         match win {
             INSPECTOR_WINDOW => build_inspector(ui, self),
             _ => build_ui(ui, self),

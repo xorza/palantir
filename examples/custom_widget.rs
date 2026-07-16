@@ -169,7 +169,7 @@ impl Demo {
 }
 
 impl App for Demo {
-    fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
+    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
         Panel::vstack()
             .auto_id()
             .gap(16.0)

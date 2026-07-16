@@ -23,7 +23,7 @@ impl FrameVisual {
 }
 
 impl App for FrameVisual {
-    fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
+    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
         self.state.render(6, ui);
     }
 }

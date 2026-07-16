@@ -29,7 +29,7 @@ use std::time::Duration;
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.
 /// `'static` because the framework holds the renderer (behind
 /// `Rc<RefCell<…>>`) across the whole frame — the render runs at paint
-/// time, after `App::frame` has returned, so it can't borrow frame-local
+/// time, after `App::record` has returned, so it can't borrow frame-local
 /// state.
 pub trait GpuPaint: 'static {
     /// Build GPU resources (pipelines, persistent buffers). Called the first
