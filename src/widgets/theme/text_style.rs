@@ -33,7 +33,7 @@ pub struct TextStyle {
     /// Line-height-to-font-size ratio. Drives the shaper's leading and
     /// the caret rect height (locked together via
     /// `ShapeRecord::Text.line_height_px`). Default matches cosmic-text's
-    /// natural leading ([`crate::text::LINE_HEIGHT_MULT`], 1.2). Per-
+    /// natural leading (1.2). Per-
     /// widget override on TextEdit lives on the builder
     /// (`TextEdit::line_height_mult`).
     #[animate(snap)]

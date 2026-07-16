@@ -59,8 +59,8 @@ use std::time::Duration;
 
 /// Recorder + input/response broker. All public coordinates are
 /// logical pixels (DIPs); `Display::scale_factor` converts to
-/// physical at the wgpu boundary. Frame scheduling state lives in
-/// [`FrameRuntime`].
+/// physical at the wgpu boundary. Frame scheduling state is retained
+/// internally.
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
@@ -638,8 +638,8 @@ impl Ui {
     /// stateful logic, iterate directly instead.
     ///
     /// Side-effect: auto-subscribes the chord for wake-up. Without
-    /// this, aperture's keyboard wake-gate ([`crate::input::InputState`]'s
-    /// `KeyDown` arm) parks off-focus presses until the next unrelated
+    /// this, aperture's keyboard wake-gate parks off-focus presses until the
+    /// next unrelated
     /// frame, and the caller sees the event one user gesture late.
     /// Pair with the call-it-every-frame discipline that the
     /// subscription system already requires.

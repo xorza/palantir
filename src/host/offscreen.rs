@@ -21,7 +21,7 @@ use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::text::TextShaper;
 use crate::ui::Ui;
 
-/// One shared [`WgpuBackend`] + one [`WindowRenderer`], rendering to a
+/// One shared `WgpuBackend` + one `WindowRenderer`, rendering to a
 /// texture instead of a surface. The offscreen analogue of `WinitHost`.
 #[derive(Debug)]
 pub struct OffscreenHost {

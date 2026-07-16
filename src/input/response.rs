@@ -91,10 +91,9 @@ impl Drag {
 /// keep following the pointer past their own bounds.
 ///
 /// Multi-press runs ride the phases: presses chain when they land on
-/// the same widget within
-/// [`crate::input::sense::DOUBLE_CLICK_WINDOW`] and
-/// [`crate::input::sense::DOUBLE_CLICK_RADIUS`]; any break resets the
-/// run. `Down.press` is the press's position in its run (1 = single,
+/// the same widget within the configured double-click time window and
+/// pointer radius; any break resets the run. `Down.press` is the press's
+/// position in its run (1 = single,
 /// 2 = double-press, 3+ = triple…), and a completing click carries the
 /// same number in `Up.click` — so `Up { click: Some(2) }` *is* the
 /// double-click, and the second click of a double still reads as a

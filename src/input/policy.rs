@@ -1,11 +1,10 @@
-/// When the per-frame [`Ui::classify_frame`](crate::Ui::classify_frame)
-/// gate decides "did any input arrive that requires re-recording?",
-/// this enum picks the signal it consults.
+/// When the per-frame classification gate decides whether input requires
+/// re-recording, this enum picks the signal it consults.
 ///
 /// `Always` matches the legacy behavior: any input event whatsoever —
 /// including a pointer move over inert surface — forces a full
 /// record→measure→arrange→cascade→encode pass. `OnDelta` consults the
-/// finer-grained [`InputDelta::requests_repaint`](crate::input::InputDelta)
+/// finer-grained [`InputDelta::requests_repaint`](crate::InputDelta)
 /// instead: pointer moves only force a record when the hover/scroll
 /// target changed or a capture is active; scroll over a non-scroll
 /// surface is dropped; a press records when it hits a sense target,
@@ -22,7 +21,7 @@
 pub enum InputPolicy {
     /// Re-record on any input event.
     Always,
-    /// Re-record only when [`InputDelta::requests_repaint`](crate::input::InputDelta)
+    /// Re-record only when [`InputDelta::requests_repaint`](crate::InputDelta)
     /// fired on at least one event since the last frame.
     #[default]
     OnDelta,

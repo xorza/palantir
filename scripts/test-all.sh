@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run fmt + clippy + tests across every feature combination.
+# Run fmt + strict public docs + clippy + tests across every feature
+# combination.
 #
 # Why: features can wire in distinct code paths (e.g. `internals`
 # unlocks the damage-visualization fixtures in `tests/visual/`). A
@@ -12,14 +13,15 @@
 #                         damage fixtures + the deeper bench targets)
 #   - showcase           (bundled widget-tour binary + logging setup)
 #
-# Each combo runs:
-#   1. cargo fmt --all -- --check          (once, up front)
-#   2. cargo clippy --all-targets --features <combo> -- -D warnings
-#   3. cargo test --features <combo>       (unit + integration + doctests)
+# The full run checks:
+#   1. cargo fmt --all                     (once, up front)
+#   2. strict cargo doc --no-deps          (once, up front)
+#   3. cargo clippy --all-targets --features <combo> -- -D warnings
+#   4. cargo test --features <combo>       (unit + integration + doctests)
 #
 # Usage:
 #   scripts/test-all.sh           # full matrix
-#   FAST=1 scripts/test-all.sh    # skip fmt + clippy, run tests only
+#   FAST=1 scripts/test-all.sh    # skip fmt + docs + clippy, run tests only
 
 set -euo pipefail
 
@@ -44,6 +46,9 @@ COMBOS=(
 if [[ "${FAST:-0}" != "1" ]]; then
   banner "fmt --check"
   cargo fmt --all
+
+  banner "docs --deny-warnings"
+  RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 fi
 
 for features in "${COMBOS[@]}"; do

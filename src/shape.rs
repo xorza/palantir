@@ -18,7 +18,7 @@ use std::f32::consts::TAU;
 
 /// User-facing paint primitive. Pushed into the active tree via
 /// [`crate::Ui::add_shape`], which copies the data into the per-frame
-/// arena and converts to the internal [`ShapeRecord`] form.
+/// arena and converts to the internal shape-record form.
 ///
 /// The `'a` lifetime is borrowed by [`Shape::Mesh`]; the other three
 /// variants infer `Shape<'static>` and behave identically at the call
@@ -171,7 +171,7 @@ pub enum Shape<'a> {
         /// positions the glyph bbox inside `base` via both axes (only
         /// when `local_rect = None`), and the layout pipeline always
         /// threads `align.halign()` into cosmic's per-line
-        /// `set_align` + [`crate::TextCacheKey`]. Same field because
+        /// `set_align` and text cache key. Same field because
         /// both consumers want the user-intended alignment.
         align: Align,
         family: FontFamily,
@@ -678,7 +678,7 @@ impl ColorMode {
     }
 }
 
-/// Wrap mode for [`ShapeRecord::Text`].
+/// Wrap mode for [`Shape::Text`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
     /// **Default.** Single line shaped once at unbounded width and never

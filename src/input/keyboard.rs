@@ -59,11 +59,11 @@ pub enum Key {
 }
 
 /// Modifier-key state. Sent as a standalone [`InputEvent::ModifiersChanged`]
-/// whenever the held set changes; widgets read the latest snapshot from
-/// [`InputState`] (wiring in step 2).
+/// whenever the held set changes; widgets read the latest snapshot from the
+/// input state.
 ///
 /// `ctrl` is the **primary command modifier**, already normalized at
-/// the input boundary ([`modifiers_from_winit`]): it's the Cmd (⌘)
+/// the input boundary: it's the Cmd (⌘)
 /// key on macOS and the physical Ctrl key on Windows/Linux. Consumers
 /// never disambiguate platforms for normal shortcuts — there's one
 /// command bit.
@@ -74,8 +74,7 @@ pub enum Key {
 /// Windows/Linux the physical Ctrl *is* the primary, so it lands in
 /// `ctrl` and `mac_ctrl` stays `false`. Most code should ignore it.
 ///
-/// [`InputEvent::ModifiersChanged`]: crate::input::InputEvent::ModifiersChanged
-/// [`InputState`]: crate::input::InputState
+/// [`InputEvent::ModifiersChanged`]: crate::InputEvent::ModifiersChanged
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Modifiers {
     pub shift: bool,
@@ -177,13 +176,11 @@ pub struct KeyPress {
     pub physical: Key,
 }
 
-/// One entry in [`InputState::frame_keyboard_events`] — a press or
-/// an IME-committed text chunk, in event-arrival order. Releases
+/// One queued keyboard entry: a press or an IME-committed text chunk,
+/// in event-arrival order. Releases
 /// (`KeyUp`) aren't surfaced: editors care about presses, and adding
 /// a release variant without a consumer would invent state we don't
 /// yet need.
-///
-/// [`InputState::frame_keyboard_events`]: crate::input::InputState
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyboardEvent {
     /// Logical key pressed.

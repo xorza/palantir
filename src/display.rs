@@ -74,9 +74,8 @@ impl Display {
         )
     }
 
-    /// Logical surface rect at origin (0, 0) — pass to
-    /// [`Ui::layout`](crate::ui::Ui::layout) and
-    /// [`Ui::damage_filter`](crate::ui::Ui::damage_filter).
+    /// Logical surface rect at origin (0, 0), used by layout and damage
+    /// filtering.
     pub fn logical_rect(&self) -> Rect {
         Rect {
             min: glam::Vec2::ZERO,

@@ -19,14 +19,14 @@ const SPEED: f32 = 4.5;
 
 /// Indeterminate activity spinner: a rounded arc that rotates with the
 /// frame clock, its tail fading to transparent (a "comet" trail). The
-/// [`PaintAnim::Spin`]'s every-frame wake keeps the host repainting
+/// internal spin animation's every-frame wake keeps the host repainting
 /// while the spinner is recorded — on the PaintOnly fast path, with no
 /// record/layout per tick — and costs nothing when it isn't.
 ///
 /// The recorded [`Shape::Arc`] is **identical every frame** (phase 0),
 /// so its `subtree_hash` is stable and measure/cascade skip the
 /// spinner's subtree; the live rotation is a paint-time
-/// [`PaintAnim::Spin`] sampled from the frame clock — the composer
+/// spin animation sampled from the frame clock — the composer
 /// shifts the arc's angles when it emits the GPU instances, no
 /// geometry is rebuilt. The arc renders natively on the GPU (exact
 /// circle, adaptive subdivision), so it stays smooth at any size and
