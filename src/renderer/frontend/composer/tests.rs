@@ -1131,20 +1131,25 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         Vec2::new(110.0, 10.0),
         Vec2::new(160.0, 40.0),
     ];
-    let buf = run(
-        |b, payloads| {
-            polyline_cmd(
-                b,
-                payloads,
-                &pts,
-                &[Color::WHITE],
-                ColorMode::Single,
-                4.0,
-                LineCap::Round,
-                LineJoin::Round,
-            );
-        },
-        &params(1.0, UVec2::new(200, 200)),
+    let mut commands = RenderCmdBuffer::default();
+    let mut payloads = RecordPayloads::default();
+    polyline_cmd(
+        &mut commands,
+        &mut payloads,
+        &pts,
+        &[Color::WHITE],
+        ColorMode::Single,
+        4.0,
+        LineCap::Round,
+        LineJoin::Round,
+    );
+    let mut composer = composer();
+    let mut buf = render_buffer();
+    composer.compose(
+        &commands,
+        &payloads,
+        params(1.0, UVec2::new(200, 200)),
+        &mut buf,
     );
     let segs: Vec<_> = buf
         .curves
@@ -1164,6 +1169,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     let d0 = (pts[1] - pts[0]).normalize();
     let d1 = (pts[2] - pts[1]).normalize();
     let d2 = (pts[3] - pts[2]).normalize();
+    assert_eq!(composer.polyline.directions, [d0, d1, d2]);
     // First segment: user cap at start, butt at joint end; the start
     // plane lane is zero (cap end, no clip) and the end lane carries
     // the pre-oriented bisector normal.

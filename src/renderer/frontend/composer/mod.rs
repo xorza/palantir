@@ -114,6 +114,7 @@ struct PendingClosedBatch {
 struct PolylineScratch {
     points: Vec<Vec2>,
     kept: Vec<u32>,
+    directions: Vec<Vec2>,
 }
 
 /// Allocation-owning state for text batching. The open grid may span groups;
@@ -1066,8 +1067,18 @@ impl Composer {
                     if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
                         continue;
                     }
-                    let pts = &self.polyline.points;
-                    let kept = &self.polyline.kept;
+                    let PolylineScratch {
+                        points,
+                        kept,
+                        directions,
+                    } = &mut self.polyline;
+                    directions.clear();
+                    directions.extend(kept.windows(2).map(|pair| {
+                        (points[pair[1] as usize] - points[pair[0] as usize]).normalize()
+                    }));
+                    let pts = points.as_slice();
+                    let kept = kept.as_slice();
+                    let directions = directions.as_slice();
                     let pt = |k: usize| pts[kept[k] as usize];
                     // Segment color(s) for the kept segment `k → k+1`,
                     // honoring the original indices (coincident skips
@@ -1087,25 +1098,19 @@ impl Composer {
                         }
                     };
                     let user_cap = cap as u32;
-                    let n_segs = kept.len() - 1;
-                    // Unit direction of kept segment `k`. Recomputed per
-                    // use (identical expression + inputs → bit-identical
-                    // floats), so adjacent segments' shared joint planes
-                    // come out as exact negations of the same sum and
-                    // the fragment clip partitions them exactly.
-                    let dir = |k: usize| (pt(k + 1) - pt(k)).normalize();
+                    let n_segs = directions.len();
                     for k in 0..n_segs {
                         // Pre-oriented bisector clip planes for the
                         // joint ends, riding the neighbor lanes ("keep"
                         // is `dot(x - endpoint, n) <= 0` in the shader);
                         // zero = cap end, no clip.
                         let n_start = if k > 0 {
-                            -(dir(k - 1) + dir(k))
+                            -(directions[k - 1] + directions[k])
                         } else {
                             Vec2::ZERO
                         };
                         let n_end = if k + 1 < n_segs {
-                            dir(k) + dir(k + 1)
+                            directions[k] + directions[k + 1]
                         } else {
                             Vec2::ZERO
                         };
@@ -1135,8 +1140,8 @@ impl Composer {
                     // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
                     // average of the adjacent colors.
                     for k in 1..n_segs {
-                        let d_a = dir(k - 1);
-                        let d_b = dir(k);
+                        let d_a = directions[k - 1];
+                        let d_b = directions[k];
                         let (_, ca) = seg_colors(k - 1);
                         let (cb, _) = seg_colors(k);
                         let color = ca.midpoint(cb);
