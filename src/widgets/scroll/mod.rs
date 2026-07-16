@@ -393,12 +393,7 @@ impl Scroll {
     fn with_axes(spec: ScrollSpec) -> Self {
         let mut element = Element::new(LayoutMode::Scroll);
         element.set_scroll_spec(spec);
-        // Both bits: `SCROLL` for pan, `PINCH` for touchpad zoom.
-        // Zoom is gated again at consumption time by
-        // `self.zoom.is_some()`, but the routing has to be on
-        // regardless so the pinch factor reaches us in the first
-        // place. Cheap — one bit on the sense flags.
-        element.flags.set_sense(Sense::SCROLL | Sense::PINCH);
+        element.flags.set_sense(Sense::SCROLL);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
@@ -456,14 +451,15 @@ impl Scroll {
     /// [`Scroll::both`]) — uniform scale on a single-axis scroll has no
     /// clean answer (cross-axis content escapes the viewport with no way
     /// to reach it). Debug builds reject the caller bug.
-    pub fn with_zoom(mut self) -> Self {
-        self.zoom = Some(ZoomConfig::default());
-        self
+    pub fn with_zoom(self) -> Self {
+        self.with_zoom_config(ZoomConfig::default())
     }
 
     /// Enable zoom with explicit config. See [`Self::with_zoom`].
     pub fn with_zoom_config(mut self, cfg: ZoomConfig) -> Self {
         self.zoom = Some(cfg);
+        let sense = self.element.flags.sense() | Sense::PINCH;
+        self.element.flags.set_sense(sense);
         self
     }
 
