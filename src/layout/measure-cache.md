@@ -56,8 +56,23 @@ validity, plus the rect-stability contract via
 ## Bench
 
 `src/bench/layout/cache.rs` compares `cached` and `forced_miss` arms for both a
-representative measure workload and a heavier clipped/text-shaped tree.
-Criterion output is the source of truth for current timings.
+representative measure workload and a heavier clipped/text-shaped tree. It also
+pins two adversarial shapes: a 194-node unary chain retaining 18,914 overlapping
+node rows (O(N²)), and a 1,098-node balanced tree retaining 5,403 rows
+(O(N log N)). Both add resize arms; the broad tree also toggles one paint-only
+leaf so localized sibling-subtree reuse is measured separately.
+
+A bounded selective-root prototype retained every subtree up to 32 nodes but
+only roots and branch points above that. On a pinned CPU it reduced the deep
+fixture to 721 retained rows and improved forced-miss time from 56.6 to 44.8 µs
+and resize time from 52.3 to 48.2 µs, but cached time stayed flat (23.9 versus
+24.1 µs). The broad fixture kept the same hit coverage and storage yet was
+consistently 0.1–2.1% slower across cached, forced-miss, resize, and localized
+arms. A flat-root lower bound discarded all 21 localized sibling hits and was
+materially slower on that arm. Neither candidate cleared the requirement to
+improve miss behavior and steady-state reuse together, so production keeps the
+overlapping per-branch snapshots. Criterion output remains the source of truth
+for current timings.
 
 The cross-frame intrinsic-query cache landed as `root_intrinsics` on
 the snapshot (above) — it reuses the subtree root's intrinsic, which

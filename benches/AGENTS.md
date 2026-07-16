@@ -80,6 +80,13 @@ the public offscreen host. Its Criterion cases measure complete frame wall time;
 the pre-case report isolates median curve-batch GPU time and vertex invocation
 counts for the static-index keep-or-revert decision.
 
+`caches` includes representative and text-heavy trees plus adversarial
+`deep/measure/{cached,forced_miss,resizing}` and
+`broad/measure/{cached,forced_miss,resizing,localized}` cases. The deep chain
+exposes overlapping-snapshot O(N²) writes; the broad localized arm changes one
+paint-only leaf to measure reuse of unchanged sibling subtrees. Storage-policy
+experiments and the keep/revert evidence live in `src/layout/measure-cache.md`.
+
 ## Allocation invariants (three benches)
 
 Three benches share the `support/frame_fixture.rs` workload (see
