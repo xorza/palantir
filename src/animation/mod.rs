@@ -75,6 +75,12 @@ pub enum AnimSpec {
     Spring { stiffness: f32, damping: f32 },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnimKind {
+    Duration,
+    Spring,
+}
+
 impl AnimSpec {
     /// 120 ms ease-out-cubic. Snappy hover/press default.
     pub const FAST: Self = Self::Duration {
@@ -113,9 +119,17 @@ impl AnimSpec {
             Self::Spring { .. } => false,
         }
     }
+
+    #[inline]
+    const fn kind(self) -> AnimKind {
+        match self {
+            Self::Duration { .. } => AnimKind::Duration,
+            Self::Spring { .. } => AnimKind::Spring,
+        }
+    }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct AnimRow<T: Animatable> {
     pub(crate) current: T,
     pub(crate) target: T,
@@ -128,6 +142,7 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
     pub(crate) touched: bool,
+    kind: AnimKind,
     /// `Ui` frame-runtime id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:
     /// `run_frame` re-runs `build` after an input action drains) sees
@@ -213,6 +228,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                     elapsed: 0.0,
                     segment_start: target.clone(),
                     touched: true,
+                    kind: spec.kind(),
                     advanced_at: frame_id,
                     settled: true,
                 });
@@ -226,6 +242,14 @@ impl<T: Animatable> AnimMapTyped<T> {
         row.touched = true;
         let already_advanced = row.advanced_at == frame_id;
         row.advanced_at = frame_id;
+
+        let kind = spec.kind();
+        if row.kind != kind {
+            row.kind = kind;
+            row.velocity = T::zero();
+            row.elapsed = 0.0;
+            row.segment_start = row.current.clone();
+        }
 
         // Steady-state fast path. Once a row settles, every subsequent
         // tick with the same target should be a no-op — skip the
@@ -261,13 +285,6 @@ impl<T: Animatable> AnimMapTyped<T> {
                 AnimSpec::Duration { .. } => {
                     row.segment_start = row.current.clone();
                     row.elapsed = 0.0;
-                    // Zero residual spring velocity so a Spring →
-                    // Duration switch starts the new segment from
-                    // rest. Without this, the snap-if-close check
-                    // below could falsely fail and the lerp would
-                    // compose with leftover spring motion that has no
-                    // place in a duration animation.
-                    row.velocity = T::zero();
                 }
                 AnimSpec::Spring { .. } => {
                     let to_target = target.clone().sub(row.current.clone());
