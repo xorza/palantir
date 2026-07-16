@@ -2,12 +2,14 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
+use crate::layout::axis::Axis;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
     Frame::new()
@@ -19,6 +21,91 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
         })
         .show(ui)
         .node()
+}
+
+/// A zero-main, 30-cross child measures to 0×30 or 30×0. Adding a 20-main child
+/// produces 0 + 5 + 20 = 25 main and max(30, 10) = 30 cross.
+#[test]
+fn zero_main_child_still_occupies_the_line_on_both_axes() {
+    #[derive(Clone, Copy, Debug)]
+    struct Case {
+        label: &'static str,
+        axis: Axis,
+        with_normal: bool,
+        expected_wrap: Size,
+        expected_normal_min: Option<Vec2>,
+    }
+
+    let cases = [
+        Case {
+            label: "horizontal_lone",
+            axis: Axis::X,
+            with_normal: false,
+            expected_wrap: Size::new(0.0, 30.0),
+            expected_normal_min: None,
+        },
+        Case {
+            label: "horizontal_followed",
+            axis: Axis::X,
+            with_normal: true,
+            expected_wrap: Size::new(25.0, 30.0),
+            expected_normal_min: Some(Vec2::new(5.0, 0.0)),
+        },
+        Case {
+            label: "vertical_lone",
+            axis: Axis::Y,
+            with_normal: false,
+            expected_wrap: Size::new(30.0, 0.0),
+            expected_normal_min: None,
+        },
+        Case {
+            label: "vertical_followed",
+            axis: Axis::Y,
+            with_normal: true,
+            expected_wrap: Size::new(30.0, 25.0),
+            expected_normal_min: Some(Vec2::new(0.0, 5.0)),
+        },
+    ];
+
+    for case in cases {
+        let mut ui = Ui::for_test();
+        let mut children = Vec::new();
+        let zero_size = match case.axis {
+            Axis::X => Size::new(0.0, 30.0),
+            Axis::Y => Size::new(30.0, 0.0),
+        };
+        let normal_size = match case.axis {
+            Axis::X => Size::new(20.0, 10.0),
+            Axis::Y => Size::new(10.0, 20.0),
+        };
+        let wrap_node = ui.under_outer(UVec2::new(200, 200), |ui| {
+            let panel = match case.axis {
+                Axis::X => Panel::wrap_hstack(),
+                Axis::Y => Panel::wrap_vstack(),
+            };
+            panel
+                .id(WidgetId::from_hash("wrap"))
+                .size((Sizing::Hug, Sizing::Hug))
+                .gap(5.0)
+                .show(ui, |ui| {
+                    children.push(cell(ui, "zero", zero_size.w, zero_size.h));
+                    if case.with_normal {
+                        children.push(cell(ui, "normal", normal_size.w, normal_size.h));
+                    }
+                })
+                .node()
+        });
+
+        let wrap = ui.layout[Layer::Main].rect[wrap_node.idx()];
+        assert_eq!(wrap.size, case.expected_wrap, "case: {}", case.label);
+        let zero = ui.layout[Layer::Main].rect[children[0].idx()];
+        assert_eq!(zero.min, Vec2::ZERO, "case: {} zero origin", case.label);
+        assert_eq!(zero.size, zero_size, "case: {} zero size", case.label);
+        if let Some(expected) = case.expected_normal_min {
+            let normal = ui.layout[Layer::Main].rect[children[1].idx()];
+            assert_eq!(normal.min, expected, "case: {} normal origin", case.label);
+        }
+    }
 }
 
 /// Pin: 60×20 cells in a 200-wide WrapHStack with gap=10, line_gap=8.
