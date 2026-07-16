@@ -247,6 +247,21 @@ impl Element {
     }
 }
 
+#[inline]
+fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
+    // Builder setters run per widget per frame, so validation compiles out in release.
+    debug_assert!(
+        min_size.w >= 0.0
+            && min_size.h >= 0.0
+            && max_size.w >= 0.0
+            && max_size.h >= 0.0
+            && min_size.w <= max_size.w
+            && min_size.h <= max_size.h,
+        "element bounds must be non-negative and ordered on both axes, got min_size \
+         {min_size:?}, max_size {max_size:?}",
+    );
+}
+
 /// Mixin: any widget builder that holds an `Element` gets the chained
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
 /// free by impl'ing just `element_mut`.
@@ -302,22 +317,16 @@ pub trait Configure: Sized {
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
         let s = s.into();
-        debug_assert!(
-            s.w >= 0.0 && s.h >= 0.0,
-            "min_size must be non-negative on both axes, got {s:?}",
-        );
-        self.element_mut().min_size = s;
+        let element = self.element_mut();
+        debug_assert_valid_bounds(s, element.max_size);
+        element.min_size = s;
         self
     }
     fn max_size(mut self, s: impl Into<Size>) -> Self {
         let s = s.into();
-        // Debug-only, matching `size` / `min_size` — builder setters run
-        // per widget per frame (see `Sizing::debug_assert_non_negative`).
-        debug_assert!(
-            s.w >= 0.0 && s.h >= 0.0,
-            "max_size must be non-negative on both axes, got {s:?}",
-        );
-        self.element_mut().max_size = s;
+        let element = self.element_mut();
+        debug_assert_valid_bounds(element.min_size, s);
+        element.max_size = s;
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {

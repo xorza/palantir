@@ -155,6 +155,56 @@ fn layout_core_round_trips_mode_align_visibility() {
     }
 }
 
+#[test]
+fn element_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
+    let min_then_max = Element::new(LayoutMode::Leaf)
+        .min_size((10.0, 20.0))
+        .max_size((10.0, 30.0));
+    assert_eq!(min_then_max.min_size, Size::new(10.0, 20.0));
+    assert_eq!(min_then_max.max_size, Size::new(10.0, 30.0));
+
+    let max_then_min = Element::new(LayoutMode::Leaf)
+        .max_size((30.0, 20.0))
+        .min_size((10.0, 20.0));
+    assert_eq!(max_then_min.min_size, Size::new(10.0, 20.0));
+    assert_eq!(max_then_min.max_size, Size::new(30.0, 20.0));
+}
+
+#[test]
+fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
+    type Case = (&'static str, fn() -> Element);
+
+    let cases: &[Case] = &[
+        ("minimum exceeds existing x maximum", || {
+            Element::new(LayoutMode::Leaf)
+                .max_size((10.0, f32::INFINITY))
+                .min_size((11.0, 0.0))
+        }),
+        ("minimum exceeds existing y maximum", || {
+            Element::new(LayoutMode::Leaf)
+                .max_size((f32::INFINITY, 10.0))
+                .min_size((0.0, 11.0))
+        }),
+        ("maximum is below existing x minimum", || {
+            Element::new(LayoutMode::Leaf)
+                .min_size((11.0, 0.0))
+                .max_size((10.0, f32::INFINITY))
+        }),
+        ("maximum is below existing y minimum", || {
+            Element::new(LayoutMode::Leaf)
+                .min_size((0.0, 11.0))
+                .max_size((f32::INFINITY, 10.0))
+        }),
+    ];
+
+    for &(label, build) in cases {
+        assert!(
+            std::panic::catch_unwind(build).is_err(),
+            "case `{label}` must panic",
+        );
+    }
+}
+
 #[track_caller]
 fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
     assert_ne!(
