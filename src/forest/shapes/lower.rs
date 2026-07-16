@@ -23,8 +23,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
-use crate::record_store::{LoweredGradient, RecordStore};
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::record_store::{RecordStore, RecordedGradient};
 use crate::renderer::render_buffer::curve::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
@@ -35,7 +34,6 @@ use std::hash::Hasher;
 pub(crate) struct ChromeInput<'a> {
     pub(crate) bg: &'a Background,
     pub(crate) store: &'a RecordStore,
-    pub(crate) atlas: &'a GradientAtlas,
 }
 
 /// Result of lowering a user-side `Brush`. `brush` is the storage form
@@ -64,12 +62,11 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
 }
 
 /// Lower a user-side `Brush` to the storage form: `Solid` stays
-/// inline, gradients register their stops with the atlas, push a
-/// [`LoweredGradient`] onto the store's pool, and return an indexing
+/// inline; gradients retain their content in the store and return an indexing
 /// `ShapeBrush::Gradient`. The pre-computed content hash is returned
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
-pub(crate) fn brush(store: &RecordStore, b: &Brush, atlas: &GradientAtlas) -> LoweredBrush {
+pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
     let (kind, axis, stops, interp, hash) = match b {
         Brush::Solid(c) => {
             return LoweredBrush {
@@ -90,10 +87,12 @@ pub(crate) fn brush(store: &RecordStore, b: &Brush, atlas: &GradientAtlas) -> Lo
             (FillKind::conic(g.spread), g.axis(), &g.stops, g.interp, h)
         }
     };
-    let row = atlas.register_stops(stops, interp);
-    let mut payloads = store.borrow_mut();
-    let id = payloads.gradients.len() as u32;
-    payloads.gradients.push(LoweredGradient { axis, row, kind });
+    let id = store.borrow_mut().record_gradient(RecordedGradient {
+        axis,
+        kind,
+        stops: *stops,
+        interp,
+    });
     LoweredBrush {
         brush: ShapeBrush::Gradient(id),
         hash,
@@ -106,11 +105,11 @@ pub(crate) fn brush(store: &RecordStore, b: &Brush, atlas: &GradientAtlas) -> Lo
 /// reference — `Background` is 168 B and the recording chain
 /// threads it through 4 functions; the per-field reads below copy
 /// the small fields locally as needed.
-pub(crate) fn background(store: &RecordStore, bg: &Background, atlas: &GradientAtlas) -> ChromeRow {
+pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
     let LoweredBrush {
         brush: fill,
         hash: fill_grad_hash,
-    } = brush(store, &bg.fill, atlas);
+    } = brush(store, &bg.fill);
     let stroke = ShapeStroke::from(&bg.stroke);
     let corners = bg.corners;
     let shadow: LoweredShadow = bg.shadow.into();
@@ -245,10 +244,9 @@ pub(crate) fn cubic_bezier(
     width: f32,
     brush: Brush,
     cap: LineCap,
-    atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
-    let lowered = self::brush(store, &brush, atlas);
+    let lowered = self::brush(store, &brush);
     curve_inner(ctrl, width, lowered, cap)
 }
 
@@ -261,12 +259,11 @@ pub(crate) fn quadratic_bezier(
     width: f32,
     brush: Brush,
     cap: LineCap,
-    atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
     let [p0, c, p2] = ctrl;
     let cubic = quadratic_to_cubic(p0, c, p2);
-    let lowered = self::brush(store, &brush, atlas);
+    let lowered = self::brush(store, &brush);
     curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap)
 }
 
@@ -282,10 +279,9 @@ pub(crate) fn line(
     width: f32,
     brush: Brush,
     cap: LineCap,
-    atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
-    let lowered = self::brush(store, &brush, atlas);
+    let lowered = self::brush(store, &brush);
     let third = (b - a) / 3.0;
     curve_inner([a, a + third, b - third, b], width, lowered, cap)
 }
@@ -307,14 +303,13 @@ pub(crate) fn arc(
     width: f32,
     brush: Brush,
     cap: LineCap,
-    atlas: &GradientAtlas,
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
     debug_assert!(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
     );
-    let lowered = self::brush(store, &brush, atlas);
+    let lowered = self::brush(store, &brush);
     let a1 = start_angle + sweep;
     let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
     let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));

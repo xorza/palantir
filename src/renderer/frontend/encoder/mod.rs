@@ -13,14 +13,15 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
-use crate::record_store::{LoweredGradient, RecordPayloads};
+use crate::record_store::{RecordPayloads, RecordedGradient};
 use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload,
+    DrawPolylinePayload, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::render_buffer::image::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::{TextShaper, text_in_rect};
@@ -51,15 +52,25 @@ fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
     }
 }
 
-/// Build a `BrushSource` from a lowered `ShapeBrush` + the per-frame
-/// gradient payloads. `Solid` stays inline; `Gradient(id)` reads the
-/// pre-baked `LoweredGradient` (row + axis + kind already finalised
-/// at shape-lowering time) — no per-encode dispatch.
+/// Build a `BrushSource` from a lowered `ShapeBrush` + retained gradient
+/// content. `Solid` stays inline; `Gradient(id)` registers its stops on
+/// every encode so a row evicted by another window is restored before use.
 #[inline]
-fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> BrushSource {
+fn shape_brush_source(
+    gradients: &[RecordedGradient],
+    atlas: &GradientAtlas,
+    brush: ShapeBrush,
+) -> BrushSource {
     match brush {
         ShapeBrush::Solid(c) => BrushSource::Solid(c),
-        ShapeBrush::Gradient(id) => BrushSource::Gradient(gradients[id as usize]),
+        ShapeBrush::Gradient(id) => {
+            let gradient = &gradients[id.0 as usize];
+            BrushSource::Gradient(ResolvedGradient {
+                axis: gradient.axis,
+                row: atlas.register_stops(&gradient.stops, gradient.interp),
+                kind: gradient.kind,
+            })
+        }
     }
 }
 
@@ -122,6 +133,7 @@ pub(crate) fn encode(
     let now = ui.frame_runtime.time;
     let gradients = payloads.gradients.as_slice();
     let text_bytes = payloads.fmt_scratch.as_str();
+    let gradient_atlas = &ui.ctx.caches.gradients;
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in
     // `renderer::damage::damage_cull_margin` so the two can't drift.
@@ -136,6 +148,7 @@ pub(crate) fn encode(
             gradients,
             text_bytes,
             shaper: &ui.ctx.shaper,
+            gradient_atlas,
             gpu_views: &ui.gpu_views,
             damage_filter,
             damage_cull_margin,
@@ -159,9 +172,10 @@ struct LayerCtx<'a> {
     layout: &'a LayerLayout,
     cascade_inputs: &'a [CascadeInputHash],
     subtree_paint_rects: &'a [Rect],
-    gradients: &'a [LoweredGradient],
+    gradients: &'a [RecordedGradient],
     text_bytes: &'a str,
     shaper: &'a TextShaper,
+    gradient_atlas: &'a GradientAtlas,
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
     /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
     /// stable `TextureId` + paint callback up here by the owner node's id.
@@ -256,7 +270,7 @@ fn emit_one_shape(
             ..
         } => {
             let r = resolve_local_rect(owner_rect, *local_rect);
-            let src = shape_brush_source(ctx.gradients, *fill);
+            let src = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill);
             out.draw_rect(r, *corners, src, *stroke);
         }
         ShapeRecord::WindowedRect {
@@ -267,7 +281,7 @@ fn emit_one_shape(
             ..
         } => {
             let r = resolve_local_rect(owner_rect, *local_rect);
-            let src = shape_brush_source(ctx.gradients, *fill);
+            let src = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill);
             out.draw_rect_window(r, *corners, src, *stroke);
         }
         ShapeRecord::Text {
@@ -385,7 +399,7 @@ fn emit_one_shape(
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px. Curves carry no
             // gradient axis, so `fill.axis` goes unread.
-            let fill = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
+            let fill = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
             out.draw_curve(DrawCurvePayload {
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
@@ -416,7 +430,7 @@ fn emit_one_shape(
         } => {
             // Same owner-local convention as `Curve`; the composer
             // resolves center/radius to physical px.
-            let fill = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
+            let fill = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
             out.draw_arc(DrawArcPayload {
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
@@ -558,7 +572,7 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.corners, &bg.shadow);
-        let src = shape_brush_source(ctx.gradients, bg.fill);
+        let src = shape_brush_source(ctx.gradients, ctx.gradient_atlas, bg.fill);
         out.draw_rect(rect, bg.corners, src, bg.stroke);
     }
 

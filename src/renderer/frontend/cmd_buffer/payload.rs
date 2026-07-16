@@ -8,20 +8,26 @@ use crate::primitives::{
     corners::Corners,
     rect::Rect,
 };
-use crate::record_store::LoweredGradient;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 
+/// Physical gradient identity resolved for this encode pass.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ResolvedGradient {
+    pub(crate) axis: FillAxis,
+    pub(crate) row: LutRow,
+    pub(crate) kind: FillKind,
+}
+
 /// Cmd-buffer brush input. `Solid` carries an 8-byte `ColorF16`;
-/// `Gradient` carries the pre-baked 16-byte `LoweredGradient` (atlas
-/// row + axis + kind) produced at shape-lowering time. No payload
-/// indirection — registration with the gradient atlas already
-/// happened upstream.
+/// `Gradient` carries the 16-byte atlas row + axis + kind resolved for
+/// this encode pass.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BrushSource {
     Solid(ColorF16),
-    Gradient(LoweredGradient),
+    Gradient(ResolvedGradient),
 }
 
 impl BrushSource {

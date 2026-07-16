@@ -13,7 +13,6 @@ use crate::forest::tree::recording::{Placement, RecordingScratch};
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::record_store::RecordStore;
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::time::Duration;
@@ -195,18 +194,13 @@ impl Forest {
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
-    pub(crate) fn add_shape(
-        &mut self,
-        shape: Shape<'_>,
-        store: &RecordStore,
-        atlas: &GradientAtlas,
-    ) {
+    pub(crate) fn add_shape(&mut self, shape: Shape<'_>, store: &RecordStore) {
         let layer = self.current_layer();
         self.assert_node_open(layer, "add_shape");
         // No `paint_anims.by_shape` bookkeeping on the unanimated path —
         // `PaintAnims` lazily grows the column only when a real anim
         // shows up. Saves one `Vec::push` per shape every frame.
-        if self.trees[layer].shapes.add(shape, store, atlas).is_some() {
+        if self.trees[layer].shapes.add(shape, store).is_some() {
             self.scratch[layer]
                 .open_frames
                 .last_mut()
@@ -241,14 +235,13 @@ impl Forest {
         shape: Shape<'_>,
         anim: PaintAnim,
         store: &RecordStore,
-        atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer();
         self.assert_node_open(layer, "add_shape_animated");
         // Disjoint borrow: `trees` and `scratch` are separate fields.
         let tree = &mut self.trees[layer];
         let frame = self.scratch[layer].open_frames.last_mut().unwrap();
-        let Some(shape_idx) = tree.shapes.add(shape, store, atlas) else {
+        let Some(shape_idx) = tree.shapes.add(shape, store) else {
             return;
         };
         let row = frame.paint_rows;
