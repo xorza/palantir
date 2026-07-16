@@ -615,45 +615,67 @@ fn selection_rects_single_line_emits_one_rect() {
 }
 
 #[test]
-fn selection_rects_multiline_emits_one_rect_per_line() {
-    // Three lines, range crossing every line break. Cosmic emits one
-    // highlight rect per visual line; we pin >=3 rects (cosmic may
-    // emit additional segments if it splits per-run, but never < the
-    // line count).
+fn selection_rects_match_cosmic_highlight_spans() {
+    #[derive(Debug)]
+    struct Case {
+        label: &'static str,
+        text: &'static str,
+        range: std::ops::Range<usize>,
+        max_width_px: Option<f32>,
+    }
+
     let m = TextShaper::with_bundled_fonts();
-    let mut out: SelectionRects = SelectionRects::new();
-    let text = "abc\ndef\nghi";
-    m.selection_rects(
-        text,
-        0..text.len(),
-        ShapeParams {
+    let cases = [
+        Case {
+            label: "hard_breaks",
+            text: "abc\ndef\nghi",
+            range: 0..11,
+            max_width_px: None,
+        },
+        Case {
+            label: "mixed_bidi",
+            text: "abc אבג def",
+            range: 2..12,
+            max_width_px: None,
+        },
+        Case {
+            label: "soft_wrap_and_graphemes",
+            text: "á one two three four five",
+            range: 0..27,
+            max_width_px: Some(48.0),
+        },
+    ];
+    for case in cases {
+        let params = ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
-            max_width_px: None,
+            max_width_px: case.max_width_px,
             family: FontFamily::Sans,
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
-        },
-        &mut out,
-    );
-    assert!(
-        out.len() >= 3,
-        "≥3 rects for 3-line selection, got {}",
-        out.len()
-    );
-    // y_top strictly increases between successive lines.
-    let mut last_y = f32::MIN;
-    let mut distinct_ys = 0;
-    for r in out.iter() {
-        if r.min.y > last_y + 0.5 {
-            distinct_ys += 1;
-            last_y = r.min.y;
-        }
+        };
+        let mut expected = Vec::new();
+        m.with_buffer(case.text, params, |buffer| {
+            let start = cursor_from_byte(case.text, case.range.start);
+            let end = cursor_from_byte(case.text, case.range.end);
+            for run in buffer.layout_runs() {
+                expected.extend(
+                    run.highlight(start, end)
+                        .map(|(x, w)| Rect::new(x, run.line_top, w, run.line_height)),
+                );
+            }
+        })
+        .unwrap();
+
+        let mut actual = SelectionRects::new();
+        m.selection_rects(case.text, case.range, params, &mut actual);
+        assert_eq!(
+            actual.as_slice(),
+            expected.as_slice(),
+            "case: {}",
+            case.label
+        );
     }
-    assert!(
-        distinct_ys >= 3,
-        "rects must span ≥3 distinct y rows, got {distinct_ys}"
-    );
 }
 
 #[test]

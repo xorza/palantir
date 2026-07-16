@@ -4,7 +4,7 @@ use crate::common::clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::shortcut::Shortcut;
-use crate::text::{ShapeParams, TextShaper};
+use crate::text::{SelectionRects, ShapeParams, TextShaper};
 use glam::Vec2;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -37,6 +37,8 @@ pub(crate) struct TextEditState {
     /// `Some(caret)` — every mutation site collapses an empty selection
     /// to `None` so "selection live" is a single `is_some()` check.
     pub(crate) selection: Option<usize>,
+    /// Lazily retained only after selection geometry spills past inline storage.
+    pub(crate) selection_rects: Option<Box<SelectionRects>>,
     /// Caret byte at the rising edge of the pointer press, used as the
     /// drag anchor for click+drag selection. Reset on release.
     pub(crate) drag_anchor: Option<usize>,

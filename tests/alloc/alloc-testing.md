@@ -120,6 +120,10 @@ split across two files by what they stress.
 - `static_text_label` — `Text::new("hello world")`. Held the surprise:
   cosmic shaping caches across frames and `Cow<'static, str>` storage
   keep the audit window at 0 once warmed.
+- `open_context_menu_shortcuts` — an open menu with formatted shortcut
+  hints; pins retained `Ui::fmt` storage across record passes.
+- `long_multiline_selection` — a selected 32-line cosmic-text document;
+  pins `TextEditState`'s retained selection-rectangle spill capacity.
 - `state_map_counter` — `Frame` + a per-frame `ui.state_mut::<u32>`
   increment; pins that `StateMap` access stays alloc-free.
 - `scroll_overflow` — `Scroll::vertical` with tall content; pins
