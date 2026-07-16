@@ -16,11 +16,12 @@
 //!
 //! `add(r)` cluster-grows a candidate by repeatedly absorbing the
 //! cheapest existing slot until no slot meets the budget, then
-//! either appends or (at cap) min-growth-merges into the slot whose
-//! union with the candidate adds the least area (Slint's
-//! `add_box`). Containment is just the `cost ≤ −min(A,B).area()`
-//! limit of the same predicate, so it falls out of the cluster-grow
-//! loop without a separate branch.
+//! either appends or (at cap) forces the slot whose union with the
+//! candidate adds the least area into the growing cluster (Slint's
+//! `add_box`). The forced merge then resumes absorption so its grown
+//! bbox cannot overlap another retained slot. Containment is just the
+//! `cost ≤ −min(A,B).area()` limit of the same predicate, so it falls
+//! out of the cluster-grow loop without a separate branch.
 //!
 //! Intersecting pairs are always merged, regardless of budget —
 //! two overlapping scissor passes would paint the overlap region
@@ -151,15 +152,10 @@ impl DamageRegion {
         self.rects.iter().any(|d| r.intersects(*d))
     }
 
-    /// Sums per-rect areas without subtracting overlap. The merge
-    /// policy collapses overlapping pairs into one rect before they
-    /// reach this sum, so over-count arises only from two rare paths:
-    /// the diagonal-overlap case where the budget rejects the merge,
-    /// and the at-cap force-merge in `add` (which grows the min-growth
-    /// slot and can leave it overlapping a neighbour). Both are
-    /// conservative — they bias toward a `Full` repaint at the
-    /// boundary. Backs [`Self::collapse_from`]'s coverage seal. Region rects are
-    /// surface-clipped at `collapse_from`, so this is already "visible
+    /// Sums per-rect areas. The merge policy collapses every overlapping
+    /// pair before insertion completes, so no overlap subtraction is
+    /// needed. Backs [`Self::collapse_from`]'s coverage seal. Region rects
+    /// are surface-clipped at `collapse_from`, so this is already "visible
     /// area" — no extra intersect needed at the threshold site.
     fn total_area(&self) -> f32 {
         self.rects.iter().map(|r| r.area()).sum()
@@ -212,24 +208,26 @@ impl DamageRegion {
                 Some(i) if best_cost < budget => {
                     let e = self.rects.swap_remove(i);
                     candidate = candidate.union(e);
+                    continue;
                 }
-                _ => break,
+                _ => {}
             }
-        }
-        if self.rects.len() < DAMAGE_RECT_CAP {
-            self.rects.push(candidate);
-            return;
-        }
-        let mut best_idx = 0usize;
-        let mut best_growth = f32::INFINITY;
-        for (i, e) in self.rects.iter().enumerate() {
-            let growth = e.union(candidate).area() - e.area();
-            if growth < best_growth {
-                best_growth = growth;
-                best_idx = i;
+            if self.rects.len() < DAMAGE_RECT_CAP {
+                self.rects.push(candidate);
+                return;
             }
+            let mut best_idx = 0usize;
+            let mut best_growth = f32::INFINITY;
+            for (i, e) in self.rects.iter().enumerate() {
+                let growth = e.union(candidate).area() - e.area();
+                if growth < best_growth {
+                    best_growth = growth;
+                    best_idx = i;
+                }
+            }
+            let e = self.rects.swap_remove(best_idx);
+            candidate = candidate.union(e);
         }
-        self.rects[best_idx] = self.rects[best_idx].union(candidate);
     }
 }
 

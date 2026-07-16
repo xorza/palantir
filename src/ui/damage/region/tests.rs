@@ -136,14 +136,11 @@ fn add_cascade_absorbs_through_bridge() {
     assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 110.0, 10.0)]);
 }
 
-/// At the cap, the ninth rect triggers the min-growth fallback.
-/// Strict-overlap-only budget keeps the eight corners split so the
-/// ninth hits the fallback. Exact merge target is unstable
-/// (tie-breaking depends on iteration order); we only pin (a) the
-/// cap holds, (b) some slot now equals the bbox of the colliding
-/// pair.
+/// At the cap, the ninth rect triggers the min-growth fallback. The
+/// forced merge must respect the cap and re-absorb any slot that its
+/// grown bbox newly overlaps.
 #[test]
-fn nine_disjoint_corners_min_growth_at_cap() {
+fn min_growth_at_cap_reabsorbs_new_overlaps() {
     let mut region = DamageRegion::with_budget(0.0);
     let corners = [
         Rect::new(0.0, 0.0, 5.0, 5.0),
@@ -169,6 +166,48 @@ fn nine_disjoint_corners_min_growth_at_cap() {
         rects.contains(&merged),
         "expected the bbox of the colliding pair as one slot: {rects:?}",
     );
+
+    let target = Rect::new(0.0, 0.0, 10.0, 1000.0);
+    let newly_overlapped = Rect::new(11.0, 900.0, 1.0, 1100.0);
+    let fillers = [
+        Rect::new(10_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(20_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(30_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(40_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(50_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(60_000.0, 10_000.0, 1.0, 1.0),
+    ];
+    let mut region = DamageRegion::with_budget(0.0);
+    region.add(target);
+    region.add(newly_overlapped);
+    for filler in fillers {
+        region.add(filler);
+    }
+    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+
+    let extra = Rect::new(20.0, 0.0, 10.0, 10.0);
+    region.add(extra);
+    let absorbed = target.union(extra).union(newly_overlapped);
+    let rects = collect(&region);
+    assert_eq!(rects.len(), DAMAGE_RECT_CAP - 1);
+    assert!(
+        rects.contains(&absorbed),
+        "missing absorbed bbox: {rects:?}"
+    );
+    for filler in fillers {
+        assert!(
+            rects.contains(&filler),
+            "missing filler {filler:?}: {rects:?}"
+        );
+    }
+    for (i, rect) in rects.iter().enumerate() {
+        for other in &rects[i + 1..] {
+            assert!(
+                !rect.intersects(*other),
+                "retained rects overlap: {rect:?}, {other:?}"
+            );
+        }
+    }
 }
 
 /// Compact cluster of four small rects: pairwise / cluster-grow
