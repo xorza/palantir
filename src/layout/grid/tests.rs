@@ -17,6 +17,33 @@ fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
         .collect()
 }
 
+fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
+    let mut ui = Ui::for_test();
+    let mut root = None;
+    ui.run_at(UVec2::new(surface_width, 100), |ui| {
+        root = Some(
+            Grid::new()
+                .auto_id()
+                .cols([first, Track::fill()])
+                .rows([Track::fill()])
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("rigid"))
+                        .size((Sizing::Fixed(200.0), Sizing::FILL))
+                        .grid_cell((0, 0))
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("flex"))
+                        .grid_cell((0, 1))
+                        .show(ui);
+                })
+                .node(),
+        );
+    });
+    child_rects(&ui, root.unwrap())
+}
+
 #[test]
 #[should_panic(expected = "GridDepthStack::exit underflow")]
 fn grid_depth_stack_rejects_exit_without_enter() {
@@ -150,12 +177,10 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
     );
 }
 
-/// A `Hug` column with a `.max()` clamp caps at the max: shrinkable content
-/// (an ellipsizing button) fills the cap instead of stretching the column.
-/// Backs the node editor's value-column max width (long file paths
-/// ellipsize rather than blowing the node out).
+/// A `Hug` column with a `.max()` clamp caps both shrinkable and rigid
+/// content instead of stretching the track past its declared maximum.
 #[test]
-fn hug_column_max_clamps_shrinkable_content() {
+fn hug_column_max_caps_shrinkable_and_rigid_content() {
     use crate::shape::TextWrap;
 
     let mut ui = Ui::for_test();
@@ -181,6 +206,15 @@ fn hug_column_max_clamps_shrinkable_content() {
     });
     let btn = child_rects(&ui, root.unwrap())[0];
     assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
+
+    // Cramped grid: min(max(200px rigid floor, 0), 150px cap) = 150px,
+    // even though the grid itself has only 100px available.
+    let rigid = rigid_first_col_rects(Track::hug().max(150.0), 100);
+    assert_eq!(rigid[0].size.w, 150.0, "the rigid cell is capped");
+    assert_eq!(
+        rigid[1].min.x, 150.0,
+        "the next track starts after the capped Hug track",
+    );
 }
 
 #[test]
@@ -242,6 +276,13 @@ fn grid_fill_weights_and_clamps() {
         assert_eq!(kids[0].size.w, *want0, "case: {label} col0");
         assert_eq!(kids[1].size.w, *want1, "case: {label} col1");
     }
+
+    // Equal Fill shares start at 200px. The rigid floor is capped to the
+    // first track's 100px max, which donates the 300px remainder to col 1.
+    let rigid = rigid_first_col_rects(Track::fill().max(100.0), 400);
+    assert_eq!(rigid[0].size.w, 100.0, "the rigid cell is capped");
+    assert_eq!(rigid[1].min.x, 100.0, "col 0 track is capped at 100px");
+    assert_eq!(rigid[1].size.w, 300.0, "col 1 receives 400 - 100");
 }
 
 #[test]
@@ -249,9 +290,9 @@ fn grid_fill_col_floors_at_descendant_min_content() {
     // Two equal-weight Fill cols, surface 300 wide. Cell (0,0) holds a
     // Fixed-width 200 frame: that's the col's MinContent intrinsic
     // floor. Without the floor, weights split 150/150 and the rigid
-    // frame overflows its cell. With the floor (Phase 3 max(t.min,
-    // hug_min[i])), col 0 clamps to 200 and col 1 takes the 100
-    // remainder — matches Stack's freeze-loop floor.
+    // frame overflows its cell. With the capped Phase 3 content floor,
+    // col 0 clamps to 200 and col 1 takes the 100 remainder — matches
+    // Stack's freeze-loop floor.
     let mut ui = Ui::for_test();
     let mut root = None;
     ui.run_at(UVec2::new(300, 100), |ui| {

@@ -846,6 +846,11 @@ fn resolve_or_reuse(
     );
 }
 
+#[inline]
+fn content_floor(track: &Track, min_content: f32) -> f32 {
+    min_content.max(track.min).min(track.max)
+}
+
 /// Resolve track sizes on one axis into `a.sizes` for a grid with
 /// `total` available main-axis length and `gap` between adjacent tracks.
 /// `grid_sizing` is the grid node's own `Sizing` on this axis — used
@@ -855,16 +860,17 @@ fn resolve_or_reuse(
 /// **Algorithm**, four phases:
 /// 1. **Fixed:** clamp `Sizing::Fixed(v)` to `[Track.min, Track.max]`,
 ///    consume from available.
-/// 2. **Hug:** constraint-solve `[hug_min ⊔ Track.min, hug_max ⊓ Track.max]`
-///    for each Hug track against the remaining-after-Fixed:
+/// 2. **Hug:** constraint-solve each track's content range, with both
+///    its min-content floor and preferred size capped by `Track.max`,
+///    against the remaining-after-Fixed:
 ///    - If `sum_hug_max <= remaining`: each Hug at max.
 ///    - If `sum_hug_min >= remaining`: each Hug at min, grid overflows.
 ///    - Else: each Hug starts at min, slack distributed proportional to
 ///      `(max - min)`.
 /// 3. **Fill:** original constraint-by-exclusion algorithm — Fill tracks
 ///    distribute leftover proportional to weight; any Fill whose share
-///    falls outside `[Track.min, Track.max]` clamps and exits the pool,
-///    remaining Fills rebalance.
+///    falls outside its capped min-content floor and `Track.max` clamps
+///    and exits the pool; remaining Fills rebalance.
 /// 4. **Mark Fill resolved (commit):** by default Fill tracks stay
 ///    unresolved so cells in Fill cols see `INF` via `sum_spanned_known`
 ///    during measure (preserves "Fill is finalized at arrange"). When
@@ -913,7 +919,7 @@ fn resolve_axis(
     let mut hug_max_sum = 0.0_f32;
     for (i, t) in a.tracks.iter().enumerate() {
         if matches!(t.size, Sizing::Hug) {
-            let lo = hug_min[i].max(t.min);
+            let lo = content_floor(t, hug_min[i]);
             let hi = hug_max[i].max(lo).min(t.max);
             hug_min_sum += lo;
             hug_max_sum += hi;
@@ -950,13 +956,12 @@ fn resolve_axis(
 
     // Phase 3: Fill — constraint-by-exclusion. Fills get the leftover
     // after Fixed + Hug, distributed by weight; any Fill whose share
-    // falls outside `[lo, Track.max]` (where `lo = max(Track.min,
-    // hug_min[i])`) clamps and exits the pool, remaining Fills
-    // rebalance. The `hug_min` floor prevents a Fill cell with a rigid
-    // descendant (Fixed widget, longest unbreakable word) from
-    // collapsing below its real min-content — mirrors the `[floor, cap]`
-    // freeze in `stack::freeze_distribute` (kept in sync by hand; see its
-    // doc for why the two aren't physically merged).
+    // falls outside `[content_floor, Track.max]` clamps and exits the
+    // pool, then remaining Fills rebalance. Capping the min-content floor
+    // keeps the interval ordered when a rigid descendant exceeds the
+    // explicit track cap. This mirrors the `[floor, cap]` freeze in
+    // `stack::freeze_distribute` (kept in sync by hand; see its doc for
+    // why the two aren't physically merged).
     let mut remaining = (total - consumed).max(0.0);
     a.flexible.clear();
     let mut flexible_weight = 0.0_f32;
@@ -979,7 +984,7 @@ fn resolve_axis(
                 unreachable!()
             };
             let candidate = remaining * w / flexible_weight;
-            let lo = t.min.max(hug_min[i]);
+            let lo = content_floor(t, hug_min[i]);
             candidate < lo || candidate > t.max
         });
         match clamp_idx {
@@ -990,7 +995,7 @@ fn resolve_axis(
                     unreachable!()
                 };
                 let candidate = remaining * w / flexible_weight;
-                let lo = t.min.max(hug_min[i]);
+                let lo = content_floor(t, hug_min[i]);
                 let clamped = candidate.clamp(lo, t.max);
                 a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);
@@ -1085,10 +1090,9 @@ pub(crate) fn intrinsic(
         if !matches!(t.size, Sizing::Hug) {
             continue;
         }
-        let (t_min, t_max) = (t.min, t.max);
         let child_v = layout.intrinsic(tree, c, axis, req, tc);
         let slot = &mut layout.scratch.grid.track_aggregator[base + track_idx];
-        *slot = slot.max(child_v.clamp(t_min, t_max));
+        *slot = slot.max(content_floor(t, child_v));
     }
 
     let total: f32 = layout.scratch.grid.track_aggregator[base..base + n_tracks]
