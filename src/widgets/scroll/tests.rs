@@ -43,6 +43,42 @@ fn scroll_state_records_viewport_and_content_after_arrange() {
     assert_eq!(row.offset, Vec2::ZERO, "no wheel input → offset stays at 0");
 }
 
+#[test]
+fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
+    let mut ui = Ui::for_test();
+    let outer_id = WidgetId::from_hash("outer");
+    let inner_id = WidgetId::from_hash("inner");
+    let build = |ui: &mut Ui| {
+        Scroll::both()
+            .id(outer_id)
+            .with_zoom()
+            .size((Sizing::Fixed(300.0), Sizing::Fixed(300.0)))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(inner_id)
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("content"))
+                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                            .show(ui);
+                    });
+            });
+    };
+    ui.run_at_acked(UVec2::new(400, 400), build);
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    assert_eq!(ui.input.scroll_target, Some(inner_id));
+    assert_eq!(ui.input.pinch_target, Some(outer_id));
+    assert!(ui.on_input(InputEvent::Zoom(1.5)).requests_repaint);
+    ui.run_at_acked(UVec2::new(400, 400), build);
+
+    let outer_zoom = ui.scroll_state(outer_id.with("__viewport")).zoom;
+    let inner_zoom = ui.scroll_state(inner_id.with("__viewport")).zoom;
+    assert_eq!(outer_zoom, 1.5);
+    assert_eq!(inner_zoom, 1.0);
+}
+
 /// Wheel delta accumulates across frames into offset, clamped to
 /// `[0, content - viewport]`. When content fits inside the viewport,
 /// the offset stays at zero.
