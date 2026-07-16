@@ -123,9 +123,9 @@ allocator overhead.
 
 When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
 intentional aperture change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
-`benches/alloc_free_gpu.rs` and note the new floor in the PR.
+`src/bench/allocation/free_gpu.rs` and note the new floor in the PR.
 
-All three allocation shells and the frame driver use the opaque
+All three allocation drivers and the frame driver use the opaque
 `FrameFixture` from `src/bench/frame/fixture.rs` — one synthetic
 UI tree (~800 nodes, ~500 text shapes at `NODE_SCALE = 32`)
 exercising every layout driver, widget, `Shape`, and `Brush` variant

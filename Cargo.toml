@@ -23,6 +23,7 @@ bytemuck = { version = "1.25", features = ["derive"] }
 encase = "0.12"
 cosmic-text = "0.19"
 criterion = { version = "0.8", optional = true }
+dhat = { version = "0.3", optional = true }
 gethostname = { version = "1.1", optional = true }
 fixedbitset = "0.5"
 glam = { version = "0.33", features = ["bytemuck", "encase", "serde"] }
@@ -50,7 +51,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 backtrace = "0.3"
-dhat = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 toml = "1.1"
 
@@ -130,7 +130,7 @@ required-features = ["internals"]
 [features]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets.
-internals = ["dep:criterion", "dep:gethostname"]
+internals = ["dep:criterion", "dep:dhat", "dep:gethostname"]
 # Profiler backends — pick one. Off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.

@@ -1,9 +1,10 @@
 //! Internals-gated benchmark facade and cross-subsystem workloads.
 //!
-//! Subdirectories mirror the production hierarchy so every Criterion driver
+//! Subdirectories mirror the production hierarchy so every benchmark driver
 //! has one source-level home without making production modules own benchmark
 //! children.
 
+mod allocation;
 mod frame;
 mod input;
 mod layout;
@@ -11,6 +12,9 @@ mod renderer;
 mod text;
 mod ui;
 
+pub use crate::bench::allocation::free::bench as alloc_free;
+pub use crate::bench::allocation::free_gpu::bench as alloc_free_gpu;
+pub use crate::bench::allocation::resize::bench as alloc_resize;
 pub use crate::bench::frame::bench as frame;
 pub use crate::bench::frame::config as frame_config;
 pub use crate::bench::frame::fixture::FrameFixture;
