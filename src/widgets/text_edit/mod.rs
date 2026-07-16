@@ -16,7 +16,10 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
-use crate::text::{CursorPos, FontFamily, FontWeight, SelectionRects, ShapeParams, text_in_rect};
+use crate::text::{
+    CursorPos, FontFamily, FontWeight, SELECTION_RECTS_INLINE_CAPACITY, SelectionRects,
+    ShapeParams, text_in_rect,
+};
 use crate::ui::Ui;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::text_edit::input::{InputResult, handle_input};
@@ -531,31 +534,30 @@ impl<'a> TextEdit<'a> {
         let chrome = look.background;
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
+        let mut retained_selection_rects = ui.state_mut::<TextEditState>(id).selection_rects.take();
+        let mut inline_selection_rects = SelectionRects::new();
+        let selection_rects = retained_selection_rects
+            .as_deref_mut()
+            .unwrap_or(&mut inline_selection_rects);
+        selection_rects.clear();
+        if is_focused && let Some(range) = selection {
+            ui.ctx
+                .shaper
+                .selection_rects(text_ptr, range, ctx.params(), selection_rects);
+        }
         ui.node(id, element, Some(&chrome), |ui| {
             let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             // Selection highlight, painted *before* the text so glyphs
-            // sit on top of the wash. Only when focused and a range is
-            // actually live (anchor != caret — collapsed selections are
-            // stored as `None`, so any `Some` here has positive width).
-            if is_focused && let Some(range) = selection {
-                // Materialize selection rects via the shaper's out-arg
-                // form, then release the `ui.ctx.shaper` borrow before
-                // painting through the public `ui.add_shape` API.
-                let sel_color = selection_color;
-                let mut rects = SelectionRects::new();
-                ui.ctx
-                    .shaper
-                    .selection_rects(text_ptr, range, ctx.params(), &mut rects);
-                let delta = Vec2::new(pad_l + offset.x - scroll.x, pad_t + offset.y - scroll.y);
-                for r in rects {
-                    ui.add_shape(
-                        Shape::rect(Rect {
-                            min: r.min + delta,
-                            size: r.size,
-                        })
-                        .fill(sel_color),
-                    );
-                }
+            // sit on top of the wash.
+            let delta = Vec2::new(pad_l + offset.x - scroll.x, pad_t + offset.y - scroll.y);
+            for r in selection_rects.iter() {
+                ui.add_shape(
+                    Shape::rect(Rect {
+                        min: r.min + delta,
+                        size: r.size,
+                    })
+                    .fill(selection_color),
+                );
             }
 
             // Text or placeholder. Empty buffer always renders the
@@ -636,6 +638,12 @@ impl<'a> TextEdit<'a> {
                 }
             }
         });
+        if retained_selection_rects.is_none()
+            && inline_selection_rects.len() > SELECTION_RECTS_INLINE_CAPACITY
+        {
+            retained_selection_rects = Some(Box::new(inline_selection_rects));
+        }
+        ui.state_mut::<TextEditState>(id).selection_rects = retained_selection_rects;
 
         // Phase 4: side effects that need a fresh borrow of `ui`
         // (Escape-to-blur). Done after the node closes so we don't

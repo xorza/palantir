@@ -1,7 +1,7 @@
-use crate::harness::audit_steady_state;
+use crate::harness::{audit_steady_state, audit_text_steady_state};
 use aperture::{
-    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Splitter, Text,
-    TextEdit, Track, Ui, WidgetId,
+    Background, Button, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Panel, Scroll,
+    Shortcut, Sizing, Splitter, Text, TextEdit, Track, Ui, Vec2, WidgetId,
 };
 use std::rc::Rc;
 
@@ -113,6 +113,46 @@ fn text_edit_alloc_free() {
         TextEdit::new(&mut buf)
             .id_salt("edit")
             .size((Sizing::FILL, Sizing::Fixed(28.0)))
+            .show(ui);
+    });
+}
+
+#[test]
+fn open_context_menu_shortcuts_alloc_free() {
+    let trigger_id = WidgetId::from_hash("alloc-context-menu-trigger");
+    let mut needs_open = true;
+    audit_steady_state("open_context_menu_shortcuts", 0, move |ui| {
+        let trigger = Button::new()
+            .id(trigger_id)
+            .label("Actions")
+            .show(ui)
+            .snapshot();
+        if needs_open {
+            ContextMenu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
+            needs_open = false;
+        }
+        ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+            MenuItem::new("Copy")
+                .shortcut(Shortcut::ctrl('C'))
+                .show(ui, popup);
+            MenuItem::new("Select all")
+                .shortcut(Shortcut::ctrl('A'))
+                .show(ui, popup);
+        });
+    });
+}
+
+#[test]
+fn long_multiline_selection_alloc_free() {
+    let editor_id = WidgetId::from_hash("alloc-long-selection");
+    let mut document = "selected line\n".repeat(32);
+    audit_text_steady_state("long_multiline_selection", 0, move |ui| {
+        ui.request_focus(Some(editor_id));
+        TextEdit::new(&mut document)
+            .id(editor_id)
+            .multiline(true)
+            .select_all_on_focus()
+            .size((Sizing::Fixed(360.0), Sizing::Fixed(500.0)))
             .show(ui);
     });
 }

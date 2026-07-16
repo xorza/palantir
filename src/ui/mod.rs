@@ -1281,7 +1281,7 @@ pub(crate) mod test_support {
         /// `Ui` with a thread-shared cosmic shaper (font DB built once
         /// per thread). Pre-marked as warm: see
         /// [`Self::mark_warm_for_test`].
-        pub(crate) fn for_test_text() -> Self {
+        pub fn for_test_text() -> Self {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }

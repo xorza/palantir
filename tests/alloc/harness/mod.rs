@@ -75,16 +75,31 @@ pub(crate) fn audit_steady_state<S>(name: &str, max_allocs: u64, mut scene: S)
 where
     S: FnMut(&mut Ui),
 {
+    audit_steady_state_with_ui(name, max_allocs, new_ui(), &mut scene);
+}
+
+/// Cosmic-text counterpart used when a fixture must exercise real
+/// multi-line shaping rather than the mono fallback.
+pub(crate) fn audit_text_steady_state<S>(name: &str, max_allocs: u64, mut scene: S)
+where
+    S: FnMut(&mut Ui),
+{
+    let ui = Ui::for_test_text();
+    audit_steady_state_with_ui(name, max_allocs, ui, &mut scene);
+}
+
+fn audit_steady_state_with_ui<S>(name: &str, max_allocs: u64, mut ui: Ui, scene: &mut S)
+where
+    S: FnMut(&mut Ui),
+{
     const MAX_WARMUP: usize = 8;
     const STABLE_RUN: usize = 2;
     const AUDIT_FRAMES: usize = 64;
 
-    let mut ui = new_ui();
-
     let mut warmup = 0usize;
     let mut stable = 0usize;
     while warmup < MAX_WARMUP {
-        let r = with_audit(|| run_frame(&mut ui, &mut scene));
+        let r = with_audit(|| run_frame(&mut ui, scene));
         warmup += 1;
         stable = if r.allocs <= max_allocs {
             stable + 1
@@ -99,7 +114,7 @@ where
     println!("alloc-audit {name}: warmup={warmup} (stable_run={stable})");
 
     for i in 0..AUDIT_FRAMES {
-        let result = with_audit(|| run_frame(&mut ui, &mut scene));
+        let result = with_audit(|| run_frame(&mut ui, scene));
         if result.allocs > max_allocs {
             fail_audit(name, i, AUDIT_FRAMES, warmup, max_allocs, result);
         }

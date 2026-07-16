@@ -27,6 +27,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) mod cosmic;
 
@@ -51,12 +52,11 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 
-/// Output buffer for [`TextShaper::selection_rects`]. Stack-allocated
-/// for selections up to 16 visual lines; spills to heap for larger.
-/// 16 covers the typical use case (single-line input, few-line wrapped
-/// label) without alloc; rare multi-line editor selections beyond
-/// that pay one heap alloc per paint.
-pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
+/// Output buffer for [`TextShaper::selection_rects`]. Stores selections
+/// up to 16 visual lines inline; larger selections retain their spill
+/// allocation when the caller reuses the buffer.
+pub(crate) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
+pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_CAPACITY]>;
 
 /// Font family picker on [`crate::TextStyle`] and
 /// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the default
@@ -447,7 +447,7 @@ impl TextShaper {
     /// `LayoutRun::highlight`; mono / empty-text path emits one rect
     /// spanning the byte range. Caller applies any padding / offset /
     /// scroll math when consuming. Stack-fast for typical line
-    /// counts; oversized selections spill to heap (rare, user-driven).
+    /// counts; oversized selections reuse caller-retained spill capacity.
     pub(crate) fn selection_rects(
         &self,
         text: &str,
@@ -466,9 +466,7 @@ impl TextShaper {
                 let start = cursor_from_byte(text, range.start);
                 let end = cursor_from_byte(text, range.end);
                 for run in buffer.layout_runs() {
-                    for (x, w) in run.highlight(start, end) {
-                        out.push(Rect::new(x, run.line_top, w, run.line_height));
-                    }
+                    push_run_selection_rects(&run, start, end, out);
                 }
             })
             .is_some();
@@ -820,6 +818,47 @@ pub(crate) fn text_in_rect(leaf: Rect, measured: Size, align: Align) -> Rect {
         measured.w,
         measured.h,
     )
+}
+
+// `LayoutRun::highlight` builds a temporary `Vec` per run, so stream its spans directly.
+fn push_run_selection_rects(
+    run: &cosmic_text::LayoutRun<'_>,
+    cursor_start: cosmic_text::Cursor,
+    cursor_end: cosmic_text::Cursor,
+    out: &mut SelectionRects,
+) {
+    let mut selected: Option<(f32, f32)> = None;
+    let mut flush = |selected: &mut Option<(f32, f32)>| {
+        if let Some((min_x, max_x)) = selected.take() {
+            let width = max_x - min_x;
+            if width > 0.0 {
+                out.push(Rect::new(min_x, run.line_top, width, run.line_height));
+            }
+        }
+    };
+
+    for glyph in run.glyphs {
+        let cluster = &run.text[glyph.start..glyph.end];
+        let total = cluster.grapheme_indices(true).count().max(1);
+        let grapheme_width = glyph.w / total as f32;
+        let mut x = glyph.x;
+        for (i, grapheme) in cluster.grapheme_indices(true) {
+            let start = glyph.start + i;
+            let end = start + grapheme.len();
+            let is_selected = (cursor_start.line != run.line_i || end > cursor_start.index)
+                && (cursor_end.line != run.line_i || start < cursor_end.index);
+            if is_selected {
+                selected = Some(match selected {
+                    Some((min, max)) => (min.min(x), max.max(x + grapheme_width)),
+                    None => (x, x + grapheme_width),
+                });
+            } else {
+                flush(&mut selected);
+            }
+            x += grapheme_width;
+        }
+    }
+    flush(&mut selected);
 }
 
 /// Inverse of [`caret_x_mono_single_line`]. Picks the char boundary

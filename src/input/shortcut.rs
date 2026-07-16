@@ -16,7 +16,7 @@
 //!   does NOT match Ctrl+Shift+A. `Char` keys compare ignore-case
 //!   because [`Key::Char`] arrives post-shift-layout.
 //! - `Display` formats a platform-native label (`"Ctrl+C"` / `"⌘C"`).
-//!   Labels render once per menu-open, so the allocation is cold.
+//!   Menu rows stream it into [`crate::Ui`]'s retained formatting storage.
 //!
 //! [`KeyboardEvent::Down`]: crate::input::keyboard::KeyboardEvent::Down
 
@@ -162,8 +162,7 @@ impl Shortcut {
 
 /// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
 /// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier renders
-/// as ⌘ on macOS (it *is* Cmd there). Labels render once per
-/// menu-open, not per frame, so the `to_string()` allocation is cold.
+/// as ⌘ on macOS (it *is* Cmd there).
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if matches!(PLATFORM, Platform::Mac) {
