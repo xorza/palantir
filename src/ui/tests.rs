@@ -748,18 +748,28 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     });
 }
 
-/// `Ui::frame` re-records when the frame contained input that could
-/// plausibly drive a state mutation (action input), and runs the build
-/// closure exactly once otherwise. Action coverage has to be exact:
-/// false positives waste CPU silently, false negatives leave the
-/// popup-dismissal class of bugs unfixed.
+/// `Ui::frame` re-records when the frame contained routed input that could
+/// drive a state mutation, and runs the build closure exactly once otherwise.
+/// Action coverage has to be exact: false positives waste CPU silently, false
+/// negatives leave the popup-dismissal class of bugs unfixed.
 #[test]
 fn frame_pass_count_matches_action_trigger() {
     use crate::input::InputEvent;
     use crate::input::keyboard::{Key, Modifiers};
     use crate::input::pointer::PointerButton;
+    use crate::input::sense::Sense;
+    use crate::layout::types::sizing::Sizing;
     use glam::Vec2;
     use std::cell::Cell;
+
+    fn build_target(ui: &mut Ui) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .sense(Sense::CLICK)
+            .focusable(true)
+            .show(ui, |_| {});
+    }
 
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
     type Prime = fn(&mut Ui);
@@ -780,7 +790,7 @@ fn frame_pass_count_matches_action_trigger() {
             1,
         ),
         (
-            "click",
+            "routed click",
             |ui| {
                 ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
                 ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -789,8 +799,29 @@ fn frame_pass_count_matches_action_trigger() {
             2,
         ),
         (
-            "keydown",
+            "unrouted click",
             |ui| {
+                ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
+                ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+                ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            },
+            1,
+        ),
+        (
+            "unrouted keydown",
+            |ui| {
+                ui.on_input(InputEvent::KeyDown {
+                    key: Key::Enter,
+                    repeat: false,
+                    physical: Key::Other,
+                });
+            },
+            1,
+        ),
+        (
+            "routed keydown",
+            |ui| {
+                ui.request_focus(Some(WidgetId::from_hash("root")));
                 ui.on_input(InputEvent::KeyDown {
                     key: Key::Enter,
                     repeat: false,
@@ -812,20 +843,14 @@ fn frame_pass_count_matches_action_trigger() {
         let mut ui = Ui::for_test();
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
-        ui.run_at_acked(UVec2::new(100, 100), |ui| {
-            Panel::vstack()
-                .id(WidgetId::from_hash("root"))
-                .show(ui, |_| {});
-        });
+        ui.run_at_acked(UVec2::new(100, 100), build_target);
         prime(&mut ui);
 
         let count = Cell::new(0u32);
         let frame_id_before = ui.frame_runtime.frame_id;
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             count.set(count.get() + 1);
-            Panel::vstack()
-                .id(WidgetId::from_hash("root"))
-                .show(ui, |_| {});
+            build_target(ui);
         });
         assert_eq!(
             count.get() as usize,

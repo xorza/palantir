@@ -198,15 +198,9 @@ impl Ui {
             FramePlan::PaintOnly => {
                 profiling::scope!("Ui::frame.paint_only");
                 // PaintOnly skips `record_pass` → skips `post_record`
-                // → skips the per-frame input drain. Under `OnDelta`
-                // a frame can land here with `had_input_since_last_frame`
-                // true (e.g. pointer move over inert surface) and
-                // per-frame accumulators populated (scroll over a
-                // non-scroll widget). Drain them: nothing recorded this
-                // frame can react, and leaving them set would either
-                // pin the sticky bit forever or fire stale scroll the
-                // next time a real scroll widget appears under the
-                // pointer.
+                // → skips the input cleanup. Under `OnDelta`, an
+                // unrouted event can still land here with the sticky
+                // arrival flag set even though no queue accepted it.
                 self.input.drain_per_frame_queues();
                 FrameProcessing::PaintOnly
             }

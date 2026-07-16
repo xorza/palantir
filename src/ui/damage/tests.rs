@@ -792,14 +792,9 @@ fn popup_eater_does_not_force_full_repaint() {
     );
 }
 
-/// Regression: a click on empty background (no widget hit, no
-/// state change) must not force the next paint to `Full`. The
-/// discarded pre-pass in `run_frame` (triggered by any pointer /
-/// key event via `frame_had_action`) calls `pre_record` →
-/// `reset_to_idle`, then never reaches `post_record`. Pass 2's
-/// `pre_record` then sees `frame_submitted == false` and treats it as
-/// "host dropped the previous frame", invalidating prev_surface
-/// and forcing `Damage::Full`.
+/// Regression: a click on empty background has no route, so it must not set
+/// `frame_had_action`, run a discarded pre-pass, and force the next paint to
+/// `Full` through the dropped-frame recovery path.
 #[test]
 fn click_on_empty_bg_does_not_force_full() {
     use crate::input::pointer::PointerButton;

@@ -94,6 +94,40 @@ fn pointer_left_clears_scroll_target() {
     );
 }
 
+#[test]
+fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
+    let mut ui = Ui::for_test();
+    let surface = UVec2::new(200, 200);
+    let id = WidgetId::from_hash("scroller");
+    let build = |ui: &mut Ui| {
+        Panel::zstack()
+            .id(id)
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .sense(Sense::SCROLL)
+            .show(ui, |_| {});
+    };
+    ui.run_at_acked(surface, build);
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
+    let scroll = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 12.0)));
+    assert!(
+        !scroll.requests_repaint,
+        "scroll with no current target must be discarded",
+    );
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+
+    let mut delivered = Vec2::new(f32::NAN, f32::NAN);
+    ui.run_at_acked(surface, |ui| {
+        build(ui);
+        delivered = ui.input.scroll_delta_for(id, 40.0);
+    });
+    assert_eq!(
+        delivered,
+        Vec2::ZERO,
+        "a later scroll target must not receive an earlier inert-area event",
+    );
+}
+
 /// `Sense::SCROLL` widget alone (without `Sense::PINCH`) receives
 /// `scroll_delta` for wheel/pinch-pan events but a `1.0` `zoom_factor`
 /// for pinch — the routing bits are independent. Note the

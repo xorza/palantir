@@ -42,6 +42,41 @@ fn keystrokes_ignored_when_not_focused() {
 }
 
 #[test]
+fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
+    use crate::input::keyboard::TextChunk;
+
+    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut buf = String::from("seed");
+    let id = WidgetId::from_hash("editor");
+
+    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    assert!(ui.focused_id().is_none());
+    assert!(
+        !ui.on_input(InputEvent::KeyDown {
+            key: Key::Escape,
+            repeat: false,
+            physical: Key::Other,
+        })
+        .requests_repaint,
+    );
+    assert!(
+        !ui.on_input(InputEvent::Text(TextChunk::new("stale").unwrap()))
+            .requests_repaint,
+    );
+
+    ui.click_at(Vec2::new(50.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(id));
+    ui.run_at_acked(SMALL, editor_only(&mut buf));
+
+    assert_eq!(buf, "seed", "unfocused text must be discarded on arrival");
+    assert_eq!(
+        ui.focused_id(),
+        Some(id),
+        "unfocused Escape must not blur a later focus target",
+    );
+}
+
+#[test]
 fn escape_blurs_focus() {
     let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::from("text");

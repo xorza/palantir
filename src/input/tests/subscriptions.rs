@@ -123,6 +123,32 @@ fn move_without_subscriber_does_not_log() {
     assert!(ui.pointer_events().is_empty());
 }
 
+#[test]
+fn scroll_subscriber_receives_an_event_without_creating_a_widget_delta() {
+    fn empty_sub_scroll(ui: &mut Ui) {
+        empty(ui);
+        ui.subscribe_pointer(PointerSense::SCROLL);
+    }
+
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::new(200, 200), empty_sub_scroll);
+    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let delta = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
+
+    assert!(delta.requests_repaint);
+    assert_eq!(ui.input.frame_scroll_pixels, Vec2::ZERO);
+    assert!(matches!(
+        ui.pointer_events(),
+        [PointerEvent::Scroll {
+            pos,
+            pixels,
+            lines,
+        }] if *pos == Vec2::new(50.0, 50.0)
+            && *pixels == Vec2::new(0.0, 7.0)
+            && *lines == Vec2::ZERO
+    ));
+}
+
 /// Reading `Ui::pointer_pos` during record auto-asserts `MOVE`: record
 /// output derived from the raw pointer may change on any move, so moves
 /// must wake even over an inert surface. A pass that stops reading
