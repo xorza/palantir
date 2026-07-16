@@ -1397,11 +1397,7 @@ pub(crate) mod test_support {
 
         /// Drop every measure-cache entry, forcing full re-measure next frame.
         pub(crate) fn clear_measure_cache(&mut self) {
-            let cache = &mut self.layout_engine.cache;
-            cache.nodes.clear();
-            cache.hugs.clear();
-            cache.text_shapes_arena.clear();
-            cache.snapshots.clear();
+            self.layout_engine.cache.clear();
         }
 
         /// Scroll-state row for `id` (inserting default if absent).

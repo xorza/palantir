@@ -455,6 +455,14 @@ impl MeasureCache {
 
         self.compact_scratch = scratch;
     }
+
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) fn clear(&mut self) {
+        self.nodes.clear();
+        self.hugs.clear();
+        self.text_shapes_arena.clear();
+        self.snapshots.clear();
+    }
 }
 
 /// Test/bench reach-in, gated so the shipping build sees no dead code
