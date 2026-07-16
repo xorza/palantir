@@ -11,7 +11,6 @@ use crate::forest::shapes::record::ShapeRecord;
 use crate::primitives::interned_str::InternedStrRepr;
 use crate::primitives::span::Span;
 use crate::record_store::RecordStore;
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
 
 /// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].
@@ -68,12 +67,7 @@ impl Shapes {
     /// to attach side data keyed by shape-index (e.g. paint-anim
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
-    pub(crate) fn add(
-        &mut self,
-        shape: Shape<'_>,
-        store: &RecordStore,
-        atlas: &GradientAtlas,
-    ) -> Option<u32> {
+    pub(crate) fn add(&mut self, shape: Shape<'_>, store: &RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
         }
@@ -87,7 +81,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = lower::brush(store, &fill, atlas);
+                let lowered = lower::brush(store, &fill);
                 ShapeRecord::RoundedRect {
                     local_rect,
                     corners,
@@ -102,7 +96,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = lower::brush(store, &fill, atlas);
+                let lowered = lower::brush(store, &fill);
                 ShapeRecord::WindowedRect {
                     local_rect,
                     corners,
@@ -125,7 +119,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::line(store, a, b, width, brush, cap, atlas),
+            } => lower::line(store, a, b, width, brush, cap),
             Shape::Polyline {
                 points,
                 colors,
@@ -141,7 +135,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::cubic_bezier(store, [p0, p1, p2, p3], width, brush, cap, atlas),
+            } => lower::cubic_bezier(store, [p0, p1, p2, p3], width, brush, cap),
             Shape::QuadraticBezier {
                 p0,
                 p1,
@@ -149,7 +143,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::quadratic_bezier(store, [p0, p1, p2], width, brush, cap, atlas),
+            } => lower::quadratic_bezier(store, [p0, p1, p2], width, brush, cap),
             Shape::Arc {
                 center,
                 radius,
@@ -158,17 +152,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::arc(
-                store,
-                center,
-                radius,
-                start_angle,
-                sweep,
-                width,
-                brush,
-                cap,
-                atlas,
-            ),
+            } => lower::arc(store, center, radius, start_angle, sweep, width, brush, cap),
             Shape::Text {
                 local_origin,
                 text,
