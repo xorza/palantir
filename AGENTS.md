@@ -81,7 +81,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in `StateMap` on `U
 - `src/bench/` — all Criterion and `dhat` implementations plus shared workloads, arranged to mirror their production subsystem (`allocation`, `layout/cache`, `renderer/backend/{curve,text}`, `renderer/frontend/composer`, `ui/{cascade,damage}`, and so on); compiled only by `internals`
 - `benches/` — thin Criterion target wiring plus the three `dhat` global-allocator shells (alloc_free, alloc_free_gpu, alloc_resize, caches, cascade, composer, curve_pipeline, damage, frame, input_throughput, text_atlas, text_shape). Every target requires `--features internals`. `docs/` holds in-flight notes and media; durable subsystem rationale lives in colocated module docs, while the **Architecture** section above is the crate-wide source of truth
 
-Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/renderer/backend/text/`), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned to caret versions (lockfile is source of truth).
+Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/renderer/backend/text/`), `glam`, `rustc-hash`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned to caret versions (lockfile is source of truth).
 
 ## Source investigation
 

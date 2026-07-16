@@ -15,6 +15,11 @@ items_after_test_module = "deny"
 [lib]
 doctest = false
 
+[[bin]]
+name = "showcase"
+path = "src/bin/showcase/main.rs"
+required-features = ["showcase"]
+
 [dependencies]
 aperture-anim-derive = { path = "anim-derive" }
 arboard = "3.6"
@@ -22,9 +27,6 @@ bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
 encase = "0.12"
 cosmic-text = "0.19"
-criterion = { version = "0.8", optional = true }
-dhat = { version = "0.3", optional = true }
-gethostname = { version = "1.1", optional = true }
 fixedbitset = "0.5"
 glam = { version = "0.33", features = ["bytemuck", "encase", "serde"] }
 etagere = "0.3"
@@ -34,7 +36,6 @@ tracing = "0.1"
 pollster = "1.0"
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
 winit = "0.30"
-rayon = "1.12"
 padding-struct = "0.2"
 soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
@@ -42,16 +43,21 @@ serde = { version = "1.0", features = ["derive"] }
 tinyvec = { version = "1.12", features = ["serde"] }
 smol_str = "0.3"
 unicode-segmentation = "1.13"
-profiling = { version = "1.0", default-features = false, features = ["procmacros"] }
+
+criterion = { version = "0.8", optional = true }
+dhat = { version = "0.3", optional = true }
+gethostname = { version = "1.1", optional = true }
 # Pinned to whatever `profiling/profile-with-tracy` resolves to so cargo
 # dedupes to one tracy-client instance (one FFI connection). Bump in
 # lockstep with `profiling`.
 tracy-client = { version = "0.18", default-features = false, optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+profiling = { version = "1.0", default-features = false, features = ["procmacros"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dev-dependencies]
 backtrace = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
+rayon = "1.12"
 toml = "1.1"
 
 [[test]]
@@ -136,6 +142,8 @@ required-features = ["internals"]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets.
 internals = ["dep:criterion", "dep:dhat", "dep:gethostname"]
+# Enables the bundled widget-tour binary and its logging setup.
+showcase = ["dep:tracing-subscriber"]
 # Profiler backends — pick one. Off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.

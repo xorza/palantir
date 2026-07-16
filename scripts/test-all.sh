@@ -10,6 +10,7 @@
 #   - no features        (production-shaped build)
 #   - internals          (cache helpers + render-debug knobs +
 #                         damage fixtures + the deeper bench targets)
+#   - showcase           (bundled widget-tour binary + logging setup)
 #
 # Each combo runs:
 #   1. cargo fmt --all -- --check          (once, up front)
@@ -37,6 +38,7 @@ step()   { printf '%s-> %s%s\n' "$dim" "$1" "$reset"; }
 COMBOS=(
   ""                       # no features
   "internals"
+  "showcase"
 )
 
 if [[ "${FAST:-0}" != "1" ]]; then

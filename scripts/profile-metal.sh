@@ -45,7 +45,7 @@ rm -rf "$TRACE"
 # else resolves as a cargo example.
 if [ "$TARGET" = "showcase" ]; then
     echo "==> Building showcase binary (release)"
-    BUILD_ARGS=(build --release --bin showcase)
+    BUILD_ARGS=(build --release --bin showcase --features showcase)
     BIN="target/release/showcase"
 else
     echo "==> Building example '$TARGET' (release)"

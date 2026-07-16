@@ -124,7 +124,7 @@ fn main() {
 Run the bundled [showcase](src/bin/showcase) for a tour of every widget:
 
 ```sh
-cargo run --release
+cargo run --release --features showcase --bin showcase
 ```
 
 To author your own widget from the public API, see
