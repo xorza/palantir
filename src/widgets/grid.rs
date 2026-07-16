@@ -92,7 +92,7 @@ impl Grid {
         self
     }
 
-    /// See [`crate::widgets::Panel::transform`] — same contract:
+    /// See [`Panel::transform`](crate::Panel::transform) — same contract:
     /// applies to body (children + direct shapes), not to chrome;
     /// scale anchors at the grid's own origin.
     pub fn transform(mut self, t: TranslateScale) -> Self {

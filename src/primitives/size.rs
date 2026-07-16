@@ -70,7 +70,7 @@ impl Size {
 
     /// True if both axes are within `EPS` of zero — i.e. this size
     /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
-    /// match the [`crate::primitives::approx::approx_zero`] free fn on `f32`.
+    /// match the crate's scalar `approx_zero` predicate.
     /// For "paints no pixels" use [`Self::is_paint_empty`] —
     /// different (looser) predicate.
     pub const fn approx_zero(self) -> bool {

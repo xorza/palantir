@@ -13,7 +13,8 @@ use glam::Vec2;
 /// Precision: lossless for integer radii up to 2048, ~0.25 px error at
 /// 4096, +Inf above ~65504. Plenty of headroom for UI workloads.
 ///
-/// Hash delegates to [`F16x4`] — one `u64` write, fed every frame into
+/// Hash delegates to the packed `F16x4` representation — one `u64` write,
+/// fed every frame into
 /// `LayoutCore::hash` → `SubtreeRollups`.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]

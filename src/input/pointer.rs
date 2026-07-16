@@ -35,27 +35,23 @@ impl PointerButton {
     }
 }
 
-/// Unified pointer event stream, populated by
-/// [`InputState::on_input`](crate::input::InputState::on_input) when the
-/// matching [`PointerSense`](crate::input::subscriptions::PointerSense) flag
-/// is set. Each variant is the raw event — "click" is intentionally
-/// absent: it's per-widget logic already routed via
-/// [`Capture`](crate::input::Capture) →
-/// [`ResponseState::clicked`](crate::input::ResponseState::clicked).
+/// Unified pointer event stream populated when the matching
+/// [`PointerSense`](crate::PointerSense) flag is set. Each variant is the raw
+/// event — "click" is intentionally absent: it's per-widget logic already
+/// routed through capture into
+/// [`ButtonState::clicked`](crate::ButtonState::clicked).
 ///
-/// Sibling of [`KeyboardEvent`](crate::input::keyboard::KeyboardEvent) —
+/// Sibling of [`KeyboardEvent`](crate::KeyboardEvent) —
 /// both live in their own module so the raw-event taxonomy is in one
-/// place; wake-gate flags
-/// ([`PointerSense`](crate::input::subscriptions::PointerSense),
-/// [`KeyboardSense`](crate::input::subscriptions::KeyboardSense)) live in
-/// [`subscriptions`](crate::input::subscriptions).
+/// place; [`PointerSense`](crate::PointerSense) and
+/// [`KeyboardSense`](crate::KeyboardSense) provide the wake-gate flags.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerEvent {
     /// Cursor moved to `pos` (logical pixels). Gated on
-    /// [`PointerSense::MOVE`](crate::input::subscriptions::PointerSense::MOVE).
+    /// [`PointerSense::MOVE`](crate::PointerSense::MOVE).
     Move(Vec2),
     /// Button pressed at `pos`. Gated on
-    /// [`PointerSense::BUTTONS`](crate::input::subscriptions::PointerSense::BUTTONS).
+    /// [`PointerSense::BUTTONS`](crate::PointerSense::BUTTONS).
     /// Hit-test + capture routing happens independently; subscribers
     /// see every press regardless of where it landed.
     Down { pos: Vec2, button: PointerButton },

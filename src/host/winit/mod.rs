@@ -165,8 +165,8 @@ struct Running<T> {
 /// Top-level winit-driven aperture runtime. Owns the caller-supplied app
 /// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls
 /// `T::frame` once per redraw, per window. Two-state lifecycle, one
-/// `Option` each: [`Bootstrap`] (pre-`resumed` inputs, consumed once)
-/// and [`Running`] (everything the first `resumed` builds).
+/// `Option` each: `Bootstrap` (pre-`resumed` inputs, consumed once)
+/// and `Running` (everything the first `resumed` builds).
 pub struct WinitHost<T: 'static> {
     /// Deferred-start inputs, consumed by the first `resumed`. `None`
     /// thereafter. The app can't exist before a `Ui` does, so its

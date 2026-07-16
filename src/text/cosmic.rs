@@ -192,8 +192,8 @@ struct CacheEntry {
 /// [`CosmicMeasure::with_bundled_fonts`] (Inter + JetBrains Mono) and
 /// a cache of shaped `Buffer`s keyed on the inputs that affect shaping.
 /// Per-call font family + weight selection comes from [`FontFamily`] /
-/// [`FontWeight`] on each [`Self::measure`] invocation; the named lookups
-/// in [`attrs_for`] resolve against the bundled set.
+/// [`FontWeight`] on each measurement; internal named lookups resolve against
+/// the bundled set.
 #[derive(Debug)]
 pub struct CosmicMeasure {
     font_system: FontSystem,
@@ -225,8 +225,8 @@ impl CosmicMeasure {
     /// cosmic-text's `new_with_fonts` *also* loads the platform's system
     /// fonts, which act as glyph fallback for scripts the bundled faces
     /// don't cover — so text metrics are *not* guaranteed identical
-    /// across machines. Per-call family + weight selection comes from
-    /// [`FontFamily`] / [`FontWeight`] on each [`Self::measure`] invocation.
+    /// across machines. Each measurement selects its [`FontFamily`] and
+    /// [`FontWeight`].
     pub fn with_bundled_fonts() -> Self {
         let sources = [INTER, JBMONO]
             .into_iter()

@@ -270,14 +270,14 @@ pub trait Configure: Sized {
 
     /// Override this widget's id with a hash of `key`, scoped to the
     /// parent. The stored hash is mixed with the parent node's
-    /// already-disambiguated [`WidgetId`] at [`crate::forest::Forest::open_node`]
-    /// time, so `.id_salt("row")` resolves to distinct ids under
+    /// already-disambiguated [`WidgetId`] when the node opens, so
+    /// `.id_salt("row")` resolves to distinct ids under
     /// different parents — same scoping rule egui uses. At the root
     /// (no parent) the salt hash is used as-is. Use whenever the
     /// default call-site-derived id wouldn't survive across frames or
     /// loop iterations — e.g. a `for` loop where each iteration must
-    /// keep per-widget state separate. Marks the id as
-    /// [`Salt::Hash`]: same-parent sibling collisions are disambiguated
+    /// keep per-widget state separate. Marks the id as a hash salt:
+    /// same-parent sibling collisions are disambiguated
     /// (so state stays well-formed) but flagged with a magenta runtime
     /// outline because they're caller bugs. For an unscoped "use this
     /// exact id" override, see [`Self::id`].
@@ -292,7 +292,7 @@ pub trait Configure: Sized {
     /// [`WidgetId::with`], a shared seed for sibling widgets across
     /// layers, cross-frame state lookups that key off a domain id).
     /// For the parent-scoped path, prefer [`Self::id_salt`]. Stores
-    /// the id as [`Salt::Verbatim`].
+    /// the id verbatim.
     fn id(mut self, id: WidgetId) -> Self {
         self.element_mut().salt = Salt::Verbatim(id);
         self
@@ -443,8 +443,8 @@ pub trait Configure: Sized {
         self.clip(ClipMode::Rect)
     }
 
-    /// Rounded-corner stencil clip — shape comes from the chrome's
-    /// radius (set via [`Self::background`]). Calling this without
+    /// Rounded-corner stencil clip — shape comes from the widget chrome's
+    /// background radius. Calling this without
     /// a chrome leaves the radius at zero, equivalent to
     /// [`Self::clip_rect`].
     fn clip_rounded(self) -> Self {

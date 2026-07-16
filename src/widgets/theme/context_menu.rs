@@ -8,9 +8,9 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
-/// Visuals for [`crate::widgets::popup::Popup`]-hosted context menus.
+/// Visuals for [`crate::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
-/// radius); `item` drives [`MenuItem`] rows. `min_width` is the
+/// radius); `item` drives [`crate::MenuItem`] rows. `min_width` is the
 /// floor for the menu's container Sizing on the main axis so single-
 /// character labels don't paint as a one-glyph-wide pill.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

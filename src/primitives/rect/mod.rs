@@ -178,8 +178,8 @@ impl Rect {
     /// [`Self::is_paint_empty`]) acts as the identity, so callers can
     /// fold a `Rect::ZERO`-seeded accumulator without a special
     /// first-element branch and a non-painting extent can never drag a
-    /// rollup's min to the origin. Same contract as
-    /// [`crate::primitives::urect::URect::union`]. Fold over
+    /// rollup's min to the origin. The integer-rectangle union follows the
+    /// same contract. Fold over
     /// `Option<Rect>` only when "no rects at all" must stay
     /// distinguishable from "some rects".
     #[inline]

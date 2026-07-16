@@ -123,8 +123,8 @@ might be affected by `internals`), run the full feature
 matrix instead:
 
 ```sh
-scripts/test-all.sh       # fmt + clippy + tests across all feature combos
-FAST=1 scripts/test-all.sh # skip fmt + clippy, just run tests per combo
+scripts/test-all.sh       # fmt + strict docs + clippy + tests across all feature combos
+FAST=1 scripts/test-all.sh # skip fmt + docs + clippy, just run tests per combo
 ```
 
 For changes that touch **rendering** (shaders, encoder/composer, gradient

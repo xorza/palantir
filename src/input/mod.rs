@@ -166,19 +166,19 @@ pub enum InputEvent {
     /// `MouseScrollDelta::PixelDelta`. Logical pixels. Positive `y`
     /// means the user wants content to scroll *down* (a scroll widget
     /// should add to its vertical offset). Multiple events in one frame
-    /// accumulate into [`InputState::frame_scroll_pixels`].
+    /// accumulate in the frame's pixel-scroll total.
     ScrollPixels(Vec2),
     /// Notched scroll delta — classic wheel /
     /// `MouseScrollDelta::LineDelta`. Carries the raw line count
     /// (sign-flipped to match `ScrollPixels`); the consuming widget
     /// multiplies by its own font-derived line step at record time
     /// rather than this layer baking in a constant. Multiple events
-    /// in one frame accumulate into [`InputState::frame_scroll_lines`].
+    /// in one frame accumulate in the frame's line-scroll total.
     ScrollLines(Vec2),
     /// Multiplicative zoom factor from a touch / touchpad pinch gesture.
     /// `1.0` is identity; `1.05` zooms in 5%, `0.95` zooms out 5%.
     /// Multiple events in one frame multiply into
-    /// [`InputState::frame_zoom_delta`]. Wheel-based zoom is *not*
+    /// the frame's zoom total. Wheel-based zoom is *not*
     /// translated into `Zoom` — the active scroll widget decides at
     /// record time whether wheel ticks count as pan or zoom.
     Zoom(f32),

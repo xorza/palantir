@@ -82,7 +82,7 @@ pub enum FontFamily {
 /// independent of [`FontFamily`]. `Regular` shapes with the family's
 /// normal face; `Bold` requests the bold face (a distinct static face
 /// for Inter, an instantiated `wght` for the variable JetBrains
-/// Mono) via cosmic-text's `Attrs::weight` in [`attrs_for`].
+/// Mono) via cosmic-text's `Attrs::weight`.
 ///
 /// `#[repr(u8)]` pins the tag for `TextCacheKey::weight_q` and the
 /// `ShapeRecord::Text` hash byte.
@@ -105,8 +105,8 @@ pub enum FontWeight {
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump). [`crate::WindowRenderer::new`]
-/// holds the canonical handle and passes a clone to both `Ui` (via
+/// re-entry. Cloning is cheap (refcount bump). The window renderer holds the
+/// canonical handle and passes a clone to both `Ui` (via
 /// `Ui::with_text`) and the backend (constructor arg) so both sides
 /// see one buffer cache.
 ///
@@ -114,7 +114,7 @@ pub enum FontWeight {
 ///
 /// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
 ///   glyph is `font_size_px * 0.5` wide). WindowRenderer drops these runs
-///   (their [`TextCacheKey`] is [`TextCacheKey::INVALID`]). Useful
+///   because they carry no renderable shaped-buffer key. Useful
 ///   for tests, headless drivers, and the `Ui::for_test()` state.
 /// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real
 ///   shaping via cosmic-text.
@@ -172,9 +172,9 @@ pub struct ShapeParams {
 }
 
 impl TextShaper {
-    /// Mono fallback shaper. Every glyph is `font_size_px * 0.5` wide;
-    /// returned [`MeasureResult::key`] is [`TextCacheKey::INVALID`] so
-    /// the renderer drops these runs cleanly. Same as [`Self::default`].
+    /// Mono fallback shaper. Every glyph is `font_size_px * 0.5` wide and
+    /// carries no renderable shaped-buffer key, so the renderer drops these
+    /// runs cleanly. Same as [`Self::default`].
     pub fn mono() -> Self {
         Self::default()
     }
@@ -195,9 +195,9 @@ impl TextShaper {
         Self::with_cosmic(CosmicMeasure::with_bundled_fonts())
     }
 
-    /// ShapeRecord `text` and return its measurement. Bypasses the per-widget
+    /// Shape-record `text` and return its measurement. Bypasses the per-widget
     /// reuse cache — direct dispatch to cosmic (if installed) or mono.
-    /// Used by [`Self::cursor_xy`] and other shape/probe paths.
+    /// Used by shape and probing paths.
     pub fn measure(&self, text: &str, params: ShapeParams) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;

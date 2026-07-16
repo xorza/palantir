@@ -29,16 +29,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// RAII owner of a registered image's GPU texture, returned by
-/// [`ImageRegistry::register`]. The texture lives exactly as long as an
-/// `ImageHandle` (or any clone of one) is held; dropping the last clone
-/// queues the texture for release. `Clone` shares ownership
-/// (reference-counted). Reference it from
-/// [`Shape::Image`](crate::shape::Shape::Image) each frame; "no image" is
+/// [`Ui::register_image`](crate::Ui::register_image). The texture lives exactly
+/// as long as an `ImageHandle` (or any clone of one) is held; dropping the last
+/// clone queues the texture for release. `Clone` shares ownership
+/// (reference-counted). Reference it from [`Shape::Image`](crate::Shape::Image)
+/// each frame; "no image" is
 /// expressed as `Option<ImageHandle>` at the call site, not a sentinel.
 ///
 /// Not `Copy`: the lifetime is load-bearing, so sharing must be an
-/// explicit `clone`. The render path keys on the cheap [`TextureId`] behind
-/// it ([`Self::id`]), so per-frame draw data never carries the `Rc`.
+/// explicit `clone`. The render path keys on a cheap internal texture id, so
+/// per-frame draw data never carries the `Rc`.
 #[must_use = "hold the ImageHandle to keep its GPU texture alive — \
               discarding it (e.g. ignoring register_image's return) frees \
               the texture, so the image never renders"]
