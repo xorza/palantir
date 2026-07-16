@@ -23,7 +23,7 @@
 //!    (populating `removed` for [`crate::ui::damage::DamageEngine`] /
 //!    [`crate::text::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
-//!    against this one. Called once per `run_frame` from
+//!    against this one. Called once per application frame from
 //!    [`crate::Ui::finalize_frame`]; `prev` stays anchored at the last
 //!    *painted* frame regardless of how many discard passes ran. Ids
 //!    seen only in a discarded pass (double-layout pass A, cold-start
@@ -132,7 +132,7 @@ impl SeenIds {
     /// `curr` recording map + the disambiguation counter + pending
     /// collisions. **Doesn't touch `prev`** — that holds the last
     /// *painted* frame's recording, established by [`Self::rollover`].
-    /// A `run_frame` two-pass discard build calls `pre_record` then
+    /// A two-pass frame calls `pre_record` then
     /// never reaches `rollover`, so `prev` must be preserved across
     /// the discard. A non-empty `curr` here IS such a discarded pass
     /// (rollover empties it at frame end) — its ids move to

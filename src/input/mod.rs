@@ -374,7 +374,7 @@ pub(crate) struct InputState {
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when a routed event could drive a state mutation
-    /// (pointer press/release, `KeyDown`, `Text`). Read by `Ui::run_frame`
+    /// (pointer press/release, `KeyDown`, `Text`). Read by `Ui::frame`
     /// to decide whether to re-record the frame after pass 1's `end_frame`
     /// drains the input queues. Hover-only events (`PointerMoved`,
     /// `PointerLeft`) and modifier changes don't flip it. Unrouted actions
@@ -720,7 +720,7 @@ impl InputState {
     }
 
     /// Read and reset [`Self::frame_had_action`]. Called by
-    /// [`crate::Ui::run_frame`] to decide whether to run a discarded
+    /// [`crate::Ui::frame`] to decide whether to run a discarded
     /// pre-pass for state-mutation settling.
     pub(crate) fn take_action_flag(&mut self) -> bool {
         std::mem::take(&mut self.frame_had_action)
@@ -728,7 +728,7 @@ impl InputState {
 
     /// Drain the per-frame input queues without touching cascade-
     /// dependent state (active/focused eviction, hover recompute).
-    /// Used by [`crate::Ui::run_frame`] for the discarded pass — pass
+    /// Used by [`crate::Ui::frame`] for the discarded pass — pass
     /// 2's recording must see empty queues so `Response::clicked()`
     /// returns `false` everywhere and clicks aren't double-fired.
     /// Capacity-retained on the backing buffers.

@@ -248,18 +248,18 @@ fn bench_cache_pair(
 ) {
     group.bench_function(format!("{name}/cached"), |b| {
         let mut ui = make_ui();
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build);
+        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), build);
         b.iter(|| {
-            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), build));
+            black_box(ui.record(FrameStamp::new(display, Duration::ZERO), build));
         });
     });
 
     group.bench_function(format!("{name}/forced_miss"), |b| {
         let mut ui = make_ui();
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build);
+        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), build);
         b.iter(|| {
             ui.clear_measure_cache();
-            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), build));
+            black_box(ui.record(FrameStamp::new(display, Duration::ZERO), build));
         });
     });
 }
@@ -276,11 +276,11 @@ fn bench_cache_workload(
         .map(|width| Display::from_physical(glam::UVec2::new(width, 800), 2.0));
     group.bench_function(format!("{name}/resizing"), |b| {
         let mut ui = Ui::for_test();
-        let _ = ui.frame(FrameStamp::new(resize_displays[0], Duration::ZERO), build);
+        let _ = ui.record(FrameStamp::new(resize_displays[0], Duration::ZERO), build);
         let mut frame = 0usize;
         b.iter(|| {
             frame = (frame + 1) % resize_displays.len();
-            black_box(ui.frame(
+            black_box(ui.record(
                 FrameStamp::new(resize_displays[frame], Duration::ZERO),
                 build,
             ));
@@ -291,13 +291,13 @@ fn bench_cache_workload(
 fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str, display: Display) {
     group.bench_function(format!("{name}/localized"), |b| {
         let mut ui = Ui::for_test();
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
             build_broad_variant(ui, false);
         });
         let mut changed = false;
         b.iter(|| {
             changed = !changed;
-            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+            black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
                 build_broad_variant(ui, changed);
             }));
         });
@@ -339,7 +339,7 @@ mod tests {
     fn cold_frame(build: fn(&mut Ui)) -> Ui {
         let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
         let mut ui = Ui::for_test();
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), build);
+        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), build);
         ui
     }
 
@@ -387,10 +387,10 @@ mod tests {
     fn localized_change_hits_unchanged_sibling_subtrees() {
         let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
         let mut ui = Ui::for_test();
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
             build_broad_variant(ui, false);
         });
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
             build_broad_variant(ui, true);
         });
         assert_eq!(

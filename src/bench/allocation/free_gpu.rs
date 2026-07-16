@@ -26,7 +26,7 @@
 
 use std::sync::OnceLock;
 
-use aperture::{Color, OffscreenHost, bench::FrameFixture};
+use aperture::{App, Color, OffscreenHost, Ui, WindowToken, bench::FrameFixture};
 use glam::UVec2;
 use pollster::FutureExt;
 
@@ -45,6 +45,17 @@ const SCALE: f32 = 2.0;
 // viewport is 1280x800 instead of 3840x4800 — matches `examples/frame_visual.rs`.
 const NODE_SCALE: usize = 6;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+#[derive(Debug)]
+struct FixtureApp<'a> {
+    state: &'a mut FrameFixture,
+}
+
+impl App for FixtureApp<'_> {
+    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
+        self.state.render(NODE_SCALE, ui);
+    }
+}
 
 #[derive(Debug)]
 struct Gpu {
@@ -96,6 +107,7 @@ pub fn bench() {
     // false) so the per-frame alloc floor this bench pins is unaffected by the
     // direct-present fast path.
     let mut host = OffscreenHost::builder(
+        WindowToken(0),
         g.device.clone(),
         g.queue.clone(),
         aperture::TextShaper::with_bundled_fonts(),
@@ -121,7 +133,7 @@ pub fn bench() {
     });
     let run = |host: &mut OffscreenHost, state: &mut FrameFixture| {
         host.ui().theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, |ui| state.render(NODE_SCALE, ui));
+        host.frame_offscreen(&target, SCALE, &mut FixtureApp { state });
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

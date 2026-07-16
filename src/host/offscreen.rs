@@ -3,6 +3,9 @@
 //! shared [`WgpuBackend`] and drives a [`WindowRenderer`] (built from a
 //! [`HostContext`]); unlike it there's no winit, no swapchain, and exactly
 //! one window — it renders to a caller-supplied `wgpu::Texture`.
+//! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
+//! the windowed host, so update and replay semantics do not depend on the
+//! output backend.
 //!
 //! A supported headless rendering entry point — render-to-texture for
 //! screenshots, thumbnails, or server-side compositing — that also backs
@@ -12,6 +15,7 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 
+use crate::app::App;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::context::HostContext;
@@ -20,6 +24,7 @@ use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::text::TextShaper;
 use crate::ui::Ui;
+use crate::window::WindowToken;
 
 /// One shared `WgpuBackend` + one `WindowRenderer`, rendering to a
 /// texture instead of a surface. The offscreen analogue of `WinitHost`.
@@ -27,6 +32,7 @@ use crate::ui::Ui;
 pub struct OffscreenHost {
     gpu: WgpuBackend,
     window: WindowRenderer,
+    token: WindowToken,
 }
 
 /// Builder for [`OffscreenHost`] — see [`OffscreenHost::builder`]. The
@@ -34,6 +40,7 @@ pub struct OffscreenHost {
 /// the general screenshot defaults.
 #[derive(Debug)]
 pub struct OffscreenHostBuilder {
+    token: WindowToken,
     device: wgpu::Device,
     queue: wgpu::Queue,
     shaper: TextShaper,
@@ -75,6 +82,7 @@ impl OffscreenHostBuilder {
         // window. The render target's format (per `frame_offscreen` call)
         // drives the lazy per-format pipeline build.
         let ctx = HostContext::new(self.shaper);
+        ctx.set_open_windows([self.token]);
         let gpu = WgpuBackend::new(
             self.device,
             self.queue,
@@ -96,21 +104,28 @@ impl OffscreenHostBuilder {
             .strategy(strategy)
             .clock(self.clock)
             .build();
-        OffscreenHost { gpu, window }
+        OffscreenHost {
+            gpu,
+            window,
+            token: self.token,
+        }
     }
 }
 
 impl OffscreenHost {
-    /// Start building an offscreen host. `device` / `queue` / `shaper` are
-    /// the GPU + text resources; the rest default to the general screenshot
-    /// case (no GPU stats, a fresh target each frame, the wall clock) and are
-    /// tuned via [`OffscreenHostBuilder`].
+    /// Start building an offscreen host whose single window is addressed by
+    /// `token`. `device` / `queue` / `shaper` are the GPU + text resources;
+    /// the rest default to the general screenshot case (no GPU stats, a fresh
+    /// target each frame, the wall clock) and are tuned via
+    /// [`OffscreenHostBuilder`].
     pub fn builder(
+        token: WindowToken,
         device: wgpu::Device,
         queue: wgpu::Queue,
         shaper: TextShaper,
     ) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
+            token,
             device,
             queue,
             shaper,
@@ -133,15 +148,18 @@ impl OffscreenHost {
         *self.window.ui.ctx.debug_overlay_mut() = overlay;
     }
 
-    /// Run one offscreen frame against `target`.
-    pub fn frame_offscreen(
+    /// Run one offscreen application frame against `target`. The host's
+    /// [`WindowToken`] is passed to [`App::update`] and [`App::record`], with
+    /// the same once-only update and replayable record semantics as
+    /// [`crate::WinitHost`].
+    pub fn frame_offscreen<T: App>(
         &mut self,
         target: &wgpu::Texture,
         scale_factor: f32,
-        record: impl FnMut(&mut Ui),
+        app: &mut T,
     ) {
         self.window
-            .frame_offscreen(&mut self.gpu, target, scale_factor, record);
+            .frame_offscreen(&mut self.gpu, target, scale_factor, self.token, app);
     }
 
     /// Cloneable handle to the most-recent GPU instrumentation sample —
@@ -172,12 +190,14 @@ impl OffscreenHost {
 
 #[cfg(feature = "internals")]
 pub(crate) mod test_support {
+    use crate::app::test_support::RecordApp;
     use crate::host::clock::Clock;
     use crate::host::context::HostContext;
     use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
     use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
     use crate::text::TextShaper;
     use crate::ui::Ui;
+    use crate::window::WindowToken;
 
     /// Two window render streams sharing one backend and host context. This is
     /// intentionally test-only: production multi-window ownership stays with
@@ -196,6 +216,7 @@ pub(crate) mod test_support {
             clocks: [Box<dyn Clock>; 2],
         ) -> Self {
             let ctx = HostContext::new(shaper);
+            ctx.set_open_windows([WindowToken(0), WindowToken(1)]);
             let gpu = WgpuBackend::new(
                 device,
                 queue,
@@ -227,7 +248,14 @@ pub(crate) mod test_support {
             scale_factor: f32,
             record: impl FnMut(&mut Ui),
         ) {
-            self.windows[window].frame_offscreen(&mut self.gpu, target, scale_factor, record);
+            let mut app = RecordApp::new(record);
+            self.windows[window].frame_offscreen(
+                &mut self.gpu,
+                target,
+                scale_factor,
+                WindowToken(window as u64),
+                &mut app,
+            );
         }
     }
 }

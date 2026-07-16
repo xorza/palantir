@@ -176,7 +176,7 @@ fn user_frames_keeps_aperture_src_and_excludes_harness_internals() {
     let mut ui = harness::new_ui();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
     for _ in 0..4 {
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = harness::record(&mut ui, FrameStamp::new(display, Duration::ZERO), |ui| {
             Button::new()
                 .auto_id()
                 .label("hello")
@@ -185,7 +185,7 @@ fn user_frames_keeps_aperture_src_and_excludes_harness_internals() {
         });
     }
     let r = with_audit(|| {
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = harness::record(&mut ui, FrameStamp::new(display, Duration::ZERO), |ui| {
             Button::new()
                 .auto_id()
                 .label("hello")

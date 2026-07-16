@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 use std::sync::mpsc;
 
 use aperture::{
-    Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, TwoWindowOffscreenHost, Ui,
+    App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, TwoWindowOffscreenHost,
+    Ui, WindowToken,
 };
 use glam::UVec2;
 use image::RgbaImage;
@@ -15,6 +16,18 @@ use std::time::Duration;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 const BYTES_PER_PIXEL: u32 = 4;
+const WINDOW: WindowToken = WindowToken(0);
+
+#[derive(Debug)]
+struct RecordApp<F> {
+    record: F,
+}
+
+impl<F: FnMut(&mut Ui)> App for RecordApp<F> {
+    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
+        (self.record)(ui);
+    }
+}
 
 /// One wgpu device + queue per test process. Both are `Send + Sync` and
 /// internally `Arc`-backed, so cloning is cheap. `request_adapter` /
@@ -88,7 +101,7 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::builder(g.device.clone(), g.queue.clone(), shaper)
+        let host = OffscreenHost::builder(WINDOW, g.device.clone(), g.queue.clone(), shaper)
             .clock(FixedClock::new(Duration::ZERO))
             .build();
 
@@ -126,7 +139,8 @@ impl Harness {
         let target = make_target(&self.device, format, physical);
 
         self.host.ui().theme.window_clear = clear;
-        self.host.frame_offscreen(&target, scale, scene);
+        self.host
+            .frame_offscreen(&target, scale, &mut RecordApp { record: scene });
 
         let mut img = readback(&self.device, &self.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.

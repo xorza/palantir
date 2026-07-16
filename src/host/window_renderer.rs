@@ -20,6 +20,7 @@
 
 use std::time::Instant;
 
+use crate::app::App;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::context::HostContext;
 use crate::record_store::RecordStore;
@@ -28,6 +29,7 @@ use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::ui::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
+use crate::window::WindowToken;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
@@ -325,11 +327,12 @@ impl WindowRenderer {
     /// display knobs. `Display` is built from the config here, so its size
     /// can never disagree with the surface's. (The live-window set + debug
     /// overlay reach the `Ui` through the shared [`HostContext`], not here.)
-    pub(crate) fn frame(
+    pub(crate) fn frame<T: App>(
         &mut self,
         gpu: &mut WgpuBackend,
         target: FrameTarget<'_>,
-        record: impl FnMut(&mut Ui),
+        app: &mut T,
+        win: WindowToken,
         pre_present: impl FnOnce(),
     ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
@@ -375,7 +378,7 @@ impl WindowRenderer {
             self.configured = Some(display.physical);
         }
 
-        let cpu = self.cpu_frame(display, record);
+        let cpu = self.cpu_frame(display, win, app);
         let present = self.present(gpu, surface, config, cpu, pre_present);
 
         profiling::finish_frame!();
@@ -390,12 +393,13 @@ impl WindowRenderer {
     /// GPU path (`cpu_frame` → `render_to_texture`) as `frame`.
     /// [`crate::OffscreenHost`] uses this path for screenshots, thumbnails,
     /// offscreen compositing, the visual harness, and GPU benchmarks.
-    pub(crate) fn frame_offscreen(
+    pub(crate) fn frame_offscreen<T: App>(
         &mut self,
         gpu: &mut WgpuBackend,
         target: &wgpu::Texture,
         scale_factor: f32,
-        record: impl FnMut(&mut Ui),
+        win: WindowToken,
+        app: &mut T,
     ) {
         let size = target.size();
         let display =
@@ -403,24 +407,28 @@ impl WindowRenderer {
         // Force a full repaint when the target's format changes (offscreen
         // has no surface to reconfigure).
         self.note_format(target.format());
-        let cpu = self.cpu_frame(display, record);
+        let cpu = self.cpu_frame(display, win, app);
         self.render_to_texture(gpu, target, cpu.mode);
     }
 
-    /// The CPU half of a frame: `Ui::frame` (record → measure / arrange /
-    /// cascade / damage) followed, when the frame actually paints, by the
+    /// The shared CPU half: app lifecycle → record / measure / arrange /
+    /// cascade / damage followed, when the frame actually paints, by the
     /// draw-list build (encode → compose → resolve `GpuView`s into the
-    /// frontend's buffer). Seals the [`PresentMode`] here — the one place
-    /// it is computed — so the GPU half submits exactly the plan the draw
-    /// list was built for (a promoted or resync'd Partial builds its
-    /// escalated Full list). No GPU input — the `GpuView` size cap was
-    /// captured on the `Frontend` at construction. Shared by
-    /// [`Self::frame`] (surface) and [`Self::frame_offscreen`] (texture).
+    /// frontend's buffer). Seals the [`PresentMode`] here — the one place it
+    /// is computed — so the GPU half submits exactly the plan the draw list
+    /// was built for (a promoted or resync'd Partial builds its escalated Full
+    /// list). No GPU input — the `GpuView` size cap was captured on the
+    /// `Frontend` at construction. Shared by [`Self::frame`] (surface) and
+    /// [`Self::frame_offscreen`] (texture).
     #[profiling::function]
-    fn cpu_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> CpuFrame {
+    fn cpu_frame<T: App>(&mut self, display: Display, win: WindowToken, app: &mut T) -> CpuFrame {
         let report = self
             .ui
-            .frame(FrameStamp::new(display, self.clock.now()), record);
+            .frame(FrameStamp::new(display, self.clock.now()), win, app);
+        self.finish_cpu_frame(report)
+    }
+
+    fn finish_cpu_frame(&mut self, report: FrameReport) -> CpuFrame {
         let mode = present_mode(report.plan, self.strategy, self.backbuffer_fresh);
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets, all reading the now-frozen
@@ -749,6 +757,8 @@ mod record_store_tests {
 
     use glam::{UVec2, Vec2};
 
+    use crate::app::App;
+    use crate::app::test_support::RecordApp;
     use crate::host::clock::FixedClock;
     use crate::host::context::HostContext;
     use crate::host::window_renderer::WindowRenderer;
@@ -762,7 +772,7 @@ mod record_store_tests {
     use crate::widgets::panel::Panel;
     use crate::widgets::spinner::Spinner;
     use crate::widgets::text::Text;
-    use crate::{Configure, Display};
+    use crate::{Configure, Display, WindowToken};
 
     #[derive(Debug, PartialEq)]
     struct RecordPayloadSnapshot {
@@ -771,6 +781,22 @@ mod record_store_tests {
         polyline_points: Vec<Vec2>,
         polyline_colors: Vec<ColorU8>,
         text: String,
+    }
+
+    #[derive(Debug, Default)]
+    struct LifecycleApp {
+        updates: Vec<WindowToken>,
+        records: Vec<WindowToken>,
+    }
+
+    impl App for LifecycleApp {
+        fn update(&mut self, win: WindowToken, _ui: &Ui) {
+            self.updates.push(win);
+        }
+
+        fn record(&mut self, win: WindowToken, _ui: &mut Ui) {
+            self.records.push(win);
+        }
     }
 
     fn snapshot(renderer: &WindowRenderer) -> RecordPayloadSnapshot {
@@ -811,6 +837,29 @@ mod record_store_tests {
                     .size(92.0)
                     .show(ui);
             });
+    }
+
+    #[test]
+    fn cpu_frame_forwards_token_through_app_lifecycle() {
+        let ctx = HostContext::new(TextShaper::default());
+        let mut window = WindowRenderer::builder(&ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
+        let mut app = LifecycleApp::default();
+        let token = WindowToken(17);
+
+        let _ = window.cpu_frame(
+            Display::from_physical(UVec2::new(112, 112), 1.0),
+            token,
+            &mut app,
+        );
+
+        assert_eq!(app.updates, [token], "update runs once");
+        assert_eq!(
+            app.records,
+            [token, token],
+            "cold-start warmup and visible pass share the token",
+        );
     }
 
     /// A record pass in one window must not replace the payloads retained by
@@ -872,16 +921,17 @@ mod record_store_tests {
             Color::WHITE,
         ];
 
-        let _ = window_a.cpu_frame(display, |ui| {
+        let mut app_a = RecordApp::new(|ui| {
             record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
         });
+        let _ = window_a.cpu_frame(display, WindowToken(1), &mut app_a);
         window_a.ui.frame_runtime.frame_submitted = true;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
         assert_eq!(retained.polyline_points.len(), 4);
         assert_eq!(retained.text, "retained A");
 
-        let _ = window_b.cpu_frame(display, |ui| {
+        let mut app_b = RecordApp::new(|ui| {
             record_scene(
                 ui,
                 &mesh_b,
@@ -891,12 +941,11 @@ mod record_store_tests {
                 "window-b",
             );
         });
+        let _ = window_b.cpu_frame(display, WindowToken(2), &mut app_b);
         window_b.ui.frame_runtime.frame_submitted = true;
         assert_eq!(snapshot(&window_a), retained);
 
-        let paint_only = window_a.cpu_frame(display, |ui| {
-            record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
-        });
+        let paint_only = window_a.cpu_frame(display, WindowToken(1), &mut app_a);
         assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
         assert_eq!(snapshot(&window_a), retained);
     }

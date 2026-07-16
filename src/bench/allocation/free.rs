@@ -3,7 +3,7 @@
 //! `AGENTS.md` claim: "Per-frame allocation is a real metric.
 //! Steady-state must be heap-alloc-free after warmup."
 //!
-//! Runs the shared `frame_fixture` workload through `Ui::frame`, warms
+//! Runs the shared `frame_fixture` workload through `Ui::record`, warms
 //! up so retained scratch / caches stabilize, then measures heap-block
 //! delta over a batch of steady-state frames. **Fails on any non-zero
 //! delta** — aperture-side regressions show up here.
@@ -50,13 +50,13 @@ pub fn bench() {
     let mut state = FrameFixture::default();
 
     for _ in 0..WARMUP_FRAMES {
-        black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
             state.render(NODE_SCALE, ui)
         }));
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
             state.render(NODE_SCALE, ui)
         }));
     }

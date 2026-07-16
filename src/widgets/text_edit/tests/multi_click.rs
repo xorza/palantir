@@ -23,7 +23,7 @@ fn double_and_triple_click_select_word_and_all() {
     }
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         let display = Display::from_physical(NARROW, 1.0);
-        ui.frame(
+        ui.record(
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
             |ui| f(ui),
         );
