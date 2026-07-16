@@ -909,37 +909,65 @@ fn spring_snap_fields_carry_target_immediately() {
     );
 }
 
-/// Pin: switching spec from `Spring` to `Duration` mid-flight clears
-/// residual spring velocity. Otherwise the next `Duration` frame
-/// would compose stale velocity into the segment via the
-/// snap-if-close check (which sees nonzero velocity and falls
-/// through) plus a fresh lerp segment from the still-moving
-/// `current`.
 #[test]
-fn spec_switch_spring_to_duration_zeros_velocity() {
+fn spring_to_duration_same_target_restarts_from_current() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("spec-switch");
     let _ = map.tick(id, SLOT, 0.0_f32, AnimSpec::SPRING, 0.016, next_frame());
-    // Build up nonzero velocity by stepping a real spring for a few frames.
     for _ in 0..5 {
         let _ = map.tick(id, SLOT, 1.0_f32, AnimSpec::SPRING, 0.016, next_frame());
     }
     let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
+    let segment_start = row.current;
     assert!(
         row.velocity.abs() > 0.01,
         "test setup: spring should have built up velocity by now; got {}",
         row.velocity,
     );
 
-    // Retarget under a Duration spec: velocity must zero out.
     let dur = AnimSpec::Duration {
         secs: 0.1,
         ease: Easing::Linear,
     };
-    let _ = map.tick(id, SLOT, 2.0_f32, dur, 0.016, next_frame());
+    let dt = 0.02;
+    let result = map.tick(id, SLOT, 1.0_f32, dur, dt, next_frame());
     let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
-    assert_eq!(
-        row.velocity, 0.0,
-        "Spring → Duration retarget must zero residual velocity",
-    );
+    let progress = dt / 0.1;
+    let expected = segment_start + (1.0 - segment_start) * progress;
+    assert_eq!(row.segment_start, segment_start);
+    assert_eq!(row.elapsed, dt);
+    assert_eq!(row.velocity, 0.0);
+    assert_eq!(result.current, expected);
+}
+
+#[test]
+fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("round-trip-spec-switch");
+    let duration = AnimSpec::Duration {
+        secs: 1.0,
+        ease: Easing::Linear,
+    };
+    let _ = map.tick(id, SLOT, 0.0, duration, 0.0, next_frame());
+    let duration_result = map.tick(id, SLOT, 1.0, duration, 0.4, next_frame());
+    assert_eq!(duration_result.current, 0.4);
+
+    let spring_result = map.tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
+    let spring_row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
+    assert_eq!(spring_row.segment_start, duration_result.current);
+    assert_eq!(spring_row.elapsed, 0.0);
+    assert!(spring_row.velocity > 0.0);
+
+    let segment_start = spring_result.current;
+    let dt = 0.25;
+    let duration_result = map.tick(id, SLOT, 1.0, duration, dt, next_frame());
+    let duration_row = map
+        .rows
+        .get(&(id, SLOT))
+        .expect("row exists after duration restart");
+    let expected = segment_start + (1.0 - segment_start) * dt;
+    assert_eq!(duration_row.segment_start, segment_start);
+    assert_eq!(duration_row.elapsed, dt);
+    assert_eq!(duration_row.velocity, 0.0);
+    assert_eq!(duration_result.current, expected);
 }
