@@ -136,6 +136,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     // two KeyDowns attributes correctly.
     let mut state = InputState::default();
     let cascades = Cascades::default();
+    state.focused = Some(WidgetId::from_hash("editor"));
 
     state.on_input(
         InputEvent::ModifiersChanged(Modifiers {
@@ -185,6 +186,7 @@ fn text_events_arrive_in_order_in_keyboard_buffer() {
     use crate::input::keyboard::KeyboardEvent;
     let mut state = InputState::default();
     let cascades = Cascades::default();
+    state.focused = Some(WidgetId::from_hash("editor"));
     state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascades);
     state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascades);
     let texts: Vec<_> = state
@@ -361,6 +363,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 fn post_record_clears_keys_and_text_but_preserves_modifiers() {
     let mut state = InputState::default();
     let cascades = Cascades::default();
+    state.focused = Some(WidgetId::from_hash("editor"));
     state.on_input(
         InputEvent::ModifiersChanged(Modifiers {
             shift: true,

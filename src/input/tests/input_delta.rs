@@ -140,6 +140,10 @@ fn non_pointer_events_wake_on_focus_or_subscription() {
             .requests_repaint,
     );
     assert!(
+        !ui.input.take_action_flag(),
+        "unrouted text must not schedule a settling pass",
+    );
+    assert!(
         !ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,
     );
@@ -186,6 +190,10 @@ fn keydown_wakes_only_when_focus_or_subscription_exists() {
         physical: Key::Other,
     });
     assert!(!delta.requests_repaint, "idle key must skip the frame");
+    assert!(
+        !ui.input.take_action_flag(),
+        "unrouted key must not schedule a settling pass",
+    );
 
     // With focus held → wake.
     ui.input.focused = Some(WidgetId::from_hash("editor"));
@@ -232,6 +240,10 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
         !ui.on_input(InputEvent::PointerReleased(PointerButton::Left))
             .requests_repaint,
         "stray release (no capture) → no repaint",
+    );
+    assert!(
+        !ui.input.take_action_flag(),
+        "unrouted button events must not schedule a settling pass",
     );
 }
 

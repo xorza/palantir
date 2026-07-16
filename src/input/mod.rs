@@ -373,17 +373,12 @@ pub(crate) struct InputState {
     pub(crate) focused: Option<WidgetId>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
-    /// Set in `on_input` when an event arrives that could plausibly
-    /// drive a state mutation (pointer press/release, `KeyDown`,
-    /// `Text`). Read by `Ui::run_frame` to decide whether to
-    /// re-record the frame after pass 1's `end_frame` drains the
-    /// input queues. Hover-only events (`PointerMoved`, `PointerLeft`)
-    /// and modifier changes don't flip it — they fire too often and
-    /// don't typically mutate user state. Note: this is the
-    /// *event-type* gate; it doesn't filter for whether the event
-    /// was actually consumed (an idle `KeyDown` with no focus + no
-    /// chord sub still sets it). False positives waste a pass; bias
-    /// is toward not missing real mutations.
+    /// Set in `on_input` when a routed event could drive a state mutation
+    /// (pointer press/release, `KeyDown`, `Text`). Read by `Ui::run_frame`
+    /// to decide whether to re-record the frame after pass 1's `end_frame`
+    /// drains the input queues. Hover-only events (`PointerMoved`,
+    /// `PointerLeft`) and modifier changes don't flip it. Unrouted actions
+    /// leave it clear because no widget or subscriber can observe them.
     pub(crate) frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
     /// pointer moves and mod changes), cleared by `Ui::frame`
@@ -507,15 +502,6 @@ impl InputState {
         // change (shortcut hint). Cleared at the top of `frame`
         // after the gate has read it.
         self.had_input_since_last_frame = true;
-        if matches!(
-            event,
-            InputEvent::PointerPressed(_)
-                | InputEvent::PointerReleased(_)
-                | InputEvent::KeyDown { .. }
-                | InputEvent::Text(_)
-        ) {
-            self.frame_had_action = true;
-        }
         let requests_repaint = match event {
             InputEvent::PointerMoved(p) => {
                 let prev_hover = self.hovered;
@@ -604,7 +590,9 @@ impl InputState {
                 // paint-anim path. Focus-clearing clicks (outside a
                 // focused TextEdit) and any sense hit still record;
                 // popup-dismiss subscribers wake themselves.
-                hit.is_some() || self.focused != prev_focus || buttons_subbed
+                let observable = hit.is_some() || self.focused != prev_focus || buttons_subbed;
+                self.frame_had_action |= observable;
+                observable
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
@@ -640,30 +628,41 @@ impl InputState {
                     });
                 // Capture was live ⇒ owning widget needs a record;
                 // otherwise only `BUTTONS` subscribers wake.
-                released.is_some() || buttons_subbed
+                let observable = released.is_some() || buttons_subbed;
+                self.frame_had_action |= observable;
+                observable
             }
             InputEvent::ScrollPixels(d) => {
-                self.frame_scroll_pixels += d;
+                let routed = self.scroll_target.is_some();
+                if routed {
+                    self.frame_scroll_pixels += d;
+                }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
                     pos,
                     pixels: d,
                     lines: Vec2::ZERO,
                 });
-                self.scroll_target.is_some() || subbed
+                routed || subbed
             }
             InputEvent::ScrollLines(d) => {
-                self.frame_scroll_lines += d;
+                let routed = self.scroll_target.is_some();
+                if routed {
+                    self.frame_scroll_lines += d;
+                }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
                     pos,
                     pixels: Vec2::ZERO,
                     lines: d,
                 });
-                self.scroll_target.is_some() || subbed
+                routed || subbed
             }
             InputEvent::Zoom(f) => {
-                self.frame_zoom_delta *= f;
+                let routed = self.pinch_target.is_some();
+                if routed {
+                    self.frame_zoom_delta *= f;
+                }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Zoom { pos, factor: f });
-                self.pinch_target.is_some() || subbed
+                routed || subbed
             }
             InputEvent::KeyDown {
                 key,
@@ -676,7 +675,6 @@ impl InputState {
                     repeat,
                     physical,
                 };
-                self.frame_keyboard_events.push(KeyboardEvent::Down(kp));
                 // Wake when a focused widget would consume the key
                 // OR a specific-chord subscriber asked for it
                 // OR a `KeyboardSense::KEY` subscriber is recording
@@ -685,17 +683,27 @@ impl InputState {
                 // chord check takes the whole `KeyPress` so the
                 // non-Latin layout fallback applies — an off-focus
                 // Cmd+Z still wakes on a Russian layout.
-                self.focused.is_some()
+                let observable = self.focused.is_some()
                     || self.subs.matches_press(kp)
-                    || self.subs.keyboard_mask.contains(KeyboardSense::KEY)
+                    || self.subs.keyboard_mask.contains(KeyboardSense::KEY);
+                if observable {
+                    self.frame_keyboard_events.push(KeyboardEvent::Down(kp));
+                    self.frame_had_action = true;
+                }
+                observable
             }
             InputEvent::Text(chunk) => {
-                self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
                 // Text is rare (only fires on IME commit / dead-key
                 // resolution on most platforms). Wake when a focused
                 // widget would consume it OR a TEXT subscriber wants
                 // it.
-                self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardSense::TEXT)
+                let observable =
+                    self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardSense::TEXT);
+                if observable {
+                    self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
+                    self.frame_had_action = true;
+                }
+                observable
             }
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
@@ -736,12 +744,6 @@ impl InputState {
         }
         self.had_input_since_last_frame = false;
         self.repaint_requested_since_last_frame = false;
-        // An action absorbed by a frame that never records (inert
-        // background click under `OnDelta`, then a PaintOnly wake)
-        // must not stay latched — the next real record pass would see
-        // `take_action_flag() == true` with empty queues and run a
-        // spurious second layout pass. Between double-layout passes
-        // this is a no-op: pass A's `take_action_flag` already reset it.
         self.frame_had_action = false;
         self.frame_pointer_events.clear();
         self.frame_scroll_pixels = Vec2::ZERO;
