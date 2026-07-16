@@ -7,13 +7,13 @@
 //!   iter runs record → measure → arrange → cascade → damage → encode +
 //!   compose and acks the present; nothing touches the GPU. This is the
 //!   clean signal: no queue submit, no `device.poll` ioctl, no
-//!   per-size framebuffer reconfiguration. Going through
-//!   `WindowRenderer::frame_offscreen` + a poll (the old shape) charged every iter
-//!   driver work that profiled as NVIDIA / kernel self-time — ~20% on
+//!   per-size framebuffer reconfiguration. Going through the offscreen renderer
+//!   driver + a poll (the old shape) charged every iter driver work that
+//!   profiled as NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the aperture cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
-//!   `WindowRenderer::frame_offscreen` against an offscreen `wgpu::Texture` +
+//!   `OffscreenHost::frame_offscreen` against an offscreen `wgpu::Texture` +
 //!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
 //!   dominated by GPU exec on large views. The per-frame `write_stats`
 //!   dump (upload counts, GPU pass timings) lives here since it's
@@ -51,10 +51,7 @@
 #[path = "support/frame_fixture.rs"]
 mod fixture;
 
-use aperture::host::offscreen::OffscreenHost;
-use aperture::renderer::frontend::Frontend;
-use aperture::ui::frame_report::{RenderKind, RenderPlan};
-use aperture::{Color, Display, Ui};
+use aperture::{Color, Display, FrameBenchFrontend, FramePaint, OffscreenHost, Ui};
 use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
 use pollster::FutureExt;
@@ -196,14 +193,14 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
 /// frames as `PaintOnly` and skip the record closure the arms depend on.
 struct CpuHarness {
     ui: Ui,
-    frontend: Frontend,
+    frontend: FrameBenchFrontend,
     start: std::time::Instant,
 }
 
 impl CpuHarness {
     fn new() -> Self {
         let ui = Ui::for_test_text();
-        let frontend = Frontend::for_test_sharing(&ui);
+        let frontend = FrameBenchFrontend::default();
         let mut h = Self {
             ui,
             frontend,
@@ -229,13 +226,9 @@ impl CpuHarness {
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
         let stamp = aperture::FrameStamp::new(display, self.start.elapsed());
         let report = self.ui.frame(stamp, record);
-        let plan = report.plan.unwrap_or(RenderPlan {
-            clear: WINDOW_CLEAR,
-            kind: RenderKind::Full,
-        });
         // The deviceless CPU harness's `Frontend` carries the baseline
         // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
-        self.frontend.build_for_test(&self.ui, plan);
+        self.frontend.build(&self.ui, &report, WINDOW_CLEAR);
         self.ui.mark_frame_submitted();
     }
 }
@@ -317,17 +310,10 @@ fn assert_partial_invariant() {
         aperture::FrameStamp::new(display, h.start.elapsed()),
         |ui| build_ui(&mut state, BENCH_SCALE, ui),
     );
-    assert!(
-        matches!(
-            report.plan,
-            Some(RenderPlan {
-                kind: RenderKind::Partial { .. },
-                ..
-            })
-        ),
-        "frame/partial expected RenderPlan::Partial, got {:?} \
-         (fixture's footer-status counter must produce a small damage rect)",
-        report.plan,
+    assert_eq!(
+        report.paint(),
+        FramePaint::Partial,
+        "fixture's footer-status counter must produce a small damage rect",
     );
 }
 
@@ -408,9 +394,9 @@ fn gpu_resizing(c: &mut Criterion) {
 
 /// Per-frame `queue.write_*` counts + GPU main-pass time for each
 /// arm, frames 0..=5, so the cold→warm transition is visible.
-/// Upload columns come from the counting `aperture::renderer::backend::queue::Queue`
-/// wrapper; the GPU pass column comes from `wgpu` timestamp queries
-/// surfaced via [`aperture::gpu_pass_stats::last_pass_ms`].
+/// Upload columns come from the backend's counting queue instrumentation;
+/// the GPU pass column comes from `wgpu` timestamp queries surfaced via
+/// [`aperture::GpuPassStats`].
 /// The pass readout is one frame lagged (the `map_async` callback
 /// fires after the next `device.poll`), so frame 0's column is
 /// omitted.
@@ -448,7 +434,7 @@ fn report_write_stats() {
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
             // when at least one value resolved, so adapters that lack
             // the feature stay quiet.
-            use aperture::gpu_pass_stats::BatchKind;
+            use aperture::BatchKind;
             use strum::IntoEnumIterator;
             let per_kind: Vec<String> = BatchKind::iter()
                 .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))

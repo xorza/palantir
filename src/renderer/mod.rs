@@ -11,12 +11,13 @@
 //! rows are CPU data; `GpuView` targets are a wgpu-only side channel carried by
 //! the same frame result so they composite through the image path.
 //!
-//! Both halves are owned and driven from [`WindowRenderer`](crate::host::window_renderer::WindowRenderer),
-//! the public top-level handle.
-pub mod backend;
+//! Both halves are owned and driven from the private
+//! [`WindowRenderer`](crate::host::window_renderer::WindowRenderer) behind the
+//! public host facades.
+pub(crate) mod backend;
 pub(crate) mod caches;
 pub(crate) mod damage;
-pub mod frontend;
+pub(crate) mod frontend;
 pub(crate) mod gpu_view;
 pub(crate) mod gradient_atlas;
 pub(crate) mod image_registry;

@@ -67,7 +67,7 @@ use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
-pub mod region;
+pub(crate) mod region;
 pub(crate) mod snapshot;
 
 /// Output of one frame's damage pass plus the cross-frame state it

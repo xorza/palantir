@@ -10,8 +10,8 @@
 //! `DebugOverlayConfig`) deliberately lives at the crate root, not here — the
 //! `Ui` API must not depend on the host machinery.
 
-pub mod clock;
+pub(crate) mod clock;
 pub(crate) mod context;
-pub mod offscreen;
-pub mod window_renderer;
-pub mod winit;
+pub(crate) mod offscreen;
+pub(crate) mod window_renderer;
+pub(crate) mod winit;

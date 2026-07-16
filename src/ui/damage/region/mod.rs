@@ -256,8 +256,8 @@ impl From<Rect> for DamageRegion {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+#[cfg(feature = "internals")]
+pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::primitives::rect::Rect;
     use crate::ui::damage::region::*;

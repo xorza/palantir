@@ -36,8 +36,8 @@ so **`MODE=cpu` runs zero GPU code** — no adapter / device request, no
 CPU bench is uncontaminated by driver activity.
 
 - **`frame/*_cpu`** — aperture's CPU pipeline measured on a **bare `Ui`
-  + standalone `Frontend` with no `wgpu::Device` at all** (`CpuHarness`,
-  same deviceless path as `alloc_free`). Each iter runs record →
+  + feature-gated `FrameBenchFrontend` with no `wgpu::Device` at all**
+  (`CpuHarness`, same deviceless path as `alloc_free`). Each iter runs record →
   measure → arrange → cascade → damage and then, when the frame
   produces a render plan, encode + compose — then acks the present
   (`Ui::mark_frame_submitted`) so `classify_frame` matches a real
@@ -49,7 +49,7 @@ CPU bench is uncontaminated by driver activity.
   realloc per size, `ensure_backbuffer → create_texture`), swamping the
   aperture cost. Time is advanced from a real `Instant` like
   `WindowRenderer::cpu_frame` so wake cadence matches production.
-- **`frame/*_gpu`** — the full public path: `WindowRenderer::frame_offscreen`
+- **`frame/*_gpu`** — the full public path: `OffscreenHost::frame_offscreen`
   against an offscreen `wgpu::Texture` + `PollType::Wait`. Wall time
   covers the whole CPU + GPU pipeline. The per-frame `write_stats` dump
   (upload counts, GPU pass timings) lives here since it's inherently GPU.
@@ -89,7 +89,7 @@ below). Two pin a floor and fail; one only measures.
   block delta over 256 steady-state frames fails. This pins the
   load-bearing AGENTS.md invariant.
 - **`alloc_free_gpu`** — same fixture, plus the wgpu submission path
-  via `WindowRenderer::frame_offscreen` against an offscreen target with a GPU
+  via `OffscreenHost::frame_offscreen` against an offscreen target with a GPU
   poll between frames. Baselined: every wgpu submission fundamentally
   allocates (`CommandEncoder` Arc, `CommandBuffer` Arc, queue Vec push,
   hal scratch). Current floor ~27 blocks/frame, all attributed to
@@ -644,12 +644,11 @@ thermal — re-run on power, lid open, with other apps closed.
 
 1. Drop a file under `benches/`, register it in `Cargo.toml`'s
    `[[bench]]` table.
-2. If it needs `test_support` reach-in helpers from a production
-   module (e.g. `aperture::ui::damage::region::test_support::…`), add
-   `required-features = ["internals"]` to the `[[bench]]` entry and
-   profile with `FEATURES=internals scripts/profile-bench.sh`. Reach
-   in via the canonical per-module `test_support` path — there is no
-   `support::internals` aggregator.
+2. If it needs private production state, colocate the benchmark driver with
+   that subsystem and expose only a narrow root helper behind `internals`.
+   Add `required-features = ["internals"]` to the `[[bench]]` entry and profile
+   with `FEATURES=internals scripts/profile-bench.sh`; external benchmark
+   targets never reach through private module paths.
 3. Name cases `<group>/<case>` so criterion filters work consistently
    with the profile-bench script.
 4. After landing, profile once and paste the text report into the PR

@@ -37,7 +37,7 @@ use crate::ui::frame_report::RenderPlan;
 /// Owned by [`WindowRenderer`](crate::host::window_renderer::WindowRenderer);
 /// the host builds into the staged [`Self::buffer`] before GPU submission.
 #[derive(Debug)]
-pub struct Frontend {
+pub(crate) struct Frontend {
     cmds: RenderCmdBuffer,
     composer: Composer,
     pub(crate) buffer: RenderBuffer,
@@ -69,8 +69,12 @@ impl Frontend {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+pub(crate) mod test_support {
     #![allow(dead_code)]
+    #[cfg(feature = "internals")]
+    use crate::primitives::color::Color;
+    #[cfg(feature = "internals")]
+    use crate::ui::frame_report::{FrameReport, RenderKind, RenderPlan};
     use crate::{renderer::frontend::*, ui::Ui};
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench
@@ -80,12 +84,7 @@ pub mod test_support {
 
     impl Frontend {
         /// Deviceless frontend for tests and benchmarks.
-        pub fn for_test() -> Self {
-            Self::new(TEST_MAX_TEXTURE_DIM)
-        }
-
-        /// Deviceless frontend paired with `ui` by the caller at build time.
-        pub fn for_test_sharing(_ui: &Ui) -> Self {
+        pub(crate) fn for_test() -> Self {
             Self::new(TEST_MAX_TEXTURE_DIM)
         }
 
@@ -95,9 +94,38 @@ pub mod test_support {
         /// crate-private; the side effect (mutating `self.cmds`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
-        pub fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
+        pub(crate) fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
             let payloads = ui.record_store.borrow();
             self.build(ui, &payloads, plan);
+        }
+    }
+
+    /// Feature-gated deviceless frontend used by the external frame benchmark.
+    #[cfg(feature = "internals")]
+    #[derive(Debug)]
+    pub struct FrameBenchFrontend {
+        inner: Frontend,
+    }
+
+    #[cfg(feature = "internals")]
+    impl FrameBenchFrontend {
+        /// Encode and compose this report, synthesizing a full plan when the
+        /// production path correctly classified the frame as a skip.
+        pub fn build(&mut self, ui: &Ui, report: &FrameReport, skip_clear: Color) {
+            let plan = report.plan.unwrap_or(RenderPlan {
+                clear: skip_clear,
+                kind: RenderKind::Full,
+            });
+            self.inner.build_for_test(ui, plan);
+        }
+    }
+
+    #[cfg(feature = "internals")]
+    impl Default for FrameBenchFrontend {
+        fn default() -> Self {
+            Self {
+                inner: Frontend::for_test(),
+            }
         }
     }
 }

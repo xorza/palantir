@@ -667,7 +667,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         .expect("the animated text boundary must produce a paint plan");
     assert!(!ctx.shaper.has_cosmic_buffer(idle_key));
 
-    let mut frontend = Frontend::for_test_sharing(&idle);
+    let mut frontend = Frontend::for_test();
     frontend.build_for_test(&idle, plan);
     idle.frame_runtime.frame_submitted = true;
     assert!(

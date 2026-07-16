@@ -14,7 +14,7 @@ pub(crate) mod queue;
 mod schedule;
 mod shader_template;
 mod stencil;
-pub mod text;
+pub(crate) mod text;
 pub(crate) mod viewport;
 #[cfg(feature = "internals")]
 pub(crate) mod write_stats;
