@@ -14,7 +14,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
-use crate::widgets::tooltip::{Tooltip, TooltipState};
+use crate::widgets::tooltip::{GLOBAL_STATE_ID, Tooltip, TooltipGlobal, TooltipState};
 use crate::widgets::{ResponseSnapshot, ResponseState};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -87,6 +87,74 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {
     ui
 }
 
+#[test]
+fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(SURFACE, 1.0);
+    let trigger_id = WidgetId::from_hash("long-uptime-trigger");
+    let snapshot = ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+            hovered: true,
+            ..ResponseState::default()
+        },
+    };
+    let frame_at = |ui: &mut Ui, time: Duration| {
+        ui.frame(FrameStamp::new(display, time), |ui| {
+            Tooltip::on(&snapshot).text("tip").delay(0.25).show(ui);
+        });
+    };
+
+    let started_at = Duration::from_secs(1 << 24);
+    frame_at(&mut ui, started_at);
+    assert_eq!(
+        ui.try_state::<TooltipState>(trigger_id)
+            .unwrap()
+            .hover_started_at,
+        Some(started_at),
+    );
+
+    frame_at(&mut ui, started_at + Duration::from_millis(249));
+    assert!(!ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
+
+    frame_at(&mut ui, started_at + Duration::from_millis(250));
+    assert!(ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
+}
+
+#[test]
+fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(SURFACE, 1.0);
+    let trigger_id = WidgetId::from_hash("transient-trigger");
+    let root_id = WidgetId::from_hash("root");
+
+    ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        Panel::vstack().id(root_id).show(ui, |ui| {
+            let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
+            Tooltip::on(&trigger).text("tip").show(ui);
+        });
+    });
+
+    assert!(ui.try_state::<TooltipState>(trigger_id).is_some());
+    assert!(
+        ui.try_state::<TooltipState>(trigger_id.with("tooltip"))
+            .is_none(),
+        "per-trigger state must not use an unrecorded synthetic id",
+    );
+    assert!(
+        ui.try_state::<TooltipGlobal>(*GLOBAL_STATE_ID).is_some(),
+        "the intentional global singleton must exist",
+    );
+
+    ui.frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+        Panel::vstack().id(root_id).show(ui, |_ui| {});
+    });
+
+    assert!(ui.try_state::<TooltipState>(trigger_id).is_none());
+    assert!(ui.try_state::<TooltipGlobal>(*GLOBAL_STATE_ID).is_some());
+}
+
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering
 /// the trigger the entire time. The bubble should be invisible until
 /// `time >= delay`, then visible.
@@ -120,7 +188,6 @@ fn delay_gates_visibility() {
     // but `elapsed == 0` and `visible == false`.
     frame_at(&mut ui, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
-    let state_id = trigger_id.with("tooltip");
 
     // Move pointer to the center of the button's last-frame rect.
     let trigger_rect = ui.response_for(trigger_id).rect.expect("button rect");
@@ -132,7 +199,7 @@ fn delay_gates_visibility() {
     ui.on_input(InputEvent::PointerMoved(trigger_pos));
     frame_at(&mut ui, 0.1, &mut captured);
     let early = ui
-        .try_state::<TooltipState>(state_id)
+        .try_state::<TooltipState>(trigger_id)
         .copied()
         .unwrap_or_default();
     assert!(
@@ -152,7 +219,7 @@ fn delay_gates_visibility() {
     }
 
     let late = ui
-        .try_state::<TooltipState>(state_id)
+        .try_state::<TooltipState>(trigger_id)
         .copied()
         .unwrap_or_default();
     assert!(
@@ -201,7 +268,6 @@ fn hover_clears_after_tooltip_visible() {
 
     frame_at(&mut ui, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
-    let state_id = trigger_id.with("tooltip");
     let trigger_rect = ui.response_for(trigger_id).rect.expect("button rect");
     let trigger_pos =
         trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
@@ -213,7 +279,7 @@ fn hover_clears_after_tooltip_visible() {
         frame_at(&mut ui, t, &mut captured);
     }
     let state = ui
-        .try_state::<TooltipState>(state_id)
+        .try_state::<TooltipState>(trigger_id)
         .copied()
         .unwrap_or_default();
     assert!(
@@ -229,7 +295,7 @@ fn hover_clears_after_tooltip_visible() {
 
     let hovered = ui.response_for(trigger_id).hovered;
     let state = ui
-        .try_state::<TooltipState>(state_id)
+        .try_state::<TooltipState>(trigger_id)
         .copied()
         .unwrap_or_default();
     assert!(!hovered, "trigger must not be hovered after move-away");
@@ -282,7 +348,6 @@ fn tooltip_inside_popup_records_without_panic() {
     frame_at(&mut ui, 0.0, &mut captured);
     frame_at(&mut ui, 0.01, &mut captured);
     let trigger_id = captured.expect("button id");
-    let state_id = trigger_id.with("tooltip");
     let trigger_rect = ui.response_for(trigger_id).rect.expect("button rect");
     let trigger_pos =
         trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
@@ -297,7 +362,7 @@ fn tooltip_inside_popup_records_without_panic() {
     }
 
     let state = ui
-        .try_state::<TooltipState>(state_id)
+        .try_state::<TooltipState>(trigger_id)
         .copied()
         .unwrap_or_default();
     assert!(
