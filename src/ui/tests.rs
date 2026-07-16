@@ -4,10 +4,12 @@ use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
+use crate::host::context::HostContext;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
+use crate::record_store::RecordStore;
 use crate::renderer::frontend::Frontend;
 use crate::shape::TextWrap;
 use crate::ui::damage::Damage;
@@ -24,6 +26,12 @@ const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
     ui.ctx.shaper.measure_calls()
+}
+
+fn ui_with_context(ctx: &HostContext) -> Ui {
+    let mut ui = Ui::new(ctx, RecordStore::default());
+    ui.mark_warm_for_test();
+    ui
 }
 
 fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
@@ -1327,7 +1335,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             // Gradient-filled chrome: `lower::background` pushes a
-            // `LoweredGradient` into `RecordPayloads::gradients` every record
+            // `RecordedGradient` into `RecordPayloads::gradients` every record
             // pass, and the resulting `ChromeRow` stores the index.
             Frame::new()
                 .id(WidgetId::from_hash("grad_bg"))
@@ -1354,7 +1362,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: full record. Populates the gradient payloads and stamps
-    // `ShapeBrush::Gradient(0)` into the chrome row for the frame.
+    // `ShapeBrush::Gradient(GradientId(0))` into the chrome row for the frame.
     let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
@@ -1385,6 +1393,94 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     // Indirect pin: re-run the encoder against the retained tree
     // + record store. With the bug, this panicked on `gradients[id]`.
     let _ = ui.encode_cmds();
+}
+
+#[test]
+fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
+    use crate::primitives::brush::{Brush, LinearGradient};
+    use crate::primitives::color::ColorU8;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::fill_wire::LutRow;
+    use crate::primitives::stroke::Stroke;
+    use crate::renderer::frontend::cmd_buffer::Command;
+    use crate::renderer::gradient_atlas::ATLAS_ROWS;
+    use crate::shape::Shape;
+    use crate::text::TextShaper;
+    use crate::ui::frame_report::FrameProcessing;
+    use std::collections::HashSet;
+
+    fn rows(ui: &Ui) -> Vec<LutRow> {
+        ui.encode_cmds()
+            .iter()
+            .filter_map(|command| match command {
+                Command::DrawRect(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
+                    Some(payload.fill_lut_row)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn window_a(ui: &mut Ui, half: Duration) {
+        Panel::hstack().size(20.0).show(ui, |ui| {
+            ui.add_shape(Shape::RoundedRect {
+                local_rect: Some(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                corners: Corners::ZERO,
+                fill: Brush::Linear(LinearGradient::two_stop(
+                    0.0,
+                    ColorU8::rgb(255, 0, 0),
+                    ColorU8::rgb(0, 0, 255),
+                )),
+                stroke: Stroke::ZERO,
+            });
+            add_blink_shape(ui, half);
+        });
+    }
+
+    let shared = HostContext::new(TextShaper::mono());
+    let mut a = ui_with_context(&shared);
+    let mut b = ui_with_context(&shared);
+    let half = Duration::from_millis(500);
+
+    a.run_at_acked(SURFACE, |ui| window_a(ui, half));
+    let original_row = rows(&a)[0];
+    a.ctx.caches.gradients.flush_with(|_| ());
+
+    b.run_at(SURFACE, |ui| {
+        Panel::hstack().size(20.0).show(ui, |ui| {
+            for index in 0..ATLAS_ROWS - 1 {
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                    corners: Corners::ZERO,
+                    fill: Brush::Linear(LinearGradient::two_stop(
+                        0.0,
+                        ColorU8::rgb(
+                            index as u8,
+                            (index >> u8::BITS) as u8,
+                            (index >> (u8::BITS * 2)) as u8,
+                        ),
+                        ColorU8::WHITE,
+                    )),
+                    stroke: Stroke::ZERO,
+                });
+            }
+        });
+    });
+    let b_rows: HashSet<LutRow> = rows(&b).into_iter().collect();
+    assert_eq!(b_rows.len(), (ATLAS_ROWS - 1) as usize);
+    assert!(b_rows.contains(&original_row));
+    b.ctx.caches.gradients.flush_with(|_| ());
+
+    let report = a.frame(
+        FrameStamp::new(Display::from_physical(SURFACE, 1.0), half),
+        |ui| window_a(ui, half),
+    );
+    assert_eq!(report.processing, FrameProcessing::PaintOnly);
+    let resolved_row = rows(&a)[0];
+    assert_ne!(
+        resolved_row, original_row,
+        "PaintOnly must resolve retained gradient content after its old row is reused",
+    );
 }
 
 /// `request_repaint` co-firing with an anim wake produces the

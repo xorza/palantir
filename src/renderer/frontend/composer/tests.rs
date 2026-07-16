@@ -9,7 +9,7 @@ use crate::primitives::{
 use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, DrawMeshPayload, DrawPolylinePayload,
+    BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
 };
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -568,15 +568,12 @@ fn windowed_rect_is_not_an_opaque_cover() {
     );
 }
 
-/// `Brush::Linear` panel: lowering registers the gradient with the
-/// atlas (returns a non-zero row), packs the row + axis + kind into
-/// the cmd-buffer payload; composer pipes the row straight through
-/// to the emitted Quad.
+/// A resolved linear gradient packs row + axis + kind into the
+/// cmd-buffer payload; composer pipes them through to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::fill_wire::FillKind;
-    use crate::record_store::LoweredGradient;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g =
@@ -584,7 +581,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     let expected_axis = g.axis();
     let atlas = GradientAtlas::default();
     let row = atlas.register_stops(&g.stops, g.interp);
-    let lowered = LoweredGradient {
+    let lowered = ResolvedGradient {
         axis: expected_axis,
         row,
         kind: FillKind::linear(g.spread),
@@ -617,12 +614,11 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
-    use crate::record_store::LoweredGradient;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let atlas = GradientAtlas::default();
-    let lowered = LoweredGradient {
+    let lowered = ResolvedGradient {
         axis: g.axis(),
         row: atlas.register_stops(&g.stops, g.interp),
         kind: FillKind::linear(g.spread),
@@ -2656,7 +2652,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::color::ColorF16;
     use crate::primitives::fill_wire::{FillKind, LutRow};
-    use crate::record_store::LoweredGradient;
 
     let vp = UVec2::new(200, 200);
     let bg = Color::rgb(0.14, 0.16, 0.22);
@@ -2721,7 +2716,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 b.draw_rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
-                    BrushSource::Gradient(LoweredGradient {
+                    BrushSource::Gradient(ResolvedGradient {
                         axis: FillAxis::ZERO,
                         row: LutRow::FALLBACK,
                         kind: FillKind::linear(Spread::Pad),
@@ -2890,13 +2885,12 @@ fn clear_fold_resets_across_frames() {
 fn quad_fast_path_flag_cases() {
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::fill_wire::{FillKind, LutRow};
-    use crate::record_store::LoweredGradient;
 
     let solid = |c: Color| BrushSource::Solid(c.into());
     let opaque = Color::rgb(0.5, 0.5, 0.5);
 
     // (case, rect, corners, stroke, brush, dpr, expect_fast)
-    let gradient = BrushSource::Gradient(LoweredGradient {
+    let gradient = BrushSource::Gradient(ResolvedGradient {
         axis: FillAxis::ZERO,
         row: LutRow::FALLBACK,
         kind: FillKind::linear(Spread::Pad),
