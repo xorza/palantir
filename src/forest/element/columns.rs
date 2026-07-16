@@ -1,4 +1,4 @@
-use super::Element;
+use crate::forest::element::Element;
 use crate::forest::visibility::Visibility;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
@@ -7,6 +7,7 @@ use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ModePayload, ScrollSpec};
 use crate::layout::types::sizing::Sizes;
+use crate::primitives::approx;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
@@ -78,10 +79,10 @@ pub(crate) struct PanelExtras {
 impl Hash for BoundsExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write(bytemuck::bytes_of(&self.position));
+        approx::hash_visual_vec2(self.position, h);
         self.grid.hash(h);
-        self.min_size.hash(h);
-        self.max_size.hash(h);
+        approx::hash_visual_size(self.min_size, h);
+        approx::hash_visual_size(self.max_size, h);
     }
 }
 
@@ -95,7 +96,8 @@ impl Hash for PanelExtras {
         h.write_u64(packed);
         if !self.transform.is_noop() {
             h.write_u8(1);
-            h.write(bytemuck::bytes_of(&self.transform));
+            approx::hash_visual_vec2(self.transform.translation, h);
+            approx::hash_visual_f32(self.transform.scale - 1.0, h);
         } else {
             h.write_u8(0);
         }
@@ -117,7 +119,11 @@ impl BoundsExtras {
 
     #[inline]
     pub(crate) fn is_default(&self) -> bool {
-        self == &Self::DEFAULT
+        approx::approx_zero(self.position.x)
+            && approx::approx_zero(self.position.y)
+            && self.grid == Self::DEFAULT.grid
+            && self.min_size.approx_zero()
+            && self.max_size == Self::DEFAULT.max_size
     }
 }
 
@@ -131,7 +137,10 @@ impl PanelExtras {
 
     #[inline]
     pub(crate) fn is_default(&self) -> bool {
-        self == &Self::DEFAULT
+        self.gaps == Self::DEFAULT.gaps
+            && self.justify == Self::DEFAULT.justify
+            && self.child_align == Self::DEFAULT.child_align
+            && self.transform.is_noop()
     }
 }
 

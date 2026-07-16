@@ -1,3 +1,8 @@
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
+use glam::Vec2;
+use std::hash::Hasher;
+
 /// Float comparisons at UI tolerance.
 ///
 /// `EPS = 1e-4` is below 8-bit color precision (1/255 ≈ 4e-3) and sub-pixel
@@ -6,24 +11,22 @@
 pub(crate) const EPS: f32 = 1.0e-4;
 
 /// True if `c` is within `EPS` of zero.
-///
-/// Was previously a trait (`ApproxF32`) with `approx_zero` + `approx_eq`
-/// impls for `f32`/`Vec2`/`Size`, but only `f32::approx_zero` ever had a
-/// caller; the rest was dead weight. If `approx_eq` or other-typed
-/// `approx_zero` is ever needed, add focused free fns here, not a trait
-/// (trait method `const` requires nightly).
 #[inline]
 pub(crate) const fn approx_zero(c: f32) -> bool {
     c.abs() <= EPS
 }
 
-/// Canonicalize an `f32` so equal-up-to-`EPS` values hash identically:
-/// collapse any value with `|f| <= EPS` (including `-0.0`, `+0.0`, and
-/// sub-`EPS` subnormals) to a single zero bit pattern, and every NaN
-/// to a single quiet-NaN. Shared by every content-hash that includes
-/// f32 fields (gradient stops, axes, atlas row keys) so they can't
-/// drift apart — and so visually identical inputs (e.g. an angle of
-/// `1e-8` vs `0.0`) share a cache row.
+/// Equality-compatible bits for public `Hash` implementations. Rust float
+/// equality treats both signed zeros as equal, so they must share one hash;
+/// every other value retains its exact representation.
+#[inline]
+pub(crate) const fn eq_bits(f: f32) -> u32 {
+    if f == 0.0 { 0 } else { f.to_bits() }
+}
+
+/// Canonicalize an `f32` at visual content-cache boundaries: collapse values
+/// visually indistinguishable from zero to one bit pattern and every NaN to
+/// one quiet NaN. Values outside the zero tolerance retain their exact bits.
 #[inline]
 pub(crate) const fn canon_bits(f: f32) -> u32 {
     if f.is_nan() {
@@ -33,6 +36,48 @@ pub(crate) const fn canon_bits(f: f32) -> u32 {
     } else {
         f.to_bits()
     }
+}
+
+#[inline]
+pub(crate) fn hash_f32<H: Hasher>(value: f32, state: &mut H) {
+    state.write_u32(eq_bits(value));
+}
+
+#[inline]
+pub(crate) fn hash_vec2<H: Hasher>(value: Vec2, state: &mut H) {
+    state.write_u64(((eq_bits(value.x) as u64) << 32) | eq_bits(value.y) as u64);
+}
+
+#[inline]
+pub(crate) fn hash_size<H: Hasher>(value: Size, state: &mut H) {
+    state.write_u64(((eq_bits(value.w) as u64) << 32) | eq_bits(value.h) as u64);
+}
+
+#[inline]
+pub(crate) fn hash_rect<H: Hasher>(value: Rect, state: &mut H) {
+    hash_vec2(value.min, state);
+    hash_size(value.size, state);
+}
+
+#[inline]
+pub(crate) fn hash_visual_f32<H: Hasher>(value: f32, state: &mut H) {
+    state.write_u32(canon_bits(value));
+}
+
+#[inline]
+pub(crate) fn hash_visual_vec2<H: Hasher>(value: Vec2, state: &mut H) {
+    state.write_u64(((canon_bits(value.x) as u64) << 32) | canon_bits(value.y) as u64);
+}
+
+#[inline]
+pub(crate) fn hash_visual_size<H: Hasher>(value: Size, state: &mut H) {
+    state.write_u64(((canon_bits(value.w) as u64) << 32) | canon_bits(value.h) as u64);
+}
+
+#[inline]
+pub(crate) fn hash_visual_rect<H: Hasher>(value: Rect, state: &mut H) {
+    hash_visual_vec2(value.min, state);
+    hash_visual_size(value.size, state);
 }
 
 /// True if `v` would produce no visible paint when used as a
@@ -92,7 +137,18 @@ pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::approx::{
+        EPS, approx_zero, canon_bits, hash_rect, hash_visual_f32, hash_visual_rect,
+    };
+    use crate::primitives::rect::Rect;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher as _;
+
+    fn finish_hash(write: impl FnOnce(&mut DefaultHasher)) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        write(&mut hasher);
+        hasher.finish()
+    }
 
     #[test]
     fn approx_zero_handles_boundary_sign_and_nan() {
@@ -108,5 +164,39 @@ mod tests {
         for (label, v, want) in cases {
             assert_eq!(approx_zero(*v), *want, "case: {label}");
         }
+    }
+
+    #[test]
+    fn exact_hash_helpers_collapse_only_signed_zero() {
+        let positive = Rect::new(0.0, 0.0, 0.0, 0.0);
+        let negative = Rect::new(-0.0, -0.0, -0.0, -0.0);
+        let sub_eps = Rect::new(EPS * 0.5, 0.0, 0.0, 0.0);
+
+        assert_eq!(
+            finish_hash(|h| hash_rect(positive, h)),
+            finish_hash(|h| hash_rect(negative, h)),
+        );
+        assert_ne!(
+            finish_hash(|h| hash_rect(positive, h)),
+            finish_hash(|h| hash_rect(sub_eps, h)),
+        );
+    }
+
+    #[test]
+    fn visual_hash_helpers_collapse_zero_noise_and_nan_payloads() {
+        let zero = Rect::ZERO;
+        let sub_eps = Rect::new(EPS * 0.5, -EPS * 0.5, EPS, -EPS);
+        assert_eq!(
+            finish_hash(|h| hash_visual_rect(zero, h)),
+            finish_hash(|h| hash_visual_rect(sub_eps, h)),
+        );
+
+        let nan_a = f32::from_bits(0x7fc0_0001);
+        let nan_b = f32::from_bits(0x7fc0_0002);
+        assert_eq!(canon_bits(nan_a), canon_bits(nan_b));
+        assert_eq!(
+            finish_hash(|h| hash_visual_f32(nan_a, h)),
+            finish_hash(|h| hash_visual_f32(nan_b, h)),
+        );
     }
 }

@@ -12,7 +12,9 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::forest::shapes::paint::ShapeBrush;
 use crate::forest::shapes::record::ShapeRecord;
+use crate::primitives::approx;
 use crate::primitives::image::ImageFit;
+use crate::primitives::rect::Rect;
 use std::hash::{Hash, Hasher as _};
 
 /// Hash a fully-lowered `ShapeRecord` into a stable `ContentHash`.
@@ -38,13 +40,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             stroke,
             fill_grad_hash,
         } => {
-            match local_rect {
-                None => h.write_u8(0),
-                Some(r) => {
-                    h.write_u8(1);
-                    r.hash(&mut h);
-                }
-            }
+            hash_optional_rect(*local_rect, &mut h);
             corners.hash(&mut h);
             hash_brush(fill, *fill_grad_hash, &mut h);
             // Pod-byte hash for `(color, width)` — one `write()` dispatch.
@@ -67,15 +63,15 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         } => {
             match local_origin {
                 None => h.write_u8(0),
-                Some(o) => {
+                Some(origin) => {
                     h.write_u8(1);
-                    h.pod(o);
+                    approx::hash_visual_vec2(*origin, &mut h);
                 }
             }
             h.write_u64(*text_hash);
             color.hash(&mut h);
-            let dims = ((font_size_px.to_bits() as u64) << 32) | line_height_px.to_bits() as u64;
-            h.write_u64(dims);
+            approx::hash_visual_f32(*font_size_px, &mut h);
+            approx::hash_visual_f32(*line_height_px, &mut h);
             // `weight` rides the free high byte of `style`; `align`/`wrap`/
             // `family` occupy bytes 2/1/0, so bold vs regular can't collide
             // in the node hash (would break damage/reuse).
@@ -91,13 +87,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             content_hash,
             ..
         } => {
-            match local_rect {
-                None => h.write_u8(0),
-                Some(r) => {
-                    h.write_u8(1);
-                    r.hash(&mut h);
-                }
-            }
+            hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
             h.write_u64(*content_hash);
         }
@@ -106,13 +96,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             corners,
             shadow,
         } => {
-            match local_rect {
-                None => h.write_u8(0),
-                Some(r) => {
-                    h.write_u8(1);
-                    r.hash(&mut h);
-                }
-            }
+            hash_optional_rect(*local_rect, &mut h);
             corners.hash(&mut h);
             shadow.hash(&mut h);
         }
@@ -124,13 +108,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             fit,
             filter,
         } => {
-            match local_rect {
-                None => h.write_u8(0),
-                Some(r) => {
-                    h.write_u8(1);
-                    r.hash(&mut h);
-                }
-            }
+            hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
             // Hash the registration `id` + intrinsic `size` (packed
             // `x | y`), then fold in the fit (incl. `Tile`'s UV transform,
@@ -159,8 +137,10 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             cap,
             bbox: _,
         } => {
-            h.pod(&[*p0, *p1, *p2, *p3]);
-            h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(*cap as u8));
+            for point in [p0, p1, p2, p3] {
+                approx::hash_visual_vec2(*point, &mut h);
+            }
+            h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
             hash_brush(fill, *fill_grad_hash, &mut h);
         }
         ShapeRecord::Arc {
@@ -174,8 +154,11 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             cap,
             bbox: _,
         } => {
-            h.pod(&[center.x, center.y, *radius, *a0, *a1]);
-            h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(*cap as u8));
+            approx::hash_visual_vec2(*center, &mut h);
+            approx::hash_visual_f32(*radius, &mut h);
+            approx::hash_visual_f32(*a0, &mut h);
+            approx::hash_visual_f32(*a1, &mut h);
+            h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
             hash_brush(fill, *fill_grad_hash, &mut h);
         }
         // `epoch` is the view's damage version: `Ui::gpu_view` bumps it
@@ -198,13 +181,25 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             stroke,
             bbox: _,
         } => {
-            h.pod(&[*a, *b, *c]);
-            h.write_u32(radius.to_bits());
+            approx::hash_visual_vec2(*a, &mut h);
+            approx::hash_visual_vec2(*b, &mut h);
+            approx::hash_visual_vec2(*c, &mut h);
+            approx::hash_visual_f32(*radius, &mut h);
             fill.hash(&mut h);
             h.write(bytemuck::bytes_of(stroke));
         }
     }
     ContentHash(h.finish())
+}
+
+fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
+    match rect {
+        None => h.write_u8(0),
+        Some(rect) => {
+            h.write_u8(1);
+            approx::hash_visual_rect(rect, h);
+        }
+    }
 }
 
 /// Fold a lowered fill into the shape hash: variant byte, then the
@@ -237,6 +232,7 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
     };
     h.write_u8(tag);
     if let ImageFit::Tile { offset, scale } = fit {
-        h.pod(&[offset.x, offset.y, scale.x, scale.y]);
+        approx::hash_visual_vec2(*offset, h);
+        approx::hash_visual_vec2(*scale, h);
     }
 }

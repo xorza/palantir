@@ -1,4 +1,5 @@
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx;
 use std::rc::Rc;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
@@ -64,6 +65,13 @@ impl Track {
         self.max = max;
         self
     }
+
+    #[inline]
+    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.size.hash_visual(h);
+        approx::hash_visual_f32(self.min, h);
+        approx::hash_visual_f32(self.max, h);
+    }
 }
 
 impl From<Sizing> for Track {
@@ -76,7 +84,8 @@ impl std::hash::Hash for Track {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         self.size.hash(h);
-        h.write(bytemuck::bytes_of(&[self.min, self.max]));
+        approx::hash_f32(self.min, h);
+        approx::hash_f32(self.max, h);
     }
 }
 
@@ -104,19 +113,31 @@ impl std::hash::Hash for GridDef {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         h.write_u32(self.rows.len() as u32);
         for t in self.rows.iter() {
-            t.hash(h);
+            t.hash_visual(h);
         }
         h.write_u32(self.cols.len() as u32);
         for t in self.cols.iter() {
-            t.hash(h);
+            t.hash_visual(h);
         }
-        h.write(bytemuck::bytes_of(&[self.row_gap, self.col_gap]));
+        approx::hash_visual_f32(self.row_gap, h);
+        approx::hash_visual_f32(self.col_gap, h);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Track;
+    use crate::layout::types::sizing::Sizing;
+    use crate::layout::types::track::{GridDef, Track};
+    use crate::primitives::approx::EPS;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::rc::Rc;
+
+    fn hash_value(value: impl Hash) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
 
     #[test]
     fn bounds_accept_valid_ranges_in_either_order() {
@@ -129,6 +150,11 @@ mod tests {
         assert_eq!(MIN_THEN_MAX.max, 20.0);
         assert_eq!(PINNED.min, 5.0);
         assert_eq!(PINNED.max, 5.0);
+
+        let positive_zero = Track::new(Sizing::Fixed(0.0)).min(0.0);
+        let negative_zero = Track::new(Sizing::Fixed(-0.0)).min(-0.0);
+        assert_eq!(positive_zero, negative_zero);
+        assert_eq!(hash_value(positive_zero), hash_value(negative_zero));
     }
 
     #[test]
@@ -154,5 +180,18 @@ mod tests {
                 "case `{label}` must panic",
             );
         }
+    }
+
+    #[test]
+    fn grid_content_hash_collapses_visual_zero_noise() {
+        let make = |row_gap| GridDef {
+            rows: Rc::from([Track::hug()]),
+            cols: Rc::from([Track::fill()]),
+            row_gap,
+            col_gap: -row_gap,
+        };
+
+        assert_eq!(hash_value(make(0.0)), hash_value(make(EPS * 0.5)));
+        assert_ne!(hash_value(make(0.0)), hash_value(make(EPS * 2.0)));
     }
 }

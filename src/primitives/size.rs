@@ -10,7 +10,7 @@ pub struct Size {
 impl std::hash::Hash for Size {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
+        approx::hash_size(*self, state);
     }
 }
 
@@ -119,6 +119,14 @@ impl<W: Num, H: Num> From<(W, H)> for Size {
 #[cfg(test)]
 mod tests {
     use crate::primitives::size::Size;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn hash_value(value: impl Hash) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
 
     #[test]
     fn min_and_max_are_per_axis() {
@@ -137,5 +145,14 @@ mod tests {
         // (e.g. `Rect::union`/`intersect`).
         assert_eq!(real.min(nan), real);
         assert_eq!(real.max(nan), real);
+    }
+
+    #[test]
+    fn equal_signed_zero_sizes_have_equal_hashes() {
+        let positive = Size::new(0.0, 0.0);
+        let negative = Size::new(-0.0, -0.0);
+
+        assert_eq!(positive, negative);
+        assert_eq!(hash_value(positive), hash_value(negative));
     }
 }

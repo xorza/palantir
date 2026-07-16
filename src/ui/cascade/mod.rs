@@ -21,6 +21,7 @@ use crate::forest::tree::node::NodeId;
 use crate::input::sense::Sense;
 use crate::layout::scroll::ScrollStates;
 use crate::layout::{LayerLayout, Layout};
+use crate::primitives::approx;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
@@ -506,7 +507,7 @@ pub(crate) fn cascade_fingerprint(
     let mut h = Hasher::new();
     h.write_u32(display.physical.x);
     h.write_u32(display.physical.y);
-    h.write_u32(display.scale_factor.to_bits());
+    approx::hash_f32(display.scale_factor, &mut h);
     for (layer, tree) in forest.trees.iter_paint_order() {
         // Layer discriminant: an identical root subtree migrating
         // between side layers (Popup → Tooltip) must not alias, or
@@ -530,10 +531,13 @@ pub(crate) fn cascade_fingerprint(
             // pass A's pre-flip screen rects (else the popup paints
             // at the raw anchor until an unrelated content change
             // forces a recompute).
-            h.pod(&slot.placement.anchor);
+            approx::hash_visual_vec2(slot.placement.anchor, &mut h);
             match slot.placement.size {
-                Some(s) => h.pod(&s),
-                None => h.write_u32(u32::MAX),
+                Some(size) => {
+                    h.write_u8(1);
+                    approx::hash_visual_size(size, &mut h);
+                }
+                None => h.write_u8(0),
             }
         }
     }
@@ -542,8 +546,8 @@ pub(crate) fn cascade_fingerprint(
     for (wid, st) in scroll_states.iter() {
         let mut sh = Hasher::new();
         sh.write_u64(wid.0);
-        sh.pod(&st.offset);
-        sh.write_u32(st.zoom.to_bits());
+        approx::hash_visual_vec2(st.offset, &mut sh);
+        approx::hash_visual_f32(st.zoom - 1.0, &mut sh);
         scroll_fold ^= sh.finish();
     }
     h.finish() ^ scroll_fold
@@ -746,14 +750,10 @@ fn run_tree(
 /// out from the per-node suffix (`layout_rect`) so a tree-shaped UI
 /// avoids re-hashing the parent context on every node.
 #[repr(C)]
-#[padding_struct::padding_struct]
-#[derive(Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
-struct CascadePrefixBytes {
-    parent_transform: TranslateScale, // 12B
-    clip_rect: Rect,                  // 16B (zeroed when absent)
-    clip_present: u8,
-    parent_dis: u8,
-    parent_inv: u8,
+#[derive(Clone, Copy, Debug, bytemuck::NoUninit)]
+struct CascadePrefixBits {
+    transform: [u32; 4],
+    clip: [u32; 4],
 }
 
 #[inline]
@@ -763,17 +763,27 @@ fn build_cascade_prefix(
     parent_dis: bool,
     parent_inv: bool,
 ) -> Hasher {
-    let (clip_rect, clip_present) = match parent_clip {
-        Some(c) => (c, 1u8),
-        None => (Rect::ZERO, 0u8),
+    let (clip, clip_present) = match parent_clip {
+        Some(rect) => (
+            [
+                approx::canon_bits(rect.min.x),
+                approx::canon_bits(rect.min.y),
+                approx::canon_bits(rect.size.w),
+                approx::canon_bits(rect.size.h),
+            ],
+            true,
+        ),
+        None => ([0; 4], false),
     };
-    let packed = CascadePrefixBytes {
-        parent_transform,
-        clip_rect,
-        clip_present,
-        parent_dis: parent_dis as u8,
-        parent_inv: parent_inv as u8,
-        ..bytemuck::Zeroable::zeroed()
+    let flags = (clip_present as u32) | ((parent_dis as u32) << 1) | ((parent_inv as u32) << 2);
+    let packed = CascadePrefixBits {
+        transform: [
+            approx::canon_bits(parent_transform.translation.x),
+            approx::canon_bits(parent_transform.translation.y),
+            approx::canon_bits(parent_transform.scale - 1.0),
+            flags,
+        ],
+        clip,
     };
     let mut h = Hasher::new();
     h.pod(&packed);
@@ -783,7 +793,7 @@ fn build_cascade_prefix(
 #[inline]
 fn finish_cascade_input(prefix: &Hasher, layout_rect: Rect, invisible: bool) -> CascadeInputHash {
     let mut h = prefix.clone();
-    h.pod(&layout_rect);
+    approx::hash_visual_rect(layout_rect, &mut h);
     CascadeInputHash::pack(h.finish(), invisible)
 }
 

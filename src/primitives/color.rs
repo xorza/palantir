@@ -1,4 +1,4 @@
-use crate::primitives::{approx::noop_f32, half_simd::F16x4};
+use crate::primitives::{approx, half_simd::F16x4};
 use serde::de::Error as _;
 
 #[repr(C)]
@@ -22,7 +22,10 @@ pub struct Color {
 impl std::hash::Hash for Color {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
+        approx::hash_f32(self.r, state);
+        approx::hash_f32(self.g, state);
+        approx::hash_f32(self.b, state);
+        approx::hash_f32(self.a, state);
     }
 }
 
@@ -102,7 +105,7 @@ impl Color {
     /// across primitives.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        noop_f32(self.a)
+        approx::noop_f32(self.a)
     }
 
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).
@@ -523,6 +526,14 @@ fn linear_to_srgb(y: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn hash_value(value: impl Hash) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
 
     /// Reference: spec-exact piecewise sRGB→linear (the previous in-tree
     /// implementation). Used as ground truth for the cubic approximation.
@@ -617,6 +628,15 @@ mod tests {
             let (s2, _) = toml_roundtrip(p);
             assert_eq!(s1, s2);
         }
+    }
+
+    #[test]
+    fn equal_signed_zero_colors_have_equal_hashes() {
+        let positive = Color::linear_rgba(0.0, 0.0, 0.0, 0.0);
+        let negative = Color::linear_rgba(-0.0, -0.0, -0.0, -0.0);
+
+        assert_eq!(positive, negative);
+        assert_eq!(hash_value(positive), hash_value(negative));
     }
 
     /// Pin parse acceptance: with or without `#`, both 6- and 8-digit.

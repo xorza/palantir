@@ -1,4 +1,4 @@
-use crate::primitives::{corners::Corners, size::Size, spacing::Spacing};
+use crate::primitives::{approx, corners::Corners, size::Size, spacing::Spacing};
 use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;
 
@@ -12,7 +12,7 @@ pub struct Rect {
 impl std::hash::Hash for Rect {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
+        approx::hash_rect(*self, state);
     }
 }
 

@@ -9,6 +9,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
+use crate::ui::cascade::{CascadePrefixBits, build_cascade_prefix, finish_cascade_input};
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::panel::Panel;
 use crate::{Ui, renderer::frontend::Frontend};
@@ -21,6 +22,32 @@ fn first_paint_screen(ui: &Ui, key: &str) -> Rect {
     let arena = &ui.cascades.layers[Layer::Main].paint_arena;
     let span = arena.node_spans[node.idx()];
     arena.rows[span.start as usize].screen
+}
+
+#[test]
+fn cascade_input_hash_collapses_visual_zero_noise() {
+    use crate::primitives::approx::EPS;
+
+    assert_eq!(std::mem::size_of::<CascadePrefixBits>(), 32);
+    let hash = |transform, rect| {
+        let prefix = build_cascade_prefix(transform, None, false, false);
+        finish_cascade_input(&prefix, rect, false)
+    };
+    let baseline = hash(TranslateScale::IDENTITY, Rect::ZERO);
+    assert_eq!(
+        baseline,
+        hash(
+            TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5),
+            Rect::new(EPS * 0.5, -EPS * 0.5, EPS, -EPS),
+        ),
+    );
+    assert_ne!(
+        baseline,
+        hash(
+            TranslateScale::from_translation(Vec2::new(EPS * 2.0, 0.0)),
+            Rect::ZERO,
+        ),
+    );
 }
 
 /// A direct shape recorded on a panel with `.transform(...)` must
