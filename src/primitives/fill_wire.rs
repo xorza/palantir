@@ -55,15 +55,16 @@ impl FillKind {
     }
 
     /// Drop-shadow marker. `fill: Color` carries the shadow colour,
-    /// `fill_axis = (offset.x, offset.y, sigma, spread)`,
+    /// `fill_axis = (0, 0, sigma, spread)`,
     /// `radius` carries the *source* shape's corner radii (the shadow
-    /// is paint-bbox-aligned but conceptually wraps a source rect at
-    /// `rect_centre - offset`). The shader runs `shadow_coverage` and
-    /// multiplies `fill.rgb * fill.a * cov`.
+    /// wraps the source rect centered in its shifted paint bbox). The
+    /// shader runs `shadow_coverage` and multiplies
+    /// `fill.rgb * fill.a * cov`.
     pub(crate) const SHADOW_DROP: Self = Self(4);
 
-    /// Inset-shadow marker. Same packing as `SHADOW_DROP`; the
-    /// shader inverts coverage and clips to inside the source rect.
+    /// Inset-shadow marker. `fill_axis = (offset.x, offset.y, sigma,
+    /// spread)`; the shader inverts coverage and clips to inside the
+    /// source rect.
     pub(crate) const SHADOW_INSET: Self = Self(5);
 
     /// Rounded-triangle SDF marker. `fill: Color` is the solid fill; the

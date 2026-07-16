@@ -667,7 +667,7 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
 /// Shared shadow emit. Chrome branch (`Background::shadow`,
 /// `local_rect = None`) and shape-buffer branch (`ShapeRecord::Shadow`,
 /// owner-relative `local_rect`) both route here so the
-/// `shadow_paint_rect_local` translation + `(kind, axis_w)` packing
+/// `shadow_paint_rect_local` translation + fill-axis packing
 /// can't drift between the two views.
 fn emit_shadow(
     out: &mut RenderCmdBuffer,
@@ -692,10 +692,16 @@ fn emit_shadow(
         min: owner_rect.min + paint_local.min,
         size: paint_local.size,
     };
-    let (kind, axis_w) = if inset {
-        (FillKind::SHADOW_INSET, spread.max(0.0))
+    let (kind, fill_axis) = if inset {
+        (
+            FillKind::SHADOW_INSET,
+            FillAxis::from_lanes(offset.x, offset.y, blur, spread),
+        )
     } else {
-        (FillKind::SHADOW_DROP, 0.0)
+        (
+            FillKind::SHADOW_DROP,
+            FillAxis::from_lanes(0.0, 0.0, blur, spread),
+        )
     };
     out.draw_shadow(
         paint_rect,
@@ -705,7 +711,7 @@ fn emit_shadow(
         // unpack-and-repack.
         shadow.color,
         kind,
-        FillAxis::from_lanes(offset.x, offset.y, blur, axis_w),
+        fill_axis,
     );
 }
 

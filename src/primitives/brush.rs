@@ -14,7 +14,8 @@ pub(crate) const MAX_STOPS: usize = 8;
 /// GPU-wire form of a gradient's axis: four f16 lanes (`[u16; 4]`,
 /// 8 B). Variant-dependent layout — `[dir_x, dir_y, t0, t1]` for
 /// linear, `[cx, cy, rx, ry]` for radial, `[cx, cy, start_angle, _]`
-/// for conic, `[offset.x, offset.y, σ, axis_w]` for shadow. Mirrors
+/// for conic, `[0, 0, σ, spread]` for drop shadows, and
+/// `[offset.x, offset.y, σ, spread]` for inset shadows. Mirrors
 /// `Corners`'s u64 lane scheme — the WGSL vertex attribute is
 /// `vec2<u32>` and the shader unpacks via two `unpack2x16float`
 /// calls into the same `vec4<f32>` the fragment shader sees.

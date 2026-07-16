@@ -11,6 +11,7 @@ mod image;
 mod layout;
 mod multi_window;
 mod scroll;
+mod shadow;
 mod text;
 mod widgets;
 

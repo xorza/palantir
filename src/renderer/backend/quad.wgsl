@@ -55,15 +55,14 @@ const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
 // `FillKind::WINDOW_BIT` on the CPU side.
 const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
-// `fill_axis = (offset.x, offset.y, sigma, spread)` in physical px.
 // `fill` is the shadow colour, `radius` is the source rect's corner
 // radii, `size` is the paint bbox.
-//   - Drop:  paint bbox = source.inflated(abs(offset) + 3σ + spread)
-//            per-component (matches encoder). Spread is BAKED into
-//            the paint bbox, so `fill_axis.w` is unused on this path
-//            (held at 0 by the encoder).
+//   - Drop:  paint bbox = (source + offset).inflated(3σ + max(spread, 0)).
+//            Offset and positive spread are baked into the paint bbox;
+//            `fill_axis = (0, 0, sigma, spread)` preserves signed spread.
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
-//            inside the shader via `fill_axis.w`.
+//            inside the shader via
+//            `fill_axis = (offset.x, offset.y, sigma, spread)`.
 const BRUSH_KIND_SHADOW_DROP:  u32 = /*{BRUSH_KIND_SHADOW_DROP}*/;
 const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // Rounded-triangle SDF. `fill` is the solid fill; the three corner points
@@ -338,15 +337,13 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
     let kind = in.fill_kind & 0xFFu;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
-        // Paint bbox covers (source + offset).inflated(3σ + spread).
-        // Source center (in paint-local) = paint_size/2 - offset.
-        // Source half = paint_size/2 - |offset| - 3σ (spread baked in).
-        let offset = in.fill_axis.xy;
         let sigma  = in.fill_axis.z;
+        let spread = in.fill_axis.w;
         let half   = in.size * 0.5;
-        let src_half = max(half - abs(offset) - vec2<f32>(3.0 * sigma), vec2<f32>(0.0));
-        let p = in.local - half - offset;
-        let d = sdf_rounded_box_centered(p, src_half, in.radius);
+        let source_half = half - vec2<f32>(3.0 * sigma + max(spread, 0.0));
+        let shadow_half = max(source_half + vec2<f32>(spread), vec2<f32>(0.0));
+        let p = in.local - half;
+        let d = sdf_rounded_box_centered(p, shadow_half, in.radius);
         let cov = blurred_rect_coverage(d, sigma);
         let a = in.fill.a * cov;
         return vec4<f32>(in.fill.rgb * a, a);
@@ -361,7 +358,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         // the hole is lit (cov→0).
         let offset = in.fill_axis.xy;
         let sigma  = in.fill_axis.z;
-        let spread = max(in.fill_axis.w, 0.0);
+        let spread = in.fill_axis.w;
         let half   = in.size * 0.5;
         // Clip to inside the source — inset never paints outside.
         let p_src = in.local - half;
