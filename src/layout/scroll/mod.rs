@@ -1,11 +1,10 @@
 //! Layout-side scroll subsystem. Owns:
 //!
 //! - **Driver** ([`measure`] + [`arrange`]) — minimal: INF-axis
-//!   measure that records the content extent into the matching
-//!   [`ScrollLayoutState`] row, and a standard arrange that updates
-//!   the layout-derived fields (viewport, overflow, seen) and
-//!   re-clamps `offset` post-arrange. No separate post-pass — the
-//!   driver is the refresh.
+//!   measure records the content extent into the matching
+//!   [`ScrollLayoutState`] row, and standard arrange refreshes the
+//!   layout-derived fields (viewport, overflow, seen). No separate
+//!   post-pass — the driver is the refresh.
 //! - **Cross-frame state** ([`ScrollLayoutState`]) — offset, viewport,
 //!   content, overflow, seen — keyed by the inner viewport node's
 //!   `WidgetId` on [`LayoutEngine::scroll_states`]. The scroll widget
@@ -48,8 +47,7 @@ use crate::layout::zstack;
 /// The driver writes layout-derived fields:
 /// - `measure` records `content` (the panned-axis extent).
 /// - `arrange` records `viewport` (inner rect post user-padding +
-///   constant bar-gutter reservation), `overflow`, `seen`, and
-///   re-clamps `offset` to the new bounds.
+///   constant bar-gutter reservation), `overflow`, and `seen`.
 ///
 /// - `offset` — input-accumulated pan position (next frame's start).
 /// - `viewport` — INNER (user-padding-deflated) size: what children
@@ -113,10 +111,14 @@ impl Default for ScrollLayoutState {
     }
 }
 
-/// Normalized natural offset bounds, per axis (see
-/// [`ScrollLayoutState::natural_bounds`]). `lo`/`hi` are the ordered
-/// endpoints — either may be the larger raw value when content
-/// underflows the viewport.
+#[derive(Clone, Copy, Debug)]
+struct OffsetEndpoints {
+    leading: Vec2,
+    trailing: Vec2,
+}
+
+/// Ordered offset bounds, per axis.
+#[derive(Clone, Copy, Debug)]
 struct OffsetBounds {
     lo: Vec2,
     hi: Vec2,
@@ -140,17 +142,35 @@ pub(crate) struct TrackPage {
 /// the type that owns `offset`, not in `Scroll::show`. All inputs are
 /// primitives so layout stays decoupled from widgets / input / theme.
 impl ScrollLayoutState {
-    /// Natural offset bounds per axis: `[0, content·zoom − viewport]`
-    /// extended by `content_margin·zoom` on each side.
-    fn natural_bounds(&self) -> OffsetBounds {
+    fn offset_endpoints(&self) -> OffsetEndpoints {
         let [cml, cmt, cmr, cmb] = self.content_margin.as_array();
-        let min_x = -cml * self.zoom;
-        let max_x = self.content.w * self.zoom - self.viewport.w + cmr * self.zoom;
-        let min_y = -cmt * self.zoom;
-        let max_y = self.content.h * self.zoom - self.viewport.h + cmb * self.zoom;
+        OffsetEndpoints {
+            leading: Vec2::new(-cml * self.zoom, -cmt * self.zoom),
+            trailing: Vec2::new(
+                self.content.w * self.zoom - self.viewport.w + cmr * self.zoom,
+                self.content.h * self.zoom - self.viewport.h + cmb * self.zoom,
+            ),
+        }
+    }
+
+    /// Settled bounds collapse an underflowing axis at its leading edge;
+    /// ordinary scrolls cannot pan into empty viewport space.
+    fn natural_bounds(&self) -> OffsetBounds {
+        let endpoints = self.offset_endpoints();
         OffsetBounds {
-            lo: Vec2::new(min_x.min(max_x), min_y.min(max_y)),
-            hi: Vec2::new(min_x.max(max_x), min_y.max(max_y)),
+            lo: endpoints.leading,
+            hi: endpoints.trailing.max(endpoints.leading),
+        }
+    }
+
+    /// Pivot zoom can place undersized content between the raw leading
+    /// and trailing endpoints, so zoomable pan preserves that ordered
+    /// interval as its rubber-band range.
+    fn zoom_rubber_band_bounds(&self) -> OffsetBounds {
+        let endpoints = self.offset_endpoints();
+        OffsetBounds {
+            lo: endpoints.leading.min(endpoints.trailing),
+            hi: endpoints.leading.max(endpoints.trailing),
         }
     }
 
@@ -177,14 +197,23 @@ impl ScrollLayoutState {
         }
     }
 
-    /// Wheel/touchpad pan. Each axis clamps to its natural range
-    /// *extended to include the current offset*, so a pan toward the
-    /// range works while a pan further out-of-range is blocked —
-    /// pivot-anchored zoom can legitimately leave `offset` outside the
-    /// range and a wheel-pan must not yank it back in one frame. Only
+    /// Wheel/touchpad pan. Zoomable scrolls retain the ordered underflow
+    /// interval used by pivot zoom; settled scrolls use semantic natural
+    /// bounds. Each range is extended to include the current offset, so
+    /// a pan toward it works while a pan further out is blocked. Only
     /// nonzero deltas clamp (a pure-zoom frame leaves `offset` alone).
-    pub(crate) fn apply_wheel_pan(&mut self, pan_x: bool, pan_y: bool, pan_delta: Vec2) {
-        let b = self.natural_bounds();
+    pub(crate) fn apply_wheel_pan(
+        &mut self,
+        pan_x: bool,
+        pan_y: bool,
+        pan_delta: Vec2,
+        preserve_zoom_underflow: bool,
+    ) {
+        let b = if preserve_zoom_underflow {
+            self.zoom_rubber_band_bounds()
+        } else {
+            self.natural_bounds()
+        };
         if pan_x && pan_delta.x != 0.0 {
             let lo = self.offset.x.min(b.lo.x);
             let hi = self.offset.x.max(b.hi.x);
@@ -197,12 +226,11 @@ impl ScrollLayoutState {
         }
     }
 
-    /// Clamp `offset` straight to the natural range on both axes. Used
-    /// by non-zoomable scrolls each frame, where there's no legitimate
-    /// reason to hold `offset` out of range and a shrunk `content` would
-    /// otherwise strand a stale offset past the now-empty tail. Zoomable
-    /// scrolls skip this — they need the out-of-range drift the pivot
-    /// path depends on.
+    /// Clamp `offset` straight to settled natural bounds on both axes.
+    /// Used by non-zoomable scrolls each frame, where underflow collapses
+    /// at the leading edge and shrunk content cannot strand a stale
+    /// offset past the now-empty tail. Zoomable scrolls skip this because
+    /// pivot anchoring legitimately leaves their offset out of range.
     pub(crate) fn clamp_to_natural(&mut self) {
         let b = self.natural_bounds();
         self.offset.x = self.offset.x.clamp(b.lo.x, b.hi.x);
@@ -342,8 +370,8 @@ pub(crate) fn measure(
 /// stack/zstack arrange so children land in `inner` (already deflated
 /// by user padding), then writes the layout-derived fields onto the
 /// state row: `viewport` is `inner.size`, overflow follows from
-/// `content > viewport` per axis, `seen` flips to true after the
-/// first arrange, and `offset` is re-clamped to the new bounds.
+/// `content > viewport` per axis, and `seen` flips to true after the
+/// first arrange.
 pub(crate) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
@@ -386,8 +414,8 @@ pub(crate) fn arrange(
     // world point under the cursor fixed; clamping in arrange would
     // erase that drift every frame and break cursor anchoring during
     // continuous pinch through a content edge. The widget re-clamps
-    // on actual pan input, which is the only place a stale offset
-    // matters for the user.
+    // on actual pan input; non-zoomable scrolls also settle their offset
+    // at record time.
 }
 
 #[cfg(test)]
