@@ -16,7 +16,7 @@ use crate::forest::shapes::record::ShapeRecord;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
-use crate::primitives::brush::Brush;
+use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::rect::Rect;
@@ -61,41 +61,70 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
     h.finish()
 }
 
+fn stored_gradient(store: &RecordStore, gradient: RecordedGradient, hash: u64) -> LoweredBrush {
+    let id = store.borrow_mut().record_gradient(gradient);
+    LoweredBrush {
+        brush: ShapeBrush::Gradient(id),
+        hash,
+    }
+}
+
+fn solid_brush(color: Color) -> LoweredBrush {
+    LoweredBrush {
+        brush: ShapeBrush::Solid(color.into()),
+        hash: 0,
+    }
+}
+
+fn linear_brush(store: &RecordStore, gradient: &LinearGradient) -> LoweredBrush {
+    stored_gradient(
+        store,
+        RecordedGradient {
+            axis: gradient.axis(),
+            kind: FillKind::linear(gradient.spread),
+            stops: gradient.stops,
+            interp: gradient.interp,
+        },
+        grad_hash(0, gradient),
+    )
+}
+
 /// Lower a user-side `Brush` to the storage form: `Solid` stays
 /// inline; gradients retain their content in the store and return an indexing
 /// `ShapeBrush::Gradient`. The pre-computed content hash is returned
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
 pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
-    let (kind, axis, stops, interp, hash) = match b {
-        Brush::Solid(c) => {
-            return LoweredBrush {
-                brush: ShapeBrush::Solid((*c).into()),
-                hash: 0,
-            };
-        }
-        Brush::Linear(g) => {
-            let h = grad_hash(0, g);
-            (FillKind::linear(g.spread), g.axis(), &g.stops, g.interp, h)
-        }
-        Brush::Radial(g) => {
-            let h = grad_hash(1, g);
-            (FillKind::radial(g.spread), g.axis(), &g.stops, g.interp, h)
-        }
-        Brush::Conic(g) => {
-            let h = grad_hash(2, g);
-            (FillKind::conic(g.spread), g.axis(), &g.stops, g.interp, h)
-        }
-    };
-    let id = store.borrow_mut().record_gradient(RecordedGradient {
-        axis,
-        kind,
-        stops: *stops,
-        interp,
-    });
-    LoweredBrush {
-        brush: ShapeBrush::Gradient(id),
-        hash,
+    match b {
+        Brush::Solid(color) => solid_brush(*color),
+        Brush::Linear(gradient) => linear_brush(store, gradient),
+        Brush::Radial(gradient) => stored_gradient(
+            store,
+            RecordedGradient {
+                axis: gradient.axis(),
+                kind: FillKind::radial(gradient.spread),
+                stops: gradient.stops,
+                interp: gradient.interp,
+            },
+            grad_hash(1, gradient),
+        ),
+        Brush::Conic(gradient) => stored_gradient(
+            store,
+            RecordedGradient {
+                axis: gradient.axis(),
+                kind: FillKind::conic(gradient.spread),
+                stops: gradient.stops,
+                interp: gradient.interp,
+            },
+            grad_hash(2, gradient),
+        ),
+    }
+}
+
+fn curve_brush(store: &RecordStore, brush: &CurveBrush) -> LoweredBrush {
+    match brush {
+        CurveBrush::Solid(color) => solid_brush(*color),
+        CurveBrush::Linear(gradient) => linear_brush(store, gradient),
     }
 }
 
@@ -233,20 +262,16 @@ pub(crate) fn polyline(
 /// Lower a cubic bezier into a `ShapeRecord::Curve`. Tessellation
 /// happens GPU-side at draw time — no CPU flattening, no per-curve
 /// vertex/index allocation. The composer derives sub-instance count
-/// from the post-transform control-polygon length. `brush` may be
-/// `Brush::Solid` or `Brush::Linear` — the linear gradient samples
-/// along the curve parameter `t` and its `angle` is ignored;
-/// `Radial`/`Conic` panic at lowering (no meaningful axis on a
-/// 1-D stroke).
+/// from the post-transform control-polygon length. A linear gradient samples
+/// along the curve parameter `t`; its `angle` is ignored.
 pub(crate) fn cubic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 4],
     width: f32,
-    brush: Brush,
+    brush: CurveBrush,
     cap: LineCap,
 ) -> ShapeRecord {
-    assert_curve_brush(&brush);
-    let lowered = self::brush(store, &brush);
+    let lowered = curve_brush(store, &brush);
     curve_inner(ctrl, width, lowered, cap)
 }
 
@@ -257,13 +282,12 @@ pub(crate) fn quadratic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 3],
     width: f32,
-    brush: Brush,
+    brush: CurveBrush,
     cap: LineCap,
 ) -> ShapeRecord {
-    assert_curve_brush(&brush);
     let [p0, c, p2] = ctrl;
     let cubic = quadratic_to_cubic(p0, c, p2);
-    let lowered = self::brush(store, &brush);
+    let lowered = curve_brush(store, &brush);
     curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap)
 }
 
@@ -277,11 +301,10 @@ pub(crate) fn line(
     a: Vec2,
     b: Vec2,
     width: f32,
-    brush: Brush,
+    brush: CurveBrush,
     cap: LineCap,
 ) -> ShapeRecord {
-    assert_curve_brush(&brush);
-    let lowered = self::brush(store, &brush);
+    let lowered = curve_brush(store, &brush);
     let third = (b - a) / 3.0;
     curve_inner([a, a + third, b - third, b], width, lowered, cap)
 }
@@ -289,8 +312,7 @@ pub(crate) fn line(
 /// Lower a circular arc into a [`ShapeRecord::Arc`]. Same native-GPU
 /// stroke path as the béziers — no CPU flattening; the shader
 /// evaluates the exact circle, so the record stores center/radius/
-/// angles verbatim. `brush` follows the curve contract (`Solid` /
-/// `Linear` sampled along the sweep; `Radial`/`Conic` rejected).
+/// angles verbatim. A linear gradient is sampled along the sweep.
 /// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
 /// pixels and double-blend a translucent stroke.
 #[allow(clippy::too_many_arguments)]
@@ -301,15 +323,14 @@ pub(crate) fn arc(
     start_angle: f32,
     sweep: f32,
     width: f32,
-    brush: Brush,
+    brush: CurveBrush,
     cap: LineCap,
 ) -> ShapeRecord {
-    assert_curve_brush(&brush);
     debug_assert!(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
     );
-    let lowered = self::brush(store, &brush);
+    let lowered = curve_brush(store, &brush);
     let a1 = start_angle + sweep;
     let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
     let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));
@@ -326,9 +347,7 @@ pub(crate) fn arc(
     }
 }
 
-/// Lower a triangle into a [`ShapeRecord::Triangle`]. Solid fill only —
-/// gradients can't ride the reused quad-instance lanes, so `fill` is
-/// `expect_solid`'d here (rejecting a gradient at the authoring boundary).
+/// Lower a triangle into a [`ShapeRecord::Triangle`].
 /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
 /// `radius + AA fringe` (the SDF offsets the shape outward by `radius`;
 /// the stroke is inner-edge and adds no outward reach), so damage and
@@ -339,7 +358,7 @@ pub(crate) fn triangle(
     b: Vec2,
     c: Vec2,
     radius: f32,
-    fill: Brush,
+    fill: Color,
     stroke: Stroke,
 ) -> ShapeRecord {
     let lo = a.min(b).min(c);
@@ -351,26 +370,9 @@ pub(crate) fn triangle(
         b,
         c,
         radius,
-        fill: fill.expect_solid().into(),
+        fill: fill.into(),
         stroke: ShapeStroke::from(stroke),
         bbox,
-    }
-}
-
-/// GPU-stroked shapes (Line / beziers / Arc) accept `Brush::Solid` or
-/// `Brush::Linear`. Radial and conic gradients project onto a 2-D
-/// shape; there is no obvious projection onto a 1-D stroke (the chord
-/// and the curve's bounding rect are both poor proxies), so we reject
-/// at lowering rather than silently pick one. If a stroke-friendly
-/// radial/conic interpretation shows up, lift this gate.
-fn assert_curve_brush(brush: &Brush) {
-    match brush {
-        Brush::Solid(_) | Brush::Linear(_) => {}
-        Brush::Radial(_) | Brush::Conic(_) => {
-            panic!(
-                "stroked shapes (Line / beziers / Arc): only Brush::Solid and Brush::Linear are supported"
-            )
-        }
     }
 }
 

@@ -391,7 +391,7 @@ impl<'a> DragValue<'a> {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text,
-                brush: look.text.color.into(),
+                color: look.text.color,
                 font_size_px: look.text.font_size_px,
                 line_height_px: look.line_height_px(),
                 wrap: TextWrap::Truncate,

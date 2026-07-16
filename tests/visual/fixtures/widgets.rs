@@ -943,7 +943,7 @@ fn triangle_matches_golden() {
                     b: Vec2::new(65.0, 15.0),
                     c: Vec2::new(110.0, 100.0),
                     radius: 0.0,
-                    fill: Color::rgb(1.0, 0.4, 0.4).into(),
+                    fill: Color::rgb(1.0, 0.4, 0.4),
                     stroke: Stroke::ZERO,
                 });
                 // Top-right: rounded solid fill.
@@ -952,7 +952,7 @@ fn triangle_matches_golden() {
                     b: Vec2::new(175.0, 15.0),
                     c: Vec2::new(220.0, 100.0),
                     radius: 12.0,
-                    fill: Color::rgb(0.4, 1.0, 0.5).into(),
+                    fill: Color::rgb(0.4, 1.0, 0.5),
                     stroke: Stroke::ZERO,
                 });
                 // Bottom-left: rounded fill + inner-edge stroke.
@@ -961,7 +961,7 @@ fn triangle_matches_golden() {
                     b: Vec2::new(65.0, 135.0),
                     c: Vec2::new(110.0, 220.0),
                     radius: 8.0,
-                    fill: Color::rgb(0.2, 0.5, 1.0).into(),
+                    fill: Color::rgb(0.2, 0.5, 1.0),
                     stroke: Stroke::solid(Color::WHITE, 3.0),
                 });
                 // Bottom-right: stroke-only (transparent fill), CW winding.
@@ -970,7 +970,7 @@ fn triangle_matches_golden() {
                     b: Vec2::new(175.0, 135.0),
                     c: Vec2::new(130.0, 220.0),
                     radius: 6.0,
-                    fill: Color::TRANSPARENT.into(),
+                    fill: Color::TRANSPARENT,
                     stroke: Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0),
                 });
             });
@@ -1045,11 +1045,11 @@ fn arc_shapes_match_golden() {
                     Shape::circle(Vec2::new(45.0, 70.0), 30.0, 4.0)
                         .brush(Color::rgb(0.2, 0.9, 1.0)),
                 );
-                let comet = Brush::Linear(LinearGradient::two_stop(
+                let comet = LinearGradient::two_stop(
                     0.0,
                     Color::rgb(1.0, 0.85, 0.2).with_alpha(0.0),
                     Color::rgb(1.0, 0.85, 0.2),
-                ));
+                );
                 ui.add_shape(
                     Shape::arc(Vec2::new(130.0, 70.0), 30.0, -FRAC_PI_2, 1.5 * PI, 8.0)
                         .brush(comet)

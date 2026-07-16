@@ -335,11 +335,11 @@ fn outlined_style() -> ButtonTheme {
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                background: Some(bg(Color::TRANSPARENT, stroke.clone())),
+                background: Some(bg(Color::TRANSPARENT, stroke)),
                 text: None,
             },
             hovered: WidgetLook {
-                background: Some(bg(accent.with_alpha(0.18), stroke.clone())),
+                background: Some(bg(accent.with_alpha(0.18), stroke)),
                 text: None,
             },
             active: WidgetLook {

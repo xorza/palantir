@@ -4,7 +4,6 @@ use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::shape::{LineCap, Shape};
@@ -143,7 +142,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                     a: Vec2::new(120.0, 120.0),
                     b: Vec2::new(180.0, 180.0),
                     width: 2.0,
-                    brush: Brush::Solid(BLUE),
+                    brush: BLUE.into(),
                     cap: LineCap::Round,
                 });
                 for i in 0..n_children {
@@ -412,7 +411,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
             a: Vec2::new(10.0, 40.0),
             b: Vec2::new(70.0, 40.0),
             width: 4.0,
-            brush: Brush::Solid(BLUE),
+            brush: BLUE.into(),
             cap: LineCap::Round,
         });
     };
@@ -485,7 +484,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
             a: Vec2::new(10.0, 30.0),
             b: Vec2::new(70.0, 30.0),
             width: 8.0,
-            brush: Brush::Solid(color),
+            brush: color.into(),
             cap: LineCap::Round,
         });
     };
@@ -548,7 +547,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                     a: Vec2::new(10.0, 100.0),
                     b: Vec2::new(70.0, 100.0),
                     width: 4.0,
-                    brush: Brush::Solid(RED),
+                    brush: RED.into(),
                     cap: LineCap::Round,
                 });
             });
@@ -603,7 +602,7 @@ fn rekeying_a_child_damages_only_the_child() {
                     a: Vec2::new(10.0, 100.0),
                     b: Vec2::new(70.0, 100.0),
                     width: 4.0,
-                    brush: Brush::Solid(RED),
+                    brush: RED.into(),
                     cap: LineCap::Round,
                 });
             });
@@ -3068,7 +3067,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                     ui.add_shape(Shape::Text {
                         local_origin: Some(ORIGIN),
                         text: text.into(),
-                        brush: Color::WHITE.into(),
+                        color: Color::WHITE,
                         font_size_px: FONT,
                         line_height_px: FONT,
                         wrap: TextWrap::Truncate,
@@ -3249,7 +3248,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
                 a: Vec2::new(5.0, 10.0),
                 b: Vec2::new(20.0, 10.0),
                 width: 2.0,
-                brush: Brush::Solid(color),
+                brush: color.into(),
                 cap: LineCap::Round,
             });
         });
@@ -3342,7 +3341,7 @@ fn front_insert_damages_only_the_new_shape() {
             a: Vec2::new(10.0, y),
             b: Vec2::new(70.0, y),
             width: 2.0,
-            brush: Brush::Solid(BLUE),
+            brush: BLUE.into(),
             cap: LineCap::Round,
         });
     };
@@ -3356,7 +3355,7 @@ fn front_insert_damages_only_the_new_shape() {
                         a: Vec2::new(140.0, 150.0),
                         b: Vec2::new(170.0, 150.0),
                         width: 2.0,
-                        brush: Brush::Solid(RED),
+                        brush: RED.into(),
                         cap: LineCap::Round,
                     });
                 }

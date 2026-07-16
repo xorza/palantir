@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element};
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::brush::{Brush, LinearGradient};
+use crate::primitives::brush::LinearGradient;
 use crate::primitives::color::Color;
 use crate::shape::{LineCap, Shape};
 use crate::ui::Ui;
@@ -86,7 +86,7 @@ impl Spinner {
             let ArcGeometry { center, radius } = arc_geometry(size, width);
             ui.add_shape_animated(
                 Shape::arc(center, radius, 0.0, SWEEP, width)
-                    .brush(Brush::Linear(comet_brush(color)))
+                    .brush(comet_brush(color))
                     .cap(LineCap::Round),
                 PaintAnim::Spin {
                     speed: SPEED,

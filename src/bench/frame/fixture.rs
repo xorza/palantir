@@ -622,6 +622,6 @@ fn add_shape_gallery(ui: &mut Ui) {
     ui.add_shape(Shape::Mesh {
         mesh,
         local_rect: None,
-        tint: Color::WHITE.into(),
+        tint: Color::WHITE,
     });
 }

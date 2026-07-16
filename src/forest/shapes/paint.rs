@@ -39,7 +39,7 @@ impl From<&Stroke> for ShapeStroke {
     #[inline]
     fn from(stroke: &Stroke) -> Self {
         Self {
-            color: ColorF16::from(stroke.brush.expect_solid()),
+            color: ColorF16::from(stroke.color),
             width_f16: f16::from_f32(stroke.width).to_bits(),
         }
     }

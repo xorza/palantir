@@ -156,7 +156,7 @@ impl Shapes {
             Shape::Text {
                 local_origin,
                 text,
-                brush,
+                color,
                 font_size_px,
                 line_height_px,
                 wrap,
@@ -184,7 +184,7 @@ impl Shapes {
                     local_origin,
                     text,
                     text_hash,
-                    color: brush.expect_solid().into(),
+                    color: color.into(),
                     font_size_px,
                     line_height_px,
                     wrap,
@@ -232,7 +232,7 @@ impl Shapes {
                 let bbox = mesh.bbox();
                 ShapeRecord::Mesh {
                     local_rect,
-                    tint: tint.expect_solid().into(),
+                    tint: tint.into(),
                     vertices: Span::new(v_start, mesh.vertices.len() as u32),
                     indices: Span::new(i_start, mesh.indices.len() as u32),
                     bbox,

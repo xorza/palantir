@@ -6,7 +6,7 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use aperture::{Brush, Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
+use aperture::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 use glam::Vec2;
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -158,11 +158,7 @@ fn quadratic(ui: &mut Ui) {
 fn gradient_cubic(ui: &mut Ui) {
     // Two-stop gradient along the curve's t parameter (p0 → p3). The
     // `angle` field of LinearGradient is unused on curves.
-    let brush = Brush::Linear(LinearGradient::two_stop(
-        0.0,
-        Color::rgb(1.0, 0.2, 0.4),
-        Color::rgb(0.2, 0.6, 1.0),
-    ));
+    let brush = LinearGradient::two_stop(0.0, Color::rgb(1.0, 0.2, 0.4), Color::rgb(0.2, 0.6, 1.0));
     ui.add_shape(
         Shape::cubic_bezier(P0, P1, P2, P3, 8.0)
             .brush(brush)
@@ -173,14 +169,14 @@ fn gradient_cubic(ui: &mut Ui) {
 fn gradient_multistop(ui: &mut Ui) {
     // Three-stop rainbow gradient. Same atlas + bake path as
     // RoundedRect linear fills.
-    let brush = Brush::Linear(LinearGradient::new(
+    let brush = LinearGradient::new(
         0.0,
         [
             Stop::new(0.0, Color::rgb(1.0, 0.2, 0.2)),
             Stop::new(0.5, Color::rgb(1.0, 0.9, 0.2)),
             Stop::new(1.0, Color::rgb(0.2, 0.6, 1.0)),
         ],
-    ));
+    );
     ui.add_shape(
         Shape::quadratic_bezier(Q0, Q1, Q2, 10.0)
             .brush(brush)
@@ -194,11 +190,11 @@ fn arcs(ui: &mut Ui) {
     ui.add_shape(Shape::circle(Vec2::new(35.0, 35.0), 25.0, 3.0).brush(Color::rgb(0.2, 0.9, 1.0)));
     // 3/4 sweep with a gradient along the arc (the spinner's comet
     // shape) — transparent tail to full head, round caps.
-    let comet = Brush::Linear(LinearGradient::two_stop(
+    let comet = LinearGradient::two_stop(
         0.0,
         Color::rgb(1.0, 0.85, 0.2).with_alpha(0.0),
         Color::rgb(1.0, 0.85, 0.2),
-    ));
+    );
     ui.add_shape(
         Shape::arc(Vec2::new(85.0, 35.0), 25.0, -FRAC_PI_2, 1.5 * PI, 6.0)
             .brush(comet)

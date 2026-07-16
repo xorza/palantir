@@ -587,7 +587,7 @@ impl<'a> TextEdit<'a> {
                         pad_t + offset.y - scroll.y,
                     )),
                     text: display,
-                    brush: color.into(),
+                    color,
                     font_size_px: ctx.font_size,
                     line_height_px: ctx.line_height_px,
                     wrap: if ctx.multiline {

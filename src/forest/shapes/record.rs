@@ -181,8 +181,8 @@ pub(crate) enum ShapeRecord {
         /// The gradient is sampled along the curve parameter `t` (p0 →
         /// p3) in the shader — the `LinearGradient::angle` from authoring
         /// is intentionally ignored, because the curve carries its own
-        /// 1-D parameter.
-        /// `Radial`/`Conic` brushes are rejected at lowering.
+        /// 1-D parameter. The authoring type cannot contain radial or
+        /// conic gradients.
         fill: ShapeBrush,
         /// Pre-computed content hash of `fill` when it's a gradient,
         /// `0` for solid — same context-free-hash trick as

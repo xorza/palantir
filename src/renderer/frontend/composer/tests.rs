@@ -2972,7 +2972,7 @@ fn quad_fast_path_flag_cases() {
 
     for (name, r, corners, stroke, brush, dpr, expect_fast) in cases {
         let buf = run(
-            |b, _arena| b.draw_rect(*r, *corners, *brush, stroke.clone().into()),
+            |b, _arena| b.draw_rect(*r, *corners, *brush, (*stroke).into()),
             &params(*dpr, UVec2::new(400, 400)),
         );
         assert_eq!(buf.quads.len(), 1, "{name}: quad emitted");
