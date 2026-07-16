@@ -45,7 +45,7 @@ fn many_rects_compose_alloc_free() {
 /// Static polyline pushed every frame. Slice borrows are copied into
 /// the window's record store at `add_shape` time, so the closure can
 /// hold the `Vec` and hand `&points[..]` to the shape variant. Pins
-/// the composer's polyline point/kept scratch reuse.
+/// the composer's polyline point/index/direction scratch reuse.
 #[test]
 fn polyline_static_alloc_free() {
     let points: Vec<glam::Vec2> = (0..32)
