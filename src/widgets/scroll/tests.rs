@@ -93,7 +93,20 @@ fn wheel_delta_advances_offset_with_clamp() {
             &[50.0, 9_999.0],
             600.0,
         ),
-        ("non_overflowing_stays_zero", 300.0, 100.0, &[500.0], 0.0),
+        (
+            "non_overflowing_positive_wheel_stays_zero",
+            300.0,
+            100.0,
+            &[500.0],
+            0.0,
+        ),
+        (
+            "non_overflowing_negative_wheel_stays_zero",
+            300.0,
+            100.0,
+            &[-500.0],
+            0.0,
+        ),
     ];
     for (label, viewport_h, content_h, pushes, expected) in cases {
         let mut ui = Ui::for_test();
@@ -568,6 +581,39 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
         -45.0,
         after2.offset.y,
     );
+}
+
+#[test]
+fn pivot_zoom_preserves_underflow_pan_range() {
+    let mut ui = Ui::for_test();
+    let build = |ui: &mut Ui| {
+        Scroll::both()
+            .id(WidgetId::from_hash("scroll"))
+            .with_zoom()
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("content"))
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                    .show(ui);
+            });
+    };
+    ui.run_at_acked(SURFACE, build);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    ui.on_input(InputEvent::Zoom(0.5));
+    ui.run_at_acked(SURFACE, build);
+
+    let id = WidgetId::from_hash("scroll").with("__viewport");
+    let zoomed = *ui.scroll_state(id);
+    let expected_zoomed_offset = (0.0 + 50.0) * 0.5 - 50.0;
+    assert_eq!(zoomed.zoom, 0.5);
+    assert_eq!(zoomed.offset.y, expected_zoomed_offset);
+
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
+    ui.run_at_acked(SURFACE, build);
+    let panned = *ui.scroll_state(id);
+    assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
+    assert_ne!(panned.offset.y, zoomed.offset.y);
 }
 
 mod bars {

@@ -479,9 +479,7 @@ impl Scroll {
         }
 
         // Record-time clamp uses last frame's `viewport`/`content`/
-        // `offset`. The matching re-clamp in `scroll::arrange`
-        // corrects with fresh numbers post-arrange. Off-axis offsets
-        // stay at 0 for single-axis scrolls.
+        // `offset`. Off-axis offsets stay at 0 for single-axis scrolls.
         //
         // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack (so wheel events over the bar gutter still pan the
@@ -563,9 +561,8 @@ impl Scroll {
 
         let (scroll, bl) = {
             let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
-            // Forward the builder-set content margin to the layout
-            // driver — measure inflates `content` by these totals so
-            // overflow / slack / bar math sees the padded extent.
+            // Keep margin separate from measured content so overflow
+            // and bars continue to reflect the real content bounds.
             row.content_margin = self.content_margin;
             // The offset/zoom-mutation math lives on `ScrollLayoutState`
             // (the type that owns `offset`); the widget computes the
@@ -578,8 +575,9 @@ impl Scroll {
             // 2) Wheel pan, then 2b) the settled clamp for non-zoomable
             //    scrolls (zoomable ones keep the out-of-range drift the
             //    pivot path depends on).
-            row.apply_wheel_pan(pan.x, pan.y, pan_delta);
-            if self.zoom.is_none() {
+            let preserve_zoom_underflow = self.zoom.is_some();
+            row.apply_wheel_pan(pan.x, pan.y, pan_delta, preserve_zoom_underflow);
+            if !preserve_zoom_underflow {
                 row.clamp_to_natural();
             }
             // 3) Thumb-drag pan. Bars use the *scaled* content extent so
