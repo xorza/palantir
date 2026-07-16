@@ -12,6 +12,7 @@ use tinyvec::TinyVec;
 /// 64 px balances tile count (~4500 for a 4K viewport, fits in L1)
 /// against per-tile rect count (typically 1-3 in dense UIs).
 const TILE_SIZE: u32 = 64;
+const TILE_INDEX_CAPACITY: usize = u16::MAX as usize + 1;
 
 /// Per-tile inline capacity for the grid's index lists. Sized
 /// empirically from the `frame/resizing` workload (dense UI at 32×
@@ -59,7 +60,8 @@ pub(crate) struct TextRectGrid {
     /// per-frame clear walk to the tiles we genuinely touched.
     touched: Vec<u32>,
     /// All rects inserted into the current batch, in insertion order.
-    /// `tiles` stores indices into this vec.
+    /// `tiles` indexes the first [`TILE_INDEX_CAPACITY`] rects; any
+    /// remaining tail is queried linearly.
     rects: Vec<URect>,
     /// Union AABB of every rect in `rects`. O(1) pre-reject for
     /// [`Self::any_overlap`]: a query outside the union can't hit any
@@ -115,19 +117,15 @@ impl TextRectGrid {
         if r.w == 0 || r.h == 0 {
             return;
         }
-        // Tile buckets store rect indices as `u16`. Past 65 535 text
-        // rects in one batch the cast would wrap and the grid would
-        // point at the wrong rect — a silent paint-order corruption.
-        // Far above any real text-dense batch; debug builds reject it
-        // rather than truncate.
-        debug_assert!(
-            self.rects.len() < u16::MAX as usize,
-            "TextRectGrid batch exceeded {} rects — u16 index would wrap",
-            u16::MAX,
-        );
-        let idx = self.rects.len() as u16;
+        let idx = self.rects.len();
         self.rects.push(r);
         self.union = self.union.union(r);
+        // Preserve compact tile buckets for realistic batches; an
+        // exceptional tail remains correct without widening every tile.
+        if idx >= TILE_INDEX_CAPACITY {
+            return;
+        }
+        let idx = idx as u16;
         let max_x = self.cols - 1;
         let max_y = self.rows - 1;
         let cx0 = (r.x / TILE_SIZE).min(max_x);
@@ -177,14 +175,16 @@ impl TextRectGrid {
                 }
             }
         }
-        false
+        self.rects[TILE_INDEX_CAPACITY.min(self.rects.len())..]
+            .iter()
+            .any(|r| r.intersect(q).is_some())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::primitives::urect::URect;
-    use crate::renderer::frontend::composer::text_grid::TextRectGrid;
+    use crate::renderer::frontend::composer::text_grid::{TILE_INDEX_CAPACITY, TextRectGrid};
     use glam::UVec2;
 
     #[test]
@@ -233,6 +233,24 @@ mod tests {
         assert!(g.any_overlap(URect::new(60, 60, 4, 4)), "left tile hit");
         assert!(g.any_overlap(URect::new(76, 76, 4, 4)), "right tile hit");
         assert!(g.any_overlap(URect::new(64, 64, 1, 1)), "boundary tile hit");
+    }
+
+    #[test]
+    fn text_grid_falls_back_after_tile_index_capacity() {
+        let mut g = TextRectGrid::default();
+        g.start_frame(UVec2::new(64, 64));
+        let indexed = URect::new(0, 0, 1, 1);
+        for _ in 0..TILE_INDEX_CAPACITY {
+            g.push(indexed);
+        }
+        let overflow = URect::new(10, 10, 1, 1);
+        g.push(overflow);
+
+        assert_eq!(g.rects.len(), TILE_INDEX_CAPACITY + 1);
+        assert_eq!(g.tiles[0].len(), TILE_INDEX_CAPACITY);
+        assert!(g.any_overlap(indexed));
+        assert!(g.any_overlap(overflow));
+        assert!(!g.any_overlap(URect::new(20, 20, 1, 1)));
     }
 
     #[test]
