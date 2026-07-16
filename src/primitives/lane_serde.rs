@@ -6,7 +6,7 @@
 //! onto the four lanes — captured by [`LaneCodec`]; everything else is
 //! shared here so the two visitors can't drift apart.
 
-use serde::de::{self, MapAccess, SeqAccess, Visitor};
+use serde::de::{self, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use std::fmt;
 use std::marker::PhantomData;
@@ -56,6 +56,7 @@ pub(crate) fn deserialize<'de, T: LaneCodec, D: serde::Deserializer<'de>>(
     d.deserialize_any(LaneVisitor::<T>(PhantomData))
 }
 
+#[derive(Debug)]
 struct LaneVisitor<T>(PhantomData<T>);
 
 impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
@@ -64,7 +65,7 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "a number, a 2- or 4-element array, or a {{{}}} table",
+            "a number, a 1-, 2-, or 4-element array, or a {{{}}} table",
             T::FIELDS.join(", ")
         )
     }
@@ -92,6 +93,9 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
         let v3: f32 = a
             .next_element()?
             .ok_or_else(|| de::Error::invalid_length(3, &self))?;
+        if a.next_element::<IgnoredAny>()?.is_some() {
+            return Err(de::Error::invalid_length(5, &self));
+        }
         Ok(T::from_lane_array([v0, v1, v2, v3]))
     }
 
@@ -99,10 +103,87 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
         let mut lanes = [None::<f32>; 4];
         while let Some(k) = m.next_key::<String>()? {
             match T::FIELDS.iter().position(|f| *f == k) {
-                Some(i) => lanes[i] = Some(m.next_value()?),
+                Some(i) => {
+                    if lanes[i].is_some() {
+                        return Err(de::Error::duplicate_field(T::FIELDS[i]));
+                    }
+                    lanes[i] = Some(m.next_value()?);
+                }
                 None => return Err(de::Error::unknown_field(&k, T::FIELDS)),
             }
         }
         Ok(T::from_lane_array(lanes.map(|o| o.unwrap_or(0.0))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::lane_serde::{self, LaneCodec};
+    use serde::de::value::{Error, MapDeserializer, SeqDeserializer};
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    struct TestLanes([f32; 4]);
+
+    impl LaneCodec for TestLanes {
+        const FIELDS: &'static [&'static str] = &["a", "b", "c", "d"];
+
+        fn from_lane_array(lanes: [f32; 4]) -> Self {
+            Self(lanes)
+        }
+
+        fn to_lane_array(&self) -> [f32; 4] {
+            self.0
+        }
+
+        fn two_form(_lanes: [f32; 4]) -> Option<[f32; 2]> {
+            None
+        }
+
+        fn expand_two([a, b]: [f32; 2]) -> [f32; 4] {
+            [a, a, b, b]
+        }
+    }
+
+    fn deserialize_seq(values: &[f32]) -> Result<TestLanes, Error> {
+        let deserializer = SeqDeserializer::new(values.iter().copied());
+        lane_serde::deserialize(deserializer)
+    }
+
+    #[test]
+    fn sequence_lengths_preserve_supported_forms_and_reject_others() {
+        assert_eq!(deserialize_seq(&[4.0]).unwrap(), TestLanes([4.0; 4]));
+        assert_eq!(
+            deserialize_seq(&[1.0, 2.0]).unwrap(),
+            TestLanes([1.0, 1.0, 2.0, 2.0]),
+        );
+        assert_eq!(
+            deserialize_seq(&[1.0, 2.0, 3.0, 4.0]).unwrap(),
+            TestLanes([1.0, 2.0, 3.0, 4.0]),
+        );
+
+        for values in [&[][..], &[1.0, 2.0, 3.0], &[1.0, 2.0, 3.0, 4.0, 5.0]] {
+            let error = deserialize_seq(values).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "invalid length {}, expected a number, a 1-, 2-, or 4-element array, or a {{a, b, c, d}} table",
+                    values.len(),
+                ),
+                "values={values:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn map_preserves_missing_defaults_and_rejects_duplicate_fields() {
+        let missing = MapDeserializer::<_, Error>::new([("a", 1.0), ("c", 3.0)].into_iter());
+        assert_eq!(
+            lane_serde::deserialize::<TestLanes, _>(missing).unwrap(),
+            TestLanes([1.0, 0.0, 3.0, 0.0]),
+        );
+
+        let duplicate = MapDeserializer::<_, Error>::new([("a", 1.0), ("a", 2.0)].into_iter());
+        let error = lane_serde::deserialize::<TestLanes, _>(duplicate).unwrap_err();
+        assert_eq!(error.to_string(), "duplicate field `a`");
     }
 }
