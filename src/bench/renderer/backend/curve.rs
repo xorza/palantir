@@ -11,6 +11,7 @@
 //! complete record-to-GPU wall time; the keep-or-revert signal is the median
 //! curve timestamp and pipeline statistics printed before each case.
 
+use crate::app::test_support::RecordApp;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::renderer::backend::gpu_pass_stats::BatchKind;
@@ -18,6 +19,7 @@ use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
+use crate::window::WindowToken;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
 use pollster::FutureExt;
@@ -121,6 +123,7 @@ fn target(device: &wgpu::Device) -> wgpu::Texture {
 
 fn host(gpu: &Gpu) -> OffscreenHost {
     let mut host = OffscreenHost::builder(
+        WindowToken(0),
         gpu.device.clone(),
         gpu.queue.clone(),
         TextShaper::with_bundled_fonts(),
@@ -200,7 +203,8 @@ fn render(
     phase: &mut bool,
 ) {
     *phase = !*phase;
-    host.frame_offscreen(target, 1.0, |ui| record(ui, workload, *phase));
+    let mut app = RecordApp::new(|ui| record(ui, workload, *phase));
+    host.frame_offscreen(target, 1.0, &mut app);
     poll(&gpu.device);
 }
 

@@ -52,7 +52,7 @@ fn caret_blinks_on_and_off_while_focused() {
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         use crate::display::Display;
         let display = Display::from_physical(NARROW, 1.0);
-        ui.frame(
+        ui.record(
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
             |ui| f(ui),
         );
@@ -156,7 +156,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
-        let report = ui.frame(
+        let report = ui.record(
             FrameStamp::new(display, Duration::from_secs_f32(t_secs)),
             |ui| {
                 record(ui, buf);
@@ -220,7 +220,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t: f32| {
-        let r = ui.frame(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
+        let r = ui.record(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
             body(ui, buf)
         });
         ui.frame_runtime.frame_submitted = true;
@@ -258,7 +258,7 @@ fn focused_text_edit_schedules_blink_wake() {
     let display = Display::from_physical(NARROW, 1.0);
 
     // Unfocused: no blink schedule.
-    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))
@@ -274,7 +274,7 @@ fn focused_text_edit_schedules_blink_wake() {
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
     ui.click_at(Vec2::new(20.0, 20.0));
-    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))

@@ -145,7 +145,7 @@ pub(crate) struct AnimRow<T: Animatable> {
     kind: AnimKind,
     /// `Ui` frame-runtime id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:
-    /// `run_frame` re-runs `build` after an input action drains) sees
+    /// the frame driver re-runs `build` after an input action drains) sees
     /// this match and short-circuits the dt-driven advance, so the
     /// integrator advances exactly once per host frame. Retarget
     /// logic still runs in the short-circuited call so pass B's

@@ -50,6 +50,7 @@
 
 pub(crate) mod fixture;
 
+use crate::app::test_support::RecordApp;
 use crate::bench::frame::fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::display::Display;
 use crate::host::offscreen::OffscreenHost;
@@ -61,6 +62,7 @@ use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{FramePaint, RenderKind, RenderPlan};
+use crate::window::WindowToken;
 use criterion::Criterion;
 use pollster::FutureExt;
 use std::fs::OpenOptions;
@@ -159,6 +161,7 @@ fn gpu() -> &'static Gpu {
 /// wants the same shape — bundled fonts, `collect_gpu_stats: true`.
 fn bench_host(g: &Gpu) -> OffscreenHost {
     OffscreenHost::builder(
+        WindowToken(0),
         g.device.clone(),
         g.queue.clone(),
         TextShaper::with_bundled_fonts(),
@@ -167,6 +170,16 @@ fn bench_host(g: &Gpu) -> OffscreenHost {
     // Bench arms reuse their target(s) across iters → direct-present path.
     .target_persists(true)
     .build()
+}
+
+fn frame_offscreen(
+    host: &mut OffscreenHost,
+    target: &wgpu::Texture,
+    scale_factor: f32,
+    record: impl FnMut(&mut Ui),
+) {
+    let mut app = RecordApp::new(record);
+    host.frame_offscreen(target, scale_factor, &mut app);
 }
 
 fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::Texture {
@@ -233,7 +246,7 @@ impl CpuHarness {
     /// only kicks in when there's nothing to paint at all.
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
         let stamp = FrameStamp::new(display, self.start.elapsed());
-        let report = self.ui.frame(stamp, record);
+        let report = self.ui.record(stamp, record);
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
             kind: RenderKind::Full,
@@ -319,7 +332,7 @@ fn assert_partial_invariant() {
         state.tick = state.tick.wrapping_add(1);
     }
     let report =
-        h.ui.frame(FrameStamp::new(display, h.start.elapsed()), |ui| {
+        h.ui.record(FrameStamp::new(display, h.start.elapsed()), |ui| {
             build_ui(&mut state, BENCH_SCALE, ui)
         });
     assert_eq!(
@@ -355,7 +368,7 @@ where
 fn gpu_cached(c: &mut Criterion) {
     let target = make_target(&gpu().device, CACHED_SIZE, "aperture.frame_bench.cached");
     run_gpu_arm(c, "frame/cached_gpu", |host, state, device| {
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
@@ -365,7 +378,7 @@ fn gpu_partial(c: &mut Criterion) {
     let target = make_target(&gpu().device, CACHED_SIZE, "aperture.frame_bench.partial");
     run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
         state.tick = state.tick.wrapping_add(1);
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
@@ -376,7 +389,7 @@ fn gpu_scrolling(c: &mut Criterion) {
     run_gpu_arm(c, "frame/scrolling_gpu", |host, state, device| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
@@ -398,7 +411,7 @@ fn gpu_resizing(c: &mut Criterion) {
     run_gpu_arm(c, "frame/resizing_gpu", move |host, state, device| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
-        host.frame_offscreen(t, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, t, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(t);
     });
@@ -427,7 +440,9 @@ fn report_write_stats() {
             mutate(&mut state, frame);
             let _ = write_stats::take();
             let target = &targets[frame % targets.len()];
-            host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+            frame_offscreen(&mut host, target, SCALE, |ui| {
+                build_ui(&mut state, BENCH_SCALE, ui)
+            });
             gpu_wait(&g.device);
             let s = write_stats::take();
             // The pass-time readout lags by one frame (the

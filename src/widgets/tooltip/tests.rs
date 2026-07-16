@@ -101,7 +101,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
         },
     };
     let frame_at = |ui: &mut Ui, time: Duration| {
-        ui.frame(FrameStamp::new(display, time), |ui| {
+        ui.record(FrameStamp::new(display, time), |ui| {
             Tooltip::on(&snapshot).text("tip").delay(0.25).show(ui);
         });
     };
@@ -129,7 +129,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let trigger_id = WidgetId::from_hash("transient-trigger");
     let root_id = WidgetId::from_hash("root");
 
-    ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+    ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
             Tooltip::on(&trigger).text("tip").show(ui);
@@ -147,7 +147,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "the intentional global singleton must exist",
     );
 
-    ui.frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+    ui.record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
         Panel::vstack().id(root_id).show(ui, |_ui| {});
     });
 
@@ -165,7 +165,7 @@ fn delay_gates_visibility() {
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.frame(
+        ui.record(
             FrameStamp::new(display, Duration::from_secs_f32(secs)),
             |ui| {
                 Panel::vstack()
@@ -247,7 +247,7 @@ fn hover_clears_after_tooltip_visible() {
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.frame(
+        ui.record(
             FrameStamp::new(display, Duration::from_secs_f32(secs)),
             |ui| {
                 Panel::vstack()
@@ -319,7 +319,7 @@ fn tooltip_inside_popup_records_without_panic() {
     let popup_anchor = Vec2::new(40.0, 40.0);
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.frame(
+        ui.record(
             FrameStamp::new(display, Duration::from_secs_f32(secs)),
             |ui| {
                 Panel::vstack()

@@ -1,4 +1,4 @@
-//! DamageEngine CPU-side regression bench. Drives `Ui::run_frame` over a
+//! DamageEngine CPU-side regression bench. Drives `Ui::frame` over a
 //! ~1056-node grid through the four `Damage` paths and times
 //! the result. Microbenches at the bottom characterise the three
 //! `DamageRegion::add` policy branches (append, cascade-absorb,
@@ -125,7 +125,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
 fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut record);
+    let _ = ui.record(FrameStamp::new(display, Duration::ZERO), &mut record);
     ui.mark_frame_submitted();
 }
 

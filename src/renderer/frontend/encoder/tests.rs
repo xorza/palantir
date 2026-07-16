@@ -1142,7 +1142,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
     // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0, so the encoder
     // takes the spin branch.
-    ui.frame(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
+    ui.record(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("spin_owner"))
@@ -1209,7 +1209,7 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     let mut ui = Ui::for_test();
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
     // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0.
-    ui.frame(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
+    ui.record(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("arc_spin_owner"))

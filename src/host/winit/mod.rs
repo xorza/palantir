@@ -60,6 +60,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Icon, Window, WindowId};
 
+use crate::app::App;
 use crate::host::context::HostContext;
 use crate::host::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
 use crate::host::winit::config::WinitHostConfig;
@@ -75,51 +76,6 @@ use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowToken};
 /// exist — handed to [`WinitHostBuilder::build`] and invoked on the first
 /// `resumed`.
 type AppBuilder<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
-
-/// The caller-supplied app. `WinitHost` builds it via the closure passed
-/// to [`WinitHostBuilder::build`] once the first window's `Ui` and [`HostHandle`]
-/// exist (after device + surface are up, before the first frame).
-pub trait App {
-    /// Run once before the first record pass of a fully recorded frame for
-    /// `win`. Use this for unconditional application mutation, queue drains,
-    /// task submission, telemetry, and other work that must not replay.
-    /// `ui` is read-only so this phase cannot accidentally emit widgets.
-    /// Paint-only animation frames reuse the retained tree and skip both app
-    /// hooks.
-    fn update(&mut self, _win: WindowToken, _ui: &Ui) {}
-
-    /// Build the UI for window `win`. This hook may replay for cold-start
-    /// warmup, action input, or `Ui::request_relayout`; unconditional external
-    /// effects belong in [`Self::update`]. Switch on `win` to drive different windows;
-    /// open / close further windows via [`Ui::open_window`] /
-    /// [`Ui::close_window`] on `ui`.
-    fn record(&mut self, win: WindowToken, ui: &mut Ui);
-}
-
-#[derive(Debug)]
-struct AppFrame<'a, T> {
-    app: &'a mut T,
-    win: WindowToken,
-    updated: bool,
-}
-
-impl<'a, T: App> AppFrame<'a, T> {
-    fn new(app: &'a mut T, win: WindowToken) -> Self {
-        Self {
-            app,
-            win,
-            updated: false,
-        }
-    }
-
-    fn record(&mut self, ui: &mut Ui) {
-        if !self.updated {
-            self.app.update(self.win, ui);
-            self.updated = true;
-        }
-        self.app.record(self.win, ui);
-    }
-}
 
 /// Everything one window owns: its winit handle, swapchain surface +
 /// config, the per-window [`WindowRenderer`] (its `Ui` recorder +
@@ -400,7 +356,6 @@ where
             .ok()
             .map(|p| IVec2::new(p.x, p.y));
         win.renderer.ui.window_mailbox.maximized = win.window.is_maximized();
-        let mut app_frame = AppFrame::new(&mut run.app, token);
         win.next = win.renderer.frame(
             &mut run.backend,
             FrameTarget {
@@ -409,7 +364,8 @@ where
                 scale_factor: win.scale_factor,
                 refresh_millihertz,
             },
-            |ui| app_frame.record(ui),
+            &mut run.app,
+            token,
             || window.pre_present_notify(),
         );
         // Apply the frame's cursor request, only on change — the request

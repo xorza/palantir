@@ -7,6 +7,7 @@ pub(crate) mod state;
 use crate::InternedStr;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
+use crate::app::App;
 use crate::common::time::{ANIM_SUBSTEP_DT, coalesce_dt_for_refresh};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::display::Display;
@@ -159,11 +160,16 @@ impl Ui {
         }
     }
 
-    /// The only public entry point for driving a frame. Runs `record`
-    /// once, re-records on action input or `request_relayout`, paints
-    /// the last pass. `stamp.time` is monotonic host time;
-    /// the retained clock and frame id derive from it.
-    pub fn frame(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
+    /// Drive one application frame for `win`. Runs [`App::update`] once on a
+    /// fully recorded frame, then replays [`App::record`] for cold-start
+    /// warmup, action input, or `request_relayout`. Paint-only frames skip
+    /// both hooks. `stamp.time` is monotonic host time.
+    pub fn frame<T: App>(
+        &mut self,
+        stamp: FrameStamp,
+        win: WindowToken,
+        app: &mut T,
+    ) -> FrameReport {
         profiling::scope!("Ui::frame");
         // Record payloads are cleared inside `record_pass` (the only path
         // that repopulates it). PaintOnly frames must NOT clear: the
@@ -189,7 +195,7 @@ impl Ui {
         self.display = stamp.display;
 
         // Pending until the renderer (`WindowRenderer::render_to_texture`)
-        // confirms a successful submit. Tests driving `Ui::frame` directly must
+        // confirms a successful submit. Tests driving the lifecycle directly must
         // ack via `ui.frame_runtime.frame_submitted = true` or the next
         // frame's `classify_frame` will force a `Full`.
         self.frame_runtime.frame_submitted = false;
@@ -205,6 +211,7 @@ impl Ui {
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
+                app.update(win, self);
                 // Cold-start warmup: on the very first frame, cascades
                 // is empty, so any `on_input` events delivered between
                 // window-open and now hit-tested against nothing
@@ -222,7 +229,7 @@ impl Ui {
                 if first_frame {
                     profiling::scope!("Ui::record_pass.warmup");
                     let saved_input = std::mem::take(&mut self.input);
-                    let _ = self.record_pass(&mut record);
+                    let _ = self.record_pass(win, app);
                     self.input = saved_input;
                     self.input.refresh_pointer_targets(&self.cascades);
                     // Discard any relayout/repaint requests issued
@@ -238,7 +245,7 @@ impl Ui {
                 }
                 let action_flag = {
                     profiling::scope!("Ui::record_pass.A");
-                    self.record_pass(&mut record)
+                    self.record_pass(win, app)
                 };
                 let double_layout = action_flag || self.frame_runtime.relayout_requested;
                 if double_layout {
@@ -251,9 +258,9 @@ impl Ui {
                         }
                     );
                     // Pass B paints, regardless of any further re-record
-                    // request — caps relayout at one retry per `run_frame`.
+                    // request — caps relayout at one retry per frame.
                     self.input.drain_per_frame_queues();
-                    let _ = self.record_pass(&mut record);
+                    let _ = self.record_pass(win, app);
                 }
                 self.finalize_frame();
 
@@ -420,7 +427,7 @@ impl Ui {
     /// One `pre_record` → user record → drain action flag → `post_record`
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
-    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
+    fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
         {
             profiling::scope!("Ui::pre_record");
             // Arena is per-record-pass storage: tree.shapes records
@@ -461,7 +468,7 @@ impl Ui {
         self.forest.open_node(WidgetId::VIEWPORT, viewport, None);
         {
             profiling::scope!("Ui::record_user");
-            record(self);
+            app.record(win, self);
         }
         let action_flag = self.input.take_action_flag();
         if self.debug_overlay().frame_stats {
@@ -661,7 +668,7 @@ impl Ui {
 
     /// Re-record this frame after measure runs (for widgets that
     /// realize their record-time inputs were stale). Capped at one
-    /// re-record per `run_frame`.
+    /// re-record per frame.
     pub fn request_relayout(&mut self) {
         self.frame_runtime.relayout_requested = true;
     }
@@ -1229,6 +1236,7 @@ impl Ui {
 pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::animation::animatable::Animatable;
+    use crate::app::test_support::RecordApp;
     use crate::forest::layer::Layer;
     use crate::forest::tree::node::NodeId;
     use crate::input::InputEvent;
@@ -1243,6 +1251,7 @@ pub(crate) mod test_support {
     use crate::ui::frame::FrameStamp;
     use crate::ui::frame_report::{RenderKind, RenderPlan};
     use crate::ui::*;
+    use crate::{FrameReport, WindowToken};
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
@@ -1256,6 +1265,15 @@ pub(crate) mod test_support {
     }
 
     impl Ui {
+        pub(crate) fn record(
+            &mut self,
+            stamp: FrameStamp,
+            record: impl FnMut(&mut Ui),
+        ) -> FrameReport {
+            let mut app = RecordApp::new(record);
+            self.frame(stamp, WindowToken(0), &mut app)
+        }
+
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             let tree = &self.forest.trees[Layer::Main];
@@ -1334,7 +1352,7 @@ pub(crate) mod test_support {
         /// One frame at `size`, time frozen at zero.
         pub(crate) fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             let display = Display::from_physical(size, 1.0);
-            self.frame(FrameStamp::new(display, Duration::ZERO), record);
+            self.record(FrameStamp::new(display, Duration::ZERO), record);
         }
 
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
@@ -1344,9 +1362,9 @@ pub(crate) mod test_support {
         }
 
         /// Ack the just-run frame as presented — mirrors what the host
-        /// does after a successful submit, so the next [`Self::frame`]
+        /// does after a successful submit, so the next lifecycle run
         /// doesn't auto-escalate to `Full`. For tests and for benches
-        /// that drive `frame` + a standalone
+        /// that drive `record` + a standalone
         /// [`crate::renderer::frontend::Frontend::build_for_test`]
         /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
         pub(crate) fn mark_frame_submitted(&mut self) {

@@ -63,14 +63,14 @@ pub fn bench() {
     let mut run = |label: &str, size: &mut dyn FnMut(usize) -> UVec2| {
         for f in 0..WARMUP_FRAMES {
             let display = Display::from_physical(size(f), SCALE);
-            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+            black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
                 state.render(NODE_SCALE, ui)
             }));
         }
         let before = dhat::HeapStats::get();
         for f in 0..MEASURE_FRAMES {
             let display = Display::from_physical(size(f + WARMUP_FRAMES), SCALE);
-            black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+            black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
                 state.render(NODE_SCALE, ui)
             }));
         }

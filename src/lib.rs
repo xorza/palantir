@@ -6,6 +6,7 @@
 extern crate self as aperture;
 
 pub(crate) mod animation;
+pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub mod bench;
 pub(crate) mod common;
@@ -39,6 +40,7 @@ pub use renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineSta
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};
+pub use app::App;
 // Same-name re-export: the derive lives in the macro namespace,
 // the trait in the type namespace — `use aperture::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
@@ -56,7 +58,7 @@ pub use host::clock::{Clock, FixedClock, RealtimeClock};
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 pub use host::winit::config::WinitHostConfig;
 pub use host::winit::handle::{HostHandle, UserEvent};
-pub use host::winit::{App, WinitHost, WinitHostBuilder};
+pub use host::winit::{WinitHost, WinitHostBuilder};
 pub use input::InputEvent;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
