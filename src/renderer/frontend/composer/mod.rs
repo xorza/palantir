@@ -25,8 +25,6 @@ use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
-#[cfg(feature = "internals")]
-pub(crate) mod bench;
 mod occlusion;
 mod text_grid;
 

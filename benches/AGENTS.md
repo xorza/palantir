@@ -26,18 +26,18 @@ cargo bench --bench caches --features internals        # gated benches
   alone is ~45 s. Forces every invocation to be an explicit decision
   rather than defaulting to the full matrix.
 
-### `frame` is two benches in one file
+### `frame` has two benchmark modes
 
-`frame.rs` defines two independent criterion groups (`cpu_benches`,
-`gpu_benches`) plus a `results_group` finalizer that prepends the
-per-machine row last. `APERTURE_BENCH_MODE` gates each group wholesale,
-so **`MODE=cpu` runs zero GPU code** — no adapter / device request, no
-`write_stats` — which is the point: a `perf` / `samply` capture of the
-CPU bench is uncontaminated by driver activity.
+`src/bench/frame/mod.rs` owns both modes and runs the results
+finalizer last; `benches/frame.rs` contains only Criterion wiring.
+`APERTURE_BENCH_MODE` gates each mode wholesale, so **`MODE=cpu` runs zero
+GPU code** — no adapter / device request, no `write_stats` — which is the
+point: a `perf` / `samply` capture of the CPU bench is uncontaminated by
+driver activity.
 
 - **`frame/*_cpu`** — aperture's CPU pipeline measured on a **bare `Ui`
-  + feature-gated `FrameBenchFrontend` with no `wgpu::Device` at all**
-  (`CpuHarness`, same deviceless path as `alloc_free`). Each iter runs record →
+  + its private `Frontend`, with no `wgpu::Device` at all** (`CpuHarness`,
+  same deviceless path as `alloc_free`). Each iter runs record →
   measure → arrange → cascade → damage and then, when the frame
   produces a render plan, encode + compose — then acks the present
   (`Ui::mark_frame_submitted`) so `classify_frame` matches a real
@@ -68,16 +68,11 @@ partial-encode path is its real workload. `cpu_partial` asserts the
 collapses damage to `Full` fails loudly instead of measuring the wrong
 thing.
 
-Feature gating (see `[[bench]]` entries in `Cargo.toml`): **every bench
-requires `--features internals` except `alloc_free_gpu`** — they construct
-via `Ui::default()` / `Ui::for_test*()`, all gated behind `internals`.
-(`alloc_resize` also needs it for `Ui::for_test_text()`'s real cosmic-text
-— see below.) `alloc_free_gpu` is the exception: it drives only the public
-`OffscreenHost` headless render path + the public widget fixture, so it
-builds and runs with no features.
-
-`cargo bench --no-run` without features builds only `alloc_free_gpu`; the
-rest need `--features internals`.
+Feature gating (see `[[bench]]` entries in `Cargo.toml`): every benchmark
+requires `--features internals` because its implementation or shared fixture
+lives behind the single source-level `bench` facade. `alloc_free_gpu` still
+drives only the public `OffscreenHost` rendering path; the feature supplies
+its source-level workload, not renderer reach-ins.
 
 ## Allocation invariants (three benches)
 
@@ -114,10 +109,10 @@ below). Two pin a floor and fail; one only measures.
 
 ```sh
 cargo bench --bench alloc_free --features internals         # strict CPU invariant
-cargo bench --bench alloc_free_gpu                          # GPU baseline gate (no features)
+cargo bench --bench alloc_free_gpu --features internals     # GPU baseline gate
 cargo bench --bench alloc_resize --features internals       # resize-path measurement
 DHAT_DUMP=1 cargo bench --bench alloc_free --features internals      # emits dhat-heap.json on drop
-DHAT_DUMP=1 cargo bench --bench alloc_free_gpu                       # same, for the GPU path
+DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features internals  # same, for the GPU path
 DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals    # same, for the resize path
 ```
 
@@ -130,12 +125,12 @@ When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
 intentional aperture change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
 `benches/alloc_free_gpu.rs` and note the new floor in the PR.
 
-All three benches and the `frame` bench pull `build_ui` + `FormState`
-from `benches/support/frame_fixture.rs` via a `#[path]` include — one
-synthetic UI tree (~800 nodes, ~500 text shapes at `NODE_SCALE = 32`)
+All three allocation shells and the frame driver use the opaque
+`FrameFixture` from `src/bench/frame/fixture.rs` — one synthetic
+UI tree (~800 nodes, ~500 text shapes at `NODE_SCALE = 32`)
 exercising every layout driver, widget, `Shape`, and `Brush` variant
-plus the popup/tooltip layers. The `frame_visual` example includes the
-same fixture at a smaller scale so a human can eyeball the workload the
+plus the popup/tooltip layers. The `frame_visual` example drives the same
+fixture at a smaller scale so a human can eyeball the workload the
 benches measure. Grow the fixture and every allocation bench tracks the
 new surface area automatically — there is no longer a per-bench mirror
 to keep in sync.
@@ -644,8 +639,9 @@ thermal — re-run on power, lid open, with other apps closed.
 
 1. Drop a file under `benches/`, register it in `Cargo.toml`'s
    `[[bench]]` table.
-2. If it needs private production state, colocate the benchmark driver with
-   that subsystem and expose only a narrow root helper behind `internals`.
+2. Put the benchmark driver in the corresponding mirrored folder under
+   `src/bench/` and expose only its entry function through the root `bench`
+   facade behind `internals`.
    Add `required-features = ["internals"]` to the `[[bench]]` entry and profile
    with `FEATURES=internals scripts/profile-bench.sh`; external benchmark
    targets never reach through private module paths.

@@ -1,4 +1,4 @@
-//! Shared `build_ui` for the `frame` bench and the `frame_visual`
+//! Shared workload for the frame and allocation benches and the `frame_visual`
 //! example. A synthetic but realistic UI tree exercising every public
 //! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapStack/Scroll),
 //! every public widget (Panel/Frame/Button/Text/Grid/Scroll/Checkbox/
@@ -7,28 +7,47 @@
 //! (RoundedRect / Line / Polyline / CubicBezier / QuadraticBezier /
 //! Mesh / Text), every `Brush` variant (Solid / Linear / Radial /
 //! Conic), and the popup/tooltip layers.
-//!
-//! Pulled into both targets via `#[path]` so the bench measures the
-//! same workload a human can eyeball through the visual example.
 
 use std::cell::OnceCell;
 use std::f32::consts::FRAC_PI_2;
 use std::rc::Rc;
 
-use aperture::{
-    Align, Background, Brush, Button, Checkbox, Color, ColorU8, ComboBox, Configure, ConicGradient,
-    Corners, DragValue, Frame, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh, Panel,
-    PolylineColors, Popup, ProgressBar, RadialGradient, RadioButton, Rect, Scroll, Separator,
-    Shadow, Shape, Sizing, Slider, Stop, Stroke, Switch, Text, TextEdit, TextStyle, TextWrap,
-    Tooltip, Track, Ui,
-};
+use crate::forest::element::Configure;
+use crate::layout::types::align::Align;
+use crate::layout::types::justify::Justify;
+use crate::layout::types::sizing::Sizing;
+use crate::layout::types::track::Track;
+use crate::primitives::background::Background;
+use crate::primitives::brush::{Brush, ConicGradient, LinearGradient, RadialGradient, Stop};
+use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::corners::Corners;
+use crate::primitives::mesh::Mesh;
+use crate::primitives::rect::Rect;
+use crate::primitives::shadow::Shadow;
+use crate::primitives::stroke::Stroke;
+use crate::primitives::transform::TranslateScale;
+use crate::shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
+use crate::ui::Ui;
+use crate::widgets::button::Button;
+use crate::widgets::checkbox::Checkbox;
+use crate::widgets::combo_box::ComboBox;
+use crate::widgets::drag_value::DragValue;
+use crate::widgets::frame::Frame;
+use crate::widgets::grid::Grid;
+use crate::widgets::panel::Panel;
+use crate::widgets::popup::Popup;
+use crate::widgets::progress_bar::ProgressBar;
+use crate::widgets::radio::RadioButton;
+use crate::widgets::scroll::Scroll;
+use crate::widgets::separator::Separator;
+use crate::widgets::slider::Slider;
+use crate::widgets::switch::Switch;
+use crate::widgets::text::Text;
+use crate::widgets::text_edit::TextEdit;
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::tooltip::Tooltip;
 
-// Each include site (bench / example) only uses one constant; the other
-// looks dead via #[path] inclusion.
-#[allow(dead_code)]
 pub(crate) const BENCH_SCALE: usize = 32;
-#[allow(dead_code)]
-pub(crate) const VISUAL_SCALE: usize = 6;
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
@@ -38,32 +57,33 @@ pub(crate) const VISUAL_SCALE: usize = 6;
 /// node is sized `Fixed(120.0)` so the changing digits don't shift
 /// sibling layout — the damage rect collapses to that single node's
 /// arranged box.
-pub(crate) struct FormState {
-    pub name: String,
-    pub notes: String,
-    pub enabled: bool,
-    pub role: u8,
-    pub tick: u32,
+#[derive(Debug)]
+pub struct FrameFixture {
+    name: String,
+    notes: String,
+    enabled: bool,
+    role: u8,
+    pub(crate) tick: u32,
     /// Post-arrange translate applied to the main content panel. Used
     /// by the `frame/scrolling_cpu` bench arm to model continuous
     /// position change WITHOUT changing layout — the cascade walks the
     /// full subtree but layout/measure cache hits trivially. Tests
     /// whether a cascade delta-cache (cached output translated by
     /// `parent_transform`) would meaningfully reduce cascade cost.
-    pub scroll_offset: glam::Vec2,
+    pub(crate) scroll_offset: glam::Vec2,
     /// Backing values for the controls row (Slider / DragValue /
     /// ComboBox / Switch). Held constant across bench iterations —
     /// only `tick` mutates — so they never perturb the steady-state
     /// damage `Skip` / `Partial` invariants the arms assert; they widen
     /// widget coverage only. Seeded to mid-range values so the visual
     /// harness shows them in a representative, non-empty state.
-    pub volume: f32,
-    pub zoom: f64,
-    pub quality: usize,
-    pub dark_mode: bool,
+    volume: f32,
+    zoom: f64,
+    quality: usize,
+    dark_mode: bool,
 }
 
-impl Default for FormState {
+impl Default for FrameFixture {
     fn default() -> Self {
         Self {
             name: String::new(),
@@ -80,7 +100,13 @@ impl Default for FormState {
     }
 }
 
-pub(crate) fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
+impl FrameFixture {
+    pub fn render(&mut self, scale: usize, ui: &mut Ui) {
+        build_ui(self, scale, ui);
+    }
+}
+
+pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
     let sidebar_items = 5 * scale;
     let chat_messages = 2 * scale;
     let canvas_dots = 3 * scale;
@@ -127,9 +153,7 @@ pub(crate) fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
             Panel::hstack()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
-                .transform(aperture::TranslateScale::from_translation(
-                    state.scroll_offset,
-                ))
+                .transform(TranslateScale::from_translation(state.scroll_offset))
                 .show(ui, |ui| {
                     Panel::vstack()
                         .gap(4.0)

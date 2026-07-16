@@ -12,7 +12,7 @@ use std::cmp::Ordering;
 /// considers running. Below this the arena is small enough that the
 /// reseat walk costs more than the orphaned-slot memory it would
 /// reclaim — capacity is `Vec`-amortised and these entries stay hot
-/// in cache. Empirically tuned against `benches/damage.rs`; change
+/// in cache. Empirically tuned against `src/bench/ui/damage.rs`; change
 /// with a benchmark on the damage-merge fixture.
 const COMPACT_MIN_TOTAL: u32 = 256;
 

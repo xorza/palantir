@@ -5,26 +5,26 @@
 //
 // Run with `cargo run --example frame_visual --release`.
 
-use aperture::{App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost};
+use aperture::{
+    App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost, bench::FrameFixture,
+};
 
-#[path = "../benches/support/frame_fixture.rs"]
-mod fixture;
-
+#[derive(Debug)]
 struct FrameVisual {
-    state: fixture::FormState,
+    state: FrameFixture,
 }
 
 impl FrameVisual {
     fn new(_ui: &mut Ui, _handle: HostHandle<Self>) -> Self {
         FrameVisual {
-            state: fixture::FormState::default(),
+            state: FrameFixture::default(),
         }
     }
 }
 
 impl App for FrameVisual {
     fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
-        fixture::build_ui(&mut self.state, fixture::VISUAL_SCALE, ui);
+        self.state.render(6, ui);
     }
 }
 

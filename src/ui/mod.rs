@@ -1228,7 +1228,6 @@ impl Ui {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     #![allow(dead_code)]
-    use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
     use crate::forest::layer::Layer;
     use crate::forest::tree::node::NodeId;
@@ -1241,6 +1240,7 @@ pub(crate) mod test_support {
     use crate::text::TextShaper;
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
+    use crate::ui::frame::FrameStamp;
     use crate::ui::frame_report::{RenderKind, RenderPlan};
     use crate::ui::*;
     use glam::{UVec2, Vec2};
@@ -1272,7 +1272,7 @@ pub(crate) mod test_support {
     impl Ui {
         /// `Ui` with the mono-fallback shaper — predictable 8 px/char
         /// widths. Pre-marked as warm: see [`Self::mark_warm_for_test`].
-        pub fn for_test() -> Self {
+        pub(crate) fn for_test() -> Self {
             let mut ui = Self::default();
             ui.mark_warm_for_test();
             ui
@@ -1281,7 +1281,7 @@ pub(crate) mod test_support {
         /// `Ui` with a thread-shared cosmic shaper (font DB built once
         /// per thread). Pre-marked as warm: see
         /// [`Self::mark_warm_for_test`].
-        pub fn for_test_text() -> Self {
+        pub(crate) fn for_test_text() -> Self {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
@@ -1293,7 +1293,7 @@ pub(crate) mod test_support {
 
         /// `Ui` pre-stamped with display dimensions; no user frame
         /// driven yet. Pre-marked as warm.
-        pub fn for_test_at(size: UVec2) -> Self {
+        pub(crate) fn for_test_at(size: UVec2) -> Self {
             let mut ui = Self {
                 display: Display::from_physical(size, 1.0),
                 ..Self::default()
@@ -1303,7 +1303,7 @@ pub(crate) mod test_support {
         }
 
         /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
-        pub fn for_test_at_text(size: UVec2) -> Self {
+        pub(crate) fn for_test_at_text(size: UVec2) -> Self {
             let mut ui = Self::for_test_text();
             ui.display = Display::from_physical(size, 1.0);
             ui.mark_warm_for_test();
@@ -1332,13 +1332,13 @@ pub(crate) mod test_support {
         }
 
         /// One frame at `size`, time frozen at zero.
-        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub(crate) fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             let display = Display::from_physical(size, 1.0);
             self.frame(FrameStamp::new(display, Duration::ZERO), record);
         }
 
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub(crate) fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             self.run_at(size, record);
             self.frame_runtime.frame_submitted = true;
         }
@@ -1349,7 +1349,7 @@ pub(crate) mod test_support {
         /// that drive `frame` + a standalone
         /// [`crate::renderer::frontend::Frontend::build_for_test`]
         /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
-        pub fn mark_frame_submitted(&mut self) {
+        pub(crate) fn mark_frame_submitted(&mut self) {
             self.frame_runtime.frame_submitted = true;
         }
 
@@ -1374,29 +1374,29 @@ pub(crate) mod test_support {
             inner.unwrap()
         }
 
-        pub fn click_at(&mut self, pos: Vec2) {
+        pub(crate) fn click_at(&mut self, pos: Vec2) {
             self.on_input(InputEvent::PointerMoved(pos));
             self.on_input(InputEvent::PointerPressed(PointerButton::Left));
             self.on_input(InputEvent::PointerReleased(PointerButton::Left));
         }
 
-        pub fn press_at(&mut self, pos: Vec2) {
+        pub(crate) fn press_at(&mut self, pos: Vec2) {
             self.on_input(InputEvent::PointerMoved(pos));
             self.on_input(InputEvent::PointerPressed(PointerButton::Left));
         }
 
-        pub fn release_left(&mut self) {
+        pub(crate) fn release_left(&mut self) {
             self.on_input(InputEvent::PointerReleased(PointerButton::Left));
         }
 
-        pub fn secondary_click_at(&mut self, pos: Vec2) {
+        pub(crate) fn secondary_click_at(&mut self, pos: Vec2) {
             self.on_input(InputEvent::PointerMoved(pos));
             self.on_input(InputEvent::PointerPressed(PointerButton::Right));
             self.on_input(InputEvent::PointerReleased(PointerButton::Right));
         }
 
         /// Drop every measure-cache entry, forcing full re-measure next frame.
-        pub fn clear_measure_cache(&mut self) {
+        pub(crate) fn clear_measure_cache(&mut self) {
             let cache = &mut self.layout_engine.cache;
             cache.nodes.clear();
             cache.hugs.clear();
@@ -1410,7 +1410,7 @@ pub(crate) mod test_support {
         }
 
         /// Run only the cascade pass against the just-finished frame.
-        pub fn run_cascades(&mut self) {
+        pub(crate) fn run_cascades(&mut self) {
             self.cascades_engine
                 .run(&self.forest, &self.layout, &mut self.cascades);
         }
@@ -1426,24 +1426,24 @@ pub(crate) mod test_support {
         }
 
         /// Damage rects produced by the most recent `post_record`.
-        pub fn damage_rect_count(&self) -> usize {
+        pub(crate) fn damage_rect_count(&self) -> usize {
             self.damage_region().iter_rects().count()
         }
 
         /// Subtree-skip jumps the last damage diff performed.
-        pub fn damage_subtree_skips(&self) -> u32 {
+        pub(crate) fn damage_subtree_skips(&self) -> u32 {
             self.damage_engine.subtree_skips
         }
 
         /// Live entries in the `paint_snaps` arena (sum of every
         /// `NodeSnapshot::paint_span.len`, including orphaned tail).
-        pub fn damage_shape_snaps_len(&self) -> usize {
+        pub(crate) fn damage_shape_snaps_len(&self) -> usize {
             self.damage_engine.arena.len()
         }
 
         /// Count of orphaned `Paint` entries in the arena —
         /// drives the compaction trigger.
-        pub fn damage_shape_snaps_orphaned(&self) -> u32 {
+        pub(crate) fn damage_shape_snaps_orphaned(&self) -> u32 {
             self.damage_engine.arena.orphaned()
         }
 
@@ -1451,12 +1451,12 @@ pub(crate) mod test_support {
         /// Used by benches to verify the compaction path was actually
         /// exercised and to count compactions over a measurement
         /// window.
-        pub fn damage_compactions_run(&self) -> u32 {
+        pub(crate) fn damage_compactions_run(&self) -> u32 {
             self.damage_engine.arena.compactions_run()
         }
 
         /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
-        pub fn damage_paint_kind(&self) -> &'static str {
+        pub(crate) fn damage_paint_kind(&self) -> &'static str {
             match Damage::new(self.damage_region()) {
                 Damage::Skip => "skip",
                 Damage::Full => "full",
@@ -1465,7 +1465,7 @@ pub(crate) mod test_support {
         }
 
         /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
-        pub fn anim_row_count<T: Animatable>(&mut self) -> usize {
+        pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
             self.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
         }
 

@@ -16,11 +16,7 @@
 //! Run with: `cargo bench --bench alloc_resize --features internals`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals`
 
-#[path = "support/frame_fixture.rs"]
-mod fixture;
-
-use aperture::{Display, FrameStamp, Ui};
-use fixture::{FormState, build_ui};
+use aperture::{Display, FrameStamp, bench, bench::FrameFixture};
 use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
@@ -61,8 +57,8 @@ fn main() {
         Some(dhat::Profiler::builder().testing().build())
     };
 
-    let mut ui = Ui::for_test_text();
-    let mut state = FormState::default();
+    let mut ui = bench::text_ui();
+    let mut state = FrameFixture::default();
 
     // Two arms: pool-rotation (matches `frame/resizing_cpu` exactly)
     // and continuous-drag (every frame a unique width — models a real
@@ -71,14 +67,14 @@ fn main() {
         for f in 0..WARMUP_FRAMES {
             let display = Display::from_physical(size(f), SCALE);
             black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
-                build_ui(&mut state, NODE_SCALE, ui)
+                state.render(NODE_SCALE, ui)
             }));
         }
         let before = dhat::HeapStats::get();
         for f in 0..MEASURE_FRAMES {
             let display = Display::from_physical(size(f + WARMUP_FRAMES), SCALE);
             black_box(ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
-                build_ui(&mut state, NODE_SCALE, ui)
+                state.render(NODE_SCALE, ui)
             }));
         }
         let after = dhat::HeapStats::get();

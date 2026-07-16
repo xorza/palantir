@@ -32,9 +32,6 @@ use glam::Vec2;
 use soa_rs::{Soa, Soars};
 use std::hash::Hasher as _;
 
-#[cfg(feature = "internals")]
-pub(crate) mod bench;
-
 /// Per-node fingerprint of cascade inputs flowing in from ancestors
 /// (parent transform/clip/disabled/invisible) plus the node's own
 /// arranged rect, packed with the resolved `invisible` bit. Folded

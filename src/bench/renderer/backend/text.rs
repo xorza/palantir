@@ -1,0 +1,417 @@
+//! Text-backend microbench: prepare + flush + render directly against
+//! `TextBackend`, bypassing the full `WindowRenderer` pipeline.
+//!
+//! The previous version drove `WindowRenderer::frame_offscreen`, which mixed
+//! record/measure/cascade/encode noise into every sample —
+//! `CascadesEngine::run` was the top hotspot at ~7%, and the actual
+//! text path (`encode_batch` + atlas uploads) totalled <10%. This
+//! bench skips all of that: a fixed slice of `TextRun`s, shaped once
+//! at construction, fed into `TextBackend::prepare` →
+//! `flush` → `render_batch` each iteration.
+//!
+//! Two motivating workloads:
+//!
+//! - `text_atlas/steady_warm` — fixed scale, atlas warmed by two
+//!   priming iterations. Every glyph is an `atlas.touch` hit; the
+//!   measurement floor is `encode_batch` walking layout runs +
+//!   `swash_cache::CacheKey::new` + vertex buffer upload + draw.
+//! - `text_atlas/zoom_smooth` / `zoom_cold` — cycle through five
+//!   resident scale rungs in adjacent or jumping order. These isolate
+//!   multi-scale encoded-cache hits after all rungs are primed.
+//! - `text_atlas/cache_churn` — cycles through 128 scale rungs in a
+//!   permuted order. That exceeds the encoded-cache retention window,
+//!   so every revisited rung is a real encode/raster/upload miss.
+//!
+//! Each iteration:
+//!   1. begin command encoder
+//!   2. `prepare` (shape lookup + encode_batch into instance Vec +
+//!      potential atlas grow + vbuf upload + params reupload)
+//!   3. `flush` (upload instances + drain pending glyph uploads into
+//!      encoder)
+//!   4. render pass: `render_batch` → submit → `poll(Wait)` so the
+//!      GPU work drains before the next iteration.
+//!   5. `end_frame` (atlas trim + clear instance Vec + reset ranges)
+//!
+//! Run with:
+//!   cargo bench --bench text_atlas --features internals
+//!   cargo bench --bench text_atlas --features internals -- 'zoom_smooth$'
+
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use crate::layout::types::align::HAlign;
+use crate::primitives::color::ColorU8;
+use crate::primitives::urect::URect;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::StencilVariant;
+use crate::renderer::backend::queue::Queue;
+use crate::renderer::backend::text::TextBackend;
+use crate::renderer::backend::viewport::ViewportPush;
+use crate::renderer::render_buffer::text::TextRun;
+use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
+use criterion::Criterion;
+use glam::{UVec2, Vec2};
+use pollster::FutureExt;
+use wgpu::util::StagingBelt;
+
+const PHYSICAL: UVec2 = UVec2::new(1280, 800);
+const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+const BASE_SCALE: f32 = 2.0;
+const TEXT_SCALE_STEP: f32 = 0.025;
+const WARM_SCALE_CYCLE: u32 = 5;
+const CHURN_SCALE_CYCLE: u32 = 128;
+const CHURN_INDEX_STRIDE: u32 = 37;
+
+/// Per-frame text count. Graph-view-shaped: many small runs rather
+/// than a few wrapped paragraphs. 32 rows × 4 columns = 128 runs ≈
+/// what the showcase's node graph tab paints.
+const ROWS: u32 = 32;
+
+#[derive(Debug)]
+struct Gpu {
+    device: wgpu::Device,
+    queue: Queue,
+}
+
+#[derive(Debug)]
+struct BenchText {
+    backend: TextBackend,
+    pipelines: StencilVariant,
+}
+
+impl BenchText {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
+        let backend = TextBackend::new(device, shaper);
+        let pipelines = backend.build_variants(device, format);
+        Self { backend, pipelines }
+    }
+
+    fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) {
+        self.backend.prepare_batch(ctx, scale, 0, runs);
+    }
+
+    fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
+        self.backend.flush(ctx);
+    }
+
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        let viewport = ViewportPush {
+            size: glam::Vec2::ZERO,
+        };
+        self.backend
+            .render_batch(0, pass, &self.pipelines, false, &viewport);
+    }
+
+    fn end_frame(&mut self) {
+        self.backend.post_record();
+    }
+}
+
+fn gpu() -> &'static Gpu {
+    static G: OnceLock<Gpu> = OnceLock::new();
+    G.get_or_init(|| {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+                apply_limit_buckets: false,
+            })
+            .block_on()
+            .expect("request adapter (headless)");
+        // Viewport + text atlas sizes use the 16-byte immediate budget.
+        let mut limits = wgpu::Limits::default();
+        limits.max_immediate_size = limits.max_immediate_size.max(16);
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("aperture.text_atlas.device"),
+                required_features: wgpu::Features::IMMEDIATES,
+                required_limits: limits,
+                experimental_features: wgpu::ExperimentalFeatures::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+            })
+            .block_on()
+            .expect("request device");
+        Gpu {
+            device,
+            queue: Queue::new(queue),
+        }
+    })
+}
+
+fn make_target(device: &wgpu::Device) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("aperture.text_atlas.target"),
+        size: wgpu::Extent3d {
+            width: PHYSICAL.x,
+            height: PHYSICAL.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    })
+}
+
+fn poll_drain(device: &wgpu::Device) {
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        })
+        .expect("device poll");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_run(
+    shaper: &TextShaper,
+    text: &str,
+    font_size_px: f32,
+    line_height_px: f32,
+    origin: Vec2,
+    viewport: UVec2,
+    scale: f32,
+    color: ColorU8,
+) -> TextRun {
+    let measured = shaper.measure(
+        text,
+        ShapeParams {
+            font_size_px,
+            line_height_px,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+    );
+    TextRun {
+        key: measured.key,
+        origin,
+        bounds: URect::new(0, 0, viewport.x, viewport.y),
+        color,
+        scale,
+    }
+}
+
+/// Shape one frame's worth of runs against `shaper`. Stable layout so
+/// the same `TextRun` slice is reusable across iterations; only the
+/// per-iteration `scale` argument to `prepare` changes between frames.
+fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
+    let color = ColorU8::rgba(220, 220, 220, 255);
+    let mut runs = Vec::with_capacity((ROWS * 4) as usize);
+    for row in 0..ROWS {
+        let y = 16.0 + (row as f32) * 18.0;
+        // Four short labels per row at typical graph-node sizes.
+        let label_color = ColorU8::rgba(245, 245, 245, 255);
+        runs.push(make_run(
+            shaper,
+            "node",
+            13.0,
+            13.0 * 1.2,
+            Vec2::new(16.0, y),
+            PHYSICAL,
+            1.0,
+            label_color,
+        ));
+        runs.push(make_run(
+            shaper,
+            "input: f32",
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(80.0, y),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
+        runs.push(make_run(
+            shaper,
+            "output: Vec3",
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(220.0, y),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
+        runs.push(make_run(
+            shaper,
+            "123.45",
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(380.0, y),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
+    }
+    runs
+}
+
+/// One iteration: prepare → flush → render pass → submit → poll →
+/// post. Mirrors `WindowRenderer::frame_offscreen`'s text-relevant slice.
+fn run_frame(
+    g: &Gpu,
+    backend: &mut BenchText,
+    belt: &mut wgpu::util::StagingBelt,
+    target_view: &wgpu::TextureView,
+    runs: &[TextRun],
+    scale: f32,
+) {
+    let mut encoder = g
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("aperture.text_atlas.encoder"),
+        });
+    {
+        let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
+        backend.prepare(&mut ctx, scale, runs);
+        backend.flush(&mut ctx);
+    }
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("aperture.text_atlas.pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        backend.draw(&mut pass);
+    }
+    belt.finish();
+    g.queue.submit([encoder.finish()]);
+    belt.recall();
+    poll_drain(&g.device);
+    backend.end_frame();
+}
+
+fn fresh_backend(g: &Gpu) -> (BenchText, Vec<TextRun>) {
+    let shaper = TextShaper::with_bundled_fonts();
+    let runs = build_runs(&shaper);
+    let backend = BenchText::new(&g.device, FORMAT, shaper);
+    // Viewport is no longer the text backend's concern — it reads
+    // from the shared `@group(0)` uniform the production host binds.
+    // The bench's atlas-only fixture doesn't actually issue draws
+    // that need it, so leaving it unset is safe.
+    let _ = PHYSICAL;
+    (backend, runs)
+}
+
+pub fn bench(c: &mut Criterion) {
+    let g = gpu();
+    let target = make_target(&g.device);
+    let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let mut group = c.benchmark_group("text_atlas");
+    group.measurement_time(Duration::from_secs(5));
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        // Two priming frames so every glyph is in the atlas.
+        for _ in 0..2 {
+            run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
+        }
+        group.bench_function("steady_warm", |b| {
+            b.iter(|| {
+                run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
+            });
+        });
+        // CPU-only: prepare + end_frame, no encoder/submit/poll.
+        // Isolates text-backend CPU work from GPU sync — useful when
+        // the full case looks GPU-bound and you want to see whether a
+        // change moved the CPU prepare cost. Still needs a belt +
+        // throwaway encoder to satisfy `prepare`'s signature; the
+        // encoder is discarded.
+        group.bench_function("steady_warm_cpu", |b| {
+            b.iter(|| {
+                let mut encoder =
+                    g.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("aperture.text_atlas.cpu_prepare"),
+                        });
+                {
+                    let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
+                    backend.prepare(&mut ctx, BASE_SCALE, &runs);
+                }
+                belt.finish();
+                belt.recall();
+                backend.end_frame();
+            });
+        });
+    }
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        // Prime the cycle so the LRU has all rungs resident before the
+        // measured loop starts evicting + re-inserting.
+        for step in 0..WARM_SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
+            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+        }
+        let mut i: u32 = 0;
+        group.bench_function("zoom_smooth", |b| {
+            b.iter(|| {
+                let step = (i % WARM_SCALE_CYCLE) as f32;
+                let scale = BASE_SCALE + step * TEXT_SCALE_STEP;
+                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        let stride = 5.0 * TEXT_SCALE_STEP;
+        for step in 0..WARM_SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * stride;
+            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+        }
+        let mut i: u32 = 0;
+        group.bench_function("zoom_cold", |b| {
+            b.iter(|| {
+                let step = (i % WARM_SCALE_CYCLE) as f32;
+                let scale = BASE_SCALE + step * stride;
+                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        for step in 0..CHURN_SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
+            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+        }
+        let mut i: u32 = 0;
+        group.bench_function("cache_churn", |b| {
+            b.iter(|| {
+                let rung = i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE;
+                let scale = BASE_SCALE + (rung as f32) * TEXT_SCALE_STEP;
+                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    group.finish();
+}

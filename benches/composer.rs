@@ -1,5 +1,5 @@
-use aperture::composer_bench;
+use aperture::bench;
 use criterion::{criterion_group, criterion_main};
 
-criterion_group!(benches, composer_bench::bench);
+criterion_group!(benches, bench::composer);
 criterion_main!(benches);

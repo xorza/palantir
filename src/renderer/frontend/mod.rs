@@ -71,10 +71,6 @@ impl Frontend {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     #![allow(dead_code)]
-    #[cfg(feature = "internals")]
-    use crate::primitives::color::Color;
-    #[cfg(feature = "internals")]
-    use crate::ui::frame_report::{FrameReport, RenderKind, RenderPlan};
     use crate::{renderer::frontend::*, ui::Ui};
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench
@@ -97,35 +93,6 @@ pub(crate) mod test_support {
         pub(crate) fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
             let payloads = ui.record_store.borrow();
             self.build(ui, &payloads, plan);
-        }
-    }
-
-    /// Feature-gated deviceless frontend used by the external frame benchmark.
-    #[cfg(feature = "internals")]
-    #[derive(Debug)]
-    pub struct FrameBenchFrontend {
-        inner: Frontend,
-    }
-
-    #[cfg(feature = "internals")]
-    impl FrameBenchFrontend {
-        /// Encode and compose this report, synthesizing a full plan when the
-        /// production path correctly classified the frame as a skip.
-        pub fn build(&mut self, ui: &Ui, report: &FrameReport, skip_clear: Color) {
-            let plan = report.plan.unwrap_or(RenderPlan {
-                clear: skip_clear,
-                kind: RenderKind::Full,
-            });
-            self.inner.build_for_test(ui, plan);
-        }
-    }
-
-    #[cfg(feature = "internals")]
-    impl Default for FrameBenchFrontend {
-        fn default() -> Self {
-            Self {
-                inner: Frontend::for_test(),
-            }
         }
     }
 }

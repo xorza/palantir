@@ -6,6 +6,8 @@
 extern crate self as aperture;
 
 pub(crate) mod animation;
+#[cfg(feature = "internals")]
+pub mod bench;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 /// Per-output display state (physical size, DPR, pixel-snap, refresh) —
@@ -25,40 +27,14 @@ pub(crate) mod ui;
 pub(crate) mod widgets;
 pub(crate) mod window;
 
+#[cfg(feature = "internals")]
+pub use host::offscreen::test_support::TwoWindowOffscreenHost;
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
 /// Consumers (debug overlay, benches) hold a `Clone` of the same
 /// `GpuPassStats` the backend writes into — no global state;
 /// `OffscreenHost::gpu_pass_stats` is the canonical handle.
 pub use renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
-/// Per-frame `queue.write_buffer` / `write_texture` counters, gated behind
-/// `internals` for the frame bench's write-attribution arm.
-#[cfg(feature = "internals")]
-pub mod write_stats {
-    pub use crate::renderer::backend::write_stats::{Stats, take};
-}
-#[cfg(feature = "internals")]
-pub mod text_backend_internals {
-    pub use crate::renderer::backend::gpu_ctx::test_support::GpuCtx;
-    pub use crate::renderer::backend::queue::test_support::Queue;
-    pub use crate::renderer::backend::text::test_support::{BenchText, make_run};
-    pub use crate::renderer::render_buffer::text::test_support::TextRun;
-}
-#[cfg(feature = "internals")]
-pub mod composer_bench {
-    pub use crate::renderer::frontend::composer::bench::bench;
-}
-#[cfg(feature = "internals")]
-pub mod cascade_bench {
-    pub use crate::ui::cascade::bench::bench;
-}
-
-#[cfg(feature = "internals")]
-pub use host::offscreen::test_support::TwoWindowOffscreenHost;
-#[cfg(feature = "internals")]
-pub use renderer::frontend::test_support::FrameBenchFrontend;
-#[cfg(feature = "internals")]
-pub use ui::damage::region::test_support::region_after_adds;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
