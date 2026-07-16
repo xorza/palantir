@@ -7,6 +7,7 @@ use crate::forest::tree::node::NodeId;
 use crate::host::context::HostContext;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
+use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::record_store::RecordStore;
@@ -48,7 +49,6 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 
 fn add_blink_shape(ui: &mut Ui, half: Duration) {
     use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::primitives::brush::Brush;
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
     use crate::shape::Shape;
@@ -601,7 +601,6 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     use crate::layout::types::align::Align;
     use crate::layout::types::layout_mode::LayoutMode;
     use crate::layout::types::sizing::Sizing;
-    use crate::primitives::brush::Brush;
     use crate::record_store::RecordStore;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
@@ -620,7 +619,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
                 Shape::Text {
                     local_origin: None,
                     text,
-                    brush: Brush::Solid(Color::WHITE),
+                    color: Color::WHITE,
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     wrap: TextWrap::SingleLine,

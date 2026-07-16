@@ -819,7 +819,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         snap.background.stroke.width, 2.0,
         "None: stroke width snaps"
     );
-    assert_eq!(snap.background.stroke.brush, bg.stroke.brush);
+    assert_eq!(snap.background.stroke.color, bg.stroke.color);
     assert_eq!(snap.background.corners, bg.corners);
     assert_eq!(
         snap.text.color, fallback.color,

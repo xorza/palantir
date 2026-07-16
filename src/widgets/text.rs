@@ -109,7 +109,7 @@ impl Text {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text: self.text,
-                brush: style.color.into(),
+                color: style.color,
                 font_size_px: style.font_size_px,
                 line_height_px,
                 wrap: self.wrap,

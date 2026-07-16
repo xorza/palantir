@@ -434,13 +434,12 @@ macro_rules! gradient_common {
 
 gradient_common!(LinearGradient, RadialGradient, ConicGradient);
 
-/// Paint source for fills and strokes.
+/// Paint source for gradient-capable fills.
 ///
 /// `Solid(Color)` is the hot 99% path — 16 B inline, animation-lerpable.
 /// `Linear`/`Radial`/`Conic` carry their geometry inline (~80 B);
 /// gradient morph animations snap across variants and across distinct
-/// gradients of the same variant. Stroke-with-gradient is still solid-only;
-/// lowering sites call `as_solid().expect(...)` for stroke.
+/// gradients of the same variant.
 // `Brush` is intentionally **not `Copy`** — the gradient variants
 // carry a 40 B `ArrayVec<[Stop; 8]>` and the whole enum is 60 B. The
 // recording chain used to thread `Brush` (often inside `Background`)
@@ -458,6 +457,41 @@ pub enum Brush {
     Conic(ConicGradient),
 }
 
+/// Paint source for one-dimensional stroked shapes. Solid colors and linear
+/// gradients have an unambiguous mapping along the curve parameter; radial and
+/// conic gradients do not.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CurveBrush {
+    Solid(Color),
+    Linear(LinearGradient),
+}
+
+impl CurveBrush {
+    pub(crate) const TRANSPARENT: Self = Self::Solid(Color::TRANSPARENT);
+
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        match self {
+            CurveBrush::Solid(color) => color.is_noop(),
+            CurveBrush::Linear(gradient) => gradient.is_noop(),
+        }
+    }
+}
+
+impl From<Color> for CurveBrush {
+    #[inline]
+    fn from(color: Color) -> Self {
+        CurveBrush::Solid(color)
+    }
+}
+
+impl From<LinearGradient> for CurveBrush {
+    #[inline]
+    fn from(gradient: LinearGradient) -> Self {
+        CurveBrush::Linear(gradient)
+    }
+}
+
 impl Brush {
     pub const TRANSPARENT: Self = Self::Solid(Color::TRANSPARENT);
 
@@ -473,27 +507,14 @@ impl Brush {
     }
 
     /// Extracts the underlying `Color` for the solid fast path. Returns
-    /// `None` for gradient variants; downstream sites that don't yet
-    /// support gradient paint (currently: stroke) `.expect()` with a
-    /// TODO message. Takes `&self` so callers with borrowed `Brush`
-    /// (e.g. inside an `AnimatedLook`'s background) don't need to clone
-    /// just to pull out the solid color.
+    /// `None` for gradient variants. Takes `&self` so callers with a borrowed
+    /// `Brush` don't need to clone just to pull out the solid color.
     #[inline]
     pub const fn as_solid(&self) -> Option<Color> {
         match self {
             Brush::Solid(c) => Some(*c),
             Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
         }
-    }
-
-    /// Unwrap to the solid color, panicking on gradient variants with the
-    /// shared "not yet implemented" message. Centralizes the lowering-side
-    /// gradient-not-supported assert; remove this method when slice 2 lands.
-    #[inline]
-    #[track_caller]
-    pub fn expect_solid(&self) -> Color {
-        self.as_solid()
-            .expect("gradient brush rendering is not implemented for strokes")
     }
 }
 

@@ -90,7 +90,7 @@ fn mesh_static_alloc_free() {
                 ui.add_shape(Shape::Mesh {
                     mesh: &mesh,
                     local_rect: None,
-                    tint: Color::WHITE.into(),
+                    tint: Color::WHITE,
                 });
             });
     });

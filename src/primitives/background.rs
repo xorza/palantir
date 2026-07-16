@@ -127,7 +127,7 @@ mod tests {
         let stroke = Stroke::solid(Color::BLACK, 2.0);
         let shadow = Shadow::drop(Color::BLACK, glam::Vec2::ZERO, 4.0);
 
-        let with_stroke = base.clone().with_stroke(stroke.clone());
+        let with_stroke = base.clone().with_stroke(stroke);
         assert_eq!(with_stroke.stroke, stroke);
         assert_eq!(with_stroke.fill, base.fill);
         assert_eq!(with_stroke.corners, base.corners);

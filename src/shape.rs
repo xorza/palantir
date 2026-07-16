@@ -3,7 +3,7 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::{noop_f32, vec2_approx_eq},
-    brush::Brush,
+    brush::{Brush, CurveBrush},
     color::Color,
     corners::Corners,
     interned_str::InternedStr,
@@ -55,16 +55,15 @@ pub enum Shape<'a> {
     /// analytic SDF on the shared quad pipeline (a sibling of `RoundedRect` —
     /// no tessellation, crisp AA at any zoom, rounded corners = `SDF - radius`).
     /// `a`/`b`/`c` are the corner points in owner-local coords; `radius`
-    /// rounds all three corners uniformly (`0.0` = sharp). `fill` must be
-    /// `Brush::Solid` — gradients aren't packable into the reused quad
-    /// instance lanes (a dedicated-pipeline follow-up if ever needed);
-    /// `stroke` sits on the inner edge like `RoundedRect`'s.
+    /// rounds all three corners uniformly (`0.0` = sharp). The solid `fill`
+    /// fits the reused quad instance lanes; `stroke` sits on the inner edge
+    /// like `RoundedRect`'s.
     Triangle {
         a: Vec2,
         b: Vec2,
         c: Vec2,
         radius: f32,
-        fill: Brush,
+        fill: Color,
         stroke: Stroke,
     },
     /// Two-point stroked line. Rendered natively on the GPU on the
@@ -78,7 +77,7 @@ pub enum Shape<'a> {
         a: Vec2,
         b: Vec2,
         width: f32,
-        brush: Brush,
+        brush: CurveBrush,
         cap: LineCap,
     },
     /// Stroked polyline with per-vertex or per-segment coloring. The
@@ -98,7 +97,7 @@ pub enum Shape<'a> {
     /// scissor group, expanded to a thickened triangle strip in the
     /// vertex shader. The composer derives an adaptive sub-instance
     /// count from the post-transform control-polygon length. `brush`
-    /// takes `Solid` or `Linear` (sampled along the curve parameter
+    /// takes a solid color or linear gradient (sampled along the curve parameter
     /// `t`); no `join` (single-curve primitive — no interior joins).
     /// `cap` ships `Butt`, `Square`, and `Round`.
     CubicBezier {
@@ -107,7 +106,7 @@ pub enum Shape<'a> {
         p2: Vec2,
         p3: Vec2,
         width: f32,
-        brush: Brush,
+        brush: CurveBrush,
         cap: LineCap,
     },
     /// Quadratic Bezier curve, stroked. See [`Shape::CubicBezier`].
@@ -116,7 +115,7 @@ pub enum Shape<'a> {
         p1: Vec2,
         p2: Vec2,
         width: f32,
-        brush: Brush,
+        brush: CurveBrush,
         cap: LineCap,
     },
     /// Circular arc, stroked. Rendered natively on the GPU on the
@@ -141,7 +140,7 @@ pub enum Shape<'a> {
         start_angle: f32,
         sweep: f32,
         width: f32,
-        brush: Brush,
+        brush: CurveBrush,
         cap: LineCap,
     },
     Text {
@@ -164,7 +163,7 @@ pub enum Shape<'a> {
         /// parameter doesn't constrain this variant; it's used by
         /// `Polyline.points` / `Mesh.mesh` instead.
         text: InternedStr,
-        brush: Brush,
+        color: Color,
         font_size_px: f32,
         line_height_px: f32,
         wrap: TextWrap,
@@ -186,7 +185,7 @@ pub enum Shape<'a> {
     Mesh {
         mesh: &'a Mesh,
         local_rect: Option<Rect>,
-        tint: Brush,
+        tint: Color,
     },
     /// Textured rectangle painted from a registered [`ImageHandle`].
     /// `local_rect = None` paints into the owner's full arranged rect;
@@ -261,7 +260,7 @@ impl<'a> Shape<'a> {
             b,
             c,
             radius: 0.0,
-            fill: Brush::TRANSPARENT,
+            fill: Color::TRANSPARENT,
             stroke: Stroke::ZERO,
         }
     }
@@ -273,7 +272,7 @@ impl<'a> Shape<'a> {
             a,
             b,
             width,
-            brush: Brush::TRANSPARENT,
+            brush: CurveBrush::TRANSPARENT,
             cap: LineCap::Butt,
         }
     }
@@ -299,7 +298,7 @@ impl<'a> Shape<'a> {
             p2,
             p3,
             width,
-            brush: Brush::TRANSPARENT,
+            brush: CurveBrush::TRANSPARENT,
             cap: LineCap::Butt,
         }
     }
@@ -312,7 +311,7 @@ impl<'a> Shape<'a> {
             p1,
             p2,
             width,
-            brush: Brush::TRANSPARENT,
+            brush: CurveBrush::TRANSPARENT,
             cap: LineCap::Butt,
         }
     }
@@ -328,7 +327,7 @@ impl<'a> Shape<'a> {
             start_angle,
             sweep,
             width,
-            brush: Brush::TRANSPARENT,
+            brush: CurveBrush::TRANSPARENT,
             cap: LineCap::Butt,
         }
     }
@@ -368,17 +367,21 @@ impl<'a> Shape<'a> {
         Shape::Mesh {
             mesh,
             local_rect: None,
-            tint: Color::WHITE.into(),
+            tint: Color::WHITE,
         }
     }
 
     /// Set the fill brush — [`Shape::RoundedRect`] / [`Shape::WindowedRect`]
     /// / [`Shape::Triangle`].
     pub fn fill(mut self, brush: impl Into<Brush>) -> Self {
+        let brush = brush.into();
         match &mut self {
-            Shape::RoundedRect { fill, .. }
-            | Shape::WindowedRect { fill, .. }
-            | Shape::Triangle { fill, .. } => *fill = brush.into(),
+            Shape::RoundedRect { fill, .. } | Shape::WindowedRect { fill, .. } => *fill = brush,
+            Shape::Triangle { fill, .. } => {
+                *fill = brush
+                    .as_solid()
+                    .expect("Shape::Triangle fill supports only solid colors");
+            }
             _ => panic!("Shape::fill() applies only to RoundedRect / WindowedRect / Triangle"),
         }
         self
@@ -431,7 +434,7 @@ impl<'a> Shape<'a> {
 
     /// Set the stroke brush — [`Shape::Line`] / [`Shape::CubicBezier`] /
     /// [`Shape::QuadraticBezier`] / [`Shape::Arc`].
-    pub fn brush(mut self, brush: impl Into<Brush>) -> Self {
+    pub fn brush(mut self, brush: impl Into<CurveBrush>) -> Self {
         match &mut self {
             Shape::Line { brush: b, .. }
             | Shape::CubicBezier { brush: b, .. }
@@ -824,7 +827,7 @@ impl Shape<'_> {
                 brush,
                 ..
             } => noop_f32(*width) || brush.is_noop() || noop_f32(*radius) || noop_f32(sweep.abs()),
-            Shape::Text { text, brush, .. } => text.is_empty() || brush.is_noop(),
+            Shape::Text { text, color, .. } => text.is_empty() || color.is_noop(),
             Shape::Mesh {
                 mesh,
                 local_rect,
@@ -842,6 +845,7 @@ impl Shape<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
     use crate::primitives::color::Color;
     use crate::shape::Shape;
     use glam::Vec2;
@@ -918,6 +922,10 @@ mod tests {
 
         for case in cases {
             let triangle = Shape::triangle(case.a, case.b, case.c).fill(Color::WHITE);
+            let Shape::Triangle { fill, .. } = &triangle else {
+                panic!("Shape::triangle must construct Shape::Triangle");
+            };
+            assert_eq!(*fill, Color::WHITE, "case: {}", case.label);
             assert_eq!(
                 triangle.is_noop(),
                 case.expected_noop,
@@ -925,5 +933,57 @@ mod tests {
                 case.label,
             );
         }
+    }
+
+    #[test]
+    fn curve_brush_conversions_preserve_supported_paints_and_noop_state() {
+        #[derive(Debug)]
+        struct Case {
+            label: &'static str,
+            brush: CurveBrush,
+            expected_noop: bool,
+        }
+
+        let visible_gradient = LinearGradient::two_stop(0.0, Color::TRANSPARENT, Color::WHITE);
+        let transparent_gradient =
+            LinearGradient::two_stop(0.0, Color::TRANSPARENT, Color::TRANSPARENT);
+        let cases = [
+            Case {
+                label: "transparent_solid",
+                brush: Color::TRANSPARENT.into(),
+                expected_noop: true,
+            },
+            Case {
+                label: "visible_solid",
+                brush: Color::WHITE.into(),
+                expected_noop: false,
+            },
+            Case {
+                label: "transparent_linear",
+                brush: transparent_gradient.into(),
+                expected_noop: true,
+            },
+            Case {
+                label: "visible_linear",
+                brush: visible_gradient.into(),
+                expected_noop: false,
+            },
+        ];
+
+        for case in cases {
+            assert_eq!(
+                case.brush.is_noop(),
+                case.expected_noop,
+                "case: {}",
+                case.label,
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Shape::Triangle fill supports only solid colors")]
+    fn triangle_fill_rejects_gradient_at_builder_boundary() {
+        let gradient = LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE);
+        let _ = Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y).fill(Brush::Linear(gradient));
     }
 }

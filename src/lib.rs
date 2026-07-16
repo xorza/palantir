@@ -74,7 +74,7 @@ pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;
 pub use primitives::brush::{
-    Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread, Stop,
+    Brush, ConicGradient, CurveBrush, Interp, LinearGradient, RadialGradient, Spread, Stop,
 };
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
@@ -252,7 +252,7 @@ mod hot_struct_sizes {
         RecordedGradient => "shapes::RecordedGradient": 56 / 4,
         ResolvedGradient => "cmd::ResolvedGradient": 16 / 4,
         // Authoring paint primitives.
-        Background => "primitives::Background": 168 / 4,
+        Background => "primitives::Background": 124 / 4,
         Brush => "primitives::Brush": 60 / 4,
         Span => "layout::Span": 8 / 4,
         // Layout / text outputs.

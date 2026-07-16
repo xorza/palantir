@@ -604,7 +604,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 0.0)),
                 text: "first".into(),
-                brush: Color::WHITE.into(),
+                color: Color::WHITE,
                 font_size_px: 14.0,
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
@@ -615,7 +615,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 22.0)),
                 text: "second-with-different-text".into(),
-                brush: Color::WHITE.into(),
+                color: Color::WHITE,
                 font_size_px: 14.0,
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
