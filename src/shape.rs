@@ -732,6 +732,20 @@ fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
     local_rect.is_some_and(|r| r.is_paint_empty())
 }
 
+#[inline]
+fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
+    let ab = b - a;
+    let ac = c - a;
+    let bc = c - b;
+    let max_edge_len_sq = ab
+        .length_squared()
+        .max(ac.length_squared())
+        .max(bc.length_squared());
+    // Longest-edge normalization keeps the cutoff independent of authored scale.
+    let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
+    noop_f32(normalized_twice_area)
+}
+
 impl Shape<'_> {
     /// True if this shape paints nothing visible. `Ui::add_shape`
     /// filters these out so widgets can push speculatively without
@@ -757,12 +771,7 @@ impl Shape<'_> {
                 fill,
                 stroke,
                 ..
-            } => {
-                (fill.is_noop() && stroke.is_noop())
-                    // Fully-degenerate triangle (all three corners coincident)
-                    // paints nothing even rounded — a point has zero area.
-                    || (vec2_approx_eq(*a, *b) && vec2_approx_eq(*a, *c))
-            }
+            } => (fill.is_noop() && stroke.is_noop()) || triangle_paint_empty(*a, *b, *c),
             Shape::Line {
                 a, b, width, brush, ..
             } => noop_f32(*width) || brush.is_noop() || vec2_approx_eq(*a, *b),
@@ -827,6 +836,94 @@ impl Shape<'_> {
             Shape::Shadow {
                 local_rect, shadow, ..
             } => local_rect_paint_empty(local_rect) || shadow.is_noop(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::color::Color;
+    use crate::shape::Shape;
+    use glam::Vec2;
+
+    #[test]
+    fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
+        #[derive(Clone, Copy, Debug)]
+        struct Case {
+            label: &'static str,
+            a: Vec2,
+            b: Vec2,
+            c: Vec2,
+            expected_noop: bool,
+        }
+
+        let cases = [
+            Case {
+                label: "counter_clockwise",
+                a: Vec2::ZERO,
+                b: Vec2::new(100.0, 0.0),
+                c: Vec2::new(0.0, 100.0),
+                expected_noop: false,
+            },
+            Case {
+                label: "clockwise",
+                a: Vec2::ZERO,
+                b: Vec2::new(0.0, 100.0),
+                c: Vec2::new(100.0, 0.0),
+                expected_noop: false,
+            },
+            Case {
+                label: "collinear",
+                a: Vec2::ZERO,
+                b: Vec2::new(40.0, 40.0),
+                c: Vec2::new(100.0, 100.0),
+                expected_noop: true,
+            },
+            Case {
+                label: "repeated_vertex",
+                a: Vec2::new(10.0, 20.0),
+                b: Vec2::new(10.0, 20.0),
+                c: Vec2::new(100.0, 100.0),
+                expected_noop: true,
+            },
+            Case {
+                label: "near_degenerate_unit_scale",
+                a: Vec2::ZERO,
+                b: Vec2::new(1.0, 0.0),
+                c: Vec2::new(1.0, 0.00005),
+                expected_noop: true,
+            },
+            Case {
+                label: "near_degenerate_hundred_scale",
+                a: Vec2::ZERO,
+                b: Vec2::new(100.0, 0.0),
+                c: Vec2::new(100.0, 0.005),
+                expected_noop: true,
+            },
+            Case {
+                label: "above_threshold_unit_scale",
+                a: Vec2::ZERO,
+                b: Vec2::new(1.0, 0.0),
+                c: Vec2::new(1.0, 0.0002),
+                expected_noop: false,
+            },
+            Case {
+                label: "above_threshold_hundred_scale",
+                a: Vec2::ZERO,
+                b: Vec2::new(100.0, 0.0),
+                c: Vec2::new(100.0, 0.02),
+                expected_noop: false,
+            },
+        ];
+
+        for case in cases {
+            let triangle = Shape::triangle(case.a, case.b, case.c).fill(Color::WHITE);
+            assert_eq!(
+                triangle.is_noop(),
+                case.expected_noop,
+                "case: {}",
+                case.label,
+            );
         }
     }
 }

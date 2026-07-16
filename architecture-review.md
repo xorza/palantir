@@ -66,7 +66,7 @@ window A PaintOnly:  retains tree A, skips record, reads payloads B
 
 - [x] **Define and enforce `Element` min/max precedence at the authoring boundary.** Both setters now validate the candidate/current pair through one per-axis debug assertion, so negative, NaN, and inverted bounds fail at the setter that creates them without adding release cost to the per-widget authoring path (`src/forest/element/mod.rs:250-263,318-330`). Regression tests accept equality in both setter orders and reject all four x/y × setter-order inversions (`src/forest/element/tests.rs:158-206`).
 
-- [ ] **Reject all zero-area triangles before lowering.** `Shape::is_noop` rejects only the all-three-coincident case (`src/shape.rs:735-765`). Collinear points, including one repeated vertex, reach `sdf_triangle`; zero winding and zero-length edges can make the analytic SDF paint the entire padded bbox or propagate invalid arithmetic (`src/renderer/backend/quad.wgsl:180-195,386-397`). Use a scale-aware cross-product area test at the authoring no-op gate and cover collinear, repeated-vertex, reversed-winding, and near-degenerate inputs.
+- [x] **Reject all zero-area triangles before lowering.** `triangle_paint_empty` normalizes the absolute cross-product area by the longest squared edge and applies the shared paint tolerance, making the authoring no-op gate scale- and winding-independent while dropping repeated, collinear, and near-degenerate inputs before `ShapeRecord` construction (`src/shape.rs:735-746,767-774`). A threshold table covers both windings, exact degeneracy, and matching below/above-cutoff triangles at 1× and 100× scale (`src/shape.rs:843-928`).
 
 ## Batch 5 — High: persistent state, animation, and edit-history correctness
 
