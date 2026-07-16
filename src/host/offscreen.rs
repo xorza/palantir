@@ -170,8 +170,8 @@ impl OffscreenHost {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+#[cfg(feature = "internals")]
+pub(crate) mod test_support {
     use crate::host::clock::Clock;
     use crate::host::context::HostContext;
     use crate::host::window_renderer::{PresentStrategy, WindowRenderer};

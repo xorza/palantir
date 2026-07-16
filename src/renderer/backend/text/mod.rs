@@ -477,7 +477,7 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 #[cfg(feature = "internals")]
-pub mod test_support {
+pub(crate) mod test_support {
     //! Bench/test reach-in surface for driving prepare → flush → render
     //! without `WindowRenderer`'s full record/measure/cascade/encode pipeline.
 

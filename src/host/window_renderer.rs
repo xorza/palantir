@@ -12,12 +12,11 @@
 //! this window's tree. So N windows render through one GPU renderer without
 //! sharing frame-local geometry.
 //!
-//! Two public entries, sharing one CPU + GPU path:
+//! Two internal target paths share one CPU + GPU pipeline:
 //! [`WindowRenderer::frame`] (to a swapchain surface — acquires, submits,
 //! presents, returns a [`FramePresent`] schedule) and
 //! [`WindowRenderer::frame_offscreen`] (to a caller-supplied
-//! `wgpu::Texture` — no acquire/present, for screenshots / the offscreen
-//! host).
+//! `wgpu::Texture` — no acquire/present, used by [`crate::OffscreenHost`]).
 
 use std::time::Instant;
 
@@ -35,8 +34,8 @@ use crate::{Display, FrameReport, FrameStamp};
 /// [`Self::new`] from the shared [`HostContext`]; owns no GPU resources
 /// except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
-pub struct WindowRenderer {
-    pub ui: Ui,
+pub(crate) struct WindowRenderer {
+    pub(crate) ui: Ui,
     /// Per-window record store retained in lockstep with `ui.forest`. The `Ui`
     /// holds an `Rc` clone for record-time writes; frontend and backend phases
     /// borrow this canonical handle explicitly.
@@ -286,7 +285,7 @@ impl WindowRenderer {
     /// `frame()` returns `Idle` without running CPU passes; pending
     /// Ui state (damage, repaint requests, animation deadlines)
     /// survives untouched until the window becomes visible again.
-    pub fn set_occluded(&mut self, occluded: bool) {
+    pub(crate) fn set_occluded(&mut self, occluded: bool) {
         match (occluded, self.occluded_at) {
             (true, None) => self.occluded_at = Some(Instant::now()),
             (false, Some(t)) => {
@@ -326,7 +325,7 @@ impl WindowRenderer {
     /// display knobs. `Display` is built from the config here, so its size
     /// can never disagree with the surface's. (The live-window set + debug
     /// overlay reach the `Ui` through the shared [`HostContext`], not here.)
-    pub fn frame(
+    pub(crate) fn frame(
         &mut self,
         gpu: &mut WgpuBackend,
         target: FrameTarget<'_>,
@@ -388,11 +387,10 @@ impl WindowRenderer {
     /// swapchain surface — the texture sibling of [`Self::frame`]. No
     /// acquire/present dance and no [`FramePresent`] schedule; `Display`'s
     /// physical size is derived from `target.size()`. Runs the same CPU +
-    /// GPU path (`cpu_frame` → `render_to_texture`) as `frame`. Used by
-    /// the offscreen host (visual harness / GPU benches) and available to
-    /// any host wanting render-to-texture (screenshots, thumbnails,
-    /// offscreen compositing).
-    pub fn frame_offscreen(
+    /// GPU path (`cpu_frame` → `render_to_texture`) as `frame`.
+    /// [`crate::OffscreenHost`] uses this path for screenshots, thumbnails,
+    /// offscreen compositing, the visual harness, and GPU benchmarks.
+    pub(crate) fn frame_offscreen(
         &mut self,
         gpu: &mut WgpuBackend,
         target: &wgpu::Texture,
@@ -603,17 +601,17 @@ impl WindowRenderer {
 /// `WindowRenderer::frame` derives `Display.physical` from it, so the
 /// size is never passed (or asserted) twice.
 #[derive(Debug)]
-pub struct FrameTarget<'a> {
+pub(crate) struct FrameTarget<'a> {
     /// Swapchain surface to acquire + present this frame.
-    pub surface: &'a wgpu::Surface<'static>,
+    pub(crate) surface: &'a wgpu::Surface<'static>,
     /// Its configuration; `width`/`height` define the physical size.
-    pub config: &'a wgpu::SurfaceConfiguration,
+    pub(crate) config: &'a wgpu::SurfaceConfiguration,
     /// Logical→physical DPR scale for this window's current monitor.
-    pub scale_factor: f32,
+    pub(crate) scale_factor: f32,
     /// Monitor refresh in millihertz (sets the repaint-wake coalesce
     /// floor so timed wakes never out-pace the panel), or `None` when the
     /// host can't determine it.
-    pub refresh_millihertz: Option<u32>,
+    pub(crate) refresh_millihertz: Option<u32>,
 }
 
 /// WindowRenderer scheduling hint returned by [`WindowRenderer::frame`]. Three
@@ -627,7 +625,7 @@ pub struct FrameTarget<'a> {
 ///   needed at a known moment.
 /// - [`Self::Idle`] — nothing pending; sleep until the next input.
 #[derive(Clone, Copy, Debug)]
-pub enum FramePresent {
+pub(crate) enum FramePresent {
     Immediate,
     At(Instant),
     Idle,

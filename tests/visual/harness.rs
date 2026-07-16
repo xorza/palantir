@@ -4,9 +4,9 @@
 use std::sync::OnceLock;
 use std::sync::mpsc;
 
-use aperture::host::offscreen::OffscreenHost;
-use aperture::host::offscreen::test_support::TwoWindowOffscreenHost;
-use aperture::{Color, DebugOverlayConfig, FixedClock, TextShaper, Ui};
+use aperture::{
+    Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, TwoWindowOffscreenHost, Ui,
+};
 use glam::UVec2;
 use image::RgbaImage;
 use pollster::FutureExt;

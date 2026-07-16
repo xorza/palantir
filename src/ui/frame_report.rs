@@ -1,9 +1,8 @@
 //! One frame's plain-data report from [`Ui::frame`]: the post-record
-//! signals the host needs to act on. All frame-shaped state (forest,
-//! layout, cascades, display) stays on [`Ui`] itself — `Frontend::build`
-//! reads it directly via a `&Ui` borrow; the per-frame paint plan
-//! ([`RenderPlan`], wrapped in `Option` for the skip case) is the only
-//! render-shaped state this report carries.
+//! signals a caller may inspect. All frame-shaped state (forest,
+//! layout, cascades, display) stays on [`Ui`] itself. The renderer's
+//! detailed paint plan remains crate-private; callers see its stable
+//! [`FramePaint`] classification.
 //!
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
@@ -19,16 +18,16 @@ use std::time::Duration;
 /// colour (needed for both kinds: `Full` clears the colour attachment,
 /// `Partial` pre-fills each scissor with it) with the [`RenderKind`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RenderPlan {
+pub(crate) struct RenderPlan {
     /// Surface clear colour for this frame.
-    pub clear: Color,
+    pub(crate) clear: Color,
     /// Whole surface, or just a damage region.
-    pub kind: RenderKind,
+    pub(crate) kind: RenderKind,
 }
 
 /// What a [`RenderPlan`] repaints.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum RenderKind {
+pub(crate) enum RenderKind {
     /// Clear + repaint the whole surface.
     Full,
     /// Load the backbuffer, then paint inside `region` after a
@@ -80,6 +79,17 @@ pub enum FrameProcessing {
     DoubleLayout,
 }
 
+/// How much of the output this frame repaints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FramePaint {
+    /// The previous output remains current; no paint work ran.
+    Skip,
+    /// The whole output repaints.
+    Full,
+    /// Only the internally tracked damage region repaints.
+    Partial,
+}
+
 #[derive(Debug)]
 pub struct FrameReport {
     /// `true` when an animation tick during this frame hasn't
@@ -89,44 +99,72 @@ pub struct FrameReport {
     pub repaint_requested: bool,
     /// Absolute Ui-time deadline at which the host should wake and run
     /// another frame, even if no input arrives. `None` ⇒ no scheduled
-    /// wake. Set by [`crate::ui::Ui::request_repaint_after`]. Hosts
-    /// pair with `start + deadline → Instant` (e.g.
-    /// `WindowRenderer::start_instant() + deadline`) for
-    /// `winit::ControlFlow::WaitUntil`.
+    /// wake. Set by [`crate::Ui::request_repaint_after`]. The supported host
+    /// facades convert this Ui-time deadline to their own clock.
     pub repaint_after: Option<Duration>,
-    /// Per-frame render decision. `None` ⇒ skip path (the previous
-    /// backbuffer is correct — hosts skip the surface acquire /
-    /// present cycle entirely); `Some(plan)` ⇒ work for the renderer.
-    pub plan: Option<RenderPlan>,
+    pub(crate) plan: Option<RenderPlan>,
     /// How `Ui::frame` resolved this frame — informational, used by
     /// tests / benches / profilers to assert the short-circuit fired
     /// or the double-layout retry didn't. See [`FrameProcessing`].
     pub processing: FrameProcessing,
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use crate::primitives::rect::Rect;
-    use crate::ui::frame_report::*;
+impl FrameReport {
+    /// Classify this frame without exposing renderer-only damage data.
+    pub const fn paint(&self) -> FramePaint {
+        match self.plan {
+            None => FramePaint::Skip,
+            Some(RenderPlan {
+                kind: RenderKind::Full,
+                ..
+            }) => FramePaint::Full,
+            Some(RenderPlan {
+                kind: RenderKind::Partial { .. },
+                ..
+            }) => FramePaint::Partial,
+        }
+    }
+}
 
-    impl FrameReport {
-        /// Overwrite `self.plan`: empty ⇒ `Full { clear }`, otherwise `Partial`
-        /// built by adding each rect.
-        pub fn force_damage_to_rects(&mut self, rects: &[Rect], clear: Color) {
-            if rects.is_empty() {
-                self.plan = Some(RenderPlan {
-                    clear,
+#[cfg(test)]
+mod tests {
+    use crate::primitives::color::Color;
+    use crate::primitives::rect::Rect;
+    use crate::ui::damage::region::DamageRegion;
+    use crate::ui::frame_report::{
+        FramePaint, FrameProcessing, FrameReport, RenderKind, RenderPlan,
+    };
+
+    #[test]
+    fn paint_classifies_every_render_plan_shape() {
+        let cases = [
+            (None, FramePaint::Skip),
+            (
+                Some(RenderPlan {
+                    clear: Color::BLACK,
                     kind: RenderKind::Full,
-                });
-                return;
-            }
-            self.plan = Some(RenderPlan {
-                clear,
-                kind: RenderKind::Partial {
-                    region: DamageRegion::from_rects(rects),
-                },
-            });
+                }),
+                FramePaint::Full,
+            ),
+            (
+                Some(RenderPlan {
+                    clear: Color::BLACK,
+                    kind: RenderKind::Partial {
+                        region: DamageRegion::from(Rect::new(1.0, 2.0, 3.0, 4.0)),
+                    },
+                }),
+                FramePaint::Partial,
+            ),
+        ];
+
+        for (plan, expected) in cases {
+            let report = FrameReport {
+                repaint_requested: false,
+                repaint_after: None,
+                plan,
+                processing: FrameProcessing::SingleLayout,
+            };
+            assert_eq!(report.paint(), expected);
         }
     }
 }

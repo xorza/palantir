@@ -54,7 +54,7 @@ pub(crate) struct RecordedGradient {
 /// [`Self::borrow`] / [`Self::borrow_mut`] once per pass and hands
 /// `&RecordPayloads` down through it.
 #[derive(Clone, Default, Debug)]
-pub struct RecordStore {
+pub(crate) struct RecordStore {
     payloads: Rc<RefCell<RecordPayloads>>,
 }
 

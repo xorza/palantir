@@ -918,7 +918,7 @@ pub(crate) enum LineFit {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::common::hash::hash_str;
     use crate::shape::TextWrap;
@@ -935,7 +935,7 @@ pub mod test_support {
             self.inner.borrow().reuse.contains_key(&(wid, ordinal))
         }
 
-        pub fn has_cosmic_buffer(&self, key: TextCacheKey) -> bool {
+        pub(crate) fn has_cosmic_buffer(&self, key: TextCacheKey) -> bool {
             self.inner
                 .borrow()
                 .cosmic

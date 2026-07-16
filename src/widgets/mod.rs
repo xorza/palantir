@@ -217,7 +217,7 @@ impl<'a, R> std::ops::Deref for InnerResponse<'a, R> {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+pub(crate) mod test_support {
     #![allow(dead_code, private_interfaces)]
     use crate::forest::tree::node::NodeId;
     use crate::widgets::*;

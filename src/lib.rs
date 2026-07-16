@@ -2,46 +2,35 @@
 // `::aperture::Animatable` paths (from `aperture-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,
 // `Background`). Outside the crate this path resolves naturally.
-#![allow(private_interfaces, private_bounds)]
-//! Most parent modules are `pub` so that gated `test_support` submodules
-//! (`#[cfg(any(test, feature = "internals"))] pub mod test_support`) are
-//! reachable from external benches / integration tests as
-//! `aperture::foo::bar::test_support::*`. Many items inside those parents
-//! stay `pub(crate)`; a `pub` `test_support` fn signature may name a
-//! `pub(crate)` type, but external callers can't instantiate / name it
-//! on their side, so the leak is nominal.
 
 extern crate self as aperture;
 
-pub mod animation;
+pub(crate) mod animation;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 /// Per-output display state (physical size, DPR, pixel-snap, refresh) —
 /// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
 /// the host layer; not owned by any one subsystem.
 pub(crate) mod display;
-pub mod forest;
-pub mod host;
-pub mod input;
-pub mod layout;
-pub mod primitives;
+pub(crate) mod forest;
+pub(crate) mod host;
+pub(crate) mod input;
+pub(crate) mod layout;
+pub(crate) mod primitives;
 pub(crate) mod record_store;
-pub mod renderer;
+pub(crate) mod renderer;
 pub(crate) mod shape;
-pub mod text;
-pub mod ui;
-pub mod widgets;
-pub mod window;
+pub(crate) mod text;
+pub(crate) mod ui;
+pub(crate) mod widgets;
+pub(crate) mod window;
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
 /// Consumers (debug overlay, benches) hold a `Clone` of the same
 /// `GpuPassStats` the backend writes into — no global state;
-/// `WindowRenderer::gpu_pass_stats` is the canonical handle. Published here because
-/// the backing `renderer::backend::gpu_pass_stats` module is `pub(crate)`.
-pub mod gpu_pass_stats {
-    pub use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
-}
+/// `OffscreenHost::gpu_pass_stats` is the canonical handle.
+pub use renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 /// Per-frame `queue.write_buffer` / `write_texture` counters, gated behind
 /// `internals` for the frame bench's write-attribution arm.
 #[cfg(feature = "internals")]
@@ -64,7 +53,12 @@ pub mod cascade_bench {
     pub use crate::ui::cascade::bench::bench;
 }
 
-pub use record_store::RecordStore;
+#[cfg(feature = "internals")]
+pub use host::offscreen::test_support::TwoWindowOffscreenHost;
+#[cfg(feature = "internals")]
+pub use renderer::frontend::test_support::FrameBenchFrontend;
+#[cfg(feature = "internals")]
+pub use ui::damage::region::test_support::region_after_adds;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
@@ -84,8 +78,6 @@ pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// instead of a swapchain (screenshots, thumbnails, server-side
 /// compositing); also backs the visual harness + GPU benches.
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
-pub use host::window_renderer::FramePresent;
-pub use host::window_renderer::WindowRenderer;
 pub use host::winit::config::WinitHostConfig;
 pub use host::winit::handle::{HostHandle, UserEvent};
 pub use host::winit::{App, WinitHost, WinitHostBuilder};
@@ -117,7 +109,7 @@ pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
-pub use primitives::spacing::Spacing;
+pub use primitives::spacing::{Spacing, Sums};
 // Re-exported (not an aperture type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
@@ -139,10 +131,10 @@ pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 // storing the frame-local `InternedStr` themselves.
 pub use smol_str::SmolStr;
 pub use text::cosmic::CosmicMeasure;
-pub use text::{FontFamily, FontWeight, ShapeParams, TextShaper};
+pub use text::{FontFamily, FontWeight, MeasureResult, ShapeParams, TextShaper};
 pub use ui::Ui;
 pub use ui::frame::FrameStamp;
-pub use ui::frame_report::FrameReport;
+pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
@@ -153,7 +145,7 @@ pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;
 pub use widgets::modal::{Modal, ModalResponse};
 pub use widgets::panel::Panel;
-pub use widgets::popup::{ClickOutside, Popup, PopupHandle};
+pub use widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 pub use widgets::progress_bar::ProgressBar;
 pub use widgets::radio::RadioButton;
 pub use widgets::scroll::{BarMode, Scroll, ZoomConfig, ZoomModifier, ZoomPivot};

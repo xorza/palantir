@@ -1,7 +1,7 @@
 pub(crate) mod cascade;
-pub mod damage;
+pub(crate) mod damage;
 pub(crate) mod frame;
-pub mod frame_report;
+pub(crate) mod frame_report;
 pub(crate) mod state;
 
 use crate::InternedStr;
@@ -1226,7 +1226,7 @@ impl Ui {
 /// brings in the entire surface. Items that don't touch `Ui` (e.g.
 /// `TextShaper::*`) stay in their own modules.
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
+pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
@@ -1257,7 +1257,7 @@ pub mod test_support {
 
     impl Ui {
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
-        pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
+        pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             let tree = &self.forest.trees[Layer::Main];
             let idx = tree
                 .records
@@ -1354,7 +1354,7 @@ pub mod test_support {
         }
 
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
-        pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
+        pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
             &mut self,
             surface: UVec2,
             mut f: F,
@@ -1405,7 +1405,7 @@ pub mod test_support {
         }
 
         /// Scroll-state row for `id` (inserting default if absent).
-        pub fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
+        pub(crate) fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
             self.layout_engine.scroll_states.entry(id).or_default()
         }
 
@@ -1417,7 +1417,7 @@ pub mod test_support {
 
         /// Rebuild the post-collapse damage region from `DamageEngine`'s
         /// last-frame pass-1 buffer. Doesn't mutate state.
-        pub fn damage_region(&self) -> DamageRegion {
+        pub(crate) fn damage_region(&self) -> DamageRegion {
             DamageRegion::collapse_from(
                 &self.damage_engine.raw_rects,
                 self.damage_engine.budget_px,
@@ -1469,16 +1469,16 @@ pub mod test_support {
             self.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
         }
 
-        pub fn encode_cmds(&self) -> RenderCmdBuffer {
+        pub(crate) fn encode_cmds(&self) -> RenderCmdBuffer {
             self.encode_cmds_filtered(None)
         }
 
-        pub fn encode_cmds_filtered(&self, filter: Option<Rect>) -> RenderCmdBuffer {
+        pub(crate) fn encode_cmds_filtered(&self, filter: Option<Rect>) -> RenderCmdBuffer {
             self.encode_cmds_with_region(filter.map(DamageRegion::from))
         }
 
         /// Multi-rect variant; each rect is fed through `DamageRegion::add` so merge policy applies.
-        pub fn encode_cmds_with_rects(&self, rects: &[Rect]) -> RenderCmdBuffer {
+        pub(crate) fn encode_cmds_with_rects(&self, rects: &[Rect]) -> RenderCmdBuffer {
             let region = (!rects.is_empty()).then(|| DamageRegion::from_rects(rects));
             self.encode_cmds_with_region(region)
         }
