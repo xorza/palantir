@@ -302,6 +302,13 @@ fn max_chars_caps_typed_input() {
     type_char(&mut s, &mut state, 'X', Some(3));
     assert_eq!(s, "abc", "insertion at the cap is dropped, not shifted");
     assert_eq!(state.caret, 0);
+
+    state.caret = 2;
+    state.selection = Some(1);
+    type_char(&mut s, &mut state, 'X', Some(3));
+    assert_eq!(s, "aXc", "selection deletion frees room under the cap");
+    assert_eq!(state.caret, 2);
+    assert_eq!(state.selection, None);
 }
 
 #[test]
