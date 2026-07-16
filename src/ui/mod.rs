@@ -731,8 +731,8 @@ impl Ui {
     }
 
     /// Open a new top-level OS window addressed by `token`. The window
-    /// gets its own independent UI tree; [`App::frame`](crate::App::frame)
-    /// is called for it with `token`, and you can later poke it via
+    /// gets its own independent UI tree; [`App::update`](crate::App::update)
+    /// and [`App::record`](crate::App::record) receive its `token`, and you can later poke it via
     /// [`HostHandle::request_repaint`](crate::HostHandle::request_repaint)
     /// or close it with [`Self::close_window`].
     ///
