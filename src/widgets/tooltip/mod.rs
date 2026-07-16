@@ -22,7 +22,7 @@ use std::time::Duration;
 /// previous frame's bubble extent for anchor flip/clamp.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct TooltipState {
-    pub(crate) hover_started_at: Option<f32>,
+    pub(crate) hover_started_at: Option<Duration>,
     pub(crate) visible: bool,
     pub(crate) last_size: Option<Size>,
 }
@@ -32,7 +32,7 @@ pub(crate) struct TooltipState {
 /// skip their delay (egui-style toolbar warmup).
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct TooltipGlobal {
-    pub(crate) last_visible_at: Option<f32>,
+    pub(crate) last_visible_at: Option<Duration>,
 }
 
 static GLOBAL_STATE_ID: LazyLock<WidgetId> =
@@ -117,19 +117,15 @@ impl<'r> Tooltip<'r> {
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
     pub fn show(self, ui: &mut Ui) {
-        let delay = self.delay.unwrap_or(ui.theme.tooltip.delay);
-        let warmup = ui.theme.tooltip.warmup;
+        let delay = Duration::from_secs_f32(self.delay.unwrap_or(ui.theme.tooltip.delay));
+        let warmup = Duration::from_secs_f32(ui.theme.tooltip.warmup);
         let gap = ui.theme.tooltip.gap;
 
         let trigger_id = self.snapshot.id;
-        let state_id = trigger_id.with("tooltip");
         let bubble_id = trigger_id.with("tooltip.bubble");
         let g_id = *GLOBAL_STATE_ID;
 
-        // State keying needs `bubble_id` for the StateMap row to live
-        // alongside the trigger's lifecycle. A caller-supplied id via
-        // `.id_salt(...)` would silently be overwritten — debug-assert
-        // instead of swallowing the bug.
+        // Accepting an override would split bubble identity from the trigger-owned lifecycle.
         debug_assert!(
             matches!(self.element.salt, Salt::Auto(_)),
             "Tooltip does not honor `.id(...)` / `.id_salt(...)` — the id is \
@@ -142,12 +138,14 @@ impl<'r> Tooltip<'r> {
         let trigger_rect = self.snapshot.state.rect;
         let active_trigger = trigger_hovered && (!trigger_disabled || self.show_when_disabled);
 
-        let now = ui.frame_runtime.time.as_secs_f32();
+        let now = ui.now();
 
-        let mut state: TooltipState = *ui.state_mut::<TooltipState>(state_id);
+        let mut state: TooltipState = *ui.state_mut::<TooltipState>(trigger_id);
         let mut global: TooltipGlobal = *ui.state_mut::<TooltipGlobal>(g_id);
 
-        let warmup_active = global.last_visible_at.is_some_and(|t| (now - t) < warmup);
+        let warmup_active = global
+            .last_visible_at
+            .is_some_and(|t| now.saturating_sub(t) < warmup);
 
         if active_trigger {
             let started = match state.hover_started_at {
@@ -157,11 +155,11 @@ impl<'r> Tooltip<'r> {
                     // One wake at the threshold is enough — the queue
                     // remembers it. If the user moves off before then
                     // the wake still fires into a no-op frame; cheap.
-                    ui.request_repaint_after(Duration::from_secs_f32(delay));
+                    ui.request_repaint_after(delay);
                     now
                 }
             };
-            let elapsed = now - started;
+            let elapsed = now.saturating_sub(started);
             if warmup_active || elapsed >= delay {
                 state.visible = true;
             }
@@ -205,7 +203,7 @@ impl<'r> Tooltip<'r> {
             });
         }
 
-        *ui.state_mut::<TooltipState>(state_id) = state;
+        *ui.state_mut::<TooltipState>(trigger_id) = state;
         *ui.state_mut::<TooltipGlobal>(g_id) = global;
     }
 }
