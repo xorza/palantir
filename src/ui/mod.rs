@@ -855,8 +855,7 @@ impl Ui {
     }
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
-        self.forest
-            .add_shape(shape, &self.record_store, &self.ctx.caches.gradients);
+        self.forest.add_shape(shape, &self.record_store);
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
@@ -948,7 +947,7 @@ impl Ui {
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
     pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
         self.forest
-            .add_shape_animated(shape, anim, &self.record_store, &self.ctx.caches.gradients);
+            .add_shape_animated(shape, anim, &self.record_store);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
@@ -1036,7 +1035,6 @@ impl Ui {
         let chrome = chrome.map(|bg| ChromeInput {
             bg,
             store: &self.record_store,
-            atlas: &self.ctx.caches.gradients,
         });
         self.forest.open_node(id, element, chrome);
         let r = f(self);
@@ -1334,7 +1332,7 @@ pub mod test_support {
         /// / `for_test_at_text` pre-stamp a matching display, so the
         /// first frame classifies by coverage like any other (small
         /// content ⇒ `Partial`, from the all-Vacant walk).
-        fn mark_warm_for_test(&mut self) {
+        pub(crate) fn mark_warm_for_test(&mut self) {
             self.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
             self.frame_runtime.frame_submitted = true;
         }

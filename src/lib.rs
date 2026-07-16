@@ -199,11 +199,12 @@ mod hot_struct_sizes {
     use crate::primitives::brush::Brush;
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
-    use crate::record_store::LoweredGradient;
+    use crate::record_store::RecordedGradient;
     use crate::renderer::backend::text::GlyphInstance;
     use crate::renderer::frontend::cmd_buffer::payload::{
         DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
         DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
+        ResolvedGradient,
     };
     use crate::renderer::quad::Quad;
     use crate::renderer::render_buffer::curve::CurveInstance;
@@ -280,7 +281,8 @@ mod hot_struct_sizes {
         ChromeRow => "forest::ChromeRow": 56 / 8,
         ShapeStroke => "shapes::ShapeStroke": 10 / 2,
         LoweredShadow => "shapes::LoweredShadow": 18 / 2,
-        LoweredGradient => "shapes::LoweredGradient": 16 / 4,
+        RecordedGradient => "shapes::RecordedGradient": 56 / 4,
+        ResolvedGradient => "cmd::ResolvedGradient": 16 / 4,
         // Authoring paint primitives.
         Background => "primitives::Background": 168 / 4,
         Brush => "primitives::Brush": 60 / 4,

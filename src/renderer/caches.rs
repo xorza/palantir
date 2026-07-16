@@ -21,7 +21,7 @@ pub(crate) struct RenderCaches {
     /// inside the crate (the `Ui` method + the backend upload path).
     pub(crate) images: ImageRegistry,
     /// Internal gradient LUT cache. Registration is driven from
-    /// shape lowering — users never touch this directly.
+    /// frontend encoding — users never touch this directly.
     pub(crate) gradients: GradientAtlas,
 }
 

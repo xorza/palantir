@@ -15,9 +15,9 @@
 //! [`crate::forest::shapes::lower`].
 
 use crate::common::hash::hash_str;
-use crate::primitives::brush::FillAxis;
+use crate::primitives::brush::{FillAxis, Interp, MAX_STOPS, Stop};
 use crate::primitives::color::ColorU8;
-use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::fill_wire::FillKind;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::span::Span;
@@ -25,17 +25,21 @@ use glam::Vec2;
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::Write as _;
 use std::rc::Rc;
+use tinyvec::ArrayVec;
 
 /// Record-local handle into [`RecordPayloads::gradients`].
-pub(crate) type GradientId = u32;
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct GradientId(pub(crate) u32);
 
-/// Pre-baked gradient payload stored with the recording that owns its lifetime.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LoweredGradient {
+/// Retained gradient content. The physical atlas row is resolved while
+/// encoding because the shared atlas may evict rows between window frames.
+#[derive(Clone, Debug)]
+pub(crate) struct RecordedGradient {
     pub(crate) axis: FillAxis,
-    pub(crate) row: LutRow,
     pub(crate) kind: FillKind,
+    pub(crate) stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub(crate) interp: Interp,
 }
 
 /// Shared owner of one window's retained record payloads. `WindowRenderer`
@@ -75,13 +79,13 @@ pub(crate) struct RecordPayloads {
     /// the `CurveInstance` color lanes carry) — quantization happens
     /// once at lowering, not per-emitted-instance.
     pub(crate) polyline_colors: Vec<ColorU8>,
-    /// Frame-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
+    /// Record-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
     /// by `shapes::lower::brush`) indexes into this vec. Cross-tree — storing
     /// it here means chrome lowering on one tree and
     /// shape lowering on another share one pool, and the encoder only
     /// needs the record payloads (not the originating tree) to resolve a
     /// gradient id.
-    pub(crate) gradients: Vec<LoweredGradient>,
+    pub(crate) gradients: Vec<RecordedGradient>,
     /// `Ui::fmt` formatter scratch. Frame-local handles returned by
     /// [`RecordStore::intern_fmt`] point into this buffer; owned text
     /// keeps its bytes inline on `ShapeRecord::Text`. Cross-tree on
@@ -89,6 +93,16 @@ pub(crate) struct RecordPayloads {
     /// record pass, capacity retained — steady-state `ui.fmt(...)`
     /// flows skip the `format!() → String` allocation entirely.
     pub(crate) fmt_scratch: String,
+}
+
+impl RecordPayloads {
+    pub(crate) fn record_gradient(&mut self, gradient: RecordedGradient) -> GradientId {
+        let id = GradientId(
+            u32::try_from(self.gradients.len()).expect("recorded gradient count exceeds u32"),
+        );
+        self.gradients.push(gradient);
+        id
+    }
 }
 
 impl RecordStore {

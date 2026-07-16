@@ -176,12 +176,12 @@ pub(crate) enum ShapeRecord {
         p3: Vec2,
         width: f32,
         /// Lowered stroke fill. Solid colour stays inline; `Linear`
-        /// gradient stops have been registered with the gradient atlas
-        /// at lowering and ride as a `LoweredGradient` indexed by
-        /// `ShapeBrush::Gradient`. The gradient is sampled along the
-        /// curve parameter `t` (p0 → p3) in the shader — the
-        /// `LinearGradient::angle` from authoring is intentionally
-        /// ignored, because the curve carries its own 1-D parameter.
+        /// gradient content rides as a `RecordedGradient` indexed by
+        /// `ShapeBrush::Gradient` and resolves its atlas row on encode.
+        /// The gradient is sampled along the curve parameter `t` (p0 →
+        /// p3) in the shader — the `LinearGradient::angle` from authoring
+        /// is intentionally ignored, because the curve carries its own
+        /// 1-D parameter.
         /// `Radial`/`Conic` brushes are rejected at lowering.
         fill: ShapeBrush,
         /// Pre-computed content hash of `fill` when it's a gradient,
