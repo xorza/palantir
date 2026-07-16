@@ -25,9 +25,11 @@ use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
+mod higher_kind;
 mod occlusion;
 mod text_grid;
 
+use higher_kind::HigherKindRects;
 use occlusion::OcclusionPruner;
 use text_grid::TextRectGrid;
 
@@ -51,8 +53,8 @@ use text_grid::TextRectGrid;
 /// later-replaying kind (e.g. a mesh recorded after an overlapping
 /// image or curve). The checks use
 /// the batch state's open text grid (per-batch text AABBs, spatially indexed)
-/// and [`higher_kind_rects`](Self::higher_kind_rects) (per-group
-/// kind-tagged AABBs of mesh/image/curve draws).
+/// and [`higher_kinds`](Self::higher_kinds) (per-group, per-tier
+/// AABBs of mesh/image/curve draws).
 #[derive(Debug)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
@@ -62,17 +64,12 @@ pub(crate) struct Composer {
     transform_stack: Vec<TranslateScale>,
     polyline: PolylineScratch,
     batch: BatchState,
-    /// Per-group kind-tagged AABBs of draws that paint above both quads
-    /// and text under the kind-reorder (mesh, image, curve — polylines
-    /// ride the curve tier). Used by three checks: a later quad overlapping
-    /// one would be reordered *under* it (`quad_forces_flush`), text
-    /// recorded after one would be reordered *above* it (`DrawText`),
-    /// and a later higher-kind draw of an earlier-replaying kind would
-    /// be reordered under one it overlaps
-    /// ([`Self::higher_kind_conflict`]) — each forces a flush to
-    /// preserve record order. Cleared per flush — independent of batch
-    /// state since every higher-kind draw also closes the batch.
-    higher_kind_rects: Vec<HigherKindRect>,
+    /// Per-group AABBs partitioned by above-text replay tier. A later
+    /// lower-tier draw checks only tiers that replay after it, while
+    /// text and quads use the aggregate union before scanning any set.
+    /// Cleared per flush — independent of batch state since every
+    /// higher-kind draw also closes the batch.
+    higher_kinds: HigherKindRects,
     /// In-flight group clip state: the active scissor + rounded-mask
     /// chain stamped onto the group at [`Self::flush`]. Changed only
     /// through [`Self::set_clip`], which flushes when either differs
@@ -103,14 +100,6 @@ struct ClipFrame {
     /// push extends the parent chain with its own mask; a rect push
     /// inherits it verbatim. Empty = no rounded ancestor.
     chain: Span,
-}
-
-/// One above-text draw recorded into the in-flight group: its physical-px
-/// AABB and [`PaintTier`], whose ordering matches backend replay order.
-#[derive(Clone, Copy, Debug)]
-struct HigherKindRect {
-    tier: PaintTier,
-    rect: URect,
 }
 
 /// One closed-but-not-yet-indexed text batch: its run span in `out.texts`
@@ -191,7 +180,7 @@ impl Composer {
             transform_stack: Vec::new(),
             polyline: PolylineScratch::default(),
             batch: BatchState::default(),
-            higher_kind_rects: Vec::new(),
+            higher_kinds: HigherKindRects::default(),
             current_scissor: None,
             current_chain: Span::default(),
             cursors: GroupCursors::default(),
@@ -252,7 +241,7 @@ impl Composer {
             images: i_end,
             curves: c_end,
         };
-        self.higher_kind_rects.clear();
+        self.higher_kinds.clear();
         self.occlusion.clear();
         // Closed-batch text is group-scoped: once we cross a group
         // boundary, any batch closed *in* this group has rendered (it
@@ -349,7 +338,7 @@ impl Composer {
     /// open — so the batch must close here for its text to emit first. Done
     /// only after the cull: a culled draw must not split the batch. Also
     /// flushes the group when the draw cross-kind-conflicts with an earlier
-    /// higher-kind draw (see [`Self::higher_kind_conflict`]), and then
+    /// higher-kind draw (see [`HigherKindRects::conflicts`]), and then
     /// records the draw's own rect for the group's overlap tracking (after
     /// the flush, so it isn't wiped with the previous group's rects).
     /// Returns `false` when culled — the caller should `continue`.
@@ -367,35 +356,11 @@ impl Composer {
             return false;
         }
         self.close_batch(out);
-        if self.higher_kind_conflict(tier, scissor) {
+        if self.higher_kinds.conflicts(tier, scissor) {
             self.flush(out);
         }
-        self.higher_kind_rects.push(HigherKindRect {
-            tier,
-            rect: scissor,
-        });
+        self.higher_kinds.push(tier, scissor);
         true
-    }
-
-    /// `true` when a higher-kind draw of `kind` at `rect` would violate
-    /// record order against an earlier higher-kind draw in the group.
-    /// The backend replays a group's higher kinds in the fixed tier
-    /// order mesh → image → curve (`schedule::emit_group_body`), so
-    /// record order between two overlapping draws is honored iff the
-    /// later-recorded one replays in a *later* tier. Same-kind overlap
-    /// is fine — order is preserved within a batch. Conflict is
-    /// therefore `kind < recorded.kind` (incoming replays earlier than
-    /// an overlapping recorded draw) — the caller must flush so the
-    /// earlier draw renders in an earlier group.
-    fn higher_kind_conflict(&self, tier: PaintTier, rect: URect) -> bool {
-        let first_conflicting_tier = match tier {
-            PaintTier::Mesh => PaintTier::Image,
-            PaintTier::Image => PaintTier::Curve,
-            PaintTier::Curve => return false,
-        };
-        self.higher_kind_rects.iter().any(|entry| {
-            entry.tier >= first_conflicting_tier && entry.rect.intersect(rect).is_some()
-        })
     }
 
     /// Conservative overlap of `rect` against every recorded higher-kind
@@ -403,9 +368,7 @@ impl Composer {
     /// positives are correctness-safe (extra flush, costs a drawcall);
     /// false negatives would reorder paint and corrupt the frame.
     fn any_higher_kind_overlap(&self, rect: URect) -> bool {
-        self.higher_kind_rects
-            .iter()
-            .any(|e| e.rect.intersect(rect).is_some())
+        self.higher_kinds.any_overlap(rect)
     }
 
     /// Force a flush / batch-close if a quad-tier draw at `overlap`
@@ -1292,7 +1255,7 @@ impl Composer {
         self.batch.open_grid.start_frame(viewport_phys);
         self.batch.closed_grid.start_frame(viewport_phys);
         self.batch.pending.clear();
-        self.higher_kind_rects.clear();
+        self.higher_kinds.clear();
         self.cursors = GroupCursors::default();
         self.batch.open = None;
         self.occlusion.clear();
