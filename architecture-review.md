@@ -74,7 +74,7 @@ window A PaintOnly:  retains tree A, skips record, reads payloads B
 
 - [x] **Reset animation-mode state when `AnimSpec` changes kind without a target change.** `AnimRow` now stores an `AnimKind`, and every kind transition clears velocity and elapsed time while restarting the segment from the current value before steady-state or retarget short-circuits (`src/animation/mod.rs:78-160,224-252`). Exact same-target regressions pin mid-flight Spring-to-Duration and Duration-to-Spring-to-Duration restarts (`src/animation/tests.rs:912-972`).
 
-- [ ] **Do not mutate undo/redo history for a rejected TextEdit insertion.** `replace_selection` records history before mutation (`src/widgets/text_edit/model.rs:218-225`), while `insert_capped` can reject all input at `max_chars` (`src/widgets/text_edit/model.rs:189-215`). Typing at the cap with no selection clones the whole buffer, opens/coalesces an undo unit, and clears redo despite no edit. Preflight whether selection deletion or at least one character insertion will occur, and return before `record_edit` for a true no-op. Verify redo and edit grouping survive a rejected insertion.
+- [x] **Do not mutate undo/redo history for a rejected TextEdit insertion.** `Editor` now computes the UTF-8-safe prefix that fits after planned selection deletion and returns before `record_edit` when neither deletion nor insertion would occur (`src/widgets/text_edit/model.rs:189-224`). Exact regressions prove a rejected capped insertion preserves the redo tail and an active Delete coalescing group, while replacement of a selection at the cap still lands normally (`src/widgets/text_edit/tests/undo.rs:59-112`, `src/widgets/text_edit/tests/apply_key.rs:288-312`).
 
 ## Batch 6 — High: make the public boundary coherent
 

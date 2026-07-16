@@ -1,3 +1,4 @@
+use crate::widgets::text_edit::model::EditKind;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -56,7 +57,7 @@ fn undo_restores_selection_after_delete() {
 }
 
 #[test]
-fn redo_stack_clears_on_fresh_edit() {
+fn redo_stack_changes_only_on_real_edit() {
     let mut s = String::new();
     let mut state = TextEditState::default();
     apply_key(&mut s, &mut state, press(Key::Char('a')));
@@ -65,4 +66,48 @@ fn redo_stack_clears_on_fresh_edit() {
     apply_key(&mut s, &mut state, press(Key::Char('b')));
     apply_key(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
     assert_eq!(s, "b", "redo after a new edit is a no-op");
+
+    let mut s = String::from("a");
+    let mut state = TextEditState {
+        caret: 1,
+        ..Default::default()
+    };
+    apply_key(&mut s, &mut state, press(Key::Backspace));
+    apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(s, "a");
+    assert_eq!(state.redo.len(), 1);
+
+    let mut editor = Editor::new(&mut s, &mut state, false, Some(1));
+    editor.apply_key(press(Key::Char('x')));
+    assert!(!editor.edited);
+    assert_eq!(editor.text, "a");
+    assert_eq!(editor.state.redo.len(), 1);
+
+    apply_key(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
+    assert_eq!(s, "", "redo survives a rejected capped insertion");
+}
+
+#[test]
+fn rejected_capped_insert_preserves_delete_coalescing() {
+    let mut s = String::from("ab");
+    let mut state = TextEditState {
+        caret: 2,
+        ..Default::default()
+    };
+
+    Editor::new(&mut s, &mut state, false, Some(1)).apply_key(press(Key::Backspace));
+    assert_eq!(s, "a");
+    assert_eq!(state.undo.len(), 1);
+
+    Editor::new(&mut s, &mut state, false, Some(1)).apply_key(press(Key::Char('x')));
+    assert_eq!(s, "a");
+    assert_eq!(state.undo.len(), 1);
+    assert_eq!(state.last_edit_kind, Some(EditKind::Delete));
+
+    Editor::new(&mut s, &mut state, false, Some(1)).apply_key(press(Key::Backspace));
+    assert_eq!(s, "");
+    assert_eq!(state.undo.len(), 1);
+
+    apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(s, "ab", "both deletes remain one undo group");
 }

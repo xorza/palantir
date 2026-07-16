@@ -186,43 +186,42 @@ impl<'a> Editor<'a> {
         true
     }
 
-    /// Insert `s` at the caret, capped so the buffer holds at most
-    /// `max_chars` characters (`None` = unbounded). Trailing chars of
-    /// `s` that don't fit are dropped; the caret advances past what
-    /// landed. Call *after* `delete_selection` so the freed room
-    /// counts. The cap is by char count (not bytes) and only ever
-    /// inserts on a char boundary. Returns whether anything landed
-    /// (`false` when the cap ate it all).
-    fn insert_capped(&mut self, s: &str) -> bool {
-        let fit: &str = match self.max_chars {
+    /// Portion of `s` that fits after deleting the live selection.
+    /// The cap is by character count; the returned prefix remains on
+    /// a UTF-8 boundary.
+    fn capped_prefix<'s>(&self, s: &'s str) -> &'s str {
+        match self.max_chars {
             Some(max) => {
-                let room = max.saturating_sub(self.text.chars().count());
-                if room == 0 {
-                    return false;
-                }
+                let selected_chars = self
+                    .state
+                    .sel_range()
+                    .map_or(0, |range| self.text[range].chars().count());
+                let chars_after_delete = self.text.chars().count() - selected_chars;
+                let room = max.saturating_sub(chars_after_delete);
                 match s.char_indices().nth(room) {
                     Some((byte, _)) => &s[..byte],
                     None => s,
                 }
             }
             None => s,
-        };
-        if fit.is_empty() {
-            return false;
         }
-        self.text.insert_str(self.state.caret, fit);
-        self.state.caret += fit.len();
-        true
     }
 
     /// Replace the live selection with `s` under one undo unit of
     /// `kind` — the shared choke point for typing, IME text, newline
     /// insert, and paste.
     pub(crate) fn replace_selection(&mut self, s: &str, kind: EditKind) {
+        let fit = self.capped_prefix(s);
+        if self.state.selection.is_none() && fit.is_empty() {
+            return;
+        }
         self.record_edit(kind);
-        let deleted = self.delete_selection();
-        let inserted = self.insert_capped(s);
-        self.edited |= deleted || inserted;
+        self.delete_selection();
+        if !fit.is_empty() {
+            self.text.insert_str(self.state.caret, fit);
+            self.state.caret += fit.len();
+        }
+        self.edited = true;
     }
 
     /// Single-line editors never admit line breaks; multi-line passes
