@@ -3,11 +3,11 @@
 //! font size, wrap width, line height, family, weight, halign, fit) —
 //! so steady-state measurement is `HashMap` lookup only: no reshape,
 //! no allocation. The cache is bounded:
-//! [`CosmicMeasure::end_frame_evict`] drops the least-recently-shaped
-//! buffers each frame (keeping every buffer a live layout entry still
-//! references), so a continuous resize drag — every width unique, a
-//! fresh entry per run per frame — stays bounded instead of growing
-//! without limit.
+//! [`CosmicMeasure::end_frame_evict`] drops the least-recently-used
+//! buffers each frame. Missing buffers are reconstructible from the
+//! retained text shape at the frontend boundary, so a continuous resize
+//! drag — every width unique, a fresh entry per run per frame — stays
+//! bounded without explicit cache ownership.
 //!
 //! The render side reaches the cached `Buffer`s and the `FontSystem`
 //! through [`CosmicMeasure::split_for_render`] (via
@@ -27,7 +27,7 @@ use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     Weight, fontdb,
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 /// Bundled fonts shipped with the crate. Inter is the default UI /
@@ -49,6 +49,10 @@ pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
 
 fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
+}
+
+fn dequantize(v: u32) -> f32 {
+    v as f32 / 64.0
 }
 
 fn key_for(text_hash: u64, params: ShapeParams, fit: LineFit) -> TextCacheKey {
@@ -84,6 +88,53 @@ fn key_for(text_hash: u64, params: ShapeParams, fit: LineFit) -> TextCacheKey {
         weight_q: weight as u8,
         halign_q,
         fit_q: fit as u8,
+    }
+}
+
+fn canonical_params(key: TextCacheKey) -> ShapeParams {
+    let family = match key.family_q {
+        0 => FontFamily::Sans,
+        1 => FontFamily::Mono,
+        other => panic!("invalid FontFamily discriminant in TextCacheKey: {other}"),
+    };
+    let weight = match key.weight_q {
+        0 => FontWeight::Regular,
+        1 => FontWeight::Bold,
+        other => panic!("invalid FontWeight discriminant in TextCacheKey: {other}"),
+    };
+    let halign = match key.halign_q {
+        0 => HAlign::Auto,
+        1 => HAlign::Left,
+        2 => HAlign::Center,
+        3 => HAlign::Right,
+        4 => HAlign::Stretch,
+        other => panic!("invalid HAlign discriminant in TextCacheKey: {other}"),
+    };
+    ShapeParams {
+        font_size_px: dequantize(key.size_q),
+        line_height_px: dequantize(key.lh_q),
+        max_width_px: (key.max_w_q != MAX_W_NONE).then(|| dequantize(key.max_w_q)),
+        family,
+        weight,
+        halign,
+    }
+}
+
+fn line_fit(key: TextCacheKey) -> LineFit {
+    match key.fit_q {
+        0 => LineFit::Wrap,
+        1 => LineFit::Clip,
+        2 => LineFit::Ellipsis,
+        other => panic!("invalid LineFit discriminant in TextCacheKey: {other}"),
+    }
+}
+
+fn unbounded_key(key: TextCacheKey) -> TextCacheKey {
+    TextCacheKey {
+        max_w_q: MAX_W_NONE,
+        halign_q: HAlign::Auto as u8,
+        fit_q: LineFit::Wrap as u8,
+        ..key
     }
 }
 
@@ -132,8 +183,8 @@ struct CacheEntry {
     /// insert from the unbounded shaping result and reused for every later
     /// `measure` call that hits this entry.
     intrinsic_min: f32,
-    /// Frame generation at the last measure-time touch (insert or
-    /// `cache_hit`). The LRU recency key for [`CosmicMeasure::end_frame_evict`].
+    /// Monotonic access generation at the last measure or encode-time
+    /// touch. The LRU recency key for [`CosmicMeasure::end_frame_evict`].
     last_used: u64,
 }
 
@@ -147,14 +198,11 @@ struct CacheEntry {
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: FxHashMap<TextCacheKey, CacheEntry>,
-    /// Monotonic frame counter, advanced once per frame by
-    /// [`Self::advance_frame`]. Stamped onto each entry's `last_used` on
-    /// every measure-time touch so eviction can drop the
-    /// least-recently-shaped unpinned buffers.
-    frame_gen: u64,
-    /// Reusable scratch holding the `last_used` of every unpinned entry
-    /// during [`Self::end_frame_evict`] — kept across frames so the
-    /// (infrequent) eviction pass allocates nothing.
+    /// Monotonic cache-access counter. Unique recency values let eviction
+    /// retain exactly the configured number of most-recent entries.
+    use_gen: u64,
+    /// Reusable scratch holding every entry's `last_used` during
+    /// [`Self::end_frame_evict`], retained so eviction allocates nothing.
     evict_scratch: Vec<u64>,
     /// Trailing advance of "…" per `(quantized font size, family, weight)`.
     /// The ellipsis width is constant for a given size + face, so this turns
@@ -187,7 +235,7 @@ impl CosmicMeasure {
         Self {
             font_system,
             cache: FxHashMap::default(),
-            frame_gen: 0,
+            use_gen: 0,
             evict_scratch: Vec::new(),
             ellipsis_cache: FxHashMap::default(),
             truncate_scratch: String::new(),
@@ -254,6 +302,13 @@ impl CosmicMeasure {
         text_hash: u64,
         params: ShapeParams,
     ) -> MeasureResult {
+        if text.is_empty() || params.font_size_px <= 0.0 {
+            return MeasureResult::INVALID;
+        }
+        let key = key_for(text_hash, params, LineFit::Wrap);
+        if let Some(hit) = self.cache_hit(key) {
+            return hit;
+        }
         let ShapeParams {
             font_size_px,
             line_height_px,
@@ -261,14 +316,7 @@ impl CosmicMeasure {
             family,
             weight,
             halign,
-        } = params;
-        if text.is_empty() || font_size_px <= 0.0 {
-            return MeasureResult::INVALID;
-        }
-        let key = key_for(text_hash, params, LineFit::Wrap);
-        if let Some(hit) = self.cache_hit(key) {
-            return hit;
-        }
+        } = canonical_params(key);
 
         let metrics = Metrics::new(font_size_px, line_height_px);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -292,13 +340,14 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let extent = shaped_extent(&buffer);
+        let last_used = self.next_use_gen();
         self.cache.insert(
             key,
             CacheEntry {
                 buffer,
                 measured: extent.size,
                 intrinsic_min: extent.intrinsic_min,
-                last_used: self.frame_gen,
+                last_used,
             },
         );
         MeasureResult {
@@ -328,6 +377,26 @@ impl CosmicMeasure {
         fit: LineFit,
         unbounded_key: TextCacheKey,
     ) -> MeasureResult {
+        let requested_w = params
+            .max_width_px
+            .expect("measure_truncated requires a finite width");
+        debug_assert!(
+            matches!(fit, LineFit::Clip | LineFit::Ellipsis),
+            "measure_truncated requires Clip or Ellipsis",
+        );
+        if text.is_empty() || params.font_size_px <= 0.0 {
+            return MeasureResult::INVALID;
+        }
+        let key = TextCacheKey {
+            max_w_q: quantize(requested_w),
+            halign_q: HAlign::Auto as u8,
+            fit_q: fit as u8,
+            ..unbounded_key
+        };
+        if let Some(hit) = self.cache_hit(key) {
+            return hit;
+        }
+        self.ensure_buffer(text, unbounded_key);
         let ShapeParams {
             font_size_px,
             line_height_px,
@@ -337,24 +406,8 @@ impl CosmicMeasure {
             // A truncated single line is positioned/aligned by the encoder,
             // not shaped with a per-line align.
             halign: _,
-        } = params;
-        let w = max_width_px.expect("measure_truncated requires a finite width");
-        debug_assert!(
-            matches!(fit, LineFit::Clip | LineFit::Ellipsis),
-            "measure_truncated requires Clip or Ellipsis",
-        );
-        if text.is_empty() || font_size_px <= 0.0 {
-            return MeasureResult::INVALID;
-        }
-        let key = TextCacheKey {
-            max_w_q: quantize(w),
-            halign_q: HAlign::Auto as u8,
-            fit_q: fit as u8,
-            ..unbounded_key
-        };
-        if let Some(hit) = self.cache_hit(key) {
-            return hit;
-        }
+        } = canonical_params(key);
+        let w = max_width_px.expect("truncated TextCacheKey requires a finite width");
         let metrics = Metrics::new(font_size_px, line_height_px);
         let attrs = attrs_for(family, weight);
         let probe = &self
@@ -415,13 +468,14 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let measured = shaped_extent(&buffer).size;
+        let last_used = self.next_use_gen();
         self.cache.insert(
             key,
             CacheEntry {
                 buffer,
                 measured,
                 intrinsic_min: 0.0,
-                last_used: self.frame_gen,
+                last_used,
             },
         );
         MeasureResult {
@@ -463,12 +517,39 @@ impl CosmicMeasure {
         w
     }
 
+    /// Restore a missing shaped buffer from the retained source text and
+    /// the canonical parameters encoded by `key`. Truncated runs restore
+    /// their unbounded probe first; callers never manage that dependency.
+    pub(crate) fn ensure_buffer(&mut self, text: &str, key: TextCacheKey) {
+        if key.is_invalid() || self.cache_hit(key).is_some() {
+            return;
+        }
+        let result = match line_fit(key) {
+            LineFit::Wrap => self.measure_hashed(text, key.text_hash, canonical_params(key)),
+            fit @ (LineFit::Clip | LineFit::Ellipsis) => {
+                let unbounded = unbounded_key(key);
+                self.measure_truncated(text, canonical_params(key), fit, unbounded)
+            }
+        };
+        assert_eq!(
+            result.key, key,
+            "restored text buffer did not reproduce its TextCacheKey",
+        );
+    }
+
+    fn next_use_gen(&mut self) -> u64 {
+        let next = self.use_gen;
+        self.use_gen = self
+            .use_gen
+            .checked_add(1)
+            .expect("text cache LRU generation overflowed");
+        next
+    }
+
     /// A cached entry's `MeasureResult` for `key`, or `None` on a miss.
-    /// Refreshes the entry's `last_used` so a hit counts as recent for
-    /// eviction — a buffer reused on a multi-size rotation must not age
-    /// out as if it were a one-shot drag orphan.
+    /// Refreshes `last_used` for both layout-time hits and encoder ensures.
     fn cache_hit(&mut self, key: TextCacheKey) -> Option<MeasureResult> {
-        let now = self.frame_gen;
+        let now = self.next_use_gen();
         self.cache.get_mut(&key).map(|entry| {
             entry.last_used = now;
             MeasureResult {
@@ -479,54 +560,23 @@ impl CosmicMeasure {
         })
     }
 
-    /// `true` when the cache holds more than `max_keep` buffers — the
-    /// cheap pre-gate [`crate::text::ShaperInner::end_frame`] checks
-    /// before building the (O(reuse)) pin set, so the per-frame pin
-    /// rebuild only happens when there is actually something to evict.
-    pub(crate) fn over_budget(&self, max_keep: usize) -> bool {
-        self.cache.len() > max_keep
-    }
-
-    /// Advance the frame generation. Called once per frame (eviction or
-    /// not) so `last_used` stamps from different frames stay ordered —
-    /// the LRU recency signal `end_frame_evict` reads.
-    pub(crate) fn advance_frame(&mut self) {
-        self.frame_gen = self.frame_gen.wrapping_add(1);
-    }
-
-    /// Repack-free eviction run from [`crate::text::ShaperInner::end_frame`]
-    /// when the cache is over budget. `pinned` is the set of keys
-    /// referenced by a live `reuse` entry this frame — exactly the keys
-    /// the renderer can ask for — so they are never evicted regardless of
-    /// recency. Among the *unpinned* remainder (stale rotation widths,
-    /// drag orphans), keep at most `keep_unpinned` by `last_used` recency
-    /// and drop the rest. Bounds the cache on a continuous resize drag
-    /// (every width unique → a fresh orphan per run per frame) without
-    /// touching the working set of a bounded multi-size rotation, whose
-    /// unpinned widths stay under the budget and keep hitting.
-    pub(crate) fn end_frame_evict(
-        &mut self,
-        pinned: &FxHashSet<TextCacheKey>,
-        keep_unpinned: usize,
-    ) {
-        if self.cache.len() > pinned.len() + keep_unpinned {
-            self.evict_scratch.clear();
-            self.evict_scratch.extend(
-                self.cache
-                    .iter()
-                    .filter(|(k, _)| !pinned.contains(*k))
-                    .map(|(_, e)| e.last_used),
-            );
-            if self.evict_scratch.len() > keep_unpinned {
-                // Cutoff = the `keep_unpinned`-th largest `last_used`;
-                // keep entries at or above it. Ties at the cutoff retain
-                // a few extra — harmless slack, not unbounded.
-                let cut = self.evict_scratch.len() - keep_unpinned;
-                let (_, &mut cutoff, _) = self.evict_scratch.select_nth_unstable(cut);
-                self.cache
-                    .retain(|k, e| pinned.contains(k) || e.last_used >= cutoff);
-            }
+    /// Retain the `max_keep` most-recently-used buffers. Every entry is
+    /// reconstructible at encode, so no owner or layout can pin a key.
+    pub(crate) fn end_frame_evict(&mut self, max_keep: usize) {
+        if self.cache.len() <= max_keep {
+            return;
         }
+        if max_keep == 0 {
+            self.cache.clear();
+            return;
+        }
+        self.evict_scratch.clear();
+        self.evict_scratch
+            .extend(self.cache.values().map(|entry| entry.last_used));
+        let cut = self.evict_scratch.len() - max_keep;
+        let (_, &mut cutoff, _) = self.evict_scratch.select_nth_unstable(cut);
+        self.cache.retain(|_, entry| entry.last_used >= cutoff);
+        debug_assert_eq!(self.cache.len(), max_keep);
     }
 }
 

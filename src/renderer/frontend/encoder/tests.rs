@@ -298,18 +298,55 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
 #[test]
 fn text_shape_emits_draw_text() {
     use crate::Text;
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 200));
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    fn body(ui: &mut Ui) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Text::new("hi").auto_id().show(ui);
         });
-    });
+    }
+
+    let mut ui = Ui::for_test_at_text(UVec2::new(200, 200));
+    ui.run_at_acked(UVec2::new(200, 200), body);
+    let key = ui.layout[Layer::Main].text_shapes[0].key;
+    ui.ctx.shaper.evict_cosmic_buffers(0);
+    assert!(
+        !ui.ctx.shaper.has_cosmic_buffer(key),
+        "fixture must evict the retained layout's key",
+    );
+
     let cmds = ui.encode_cmds();
     assert!(
         cmds.iter()
             .any(|command| matches!(command, Command::DrawText(_))),
         "Text widget must emit a DrawText command"
     );
+    assert!(
+        ui.ctx.shaper.has_cosmic_buffer(key),
+        "encoder must restore an evicted key from ShapeRecord::Text",
+    );
+
+    ui.ctx.shaper.evict_cosmic_buffers(0);
+    let measure_calls = ui.ctx.shaper.measure_calls();
+    ui.request_repaint();
+    ui.run_at_acked(UVec2::new(200, 200), body);
+    let replayed_key = ui.layout[Layer::Main].text_shapes[0].key;
+    assert_eq!(replayed_key, key);
+    assert_eq!(
+        ui.ctx.shaper.measure_calls(),
+        measure_calls,
+        "unchanged full record must replay text layout without reshaping",
+    );
+    assert!(
+        !ui.ctx.shaper.has_cosmic_buffer(replayed_key),
+        "layout replay must be allowed to retain an evicted cache key",
+    );
+    let replayed = ui.encode_cmds();
+    assert!(
+        replayed
+            .iter()
+            .any(|command| matches!(command, Command::DrawText(_))),
+        "replayed text must still emit after reconstruction",
+    );
+    assert!(ui.ctx.shaper.has_cosmic_buffer(replayed_key));
 }
 
 /// Pin: a clip-only Surface (no painted background) still emits a

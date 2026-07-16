@@ -23,7 +23,7 @@ use crate::renderer::frontend::cmd_buffer::payload::{
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::render_buffer::image::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
-use crate::text::text_in_rect;
+use crate::text::{TextShaper, text_in_rect};
 use crate::ui::Ui;
 use crate::ui::cascade::CascadeInputHash;
 use crate::ui::damage::region::DamageRegion;
@@ -121,6 +121,7 @@ pub(crate) fn encode(
     let viewport = ui.display.logical_rect();
     let now = ui.frame_runtime.time;
     let gradients = payloads.gradients.as_slice();
+    let text_bytes = payloads.fmt_scratch.as_str();
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in
     // `renderer::damage::damage_cull_margin` so the two can't drift.
@@ -133,6 +134,8 @@ pub(crate) fn encode(
             cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
             subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
             gradients,
+            text_bytes,
+            shaper: &ui.ctx.shaper,
             gpu_views: &ui.gpu_views,
             damage_filter,
             damage_cull_margin,
@@ -147,16 +150,18 @@ pub(crate) fn encode(
     emit_collision_overlays(ui, out);
 }
 
-/// Immutable per-layer encode context. Bundles the eight refs/scalars
-/// that stay fixed across a layer's whole recursion so `encode_node`
-/// and `emit_one_shape` thread one `&ctx` instead of a long argument
-/// list. Built once per layer in [`encode`].
+/// Immutable per-layer encode context. Bundles the inputs that stay fixed
+/// across a layer's whole recursion so `encode_node` and `emit_one_shape`
+/// thread one `&ctx` instead of a long argument list. Built once per layer
+/// in [`encode`].
 struct LayerCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
     cascade_inputs: &'a [CascadeInputHash],
     subtree_paint_rects: &'a [Rect],
     gradients: &'a [LoweredGradient],
+    text_bytes: &'a str,
+    shaper: &'a TextShaper,
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
     /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
     /// stable `TextureId` + paint callback up here by the owner node's id.
@@ -267,6 +272,7 @@ fn emit_one_shape(
         }
         ShapeRecord::Text {
             local_origin,
+            text,
             color,
             align,
             ..
@@ -282,6 +288,8 @@ fn emit_one_shape(
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
             }
+            ctx.shaper
+                .ensure_buffer(text.as_str(ctx.text_bytes), shaped.key);
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect

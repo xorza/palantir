@@ -585,6 +585,93 @@ fn text_reuse_evicts_disappeared_widgets() {
     );
 }
 
+#[test]
+fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
+    use crate::forest::element::Element;
+    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::host::context::HostContext;
+    use crate::layout::types::align::Align;
+    use crate::layout::types::layout_mode::LayoutMode;
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::brush::Brush;
+    use crate::record_store::RecordStore;
+    use crate::renderer::frontend::Frontend;
+    use crate::shape::Shape;
+    use crate::text::{FontFamily, FontWeight, TextShaper};
+    use crate::ui::frame_report::FrameProcessing;
+
+    const HALF: Duration = Duration::from_millis(500);
+
+    fn idle_body(ui: &mut Ui) {
+        let mut element = Element::new(LayoutMode::Leaf);
+        element.size = (Sizing::Fixed(160.0), Sizing::Fixed(30.0)).into();
+        let id = ui.widget_id(&element);
+        ui.node(id, element, None, |ui| {
+            let text = ui.intern("idle interned window text");
+            ui.add_shape_animated(
+                Shape::Text {
+                    local_origin: None,
+                    text,
+                    brush: Brush::Solid(Color::WHITE),
+                    font_size_px: 16.0,
+                    line_height_px: 19.2,
+                    wrap: TextWrap::SingleLine,
+                    align: Align::default(),
+                    family: FontFamily::Sans,
+                    weight: FontWeight::Regular,
+                },
+                PaintAnim::BlinkOpacity {
+                    half_period: HALF,
+                    started_at: HALF,
+                },
+            );
+        });
+    }
+
+    let ctx = HostContext::new(TextShaper::with_bundled_fonts());
+    let mut idle = Ui::new(&ctx, RecordStore::default());
+    let mut active = Ui::new(&ctx, RecordStore::default());
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    let idle_first = idle.frame(FrameStamp::new(display, Duration::ZERO), idle_body);
+    idle.frame_runtime.frame_submitted = true;
+    assert_eq!(idle_first.repaint_after, Some(HALF));
+    let idle_key = idle.layout[Layer::Main].text_shapes[0].key;
+
+    active.run_at_acked(SURFACE, |ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Text::new("active window one").auto_id().show(ui);
+            Text::new("active window two").auto_id().show(ui);
+        });
+    });
+    ctx.shaper.evict_cosmic_buffers(1);
+    assert!(
+        !ctx.shaper.has_cosmic_buffer(idle_key),
+        "newer active-window churn must evict the idle window's key",
+    );
+
+    let idle_paint = idle.frame(FrameStamp::new(display, HALF), |_| {
+        panic!("PaintOnly must retain the idle window's prior tree")
+    });
+    assert_eq!(idle_paint.processing, FrameProcessing::PaintOnly);
+    let plan = idle_paint
+        .plan
+        .expect("the animated text boundary must produce a paint plan");
+    assert!(!ctx.shaper.has_cosmic_buffer(idle_key));
+
+    let mut frontend = Frontend::for_test_sharing(&idle);
+    frontend.build_for_test(&idle, plan);
+    idle.frame_runtime.frame_submitted = true;
+    assert!(
+        frontend.buffer.texts.iter().any(|run| run.key == idle_key),
+        "PaintOnly must emit the retained text run",
+    );
+    assert!(
+        ctx.shaper.has_cosmic_buffer(idle_key),
+        "encoder must restore the idle window's evicted interned text",
+    );
+}
+
 /// Pin: when authoring is unchanged but the wrap target (parent's
 /// available width) shifts between frames, the cached *unbounded* shape
 /// is preserved — only the *wrap* reshape runs again.

@@ -26,6 +26,34 @@ fn measure_truncated(
     cosmic.measure_truncated(text, params, fit, unbounded.key)
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct GlyphPosition {
+    x: f32,
+    width: f32,
+    line_top: f32,
+    line_height: f32,
+    start: usize,
+    end: usize,
+}
+
+fn glyph_positions(cosmic: &CosmicMeasure, key: TextCacheKey) -> Vec<GlyphPosition> {
+    cosmic
+        .buffer_for(key)
+        .expect("shaped buffer must exist")
+        .layout_runs()
+        .flat_map(|run| {
+            run.glyphs.iter().map(move |glyph| GlyphPosition {
+                x: glyph.x,
+                width: glyph.w,
+                line_top: run.line_top,
+                line_height: run.line_height,
+                start: glyph.start,
+                end: glyph.end,
+            })
+        })
+        .collect()
+}
+
 #[test]
 fn mono_measure_cases() {
     type Case = (&'static str, &'static str, f32, f32, Option<f32>, Size);
@@ -1527,17 +1555,116 @@ fn ellipsis_cache_bounded_under_size_churn() {
     );
 }
 
-/// `end_frame_evict` must (1) never drop a pinned key regardless of how
-/// old it is, and (2) among the unpinned remainder keep exactly the
-/// `keep_unpinned` most-recently-used by `last_used`. We shape ten
-/// distinct widths one-per-frame so each entry gets a strictly
-/// increasing `last_used`, then evict with the *oldest* key pinned and a
-/// budget of 2 — proving recency loses to pinning and that the cap is
-/// honoured.
+/// Inputs that quantize to one key must shape from that key's canonical
+/// values, so whichever sub-bucket value inserts first cannot alter the
+/// measured extent or glyph positions.
 #[test]
-fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
-    use rustc_hash::FxHashSet;
+fn quantized_key_shaping_is_insertion_order_independent() {
+    let text = "canonical text wraps onto more than one aligned line";
+    let first = ShapeParams {
+        font_size_px: 16.001,
+        line_height_px: 19.201,
+        max_width_px: Some(101.001),
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Right,
+    };
+    let second = ShapeParams {
+        font_size_px: 16.006,
+        line_height_px: 19.206,
+        max_width_px: Some(101.006),
+        ..first
+    };
 
+    let mut first_then_second = CosmicMeasure::with_bundled_fonts();
+    let a = first_then_second.measure(text, first);
+    let a_hit = first_then_second.measure(text, second);
+    let mut second_then_first = CosmicMeasure::with_bundled_fonts();
+    let b = second_then_first.measure(text, second);
+    let b_hit = second_then_first.measure(text, first);
+
+    assert_eq!(a.key, a_hit.key);
+    assert_eq!(a.key, b.key);
+    assert_eq!(a.key, b_hit.key);
+    assert_eq!(a.size, a_hit.size);
+    assert_eq!(a.size, b.size);
+    assert_eq!(a.size, b_hit.size);
+    assert_eq!(a.intrinsic_min, b.intrinsic_min);
+    assert_eq!(
+        glyph_positions(&first_then_second, a.key),
+        glyph_positions(&second_then_first, b.key),
+    );
+}
+
+#[test]
+fn ensure_buffer_exactly_restores_wrap_and_truncation() {
+    let text = "restore this shaped buffer after ordinary LRU eviction";
+    let wrap_params = ShapeParams {
+        font_size_px: 15.003,
+        line_height_px: 18.003,
+        max_width_px: Some(96.003),
+        family: FontFamily::Sans,
+        weight: FontWeight::Bold,
+        halign: HAlign::Center,
+    };
+    let mut wrap = CosmicMeasure::with_bundled_fonts();
+    let original = wrap.measure(text, wrap_params);
+    let original_glyphs = glyph_positions(&wrap, original.key);
+    wrap.end_frame_evict(0);
+    assert!(wrap.buffer_for(original.key).is_none());
+    wrap.ensure_buffer(text, original.key);
+    let restored = wrap.measure(text, wrap_params);
+    assert_eq!(restored.size, original.size);
+    assert_eq!(restored.intrinsic_min, original.intrinsic_min);
+    assert_eq!(glyph_positions(&wrap, restored.key), original_glyphs);
+
+    for fit in [LineFit::Clip, LineFit::Ellipsis] {
+        let mut truncated = CosmicMeasure::with_bundled_fonts();
+        let params = ShapeParams {
+            max_width_px: Some(84.003),
+            ..wrap_params
+        };
+        let unbounded = truncated.measure(
+            text,
+            ShapeParams {
+                max_width_px: None,
+                halign: HAlign::Auto,
+                ..params
+            },
+        );
+        let original = truncated.measure_truncated(text, params, fit, unbounded.key);
+        let original_glyphs = glyph_positions(&truncated, original.key);
+        truncated.end_frame_evict(0);
+        assert!(truncated.buffer_for(original.key).is_none(), "fit: {fit:?}");
+        assert!(
+            truncated.buffer_for(unbounded.key).is_none(),
+            "fit: {fit:?}",
+        );
+
+        truncated.ensure_buffer(text, original.key);
+        assert!(
+            truncated.buffer_for(unbounded.key).is_some(),
+            "truncation restoration must rebuild its unbounded probe for {fit:?}",
+        );
+        let restored = truncated.measure_truncated(text, params, fit, unbounded.key);
+        assert_eq!(restored.size, original.size, "fit: {fit:?}");
+        assert_eq!(
+            restored.intrinsic_min, original.intrinsic_min,
+            "fit: {fit:?}",
+        );
+        assert_eq!(
+            glyph_positions(&truncated, restored.key),
+            original_glyphs,
+            "fit: {fit:?}",
+        );
+    }
+}
+
+/// Encoder ensures and layout hits both refresh recency. Touch the oldest
+/// entry through `ensure_buffer`, then retain exactly two entries and verify
+/// that refreshed entry and the newest insertion survive.
+#[test]
+fn end_frame_evict_retains_exact_most_recent_entries() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let mut keys = Vec::new();
     for i in 0..10u32 {
@@ -1555,30 +1682,22 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
             },
         );
         keys.push(r.key);
-        // Step the frame generation so the next insert lands in a later
-        // frame — gives each entry a strictly increasing `last_used`.
-        c.advance_frame();
     }
     assert_eq!(c.cache_len(), 10, "ten distinct widths, ten buffers");
 
-    // Pin the OLDEST key; keep only 2 unpinned by recency.
-    let pins: FxHashSet<TextCacheKey> = [keys[0]].into_iter().collect();
-    c.end_frame_evict(&pins, 2);
+    c.ensure_buffer("hello world", keys[0]);
+    c.end_frame_evict(2);
 
-    assert_eq!(c.cache_len(), 3, "1 pinned + 2 most-recent unpinned");
+    assert_eq!(c.cache_len(), 2, "eviction must enforce the exact budget");
     assert!(
         c.buffer_for(keys[0]).is_some(),
-        "pinned key survives despite being least-recently-used",
+        "encoder ensure must refresh the oldest key's recency",
     );
-    assert!(c.buffer_for(keys[9]).is_some(), "newest unpinned kept");
-    assert!(
-        c.buffer_for(keys[8]).is_some(),
-        "second-newest unpinned kept"
-    );
-    for evicted in [1usize, 2, 5, 7] {
+    assert!(c.buffer_for(keys[9]).is_some(), "newest insertion kept");
+    for evicted in [1usize, 2, 5, 7, 8] {
         assert!(
             c.buffer_for(keys[evicted]).is_none(),
-            "older unpinned key {evicted} evicted",
+            "older key {evicted} evicted",
         );
     }
 }
@@ -1588,10 +1707,7 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
 /// working set never crosses the budget and so must never reshape.
 #[test]
 fn end_frame_evict_is_noop_under_budget() {
-    use rustc_hash::FxHashSet;
-
     let mut c = CosmicMeasure::with_bundled_fonts();
-    let empty = FxHashSet::default();
     let mut keys = Vec::new();
     for i in 0..4u32 {
         let r = c.measure(
@@ -1606,11 +1722,8 @@ fn end_frame_evict_is_noop_under_budget() {
             },
         );
         keys.push(r.key);
-        c.advance_frame();
     }
-    // Four widths, nothing pinned, generous budget ⇒ no eviction even
-    // though the most-recent (pinned=∅) entries are "newer" than the rest.
-    c.end_frame_evict(&empty, 64);
+    c.end_frame_evict(64);
     assert_eq!(c.cache_len(), 4, "under-budget eviction is a no-op");
     for k in &keys {
         assert!(c.buffer_for(*k).is_some(), "every rotation width retained");
