@@ -230,12 +230,11 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     );
 }
 
-/// `Shape::Shadow` lowers to a single `DrawShadow` cmd. The payload's
-/// `fill_kind` is `FillKind::SHADOW_DROP` (4) and the paint bbox is
-/// inflated by `|offset| + 3σ + spread` per side from the source
-/// rect. `fill_axis` carries `(offset.x, offset.y, σ, _)`.
+/// Drop shadows lower around their shifted source and no longer need
+/// offset lanes in the shader payload. Inset shadows retain the source
+/// bbox and offset/spread lanes because the shader moves the inner hole.
 #[test]
-fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
+fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::Shadow;
     use crate::primitives::corners::Corners;
     use crate::primitives::fill_wire::FillKind;
@@ -252,8 +251,19 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
                     color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
-                    spread: 1.0,
+                    spread: -1.0,
                     inset: false,
+                },
+            });
+            ui.add_shape(Shape::Shadow {
+                local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
+                corners: Corners::all(4.0),
+                shadow: Shadow {
+                    color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: Vec2::new(2.0, 4.0),
+                    blur: 8.0,
+                    spread: -2.0,
+                    inset: true,
                 },
             });
             Frame::new()
@@ -270,29 +280,19 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
             _ => None,
         })
         .collect();
-    assert_eq!(shadow_payloads.len(), 1, "exactly one shadow cmd");
-    let p = shadow_payloads[0];
-    assert_eq!(p.fill_kind, FillKind::SHADOW_DROP);
-    // Inflation: dx = |2| + 3*8 + 1 = 27, dy = |4| + 3*8 + 1 = 29.
-    // Source is (10,20)..(40,60); paint bbox = (-17,-9)..(67,89).
-    // Owner rect min comes from Panel layout, which we don't know
-    // exactly — just assert the size and that fill_axis carries the
-    // raw offset/σ.
-    assert!(
-        (p.rect.size.w - 84.0).abs() < 0.5,
-        "paint bbox width = source.w + 2*dx = 30 + 54 = 84, got {}",
-        p.rect.size.w
-    );
-    assert!(
-        (p.rect.size.h - 98.0).abs() < 0.5,
-        "paint bbox height = source.h + 2*dy = 40 + 58 = 98, got {}",
-        p.rect.size.h
-    );
-    let [dx, dy, t0, _t1] = p.fill_axis.lanes();
-    assert_eq!(dx, 2.0);
-    assert_eq!(dy, 4.0);
-    assert_eq!(t0, 8.0);
-    assert_eq!(p.color, ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5)));
+    assert_eq!(shadow_payloads.len(), 2, "drop and inset shadow cmds");
+    let drop = shadow_payloads[0];
+    let inset = shadow_payloads[1];
+
+    assert_eq!(drop.fill_kind, FillKind::SHADOW_DROP);
+    assert_eq!(drop.rect.size, Size::new(78.0, 88.0));
+    assert_eq!(drop.rect.min - inset.rect.min, Vec2::new(-22.0, -20.0));
+    assert_eq!(drop.fill_axis.lanes(), [0.0, 0.0, 8.0, -1.0]);
+    assert_eq!(drop.color, ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5)));
+
+    assert_eq!(inset.fill_kind, FillKind::SHADOW_INSET);
+    assert_eq!(inset.rect.size, Size::new(30.0, 40.0));
+    assert_eq!(inset.fill_axis.lanes(), [2.0, 4.0, 8.0, -2.0]);
 }
 
 #[test]

@@ -5,7 +5,7 @@ use crate::forest::tree::node::NodeId;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
+use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
 use crate::shape::{LineCap, Shape};
 use crate::text::TEXT_SCALE_STEP;
 use crate::ui::cascade::{CascadeInputHash, Paint};
@@ -2251,7 +2251,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 }
 
 /// Pin: a node that paints a drop shadow contributes its **inflated**
-/// paint bounds (rect + `|offset| + 3σ + spread` on each side) to the
+/// paint bounds (`rect + offset`, then `3σ + max(spread, 0)` on each side) to the
 /// damage region, not just the arranged rect. Both routes — direct
 /// `Shape::Shadow` push and `Background::shadow` chrome — must reach
 /// the same `paint_rect` so a tab swap clears the full halo, not just
@@ -2263,7 +2263,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     use crate::shape::Shape;
 
     let frame_size = 50.0;
-    let expected_overhang = 3.0 * 8.0 + 2.0;
+    let expected_paint_size = frame_size + 2.0 * (3.0 * 8.0 + 2.0);
 
     type Build = fn(&mut Ui);
     let cases: &[(&str, Build)] = &[
@@ -2281,7 +2281,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                         corners: Corners::all(0.0),
                         shadow: Shadow {
                             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                            offset: Vec2::ZERO,
+                            offset: Vec2::new(12.0, -7.0),
                             blur: 8.0,
                             spread: 2.0,
                             inset: false,
@@ -2297,7 +2297,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                     fill: BLUE.into(),
                     shadow: Shadow {
                         color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                        offset: Vec2::ZERO,
+                        offset: Vec2::new(12.0, -7.0),
                         blur: 8.0,
                         spread: 2.0,
                         inset: false,
@@ -2318,10 +2318,10 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             .damage_engine
             .prev_paint_rect(WidgetId::from_hash("card"))
             .expect("card painted last frame");
-        assert!(
-            prev_rect.size.w >= frame_size + 2.0 * expected_overhang - 0.5
-                && prev_rect.size.h >= frame_size + 2.0 * expected_overhang - 0.5,
-            "[{label}] snapshot rect must include drop-shadow overhang; got {prev_rect:?}",
+        assert_eq!(
+            prev_rect.size,
+            Size::new(expected_paint_size, expected_paint_size),
+            "[{label}] offset moves the paint bbox without enlarging it",
         );
 
         frame(&mut ui, |ui| {

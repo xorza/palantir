@@ -683,9 +683,8 @@ impl Composer {
                     self.quad_forces_flush(overlap_urect, out);
                     let world_radius = p.corners.scaled_by(current_transform.scale);
                     let phys_radius = world_radius.scaled_by(scale);
-                    // Shadow params (offset, σ) are logical-px scalars;
-                    // scale to physical px so the shader's `local`
-                    // coords line up.
+                    // Live shadow parameters are logical-px scalars; scale
+                    // them so the shader's `local` coords line up.
                     let fill_axis = p.fill_axis.scaled(current_transform.scale * scale);
                     out.quads.push(Quad {
                         rect: phys_rect,

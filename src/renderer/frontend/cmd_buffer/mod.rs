@@ -234,13 +234,14 @@ impl RenderCmdBuffer {
         write_pod(&mut self.data, payload);
     }
 
-    /// Record a shadow paint cmd. `rect` is the paint bbox
-    /// (source inflated by `|offset| + 3σ + spread` per axis at
-    /// encode time). `radius` is the *source* shape's corner radii.
+    /// Record a shadow paint cmd. For a drop shadow, `rect` is the
+    /// offset source inflated by `3σ + max(spread, 0)`; for an inset
+    /// shadow it is the source rect. `radius` is the source shape's corner radii.
     /// `color` is the shadow tint. `fill_kind` is
-    /// `FillKind::SHADOW_DROP|SHADOW_INSET`. Shadow params
-    /// (`offset.x, offset.y, σ, w`) ride in `fill_axis` as logical-px;
-    /// the composer scales them to physical-px on emit.
+    /// `FillKind::SHADOW_DROP|SHADOW_INSET`. Drop shadows carry
+    /// `(0, 0, σ, spread)` in `fill_axis`; inset shadows
+    /// carry `(offset.x, offset.y, σ, spread)`. The composer scales the
+    /// logical-px lanes to physical px on emit.
     #[inline]
     pub(crate) fn draw_shadow(
         &mut self,

@@ -172,13 +172,13 @@ pub(crate) struct DrawRectPayload {
     pub(crate) fill_axis: FillAxis,
 }
 
-/// Box-shadow paint payload. `rect` is the inflated paint bbox (source
-/// inflated by `|offset| + 3σ + spread` per axis at encode time).
+/// Box-shadow paint payload. A drop-shadow `rect` is the offset source
+/// inflated by `3σ + max(spread, 0)`; an inset-shadow `rect` is the source.
 /// `corners` carries the *source* shape's corner radii. `color` is the
 /// shadow tint. `fill_kind` is `FillKind::SHADOW_DROP` or
-/// `SHADOW_INSET`. `fill_axis` carries `(offset.x, offset.y, σ, w)`
-/// in logical-px — the composer scales these to physical-px so the
-/// shader's `local` coords line up.
+/// `SHADOW_INSET`. `fill_axis` carries `(0, 0, σ, spread)` for drops and
+/// `(offset.x, offset.y, σ, spread)` for insets in logical px; the
+/// composer scales these to physical px so the shader's `local` coords line up.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawShadowPayload {
@@ -192,8 +192,8 @@ pub(crate) struct DrawShadowPayload {
 impl DrawShadowPayload {
     /// Canonical noop predicate — zero-extent paint rect or fully
     /// transparent tint. Shadow params themselves (`fill_axis`) are
-    /// not gated: a zero-σ drop shadow with non-zero offset still
-    /// paints a hard-edged offset rect; the `Shape::Shadow::is_noop`
+    /// not gated: a zero-σ drop shadow can still paint a hard-edged
+    /// shifted rect; the `Shape::Shadow::is_noop`
     /// authoring boundary catches the "no visible effect" cases.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {

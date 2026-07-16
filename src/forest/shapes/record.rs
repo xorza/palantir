@@ -134,9 +134,9 @@ pub(crate) enum ShapeRecord {
     /// parameters are inline scalars; no retained payloads. With
     /// `local_rect = None` the shadow shadows the owner's full
     /// arranged rect; with `Some(r)` it shadows the owner-relative
-    /// rect `r`. Encoder inflates the paint bbox by
-    /// `|offset| + 3σ + spread` and routes through the existing
-    /// `DrawRect` cmd with `FillKind::SHADOW_DROP|SHADOW_INSET`.
+    /// rect `r`. Encoder shifts drop-shadow paint bounds by `offset`,
+    /// inflates them by `3σ + max(spread, 0)`, and routes both shadow
+    /// kinds through `DrawShadow` with `FillKind::SHADOW_DROP|SHADOW_INSET`.
     Shadow {
         local_rect: Option<Rect>,
         corners: Corners,
@@ -263,13 +263,13 @@ pub(crate) enum ShapeRecord {
     GpuView { epoch: u64 } = 7,
 }
 
-/// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
-/// inflated by `|offset| + 3σ + max(spread, 0)` per axis from the
-/// source rect; inset shadow stays inside the source. `local_rect =
-/// None` ⇒ source covers the full owner; `Some(r)` ⇒ source is `r` at
-/// owner-relative coords. **Sole formula source** for the shadow paint
-/// extent: the encoder (per-quad paint rect) and [`ShapeRecord::paint_bbox_local`]
-/// (cascade's per-node ink union) both call this so the two views can't drift.
+/// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — a drop shadow is
+/// the offset source inflated by `3σ + max(spread, 0)`; an inset shadow
+/// stays inside the source. `local_rect = None` ⇒ source covers the full
+/// owner; `Some(r)` ⇒ source is `r` at owner-relative coords. **Sole formula
+/// source** for the shadow paint extent: the encoder (per-quad paint rect) and
+/// [`ShapeRecord::paint_bbox_local`] (cascade's per-node ink union) both call
+/// this so the two views can't drift.
 pub(crate) fn shadow_paint_rect_local(
     local_rect: Option<Rect>,
     owner_size: Size,
@@ -288,12 +288,12 @@ pub(crate) fn shadow_paint_rect_local(
     if inset {
         return source;
     }
-    let dx = offset.x.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
-    let dy = offset.y.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
+    let halo = 3.0 * blur.max(0.0) + spread.max(0.0);
     Rect {
-        min: Vec2::new(source.min.x - dx, source.min.y - dy),
-        size: Size::new(source.size.w + 2.0 * dx, source.size.h + 2.0 * dy),
+        min: source.min + offset,
+        size: source.size,
     }
+    .inflated(halo)
 }
 
 impl ShapeRecord {
@@ -438,6 +438,67 @@ mod tests {
     use crate::primitives::size::Size;
     use crate::primitives::stroke::Stroke;
     use glam::Vec2;
+
+    #[test]
+    fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
+        #[derive(Debug)]
+        struct DropCase {
+            offset: Vec2,
+            blur: f32,
+            spread: f32,
+            expected: Rect,
+        }
+
+        let source = Rect::new(10.0, 20.0, 30.0, 40.0);
+        let cases = [
+            DropCase {
+                offset: Vec2::new(12.0, 7.0),
+                blur: 4.0,
+                spread: 2.0,
+                expected: Rect::new(8.0, 13.0, 58.0, 68.0),
+            },
+            DropCase {
+                offset: Vec2::new(-9.0, -11.0),
+                blur: 3.0,
+                spread: 5.0,
+                expected: Rect::new(-13.0, -5.0, 58.0, 68.0),
+            },
+            DropCase {
+                offset: Vec2::new(4.0, -3.0),
+                blur: 2.0,
+                spread: -5.0,
+                expected: Rect::new(8.0, 11.0, 42.0, 52.0),
+            },
+        ];
+
+        for case in cases {
+            assert_eq!(
+                shadow_paint_rect_local(
+                    Some(source),
+                    Size::ZERO,
+                    case.offset,
+                    case.blur,
+                    case.spread,
+                    false,
+                ),
+                case.expected,
+                "{case:?}",
+            );
+        }
+
+        assert_eq!(
+            shadow_paint_rect_local(
+                Some(source),
+                Size::ZERO,
+                Vec2::new(100.0, -100.0),
+                20.0,
+                8.0,
+                true,
+            ),
+            source,
+            "inset paint remains clipped to its source rect",
+        );
+    }
 
     /// A mesh whose vertex hull overflows its owner box (a rotated / scaled
     /// glyph) must report that hull as its paint bbox. Returning the owner
