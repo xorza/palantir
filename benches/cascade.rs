@@ -1,5 +1,5 @@
-use aperture::cascade_bench;
+use aperture::bench;
 use criterion::{criterion_group, criterion_main};
 
-criterion_group!(benches, cascade_bench::bench);
+criterion_group!(benches, bench::cascade);
 criterion_main!(benches);

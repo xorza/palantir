@@ -476,96 +476,14 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod test_support {
-    //! Bench/test reach-in surface for driving prepare → flush → render
-    //! without `WindowRenderer`'s full record/measure/cascade/encode pipeline.
-
+#[cfg(all(test, feature = "internals"))]
+mod test_support {
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
-    use crate::renderer::backend::gpu_ctx::test_support::GpuCtx;
-    use crate::renderer::backend::pipeline_utils::StencilVariant;
-    use crate::renderer::backend::text::TextBackend;
-    use crate::renderer::backend::text::ViewportPush;
-    use crate::renderer::render_buffer::text::TextRun as InnerTextRun;
-    use crate::renderer::render_buffer::text::test_support::TextRun;
-
+    use crate::renderer::render_buffer::text::TextRun;
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
-
-    /// Standalone bench harness for the text backend: a [`TextBackend`]
-    /// (its glyph atlas, shaper, caches) plus the single no-stencil
-    /// pipeline it would otherwise reach for in `FormatPipelines`. Lets
-    /// the atlas bench drive prepare → flush → draw without the full
-    /// `WgpuBackend` / `FormatPipelines` machinery.
-    #[derive(Debug)]
-    pub struct BenchText {
-        backend: TextBackend,
-        pipelines: StencilVariant,
-    }
-
-    impl BenchText {
-        /// Builds both base + stencil-test pipelines (the bench draws with
-        /// the base, `use_stencil = false`) against an `Rgba8Unorm*` color
-        /// target.
-        pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
-            let backend = TextBackend::new(device, shaper);
-            let pipelines = backend.build_variants(device, format);
-            Self { backend, pipelines }
-        }
-
-        /// Append-mode prepare into batch 0.
-        pub fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) {
-            self.backend
-                .prepare_batch(&mut ctx.0, scale, 0, TextRun::inner_slice(runs));
-        }
-
-        pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-            self.backend.flush(&mut ctx.0);
-        }
-
-        pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-            // Standalone bench helper: zero-sized viewport is fine
-            // because the atlas bench doesn't read the value (we
-            // don't validate visual output here).
-            let viewport = ViewportPush {
-                size: glam::Vec2::ZERO,
-            };
-            self.backend
-                .render_batch(0, pass, &self.pipelines, false, &viewport);
-        }
-
-        pub fn end_frame(&mut self) {
-            self.backend.post_record();
-        }
-    }
-
-    /// Shape `text` via `shaper` (cosmic path required — mono fallback
-    /// returns the invalid sentinel that the encoder drops) and build a
-    /// `TextRun` placed at `origin` inside the given physical viewport.
-    #[allow(clippy::too_many_arguments)]
-    pub fn make_run(
-        shaper: &TextShaper,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        origin: Vec2,
-        viewport: UVec2,
-        scale: f32,
-        color: ColorU8,
-    ) -> TextRun {
-        TextRun::new(make_inner_run(
-            shaper,
-            text,
-            font_size_px,
-            line_height_px,
-            origin,
-            viewport,
-            scale,
-            color,
-        ))
-    }
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn make_inner_run(
@@ -577,7 +495,7 @@ pub(crate) mod test_support {
         viewport: UVec2,
         scale: f32,
         color: ColorU8,
-    ) -> InnerTextRun {
+    ) -> TextRun {
         let m = shaper.measure(
             text,
             ShapeParams {
@@ -589,7 +507,7 @@ pub(crate) mod test_support {
                 halign: HAlign::Auto,
             },
         );
-        InnerTextRun {
+        TextRun {
             key: m.key,
             origin,
             bounds: URect::new(0, 0, viewport.x, viewport.y),

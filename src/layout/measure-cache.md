@@ -55,7 +55,7 @@ validity, plus the rect-stability contract via
 
 ## Bench
 
-`benches/caches.rs` compares `cached` and `forced_miss` arms for both a
+`src/bench/layout/cache.rs` compares `cached` and `forced_miss` arms for both a
 representative measure workload and a heavier clipped/text-shaped tree.
 Criterion output is the source of truth for current timings.
 

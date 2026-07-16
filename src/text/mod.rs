@@ -920,18 +920,16 @@ pub(crate) enum LineFit {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     #![allow(dead_code)]
-    use crate::common::hash::hash_str;
-    use crate::shape::TextWrap;
     use crate::text::*;
 
     impl TextShaper {
         /// Total cache-miss `measure` dispatches.
-        pub fn measure_calls(&self) -> u64 {
+        pub(crate) fn measure_calls(&self) -> u64 {
             self.inner.borrow().measure_calls
         }
 
         /// `true` iff a reuse entry exists for `(wid, ordinal)`.
-        pub fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
+        pub(crate) fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.inner.borrow().reuse.contains_key(&(wid, ordinal))
         }
 
@@ -943,43 +941,13 @@ pub(crate) mod test_support {
                 .is_some_and(|cosmic| cosmic.buffer_for(key).is_some())
         }
 
-        pub fn evict_cosmic_buffers(&self, max_keep: usize) {
+        pub(crate) fn evict_cosmic_buffers(&self, max_keep: usize) {
             self.inner
                 .borrow_mut()
                 .cosmic
                 .as_mut()
                 .expect("cosmic buffer eviction requires a cosmic text shaper")
                 .end_frame_evict(max_keep);
-        }
-
-        /// Drive the production unbounded-then-truncate sequence at one width.
-        pub fn measure_truncated_width_for_bench(
-            &self,
-            wid: WidgetId,
-            text: &str,
-            params: ShapeParams,
-            wrap: TextWrap,
-        ) -> MeasureResult {
-            let text_hash = hash_str(text);
-            let hash = ContentHash(text_hash);
-            self.shape_unbounded(wid, 0, hash, text, text_hash, params);
-            let target = params
-                .max_width_px
-                .expect("truncation benchmark requires a finite width");
-            let fit = match wrap {
-                TextWrap::Truncate => LineFit::Clip,
-                TextWrap::Ellipsis => LineFit::Ellipsis,
-                _ => panic!("truncation benchmark requires Truncate or Ellipsis"),
-            };
-            self.shape_wrap(
-                wid,
-                0,
-                hash,
-                text,
-                params,
-                (target.max(0.0) * 64.0).round() as u32,
-                fit,
-            )
         }
     }
 }

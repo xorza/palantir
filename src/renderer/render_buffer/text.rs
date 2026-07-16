@@ -49,22 +49,3 @@ impl std::hash::Hash for TextRun {
         state.write(bytemuck::bytes_of(self));
     }
 }
-
-#[cfg(feature = "internals")]
-pub(crate) mod test_support {
-    use crate::renderer::render_buffer::text::TextRun as InnerTextRun;
-
-    #[repr(transparent)]
-    #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-    pub struct TextRun(pub(crate) InnerTextRun);
-
-    impl TextRun {
-        pub(crate) fn new(inner: InnerTextRun) -> Self {
-            Self(inner)
-        }
-
-        pub(crate) fn inner_slice(runs: &[Self]) -> &[InnerTextRun] {
-            bytemuck::cast_slice(runs)
-        }
-    }
-}

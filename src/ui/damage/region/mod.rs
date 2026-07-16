@@ -256,20 +256,5 @@ impl From<Rect> for DamageRegion {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod test_support {
-    #![allow(dead_code)]
-    use crate::primitives::rect::Rect;
-    use crate::ui::damage::region::*;
-
-    /// `DamageRegion` rect count after adding `rects` in order (merge policy runs).
-    /// Free fn rather than `impl DamageRegion` because `DamageRegion` is
-    /// `pub(crate)` — external benches can't name the type to invoke an
-    /// associated fn on it. Keep here so benches see a single namespace.
-    pub fn region_after_adds(rects: &[Rect]) -> usize {
-        DamageRegion::from_rects(rects).iter_rects().count()
-    }
-}
-
 #[cfg(test)]
 mod tests;

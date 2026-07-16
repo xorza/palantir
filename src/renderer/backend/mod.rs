@@ -8,7 +8,7 @@ mod gradient_resources;
 pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
-mod pipeline_utils;
+pub(crate) mod pipeline_utils;
 mod quad_pipeline;
 pub(crate) mod queue;
 mod schedule;

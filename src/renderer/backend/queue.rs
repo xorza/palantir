@@ -47,26 +47,3 @@ impl Deref for Queue {
         &self.0
     }
 }
-
-#[cfg(feature = "internals")]
-pub(crate) mod test_support {
-    use crate::renderer::backend::queue::Queue as InnerQueue;
-    use std::ops::Deref;
-
-    #[derive(Debug)]
-    pub struct Queue(pub(crate) InnerQueue);
-
-    impl Queue {
-        pub fn new(inner: wgpu::Queue) -> Self {
-            Self(InnerQueue::new(inner))
-        }
-    }
-
-    impl Deref for Queue {
-        type Target = wgpu::Queue;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-}

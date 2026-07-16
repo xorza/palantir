@@ -24,13 +24,9 @@
 //! Run with: `cargo bench --bench alloc_free_gpu`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free_gpu`
 
-#[path = "support/frame_fixture.rs"]
-mod fixture;
-
 use std::sync::OnceLock;
 
-use aperture::{Color, OffscreenHost};
-use fixture::{FormState, build_ui};
+use aperture::{Color, OffscreenHost, bench::FrameFixture};
 use glam::UVec2;
 use pollster::FutureExt;
 
@@ -107,7 +103,7 @@ fn main() {
         aperture::TextShaper::with_bundled_fonts(),
     )
     .build();
-    let mut state = FormState::default();
+    let mut state = FrameFixture::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("aperture.alloc_free_gpu.target"),
@@ -125,9 +121,9 @@ fn main() {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let run = |host: &mut OffscreenHost, state: &mut FormState| {
+    let run = |host: &mut OffscreenHost, state: &mut FrameFixture| {
         host.ui().theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, NODE_SCALE, ui));
+        host.frame_offscreen(&target, SCALE, |ui| state.render(NODE_SCALE, ui));
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

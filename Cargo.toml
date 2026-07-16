@@ -23,6 +23,7 @@ bytemuck = { version = "1.25", features = ["derive"] }
 encase = "0.12"
 cosmic-text = "0.19"
 criterion = { version = "0.8", optional = true }
+gethostname = { version = "1.1", optional = true }
 fixedbitset = "0.5"
 glam = { version = "0.33", features = ["bytemuck", "encase", "serde"] }
 etagere = "0.3"
@@ -50,7 +51,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 backtrace = "0.3"
 dhat = "0.3"
-gethostname = "1.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 toml = "1.1"
 
@@ -62,6 +62,10 @@ required-features = ["internals"]
 [[test]]
 name = "alloc"
 path = "tests/alloc/main.rs"
+required-features = ["internals"]
+
+[[example]]
+name = "frame_visual"
 required-features = ["internals"]
 
 [[bench]]
@@ -83,11 +87,10 @@ harness = false
 # reports a false 0 — see the module docs.
 required-features = ["internals"]
 
-# No `required-features`: drives only the public `OffscreenHost` headless
-# render path + the public widget fixture — no `internals` reach-in.
 [[bench]]
 name = "alloc_free_gpu"
 harness = false
+required-features = ["internals"]
 
 [[bench]]
 name = "text_atlas"
@@ -125,10 +128,9 @@ harness = false
 required-features = ["internals"]
 
 [features]
-# Exposes `internals::*` (cache reset + introspection helpers used by
-# `benches/`). Tests get the same module without the feature because
-# `cfg(test)` is also gated on.
-internals = ["dep:criterion"]
+# Compiles the source-level benchmark drivers and exposes their function-only
+# facade to the thin external targets.
+internals = ["dep:criterion", "dep:gethostname"]
 # Profiler backends — pick one. Off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
