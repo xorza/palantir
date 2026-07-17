@@ -1,4 +1,4 @@
-//! `WinitHost` — wraps one-or-more [`WindowRenderer`]s with winit
+//! `WinitHost` — wraps one-or-more [`WindowDriver`]s with winit
 //! windows, their surfaces, and the [`ApplicationHandler`] event-loop
 //! glue. Its lifecycle is encoded by [`HostPhase`]: bootstrap inputs become one
 //! [`WinitRuntime`] containing the app, shared-resource root, surface factory,
@@ -15,7 +15,7 @@
 //! there.
 //!
 //! **Multi-window model.** Every window is an independent UI tree — its
-//! own `Ui` (input / focus / layout / `Display`) and [`WindowRenderer`] —
+//! own `Ui` (input / focus / layout / `Display`) and [`WindowDriver`] —
 //! all rendering through one shared
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The backend solely
 //! owns the device and queue; [`SurfaceFactory`] retains only the instance,
@@ -64,7 +64,7 @@ use winit::window::{Icon, Window, WindowId};
 
 use crate::app::App;
 use crate::host::shared::HostShared;
-use crate::host::window_renderer::{FramePresent, WindowFrameInput, WindowRenderer};
+use crate::host::window_driver::{FramePresent, WindowDriver, WindowFrameInput};
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::gpu::{GpuInit, SurfaceFactory, WindowSurface};
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
@@ -77,7 +77,7 @@ use crate::window::{CursorIcon, WindowCommands, WindowConfig, WindowFrameState, 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
 /// Everything one window owns: its winit handle, swapchain surface +
-/// config, the per-window [`WindowRenderer`] (its `Ui` recorder +
+/// config, the per-window [`WindowDriver`] (its `Ui` recorder +
 /// per-window encode/compose scratch + backbuffer), DPR scale, and the
 /// host-side scheduling state. The shared GPU renderer (device/queue,
 /// pipelines, atlases) lives on `WinitRuntime`, not here.
@@ -86,7 +86,7 @@ struct WindowState {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
-    renderer: WindowRenderer,
+    driver: WindowDriver,
     scale_factor: f32,
     /// Per-window scheduling state. Reset at the top of `draw` from the
     /// `FramePresent` the frame returned; re-armed to `Immediate` by
@@ -138,11 +138,11 @@ struct WinitRuntime<T> {
     /// Retained surface-creation state; device and queue live on the backend.
     surfaces: SurfaceFactory,
     /// Shared, app-global state (render handles + live-window set + debug
-    /// overlay) every window's `Ui` clones; each `WindowRenderer` and the
+    /// overlay) every window's `Ui` clones; each `WindowDriver` and the
     /// backend (render handles only) derive from it.
     shared: HostShared,
     /// The one shared GPU renderer every window draws through (pipelines,
-    /// atlases); passed into each window's `WindowRenderer::frame`.
+    /// atlases); passed into each window's `WindowDriver::frame`.
     backend: WgpuBackend,
     windows: HashMap<WindowId, WindowState>,
     pending_commands: WindowCommands,
@@ -326,12 +326,12 @@ where
         runtime
             .windows
             .values_mut()
-            .find(|w| w.renderer.token == token)
+            .find(|w| w.driver.token == token)
     }
 
     /// Paint one window. Bundles its surface, config, scale, monitor refresh,
     /// and window state into a [`WindowFrameInput`], runs the per-window
-    /// `WindowRenderer::frame`, and stores the returned schedule back on the
+    /// `WindowDriver::frame`, and stores the returned schedule back on the
     /// window. The live-window set + debug overlay reach the `Ui` through the
     /// shared host state, not this call.
     fn draw(&mut self, id: WindowId) {
@@ -354,7 +354,7 @@ where
             .outer_position()
             .ok()
             .map(|p| IVec2::new(p.x, p.y));
-        let mut output = win.renderer.frame(
+        let mut output = win.driver.frame(
             &mut runtime.backend,
             WindowFrameInput {
                 surface: &win.surface,
@@ -379,7 +379,7 @@ where
         runtime.pending_commands.append(&mut output.commands);
     }
 
-    /// Build a winit window + surface + `WindowRenderer` for `token` and
+    /// Build a winit window + surface + `WindowDriver` for `token` and
     /// insert it into the map. No-ops (with a warning) on a duplicate
     /// token, which the token couldn't then unambiguously address.
     fn spawn_window(
@@ -388,16 +388,15 @@ where
         token: WindowToken,
         cfg: WindowConfig,
     ) {
-        if runtime.windows.values().any(|w| w.renderer.token == token) {
+        if runtime.windows.values().any(|w| w.driver.token == token) {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return;
         }
         let window = create_window(event_loop, &cfg);
         let ws = runtime.surfaces.make_surface(&window);
-        let renderer =
-            WindowRenderer::builder(token, &runtime.shared, runtime.surfaces.max_texture_dim)
-                .build();
-        Self::insert_window(runtime, window, ws, renderer);
+        let driver =
+            WindowDriver::builder(token, &runtime.shared, runtime.surfaces.max_texture_dim).build();
+        Self::insert_window(runtime, window, ws, driver);
     }
 
     /// Register a freshly built window in the routing map, scheduled to
@@ -408,17 +407,17 @@ where
         runtime: &mut WinitRuntime<T>,
         window: Arc<Window>,
         ws: WindowSurface,
-        renderer: WindowRenderer,
+        driver: WindowDriver,
     ) {
-        runtime.shared.windows.insert(renderer.token);
-        Self::insert_window_state(&mut runtime.windows, window, ws, renderer);
+        runtime.shared.windows.insert(driver.token);
+        Self::insert_window_state(&mut runtime.windows, window, ws, driver);
     }
 
     fn insert_window_state(
         windows: &mut HashMap<WindowId, WindowState>,
         window: Arc<Window>,
         ws: WindowSurface,
-        renderer: WindowRenderer,
+        driver: WindowDriver,
     ) {
         let scale_factor = window.scale_factor() as f32;
         let id = window.id();
@@ -428,7 +427,7 @@ where
                 window,
                 surface: ws.surface,
                 config: ws.config,
-                renderer,
+                driver,
                 scale_factor,
                 next: FramePresent::Immediate,
                 close_requested: false,
@@ -457,9 +456,9 @@ where
             if runtime
                 .windows
                 .values()
-                .any(|win| win.renderer.token == token)
+                .any(|win| win.driver.token == token)
             {
-                runtime.windows.retain(|_, win| win.renderer.token != token);
+                runtime.windows.retain(|_, win| win.driver.token != token);
                 runtime.shared.windows.remove(token);
             }
         }
@@ -579,11 +578,10 @@ where
             backend,
             first_surface: ws,
         } = GpuInit::new(&window, &config, &shared);
-        let mut renderer =
-            WindowRenderer::builder(token, &shared, surfaces.max_texture_dim).build();
+        let mut driver = WindowDriver::builder(token, &shared, surfaces.max_texture_dim).build();
 
         shared.windows.insert(token);
-        let mut app = create_app(&mut renderer.ui, self.handle());
+        let mut app = create_app(&mut driver.ui, self.handle());
         for task in pending_tasks.drain(..) {
             task(&mut app);
         }
@@ -596,7 +594,7 @@ where
             windows: HashMap::new(),
             pending_commands: WindowCommands::default(),
         };
-        Self::insert_window_state(&mut runtime.windows, window, ws, renderer);
+        Self::insert_window_state(&mut runtime.windows, window, ws, driver);
         self.phase = HostPhase::Running(Box::new(runtime));
     }
 
@@ -652,7 +650,7 @@ where
             };
             let mut wants_repaint = false;
             InputEvent::from_winit(&event, win.scale_factor, |ev| {
-                wants_repaint |= win.renderer.on_input(ev).requests_repaint;
+                wants_repaint |= win.driver.on_input(ev).requests_repaint;
             });
             if wants_repaint {
                 win.next = FramePresent::Immediate;
@@ -692,7 +690,7 @@ where
                     let max = runtime.surfaces.max_texture_dim;
                     let w = new.width.clamp(1, max);
                     let h = new.height.clamp(1, max);
-                    // Stash the new size only — `WindowRenderer::frame`
+                    // Stash the new size only — `WindowDriver::frame`
                     // notices the mismatch against its `configured`
                     // baseline and runs
                     // `surface.configure` once before acquiring the next
@@ -722,7 +720,7 @@ where
                 if let HostPhase::Running(runtime) = &mut self.phase
                     && let Some(win) = runtime.windows.get_mut(&id)
                 {
-                    win.renderer.set_occluded(occluded);
+                    win.driver.set_occluded(occluded);
                     if !occluded {
                         win.next = FramePresent::Immediate;
                     }
