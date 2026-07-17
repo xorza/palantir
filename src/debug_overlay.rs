@@ -62,7 +62,8 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
     // value yet, rather than printing "n/a" — the leading layout of
     // the readout stays clean and stable.
     let gpu = ui
-        .ctx
+        .shared
+        .diagnostics
         .pass_stats
         .last_pass_ms()
         .map(|ms| format!(" · gpu {ms:>5.2} ms"))
