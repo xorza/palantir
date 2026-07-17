@@ -855,6 +855,9 @@ impl Ui {
         self.ctx.window_open(token)
     }
 
+    /// Attach a paint primitive to the active node. Direct text contributes to
+    /// layout only on a leaf; container-owned text is an overlay shaped against
+    /// that container's final padded width.
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         self.forest.add_shape(shape, &self.record_store);
     }

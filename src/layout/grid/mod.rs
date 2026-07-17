@@ -439,7 +439,7 @@ fn measure_inner(
     reset_hugs_for(layout, idx);
 
     if n_rows == 0 || n_cols == 0 {
-        // Recurse with `Size::ZERO` so leaves still run `leaf_content_size`
+        // Recurse with `Size::ZERO` so leaves still take the Leaf measure arm
         // and push `ShapedText` entries for every `ShapeRecord::Text` —
         // the cascade walks shape records and asserts a matching shaped
         // entry per text record, regardless of whether the rect is zero.

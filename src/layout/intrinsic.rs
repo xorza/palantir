@@ -169,8 +169,8 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
     let wid = tree.records.widget_id()[node.idx()];
     let curr_hash = tree.rollups.node[node.idx()];
     let mut acc = 0.0_f32;
-    // Same within-node `ordinal` keying + overflow contract as
-    // `LayoutEngine::leaf_content_size` — both walk `leaf_text_shapes`
+    // Same within-node `ordinal` keying + overflow contract as the Leaf arm
+    // in `LayoutEngine::measure_dispatch` — both walk `leaf_text_shapes`
     // in record order and key the text cache on `(wid, ordinal, hash)`,
     // so the counter must derive identically on both sides.
     let mut ordinal: u16 = 0;
@@ -207,7 +207,7 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
                 TextWrap::Wrap | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Scroll => 0.0,
             },
             // `Scroll` text is scroll content, not layout content: it drives no
-            // box width on either axis (matching the zero-width `leaf_content_size`
+            // box width on either axis (matching the zero-width leaf measure
             // report), so a size-to-content parent doesn't reserve the buffer's
             // natural width for it. The field's width comes from its own sizing /
             // `min_size`. Every other mode wants its full unbroken line.

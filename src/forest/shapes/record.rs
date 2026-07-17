@@ -70,7 +70,7 @@ pub(crate) enum ShapeRecord {
     /// `Layout.text_shapes`, not here. `wrap` selects between "shape
     /// once and freeze" (`Single`) and "reshape if the parent commits a
     /// narrower width than the natural unbroken line" (`Wrap`). `align`
-    /// positions the glyph bbox inside the owner leaf's arranged rect (or
+    /// positions the glyph bbox inside the owner node's arranged rect (or
     /// `local_rect` if set) — the encoder reads it together with the
     /// shaped run's `measured` to shift the emitted `DrawText` rect.
     /// `HAlign::Auto`/`Stretch` and `VAlign::Auto`/`Stretch` collapse to
