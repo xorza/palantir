@@ -133,7 +133,7 @@ pub(crate) fn encode(
     let now = ui.frame_runtime.time;
     let gradients = payloads.gradients.as_slice();
     let text_bytes = payloads.fmt_scratch.as_str();
-    let gradient_atlas = &ui.ctx.caches.gradients;
+    let gradient_atlas = &ui.shared.render.assets.gradients;
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in
     // `renderer::damage::damage_cull_margin` so the two can't drift.
@@ -147,7 +147,7 @@ pub(crate) fn encode(
             subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
             gradients,
             text_bytes,
-            shaper: &ui.ctx.shaper,
+            shaper: &ui.shared.render.text,
             gradient_atlas,
             gpu_views: &ui.gpu_views,
             damage_filter,

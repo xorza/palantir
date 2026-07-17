@@ -1,6 +1,6 @@
 //! The host layer — everything between the OS/GPU and the [`Ui`](crate::Ui)
-//! recorder. [`HostContext`](context::HostContext) is the app-global shared
-//! bag every window's `Ui` and the one shared `WgpuBackend` clone from;
+//! recorder. [`HostShared`](shared::HostShared) owns the app-global resources
+//! exposed to each `Ui` and the one shared `WgpuBackend`;
 //! [`WindowRenderer`](window_renderer::WindowRenderer) owns each window's
 //! record store and drives frames through that backend; [`winit`] and
 //! [`offscreen`] are the two
@@ -11,7 +11,7 @@
 //! `Ui` API must not depend on the host machinery.
 
 pub(crate) mod clock;
-pub(crate) mod context;
 pub(crate) mod offscreen;
+pub(crate) mod shared;
 pub(crate) mod window_renderer;
 pub(crate) mod winit;

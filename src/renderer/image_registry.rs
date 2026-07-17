@@ -1,7 +1,7 @@
 //! Cross-frame registry of user images and their GPU textures — the
 //! image counterpart of
 //! [`GradientAtlas`](crate::renderer::gradient_atlas::handle::GradientAtlas),
-//! bundled alongside it in [`RenderCaches`](crate::renderer::caches::RenderCaches).
+//! bundled alongside it in [`RenderAssets`](crate::renderer::assets::RenderAssets).
 //!
 //! [`ImageRegistry::register`] takes an [`Image`], queues it for GPU
 //! upload, and returns an [`ImageHandle`] — an **RAII owner** of the
