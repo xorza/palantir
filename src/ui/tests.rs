@@ -25,7 +25,7 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
-    ui.shared.render.text.measure_calls()
+    ui.shared.text.measure_calls()
 }
 
 fn ui_with_shared(shared: &HostShared) -> Ui {
@@ -619,15 +619,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let b_key = b.layout[Layer::Main].text_shapes[0].key;
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    assert!(shared.render.text.has_cosmic_buffer(a_key));
-    assert!(shared.render.text.has_cosmic_buffer(b_key));
+    assert!(shared.text.has_cosmic_buffer(a_key));
+    assert!(shared.text.has_cosmic_buffer(b_key));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(b.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b = shared.render.text.measure_calls();
+    let after_b = shared.text.measure_calls();
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 140.0));
     assert_eq!(
-        shared.render.text.measure_calls(),
+        shared.text.measure_calls(),
         after_b,
         "window B must not overwrite window A's identity reuse row",
     );
@@ -641,15 +641,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert!(!b.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b_removal = shared.render.text.measure_calls();
+    let after_b_removal = shared.text.measure_calls();
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 160.0));
     assert_eq!(
-        shared.render.text.measure_calls(),
+        shared.text.measure_calls(),
         after_b_removal,
         "window B removal must not evict window A's identity reuse row",
     );
-    assert!(shared.render.text.has_cosmic_buffer(a_key));
-    assert!(shared.render.text.has_cosmic_buffer(b_key));
+    assert!(shared.text.has_cosmic_buffer(a_key));
+    assert!(shared.text.has_cosmic_buffer(b_key));
 }
 
 #[test]
@@ -709,9 +709,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    shared.render.text.evict_cosmic_buffers(1);
+    shared.text.evict_cosmic_buffers(1);
     assert!(
-        !shared.render.text.has_cosmic_buffer(idle_key),
+        !shared.text.has_cosmic_buffer(idle_key),
         "newer active-window churn must evict the idle window's key",
     );
 
@@ -722,7 +722,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     let plan = idle_paint
         .plan
         .expect("the animated text boundary must produce a paint plan");
-    assert!(!shared.render.text.has_cosmic_buffer(idle_key));
+    assert!(!shared.text.has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(&idle, plan);
@@ -732,7 +732,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         "PaintOnly must emit the retained text run",
     );
     assert!(
-        shared.render.text.has_cosmic_buffer(idle_key),
+        shared.text.has_cosmic_buffer(idle_key),
         "encoder must restore the idle window's evicted interned text",
     );
 }
@@ -1566,7 +1566,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     a.run_at_acked(SURFACE, |ui| window_a(ui, half));
     let original_row = rows(&a)[0];
-    a.shared.render.assets.gradients.flush_with(|_| ());
+    a.shared.assets.gradients.flush_with(|_| ());
 
     b.run_at(SURFACE, |ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
@@ -1591,7 +1591,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let b_rows: HashSet<LutRow> = rows(&b).into_iter().collect();
     assert_eq!(b_rows.len(), (ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
-    b.shared.render.assets.gradients.flush_with(|_| ());
+    b.shared.assets.gradients.flush_with(|_| ());
 
     let report = a.record(
         FrameStamp::new(Display::from_physical(SURFACE, 1.0), half),
