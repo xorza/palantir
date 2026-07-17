@@ -26,9 +26,12 @@ const ZERO_EPS: f32 = 1e-6;
 
 // Cutoff below which `blurred_rect_coverage` short-circuits to the
 // sharp SDF coverage. Below this, the erf-based Gaussian is
-// numerically indistinguishable from `clamp(0.5 - d, 0, 1)` but
+// numerically indistinguishable from `clamp(AA_RADIUS - d, 0, 1)` but
 // risks divide-by-near-zero in `1/(√2 σ)`.
 const BLUR_EPS: f32 = 1e-4;
+
+// Half-width of the SDF antialiasing transition in physical pixels.
+const AA_RADIUS: f32 = /*{AA_RADIUS}*/;
 
 // Brush kind low byte:
 //   0 = solid  (use `fill` directly)
@@ -267,7 +270,7 @@ fn erf_approx(x: f32) -> f32 {
 }
 
 // Closed-form coverage of a Gaussian-blurred rounded box. For σ → 0
-// the result is `clamp(0.5 - d, 0, 1)` — same shape as the existing
+// the result is `clamp(AA_RADIUS - d, 0, 1)` — same shape as the existing
 // non-blurred SDF coverage, so the path collapses cleanly to a sharp
 // shadow. For σ > 0 we use the SDF distance as the input to an erf,
 // which is exact for an axis-aligned half-plane and a smooth
@@ -275,7 +278,7 @@ fn erf_approx(x: f32) -> f32 {
 // shader uses).
 fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
     if (sigma <= BLUR_EPS) {
-        return clamp(0.5 - d, 0.0, 1.0);
+        return clamp(AA_RADIUS - d, 0.0, 1.0);
     }
     // d < 0 inside the shape → coverage ≈ 1; d > 0 outside → 0.
     // `erf(-d / (√2 σ))` smoothly transitions, mapped to 0..1.
@@ -285,7 +288,7 @@ fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
 
 // Composite an SDF shape's fill + inner-edge stroke into premultiplied linear
 // RGBA, given the signed distance `d` (negative inside). `outer_aa =
-// clamp(0.5 - d)` is the coverage. With a stroke, the stroke covers the annulus
+// clamp(AA_RADIUS - d)` is the coverage. With a stroke, the stroke covers the annulus
 // between the outer edge and the edge inset by `stroke_width`, and the fill
 // covers the interior inside that inset. The two are *spatially disjoint*
 // within any pixel (stroke = `outer_aa - inner_aa`, fill = `inner_aa`), so they
@@ -296,9 +299,9 @@ fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
 // fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
 // by the rounded-rect and triangle paths so they can't drift.
 fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
-    let outer_aa = clamp(0.5 - d, 0.0, 1.0);
+    let outer_aa = clamp(AA_RADIUS - d, 0.0, 1.0);
     if (stroke_width > 0.0) {
-        let inner_aa = clamp(0.5 - (d + stroke_width), 0.0, 1.0);
+        let inner_aa = clamp(AA_RADIUS - (d + stroke_width), 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
         let fill_a   = inner_aa * fill.a;
         return vec4<f32>(stroke_color.rgb * stroke_a + fill.rgb * fill_a, stroke_a + fill_a);
@@ -317,10 +320,10 @@ fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32
 // (no outward AA): the shape is a mask laid exactly over content of
 // the same extent, so its outer boundary is never a visible edge.
 fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
-    let outer_aa = clamp(0.5 - d, 0.0, 1.0);
+    let outer_aa = clamp(AA_RADIUS - d, 0.0, 1.0);
     let fill_a = (1.0 - outer_aa) * fill.a;
     if (stroke_width > 0.0) {
-        let inner_aa = clamp(0.5 - (d + stroke_width), 0.0, 1.0);
+        let inner_aa = clamp(AA_RADIUS - (d + stroke_width), 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
         return vec4<f32>(stroke_color.rgb * stroke_a + fill.rgb * fill_a, stroke_a + fill_a);
     }

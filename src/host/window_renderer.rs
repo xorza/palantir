@@ -74,6 +74,8 @@ pub(crate) struct WindowRenderer {
     /// for on-screen windows, [`FixedClock`](crate::host::clock::FixedClock) for a
     /// reproducible offscreen render) so the pipeline doesn't branch on it.
     clock: Box<dyn Clock>,
+    /// Whether axis-aligned paint edges snap to physical pixels.
+    pixel_snap: bool,
     /// `Some(instant the window went occluded)` while occluded — `frame()`
     /// short-circuits to `Idle` without running `cpu_frame`. Every
     /// per-frame Ui flag (damage, repaint_requested, animation driver
@@ -239,6 +241,7 @@ impl WindowRenderer {
             stencil: None,
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
+            pixel_snap: true,
             occluded_at: None,
             configured: None,
             last_format: None,
@@ -254,6 +257,12 @@ impl WindowRenderer {
     pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
         self.assert_not_started();
         self.clock = clock;
+        self
+    }
+
+    pub(crate) fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+        self.assert_not_started();
+        self.pixel_snap = pixel_snap;
         self
     }
 
@@ -340,7 +349,7 @@ impl WindowRenderer {
         let display = Display {
             physical: glam::UVec2::new(config.width, config.height),
             scale_factor,
-            pixel_snap: true,
+            pixel_snap: self.pixel_snap,
             refresh_millihertz,
         };
 
@@ -381,8 +390,10 @@ impl WindowRenderer {
         app: &mut T,
     ) {
         let size = target.size();
-        let display =
-            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
+        let display = Display {
+            pixel_snap: self.pixel_snap,
+            ..Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor)
+        };
         // Force a full repaint when the target's format changes (offscreen
         // has no surface to reconfigure).
         self.note_format(target.format());
