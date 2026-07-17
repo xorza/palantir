@@ -17,7 +17,6 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
@@ -120,8 +119,8 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
         ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
             Grid::new()
                 .auto_id()
-                .cols(Rc::from([Track::hug(), Track::fill()]))
-                .rows(Rc::from([Track::hug()]))
+                .cols([Track::hug(), Track::fill()])
+                .rows([Track::hug()])
                 .show(ui, |ui| {
                     Text::new("Label:")
                         .auto_id()
@@ -174,8 +173,8 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
             Grid::new()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::HUG))
-                .cols(Rc::from([Track::hug(), Track::fill()]))
-                .rows(Rc::from([Track::hug()]))
+                .cols([Track::hug(), Track::fill()])
+                .rows([Track::hug()])
                 .show(ui, |ui| {
                     Text::new("Label:")
                         .auto_id()
@@ -223,8 +222,8 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     Grid::new()
                         .id(WidgetId::from_hash("pg"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols(Rc::from([Track::hug(), Track::fill()]))
-                        .rows(Rc::from([Track::hug(), Track::hug()]))
+                        .cols([Track::hug(), Track::fill()])
+                        .rows([Track::hug(), Track::hug()])
                         .show(ui, |ui| {
                             Text::new("Title:")
                                 .auto_id()
@@ -284,8 +283,8 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                             Grid::new()
                                 .id(WidgetId::from_hash("nested-grid"))
                                 .size((Sizing::FILL, Sizing::HUG))
-                                .cols(Rc::from([Track::hug(), Track::fill()]))
-                                .rows(Rc::from([Track::hug()]))
+                                .cols([Track::hug(), Track::fill()])
+                                .rows([Track::hug()])
                                 .show(ui, |ui| {
                                     Text::new("Label:")
                                         .auto_id()

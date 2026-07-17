@@ -21,7 +21,6 @@ use aperture::{
     WidgetId, WidgetLook,
 };
 use glam::Vec2;
-use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Content {
@@ -161,15 +160,14 @@ fn header_band(ui: &mut Ui) {
 
 fn property_grid(ui: &mut Ui) {
     const ROWS: usize = 12;
-    let rows: Vec<Track> = (0..ROWS).map(|_| Track::hug()).collect();
     Grid::new()
         .id_salt("props")
-        .cols(Rc::from([
+        .cols([
             Track::hug().min(96.0),
             Track::fill(),
             Track::fixed(72.0),
-        ]))
-        .rows(Rc::<[Track]>::from(rows))
+        ])
+        .rows([Track::hug(); ROWS])
         .gap(6.0)
         .padding(4.0)
         .size((Sizing::FILL, Sizing::HUG))

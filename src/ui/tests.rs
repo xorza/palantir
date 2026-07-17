@@ -20,7 +20,6 @@ use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
 use glam::{IVec2, UVec2, Vec2};
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
@@ -500,7 +499,7 @@ fn text_reshape_skipped_when_unchanged() {
         Grid::new()
             .id(WidgetId::from_hash("g"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
-            .cols(Rc::from([Track::hug(), Track::fill()]))
+            .cols([Track::hug(), Track::fill()])
             .show(ui, |ui| {
                 Text::new("label")
                     .id(WidgetId::from_hash("hug-col-text"))

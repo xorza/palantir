@@ -18,7 +18,6 @@ use crate::shape::{Shape, TextWrap};
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
@@ -330,8 +329,8 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                         grid_node = Some(
                                             Grid::new()
                                                 .id(WidgetId::from_hash("grid"))
-                                                .cols(Rc::from([Track::hug(), Track::hug()]))
-                                                .rows(Rc::from([Track::hug()]))
+                                                .cols([Track::hug(), Track::hug()])
+                                                .rows([Track::hug()])
                                                 .show(ui, |ui| {
                                                     Text::new(
                                                         "the quick brown fox jumps over the lazy dog",
@@ -473,8 +472,8 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         let mut label_node = None;
         Grid::new()
             .id(WidgetId::from_hash("grid"))
-            .cols(Rc::from([Track::hug(), Track::hug()]))
-            .rows(Rc::from([Track::hug()]))
+            .cols([Track::hug(), Track::hug()])
+            .rows([Track::hug()])
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 paragraph_node = Some(
@@ -551,8 +550,8 @@ fn two_hug_cols_default_label_hugs_full_width() {
         let mut label_node = None;
         Grid::new()
             .id(WidgetId::from_hash("grid"))
-            .cols(Rc::from([Track::hug(), Track::hug()]))
-            .rows(Rc::from([Track::hug()]))
+            .cols([Track::hug(), Track::hug()])
+            .rows([Track::hug()])
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog. pack my box with five dozen liquor jugs")

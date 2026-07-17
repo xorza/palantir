@@ -3,14 +3,13 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::types::track::{GridDef, Track};
+use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 use crate::window::CursorIcon;
-use std::rc::Rc;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
 /// the panes side by side (vertical divider bar); [`Splitter::vertical`]
@@ -46,52 +45,9 @@ pub enum SplitHalf {
     Second,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct SplitterState {
-    /// Grid scratch may retain one list, so the other remains writable in place.
-    main_tracks: [Rc<[Track]>; 2],
-    cross_tracks: Rc<[Track]>,
     sync_ratio_next_record: bool,
-}
-
-impl Default for SplitterState {
-    fn default() -> Self {
-        Self {
-            main_tracks: [
-                Rc::from([Track::fill(), Track::fixed(0.0), Track::fill()]),
-                Rc::from([Track::fill(), Track::fixed(0.0), Track::fill()]),
-            ],
-            cross_tracks: Rc::from([Track::fill()]),
-            sync_ratio_next_record: false,
-        }
-    }
-}
-
-impl SplitterState {
-    fn grid_def(&mut self, axis: Axis, ratio: f32, rule_thickness: f32) -> GridDef {
-        let main_tracks = self
-            .main_tracks
-            .iter_mut()
-            .find(|tracks| Rc::strong_count(tracks) == 1)
-            .expect("one splitter track buffer must be reusable each record");
-        let tracks = Rc::get_mut(main_tracks).unwrap();
-        tracks[0] = Track::new(Sizing::share(ratio));
-        tracks[1] = Track::fixed(rule_thickness);
-        tracks[2] = Track::new(Sizing::share(1.0 - ratio));
-        let main_tracks = Rc::clone(main_tracks);
-        let cross_tracks = Rc::clone(&self.cross_tracks);
-
-        let (rows, cols) = match axis {
-            Axis::X => (cross_tracks, main_tracks),
-            Axis::Y => (main_tracks, cross_tracks),
-        };
-        GridDef {
-            rows,
-            cols,
-            row_gap: 0.0,
-            col_gap: 0.0,
-        }
-    }
 }
 
 impl<'a> Splitter<'a> {
@@ -197,12 +153,11 @@ impl<'a> Splitter<'a> {
         }
         *self.ratio = ratio;
 
-        let grid_def = {
+        {
             let grid_state = ui.state_mut::<SplitterState>(id);
             grid_state.sync_ratio_next_record =
                 resizing || (sync_pending && synced_ratio.is_none());
-            grid_state.grid_def(axis, layout_ratio, rule_thickness)
-        };
+        }
 
         let bar_fill = if divider.left.drag.dragging() {
             Some(drag_color)
@@ -224,9 +179,18 @@ impl<'a> Splitter<'a> {
         let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
         let rule_bg = Background::fill(rule_color);
 
+        let main_tracks = [
+            Track::new(Sizing::share(layout_ratio)),
+            Track::fixed(rule_thickness),
+            Track::new(Sizing::share(1.0 - layout_ratio)),
+        ];
+        let cross_tracks = [Track::fill()];
         let layer = ui.forest.current_layer();
         let mut element = self.element;
-        let grid_def_id = ui.forest.trees[layer].push_grid_def(grid_def);
+        let grid_def_id = match axis {
+            Axis::X => ui.forest.trees[layer].push_grid_def(&cross_tracks, &main_tracks, 0.0, 0.0),
+            Axis::Y => ui.forest.trees[layer].push_grid_def(&main_tracks, &cross_tracks, 0.0, 0.0),
+        };
         element.set_grid_def(grid_def_id);
         ui.node(id, element, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));

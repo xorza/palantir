@@ -20,7 +20,6 @@ use crate::primitives::{
 use crate::renderer::frontend::cmd_buffer::test_support::assert_same_stream;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-use std::rc::Rc;
 
 /// Run `record` twice at `size` (cold then warm-from-cache) and assert
 /// every captured node's arranged rect matches across the two frames.
@@ -75,8 +74,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("g"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols(Rc::from([Track::hug(), Track::fill()]))
-                        .rows(Rc::from([Track::hug()]))
+                        .cols([Track::hug(), Track::fill()])
+                        .rows([Track::hug()])
                         .gap_xy(6.0, 16.0)
                         .show(ui, |ui| {
                             capture.push(
@@ -107,8 +106,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("outer"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols(Rc::from([Track::hug(), Track::fill()]))
-                        .rows(Rc::from([Track::hug()]))
+                        .cols([Track::hug(), Track::fill()])
+                        .rows([Track::hug()])
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("outer-L")
@@ -125,8 +124,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     Grid::new()
                                         .id(WidgetId::from_hash("inner"))
                                         .size((Sizing::FILL, Sizing::HUG))
-                                        .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
-                                        .rows(Rc::from([Track::hug()]))
+                                        .cols([Track::hug(), Track::hug(), Track::fill()])
+                                        .rows([Track::hug()])
                                         .show(ui, |ui| {
                                             for (col, label) in [(0, "a"), (1, "bb"), (2, "end")] {
                                                 capture.push(
@@ -157,8 +156,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("g1"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols(Rc::from([Track::hug(), Track::fill()]))
-                        .rows(Rc::from([Track::hug()]))
+                        .cols([Track::hug(), Track::fill()])
+                        .rows([Track::hug()])
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("L1:")
@@ -180,8 +179,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("g2"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
-                        .rows(Rc::from([Track::hug()]))
+                        .cols([Track::hug(), Track::hug(), Track::fill()])
+                        .rows([Track::hug()])
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Description:")
@@ -400,8 +399,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                         Grid::new()
                             .id(WidgetId::from_hash("grid"))
                             .size((Sizing::FILL, Sizing::HUG))
-                            .cols(Rc::from([Track::hug(), Track::fill()]))
-                            .rows(Rc::from([Track::hug(), Track::hug()]))
+                            .cols([Track::hug(), Track::fill()])
+                            .rows([Track::hug(), Track::hug()])
                             .gap_xy(6.0, 8.0)
                             .show(ui, |ui| {
                                 Text::new("Title:")
@@ -472,8 +471,8 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                         Grid::new()
                             .id(WidgetId::from_hash("g"))
                             .size((Sizing::FILL, Sizing::HUG))
-                            .cols(Rc::from([Track::hug(), Track::fill()]))
-                            .rows(Rc::from([Track::hug()]))
+                            .cols([Track::hug(), Track::fill()])
+                            .rows([Track::hug()])
                             .show(ui, |ui| {
                                 capture.push(
                                     Text::new("Title:")

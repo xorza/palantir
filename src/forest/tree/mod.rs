@@ -39,7 +39,7 @@ use crate::forest::tree::paint_anims::PaintAnims;
 use crate::forest::tree::recording::{OpenFrame, RecordingScratch, RootSlot};
 use crate::forest::tree::rollups::SubtreeRollups;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
-use crate::layout::types::track::GridDef;
+use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
@@ -90,6 +90,7 @@ pub(crate) struct Tree {
     /// `RecordStore`.
     pub(crate) shapes: Shapes,
 
+    pub(crate) grid_tracks: Vec<Track>,
     pub(crate) grid_defs: Vec<GridDef>,
 
     /// Top-level root slots in this tree, in record order. Each slot's
@@ -130,6 +131,7 @@ impl Tree {
         self.chrome_table.clear();
         self.shapes.clear();
         self.paint_anims.clear();
+        self.grid_tracks.clear();
         self.grid_defs.clear();
         self.roots.clear();
     }
@@ -171,6 +173,7 @@ impl Tree {
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
         let chrome_tab = self.chrome_table.as_slice();
+        let grid_tracks = &self.grid_tracks;
         let grid_defs = &self.grid_defs;
         let SubtreeRollups {
             node,
@@ -257,7 +260,7 @@ impl Tree {
             }
             if layouts[i].mode == LayoutMode::Grid {
                 let id = layouts[i].grid_def_id();
-                grid_defs[usize::from(id)].hash(&mut h);
+                grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h);
             }
             let node_hash = h.finish();
             node_out[i] = ContentHash(node_hash);
@@ -285,9 +288,25 @@ impl Tree {
         NodeId(self.records.len() as u32)
     }
 
-    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> GridDefId {
+    pub(crate) fn push_grid_def(
+        &mut self,
+        rows: &[Track],
+        cols: &[Track],
+        row_gap: f32,
+        col_gap: f32,
+    ) -> GridDefId {
         let id = GridDefId::from_index(self.grid_defs.len());
-        self.grid_defs.push(def);
+        self.grid_tracks.reserve(rows.len() + cols.len());
+        let row_start = self.grid_tracks.len();
+        self.grid_tracks.extend_from_slice(rows);
+        let col_start = self.grid_tracks.len();
+        self.grid_tracks.extend_from_slice(cols);
+        self.grid_defs.push(GridDef {
+            rows: Span::from(row_start..col_start),
+            cols: Span::from(col_start..self.grid_tracks.len()),
+            row_gap,
+            col_gap,
+        });
         id
     }
 
@@ -430,8 +449,8 @@ impl Tree {
                 return;
             }
             let def = &self.grid_defs[usize::from(parent_layout.grid_def_id())];
-            let n_rows = def.rows.len();
-            let n_cols = def.cols.len();
+            let n_rows = def.rows.len as usize;
+            let n_cols = def.cols.len as usize;
             if n_rows > 0 && n_cols > 0 {
                 let c = bounds.grid;
                 let row = c.row as usize;

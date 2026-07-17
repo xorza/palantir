@@ -8,13 +8,12 @@ use crate::layout::support::{
     AxisAlignPair, TextCtx, arrange_axis, resolved_axis_align, weighted_share, zero_subtree,
 };
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
-use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::layout::types::track::Track;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use fixedbitset::FixedBitSet;
 use glam::Vec2;
 use std::ops::Range;
-use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum HugKind {
@@ -32,51 +31,6 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
     (Axis::Y, HugKind::Min),
 ];
 
-/// Track counts + gaps for a grid, returned by
-/// [`prepare_axis_scratch_at`] after it adopts the def into per-depth
-/// scratch. Carries no behavior; exists so call-site destructuring
-/// names the scalars instead of relying on tuple position.
-#[derive(Debug)]
-struct GridShape {
-    n_rows: usize,
-    n_cols: usize,
-    row_gap: f32,
-    col_gap: f32,
-}
-
-/// Adopt the `GridDef` at `idx` into the per-depth scratch slot:
-/// refcount-clone the track `Rc<[Track]>`s, read gaps, reset the
-/// per-axis `AxisScratch`. Returns the grid's track counts + gaps for
-/// the caller. Hug arrays live on `GridHugStore` (durable across the
-/// layout pass) and are read/written separately via
-/// `hugs.slice(idx, axis, kind)`. Hugs are NOT reset here: arrange also
-/// calls this to re-snapshot tracks/gaps and must preserve the hug
-/// values written during measure. Measure-side hug reset lives in
-/// `reset_hugs_for`.
-fn prepare_axis_scratch_at(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    idx: GridDefId,
-    depth: usize,
-) -> GridShape {
-    let def = &tree.grid_defs[usize::from(idx)];
-    let n_rows = def.rows.len();
-    let n_cols = def.cols.len();
-    let rows = def.rows.clone();
-    let cols = def.cols.clone();
-    let row_gap = def.row_gap;
-    let col_gap = def.col_gap;
-    let s = layout.scratch.grid.depth_stack.at(depth);
-    s.col.reset(cols);
-    s.row.reset(rows);
-    GridShape {
-        n_rows,
-        n_cols,
-        row_gap,
-        col_gap,
-    }
-}
-
 /// Zero this grid's hug arrays so a re-measure of the grid (e.g.,
 /// `LayoutEngine::measure`'s grow-driven second pass) starts with a
 /// clean accumulator. Both Phase 1 col-intrinsic queries and Phase 2
@@ -93,36 +47,20 @@ fn reset_hugs_for(layout: &mut LayoutEngine, idx: GridDefId) {
     }
 }
 
-/// Per-axis scratch for one nesting depth. `tracks` shares the user's
-/// `Rc<[Track]>` (refcount-only clone — no copy). `flexible` and
-/// `hug_bounds` are transient lists used only inside `resolve_axis`;
-/// they live on the per-axis struct so their capacity is retained
-/// across frames.
+/// Per-axis scratch for one nesting depth. `flexible` and `hug_bounds`
+/// are transient lists used only inside `resolve_axis`; they live on
+/// the per-axis struct so their capacity is retained across frames.
 ///
 /// Per-track content-driven `[min, max]` Hug ranges live in
 /// `GridHugStore` (durable across the whole layout pass); they're passed
 /// into `resolve_axis` as slices alongside this scratch.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct AxisScratch {
-    pub(crate) tracks: Rc<[Track]>,
     pub(crate) sizes: Vec<f32>,
     pub(crate) resolved: FixedBitSet,
     pub(crate) offsets: Vec<f32>,
     flexible: Vec<usize>,
     hug_bounds: Vec<HugBound>,
-}
-
-impl Default for AxisScratch {
-    fn default() -> Self {
-        Self {
-            tracks: Rc::from([]),
-            sizes: Vec::new(),
-            resolved: FixedBitSet::new(),
-            offsets: Vec::new(),
-            flexible: Vec::new(),
-            hug_bounds: Vec::new(),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -133,12 +71,9 @@ struct HugBound {
 }
 
 impl AxisScratch {
-    /// Adopt the user's track `Rc<[Track]>` (refcount-only) and (re)size the
-    /// per-track arrays to match. All arrays are zeroed; `resolved` is reset
-    /// to all-false. Capacity is retained across frames.
-    fn reset(&mut self, tracks: Rc<[Track]>) {
-        let n = tracks.len();
-        self.tracks = tracks;
+    /// Resize the per-track arrays. All arrays are zeroed; `resolved` is
+    /// reset to all-false. Capacity is retained across frames.
+    fn reset(&mut self, n: usize) {
         self.sizes.clear();
         self.sizes.resize(n, 0.0);
         self.resolved.clear();
@@ -250,8 +185,8 @@ impl GridHugStore {
         self.totals_pool.clear();
         self.slots.clear();
         for def in &tree.grid_defs {
-            let rows = self.alloc(def.rows.len());
-            let cols = self.alloc(def.cols.len());
+            let rows = self.alloc(def.rows.len as usize);
+            let cols = self.alloc(def.cols.len as usize);
             self.slots.push(GridHugSlot { rows, cols });
             self.totals_pool.push([0.0, 0.0]);
         }
@@ -430,12 +365,16 @@ fn measure_inner(
     tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
-    let GridShape {
-        n_rows,
-        n_cols,
-        row_gap,
-        col_gap,
-    } = prepare_axis_scratch_at(layout, tree, idx, depth);
+    let def = tree.grid_defs[usize::from(idx)];
+    let row_tracks = &tree.grid_tracks[def.rows.range()];
+    let col_tracks = &tree.grid_tracks[def.cols.range()];
+    let n_rows = row_tracks.len();
+    let n_cols = col_tracks.len();
+    let row_gap = def.row_gap;
+    let col_gap = def.col_gap;
+    let scratch = layout.scratch.grid.depth_stack.at(depth);
+    scratch.col.reset(n_cols);
+    scratch.row.reset(n_rows);
     reset_hugs_for(layout, idx);
 
     if n_rows == 0 || n_cols == 0 {
@@ -454,10 +393,7 @@ fn measure_inner(
     // Resolves the col axis without measuring children — the whole
     // point is to give cells a committed column width before they
     // shape (otherwise wrap text in Hug cols would always shape at INF
-    // and never wrap). Refcount-clone the col tracks so the
-    // `&mut depth_stack[depth]` borrow is released before the
-    // `layout.intrinsic` calls below (which need `&mut layout`).
-    let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
+    // and never wrap).
     // Skip the span-1 child walk entirely when no column is content-
     // floor-sensitive. Hug cols need both `min` (constraint solver lo)
     // and `max` (constraint solver hi); Fill cols only need `min` so
@@ -517,11 +453,12 @@ fn measure_inner(
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
+            col_tracks,
             hugs.slice(idx, Axis::X, HugKind::Min),
             hugs.slice(idx, Axis::X, HugKind::Max),
             inner_avail.w,
             col_gap,
-            grid_sizing_w,
+            !grid_sizing_w.is_hug(),
         );
         // Stash col sizes for arrange's reuse path (skips a redundant
         // `resolve_axis` when the arrange-time slot matches `inner_avail.w`).
@@ -529,7 +466,7 @@ fn measure_inner(
         // Resolve Fixed rows once before the per-cell loop — values are
         // constant per GridDef and `resolve_fixed` is idempotent, so
         // calling it inside the loop just re-set the same slots.
-        resolve_fixed(&mut s.row);
+        resolve_fixed(&mut s.row, row_tracks);
     }
 
     // Phase 2: measure cells with resolved col widths. Rows are still
@@ -579,11 +516,9 @@ fn measure_inner(
         // Skip multi-row spans: their height is distributed across rows,
         // not attributable to one row.
         if cell.row_span == 1 {
-            let GridContext {
-                depth_stack, hugs, ..
-            } = &mut layout.scratch.grid;
+            let hugs = &mut layout.scratch.grid.hugs;
             let row = cell.row as usize;
-            let sizing = depth_stack.at(depth).row.tracks[row].size;
+            let sizing = row_tracks[row].size;
             if sizing.is_hug() {
                 let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
                 hug_max[row] = hug_max[row].max(d.h);
@@ -607,11 +542,12 @@ fn measure_inner(
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.row,
+            row_tracks,
             hugs.slice(idx, Axis::Y, HugKind::Min),
             hugs.slice(idx, Axis::Y, HugKind::Max),
             inner_avail.h,
             row_gap,
-            grid_sizing_h,
+            !grid_sizing_h.is_hug(),
         );
         hugs.record_resolution(idx, Axis::Y, inner_avail.h, &s.row.sizes);
     }
@@ -621,9 +557,9 @@ fn measure_inner(
     // arrange time. Mirrors WPF's "Star contributes 0 to content size."
     let s = layout.scratch.grid.depth_stack.at(depth);
     let total_w =
-        sum_non_fill(&s.col.tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
+        sum_non_fill(col_tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
     let total_h =
-        sum_non_fill(&s.row.tracks, &s.row.sizes) + row_gap * n_rows.saturating_sub(1) as f32;
+        sum_non_fill(row_tracks, &s.row.sizes) + row_gap * n_rows.saturating_sub(1) as f32;
     Size::new(total_w, total_h)
 }
 
@@ -641,8 +577,8 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
         .sum()
 }
 
-fn resolve_fixed(a: &mut AxisScratch) {
-    for (i, t) in a.tracks.iter().enumerate() {
+fn resolve_fixed(a: &mut AxisScratch, tracks: &[Track]) {
+    for (i, t) in tracks.iter().enumerate() {
         if let Some(value) = t.size.fixed_value() {
             a.sizes[i] = value.clamp(t.min, t.max);
             a.resolved.insert(i);
@@ -672,16 +608,16 @@ fn arrange_inner(
     depth: usize,
     out: &mut Layout,
 ) {
-    // Re-snapshot at this depth: scratch gets clobbered by sibling grids
-    // between measure and arrange, so we re-read tracks/gaps from the
-    // GridDef. Hug sizes are read directly from `GridHugStore`, the
-    // durable record across the layout pass.
-    let GridShape {
-        n_rows,
-        n_cols,
-        row_gap,
-        col_gap,
-    } = prepare_axis_scratch_at(layout, tree, idx, depth);
+    let def = tree.grid_defs[usize::from(idx)];
+    let row_tracks = &tree.grid_tracks[def.rows.range()];
+    let col_tracks = &tree.grid_tracks[def.cols.range()];
+    let n_rows = row_tracks.len();
+    let n_cols = col_tracks.len();
+    let row_gap = def.row_gap;
+    let col_gap = def.col_gap;
+    let scratch = layout.scratch.grid.depth_stack.at(depth);
+    scratch.col.reset(n_cols);
+    scratch.row.reset(n_rows);
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node).map(|c| c.id) {
@@ -689,8 +625,6 @@ fn arrange_inner(
         }
         return;
     }
-
-    let grid_size = tree.records.layout()[node.idx()].size;
 
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
     // Fast path: when measure already resolved this axis against the
@@ -702,9 +636,6 @@ fn arrange_inner(
     //     zeros them and we never wrote);
     //   - arrange's `inner.size.X` matches measure's `inner_avail.X`
     //     (no WPF Stretch grow on this axis since measure committed).
-    // Hug grids never hit the fast path: measure used INF or a
-    // computed inner that arrange's actual slot won't match.
-    //
     // The `track_offsets` cumulative-sum is cheap relative to
     // `resolve_axis` (O(n_tracks), no constraint solving) so we re-run
     // it unconditionally — keeps the offsets in sync regardless of
@@ -716,21 +647,21 @@ fn arrange_inner(
         let s = depth_stack.at(depth);
         resolve_or_reuse(
             &mut s.col,
+            col_tracks,
             hugs,
             idx,
             Axis::X,
             inner.size.w,
             col_gap,
-            grid_size.w(),
         );
         resolve_or_reuse(
             &mut s.row,
+            row_tracks,
             hugs,
             idx,
             Axis::Y,
             inner.size.h,
             row_gap,
-            grid_size.h(),
         );
         track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
         track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
@@ -821,26 +752,27 @@ fn span_size(sizes: &[f32], span: Span, gap: f32) -> f32 {
 /// version of those.
 fn resolve_or_reuse(
     a: &mut AxisScratch,
+    tracks: &[Track],
     hugs: &mut GridHugStore,
     idx: GridDefId,
     axis: Axis,
     total: f32,
     gap: f32,
-    grid_sizing: Sizing,
 ) {
     let recorded_total = hugs.total_used(idx, axis);
-    let can_reuse = !grid_sizing.is_hug() && recorded_total != 0.0 && recorded_total == total;
+    let can_reuse = recorded_total != 0.0 && recorded_total == total;
     if can_reuse {
         a.sizes.copy_from_slice(hugs.sizes_slice(idx, axis));
         return;
     }
     resolve_axis(
         a,
+        tracks,
         hugs.slice(idx, axis, HugKind::Min),
         hugs.slice(idx, axis, HugKind::Max),
         total,
         gap,
-        grid_sizing,
+        false,
     );
 }
 
@@ -851,9 +783,8 @@ fn content_floor(track: &Track, min_content: f32) -> f32 {
 
 /// Resolve track sizes on one axis into `a.sizes` for a grid with
 /// `total` available main-axis length and `gap` between adjacent tracks.
-/// `grid_sizing` is the grid node's own `Sizing` on this axis — used
-/// only by Phase 4 to decide whether Fill tracks can be marked resolved
-/// at measure time.
+/// `commit_fill` marks Fill tracks resolved when measure knows its
+/// available extent is the final arrange extent.
 ///
 /// **Algorithm**, four phases:
 /// 1. **Fixed:** clamp `Sizing::fixed(v)` to `[Track.min, Track.max]`,
@@ -876,18 +807,18 @@ fn content_floor(track: &Track, min_content: f32) -> f32 {
 ///    measure-time `total` matches arrange's, so Fill tracks can be
 ///    committed up-front and cells measure at the resolved width — wrap
 ///    text shapes correctly. Hug grids must keep Fill unresolved (their
-///    arrange slot is unknown here). Arrange ignores `resolved`, so
-///    passing the actual `grid_sizing` from arrange's call site is
-///    harmless.
+///    arrange slot is unknown here). Arrange passes `false` because it
+///    consumes only sizes and offsets, never the resolved flags.
 fn resolve_axis(
     a: &mut AxisScratch,
+    tracks: &[Track],
     hug_min: &[f32],
     hug_max: &[f32],
     total: f32,
     gap: f32,
-    grid_sizing: Sizing,
+    commit_fill: bool,
 ) {
-    let n = a.tracks.len();
+    let n = tracks.len();
     a.sizes.fill(0.0);
     // Reset resolved flags. Fixed + Hug get marked resolved as they're
     // computed. Fill stays unresolved so cells in Fill cols see INF as
@@ -901,7 +832,7 @@ fn resolve_axis(
 
     // Phase 1: Fixed.
     let mut consumed = total_gap;
-    for (i, t) in a.tracks.iter().enumerate() {
+    for (i, t) in tracks.iter().enumerate() {
         if let Some(value) = t.size.fixed_value() {
             a.sizes[i] = value.clamp(t.min, t.max);
             a.resolved.insert(i);
@@ -915,7 +846,7 @@ fn resolve_axis(
     a.hug_bounds.clear();
     let mut hug_min_sum = 0.0_f32;
     let mut hug_max_sum = 0.0_f32;
-    for (i, t) in a.tracks.iter().enumerate() {
+    for (i, t) in tracks.iter().enumerate() {
         if t.size.is_hug() {
             let lo = content_floor(t, hug_min[i]);
             let hi = hug_max[i].max(lo).min(t.max);
@@ -963,7 +894,7 @@ fn resolve_axis(
     let mut remaining = (total - consumed).max(0.0);
     a.flexible.clear();
     let mut flexible_weight = 0.0_f64;
-    for (i, t) in a.tracks.iter().enumerate() {
+    for (i, t) in tracks.iter().enumerate() {
         if let Some(weight) = t.size.fill_weight() {
             a.flexible.push(i);
             flexible_weight += f64::from(weight);
@@ -977,7 +908,7 @@ fn resolve_axis(
     // exit. Converges in ≤ N iterations (each clamp removes one).
     while !a.flexible.is_empty() && flexible_weight > 0.0 {
         let clamp_idx = a.flexible.iter().position(|&i| {
-            let t = &a.tracks[i];
+            let t = &tracks[i];
             let weight = t.size.fill_weight().unwrap();
             let candidate = weighted_share(remaining, weight, flexible_weight);
             let lo = content_floor(t, hug_min[i]);
@@ -986,7 +917,7 @@ fn resolve_axis(
         match clamp_idx {
             Some(k) => {
                 let i = a.flexible[k];
-                let t = &a.tracks[i];
+                let t = &tracks[i];
                 let weight = t.size.fill_weight().unwrap();
                 let candidate = weighted_share(remaining, weight, flexible_weight);
                 let lo = content_floor(t, hug_min[i]);
@@ -998,7 +929,7 @@ fn resolve_axis(
             }
             None => {
                 for &i in a.flexible.iter() {
-                    let weight = a.tracks[i].size.fill_weight().unwrap();
+                    let weight = tracks[i].size.fill_weight().unwrap();
                     a.sizes[i] = weighted_share(remaining, weight, flexible_weight);
                 }
                 break;
@@ -1008,8 +939,8 @@ fn resolve_axis(
 
     // Phase 4: commit Fill tracks as resolved when the grid's own axis
     // sizing guarantees measure-time `total` matches arrange-time slot.
-    if !grid_sizing.is_hug() && total.is_finite() {
-        for (i, t) in a.tracks.iter().enumerate() {
+    if commit_fill && total.is_finite() {
+        for (i, t) in tracks.iter().enumerate() {
             if t.size.fill_weight().is_some() {
                 a.resolved.insert(i);
             }
@@ -1040,18 +971,20 @@ pub(crate) fn intrinsic(
     req: LenReq,
     tc: &TextCtx<'_>,
 ) -> f32 {
-    let def = &tree.grid_defs[usize::from(idx)];
+    let def = tree.grid_defs[usize::from(idx)];
     // An empty dimension means no cells, so the grid measures to
     // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
     // *both* axes — a declared `Fixed` track on the non-empty axis
     // contributes nothing when there's nothing to place in it.
-    if def.cols.is_empty() || def.rows.is_empty() {
+    if def.cols.len == 0 || def.rows.len == 0 {
         return 0.0;
     }
-    let (tracks, gap, n_tracks) = match axis {
-        Axis::X => (def.cols.clone(), def.col_gap, def.cols.len()),
-        Axis::Y => (def.rows.clone(), def.row_gap, def.rows.len()),
+    let (track_span, gap) = match axis {
+        Axis::X => (def.cols, def.col_gap),
+        Axis::Y => (def.rows, def.row_gap),
     };
+    let tracks = &tree.grid_tracks[track_span.range()];
+    let n_tracks = tracks.len();
 
     // Bump-allocate `n_tracks` slots on the shared scratch. Recursive
     // intrinsic calls extend past `base + n_tracks` and truncate back, so

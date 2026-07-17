@@ -16,7 +16,6 @@ use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::Command;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-use std::rc::Rc;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
@@ -79,8 +78,8 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                     if let Some(s) = *grid_main {
                         g = g.size((s, Sizing::HUG));
                     }
-                    g.cols(Rc::from(*cols))
-                        .rows(Rc::from([Track::hug()]))
+                    g.cols(*cols)
+                        .rows([Track::hug()])
                         .gap_xy(gap_xy.0, gap_xy.1)
                         .show(ui, |ui| {
                             left = Some(
@@ -133,8 +132,8 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                 section(ui, "two-hug-columns", &mut |ui| {
                     Grid::new()
                         .id(WidgetId::from_hash("two-hug-inner"))
-                        .cols(Rc::from([Track::hug(), Track::hug()]))
-                        .rows(Rc::from([Track::hug()]))
+                        .cols([Track::hug(), Track::hug()])
+                        .rows([Track::hug()])
                         .gap_xy(0.0, 16.0)
                         .show(ui, |ui| {
                             hug_left = Some(
@@ -161,8 +160,8 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                     Grid::new()
                         .id(WidgetId::from_hash("property-grid-inner"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols(Rc::from([Track::hug(), Track::fill()]))
-                        .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                        .cols([Track::hug(), Track::fill()])
+                        .rows([Track::hug(), Track::hug(), Track::hug()])
                         .gap_xy(6.0, 16.0)
                         .show(ui, |ui| {
                             prop_label = Some(
@@ -221,8 +220,8 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
                 Grid::new()
                     .id(WidgetId::from_hash("property-grid-inner"))
                     .size((Sizing::FILL, Sizing::HUG))
-                    .cols(Rc::from([Track::hug(), Track::fill()]))
-                    .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                    .cols([Track::hug(), Track::fill()])
+                    .rows([Track::hug(), Track::hug(), Track::hug()])
                     .gap_xy(6.0, 16.0)
                     .show(ui, |ui| {
                         Text::new("Title:")
@@ -286,8 +285,8 @@ fn text_layouts_full_showcase_drawtext_dump() {
                         .show(ui, |ui| {
                             section(ui, "two-hug-columns", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("two-hug-inner"))
-                                    .cols(Rc::from([Track::hug(), Track::hug()]))
-                                    .rows(Rc::from([Track::hug()]))
+                                    .cols([Track::hug(), Track::hug()])
+                                    .rows([Track::hug()])
                                     .gap_xy(0.0, 16.0)
                                     .show(ui, |ui| {
                                         Text::new(PARAGRAPH).auto_id()
@@ -304,8 +303,8 @@ fn text_layouts_full_showcase_drawtext_dump() {
                             section(ui, "property-grid", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("property-grid-inner"))
                                     .size((Sizing::FILL, Sizing::HUG))
-                                    .cols(Rc::from([Track::hug(), Track::fill()]))
-                                    .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                                    .cols([Track::hug(), Track::fill()])
+                                    .rows([Track::hug(), Track::hug(), Track::hug()])
                                     .gap_xy(6.0, 16.0)
                                     .show(ui, |ui| {
                                         Text::new("Title:").auto_id()

@@ -9,7 +9,6 @@ use aperture::{
     Color, Configure, Frame, Grid, LineCap, LineJoin, Mesh, Panel, PolylineColors, Shape, Sizing,
     Track,
 };
-use std::rc::Rc;
 
 /// 16×16 grid of `Frame`s — 256 quads per frame. Stresses
 /// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse much
@@ -17,13 +16,11 @@ use std::rc::Rc;
 /// in the encoder shape vec or composer quad vec shows up here.
 #[test]
 fn many_rects_compose_alloc_free() {
-    let cols: Rc<[Track]> = Rc::from([Track::fill(); 16]);
-    let rows: Rc<[Track]> = Rc::from([Track::fill(); 16]);
-    audit_steady_state("many_rects_compose", 0, move |ui| {
+    audit_steady_state("many_rects_compose", 0, |ui| {
         Grid::new()
             .auto_id()
-            .cols(Rc::clone(&cols))
-            .rows(Rc::clone(&rows))
+            .cols([Track::fill(); 16])
+            .rows([Track::fill(); 16])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for r in 0..16u16 {
