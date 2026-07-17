@@ -11,7 +11,7 @@ use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
 };
-use crate::renderer::frontend::composer::Composer;
+use crate::renderer::frontend::composer::{Composer, stroke_bbox_scissor};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
@@ -86,6 +86,70 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.groups[0].scissor.is_none());
     assert_eq!(buf.groups[0].quads, Span::new(0, 2));
+}
+
+#[test]
+fn stroke_bbox_scissor_applies_transform_dpi_and_style_once() {
+    #[derive(Debug)]
+    struct Case {
+        scale: f32,
+        cap: LineCap,
+        join: Option<LineJoin>,
+        expected: URect,
+    }
+
+    // Centerline (10,20)..(30,30), plus origin (2,4), then
+    // x ↦ 1.5x + (3,5) gives logical (21,41)..(51,56).
+    // Butt cases use physical pad = width_phys/2 + 0.5:
+    // 0.5× → 2, 1× → 3.5, 2× → 6.5.
+    let cases = [
+        Case {
+            scale: 0.5,
+            cap: LineCap::Butt,
+            join: None,
+            expected: URect::new(8, 18, 20, 12),
+        },
+        Case {
+            scale: 1.0,
+            cap: LineCap::Butt,
+            join: None,
+            expected: URect::new(17, 37, 38, 23),
+        },
+        Case {
+            scale: 2.0,
+            cap: LineCap::Butt,
+            join: None,
+            expected: URect::new(35, 75, 74, 44),
+        },
+        // At 1×, Square pad = 3.5√2 ≈ 4.9498.
+        Case {
+            scale: 1.0,
+            cap: LineCap::Square,
+            join: None,
+            expected: URect::new(16, 36, 40, 25),
+        },
+        // At 1×, Miter pad = 3.5·4 = 14.
+        Case {
+            scale: 1.0,
+            cap: LineCap::Butt,
+            join: Some(LineJoin::Miter),
+            expected: URect::new(7, 27, 58, 43),
+        },
+    ];
+    let xform = TranslateScale::new(Vec2::new(3.0, 5.0), 1.5);
+
+    for case in cases {
+        let actual = stroke_bbox_scissor(
+            xform,
+            rect(10.0, 20.0, 20.0, 10.0),
+            Vec2::new(2.0, 4.0),
+            4.0 * 1.5 * case.scale,
+            case.cap,
+            case.join,
+            params(case.scale, UVec2::new(200, 200)),
+        );
+        assert_eq!(actual, case.expected, "{case:?}");
+    }
 }
 
 #[test]
@@ -1152,10 +1216,7 @@ fn polyline_cmd(
         hi = hi.max(p);
     }
     b.draw_polyline(DrawPolylinePayload {
-        bbox: Rect {
-            min: lo,
-            size: Size::new(hi.x - lo.x, hi.y - lo.y),
-        },
+        bbox: Rect::from_min_max(lo, hi),
         origin: Vec2::ZERO,
         width,
         points_start: p_start,
@@ -2020,6 +2081,86 @@ fn compose_curve_then_overlapping_mesh_splits_group() {
     assert_eq!(buf.mesh_batches[0].last_group, 1);
 }
 
+#[test]
+fn tight_curve_bound_avoids_false_group_split() {
+    #[derive(Debug)]
+    struct Case {
+        image_x: f32,
+        expected_groups: usize,
+    }
+
+    // Curve centerline ends at x=20. Width 2 + 0.5 AA gives a
+    // physical bound ending at ceil(21.5)=22. Touching x=22 is
+    // disjoint; moving the image one pixel left creates real overlap.
+    let cases = [
+        Case {
+            image_x: 22.0,
+            expected_groups: 1,
+        },
+        Case {
+            image_x: 21.0,
+            expected_groups: 2,
+        },
+    ];
+
+    for case in cases {
+        let buf = run(
+            |b, _| {
+                curve(b, rect(0.0, 0.0, 20.0, 20.0));
+                image(b, rect(case.image_x, 0.0, 10.0, 10.0));
+            },
+            &params(1.0, UVec2::new(100, 100)),
+        );
+        assert_eq!(buf.groups.len(), case.expected_groups, "{case:?}");
+    }
+}
+
+#[test]
+fn two_point_polyline_does_not_reserve_miter_join_reach() {
+    #[derive(Debug)]
+    struct Case {
+        points: &'static [Vec2],
+        expected_groups: usize,
+    }
+
+    static TWO: [Vec2; 2] = [Vec2::new(0.0, 10.0), Vec2::new(20.0, 10.0)];
+    static THREE: [Vec2; 3] = [
+        Vec2::new(0.0, 10.0),
+        Vec2::new(10.0, 0.0),
+        Vec2::new(20.0, 10.0),
+    ];
+    let cases = [
+        Case {
+            points: &TWO,
+            expected_groups: 1,
+        },
+        Case {
+            points: &THREE,
+            expected_groups: 2,
+        },
+    ];
+
+    for case in cases {
+        let buf = run(
+            |b, payloads| {
+                polyline_cmd(
+                    b,
+                    payloads,
+                    case.points,
+                    &[Color::WHITE],
+                    ColorMode::Single,
+                    2.0,
+                    LineCap::Butt,
+                    LineJoin::Miter,
+                );
+                image(b, rect(22.0, 0.0, 10.0, 10.0));
+            },
+            &params(1.0, UVec2::new(100, 100)),
+        );
+        assert_eq!(buf.groups.len(), case.expected_groups, "{case:?}");
+    }
+}
+
 /// Counter-pin: record [mesh, curve] — the replay order mesh→curve
 /// already matches record order, so both stay in one group.
 #[test]
@@ -2112,7 +2253,7 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
 /// Non-overlapping mixed kinds never conflict — record order between
 /// disjoint draws is invisible, so they share one group (one draw call
 /// per kind). Gaps exceed every bbox inflation: the curve at
-/// (0,0,20,20) tracks (0,0)..(22,22) after its `width/2 + 1` fringe,
+/// (0,0,20,20) tracks (0,0)..(22,22) after its width/2 + 0.5 fringe,
 /// the mesh at (40,40,20,20) tracks (39,39)..(61,61) after its 0.5
 /// fringe, the image at (80,80,20,20) is exact.
 #[test]

@@ -7,15 +7,15 @@ use crate::primitives::fill_wire::FillKind;
 use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
+use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, MITER_LIMIT, SEGMENTS_PER_INSTANCE,
-    cap_lanes,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, HALF_FRINGE, MITER_LIMIT,
+    SEGMENTS_PER_INSTANCE, cap_lanes, stroked_bbox,
 };
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
@@ -694,13 +694,7 @@ impl Composer {
                     let lo = a.min(b).min(c);
                     let hi = a.max(b).max(c);
                     let pad = radius_phys + 0.5;
-                    let rect = Rect {
-                        min: lo - Vec2::splat(pad),
-                        size: Size {
-                            w: (hi.x - lo.x) + 2.0 * pad,
-                            h: (hi.y - lo.y) + 2.0 * pad,
-                        },
-                    };
+                    let rect = Rect::from_min_max(lo, hi).inflated(pad);
                     let tri_urect = urect_from_phys(rect.min, rect.max(), viewport_phys);
                     // Triangle is a quad-tier draw (lowest paint kind), so it
                     // culls + flushes exactly like `DrawRect`.
@@ -830,16 +824,15 @@ impl Composer {
                 }
                 Command::DrawCurve(p) => {
                     let width_phys = p.width * current_transform.scale * scale;
-                    // Inflate the owner-local bbox by the stroke's AA
-                    // fringe, transform to physical px, then cull. Same
-                    // bound the polyline path uses.
+                    let cap = p.cap.get();
                     let bbox_scissor = stroke_bbox_scissor(
                         current_transform,
                         p.bbox,
                         p.origin,
                         width_phys,
-                        scale,
-                        viewport_phys,
+                        cap,
+                        None,
+                        display,
                     );
                     // Clip-cull + batch-close: curve sits above text in the
                     // kind order (same as mesh/image), so a surviving draw
@@ -893,7 +886,7 @@ impl Composer {
                             width: width_phys,
                             color0: color,
                             color1: color,
-                            cap: cap_lanes(p.cap, p.cap),
+                            cap: cap_lanes(cap as u32, cap as u32),
                             fill_kind: p.fill_kind,
                             fill_lut_row: p.fill_lut_row,
                             kind: CURVE_KIND_CUBIC,
@@ -903,13 +896,15 @@ impl Composer {
                 }
                 Command::DrawArc(p) => {
                     let width_phys = p.width * current_transform.scale * scale;
+                    let cap = p.cap.get();
                     let bbox_scissor = stroke_bbox_scissor(
                         current_transform,
                         p.bbox,
                         p.origin,
                         width_phys,
-                        scale,
-                        viewport_phys,
+                        cap,
+                        None,
+                        display,
                     );
                     if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
                         continue;
@@ -953,7 +948,7 @@ impl Composer {
                             width: width_phys,
                             color0: color,
                             color1: color,
-                            cap: cap_lanes(p.cap, p.cap),
+                            cap: cap_lanes(cap as u32, cap as u32),
                             fill_kind: p.fill_kind,
                             fill_lut_row: p.fill_lut_row,
                             kind: CURVE_KIND_ARC,
@@ -978,8 +973,9 @@ impl Composer {
                         p.bbox,
                         p.origin,
                         width_phys,
-                        scale,
-                        viewport_phys,
+                        cap,
+                        (p.points_len > 2).then_some(join),
+                        display,
                     );
                     if self.cull_bounds(bbox_scissor) {
                         continue;
@@ -1424,35 +1420,27 @@ fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
-/// Physical-px scissor for a stroked shape's owner-local `bbox`. Folds
-/// `origin` + the active transform into world space, inflates by the
-/// stroke's outer AA-fringe (`max(width_phys/2, 0.5) + 0.5` phys
-/// px, expressed back in logical units), then clamps to the viewport.
-/// Shared by the curve and polyline paths so their cull / overlap bound
-/// can't drift. `snap = false` — snapping a stroke bbox would shift thin
-/// lines off-axis; `urect_from_phys` floors/ceils to fully cover it.
+/// Physical-px scissor for a stroked shape's owner-local centerline
+/// `bbox`. Folds `origin` + the active transform into physical space,
+/// applies the shared stroke/cap/join/AA bound once, then clamps to the
+/// viewport. Shared by the curve and polyline paths so their cull and
+/// overlap bounds cannot drift.
 fn stroke_bbox_scissor(
     xform: TranslateScale,
     bbox: Rect,
     origin: Vec2,
     width_phys: f32,
-    scale: f32,
-    viewport: UVec2,
+    cap: LineCap,
+    join: Option<LineJoin>,
+    display: Display,
 ) -> URect {
     let world_bbox = xform.apply_rect(Rect {
         min: bbox.min + origin,
         size: bbox.size,
     });
-    let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
-    let inflate_logical = inflate_phys / scale;
-    let inflated = Rect {
-        min: world_bbox.min - Vec2::splat(inflate_logical),
-        size: Size {
-            w: world_bbox.size.w + 2.0 * inflate_logical,
-            h: world_bbox.size.h + 2.0 * inflate_logical,
-        },
-    };
-    scissor_from_logical(inflated, scale, false, viewport)
+    let centerline_phys = world_bbox.scaled_by(display.scale_factor, false);
+    let painted = stroked_bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
+    urect_from_phys(painted.min, painted.max(), display.physical)
 }
 
 #[cfg(test)]

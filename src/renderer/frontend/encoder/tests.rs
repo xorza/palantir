@@ -1117,15 +1117,10 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
 
 /// A spun polyline's payload bbox must be rotation-invariant: the
 /// smallest square centred on the owner-box centre (the composer's
-/// spin pivot) that contains the LOWERED bbox — which already carries
-/// the stroke's miter/cap/fringe inflation. Owner box 80×40 → pivot
-/// c = (40, 20). Points (10,10)..(70,30), width 1, Butt/Miter:
-/// lowering pads the centreline AABB by
-/// `(w/2)·MITER_LIMIT + HALF_FRINGE = 0.5·4 + 0.5 = 2.5` per side →
-/// lowered bbox (7.5,7.5)..(72.5,32.5). Max corner distance from c:
-/// dx = max(|7.5−40|, |72.5−40|) = 32.5,
-/// dy = max(|7.5−20|, |32.5−20|) = 12.5,
-/// r = √(32.5² + 12.5²) = √1212.5 ≈ 34.8210.
+/// centerline bbox. Owner box 80×40 → pivot c = (40, 20).
+/// Points span (10,10)..(70,30), so max corner distance from c:
+/// dx = 30, dy = 10, r = √(30² + 10²) = √1000 ≈ 31.6228.
+/// The composer applies miter/cap/fringe reach after this sweep.
 /// The far endpoint (70,30) rotated 90° CCW about c —
 /// c + rot90(30,10) = c + (−10,30) = (30,50) — lies OUTSIDE the owner
 /// box (0,0,80,40) the old code shipped as the bbox, but inside the
@@ -1175,7 +1170,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     assert!(p.rotation != 0.0, "spin must sample a non-zero rotation");
 
     let c = Vec2::new(40.0, 20.0);
-    let r = (32.5_f32 * 32.5 + 12.5 * 12.5).sqrt();
+    let r = (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt();
     let eps = 1e-3;
     assert!((p.bbox.min.x - (c.x - r)).abs() < eps, "bbox {:?}", p.bbox);
     assert!((p.bbox.min.y - (c.y - r)).abs() < eps, "bbox {:?}", p.bbox);
@@ -1238,12 +1233,11 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     assert_eq!(p.center, Vec2::new(50.0, 20.0));
     assert_eq!((p.a0, p.a1), (0.0, PI));
 
-    // Lowered arc bbox: trace spans (40,20)..(60,30) (endpoints + the
-    // π/2 crossing), padded by width/2 + fringe = 1.5 on every side →
-    // (38.5, 18.5)..(61.5, 31.5). Swept square about the owner centre
-    // c = (40, 20): half-extent = |(21.5, 11.5)|.
+    // Centerline bbox spans (40,20)..(60,30) (endpoints + the π/2
+    // crossing). Sweeping it about owner centre c = (40, 20) gives
+    // half-extent √(20² + 10²); composer applies stroke reach later.
     let c = Vec2::new(40.0, 20.0);
-    let r = (21.5_f32 * 21.5 + 11.5 * 11.5).sqrt();
+    let r = (20.0_f32 * 20.0 + 10.0 * 10.0).sqrt();
     let eps = 1e-3;
     assert!((p.bbox.min.x - (c.x - r)).abs() < eps, "bbox {:?}", p.bbox);
     assert!((p.bbox.min.y - (c.y - r)).abs() < eps, "bbox {:?}", p.bbox);

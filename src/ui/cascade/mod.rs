@@ -437,7 +437,13 @@ impl CascadesEngine {
     /// arranged rects by the layout pass, so no parent-transform
     /// plumbing is needed here — trees never share NodeId space.
     #[profiling::function]
-    pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout, cascades: &mut Cascades) {
+    pub(crate) fn run(
+        &mut self,
+        forest: &Forest,
+        layout: &Layout,
+        display: Display,
+        cascades: &mut Cascades,
+    ) {
         let total: usize = forest.trees.0.iter().map(|t| t.records.len()).sum();
         cascades.entries.clear();
         cascades.entries.reserve(total);
@@ -456,6 +462,7 @@ impl CascadesEngine {
                 &mut cascades.entries,
                 &mut cascades.hit_entries,
                 &mut self.stack,
+                display.scale_factor,
             );
             // Invariant guarding `Cascades::entry_idx_of`'s
             // `entries_base + node.0` arithmetic: every node in
@@ -576,6 +583,7 @@ fn run_tree(
     entries: &mut Soa<EntryRow>,
     hit_entries: &mut Vec<u32>,
     stack: &mut Vec<Frame>,
+    display_scale: f32,
 ) {
     let n = tree.records.len() as u32;
     let layout_col = tree.records.layout();
@@ -669,6 +677,7 @@ fn run_tree(
                 parent_clip,
                 shape_clip,
                 shape_transform: desc_transform,
+                shape_raster_scale: desc_transform.scale * display_scale,
                 clips,
                 has_children,
             },
@@ -885,6 +894,7 @@ struct PaintRectCtx<'a> {
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
     shape_transform: TranslateScale,
+    shape_raster_scale: f32,
     clips: bool,
     has_children: bool,
 }
@@ -900,6 +910,7 @@ impl std::fmt::Debug for PaintRectCtx<'_> {
             .field("parent_clip", &self.parent_clip)
             .field("shape_clip", &self.shape_clip)
             .field("shape_transform", &self.shape_transform)
+            .field("shape_raster_scale", &self.shape_raster_scale)
             .field("clips", &self.clips)
             .field("has_children", &self.has_children)
             .finish_non_exhaustive()
@@ -943,6 +954,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         parent_clip,
         shape_clip,
         shape_transform,
+        shape_raster_scale,
         clips,
         has_children,
     } = ctx;
@@ -1023,7 +1035,10 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                     );
                     (local, Some(shaped.measured))
                 }
-                _ => (s.paint_bbox_local(layout_rect.size), None),
+                _ => (
+                    s.paint_bbox_local(layout_rect.size, shape_raster_scale),
+                    None,
+                ),
             };
             let mut screen = lift_to_screen(local, layout_rect.min, shape_transform, shape_clip);
             if let Some(measured) = text_measured {
