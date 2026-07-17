@@ -897,15 +897,12 @@ fn action_effect_runs_once_across_record_replay() {
 
     let mut passes = 0;
     let mut effects = 0;
-    let _ = ui.record(
-        FrameStamp::new(display, Duration::from_millis(16)),
-        |ui| {
-            passes += 1;
-            if build(ui) {
-                effects += 1;
-            }
-        },
-    );
+    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+        passes += 1;
+        if build(ui) {
+            effects += 1;
+        }
+    });
 
     assert_eq!(passes, 2, "action input must request a replay pass");
     assert_eq!(effects, 1, "the action edge must not replay");
