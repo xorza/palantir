@@ -7,12 +7,15 @@ use glam::Vec2;
 /// - axis-aligned rects axis-aligned, so scissor and hit-test math stay simple,
 /// - the rounded-rect SDF shader unchanged (CPU-side parameter scaling only).
 ///
+/// Translation is always finite and scale is always positive and finite.
+/// Mirroring is deliberately excluded: it requires a full affine transform
+/// and canonical min/max handling throughout layout, hit-testing, and paint.
+///
 /// Apply `self` after `other` via `compose`: `compose(p) = self(other(p))`.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TranslateScale {
-    pub translation: Vec2,
-    pub scale: f32,
+    pub(crate) translation: Vec2,
+    pub(crate) scale: f32,
 }
 
 impl TranslateScale {
@@ -42,22 +45,30 @@ impl TranslateScale {
             && approx_zero(self.scale - 1.0)
     }
 
+    /// Construct a validated transform.
+    ///
+    /// # Panics
+    ///
+    /// Panics when either translation component is non-finite or `scale` is
+    /// non-positive or non-finite.
     pub const fn new(translation: Vec2, scale: f32) -> Self {
+        assert!(
+            translation.x.is_finite() && translation.y.is_finite(),
+            "TranslateScale translation must be finite"
+        );
+        assert!(
+            scale.is_finite() && scale > 0.0,
+            "TranslateScale scale must be positive and finite"
+        );
         Self { translation, scale }
     }
 
     pub const fn from_translation(t: Vec2) -> Self {
-        Self {
-            translation: t,
-            scale: 1.0,
-        }
+        Self::new(t, 1.0)
     }
 
     pub const fn from_scale(s: f32) -> Self {
-        Self {
-            translation: Vec2::ZERO,
-            scale: s,
-        }
+        Self::new(Vec2::ZERO, s)
     }
 
     /// Scale by `s` about the pivot `center` (in the *parent* coordinate
@@ -74,10 +85,7 @@ impl TranslateScale {
     /// effects where origin-relative scaling would translate the content away
     /// from where the user expects.
     pub const fn from_scale_about(center: Vec2, s: f32) -> Self {
-        Self {
-            translation: Vec2::new(center.x * (1.0 - s), center.y * (1.0 - s)),
-            scale: s,
-        }
+        Self::new(Vec2::new(center.x * (1.0 - s), center.y * (1.0 - s)), s)
     }
 
     /// Scale by `s` about `center`, then translate by `translation`. The
@@ -95,13 +103,13 @@ impl TranslateScale {
     /// zoom in one step (e.g. "zoom toward cursor while easing the
     /// content into view").
     pub const fn from_translate_scale_about(translation: Vec2, center: Vec2, s: f32) -> Self {
-        Self {
-            translation: Vec2::new(
+        Self::new(
+            Vec2::new(
                 center.x * (1.0 - s) + translation.x,
                 center.y * (1.0 - s) + translation.y,
             ),
-            scale: s,
-        }
+            s,
+        )
     }
 
     /// Re-anchor `self` so its scale pivots about `origin` instead of
@@ -130,14 +138,19 @@ impl TranslateScale {
     /// Apply `self` after `other`: `result(p) == self.apply_point(other.apply_point(p))`.
     /// Matches matrix multiplication conventions — descend the tree by composing
     /// `parent_cumulative.compose(child_local)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the composed translation or scale is not representable as a
+    /// finite positive-scale transform.
     pub const fn compose(self, other: Self) -> Self {
-        Self {
-            scale: self.scale * other.scale,
-            translation: Vec2::new(
+        Self::new(
+            Vec2::new(
                 other.translation.x * self.scale + self.translation.x,
                 other.translation.y * self.scale + self.translation.y,
             ),
-        }
+            self.scale * other.scale,
+        )
     }
 
     pub const fn apply_point(self, p: Vec2) -> Vec2 {
@@ -145,6 +158,12 @@ impl TranslateScale {
             p.x * self.scale + self.translation.x,
             p.y * self.scale + self.translation.y,
         )
+    }
+
+    /// Undo this transform for a direction or offset, where translation does
+    /// not apply.
+    pub const fn inverse_vector(self, v: Vec2) -> Vec2 {
+        Vec2::new(v.x / self.scale, v.y / self.scale)
     }
 
     pub const fn apply_rect(self, r: Rect) -> Rect {
@@ -194,5 +213,84 @@ mod tests {
     fn visible_translation_or_scale_is_not_noop() {
         assert!(!TranslateScale::from_translation(Vec2::new(1.0, 0.0)).is_noop());
         assert!(!TranslateScale::from_scale(1.5).is_noop());
+    }
+
+    #[test]
+    fn construction_rejects_non_finite_translation_and_non_positive_or_non_finite_scale() {
+        let invalid_translations = [
+            Vec2::new(f32::NAN, 0.0),
+            Vec2::new(f32::INFINITY, 0.0),
+            Vec2::new(f32::NEG_INFINITY, 0.0),
+            Vec2::new(0.0, f32::NAN),
+            Vec2::new(0.0, f32::INFINITY),
+            Vec2::new(0.0, f32::NEG_INFINITY),
+        ];
+        for translation in invalid_translations {
+            assert!(
+                std::panic::catch_unwind(|| TranslateScale::new(translation, 1.0)).is_err(),
+                "translation {translation:?} must be rejected"
+            );
+        }
+
+        for scale in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(
+                std::panic::catch_unwind(|| TranslateScale::new(Vec2::ZERO, scale)).is_err(),
+                "scale {scale:?} must be rejected"
+            );
+        }
+
+        assert!(
+            std::panic::catch_unwind(|| {
+                TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)
+            })
+            .is_err(),
+            "pivot arithmetic that overflows translation must be rejected"
+        );
+        assert!(
+            std::panic::catch_unwind(|| {
+                TranslateScale::from_scale(f32::MAX).compose(TranslateScale::from_scale(2.0))
+            })
+            .is_err(),
+            "composition that overflows scale must be rejected"
+        );
+        assert!(
+            std::panic::catch_unwind(|| {
+                TranslateScale::from_scale(f32::from_bits(1))
+                    .compose(TranslateScale::from_scale(0.5))
+            })
+            .is_err(),
+            "composition that underflows scale to zero must be rejected"
+        );
+        assert!(
+            std::panic::catch_unwind(|| {
+                let transform = TranslateScale::from_translation(Vec2::splat(f32::MAX));
+                transform.compose(transform)
+            })
+            .is_err(),
+            "composition that overflows translation must be rejected"
+        );
+    }
+
+    #[test]
+    fn composition_rect_application_and_inverse_vector_agree_exactly() {
+        let parent = TranslateScale::new(Vec2::new(3.0, 5.0), 2.0);
+        let child = TranslateScale::new(Vec2::new(7.0, 11.0), 4.0);
+        let composed = parent.compose(child);
+
+        assert_eq!(composed.translation, Vec2::new(17.0, 27.0));
+        assert_eq!(composed.scale, 8.0);
+        let point = Vec2::new(2.0, 3.0);
+        assert_eq!(
+            composed.apply_point(point),
+            parent.apply_point(child.apply_point(point))
+        );
+        assert_eq!(
+            composed.apply_rect(Rect::new(-2.0, 3.0, 4.0, 5.0)),
+            Rect::new(1.0, 51.0, 32.0, 40.0)
+        );
+        assert_eq!(
+            composed.inverse_vector(Vec2::new(24.0, -40.0)),
+            Vec2::new(3.0, -5.0)
+        );
     }
 }

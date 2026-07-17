@@ -711,17 +711,17 @@ fn compose_propagates_transform_scale_to_text_runs() {
 fn compose_composes_nested_transforms() {
     let buf = run(
         |b, _arena| {
-            b.push_transform(TranslateScale::from_scale(2.0));
-            b.push_transform(TranslateScale::from_translation(Vec2::new(10.0, 0.0)));
-            draw(b, rect(5.0, 0.0, 10.0, 10.0));
+            b.push_transform(TranslateScale::new(Vec2::new(3.0, 5.0), 2.0));
+            b.push_transform(TranslateScale::new(Vec2::new(7.0, 11.0), 4.0));
+            draw(b, rect(-2.0, 3.0, 4.0, 5.0));
             b.pop_transform();
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.rect.min, Vec2::new(30.0, 0.0));
-    assert_eq!(q.rect.size, Size::new(20.0, 20.0));
+    assert_eq!(q.rect.min, Vec2::new(1.0, 51.0));
+    assert_eq!(q.rect.size, Size::new(32.0, 40.0));
 }
 
 #[test]
@@ -2825,10 +2825,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
             // The cover lands under an active 2x transform: its world rect
             // (0,0)-(200,200) covers the viewport, so it folds — and the
             // transform must keep applying to the survivor below.
-            b.push_transform(TranslateScale {
-                translation: Vec2::ZERO,
-                scale: 2.0,
-            });
+            b.push_transform(TranslateScale::from_scale(2.0));
             draw(b, rect(0.0, 0.0, 100.0, 100.0));
             draw(b, rect(5.0, 5.0, 10.0, 10.0));
             b.pop_transform();

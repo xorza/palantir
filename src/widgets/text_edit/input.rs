@@ -111,15 +111,15 @@ pub(crate) fn handle_input(
         // the click's offset into logical space before subtracting the logical
         // padding / align / scroll — else the caret lands on the wrong glyph
         // whenever zoom ≠ 1.
-        let scale = resp_state.transform.scale;
+        let pointer_offset = resp_state.transform.inverse_vector(ptr - rect.min);
         // Hit-test runs against the *unscrolled* shaped layout, so
         // we add last frame's scroll back into the pointer's local
         // coords. Updated scroll for this frame is computed after
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
-        let local_x = (ptr.x - rect.min.x) / scale - pad_l - ctx.block_offset.x + ed.state.scroll.x;
-        let local_y = (ptr.y - rect.min.y) / scale - pad_t - ctx.block_offset.y + ed.state.scroll.y;
+        let local_x = pointer_offset.x - pad_l - ctx.block_offset.x + ed.state.scroll.x;
+        let local_y = pointer_offset.y - pad_t - ctx.block_offset.y + ed.state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.

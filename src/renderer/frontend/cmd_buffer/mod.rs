@@ -52,7 +52,7 @@ pub(crate) mod payload;
 use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, CmdKind, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
     DrawPolylinePayload, DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload,
-    GpuFillFields, PushClipPayload,
+    GpuFillFields, PushClipPayload, PushTransformPayload,
 };
 
 /// Append-only command buffer. See module docs.
@@ -153,7 +153,7 @@ impl RenderCmdBuffer {
     #[inline]
     pub(crate) fn push_transform(&mut self, t: TranslateScale) {
         self.record_start(CmdKind::PushTransform);
-        write_pod(&mut self.data, t);
+        write_pod(&mut self.data, PushTransformPayload::from(t));
     }
 
     #[inline]
@@ -418,7 +418,10 @@ impl RenderCmdBuffer {
         Some(match kind {
             CmdKind::PushClip => Command::PushClip(self.read(start)),
             CmdKind::PopClip => Command::PopClip,
-            CmdKind::PushTransform => Command::PushTransform(self.read(start)),
+            CmdKind::PushTransform => {
+                let payload: PushTransformPayload = self.read(start);
+                Command::PushTransform(TranslateScale::from(payload))
+            }
             CmdKind::PopTransform => Command::PopTransform,
             CmdKind::DrawRect => Command::DrawRect(self.read(start)),
             CmdKind::DrawShadow => Command::DrawShadow(self.read(start)),

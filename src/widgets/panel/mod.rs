@@ -39,10 +39,10 @@ impl Panel {
     ///
     /// **Scale anchors at the panel's own origin** (its
     /// `layout_rect.min`), not at the cascade's (0, 0). The
-    /// `TranslateScale::translation` is then applied in
-    /// post-scale, panel-local space — `TranslateScale::new(pan,
-    /// zoom)` means "scale my body 2× about my top-left, then shift
-    /// by `pan`" regardless of where the panel sits on the surface.
+    /// The transform's translation component is then applied in post-scale,
+    /// panel-local space — `TranslateScale::new(pan, zoom)` means "scale my
+    /// body 2× about my top-left, then shift by `pan`" regardless of where the
+    /// panel sits on the surface.
     /// See [`TranslateScale::anchored_at`] for the math. Translation
     /// is identity-preserving (when `scale == 1`, the anchor is a
     /// no-op).
