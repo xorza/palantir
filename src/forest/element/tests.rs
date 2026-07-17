@@ -79,7 +79,10 @@ fn constructors_install_layout_modes_and_payloads() {
 
     let grid = Element::grid();
     assert_eq!(grid.mode, LayoutMode::Grid);
-    assert_eq!(grid.grid_def_id(), GridDefId::PENDING);
+    assert!(std::panic::catch_unwind(|| grid.grid_def_id()).is_err());
+    let last_grid = GridDefId::from_index(65_534);
+    assert_eq!(usize::from(last_grid), 65_534);
+    assert!(std::panic::catch_unwind(|| GridDefId::from_index(65_535)).is_err());
 
     let scroll = Element::scroll(ScrollSpec::VERTICAL);
     assert_eq!(scroll.mode, LayoutMode::Scroll);
@@ -159,7 +162,7 @@ fn layout_core_round_trips_mode_align_visibility() {
         ),
         (
             LayoutMode::Grid,
-            ModePayload::grid(GridDefId::PENDING),
+            ModePayload::NONE,
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
