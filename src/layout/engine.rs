@@ -10,8 +10,8 @@ use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
-    AxisCtx, LeafTextShape, TextCtx, leaf_text_shapes, resolve_axis_size, stretched_extent,
-    zero_subtree,
+    AxisCtx, TextCtx, TextShapeInput, container_text_shapes, leaf_text_shapes, resolve_axis_size,
+    stretched_extent, zero_subtree,
 };
 use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
@@ -448,6 +448,14 @@ impl LayoutEngine {
                 // root with no wrapper ZStack).
                 self.arrange(tree, root, size, Rect { min: origin, size }, out);
             }
+            let layouts = tree.records.layout();
+            for index in tree.rollups.container_text.ones() {
+                let style = layouts[index];
+                if style.visibility().is_collapsed() {
+                    continue;
+                }
+                self.shape_container_text(tree, NodeId(index as u32), style, tc, out);
+            }
         }
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
@@ -665,7 +673,14 @@ impl LayoutEngine {
         out: &mut Layout,
     ) -> Size {
         match style.mode {
-            LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, tc, out),
+            LayoutMode::Leaf => self.shape_text_runs(
+                tree,
+                node,
+                inner_avail.w,
+                tc.shaper,
+                leaf_text_shapes(tree, tc, node),
+                out,
+            ),
             LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, tc, out),
             LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, tc, out),
             LayoutMode::WrapHStack => {
@@ -732,27 +747,46 @@ impl LayoutEngine {
         }
     }
 
-    /// Walk a Leaf's recorded shapes and return the content size that drives
-    /// its hugging. For `ShapeRecord::Text` runs, this is also where shaping
-    /// happens: the shaped buffer + measured size land on
-    /// `Layout.text_shapes` so the encoder can pick them up later.
-    /// `available_w` flows down from the parent and gates wrapping.
-    fn leaf_content_size(
+    /// Shape direct text owned by a container after arrange. Container text is
+    /// paint-only, so it cannot affect desired size; waiting for arrange gives
+    /// wrapping and truncation the owner's committed padded width.
+    fn shape_container_text(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        style: LayoutCore,
+        tc: &TextCtx<'_>,
+        out: &mut Layout,
+    ) {
+        let available_w =
+            (out[self.active_layer].rect[node.idx()].size.w - style.padding.sums().horiz).max(0.0);
+        self.shape_text_runs(
+            tree,
+            node,
+            available_w,
+            tc.shaper,
+            container_text_shapes(tree, tc, node),
+            out,
+        );
+    }
+
+    fn shape_text_runs<'a>(
         &mut self,
         tree: &Tree,
         node: NodeId,
         available_w: f32,
-        tc: &TextCtx<'_>,
+        text: &TextShaper,
+        runs: impl Iterator<Item = TextShapeInput<'a>>,
         out: &mut Layout,
     ) -> Size {
         let span_start = out[self.active_layer].text_shapes.len() as u32;
         let mut s = Size::ZERO;
         let mut ordinal: u16 = 0;
-        for ts in leaf_text_shapes(tree, tc, node) {
-            let m = self.shape_text(tree, node, ordinal, &ts, available_w, tc.shaper, out);
+        for ts in runs {
+            let m = self.shape_text(tree, node, ordinal, &ts, available_w, text, out);
             s = s.max(m);
             ordinal = ordinal.checked_add(1).expect(
-                "more than 65535 ShapeRecord::Text per leaf — well past anything sane; \
+                "more than 65535 direct ShapeRecord::Text runs on one node — well past anything sane; \
                  widen the within-node ordinal width if this trips",
             );
         }
@@ -770,7 +804,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         ordinal: u16,
-        ts: &LeafTextShape<'_>,
+        ts: &TextShapeInput<'_>,
         available_w: f32,
         text: &TextShaper,
         out: &mut Layout,
