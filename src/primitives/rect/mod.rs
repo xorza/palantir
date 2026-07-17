@@ -31,6 +31,15 @@ impl Rect {
     }
 
     #[inline]
+    pub const fn from_min_max(min: Vec2, max: Vec2) -> Self {
+        debug_assert!(min.x <= max.x && min.y <= max.y);
+        Self {
+            min,
+            size: Size::new(max.x - min.x, max.y - min.y),
+        }
+    }
+
+    #[inline]
     pub const fn max(&self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }

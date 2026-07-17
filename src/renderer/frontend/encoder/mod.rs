@@ -76,12 +76,12 @@ fn shape_brush_source(
 
 /// Payload bbox for a possibly-spinning stroke shape. A spun shape
 /// sweeps a disc about the owner-box centre `c`, so when
-/// `rotation != 0` the lowered bbox (which already carries the stroke
-/// inflation) is replaced by the smallest square centred on `c` that
-/// contains it: half-extent = max distance from `c` to the bbox's
-/// corners. That bound is rotation-invariant about `c`, so the
-/// composer's cull and overlap tracking stay correct at every angle —
-/// and it keeps `bbox.center() == c`, the pivot contract the
+/// `rotation != 0` the lowered centerline bbox is replaced by the
+/// smallest square centred on `c` that contains it: half-extent = max
+/// distance from `c` to the bbox's corners. The composer applies
+/// stroke reach after this rotation-invariant sweep, so its cull and
+/// overlap tracking stay correct at every angle — and the square keeps
+/// `bbox.center() == c`, the pivot contract the
 /// composer's Spin arms rotate about (points for `DrawPolyline`,
 /// control points for `DrawCurve`, center + angles for `DrawArc`).
 fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
@@ -411,7 +411,7 @@ fn emit_one_shape(
                 p3: *p3,
                 color: fill.color,
                 width: *width,
-                cap: *cap as u32,
+                cap: LineCapBits::new(*cap),
                 fill_kind: fill.kind,
                 fill_lut_row: fill.lut_row,
                 ..bytemuck::Zeroable::zeroed()
@@ -442,7 +442,7 @@ fn emit_one_shape(
                 rotation,
                 color: fill.color,
                 width: *width,
-                cap: *cap as u32,
+                cap: LineCapBits::new(*cap),
                 fill_kind: fill.kind,
                 fill_lut_row: fill.lut_row,
                 ..bytemuck::Zeroable::zeroed()

@@ -1,5 +1,4 @@
 use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use crate::primitives::{approx, color::ColorU8};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -191,7 +190,7 @@ impl Mesh {
         m.triangle(i0, i1, i2);
         let lo = a.min(b).min(c);
         let hi = a.max(b).max(c);
-        m.cached_bbox.set(Some(rect_from_extents(lo, hi)));
+        m.cached_bbox.set(Some(Rect::from_min_max(lo, hi)));
         m
     }
 
@@ -219,19 +218,8 @@ impl Mesh {
             lo = lo.min(p);
             hi = hi.max(p);
         }
-        m.cached_bbox.set(Some(rect_from_extents(lo, hi)));
+        m.cached_bbox.set(Some(Rect::from_min_max(lo, hi)));
         m
-    }
-}
-
-#[inline]
-fn rect_from_extents(lo: Vec2, hi: Vec2) -> Rect {
-    Rect {
-        min: lo,
-        size: Size {
-            w: hi.x - lo.x,
-            h: hi.y - lo.y,
-        },
     }
 }
 
@@ -248,13 +236,14 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
         lo = lo.min(v.pos);
         hi = hi.max(v.pos);
     }
-    rect_from_extents(lo, hi)
+    Rect::from_min_max(lo, hi)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::mesh::*;
+    use crate::primitives::size::Size;
 
     #[test]
     fn mesh_vertex_is_12_bytes_no_padding() {
