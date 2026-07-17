@@ -13,10 +13,11 @@ pub trait App {
     fn update(&mut self, _win: WindowToken, _ui: &Ui) {}
 
     /// Build the UI for window `win`. This hook may replay for cold-start
-    /// warmup, action input, or `Ui::request_relayout`; unconditional external
-    /// effects belong in [`Self::update`]. Switch on `win` to drive different
-    /// windows; open or close further windows via [`Ui::open_window`] and
-    /// [`Ui::close_window`].
+    /// warmup, action input, or `Ui::request_relayout`. Warmup and later passes
+    /// receive no action input, so effects strictly gated by a widget action
+    /// can run inline; unconditional external effects belong in
+    /// [`Self::update`]. Switch on `win` to drive different windows; open or
+    /// close further windows via [`Ui::open_window`] and [`Ui::close_window`].
     fn record(&mut self, win: WindowToken, ui: &mut Ui);
 }
 
