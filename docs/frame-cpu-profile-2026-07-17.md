@@ -4,15 +4,16 @@ Date: 2026-07-17
 
 ## Executive summary
 
-The largest optimization is a build-configuration issue: Darkroom's
-workspace-root build ignores Aperture's intended x86-64-v3/F16C flags.
-Applying those flags reduced frame CPU time by 14–19% without source changes.
+An x86-64-v3 build reduced frame CPU time by 14–19% without source changes,
+but it was rejected as a global target because it would exclude older CPUs.
+The workspace and Aperture-specific v3 configurations were removed.
 
-After enabling x86-64-v3, the workload remains instruction-bound. The largest
-remaining opportunities are incremental cascade invalidation, fusing widget ID
-resolution with endpoint reservation, eliminating a duplicate large theme
-clone, and avoiding redundant shape-record hashing. Continuous resize
-allocations are overwhelmingly caused by Cosmic Text buffer construction.
+The workload is instruction-bound. The largest remaining opportunities are
+incremental cascade invalidation, eliminating a duplicate large theme clone,
+and A/B-testing occlusion pruning. Widget ID/endpoint fusion and shape
+lowering/hash fusion were implemented and benchmarked, but both regressed the
+frame workload and were removed. Continuous resize allocations are
+overwhelmingly caused by Cosmic Text buffer construction.
 
 ## Methodology
 
@@ -41,19 +42,19 @@ Criterion slope estimates:
 | Resizing | 538.28 µs | 447.58 µs | 90.70 µs | 16.85% |
 | Scrolling | 432.42 µs | 358.10 µs | 74.32 µs | 17.19% |
 
-### Root cause
+### Rejected x86-64-v3 experiment
 
-[`aperture/.cargo/config.toml`](../.cargo/config.toml) enables
-`target-cpu=x86-64-v3` on x86-64. Cargo does not load a member crate's
-`.cargo/config.toml` when invoked from the workspace root, and the workspace
-root has no equivalent configuration. The ordinary workspace build therefore
-lacks the statically enabled F16C path and falls back to the slower packed-half
-conversion implementation.
+A previous Aperture-specific `.cargo/config.toml` enabled
+`target-cpu=x86-64-v3` on x86-64. Cargo did not load that member crate's
+configuration when invoked from the workspace root, so the ordinary workspace
+build lacked the statically enabled F16C path and used the slower packed-half
+conversion implementation. The Aperture-specific configuration was later
+removed along with the proposed workspace equivalent.
 
-The first optimization should be to centralize this target configuration at the
-workspace root, provided x86-64-v3 is an acceptable minimum CPU. If older x86-64
-systems must remain supported, the alternative is a broad baseline build with
-runtime-dispatched F16C routines structured so the hot loop still vectorizes.
+The target was not centralized at workspace scope because older x86-64 systems
+must remain supported. A future SIMD optimization should keep the broad
+baseline and use runtime-dispatched F16C routines structured so the hot loop
+still vectorizes.
 
 ## Hardware-counter characterization
 
@@ -82,17 +83,17 @@ Precise IBS self-time samples:
 
 ## Ranked optimization opportunities
 
-### 1. Apply the intended CPU target at workspace scope
+### 1. Rejected global x86-64-v3 target
 
-Status: measured, low implementation risk, compatibility decision required.
+Status: measured and rejected for compatibility.
 
-This is worth 48–91 µs per frame in the measured workload and dominates every
-source-level candidate. Move or duplicate Aperture's target-specific Cargo
-configuration at the workspace root so root-invoked builds receive the same
-flags.
+This was worth 48–91 µs per frame in the measured workload and dominated every
+source-level candidate, but it is not a valid project-wide optimization under
+the supported CPU baseline.
 
 The compatibility tradeoff is that x86-64-v3 requires AVX2, BMI1/2, FMA, and
-F16C-class hardware.
+F16C-class hardware. The configuration changes were removed from both the
+workspace root and Aperture.
 
 ### 2. Make cascade invalidation incremental
 
@@ -117,7 +118,7 @@ paint arenas and cascade hashes would become stale.
 
 ### 3. Fuse widget ID resolution with endpoint reservation
 
-Status: moderate potential, contained change.
+Status: implemented, benchmarked, and rejected.
 
 [`Ui::widget_id`](../src/ui/mod.rs) checks `SeenIds::curr` to resolve a unique
 ID. The immediately following
@@ -128,9 +129,16 @@ Use one `HashMap::entry` operation during ID resolution to detect collisions
 and reserve the predicted `(layer, next_node)` endpoint. `Forest::open_node`
 can then consume that reservation without another hash-table insertion.
 
-The likely recoverable portion is approximately 2–4% per frame. Tests must
-cover automatic collisions, explicit collisions, custom widgets, and the
-`widget_id`-then-`node` ordering contract.
+The implementation used a single entry insertion at resolution and carried the
+predicted endpoint into node opening. Popup bodies and modal roots required a
+separate deferred reservation because they resolve before opening a side layer;
+the popup also records its click-eater before its body.
+
+Against the broad-target baseline, the refined implementation changed cached,
+partial, resizing, and scrolling by +2.45%, +0.43%, +0.77%, and +0.99%
+respectively. It therefore failed the optimization criterion and was removed.
+The scalar reservation and cross-layer fallback cost more than the eliminated
+map probe.
 
 ### 4. Remove the duplicate large theme clone
 
@@ -147,15 +155,33 @@ its background into `AnimatedLook`. This targets part of the persistent 4–5%
 
 ### 5. Fuse shape lowering and hashing
 
-Status: moderate potential and complexity.
+Status: implemented, benchmarked, and rejected.
 
 [`Shapes::add`](../src/forest/shapes/mod.rs) lowers a `Shape` into a
 `ShapeRecord`, then `compute_record_hash` rereads the complete record through a
 second variant match. Have each lowering arm return a named result containing
 both the record and its hash, reusing values already loaded during lowering.
 
-Shape insertion consumes 3.6–5.9% before counting background lowering and
-record hashing separately. Only part of that total is removable.
+All eleven variant schedules were cross-checked exactly against the original
+record-walking hash. Despite eliminating the second variant match, the fused
+implementation added approximately 1.6–3.0% on top of the ID-only binary,
+consistent with code-size and register-pressure costs. The compiler already
+handles the compact centralized matcher better than the manually expanded
+variant paths. The change was removed.
+
+## Rejected fusion benchmark
+
+Criterion slope estimates used a generic x86-64 build, CPU boost disabled,
+one pinned core, 1-second warm-up, 5-second measurement, and 50 samples:
+
+| Frame arm | Baseline | ID fusion | ID + shape fusion |
+|---|---:|---:|---:|
+| Cached | 434.90 µs | 445.89 µs (+2.45%) | 453.18 µs (+4.05%) |
+| Partial | 395.11 µs | 397.06 µs (+0.43%) | 408.87 µs (+3.38%) |
+| Resizing | 594.81 µs | 599.15 µs (+0.77%) | 610.67 µs (+2.14%) |
+| Scrolling | 504.99 µs | 510.36 µs (+0.99%) | 520.93 µs (+3.04%) |
+
+No fusion code remains in the worktree.
 
 ### 6. A/B-test CPU occlusion pruning
 
@@ -207,13 +233,10 @@ state. This is not a framework-level priority.
 
 ## Suggested implementation order
 
-1. Apply workspace-scope x86-64-v3 flags and preserve the benchmark as the new
-   baseline.
-2. Implement the owned theme-animation path.
-3. Fuse WidgetId resolution and endpoint reservation.
-4. Prototype incremental cascade reuse against partial and scrolling arms.
-5. Run the occlusion-pruning CPU/GPU A/B experiment.
-6. Prototype a bounded Cosmic Text buffer recycle pool and validate continuous
+1. Implement the owned theme-animation path.
+2. Prototype incremental cascade reuse against partial and scrolling arms.
+3. Run the occlusion-pruning CPU/GPU A/B experiment.
+4. Prototype a bounded Cosmic Text buffer recycle pool and validate continuous
    resize allocation and CPU time.
 
 Each source change should be measured independently against all four frame arms
