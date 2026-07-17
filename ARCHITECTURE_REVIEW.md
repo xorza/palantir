@@ -4,9 +4,17 @@
 
 Aperture's core decomposition is sound: immediate recording produces a compact tree and flat shape payloads, layout and cascade consume that immutable frame description, and the renderer lowers it through explicit command and render buffers. The Tree/Shape separation, cross-frame measure cache, fixed backend paint tiers, and deliberately distinct Stack/Grid solvers should remain intact.
 
-The main risks are narrower contract gaps at subsystem boundaries. The host lifecycle replay issue is now resolved; several public numeric and layout representations still admit states their consumers cannot handle, three layout paths disagree with the documented sizing contract, and two renderer optimizations use non-conservative coverage bounds even though false negatives change pixels or paint order. Most fixes are boundary tightening and shared-policy consolidation rather than a broad rewrite.
+The review found narrow contract gaps at subsystem boundaries: replayable
+recording mixed with external effects, invalid numeric and layout states,
+divergent sizing rules, and non-conservative renderer bounds. Those gaps are
+now closed through boundary tightening and shared-policy consolidation rather
+than a broad rewrite.
 
-This report contains 20 actions in six implementation batches, with nineteen now completed. The first four batches are correctness work; the last two are performance, capacity, build, and documentation cleanup. Review scope was production code under `src/`, `anim-derive`, the crate manifest, and architecture documents. Tests, benches, showcase code, and examples were excluded as review targets.
+This report contains 20 actions in six implementation batches, all completed.
+The first four batches are correctness work; the last two are performance,
+capacity, build, and documentation cleanup. Review scope was production code
+under `src/`, `anim-derive`, the crate manifest, and architecture documents.
+Tests, benches, showcase code, and examples were excluded as review targets.
 
 Verification baseline while reviewing:
 
@@ -81,8 +89,8 @@ Ui::frame
 
 - [x] **Select a canonical profiler backend instead of publishing mutually exclusive additive features.** Tracy is now Aperture's sole profiler backend; the Puffin feature was removed while the existing Tracy-specific host frame integration remains. The feature-matrix script tests Tracy independently and the aggregate `--all-features` configuration, so the supported feature topology no longer fails inside `profiling`.
 
-- [ ] **Correct lifecycle and layout documentation that currently states the opposite of production behavior.** `GpuView::repaint(false)` says its offscreen texture remains alive and later repaint will not reinitialize (`src/widgets/gpu_view.rs:66`), while the `GpuPaint` contract and backend say a culled target is reclaimed and `init` runs again (`src/renderer/gpu_view.rs:35`, `src/renderer/backend/image_pipeline/render_target.rs:81`). Separately, the intrinsic design note says Stack pass 1 always measures the main axis at infinity (`src/layout/intrinsic.md:148`), while production deliberately propagates a committed finite main bound (`src/layout/stack/mod.rs:193`) and `AGENTS.md:52` calls that behavior canonical. Update both documents to name the actual lifetime and finite-bound rules, and link each statement to its source-of-truth implementation so future refactors do not restore the obsolete behavior.
+- [x] **Correct lifecycle and layout documentation that stated the opposite of production behavior.** `GpuView` now distinguishes the persistent renderer callback and already-presented surface pixels from the framework-owned offscreen target, which is reclaimed when culling omits it from a submission; it points to the authoritative [`GpuPaint::init`](src/renderer/gpu_view.rs) contract and [`GpuViewTargets::paint`](src/renderer/backend/image_pipeline/render_target.rs) retention implementation. The intrinsic design note now documents bounded Stack pass-1 measurement and links to [`stack::measure`](src/layout/stack/mod.rs), matching the canonical rule in [`AGENTS.md`](AGENTS.md).
 
-## Open design decisions
+## Resolved design decisions
 
-- [ ] **Confirm that negative scale is not intended to mean mirroring.** The current pan/zoom, hit-test, rectangle, radius, and stroke paths all assume positive scale. If mirroring is a goal, it should be designed as a separate affine feature rather than admitted accidentally through `TranslateScale`.
+- [x] **Negative scale does not mean mirroring.** `TranslateScale` is deliberately a positive uniform scale plus translation, preserving canonical rectangles and the simple pan/zoom, hit-test, radius, and stroke paths. Mirroring, if introduced, belongs in a separate affine transform feature with canonical min/max handling throughout; the invariant and rationale live on [`TranslateScale`](src/primitives/transform.rs).
