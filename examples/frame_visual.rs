@@ -32,8 +32,7 @@ fn main() {
     let window = WindowConfig::new("aperture — frame bench (visual)")
         .inner_size(UVec2::new(1280, 800))
         .min_inner_size(UVec2::new(640, 480));
-    WinitHost::builder(WindowToken(0))
+    WinitHost::new(WindowToken(0), FrameVisual::new)
         .window(window)
-        .build(FrameVisual::new)
         .run();
 }

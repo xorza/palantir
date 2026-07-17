@@ -194,8 +194,7 @@ impl App for Demo {
 }
 
 fn main() {
-    WinitHost::builder(WindowToken(0))
+    WinitHost::new(WindowToken(0), Demo::new)
         .title("custom widget")
-        .build(Demo::new)
         .run();
 }

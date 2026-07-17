@@ -8,7 +8,7 @@
 //! The caller-supplied app implements the [`App`] trait: [`App::update`]
 //! runs once before a fully recorded frame, while [`App::record`] may replay
 //! for cold-start warmup or relayout. The app is built by a closure handed to
-//! [`WinitHostBuilder::build`], invoked once the first window's `Ui` +
+//! [`WinitHost::new`], invoked once the first window's `Ui` +
 //! [`HostHandle`] are ready (before the first frame) — so startup wiring
 //! (theme tweaks, restoring persisted state, stashing the handle) happens
 //! there.
@@ -35,12 +35,11 @@
 //! impl aperture::App for MyApp {
 //!     fn record(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
 //! }
-//! WinitHost::builder(WindowToken(0))
+//! WinitHost::new(WindowToken(0), |ui, _handle| {
+//!     ui.theme.button.anim = Some(AnimSpec::SPRING);
+//!     MyApp
+//! })
 //!     .title("title")
-//!     .build(|ui, _handle| {
-//!         ui.theme.button.anim = Some(AnimSpec::SPRING);
-//!         MyApp
-//!     })
 //!     .run();
 //! ```
 
@@ -49,7 +48,6 @@ pub(crate) mod gpu;
 pub(crate) mod handle;
 
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -72,10 +70,7 @@ use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowToken};
 
-/// Builds the caller's app once the first window's `Ui` + [`HostHandle`]
-/// exist — handed to [`WinitHostBuilder::build`] and invoked on the first
-/// `resumed`.
-type AppBuilder<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
+type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
 /// Everything one window owns: its winit handle, swapchain surface +
 /// config, the per-window [`WindowRenderer`] (its `Ui` recorder +
@@ -121,22 +116,21 @@ fn winit_cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
     }
 }
 
-/// What [`WinitHostBuilder::build`] stashes for the first `resumed`: the
-/// bootstrap window's token + config and the caller's app builder. Consumed —
+/// What [`WinitHost::new`] stashes for the first `resumed`: the
+/// bootstrap window's token + config and the caller's app factory. Consumed —
 /// winit hands out `&ActiveEventLoop` only inside callbacks, so window +
 /// GPU + app construction all wait here until then.
 struct Bootstrap<T: 'static> {
     token: WindowToken,
     config: WinitHostConfig,
-    build: AppBuilder<T>,
+    create_app: AppFactory<T>,
 }
 
 /// Everything the first `resumed` builds, bundled so "booted" is one
 /// `Option` and a half-built state (a backend without an app, …) is
 /// unrepresentable.
 struct Running<T> {
-    /// The caller's app, built by [`Bootstrap::build`] once the first
-    /// window's `Ui` existed.
+    /// The caller's app, created once the first window's `Ui` existed.
     app: T,
     /// Shared GPU context (instance / adapter / device / queue; surface
     /// factory).
@@ -152,9 +146,9 @@ struct Running<T> {
 
 /// Top-level winit-driven aperture runtime. Owns the caller-supplied app
 /// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls
-/// `T::frame` once per redraw, per window. Two-state lifecycle, one
-/// `Option` each: `Bootstrap` (pre-`resumed` inputs, consumed once)
-/// and `Running` (everything the first `resumed` builds).
+/// its update/record lifecycle once per redraw, per window. Two-state
+/// lifecycle, one `Option` each: `Bootstrap` (pre-`resumed` inputs,
+/// consumed once) and `Running` (everything the first `resumed` builds).
 pub struct WinitHost<T: 'static> {
     /// Deferred-start inputs, consumed by the first `resumed`. `None`
     /// thereafter. The app can't exist before a `Ui` does, so its
@@ -164,7 +158,7 @@ pub struct WinitHost<T: 'static> {
     running: Option<Running<T>>,
     /// `RunOnMain` tasks that arrived before [`Self::running`] existed —
     /// handles are handed out before `run()`, so workers can race
-    /// startup. Drained into the app right after the builder runs.
+    /// startup. Drained into the app right after it is created.
     pending_tasks: Vec<MainTask<T>>,
     /// Live windows, keyed by winit's `WindowId` for event routing.
     windows: HashMap<WindowId, WindowState>,
@@ -184,71 +178,19 @@ impl<T: 'static> std::fmt::Debug for WinitHost<T> {
     }
 }
 
-/// Builder for [`WinitHost`] — see [`WinitHost::builder`]. The bootstrap
-/// window's `first_token` comes from that constructor; the startup tunables
-/// (the first window's [`WindowConfig`] plus the app-global GPU knobs)
-/// default and are set here. The app builder closure is the terminal argument
-/// to [`Self::build`].
-#[derive(Debug)]
-pub struct WinitHostBuilder<T> {
-    first_token: WindowToken,
-    config: WinitHostConfig,
-    // T is fixed only by `build`'s closure — carried as a phantom so
-    // `WinitHost::builder(token)` can infer it from the chained `.build(...)`.
-    _marker: PhantomData<fn() -> T>,
-}
-
-impl<T> WinitHostBuilder<T>
+impl<T> WinitHost<T>
 where
     T: App + 'static,
 {
-    /// Replace the whole [`WinitHostConfig`] at once — convenient when the
-    /// caller already has one; the granular setters below then override
-    /// individual fields.
-    pub fn config(mut self, config: WinitHostConfig) -> Self {
-        self.config = config;
-        self
-    }
-
-    /// The bootstrap window's full [`WindowConfig`] (title, size, min-size,
-    /// position, maximized, icon).
-    pub fn window(mut self, window: WindowConfig) -> Self {
-        self.config.window = window;
-        self
-    }
-
-    /// The bootstrap window's title — shorthand over [`Self::window`].
-    pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.config.window.title = title.into();
-        self
-    }
-
-    /// Swapchain present mode for every window's surface. Default `AutoVsync`.
-    pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
-        self.config.present_mode = mode;
-        self
-    }
-
-    /// Adapter power preference, selecting the shared adapter at startup.
-    /// Default `LowPower`.
-    pub fn power_preference(mut self, pref: wgpu::PowerPreference) -> Self {
-        self.config.power_preference = pref;
-        self
-    }
-
-    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
-    /// queries). Default `false` — the per-frame readback is non-trivial.
-    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
-        self.config.collect_gpu_stats = collect;
-        self
-    }
-
-    /// Finish building. `build` constructs the app once the first window's
-    /// `Ui` + [`HostHandle`] are ready (after device + surface are up, before
-    /// the first frame) — do startup wiring (theme tweaks, restoring persisted
-    /// state, stashing the handle) inside it; it runs on the first `resumed`,
-    /// not here. Drive the returned host with [`WinitHost::run`].
-    pub fn build(self, build: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> WinitHost<T> {
+    /// Create a winit-driven host whose bootstrap window is addressed by
+    /// `first_token`. `create_app` runs once that window's [`Ui`] and
+    /// [`HostHandle`] exist, after the device and surface are ready but before
+    /// the first frame. Startup tunables default from [`WinitHostConfig`] and
+    /// can be overridden directly on the returned host before [`Self::run`].
+    pub fn new(
+        first_token: WindowToken,
+        create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static,
+    ) -> Self {
         // EventLoop is built up front so `handle()` can hand out a proxy
         // before `run()` is called — that's the whole point of letting
         // threads spawn knowing where to send their pokes.
@@ -265,11 +207,11 @@ where
         }
         let event_loop = event_loop_builder.build().expect("event loop");
         let proxy = event_loop.create_proxy();
-        WinitHost {
+        Self {
             bootstrap: Some(Bootstrap {
-                token: self.first_token,
-                config: self.config,
-                build: Box::new(build),
+                token: first_token,
+                config: WinitHostConfig::default(),
+                create_app: Box::new(create_app),
             }),
             running: None,
             pending_tasks: Vec::new(),
@@ -278,22 +220,42 @@ where
             proxy,
         }
     }
-}
 
-impl<T> WinitHost<T>
-where
-    T: App + 'static,
-{
-    /// Start building a winit-driven host whose bootstrap window is addressed
-    /// by `first_token`. The remaining startup tunables default (see
-    /// [`WinitHostConfig`]) and are set on the returned [`WinitHostBuilder`];
-    /// the app builder closure is supplied to [`WinitHostBuilder::build`].
-    pub fn builder(first_token: WindowToken) -> WinitHostBuilder<T> {
-        WinitHostBuilder {
-            first_token,
-            config: WinitHostConfig::default(),
-            _marker: PhantomData,
-        }
+    /// Replace all startup tunables at once. Granular setters called afterward
+    /// override individual fields.
+    pub fn config(mut self, config: WinitHostConfig) -> Self {
+        self.bootstrap.as_mut().unwrap().config = config;
+        self
+    }
+
+    /// Set the bootstrap window's full configuration.
+    pub fn window(mut self, window: WindowConfig) -> Self {
+        self.bootstrap.as_mut().unwrap().config.window = window;
+        self
+    }
+
+    /// Set the bootstrap window's title.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.bootstrap.as_mut().unwrap().config.window.title = title.into();
+        self
+    }
+
+    /// Set the swapchain present mode for every window's surface.
+    pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
+        self.bootstrap.as_mut().unwrap().config.present_mode = mode;
+        self
+    }
+
+    /// Set the adapter power preference used at startup.
+    pub fn power_preference(mut self, pref: wgpu::PowerPreference) -> Self {
+        self.bootstrap.as_mut().unwrap().config.power_preference = pref;
+        self
+    }
+
+    /// Opt into GPU timestamp and pipeline-statistics collection.
+    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
+        self.bootstrap.as_mut().unwrap().config.collect_gpu_stats = collect;
+        self
     }
 
     /// Return a cheap-to-clone, `Send` handle for cross-thread repaint
@@ -584,7 +546,7 @@ where
         let mut renderer = WindowRenderer::new(boot.token, &ctx, gpu.max_texture_dim);
 
         // Build the app now that the first `Ui` exists.
-        let mut app = (boot.build)(&mut renderer.ui, self.handle());
+        let mut app = (boot.create_app)(&mut renderer.ui, self.handle());
         // `RunOnMain` tasks that raced startup. Their repaint returns are
         // moot — every window paints its first frame `Immediate` anyway.
         for task in self.pending_tasks.drain(..) {

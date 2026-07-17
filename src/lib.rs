@@ -56,9 +56,9 @@ pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// instead of a swapchain (screenshots, thumbnails, server-side
 /// compositing); also backs the visual harness + GPU benches.
 pub use host::offscreen::OffscreenHost;
+pub use host::winit::WinitHost;
 pub use host::winit::config::WinitHostConfig;
 pub use host::winit::handle::{HostHandle, UserEvent};
-pub use host::winit::{WinitHost, WinitHostBuilder};
 pub use input::InputEvent;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};

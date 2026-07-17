@@ -89,7 +89,7 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 
 ```rust
 use aperture::{
-    App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost, WinitHostConfig,
+    App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
 };
 
 struct Counter { clicks: u32 }
@@ -97,14 +97,14 @@ struct Counter { clicks: u32 }
 impl App for Counter {
     // `win` names which window is being drawn; switch on it for multi-window
     // apps. This one has a single window, so it's ignored.
-    fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
+    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
         Panel::vstack()
             .auto_id()
             .gap(8.0)
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Text::new(format!("clicks: {}", self.clicks)).auto_id().show(ui);
-                if Button::new().label("click me").show(ui).clicked() {
+                if Button::new().label("click me").show(ui).left.clicked() {
                     self.clicks += 1;
                 }
             });
@@ -112,11 +112,12 @@ impl App for Counter {
 }
 
 fn main() {
-    // `new` takes the first window's token + config and a builder that
+    // `new` takes the first window's token and a factory that
     // constructs the app once its `Ui` and host handle are live.
-    WinitHost::new(WindowToken(0), WinitHostConfig::new("counter"), |_ui, _host| {
+    WinitHost::new(WindowToken(0), |_ui, _host| {
         Counter { clicks: 0 }
     })
+    .title("counter")
     .run();
 }
 ```
