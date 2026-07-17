@@ -868,6 +868,49 @@ fn frame_pass_count_matches_action_trigger() {
     }
 }
 
+/// A routed action requests pass B, but its edge is visible only in pass A.
+/// This lets application code handle a widget action inline without replaying
+/// the effect.
+#[test]
+fn action_effect_runs_once_across_record_replay() {
+    use crate::input::pointer::PointerButton;
+
+    let mut ui = Ui::for_test();
+    let surface = UVec2::new(100, 100);
+    let display = Display::from_physical(surface, 1.0);
+    let build = |ui: &mut Ui| {
+        Button::new()
+            .id(WidgetId::from_hash("action"))
+            .label("Run")
+            .size((100.0, 100.0))
+            .show(ui)
+            .left
+            .clicked()
+    };
+
+    ui.run_at_acked(surface, |ui| {
+        let _ = build(ui);
+    });
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    let mut passes = 0;
+    let mut effects = 0;
+    let _ = ui.record(
+        FrameStamp::new(display, Duration::from_millis(16)),
+        |ui| {
+            passes += 1;
+            if build(ui) {
+                effects += 1;
+            }
+        },
+    );
+
+    assert_eq!(passes, 2, "action input must request a replay pass");
+    assert_eq!(effects, 1, "the action edge must not replay");
+}
+
 /// `Ui::frame` plumbs `now`, `dt`, and the repaint-requested flag
 /// end-to-end: per-call `now` lands in the frame runtime, the derived `dt`
 /// clamps to `MAX_DT`, `repaint_requested` resets at the top of every
