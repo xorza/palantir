@@ -1,3 +1,4 @@
+use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::layout::types::clip_mode::ClipMode;
@@ -8,12 +9,14 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::Shape;
+use crate::shape::{LineCap, Shape};
 use crate::ui::cascade::{CascadePrefixBits, build_cascade_prefix, finish_cascade_input};
+use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::panel::Panel;
 use crate::{Ui, renderer::frontend::Frontend};
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 /// Screen rect of the first paint row for the widget keyed by
 /// `WidgetId::from_hash(key)` on `Layer::Main`.
@@ -93,6 +96,80 @@ fn shape_rect_composes_self_transform() {
             && (shape_rect.size.h - 90.0).abs() < eps,
         "expected shape_rect = (10, 20, 90, 90); got {shape_rect:?}",
     );
+}
+
+#[test]
+fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
+    #[derive(Debug)]
+    struct Case {
+        transform_scale: f32,
+        display_scale: f32,
+        panel_size: f32,
+        clipped: bool,
+        expected: Rect,
+    }
+
+    let cases = [
+        // centerline=(5,10)..(20,10), half-width=1, fringe=0.5
+        Case {
+            transform_scale: 0.5,
+            display_scale: 1.0,
+            panel_size: 300.0,
+            clipped: false,
+            expected: Rect::new(3.5, 8.5, 18.0, 3.0),
+        },
+        // centerline=(10,20)..(40,20), half-width=2, fringe=0.25
+        Case {
+            transform_scale: 1.0,
+            display_scale: 2.0,
+            panel_size: 300.0,
+            clipped: false,
+            expected: Rect::new(7.75, 17.75, 34.5, 4.5),
+        },
+        // centerline=(20,40)..(80,40), half-width=4, fringe=1
+        Case {
+            transform_scale: 2.0,
+            display_scale: 0.5,
+            panel_size: 300.0,
+            clipped: false,
+            expected: Rect::new(15.0, 35.0, 70.0, 10.0),
+        },
+        // unclipped stroke=(7.5,17.5)..(42.5,22.5), clamped to x≤30
+        Case {
+            transform_scale: 1.0,
+            display_scale: 1.0,
+            panel_size: 30.0,
+            clipped: true,
+            expected: Rect::new(7.5, 17.5, 22.5, 5.0),
+        },
+    ];
+
+    for case in cases {
+        let mut ui = Ui::for_test();
+        let display = Display::from_physical(UVec2::splat(400), case.display_scale);
+        ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+            let mut panel = Panel::canvas()
+                .id(WidgetId::from_hash("stroke"))
+                .size(Sizing::fixed(case.panel_size))
+                .transform(TranslateScale::from_scale(case.transform_scale));
+            if case.clipped {
+                panel = panel.clip(ClipMode::Rect);
+            }
+            panel.show(ui, |ui| {
+                ui.add_shape(Shape::CubicBezier {
+                    p0: Vec2::new(10.0, 20.0),
+                    p1: Vec2::new(20.0, 20.0),
+                    p2: Vec2::new(30.0, 20.0),
+                    p3: Vec2::new(40.0, 20.0),
+                    width: 4.0,
+                    brush: Color::WHITE.into(),
+                    cap: LineCap::Butt,
+                });
+            });
+        });
+
+        assert_eq!(first_paint_screen(&ui, "stroke"), case.expected, "{case:?}");
+    }
 }
 
 /// `.transform(zoom=S)` on an off-origin panel must anchor the

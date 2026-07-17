@@ -28,6 +28,7 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
+use crate::renderer::render_buffer::curve::{HALF_FRINGE, stroked_bbox};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 use soa_rs::{Soa, Soars};
@@ -677,7 +678,7 @@ fn run_tree(
                 parent_clip,
                 shape_clip,
                 shape_transform: desc_transform,
-                shape_raster_scale: desc_transform.scale * display_scale,
+                display_scale,
                 clips,
                 has_children,
             },
@@ -817,7 +818,12 @@ fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rec
         min: origin + local.min,
         size: local.size,
     });
-    clip.map_or(r, |c| r.intersect(c))
+    clip_screen(r, clip)
+}
+
+#[inline]
+fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
+    clip.map_or(screen, |c| screen.intersect(c))
 }
 
 /// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its
@@ -894,7 +900,7 @@ struct PaintRectCtx<'a> {
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
     shape_transform: TranslateScale,
-    shape_raster_scale: f32,
+    display_scale: f32,
     clips: bool,
     has_children: bool,
 }
@@ -910,7 +916,7 @@ impl std::fmt::Debug for PaintRectCtx<'_> {
             .field("parent_clip", &self.parent_clip)
             .field("shape_clip", &self.shape_clip)
             .field("shape_transform", &self.shape_transform)
-            .field("shape_raster_scale", &self.shape_raster_scale)
+            .field("display_scale", &self.display_scale)
             .field("clips", &self.clips)
             .field("has_children", &self.has_children)
             .finish_non_exhaustive()
@@ -954,7 +960,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         parent_clip,
         shape_clip,
         shape_transform,
-        shape_raster_scale,
+        display_scale,
         clips,
         has_children,
     } = ctx;
@@ -1014,7 +1020,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
             // Every direct text shape has one layout-derived entry, whether
             // measure produced it for a leaf or post-arrange shaping produced
             // it for a container.
-            let (local, text_measured) = match s {
+            let screen = match s {
                 ShapeRecord::Text {
                     local_origin,
                     align,
@@ -1033,17 +1039,52 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                         layout_rect.size,
                         shaped.measured,
                     );
-                    (local, Some(shaped.measured))
+                    let screen = lift_to_screen(local, layout_rect.min, shape_transform, None);
+                    inflate_text_damage(screen, shaped.measured, shape_clip)
                 }
-                _ => (
-                    s.paint_bbox_local(layout_rect.size, shape_raster_scale),
-                    None,
+                ShapeRecord::Polyline {
+                    width,
+                    cap,
+                    join,
+                    points,
+                    bbox,
+                    ..
+                } => {
+                    // The AA fringe is physical, so inflate only after the
+                    // centerline and stroke width reach screen space.
+                    let centerline = lift_to_screen(*bbox, layout_rect.min, shape_transform, None);
+                    let screen = stroked_bbox(
+                        centerline,
+                        *width * shape_transform.scale,
+                        HALF_FRINGE / display_scale,
+                        *cap,
+                        (points.len > 2).then_some(*join),
+                    );
+                    clip_screen(screen, shape_clip)
+                }
+                ShapeRecord::Curve {
+                    width, cap, bbox, ..
+                }
+                | ShapeRecord::Arc {
+                    width, cap, bbox, ..
+                } => {
+                    let centerline = lift_to_screen(*bbox, layout_rect.min, shape_transform, None);
+                    let screen = stroked_bbox(
+                        centerline,
+                        *width * shape_transform.scale,
+                        HALF_FRINGE / display_scale,
+                        *cap,
+                        None,
+                    );
+                    clip_screen(screen, shape_clip)
+                }
+                _ => lift_to_screen(
+                    s.bbox_local(layout_rect.size),
+                    layout_rect.min,
+                    shape_transform,
+                    shape_clip,
                 ),
             };
-            let mut screen = lift_to_screen(local, layout_rect.min, shape_transform, shape_clip);
-            if let Some(measured) = text_measured {
-                screen = inflate_text_damage(screen, measured, shape_clip);
-            }
             push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }
         debug_assert_eq!(
