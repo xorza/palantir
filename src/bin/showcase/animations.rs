@@ -41,30 +41,21 @@ pub(crate) fn build(ui: &mut Ui) {
             ui,
             "linear-200",
             "linear 200ms",
-            AnimSpec::Duration {
-                secs: 0.2,
-                ease: Easing::Linear,
-            },
+            AnimSpec::duration(0.2, Easing::Linear),
             target,
         );
         bar(
             ui,
             "out-cubic-200",
             "out-cubic 200ms",
-            AnimSpec::Duration {
-                secs: 0.2,
-                ease: Easing::OutCubic,
-            },
+            AnimSpec::duration(0.2, Easing::OutCubic),
             target,
         );
         bar(
             ui,
             "out-back-300",
             "out-back 300ms (overshoots)",
-            AnimSpec::Duration {
-                secs: 0.3,
-                ease: Easing::OutBack,
-            },
+            AnimSpec::duration(0.3, Easing::OutBack),
             target,
         );
         bar(ui, "spring-soft", "soft spring", AnimSpec::SPRING, target);
