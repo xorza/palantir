@@ -20,7 +20,7 @@ use crate::renderer::render_buffer::curve::{
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::text::TextRun;
-use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
+use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
@@ -511,10 +511,14 @@ impl Composer {
                         if out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
                             parent_chain
                         } else {
+                            let depth = parent_chain.len + 1;
+                            if depth > MAX_ROUNDED_CLIP_DEPTH {
+                                rounded_clip_depth_overflow(depth);
+                            }
                             let chain_start = out.rounded_clips.len() as u32;
                             out.rounded_clips.extend_from_within(parent_chain.range());
                             out.rounded_clips.push(rc);
-                            Span::new(chain_start, parent_chain.len + 1)
+                            Span::new(chain_start, depth)
                         }
                     } else {
                         // Rect clip nested inside rounded ancestors: inherit
@@ -1412,6 +1416,12 @@ fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URe
 /// decisions must not split on span identity alone.
 fn chains_equal(out: &RenderBuffer, a: Span, b: Span) -> bool {
     out.rounded_clips[a.range()] == out.rounded_clips[b.range()]
+}
+
+#[cold]
+#[inline(never)]
+fn rounded_clip_depth_overflow(depth: u32) -> ! {
+    panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
 /// Physical-px scissor for a stroked shape's owner-local `bbox`. Folds

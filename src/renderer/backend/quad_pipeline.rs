@@ -17,7 +17,7 @@ use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::backend::stencil::STENCIL_FORMAT;
 use crate::renderer::gradient_atlas::ATLAS_ROWS;
 use crate::renderer::quad::{AA_RADIUS, Quad};
-use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use glam::Vec2;
 
 #[derive(Debug)]
@@ -234,8 +234,8 @@ impl QuadPipeline {
                     stencil: wgpu::StencilState {
                         front: face,
                         back: face,
-                        read_mask: 0xff,
-                        write_mask: 0xff,
+                        read_mask: MAX_ROUNDED_CLIP_DEPTH,
+                        write_mask: MAX_ROUNDED_CLIP_DEPTH,
                     },
                     bias: wgpu::DepthBiasState::default(),
                 }),

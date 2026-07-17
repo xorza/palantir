@@ -374,6 +374,35 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
     assert_eq!(buf.groups[2].scissor, Some(URect::new(30, 30, 50, 50)));
 }
 
+fn push_distinct_rounded_clips(buffer: &mut RenderCmdBuffer, depth: u32) {
+    for level in 1..=depth {
+        buffer.push_clip_rounded(rect(0.0, 0.0, 400.0, 400.0), Corners::all(level as f32));
+    }
+}
+
+#[test]
+fn rounded_clip_chain_accepts_stencil_depth_255() {
+    let buf = run(
+        |buffer, _payloads| {
+            push_distinct_rounded_clips(buffer, 255);
+            draw(buffer, rect(100.0, 100.0, 20.0, 20.0));
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+
+    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(buf.groups[0].rounded_clips.len, 255);
+}
+
+#[test]
+#[should_panic(expected = "rounded clip chain depth 256 exceeds stencil capacity 255")]
+fn rounded_clip_chain_rejects_stencil_depth_256() {
+    let _ = run(
+        |buffer, _payloads| push_distinct_rounded_clips(buffer, 256),
+        &params(1.0, UVec2::new(400, 400)),
+    );
+}
+
 /// Re-pushing the innermost rounded clip verbatim (same rect + radii)
 /// adds no chain depth and — like the redundant rect Push/Pop — is a
 /// full no-op: no batch split, no group flush.
