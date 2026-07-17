@@ -102,15 +102,15 @@ pub enum FontWeight {
 /// Shared, cloneable text shaper. Holds an optional [`CosmicMeasure`] for
 /// real shaping (`None` ⇒ mono fallback) and a `measure_calls` counter for
 /// cache-effectiveness tests. Per-window widget identity reuse lives in
-/// [`TextReuseCache`].
+/// `TextReuseCache`.
 ///
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
 /// re-entry. Cloning is cheap (refcount bump).
-/// [`HostShared`](crate::host::shared::HostShared) retains the canonical
-/// handle; its `UiShared` and `BackendShared` capability views give every
-/// consumer access to the same content cache.
+/// `HostShared` retains the canonical handle; its `UiShared` and
+/// `BackendShared` capability views give every consumer access to the same
+/// content cache.
 ///
 /// Two paths, picked at construction:
 ///
