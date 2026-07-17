@@ -392,12 +392,7 @@ impl<'a> TextEdit<'a> {
             } else {
                 &self.placeholder
             };
-            let m = ui
-                .shared
-                .render
-                .text
-                .measure(measure_str, ctx.params())
-                .size;
+            let m = ui.shared.text.measure(measure_str, ctx.params()).size;
             content_w = m.w;
             let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz() - caret_room).max(0.0);
@@ -451,7 +446,6 @@ impl<'a> TextEdit<'a> {
         // field) first so the state borrow is contiguous.
         let caret_pos = ui
             .shared
-            .render
             .text
             .cursor_xy(self.text, caret_byte, ctx.params());
         let now = ui.frame_runtime.time;
@@ -491,7 +485,7 @@ impl<'a> TextEdit<'a> {
         // Phase 3: open the node and push shapes. `cursor_xy` +
         // `selection_rects` handle both single- and multi-line via
         // cosmic's shaped-buffer APIs; the single-line case is just
-        // an unwrapped layout with one visual run. Touch `ui.shared.render.text`
+        // an unwrapped layout with one visual run. Touch `ui.shared.text`
         // (disjoint from `ui.forest`, so `add_shape` sequences fine).
         // Chrome paints via `Tree::chrome_for` — encoder emits it
         // before any clip. Every shape's local_rect is shifted by
@@ -530,13 +524,7 @@ impl<'a> TextEdit<'a> {
                 };
                 // `ctx.params()` measures unbounded here — single-line,
                 // so `wrap_target` is `None` by construction.
-                let reserve_w = ui
-                    .shared
-                    .render
-                    .text
-                    .measure(measure_str, ctx.params())
-                    .size
-                    .w;
+                let reserve_w = ui.shared.text.measure(measure_str, ctx.params()).size.w;
                 let reserved = reserve_w + ctx.padding.horiz() + 2.0 * caret_room;
                 if element.min_size.w < reserved {
                     element.min_size.w = reserved;
@@ -554,7 +542,6 @@ impl<'a> TextEdit<'a> {
         selection_rects.clear();
         if is_focused && let Some(range) = selection {
             ui.shared
-                .render
                 .text
                 .selection_rects(text_ptr, range, ctx.params(), selection_rects);
         }

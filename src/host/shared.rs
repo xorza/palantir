@@ -14,20 +14,16 @@ use crate::window::WindowToken;
 
 #[derive(Debug, Default)]
 pub(crate) struct HostShared {
-    pub(crate) render: RenderShared,
+    pub(crate) text: TextShaper,
+    pub(crate) assets: RenderAssets,
     pub(crate) diagnostics: DiagnosticsShared,
     pub(crate) windows: WindowDirectory,
 }
 
-#[derive(Clone, Debug, Default)]
-pub(crate) struct RenderShared {
-    pub(crate) text: TextShaper,
-    pub(crate) assets: RenderAssets,
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct UiShared {
-    pub(crate) render: RenderShared,
+    pub(crate) text: TextShaper,
+    pub(crate) assets: RenderAssets,
     pub(crate) diagnostics: DiagnosticsShared,
     pub(crate) windows: WindowDirectory,
 }
@@ -52,17 +48,15 @@ pub(crate) struct WindowDirectory {
 impl HostShared {
     pub(crate) fn new(text: TextShaper) -> Self {
         Self {
-            render: RenderShared {
-                text,
-                ..Default::default()
-            },
+            text,
             ..Default::default()
         }
     }
 
     pub(crate) fn ui_shared(&self) -> UiShared {
         UiShared {
-            render: self.render.clone(),
+            text: self.text.clone(),
+            assets: self.assets.clone(),
             diagnostics: self.diagnostics.clone(),
             windows: self.windows.clone(),
         }
@@ -70,8 +64,8 @@ impl HostShared {
 
     pub(crate) fn backend_shared(&self) -> BackendShared {
         BackendShared {
-            text: self.render.text.clone(),
-            assets: self.render.assets.clone(),
+            text: self.text.clone(),
+            assets: self.assets.clone(),
             pass_stats: self.diagnostics.pass_stats.clone(),
         }
     }
@@ -122,6 +116,7 @@ mod tests {
     use std::rc::Rc;
 
     use crate::host::shared::HostShared;
+    use crate::renderer::texture_id::TextureId;
     use crate::window::WindowToken;
 
     #[test]
@@ -153,12 +148,14 @@ mod tests {
     }
 
     #[test]
-    fn backend_and_ui_share_render_resources_and_gpu_stats() {
+    fn backend_and_ui_share_text_assets_and_gpu_stats() {
         let shared = HostShared::default();
         let ui = shared.ui_shared();
         let backend = shared.backend_shared();
 
-        assert!(Rc::ptr_eq(&ui.render.text.inner, &backend.text.inner));
+        assert!(Rc::ptr_eq(&ui.text.inner, &backend.text.inner));
+        assert_eq!(ui.assets.texture_ids.reserve(), TextureId(1));
+        assert_eq!(backend.assets.texture_ids.reserve(), TextureId(2));
         backend.pass_stats.record_pass_ns(2_500_000);
         assert_eq!(ui.diagnostics.pass_stats.last_pass_ms(), Some(2.5));
     }
