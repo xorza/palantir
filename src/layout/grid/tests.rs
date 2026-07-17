@@ -2,11 +2,16 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
-use crate::layout::grid::{AxisScratch, GridDepthStack, resolve_axis};
+use crate::layout::axis::Axis;
+use crate::layout::grid::{AxisScratch, GridDepthStack, known_span_size, resolve_axis};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
+use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
+use crate::shape::TextWrap;
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
@@ -434,6 +439,188 @@ fn grid_span_covers_multiple_tracks_with_gap() {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct KnownSpanCase {
+    label: &'static str,
+    span: u16,
+    track: f32,
+    gap: f32,
+    text: &'static str,
+    child_main: f32,
+    slot: f32,
+}
+
+const KNOWN_SPAN_CASES: [KnownSpanCase; 2] = [
+    KnownSpanCase {
+        label: "two_tracks",
+        span: 2,
+        track: 40.0,
+        gap: 10.0,
+        text: "12345 67890",
+        child_main: 44.0,
+        slot: 90.0,
+    },
+    KnownSpanCase {
+        label: "three_tracks",
+        span: 3,
+        track: 30.0,
+        gap: 5.0,
+        text: "12345 678901",
+        child_main: 48.0,
+        slot: 100.0,
+    },
+];
+
+fn fixed_tracks(case: KnownSpanCase) -> Rc<[Track]> {
+    (0..case.span)
+        .map(|_| Track::fixed(case.track))
+        .collect::<Vec<_>>()
+        .into()
+}
+
+#[test]
+fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
+    for case in KNOWN_SPAN_CASES {
+        let mut ui = Ui::for_test();
+        let mut grid_node = None;
+        let mut text_node = None;
+        ui.run_at(UVec2::new(400, 200), |ui| {
+            grid_node = Some(
+                Grid::new()
+                    .auto_id()
+                    .cols(fixed_tracks(case))
+                    .rows([Track::hug()])
+                    .gap_xy(0.0, case.gap)
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        text_node = Some(
+                            Text::new(case.text)
+                                .auto_id()
+                                .style(
+                                    TextStyle::default()
+                                        .with_font_size(16.0)
+                                        .with_line_height_mult(1.0),
+                                )
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .grid_span((1, case.span))
+                                .show(ui)
+                                .node(),
+                        );
+                    })
+                    .node(),
+            );
+        });
+
+        let text = text_node.unwrap();
+        let desired = ui.layout_engine.scratch.desired[text.idx()];
+        assert_eq!(
+            desired,
+            Size::new(case.text.len() as f32 * 8.0, 16.0),
+            "{} measured text",
+            case.label,
+        );
+        assert_eq!(
+            ui.layout[Layer::Main].rect[text.idx()].size,
+            Size::new(case.slot, 16.0),
+            "{} arranged text",
+            case.label,
+        );
+        assert_eq!(
+            ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size,
+            Size::new(case.slot, 16.0),
+            "{} grid extent",
+            case.label,
+        );
+    }
+}
+
+#[test]
+fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
+    for axis in [Axis::X, Axis::Y] {
+        for case in KNOWN_SPAN_CASES {
+            let mut ui = Ui::for_test();
+            let mut panel_node = None;
+            let mut second_node = None;
+            ui.run_at(UVec2::new(400, 400), |ui| {
+                let mut grid = Grid::new()
+                    .auto_id()
+                    .gap_xy(
+                        if axis == Axis::Y { case.gap } else { 0.0 },
+                        if axis == Axis::X { case.gap } else { 0.0 },
+                    )
+                    .size((Sizing::HUG, Sizing::HUG));
+                if axis == Axis::X {
+                    grid = grid.cols(fixed_tracks(case)).rows([Track::hug()]);
+                } else {
+                    grid = grid.cols([Track::hug()]).rows(fixed_tracks(case));
+                }
+                grid.show(ui, |ui| {
+                    let panel = match axis {
+                        Axis::X => Panel::wrap_hstack(),
+                        Axis::Y => Panel::wrap_vstack(),
+                    };
+                    panel_node = Some(
+                        panel
+                            .auto_id()
+                            .grid_span(match axis {
+                                Axis::X => (1, case.span),
+                                Axis::Y => (case.span, 1),
+                            })
+                            .show(ui, |ui| {
+                                Frame::new()
+                                    .auto_id()
+                                    .size(axis.compose_size(case.child_main, 20.0))
+                                    .show(ui);
+                                second_node = Some(
+                                    Frame::new()
+                                        .auto_id()
+                                        .size(axis.compose_size(case.child_main, 20.0))
+                                        .show(ui)
+                                        .node(),
+                                );
+                            })
+                            .node(),
+                    );
+                });
+            });
+
+            let panel = panel_node.unwrap();
+            let expected_desired = axis.compose_size(case.child_main * 2.0, 20.0);
+            assert_eq!(
+                ui.layout_engine.scratch.desired[panel.idx()],
+                expected_desired,
+                "{axis:?} {} measured panel",
+                case.label,
+            );
+            assert_eq!(
+                ui.layout[Layer::Main].rect[panel.idx()].size,
+                axis.compose_size(case.slot, 20.0),
+                "{axis:?} {} arranged panel",
+                case.label,
+            );
+            let second = ui.layout[Layer::Main].rect[second_node.unwrap().idx()];
+            assert_eq!(
+                axis.main_v(second.min),
+                case.child_main,
+                "{axis:?} {} second child main offset",
+                case.label,
+            );
+            assert_eq!(
+                axis.cross_v(second.min),
+                0.0,
+                "{axis:?} {} second child cross offset",
+                case.label,
+            );
+            assert_eq!(
+                second.size,
+                axis.compose_size(case.child_main, 20.0),
+                "{axis:?} {} second child extent",
+                case.label,
+            );
+        }
+    }
+}
+
 #[test]
 fn grid_hug_grid_collapses_fill_tracks() {
     let mut ui = Ui::for_test();
@@ -512,7 +699,16 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 
     assert!(
         a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),
-        "Fill cols must stay unresolved so `sum_spanned_known` returns INF for them"
+        "Fill cols must stay unresolved so `known_span_size` returns INF for them"
+    );
+    assert_eq!(
+        known_span_size(&a.sizes, &a.resolved, Span::new(0, 2), 10.0),
+        50.0 + 10.0 + 30.0,
+        "the fully resolved Fixed + Hug span includes its internal gap",
+    );
+    assert!(
+        known_span_size(&a.sizes, &a.resolved, Span::new(0, 3), 10.0).is_infinite(),
+        "a span containing unresolved Fill remains uncommitted",
     );
 }
 
