@@ -93,6 +93,10 @@ pub(crate) struct TwoWindowHarness {
 
 impl Harness {
     pub(crate) fn new() -> Self {
+        Self::new_with_pixel_snap(true)
+    }
+
+    pub(crate) fn new_with_pixel_snap(pixel_snap: bool) -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
         // Fresh target texture per render() → must fill the whole target each
@@ -102,6 +106,7 @@ impl Harness {
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
         let host = OffscreenHost::new(WINDOW, g.device.clone(), g.queue.clone(), shaper)
+            .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO));
 
         Self {

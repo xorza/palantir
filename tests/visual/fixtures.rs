@@ -10,6 +10,7 @@ mod hidpi;
 mod image;
 mod layout;
 mod multi_window;
+mod occlusion;
 mod scroll;
 mod shadow;
 mod text;

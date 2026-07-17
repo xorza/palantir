@@ -10,7 +10,7 @@ use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
 use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
-use crate::renderer::quad::Quad;
+use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
@@ -632,31 +632,16 @@ impl Composer {
                         fill_lut_row: p.fill_lut_row,
                         fill_axis: p.fill_axis,
                     });
-                    // Occlusion-prune annotation: a solid-opaque
-                    // quad fully covers a sub-rect of its bounding
-                    // rect — for sharp corners the cover is the
-                    // whole rect; for rounded corners it's the
-                    // inscribed rect deflated by KAPPA·radius per
-                    // side. quad.wgsl strokes are INNER-edge and
-                    // coverage-partitioned with the fill (annulus
-                    // alpha = stroke alpha), so a translucent stroke
-                    // leaves its ring non-opaque: only the fill-only
-                    // interior — the inscribed rect deflated by the
-                    // stroke width on every side — is guaranteed
-                    // opaque. A noop stroke or a fully-opaque stroke
-                    // colour keeps the full inscribed cover (opaque
-                    // annulus + opaque fill = opaque rect). A stroke
-                    // wider than half the rect deflates the cover to
-                    // empty — nothing is recorded. Record the cover
-                    // rect with the in-flight slice index so `flush()`
-                    // can drop earlier quads contained in it.
                     if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
                         let inscribed = phys_rect.inscribed_for_corners(phys_radius);
-                        let cover = if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
-                            inscribed
-                        } else {
-                            inscribed.deflated_by(Spacing::all(stroke_width_phys))
-                        };
+                        let stroke_inset =
+                            if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
+                                0.0
+                            } else {
+                                stroke_width_phys
+                            };
+                        let aa_inset = if fast { 0.0 } else { AA_RADIUS };
+                        let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
                         if !cover.is_paint_empty() {
                             let idx = out.quads.len() as u32 - 1 - self.cursors.quads;
                             self.occlusion.record_opaque(idx, cover);

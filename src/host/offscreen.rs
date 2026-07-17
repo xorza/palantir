@@ -72,6 +72,12 @@ impl OffscreenHost {
         self
     }
 
+    /// Configure whether axis-aligned paint edges snap to physical pixels.
+    pub fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+        self.window = self.window.pixel_snap(pixel_snap);
+        self
+    }
+
     /// Mutable access to the window's `Ui` for building scenes.
     pub fn ui(&mut self) -> &mut Ui {
         &mut self.window.ui
