@@ -4,7 +4,7 @@ use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
-use crate::host::context::HostContext;
+use crate::host::shared::HostShared;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
@@ -25,10 +25,10 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
-    ui.ctx.shaper.measure_calls()
+    ui.shared.render.text.measure_calls()
 }
 
-fn ui_with_context(ctx: &HostContext) -> Ui {
+fn ui_with_context(ctx: &HostShared) -> Ui {
     let mut ui = Ui::new(ctx, RecordStore::default());
     ui.mark_warm_for_test();
     ui
@@ -608,7 +608,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let ctx = HostContext::new(TextShaper::with_bundled_fonts());
+    let ctx = HostShared::new(TextShaper::with_bundled_fonts());
     let mut a = ui_with_context(&ctx);
     let mut b = ui_with_context(&ctx);
     let text_id = WidgetId::from_hash("shared-text");
@@ -656,7 +656,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     use crate::forest::element::Element;
     use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::host::context::HostContext;
+    use crate::host::shared::HostShared;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::record_store::RecordStore;
@@ -693,7 +693,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         });
     }
 
-    let ctx = HostContext::new(TextShaper::with_bundled_fonts());
+    let ctx = HostShared::new(TextShaper::with_bundled_fonts());
     let mut idle = Ui::new(&ctx, RecordStore::default());
     let mut active = Ui::new(&ctx, RecordStore::default());
     let display = Display::from_physical(SURFACE, 1.0);
@@ -1559,14 +1559,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     }
 
-    let shared = HostContext::new(TextShaper::mono());
+    let shared = HostShared::new(TextShaper::mono());
     let mut a = ui_with_context(&shared);
     let mut b = ui_with_context(&shared);
     let half = Duration::from_millis(500);
 
     a.run_at_acked(SURFACE, |ui| window_a(ui, half));
     let original_row = rows(&a)[0];
-    a.ctx.caches.gradients.flush_with(|_| ());
+    a.shared.render.assets.gradients.flush_with(|_| ());
 
     b.run_at(SURFACE, |ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
@@ -1591,7 +1591,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let b_rows: HashSet<LutRow> = rows(&b).into_iter().collect();
     assert_eq!(b_rows.len(), (ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
-    b.ctx.caches.gradients.flush_with(|_| ());
+    b.shared.render.assets.gradients.flush_with(|_| ());
 
     let report = a.record(
         FrameStamp::new(Display::from_physical(SURFACE, 1.0), half),

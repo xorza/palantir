@@ -8,7 +8,7 @@ use std::sync::Arc;
 use glam::UVec2;
 use winit::window::Window;
 
-use crate::host::context::HostContext;
+use crate::host::shared::HostShared;
 use crate::host::winit::config::WinitHostConfig;
 use crate::renderer::backend::WgpuBackend;
 
@@ -172,7 +172,7 @@ impl Gpu {
     /// cloning the shared resources it needs from `ctx`. Format-agnostic —
     /// each window attaches via `WindowRenderer::builder` and its
     /// format's pipelines build lazily on first submit.
-    pub(crate) fn make_backend(&self, ctx: &HostContext) -> WgpuBackend {
+    pub(crate) fn make_backend(&self, ctx: &HostShared) -> WgpuBackend {
         WgpuBackend::new(self.device.clone(), self.queue.clone(), ctx)
             .collect_gpu_stats(true, ctx.pass_stats.clone())
     }

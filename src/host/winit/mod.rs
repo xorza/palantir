@@ -61,7 +61,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Icon, Window, WindowId};
 
 use crate::app::App;
-use crate::host::context::HostContext;
+use crate::host::shared::HostShared;
 use crate::host::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::gpu::{Gpu, GpuInit, WindowSurface};
@@ -140,7 +140,7 @@ struct Running<T> {
     /// Shared, app-global state (render handles + live-window set + debug
     /// overlay) every window's `Ui` clones; each `WindowRenderer` and the
     /// backend (render handles only) derive from it.
-    context: HostContext,
+    context: HostShared,
     /// The one shared GPU renderer every window draws through (pipelines,
     /// atlases); passed into each window's `WindowRenderer::frame`.
     backend: WgpuBackend,
@@ -564,7 +564,7 @@ where
         // Shared resources first, then the one shared GPU renderer built
         // from them; every window's `Ui` + the backend derive from `ctx`
         // (which also carries the app-global window/overlay state).
-        let ctx = HostContext::new(TextShaper::with_bundled_fonts());
+        let ctx = HostShared::new(TextShaper::with_bundled_fonts());
         let backend = gpu.make_backend(&ctx);
         let mut renderer = WindowRenderer::builder(boot.token, &ctx, gpu.max_texture_dim).build();
 

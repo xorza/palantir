@@ -107,7 +107,7 @@ pub enum FontWeight {
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump). [`HostContext`](crate::host::context::HostContext)
+/// re-entry. Cloning is cheap (refcount bump). [`HostShared`](crate::host::shared::HostShared)
 /// holds the canonical handle; each window's `Ui` reaches it through its
 /// context clone, and the backend holds another clone, so all consumers see
 /// one content cache.
