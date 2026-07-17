@@ -21,11 +21,10 @@ use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::record_store::{RecordStore, RecordedGradient};
-use crate::renderer::render_buffer::curve::{HALF_FRINGE, MITER_LIMIT};
+use crate::renderer::render_buffer::curve::HALF_FRINGE;
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
 use std::f32::consts::TAU;
@@ -234,7 +233,7 @@ pub(crate) fn polyline(
         .polyline_colors
         .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
     let lowered_colors = &payloads.polyline_colors[c_start as usize..];
-    let bbox = inflate_stroke_bbox(lo, hi, width, cap, join);
+    let bbox = Rect::from_min_max(lo, hi);
 
     // Hash contract for polyline records: no variant tag needed —
     // polylines are the only shape lowering into this record, and
@@ -337,7 +336,7 @@ pub(crate) fn arc(
     let lowered = curve_brush(store, &brush);
     let a1 = start_angle + sweep;
     let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
-    let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));
+    let bbox = Rect::from_min_max(lo, hi);
     ShapeRecord::Arc {
         center,
         radius,
@@ -368,7 +367,7 @@ pub(crate) fn triangle(
     let lo = a.min(b).min(c);
     let hi = a.max(b).max(c);
     let pad = radius.max(0.0) + HALF_FRINGE;
-    let bbox = padded_bbox(lo, hi, pad);
+    let bbox = Rect::from_min_max(lo, hi).inflated(pad);
     ShapeRecord::Triangle {
         a,
         b,
@@ -380,19 +379,6 @@ pub(crate) fn triangle(
     }
 }
 
-/// Conservative bbox padding for a GPU-stroked shape: half-width, plus
-/// the cap extension (`Square`/`Round` reach `width/2` past each
-/// endpoint along the local tangent — direction varies, so the
-/// axis-aligned pad takes it on every side), plus the AA fringe.
-fn stroke_pad(width: f32, cap: LineCap) -> f32 {
-    let half = (width * 0.5).max(0.0);
-    let cap_extent = match cap {
-        LineCap::Butt => 0.0,
-        LineCap::Square | LineCap::Round => half,
-    };
-    half + cap_extent + HALF_FRINGE
-}
-
 /// Build a `ShapeRecord::Curve` from cubic control points. The record
 /// hash (`compute_record_hash`) covers the control points + width +
 /// cap + brush directly — every input lives inline on the record, so
@@ -401,7 +387,7 @@ fn curve_inner(ctrl: [Vec2; 4], width: f32, fill: LoweredBrush, cap: LineCap) ->
     let [p0, p1, p2, p3] = ctrl;
 
     let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
-    let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));
+    let bbox = Rect::from_min_max(lo, hi);
     ShapeRecord::Curve {
         p0,
         p1,
@@ -412,41 +398,5 @@ fn curve_inner(ctrl: [Vec2; 4], width: f32, fill: LoweredBrush, cap: LineCap) ->
         fill_grad_hash: fill.hash,
         cap,
         bbox,
-    }
-}
-
-/// Inflate the centerline AABB `[lo, hi]` of a stroked polyline so it
-/// conservatively covers the painted extent: stroke half-width on every
-/// side, miter-limit slack at sharp joins (the shared [`MITER_LIMIT`]
-/// the composer downgrades against), `Square` cap projection past
-/// endpoints, and the AA fringe. Damage and per-shape clipping key on
-/// this — undersizing here leaves miter spikes / square caps
-/// unclipped/undamaged.
-fn inflate_stroke_bbox(lo: Vec2, hi: Vec2, width: f32, cap: LineCap, join: LineJoin) -> Rect {
-    let half = width * 0.5;
-    let join_extent = if matches!(join, LineJoin::Miter) {
-        half * MITER_LIMIT
-    } else {
-        half
-    };
-    let cap_extent = if matches!(cap, LineCap::Square) {
-        half
-    } else {
-        0.0
-    };
-    let pad = join_extent.max(cap_extent) + HALF_FRINGE;
-    padded_bbox(lo, hi, pad)
-}
-
-/// Axis-aligned bbox of `[lo, hi]` inflated by `pad` on every side.
-/// Shared by the triangle / curve / stroke lowering paths above, which
-/// differ only in how they derive `lo` / `hi` / `pad`.
-fn padded_bbox(lo: Vec2, hi: Vec2, pad: f32) -> Rect {
-    Rect {
-        min: Vec2::new(lo.x - pad, lo.y - pad),
-        size: Size {
-            w: (hi.x - lo.x) + 2.0 * pad,
-            h: (hi.y - lo.y) + 2.0 * pad,
-        },
     }
 }

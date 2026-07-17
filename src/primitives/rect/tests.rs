@@ -1,4 +1,5 @@
 use crate::primitives::rect::Rect;
+use glam::Vec2;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -15,6 +16,18 @@ fn equal_signed_zero_rects_have_equal_hashes() {
 
     assert_eq!(positive, negative);
     assert_eq!(hash_value(positive), hash_value(negative));
+}
+
+#[test]
+fn from_min_max_preserves_extents() {
+    assert_eq!(
+        Rect::from_min_max(Vec2::new(-4.0, 7.0), Vec2::new(11.0, 19.0)),
+        Rect::new(-4.0, 7.0, 15.0, 12.0),
+    );
+    assert_eq!(
+        Rect::from_min_max(Vec2::new(3.0, 5.0), Vec2::new(3.0, 5.0)),
+        Rect::new(3.0, 5.0, 0.0, 0.0),
+    );
 }
 
 #[test]

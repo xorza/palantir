@@ -2,6 +2,8 @@
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::rect::Rect;
+use crate::shape::{LineCap, LineJoin};
 use glam::Vec2;
 
 /// Chord-subdivisions per curve sub-instance. The shader expands one
@@ -16,9 +18,8 @@ pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 
 /// Half-width of the antialiasing fringe every stroke adds beyond its
 /// core half-width, physical px. Part of the CPU↔shader contract:
-/// bbox inflation at shape lowering and the coverage math in
-/// `curve.wgsl` (`HALF_FRINGE` there) both bake this value — bump
-/// together.
+/// [`stroked_bbox`] and the coverage math in `curve.wgsl`
+/// (`HALF_FRINGE` there) both bake this value — bump together.
 pub(crate) const HALF_FRINGE: f32 = 0.5;
 
 /// SVG-convention miter limit: a Miter join whose extension factor
@@ -27,6 +28,32 @@ pub(crate) const HALF_FRINGE: f32 = 0.5;
 /// the const of the same name in `curve.wgsl`, which uses it to bound
 /// the miter billboard extent.
 pub(crate) const MITER_LIMIT: f32 = 4.0;
+
+/// Conservative paint bound for a centerline AABB. `width` and
+/// `fringe` must use the same coordinate space as `centerline`.
+///
+/// Square caps extend along both tangent and normal, so their
+/// axis-aligned worst case is `√2 · half_width`. Miter joins use the
+/// same clamped factor as the shader. Every other cap/join stays
+/// inside the ordinary stroked band.
+pub(crate) fn stroked_bbox(
+    centerline: Rect,
+    width: f32,
+    fringe: f32,
+    cap: LineCap,
+    join: Option<LineJoin>,
+) -> Rect {
+    let cap_factor = match cap {
+        LineCap::Square => std::f32::consts::SQRT_2,
+        LineCap::Butt | LineCap::Round => 1.0,
+    };
+    let join_factor = match join {
+        Some(LineJoin::Miter) => MITER_LIMIT,
+        Some(LineJoin::Bevel | LineJoin::Round) | None => 1.0,
+    };
+    let pad = ((width * 0.5).max(0.0) + fringe.max(0.0)) * cap_factor.max(join_factor);
+    centerline.inflated(pad)
+}
 
 /// Basis tags for [`CurveInstance::kind`]. Pinned against the
 /// `KIND_*` constants in `curve.wgsl` — bump together.
@@ -122,4 +149,60 @@ pub(crate) struct CurveInstance {
 #[inline]
 pub(crate) fn cap_lanes(start: u32, end: u32) -> u32 {
     start | (end << 8)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::rect::Rect;
+    use crate::renderer::render_buffer::curve::stroked_bbox;
+    use crate::shape::{LineCap, LineJoin};
+
+    #[test]
+    fn stroked_bbox_accounts_for_cap_and_join_reach_once() {
+        #[derive(Debug)]
+        struct Case {
+            cap: LineCap,
+            join: Option<LineJoin>,
+            expected_pad: f32,
+        }
+
+        // width 4 → core half-width 2; fringe 0.5 → raster half-width 2.5.
+        let cases = [
+            Case {
+                cap: LineCap::Butt,
+                join: None,
+                expected_pad: 2.5,
+            },
+            Case {
+                cap: LineCap::Round,
+                join: Some(LineJoin::Bevel),
+                expected_pad: 2.5,
+            },
+            Case {
+                cap: LineCap::Square,
+                join: Some(LineJoin::Round),
+                expected_pad: 2.5 * std::f32::consts::SQRT_2,
+            },
+            Case {
+                cap: LineCap::Butt,
+                join: Some(LineJoin::Miter),
+                expected_pad: 10.0,
+            },
+        ];
+        let centerline = Rect::new(10.0, 20.0, 30.0, 40.0);
+
+        for case in cases {
+            let actual = stroked_bbox(centerline, 4.0, 0.5, case.cap, case.join);
+            assert_eq!(
+                actual,
+                Rect::new(
+                    10.0 - case.expected_pad,
+                    20.0 - case.expected_pad,
+                    30.0 + 2.0 * case.expected_pad,
+                    40.0 + 2.0 * case.expected_pad,
+                ),
+                "{case:?}",
+            );
+        }
+    }
 }

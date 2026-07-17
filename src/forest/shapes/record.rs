@@ -49,12 +49,11 @@ pub(crate) enum ShapeRecord {
     /// length depends on `color_mode`: 1 for `Single`,
     /// `points.len()` for `PerPoint`, `points.len() - 1` for
     /// `PerSegment`. `content_hash` summarizes points+colors+mode
-    /// +cap+join bytes for cache identity. `bbox` is the
-    /// axis-aligned bounds of `points` in owner-relative coords —
-    /// the encoder translates it into cmd-buffer coords by adding
-    /// the owner rect origin. `cap` and `join` are user-picked
-    /// stroke-style enums; the composer's segment / join-chrome
-    /// emission and the stroke shader consume them.
+    /// +cap+join bytes for cache identity. `bbox` is the centerline
+    /// AABB of `points` in owner-relative coords; damage and composition
+    /// apply the shared raster-aware stroke inflation. `cap` and `join`
+    /// are user-picked stroke-style enums consumed by the composer and
+    /// stroke shader.
     Polyline {
         width: f32,
         color_mode: ColorMode,
@@ -166,9 +165,9 @@ pub(crate) enum ShapeRecord {
     /// composer adds the owner origin + active transform at compose
     /// time and uploads to a per-instance buffer. No joins
     /// (single-segment primitive); `fill` and `cap` are documented on
-    /// their fields. `bbox` is the owner-local stroked-AABB inflated
-    /// by `width/2 + cap + AA fringe` so damage / clip cull match the
-    /// painted extent.
+    /// their fields. `bbox` is the tight owner-local centerline AABB;
+    /// damage and composition apply the shared raster-aware stroke
+    /// inflation after transforms are known.
     Curve {
         p0: Vec2,
         p1: Vec2,
@@ -190,8 +189,7 @@ pub(crate) enum ShapeRecord {
         fill_grad_hash: u64,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by
-        /// `width/2` past each endpoint along the local tangent; the
-        /// composer-time bbox already includes that slack.
+        /// `width/2` past each endpoint along the local tangent.
         cap: LineCap,
         bbox: Rect,
     } = 6,
@@ -233,8 +231,8 @@ pub(crate) enum ShapeRecord {
     /// gradient-along-t sampling. `center` is owner-local; `a0`/`a1`
     /// are the start/end angles in radians (screen convention: 0 = +x,
     /// y-down ⇒ increasing = clockwise; `a1 < a0` for a negative
-    /// sweep). `bbox` is the owner-local stroked AABB inflated by
-    /// `width/2 + cap + AA fringe`, same discipline as `Curve`.
+    /// sweep). `bbox` is the tight owner-local centerline AABB, using
+    /// the same deferred stroke-bound contract as `Curve`.
     Arc {
         center: Vec2,
         radius: f32,
@@ -268,7 +266,7 @@ pub(crate) enum ShapeRecord {
 /// stays inside the source. `local_rect = None` ⇒ source covers the full
 /// owner; `Some(r)` ⇒ source is `r` at owner-relative coords. **Sole formula
 /// source** for the shadow paint extent: the encoder (per-quad paint rect) and
-/// [`ShapeRecord::paint_bbox_local`] (cascade's per-node ink union) both call
+/// [`ShapeRecord::bbox_local`] (cascade's per-node ink union) both call
 /// this so the two views can't drift.
 pub(crate) fn shadow_paint_rect_local(
     local_rect: Option<Rect>,
@@ -297,18 +295,16 @@ pub(crate) fn shadow_paint_rect_local(
 }
 
 impl ShapeRecord {
-    /// Owner-local paint bbox this shape draws into — cascade unions
-    /// across siblings to seed `subtree_paint_rects` (and damage
-    /// recomputes the same union on demand), encoder reads the
-    /// world-space form for damage culling. Drop shadows extend
-    /// beyond the owner via [`shadow_paint_rect_local`]; `Polyline` /
-    /// `Curve` carry a pre-computed owner-relative bbox; the rest
-    /// paint into `local_rect` (when set) or the owner's full rect at
-    /// `(0, 0)`. Does **not** handle `Text` — its bbox depends on the
-    /// shaped extent from the layout pass and is computed by
+    /// Owner-local bbox used as the basis for cascade's screen-space paint
+    /// bound. `Polyline` / `Curve` / `Arc` return their tight centerline
+    /// bbox because stroke width and the physical-pixel AA fringe are applied
+    /// after the bbox reaches screen space. Drop shadows include their full
+    /// local extent via [`shadow_paint_rect_local`]; the remaining shapes
+    /// return their paint bbox directly. Does **not** handle `Text` — its bbox
+    /// depends on the shaped extent from the layout pass and is computed by
     /// [`text_paint_bbox_local`], which cascade calls directly.
     #[inline]
-    pub(crate) fn paint_bbox_local(&self, owner_size: Size) -> Rect {
+    pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
         match self {
             ShapeRecord::Shadow {
                 local_rect, shadow, ..
@@ -329,8 +325,8 @@ impl ShapeRecord {
             }
             ShapeRecord::Polyline { bbox, .. }
             | ShapeRecord::Curve { bbox, .. }
-            | ShapeRecord::Arc { bbox, .. }
-            | ShapeRecord::Triangle { bbox, .. } => *bbox,
+            | ShapeRecord::Arc { bbox, .. } => *bbox,
+            ShapeRecord::Triangle { bbox, .. } => *bbox,
             // A mesh's vertex hull can exceed the owner rect (rotated /
             // overflowing meshes), so it must report that hull — like
             // `Polyline` / `Curve` — or partial damage clips the overflow.
@@ -524,7 +520,7 @@ mod tests {
         };
 
         assert_eq!(
-            mesh(None).paint_bbox_local(owner),
+            mesh(None).bbox_local(owner),
             hull,
             "the paint bbox is the vertex hull, not the owner rect"
         );
@@ -536,7 +532,7 @@ mod tests {
             size: Size::new(99.0, 99.0),
         };
         assert_eq!(
-            mesh(Some(offset)).paint_bbox_local(owner),
+            mesh(Some(offset)).bbox_local(owner),
             Rect {
                 min: hull.min + offset.min,
                 size: hull.size,
