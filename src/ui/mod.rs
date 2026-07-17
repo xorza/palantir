@@ -1209,19 +1209,34 @@ impl Ui {
     /// hover target doesn't change — otherwise pointer-derived paint
     /// (e.g. a proximity highlight) goes stale on screen until an
     /// unrelated event forces a frame. Like every subscription, it
-    /// lapses as soon as a record pass stops reading. Note the same
-    /// hazard exists for `ResponseState::pointer_local`, which can't
-    /// observe reads — paint derived from it should read this getter
-    /// instead.
+    /// lapses as soon as a record pass stops reading. Use
+    /// [`Self::pointer_local`] when the output should be relative to a
+    /// widget.
     pub fn pointer_pos(&mut self) -> Option<glam::Vec2> {
         self.subscribe_pointer(PointerSense::MOVE);
         self.input.pointer_pos
     }
 
-    /// Currently-held modifier keys. State persists across frames —
-    /// only `ModifiersChanged` events mutate it. Read at the start of
-    /// a drag/click to gate behavior (Cmd+LMB shortcuts, etc.).
-    pub fn modifiers(&self) -> Modifiers {
+    /// Current pointer position in `id`'s pre-transform local logical
+    /// coordinates. `None` when the pointer is off-surface or the
+    /// widget did not arrange in the previous frame.
+    ///
+    /// Reading automatically subscribes the record pass to
+    /// [`PointerSense::MOVE`], keeping pointer-local paint reactive
+    /// while the cursor moves within one hover target.
+    pub fn pointer_local(&mut self, id: WidgetId) -> Option<glam::Vec2> {
+        self.subscribe_pointer(PointerSense::MOVE);
+        self.input.pointer_local_for(id, &self.cascades)
+    }
+
+    /// Currently-held modifier keys. State persists across frames; only
+    /// `ModifiersChanged` events mutate it.
+    ///
+    /// Reading automatically subscribes the record pass to
+    /// [`KeyboardSense::MODIFIER`], so modifier-dependent paint updates
+    /// on both press and release without another input event.
+    pub fn modifiers(&mut self) -> Modifiers {
+        self.subscribe_keyboard(KeyboardSense::MODIFIER);
         self.input.modifiers
     }
 

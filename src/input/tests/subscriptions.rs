@@ -8,16 +8,22 @@
 use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
+use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
+use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::PointerSense;
+use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
+use crate::primitives::color::Color;
+use crate::shape::Shape;
+use crate::widgets::frame::Frame;
+use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
 fn empty(ui: &mut Ui) {
-    use crate::forest::element::Configure;
-    use crate::widgets::panel::Panel;
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
         .show(ui, |_| {});
@@ -178,6 +184,108 @@ fn pointer_pos_read_asserts_move_subscription() {
         !delta.requests_repaint,
         "no read this pass → moves over an inert surface skip again"
     );
+}
+
+#[test]
+fn pointer_local_read_keeps_hover_local_indicator_reactive() {
+    fn indicator(ui: &mut Ui, id: WidgetId, painted_at: &mut Option<Vec2>) {
+        Panel::canvas()
+            .id(id)
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                let local = ui.pointer_local(id);
+                if let Some(center) = local {
+                    ui.add_shape(Shape::circle(center, 3.0, 2.0).brush(Color::rgb(0.2, 0.8, 1.0)));
+                }
+                *painted_at = local;
+            });
+    }
+
+    let id = WidgetId::from_hash("pointer-local-indicator");
+    let surface = UVec2::new(200, 200);
+    let mut ui = Ui::for_test();
+    ui.input_policy = InputPolicy::OnDelta;
+    let mut painted_at = None;
+    ui.run_at_acked(surface, |ui| indicator(ui, id, &mut painted_at));
+
+    let response = ui.response_for(id);
+    let layout_rect = response.layout_rect.expect("indicator arranged");
+    let origin = response.transform.apply_point(layout_rect.min);
+    assert!(!response.hovered, "the indicator surface is inert");
+
+    for expected in [Vec2::new(20.0, 25.0), Vec2::new(70.0, 60.0)] {
+        let delta = ui.on_input(InputEvent::PointerMoved(origin + expected));
+        assert!(
+            delta.requests_repaint,
+            "pointer-local paint must wake on movement within one inert surface",
+        );
+        ui.run_at_acked(surface, |ui| indicator(ui, id, &mut painted_at));
+        assert_eq!(painted_at, Some(expected));
+    }
+}
+
+#[test]
+fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
+    fn visual(ui: &mut Ui, painted: &mut Color) {
+        let modifiers = ui.modifiers();
+        let color = if modifiers.alt && modifiers.ctrl {
+            Color::WHITE
+        } else if modifiers.alt {
+            Color::rgb(1.0, 0.0, 0.0)
+        } else if modifiers.ctrl {
+            Color::rgb(0.0, 0.0, 1.0)
+        } else {
+            Color::BLACK
+        };
+        *painted = color;
+        Frame::new()
+            .id(WidgetId::from_hash("modifier-visual"))
+            .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
+            .background(Background::fill(color))
+            .show(ui);
+    }
+
+    let surface = UVec2::new(200, 200);
+    let mut ui = Ui::for_test();
+    ui.input_policy = InputPolicy::OnDelta;
+    let mut painted = Color::TRANSPARENT;
+    ui.run_at_acked(surface, |ui| visual(ui, &mut painted));
+    assert_eq!(painted, Color::BLACK);
+
+    let states = [
+        (
+            Modifiers {
+                alt: true,
+                ..Modifiers::NONE
+            },
+            Color::rgb(1.0, 0.0, 0.0),
+        ),
+        (
+            Modifiers {
+                alt: true,
+                ctrl: true,
+                ..Modifiers::NONE
+            },
+            Color::WHITE,
+        ),
+        (
+            Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            },
+            Color::rgb(0.0, 0.0, 1.0),
+        ),
+        (Modifiers::NONE, Color::BLACK),
+    ];
+    for (modifiers, expected) in states {
+        let delta = ui.on_input(InputEvent::ModifiersChanged(modifiers));
+        assert!(
+            delta.requests_repaint,
+            "modifier-dependent paint must wake on every press and release",
+        );
+        ui.run_at_acked(surface, |ui| visual(ui, &mut painted));
+        assert_eq!(painted, expected);
+    }
 }
 
 #[test]

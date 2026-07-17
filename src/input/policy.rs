@@ -14,9 +14,9 @@
 ///
 /// Default is [`OnDelta`](Self::OnDelta) — the right behavior for
 /// almost every app. Use [`Always`](Self::Always) only for telemetry,
-/// custom canvases that paint raw pointer position without declaring
-/// `Sense::HOVER`, or any case where the build closure observes
-/// pointer state widgets don't route through the hit index.
+/// host integrations that observe raw input without the reactive
+/// [`Ui`](crate::Ui) queries, or any case where the build closure
+/// observes state widgets don't route through the hit index.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum InputPolicy {
     /// Re-record on any input event.
