@@ -543,7 +543,7 @@ fn measure_inner(
 
         let avail = {
             let s = layout.scratch.grid.depth_stack.at(depth);
-            // `sum_spanned_known` returns INFINITY if any spanned col is
+            // `known_span_size` returns INFINITY if any spanned col is
             // unresolved. After `resolve_axis` ran above, Fixed and Hug
             // cols are marked resolved; Fill cols intentionally stay
             // unresolved so cells in them get INF here — Fill stays
@@ -551,12 +551,20 @@ fn measure_inner(
             // cols would measure at a different width than they're
             // arranged at, and that discrepancy commits row heights
             // based on a width arrange doesn't honor.
-            let avail_w =
-                sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.track_span(Axis::X));
+            let avail_w = known_span_size(
+                &s.col.sizes,
+                &s.col.resolved,
+                cell.track_span(Axis::X),
+                col_gap,
+            );
             // Rows: only Fixed is known yet; Hug and Fill are unresolved
             // → INF (WPF intrinsic trick), as before.
-            let avail_h =
-                sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.track_span(Axis::Y));
+            let avail_h = known_span_size(
+                &s.row.sizes,
+                &s.row.resolved,
+                cell.track_span(Axis::Y),
+                row_gap,
+            );
             Size::new(avail_w, avail_h)
         };
 
@@ -588,7 +596,7 @@ fn measure_inner(
 
     // Resolve row heights. Shares `resolve_axis` with the col pass, so
     // Phase 4 still runs — but the row `resolved` marking is inert here:
-    // its only reader (`sum_spanned_known` in Phase 2) has already run,
+    // its only reader (`known_span_size` in Phase 2) has already run,
     // `resolved` is not part of the persisted arrange state (only `sizes`
     // + `total` are), and arrange's re-resolve rebuilds it from scratch.
     // Only the resolved `sizes` recorded below matter past this point.
@@ -765,9 +773,10 @@ fn arrange_inner(
 }
 
 /// Sum of spanned tracks' resolved sizes, or `∞` if any spanned track is not
-/// yet resolved (Hug / Fill at measure time). Infinity makes the child fall
-/// back to its intrinsic size on that axis (the WPF trick).
-fn sum_spanned_known(sizes: &[f32], resolved: &FixedBitSet, span: Span) -> f32 {
+/// yet resolved (Hug / Fill at measure time). Internal gaps contribute only
+/// when the whole span is known. Infinity makes the child fall back to its
+/// intrinsic size on that axis (the WPF trick).
+fn known_span_size(sizes: &[f32], resolved: &FixedBitSet, span: Span, gap: f32) -> f32 {
     // Cells are range-checked against the parent's track counts at record
     // time (`Tree::check_grid_cell`), so `span.range()` is always in
     // bounds here — index directly.
@@ -778,7 +787,7 @@ fn sum_spanned_known(sizes: &[f32], resolved: &FixedBitSet, span: Span) -> f32 {
         }
         sum += sizes[i];
     }
-    sum
+    sum + gap * span.len.saturating_sub(1) as f32
 }
 
 fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {
@@ -795,7 +804,7 @@ fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {
 
 fn span_size(sizes: &[f32], span: Span, gap: f32) -> f32 {
     // In-bounds by the same record-time cell range check as
-    // `sum_spanned_known`.
+    // `known_span_size`.
     let r = span.range();
     let n = r.len();
     let mut total: f32 = sizes[r].iter().sum();
@@ -861,7 +870,7 @@ fn content_floor(track: &Track, min_content: f32) -> f32 {
 ///    falls outside its capped min-content floor and `Track.max` clamps
 ///    and exits the pool; remaining Fills rebalance.
 /// 4. **Mark Fill resolved (commit):** by default Fill tracks stay
-///    unresolved so cells in Fill cols see `INF` via `sum_spanned_known`
+///    unresolved so cells in Fill cols see `INF` via `known_span_size`
 ///    during measure (preserves "Fill is finalized at arrange"). When
 ///    the grid itself is non-Hug on this axis with a finite slot, the
 ///    measure-time `total` matches arrange's, so Fill tracks can be
@@ -882,7 +891,7 @@ fn resolve_axis(
     a.sizes.fill(0.0);
     // Reset resolved flags. Fixed + Hug get marked resolved as they're
     // computed. Fill stays unresolved so cells in Fill cols see INF as
-    // their available width via `sum_spanned_known`, preserving the old
+    // their available width via `known_span_size`, preserving the old
     // "Fill is finalized at arrange" behavior. Without this, cells in
     // Fill cols would measure with measure-time Fill leftover (a
     // finite value), then arrange might collapse Fill to 0 (e.g., Hug
@@ -1066,7 +1075,7 @@ pub(crate) fn intrinsic(
             continue;
         }
         // In-bounds by the record-time cell range check
-        // (`Tree::check_grid_cell`) — same stance as `sum_spanned_known`.
+        // (`Tree::check_grid_cell`) — same stance as `known_span_size`.
         let track_idx = cell_span.start as usize;
         let t = &tracks[track_idx];
         if !t.size.is_hug() {
