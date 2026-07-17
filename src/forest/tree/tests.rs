@@ -5,7 +5,7 @@ use crate::forest::layer::Layer;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Tree;
 use crate::forest::tree::node::NodeId;
-use crate::forest::tree::recording::RecordingScratch;
+use crate::forest::tree::recording::{Placement, RecordingScratch};
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
@@ -833,8 +833,16 @@ fn ui_layer_records_popup_into_separate_tree() {
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);
     assert_eq!(popup_tree.roots[0].first_node.idx(), 0);
-    assert_eq!(popup_tree.roots[0].placement.anchor, popup_anchor);
-    assert_eq!(popup_tree.roots[0].placement.size, None);
+    assert!(
+        matches!(
+            popup_tree.roots[0].placement,
+            Placement::Fixed {
+                anchor,
+                size: None
+            } if anchor == popup_anchor
+        ),
+        "popup root keeps its fixed layer placement",
+    );
     assert_eq!(
         main_tree.records.subtree_end()[0].end() as usize,
         main_tree.records.len(),
@@ -846,12 +854,10 @@ fn ui_layer_records_popup_into_separate_tree() {
 }
 
 /// `Ui::layer`'s optional size cap selects the overlay's `available`.
-/// `None` fills from anchor to surface bottom-right (anchor-clamped —
-/// the dropdown/tooltip default). `Some(s)` is anchor-independent and
-/// clamped to the surface; the caller takes placement responsibility
-/// in that mode (typically via a popup's flip-then-clamp). Anchor here
-/// is (50, 40) on a 400×300 surface; remaining viewport from that
-/// anchor is (350, 260).
+/// `None` fills from anchor to surface bottom-right. `Some(s)` is
+/// anchor-independent and clamped to the surface; the caller owns
+/// placement in that mode. Anchor here is (50, 40) on a 400×300
+/// surface; remaining viewport from that anchor is (350, 260).
 #[test]
 fn ui_layer_size_caps_overlay_available() {
     use crate::primitives::size::Size;

@@ -140,9 +140,7 @@ impl ContextMenu {
             e.min_size.w = theme_min_width;
         }
 
-        // `Popup::show` handles surface-aware placement (flip when
-        // overflowing, clamp as a last resort, one-shot relayout on
-        // first open). ContextMenu just hands the raw anchor through.
+        // `Popup::show` resolves the current body against the surface.
         let mut popup = Popup::anchored_to(raw_anchor)
             .click_outside(ClickOutside::Dismiss)
             .background(panel);

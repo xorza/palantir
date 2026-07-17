@@ -15,6 +15,7 @@ use crate::input::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
@@ -238,14 +239,7 @@ fn popup_body_sizing_matches_sizing_mode() {
     }
 }
 
-/// Pin: a popup whose content wouldn't fit below a near-bottom anchor
-/// must flip and paint *above* the anchor instead of squeezing into
-/// the few pixels of remaining vertical space. Earlier the layout
-/// engine clamped `available` to `surface − anchor`, so the body
-/// measured into the tiny slot, placement saw the squeezed size
-/// and decided no flip was needed — feedback loop. `Ui::layer` now
-/// passes `Some(surface)` for anchor-independent measurement, which
-/// lets the body keep its full size and flip cleanly.
+/// A popup keeps its natural size and flips above a near-bottom anchor.
 #[test]
 fn popup_near_bottom_flips_upward() {
     use crate::forest::layer::Layer;
@@ -270,8 +264,6 @@ fn popup_near_bottom_flips_upward() {
                     });
             });
     };
-    // `Ui::frame` honours the popup's first-open relayout request, so
-    // pass B in this very call places against pass A's measured size.
     ui.run_at(SURF, scene);
 
     let popup_tree = &ui.forest.trees[Layer::Popup];
@@ -290,16 +282,8 @@ fn popup_near_bottom_flips_upward() {
     );
 }
 
-/// Regression: the flipped placement must reach the **cascade** (what
-/// the encoder paints and damage diffs against), not just `ui.layout`.
-/// The popup's anchor lives on `RootSlot`, outside every node hash, so
-/// pass B's flip changes only the anchor — identical body content. If
-/// `cascade_fingerprint` ignores the anchor, pass B's cascade is reused
-/// from pass A and the popup paints at the un-flipped raw anchor while
-/// `ui.layout` (always re-run) shows the correct flipped rect. The user
-/// sees the popup clipped/mispositioned until an unrelated content
-/// change (mouse hover over an item) forces a cascade recompute. Pin
-/// that the painted position equals the laid-out position.
+/// The placement policy participates in the cascade fingerprint, so the
+/// painted position stays synchronized with layout.
 #[test]
 fn popup_flip_reaches_cascade_not_just_layout() {
     use crate::forest::layer::Layer;
@@ -347,15 +331,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     );
 }
 
-/// Pin: a popup whose body contains a [`crate::Scroll`] placed near a
-/// surface edge settles on the very first frame. `Scroll`'s bar
-/// gutter reservation is constant (not state-driven), so the Hugged
-/// popup body has the same outer width in pass A and pass B, and
-/// placement lands the body in one shot. Bar visibility (thumb +
-/// track drawn or not) toggles separately based on this-frame's
-/// overflow; the gutter is reserved either way.
-///
-/// Stays within the engine's standard 2-pass-per-frame budget.
+/// A popup containing [`crate::Scroll`] resolves at an edge in one frame.
 #[test]
 fn popup_with_scroll_settles_in_one_frame() {
     use crate::Scroll;
@@ -393,9 +369,6 @@ fn popup_with_scroll_settles_in_one_frame() {
             .rect
             .expect("popup body has a rect")
     };
-    // First frame opens the popup. Body's hugged width is
-    // `content + bar_w` in both passes (constant reservation), so
-    // pass B's placement matches pass B's measured rect.
     ui.run_at_acked(SURF, scene);
     let first = body_rect(&ui);
     // Subsequent input frames must hit the same rect — no drift.
@@ -410,11 +383,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     }
 }
 
-/// Pin: once the popup has settled into its flipped position on the
-/// opening frame, subsequent frames (input or no input) must leave
-/// the placement unchanged — the user reported a 1-frame shift on
-/// mouse-move, which would happen if pass B never fired on the
-/// opening frame and the popup landed at the raw anchor first.
+/// A flipped popup remains stable across input and idle frames.
 #[test]
 fn popup_placement_is_stable_across_frames() {
     const SURF: UVec2 = UVec2::new(400, 300);
@@ -454,6 +423,96 @@ fn popup_placement_is_stable_across_frames() {
         first, second,
         "popup must not shift between opening frame and the next input-triggered frame",
     );
+}
+
+#[test]
+fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
+    const EDGE_SURFACE: UVec2 = UVec2::new(400, 300);
+
+    #[derive(Clone, Copy, Debug)]
+    enum Edge {
+        Top,
+        Right,
+        Bottom,
+        Left,
+    }
+
+    let cases = [
+        (
+            Edge::Top,
+            Rect::new(150.0, 70.0, 100.0, 30.0),
+            Vec2::new(150.0, 30.0),
+            Vec2::new(150.0, 100.0),
+        ),
+        (
+            Edge::Right,
+            Rect::new(270.0, 130.0, 30.0, 40.0),
+            Vec2::new(300.0, 130.0),
+            Vec2::new(110.0, 130.0),
+        ),
+        (
+            Edge::Bottom,
+            Rect::new(150.0, 230.0, 100.0, 30.0),
+            Vec2::new(150.0, 260.0),
+            Vec2::new(150.0, 130.0),
+        ),
+        (
+            Edge::Left,
+            Rect::new(100.0, 130.0, 30.0, 40.0),
+            Vec2::new(20.0, 130.0),
+            Vec2::new(130.0, 130.0),
+        ),
+    ];
+
+    for (edge, anchor, small_min, large_min) in cases {
+        let mut ui = Ui::for_test();
+        let body_id = WidgetId::from_hash("dynamic-popup");
+        let frame = |ui: &mut Ui, size: Size| {
+            let mut passes = 0;
+            ui.run_at_acked(EDGE_SURFACE, |ui| {
+                passes += 1;
+                let popup = match edge {
+                    Edge::Top => Popup::above(anchor),
+                    Edge::Right => Popup::right_of(anchor),
+                    Edge::Bottom => Popup::below(anchor),
+                    Edge::Left => Popup::left_of(anchor),
+                };
+                popup
+                    .id(body_id)
+                    .padding(0.0)
+                    .background(Default::default())
+                    .show(ui, |ui, _| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("dynamic-content"))
+                            .size((Sizing::fixed(size.w), Sizing::fixed(size.h)))
+                            .show(ui, |_| {});
+                    });
+            });
+            assert_eq!(passes, 1, "{edge:?} must converge in one pass");
+            ui.response_for(body_id).rect.expect("popup body arranged")
+        };
+
+        let small = frame(&mut ui, Size::new(80.0, 40.0));
+        assert_eq!(
+            small,
+            Rect {
+                min: small_min,
+                size: Size::new(80.0, 40.0),
+            },
+        );
+
+        let large = frame(&mut ui, Size::new(160.0, 100.0));
+        assert_eq!(
+            large,
+            Rect {
+                min: large_min,
+                size: Size::new(160.0, 100.0),
+            },
+        );
+
+        let shrunk = frame(&mut ui, Size::new(80.0, 40.0));
+        assert_eq!(shrunk, small, "{edge:?} shrink must reposition immediately");
+    }
 }
 
 /// Pin: pointer gestures over the area outside the popup body must be

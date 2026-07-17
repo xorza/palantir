@@ -10,11 +10,9 @@ use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::Tree;
 use crate::forest::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::forest::tree::recording::{Placement, RecordingScratch};
-use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::record_store::RecordStore;
 use crate::shape::Shape;
-use glam::Vec2;
 use std::time::Duration;
 
 pub(crate) mod element;
@@ -58,7 +56,7 @@ pub(crate) struct Forest {
     /// per-node z, so a lower nest would paint under its parent. Real
     /// case: a tooltip rising from a popup or modal body. Strictly
     /// increasing ⇒ each layer appears at most once, keeping the
-    /// per-`Tree` `pending_anchor` slot single-occupancy. Retained across
+    /// per-`Tree` `pending_placement` slot single-occupancy. Retained across
     /// frames (cleared with capacity kept in `pre_record`) so
     /// steady-state recording is alloc-free.
     layer_stack: Vec<Layer>,
@@ -84,9 +82,8 @@ impl Forest {
         }
     }
 
-    /// Finalize every tree. Pure structural pass — `RootSlot.placement.anchor`
-    /// is just a placement; the surface needed to derive each root's
-    /// "available" room is passed straight to `LayoutEngine::run`.
+    /// Finalize every tree. Pure structural pass — the surface needed
+    /// to evaluate each root's placement is passed to `LayoutEngine::run`.
     /// The paint-anim wake fold is centralised in
     /// [`Self::min_paint_anim_wake`] and run at the tail of
     /// `Ui::frame` for both record + paint-only paths.
@@ -256,7 +253,7 @@ impl Forest {
         );
     }
 
-    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
+    pub(crate) fn push_layer(&mut self, layer: Layer, placement: Placement) {
         let active = self.current_layer();
         // A nested side layer must paint *above* the scope it's raised
         // from. The cross-layer scheme has no per-node z-index — paint
@@ -266,7 +263,7 @@ impl Forest {
         // Tooltip > Popup, Tooltip > Modal) and rejects a lower-or-equal
         // nest, which would record fine but then render *underneath* its
         // parent (occluded, un-hittable). Equal is rejected too: it would
-        // also clobber the single per-layer `pending_anchor` slot.
+        // also clobber the single per-layer `pending_placement` slot.
         // Strictly increasing ⇒ each layer appears at most once on the
         // stack, so that slot stays single-occupancy without a guard.
         debug_assert!(
@@ -279,7 +276,7 @@ impl Forest {
             scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
-        scratch.pending_anchor = Some(Placement { anchor, size });
+        scratch.pending_placement = Some(placement);
         self.layer_stack.push(layer);
     }
 
@@ -295,7 +292,7 @@ impl Forest {
             scratch.open_frames.len(),
             layer,
         );
-        scratch.pending_anchor = None;
+        scratch.pending_placement = None;
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one

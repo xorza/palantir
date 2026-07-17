@@ -18,6 +18,7 @@ use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_p
 use crate::forest::tree::Tree;
 use crate::forest::tree::iter::{TreeItem, TreeItems};
 use crate::forest::tree::node::NodeId;
+use crate::forest::tree::recording::Placement;
 use crate::input::sense::Sense;
 use crate::layout::scroll::ScrollStates;
 use crate::layout::{LayerLayout, Layout};
@@ -531,21 +532,26 @@ pub(crate) fn cascade_fingerprint(
             // whose `by_id` still maps the dead old id.
             h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
             h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
-            // Layer placement (anchor + measure cap) rides on
-            // `RootSlot`, outside every node hash, yet it feeds
-            // arrange. Fold it so a popup's pass-B flip/clamp —
-            // which changes only the anchor while the body content
-            // is identical — re-runs the cascade instead of reusing
-            // pass A's pre-flip screen rects (else the popup paints
-            // at the raw anchor until an unrelated content change
-            // forces a recompute).
-            approx::hash_visual_vec2(slot.placement.anchor, &mut h);
-            match slot.placement.size {
-                Some(size) => {
-                    h.write_u8(1);
-                    approx::hash_visual_size(size, &mut h);
+            // Placement lives outside node hashes but changes arranged rects.
+            match slot.placement {
+                Placement::Fixed { anchor, size } => {
+                    h.write_u8(0);
+                    approx::hash_visual_vec2(anchor, &mut h);
+                    match size {
+                        Some(size) => {
+                            h.write_u8(1);
+                            approx::hash_visual_size(size, &mut h);
+                        }
+                        None => h.write_u8(0),
+                    }
                 }
-                None => h.write_u8(0),
+                Placement::Overlay(position) => {
+                    h.write_u8(1);
+                    approx::hash_visual_rect(position.anchor, &mut h);
+                    h.write_u8(position.side as u8);
+                    h.write_u8(position.align as u8);
+                    approx::hash_visual_f32(position.gap, &mut h);
+                }
             }
         }
     }

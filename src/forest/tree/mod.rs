@@ -313,7 +313,7 @@ impl Tree {
 
     /// Push a node as a child of the currently-open node (or as a new
     /// root if `scratch.open_frames` is empty) and make it the new tip.
-    /// Root mints stamp `scratch.pending_anchor` onto the new
+    /// Root mints stamp `scratch.pending_placement` onto the new
     /// `RootSlot`; child opens don't read it.
     ///
     /// `new_id` is the pre-reserved id `Forest::open_node` already
@@ -354,7 +354,7 @@ impl Tree {
         let parent_frame = scratch.open_frames.last().copied();
 
         if parent_frame.is_none() {
-            let pending = scratch.pending_anchor.unwrap_or_default();
+            let pending = scratch.pending_placement.unwrap_or_default();
             self.roots.push(RootSlot {
                 first_node: new_id,
                 placement: pending,
