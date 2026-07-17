@@ -22,7 +22,7 @@ pub(crate) mod write_stats;
 use self::curve_pipeline::CurvePipeline;
 use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
-use self::gpu_pass_stats::BatchKind;
+use self::gpu_pass_stats::{BatchKind, GpuPassStats};
 use self::gpu_timings::GpuTimings;
 use self::gradient_resources::GradientResources;
 use self::image_pipeline::ImagePipeline;
@@ -60,23 +60,6 @@ use wgpu::util::StagingBelt;
 /// layout matches and bytes written by other pipelines stay valid
 /// after a pipeline switch.
 pub(crate) const IMMEDIATES_BYTES: u32 = 16;
-
-/// Construction-time knobs for [`WgpuBackend::new`]. Grouped so the
-/// `WindowRenderer` / `WinitHost` call sites don't grow a long positional
-/// signature each time a new GPU-side setting is exposed.
-#[derive(Debug)]
-pub(crate) struct WgpuBackendConfig {
-    /// Opt into GPU instrumentation: the backend wires up timestamp
-    /// queries, writes resolved samples through the context's stats
-    /// handle, and
-    /// pays the per-frame `resolve_query_set` + `map_async` +
-    /// `device.poll(Poll)` + readback cost. `false` skips the whole
-    /// path — `GpuTimings` is never constructed. Adapter features
-    /// (`TIMESTAMP_QUERY`, `+TIMESTAMP_QUERY_INSIDE_PASSES`,
-    /// `+PIPELINE_STATISTICS_QUERY`) still gate what actually gets
-    /// collected; missing features degrade individually.
-    pub(crate) collect_gpu_stats: bool,
-}
 
 /// Persistent off-screen *color* target for the backbuffer-copy path: the
 /// frontend renders into it, then [`WgpuBackend::submit`] copies it onto the
@@ -170,10 +153,10 @@ pub(crate) struct WgpuBackend {
     /// registered images and dirty gradient rows to GPU.
     caches: RenderCaches,
     /// Main-pass timestamp queries. `Some` when the host opted into
-    /// instrumentation (see `WinitHostConfig::collect_gpu_stats`) AND
-    /// the adapter advertises `TIMESTAMP_QUERY`. Holds its own clone of
-    /// the context's `GpuPassStats` handle; with one shared backend the
-    /// published sample reflects the most recently submitted window.
+    /// instrumentation and the device was created with `TIMESTAMP_QUERY`
+    /// enabled. Holds its own clone of the context's `GpuPassStats` handle;
+    /// with one shared backend the published sample reflects the most recently
+    /// submitted window.
     gpu_timings: Option<GpuTimings>,
 }
 
@@ -197,35 +180,8 @@ impl WgpuBackend {
     /// glyph + gradient atlases, the image texture cache). Format-agnostic
     /// at construction: each swapchain format's pipeline set builds lazily
     /// on the first submit that targets it (see [`Self::ensure_format`]).
-    pub(crate) fn new(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        ctx: &HostContext,
-        config: WgpuBackendConfig,
-    ) -> Self {
-        let WgpuBackendConfig { collect_gpu_stats } = config;
+    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue, ctx: &HostContext) -> Self {
         let caches = ctx.caches.clone();
-        // GPU pass timing collection is opt-in. When on, adapter features
-        // degrade what gets collected: `TIMESTAMP_QUERY` is required at
-        // all; `+TIMESTAMP_QUERY_INSIDE_PASSES` enables per-batch
-        // attribution; `+PIPELINE_STATISTICS_QUERY` adds VS/FS invocation
-        // counts. The non-zero `period` check guards against headless /
-        // software queues that advertise the feature but can't time.
-        // Samples publish through a clone of the context's stats handle —
-        // the same one every `Ui`'s debug overlay reads.
-        let features = device.features();
-        let gpu_timings = (collect_gpu_stats
-            && features.contains(wgpu::Features::TIMESTAMP_QUERY)
-            && queue.get_timestamp_period() > 0.0)
-            .then(|| {
-                GpuTimings::new(
-                    &device,
-                    queue.get_timestamp_period(),
-                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-                    features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                    ctx.pass_stats.clone(),
-                )
-            });
         // Gradient LUT atlas resources, shared by the quad and curve
         // pipelines (both sample gradient brushes). Owned here so neither
         // pipeline owns the other's input — each composes its layout
@@ -258,8 +214,25 @@ impl WgpuBackend {
             debug,
             pipelines,
             caches,
-            gpu_timings,
+            gpu_timings: None,
         }
+    }
+
+    pub(crate) fn collect_gpu_stats(mut self, collect: bool, stats: GpuPassStats) -> Self {
+        let features = self.device.features();
+        self.gpu_timings = (collect
+            && features.contains(wgpu::Features::TIMESTAMP_QUERY)
+            && self.queue.get_timestamp_period() > 0.0)
+            .then(|| {
+                GpuTimings::new(
+                    &self.device,
+                    self.queue.get_timestamp_period(),
+                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+                    features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
+                    stats,
+                )
+            });
+        self
     }
 
     /// Ensure the pipeline set for `format` exists, building + caching it

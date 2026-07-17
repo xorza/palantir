@@ -10,7 +10,7 @@ use winit::window::Window;
 
 use crate::host::context::HostContext;
 use crate::host::winit::config::WinitHostConfig;
-use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
+use crate::renderer::backend::WgpuBackend;
 
 /// Shared GPU context — built once on the first `resumed` and retained
 /// for the host's lifetime so additional windows reuse one device/queue.
@@ -28,10 +28,6 @@ pub(crate) struct Gpu {
     /// Swapchain present mode applied to every window's surface — fixed
     /// at startup from `WinitHostConfig`, app-global.
     present_mode: wgpu::PresentMode,
-    /// Whether the device was created with the timing-query features.
-    /// Threaded into the shared backend via [`Self::make_backend`] so it
-    /// opts into instrumentation only when the device actually supports it.
-    collect_gpu_stats: bool,
 }
 
 /// A window's swapchain pieces, produced by [`Gpu::make_surface`]. The
@@ -113,7 +109,6 @@ impl Gpu {
             device,
             queue,
             present_mode: cfg.present_mode,
-            collect_gpu_stats: cfg.collect_gpu_stats,
         };
         let size = window.inner_size();
         let first_surface = gpu.build_window_surface(surface, UVec2::new(size.width, size.height));
@@ -175,16 +170,10 @@ impl Gpu {
 
     /// Build the one shared [`WgpuBackend`] every window renders through,
     /// cloning the shared resources it needs from `ctx`. Format-agnostic —
-    /// each window attaches via `WindowRenderer::new(ctx)` and its
+    /// each window attaches via `WindowRenderer::new` and its
     /// format's pipelines build lazily on first submit.
     pub(crate) fn make_backend(&self, ctx: &HostContext) -> WgpuBackend {
-        WgpuBackend::new(
-            self.device.clone(),
-            self.queue.clone(),
-            ctx,
-            WgpuBackendConfig {
-                collect_gpu_stats: self.collect_gpu_stats,
-            },
-        )
+        WgpuBackend::new(self.device.clone(), self.queue.clone(), ctx)
+            .collect_gpu_stats(true, ctx.pass_stats.clone())
     }
 }

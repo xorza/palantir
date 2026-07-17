@@ -83,7 +83,6 @@ type AppBuilder<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 /// host-side scheduling state. The shared GPU renderer (device/queue,
 /// pipelines, atlases) lives on [`Running`], not here.
 struct WindowState {
-    token: WindowToken,
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
@@ -316,7 +315,9 @@ where
     /// Find the window addressed by a caller token (linear scan — window
     /// counts are tiny). `None` if no live window carries it.
     fn window_by_token(&mut self, token: WindowToken) -> Option<&mut WindowState> {
-        self.windows.values_mut().find(|w| w.token == token)
+        self.windows
+            .values_mut()
+            .find(|w| w.renderer.token == token)
     }
 
     /// Paint one window. Bundles its surface, config, scale, and monitor
@@ -332,7 +333,7 @@ where
             return;
         };
         let window = win.window.clone();
-        let token = win.token;
+        let token = win.renderer.token;
         // `refresh_millihertz` is queried each frame so a window dragged
         // onto a different-refresh monitor re-paces immediately — winit
         // fires no reliable "refresh changed" event to cache against.
@@ -365,7 +366,6 @@ where
                 refresh_millihertz,
             },
             &mut run.app,
-            token,
             || window.pre_present_notify(),
         );
         // Apply the frame's cursor request, only on change — the request
@@ -398,7 +398,7 @@ where
         token: WindowToken,
         cfg: WindowConfig,
     ) {
-        if self.windows.values().any(|w| w.token == token) {
+        if self.windows.values().any(|w| w.renderer.token == token) {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return;
         }
@@ -407,27 +407,20 @@ where
         let run = self.running.as_ref().expect("open_window before boot");
         let window = create_window(event_loop, &cfg);
         let ws = run.gpu.make_surface(&window);
-        let renderer = WindowRenderer::builder(&run.context, run.gpu.max_texture_dim).build();
-        self.insert_window(token, window, ws, renderer);
+        let renderer = WindowRenderer::new(token, &run.context, run.gpu.max_texture_dim);
+        self.insert_window(window, ws, renderer);
     }
 
     /// Register a freshly built window in the routing map, scheduled to
     /// paint its first frame (`next: Immediate` makes the next
     /// `about_to_wait` request the redraw). Shared tail of `resumed` and
     /// `spawn_window`.
-    fn insert_window(
-        &mut self,
-        token: WindowToken,
-        window: Arc<Window>,
-        ws: WindowSurface,
-        renderer: WindowRenderer,
-    ) {
+    fn insert_window(&mut self, window: Arc<Window>, ws: WindowSurface, renderer: WindowRenderer) {
         let scale_factor = window.scale_factor() as f32;
         let id = window.id();
         self.windows.insert(
             id,
             WindowState {
-                token,
                 window,
                 surface: ws.surface,
                 config: ws.config,
@@ -457,7 +450,7 @@ where
         // recreates the window instead of tripping `spawn_window`'s
         // duplicate-token guard and losing it.
         for token in closes {
-            self.windows.retain(|_, win| win.token != token);
+            self.windows.retain(|_, win| win.renderer.token != token);
         }
         for pw in opens {
             self.spawn_window(event_loop, pw.token, pw.config);
@@ -483,7 +476,7 @@ where
             return;
         };
         run.context
-            .set_open_windows(windows.values().map(|w| w.token));
+            .set_open_windows(windows.values().map(|w| w.renderer.token));
         if run.context.take_overlay_dirty() {
             for win in windows.values_mut() {
                 win.next = FramePresent::Immediate;
@@ -588,7 +581,7 @@ where
         // (which also carries the app-global window/overlay state).
         let ctx = HostContext::new(TextShaper::with_bundled_fonts());
         let backend = gpu.make_backend(&ctx);
-        let mut renderer = WindowRenderer::builder(&ctx, gpu.max_texture_dim).build();
+        let mut renderer = WindowRenderer::new(boot.token, &ctx, gpu.max_texture_dim);
 
         // Build the app now that the first `Ui` exists.
         let mut app = (boot.build)(&mut renderer.ui, self.handle());
@@ -598,7 +591,7 @@ where
             task(&mut app);
         }
 
-        self.insert_window(boot.token, window, ws, renderer);
+        self.insert_window(window, ws, renderer);
         self.running = Some(Running {
             app,
             gpu,
