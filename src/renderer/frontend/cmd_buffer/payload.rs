@@ -7,6 +7,7 @@ use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
     rect::Rect,
+    transform::TranslateScale,
 };
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
@@ -145,6 +146,30 @@ pub(crate) enum CmdKind {
 pub(crate) struct PushClipPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
+}
+
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct PushTransformPayload {
+    pub(crate) translation: glam::Vec2,
+    pub(crate) scale: f32,
+}
+
+impl From<TranslateScale> for PushTransformPayload {
+    fn from(transform: TranslateScale) -> Self {
+        Self {
+            translation: transform.translation,
+            scale: transform.scale,
+            ..bytemuck::Zeroable::zeroed()
+        }
+    }
+}
+
+impl From<PushTransformPayload> for TranslateScale {
+    fn from(payload: PushTransformPayload) -> Self {
+        Self::new(payload.translation, payload.scale)
+    }
 }
 
 /// Brush metadata packed into draw-rect payloads. `fill_kind` low byte

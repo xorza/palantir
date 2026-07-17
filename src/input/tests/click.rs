@@ -205,19 +205,39 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 }
 
 #[test]
-fn zoom_panel_routes_clicks_by_world_rect() {
+fn transformed_panels_route_clicks_by_composed_world_rect() {
     use crate::primitives::transform::TranslateScale;
-    // (label, scale, click_pos, expect_hit).
-    let cases: &[(&str, f32, Vec2, bool)] = &[
-        ("scale_2x_inside", 2.0, Vec2::new(75.0, 75.0), true),
+    let cases = [
+        (
+            "scale_2x_inside",
+            TranslateScale::IDENTITY,
+            TranslateScale::from_scale(2.0),
+            Vec2::new(75.0, 75.0),
+            true,
+        ),
         (
             "scale_0.5x_outside_world",
-            0.5,
+            TranslateScale::IDENTITY,
+            TranslateScale::from_scale(0.5),
             Vec2::new(40.0, 40.0),
             false,
         ),
+        (
+            "nested_composition_inside",
+            TranslateScale::new(Vec2::new(10.0, 20.0), 2.0),
+            TranslateScale::new(Vec2::new(5.0, 7.0), 3.0),
+            Vec2::new(250.0, 250.0),
+            true,
+        ),
+        (
+            "nested_composition_before_composed_min",
+            TranslateScale::new(Vec2::new(10.0, 20.0), 2.0),
+            TranslateScale::new(Vec2::new(5.0, 7.0), 3.0),
+            Vec2::new(15.0, 30.0),
+            false,
+        ),
     ];
-    for (label, scale, click_pos, expect) in cases {
+    for (label, parent_transform, child_transform, click_pos, expect) in cases {
         let mut ui = Ui::for_test();
         let surface = UVec2::new(400, 400);
         let build = |ui: &mut Ui, capture: &mut bool| {
@@ -225,24 +245,30 @@ fn zoom_panel_routes_clicks_by_world_rect() {
                 Panel::zstack()
                     .id(WidgetId::from_hash("zoomer"))
                     .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                    .transform(TranslateScale::from_scale(*scale))
+                    .transform(parent_transform)
                     .show(ui, |ui| {
-                        *capture |= Button::new()
-                            .id(WidgetId::from_hash("inner"))
+                        Panel::zstack()
+                            .id(WidgetId::from_hash("inner_transform"))
                             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                            .show(ui)
-                            .left
-                            .clicked();
+                            .transform(child_transform)
+                            .show(ui, |ui| {
+                                *capture |= Button::new()
+                                    .id(WidgetId::from_hash("inner"))
+                                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
+                                    .show(ui)
+                                    .left
+                                    .clicked();
+                            });
                     });
             });
         };
         let mut sink = false;
         ui.run_at_acked(surface, |ui| build(ui, &mut sink));
-        ui.click_at(*click_pos);
+        ui.click_at(click_pos);
 
         let mut clicked = false;
         ui.run_at_acked(surface, |ui| build(ui, &mut clicked));
-        assert_eq!(clicked, *expect, "case {label}");
+        assert_eq!(clicked, expect, "case {label}");
     }
 }
 

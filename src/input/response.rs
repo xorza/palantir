@@ -251,8 +251,8 @@ pub struct ResponseState {
     /// into `rect` (screen space): `rect == transform.apply_rect(layout_rect)`.
     /// [`TranslateScale::IDENTITY`] when the widget sits under no transform.
     /// Use it to convert a surface-space pointer into the widget's own
-    /// logical coordinates — e.g. `(ptr - rect.min) / transform.scale` for
-    /// hit-testing content laid out in logical px under a zoomed canvas.
+    /// logical coordinates — e.g. `transform.inverse_vector(ptr - rect.min)`
+    /// for hit-testing content laid out in logical px under a zoomed canvas.
     pub transform: TranslateScale,
     /// Cursor position relative to this widget's `rect.min`. `None`
     /// when the pointer is off-surface or the widget didn't arrange
