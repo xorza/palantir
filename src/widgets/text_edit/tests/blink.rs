@@ -15,7 +15,7 @@ fn caret_blinks_on_and_off_while_focused() {
             *leaf = Some(
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("blink-ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -151,7 +151,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("anim-damage"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -215,7 +215,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("refocus-blink"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -262,7 +262,7 @@ fn focused_text_edit_schedules_blink_wake() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     });
@@ -278,7 +278,7 @@ fn focused_text_edit_schedules_blink_wake() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     });

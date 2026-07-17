@@ -6,7 +6,7 @@
 //! Two gap fields: `gap` is within-line sibling spacing (same role as
 //! Stack's gap); `line_gap` is between-line spacing.
 //!
-//! `Sizing::Fill` on the main axis is treated as `Hug` here — wrap
+//! `Sizing::fill` on the main axis is treated as `Hug` here — wrap
 //! semantics conflict with "consume row leftover" and need explicit
 //! per-line distribution that's outside this MVP. Cross-axis Fill works
 //! identically to Stack: each line's cross size = max child cross, and
@@ -22,7 +22,7 @@ use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
     JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::Sizes;
 use crate::primitives::{rect::Rect, size::Size};
 
 /// One child's contribution to the current line. `m` always comes from
@@ -46,7 +46,7 @@ struct LinePack {
 fn child_pack(axis: Axis, child_size: Sizes, d: Size) -> ChildPack {
     ChildPack {
         m: axis.main(d),
-        x: if matches!(axis.cross_sizing(child_size), Sizing::Fill(_)) {
+        x: if axis.cross_sizing(child_size).fill_weight().is_some() {
             0.0
         } else {
             axis.cross(d)

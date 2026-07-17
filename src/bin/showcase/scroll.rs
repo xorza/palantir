@@ -105,7 +105,7 @@ fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
 fn row(ui: &mut Ui, i: u32) {
     Panel::hstack()
         .id_salt(("scroll-row", i))
-        .size((Sizing::FILL, Sizing::Fixed(28.0)))
+        .size((Sizing::FILL, Sizing::fixed(28.0)))
         .padding((10.0, 6.0))
         .background(swatch_bg(gradient_color(i)))
         .show(ui, |ui| {
@@ -119,7 +119,7 @@ fn row(ui: &mut Ui, i: u32) {
 fn col(ui: &mut Ui, i: u32) {
     Panel::vstack()
         .id_salt(("scroll-col", i))
-        .size((Sizing::Fixed(60.0), Sizing::FILL))
+        .size((Sizing::fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
         .background(swatch_bg(gradient_color(i)))
         .show(ui, |ui| {
@@ -144,7 +144,7 @@ fn grid(ui: &mut Ui) {
                     for c in 0..12u32 {
                         Panel::hstack()
                             .id_salt(("xy-cell", r, c))
-                            .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                            .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                             .padding((6.0, 4.0))
                             .background(swatch_bg(gradient_color(r * 12 + c)))
                             .show(ui, |ui| {

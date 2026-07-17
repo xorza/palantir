@@ -47,7 +47,7 @@ fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("editor"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -93,11 +93,11 @@ fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui) + 'a {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("editor"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
             Button::new()
                 .id(WidgetId::from_hash("plain"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -108,7 +108,7 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
                 .id(WidgetId::from_hash("ed"))
-                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)));
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)));
             if let Some(p) = padding {
                 e = e.padding(p);
             }
@@ -138,7 +138,7 @@ fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("ml-ed"))
                 .multiline(true)
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(120.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(120.0)))
                 .show(ui);
         });
     }

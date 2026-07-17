@@ -74,7 +74,7 @@ pub(crate) fn build(ui: &mut Ui) {
         Panel::hstack()
             .id_salt("pz-controls")
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 for (value, label) in [
                     (Content::Grid, "button grid"),
@@ -140,7 +140,7 @@ fn header_band(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("hdr")
         .gap(6.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             Text::new("Complex showcase")
                 .auto_id()
@@ -148,7 +148,7 @@ fn header_band(ui: &mut Ui) {
                 .show(ui);
             Frame::new()
                 .id_salt("hdr-spacer")
-                .size((Sizing::FILL, Sizing::Fixed(1.0)))
+                .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .show(ui);
             for i in 0..6 {
                 Button::new()
@@ -172,7 +172,7 @@ fn property_grid(ui: &mut Ui) {
         .rows(Rc::<[Track]>::from(rows))
         .gap(6.0)
         .padding(4.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             let labels = [
                 "Name",
@@ -224,7 +224,7 @@ fn gradient_strip(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("grad-row")
         .gap(6.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for i in 0..10 {
                 let t = i as f32 / 10.0;
@@ -232,7 +232,7 @@ fn gradient_strip(ui: &mut Ui) {
                 let b = Color::rgb(0.95 - 0.5 * t, 0.7 * t, 0.3 + 0.5 * t);
                 Frame::new()
                     .id_salt(("grad", i))
-                    .size((Sizing::Fixed(72.0), Sizing::Fixed(56.0)))
+                    .size((Sizing::fixed(72.0), Sizing::fixed(56.0)))
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
                         corners: Corners::all(6.0),
@@ -274,7 +274,7 @@ fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
     Button::new()
         .id_salt((salt, "cell", r, c))
         .label(format!("{r},{c}"))
-        .size((Sizing::Fixed(56.0), Sizing::Fixed(40.0)))
+        .size((Sizing::fixed(56.0), Sizing::fixed(40.0)))
         .padding((6.0, 4.0))
         .style(cell_theme(r, c))
         .show(ui)
@@ -286,17 +286,17 @@ fn chat_messages(ui: &mut Ui, count: u32) {
     Panel::vstack()
         .id_salt("chat")
         .gap(8.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for i in 0..count {
                 Panel::hstack()
                     .id_salt(("chat-row", i))
                     .gap(8.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         Frame::new()
                             .id_salt(("avatar", i))
-                            .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                            .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                             .background(Background {
                                 fill: cell_color(i, i / 3).into(),
                                 corners: Corners::all(20.0),
@@ -306,7 +306,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                         Panel::vstack()
                             .id_salt(("chat-text", i))
                             .gap(2.0)
-                            .size((Sizing::FILL, Sizing::Hug))
+                            .size((Sizing::FILL, Sizing::HUG))
                             .show(ui, |ui| {
                                 Text::new(format!("user_{i}"))
                                     .id_salt(("from", i))
@@ -319,7 +319,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                                 .id_salt(("msg", i))
                                 .style(TextStyle::default().with_font_size(13.0))
                                 .text_wrap(TextWrap::WrapWithOverflow)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui);
                             });
                     });
@@ -330,7 +330,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
 fn canvas_polylines(ui: &mut Ui) {
     Panel::canvas()
         .id_salt("polylines")
-        .size((Sizing::FILL, Sizing::Fixed(120.0)))
+        .size((Sizing::FILL, Sizing::fixed(120.0)))
         .background(Background {
             fill: Color::hex(0x1a1a1a).into(),
             corners: Corners::all(4.0),

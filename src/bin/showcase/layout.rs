@@ -25,7 +25,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 Panel::vstack()
                     .id_salt("col-l")
                     .gap(16.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         sizing(ui);
                         justify(ui);
@@ -34,7 +34,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 Panel::vstack()
                     .id_salt("col-r")
                     .gap(16.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         alignment(ui);
                         spacing(ui);
@@ -55,7 +55,7 @@ fn sizing(ui: &mut Ui) {
                     chip(
                         ui,
                         ("fx", i),
-                        (Sizing::Fixed(w), Sizing::Fixed(32.0)),
+                        (Sizing::fixed(w), Sizing::fixed(32.0)),
                         support::B,
                     );
                 }
@@ -66,7 +66,7 @@ fn sizing(ui: &mut Ui) {
                 for (i, pad) in [20.0, 40.0].into_iter().enumerate() {
                     Frame::new()
                         .id_salt(("hug", i))
-                        .size((Sizing::Hug, Sizing::Fixed(32.0)))
+                        .size((Sizing::HUG, Sizing::fixed(32.0)))
                         .padding((pad, 0.0, pad, 0.0))
                         .background(swatch_bg(support::C))
                         .show(ui);
@@ -77,7 +77,7 @@ fn sizing(ui: &mut Ui) {
                     chip(
                         ui,
                         ("fill", i),
-                        (Sizing::Fill(weight), Sizing::Fixed(32.0)),
+                        (Sizing::fill(weight), Sizing::fixed(32.0)),
                         support::A,
                     );
                 }
@@ -101,7 +101,7 @@ fn justify(ui: &mut Ui) {
             ] {
                 Panel::hstack()
                     .id_salt(id)
-                    .size((Sizing::FILL, Sizing::Fixed(32.0)))
+                    .size((Sizing::FILL, Sizing::fixed(32.0)))
                     .padding((6.0, 4.0, 6.0, 4.0))
                     .justify(j)
                     .background(panel_bg())
@@ -110,7 +110,7 @@ fn justify(ui: &mut Ui) {
                             chip(
                                 ui,
                                 (id, i),
-                                (Sizing::Fixed(36.0), Sizing::Fixed(22.0)),
+                                (Sizing::fixed(36.0), Sizing::fixed(22.0)),
                                 support::A,
                             );
                         }
@@ -133,7 +133,7 @@ fn visibility(ui: &mut Ui) {
             ] {
                 Panel::hstack()
                     .id_salt(id)
-                    .size((Sizing::FILL, Sizing::Fixed(44.0)))
+                    .size((Sizing::FILL, Sizing::fixed(44.0)))
                     .padding(6.0)
                     .gap(12.0)
                     .background(panel_bg())
@@ -145,7 +145,7 @@ fn visibility(ui: &mut Ui) {
                         ] {
                             Frame::new()
                                 .id_salt((id, key))
-                                .size((Sizing::Fixed(70.0), Sizing::Fixed(28.0)))
+                                .size((Sizing::fixed(70.0), Sizing::fixed(28.0)))
                                 .visibility(v)
                                 .background(swatch_bg(c))
                                 .show(ui);
@@ -165,7 +165,7 @@ fn alignment(ui: &mut Ui) {
             // HStack: children inherit VAlign::Center; orange opts out to Bottom.
             Panel::hstack()
                 .id_salt("al-h")
-                .size((Sizing::FILL, Sizing::Fixed(96.0)))
+                .size((Sizing::FILL, Sizing::fixed(96.0)))
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::v(VAlign::Center))
@@ -179,7 +179,7 @@ fn alignment(ui: &mut Ui) {
             // VStack: children packed to the right edge; orange opts out to Left.
             Panel::vstack()
                 .id_salt("al-v")
-                .size((Sizing::FILL, Sizing::Fixed(110.0)))
+                .size((Sizing::FILL, Sizing::fixed(110.0)))
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::h(HAlign::Right))
@@ -202,7 +202,7 @@ fn spacing(ui: &mut Ui) {
         |ui| {
             Panel::hstack()
                 .id_salt("p-row")
-                .size((Sizing::FILL, Sizing::Fixed(60.0)))
+                .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(20.0)
                 .gap(8.0)
                 .background(panel_bg())
@@ -211,26 +211,26 @@ fn spacing(ui: &mut Ui) {
                         chip(
                             ui,
                             ("p", i),
-                            (Sizing::Fixed(40.0), Sizing::FILL),
+                            (Sizing::fixed(40.0), Sizing::FILL),
                             support::A,
                         );
                     }
                 });
             Panel::hstack()
                 .id_salt("m-row")
-                .size((Sizing::FILL, Sizing::Fixed(60.0)))
+                .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .gap(8.0)
                 .background(panel_bg())
                 .show(ui, |ui| {
                     Frame::new()
                         .id_salt("m1")
-                        .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin(8.0)
                         .background(swatch_bg(support::A))
                         .show(ui);
                     Frame::new()
                         .id_salt("m2")
-                        .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin((16.0, 16.0, 0.0, 0.0))
                         .background(swatch_bg(support::A))
                         .show(ui);
@@ -239,19 +239,19 @@ fn spacing(ui: &mut Ui) {
             // margin pulls it backwards 30 px so the two overlap.
             Panel::hstack()
                 .id_salt("neg-row")
-                .size((Sizing::FILL, Sizing::Fixed(60.0)))
+                .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(8.0)
                 .background(panel_bg())
                 .show(ui, |ui| {
                     chip(
                         ui,
                         ("neg", "a"),
-                        (Sizing::Fixed(80.0), Sizing::Fixed(40.0)),
+                        (Sizing::fixed(80.0), Sizing::fixed(40.0)),
                         support::A,
                     );
                     Frame::new()
                         .id_salt(("neg", "b"))
-                        .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .margin((-30.0, 0.0, 0.0, 0.0))
                         .background(swatch_bg(support::B))
                         .show(ui);
@@ -265,7 +265,7 @@ fn gap(ui: &mut Ui) {
         for g in [0.0, 8.0, 24.0] {
             Panel::hstack()
                 .id_salt(("gap", g as u32))
-                .size((Sizing::FILL, Sizing::Fixed(40.0)))
+                .size((Sizing::FILL, Sizing::fixed(40.0)))
                 .padding(6.0)
                 .gap(g)
                 .background(panel_bg())
@@ -274,7 +274,7 @@ fn gap(ui: &mut Ui) {
                         chip(
                             ui,
                             ("gap-tile", g as u32, i),
-                            (Sizing::Fixed(32.0), Sizing::Fixed(24.0)),
+                            (Sizing::fixed(32.0), Sizing::fixed(24.0)),
                             support::A,
                         );
                     }
@@ -294,7 +294,7 @@ fn chip<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: Color) {
 fn aligned_chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {
     Frame::new()
         .id_salt(id)
-        .size((Sizing::Fixed(56.0), Sizing::Fixed(24.0)))
+        .size((Sizing::fixed(56.0), Sizing::fixed(24.0)))
         .align(align)
         .background(swatch_bg(c))
         .show(ui);

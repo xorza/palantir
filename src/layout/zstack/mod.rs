@@ -51,7 +51,7 @@ pub(crate) fn measure(
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
 /// positioned per its `align_x` / `align_y` (with the ZStack's
 /// `child_align` as fallback when child's own axis is `Auto`).
-/// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
+/// Defaults pin to top-left unless the child has `Sizing::fill` — then `Auto`
 /// falls back to stretch on that axis.
 pub(crate) fn arrange(
     layout: &mut LayoutEngine,

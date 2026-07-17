@@ -9,8 +9,7 @@ use crate::widgets::theme::progress_bar::ProgressBarTheme;
 /// Determinate progress bar: a rounded `track` with an accent fill
 /// spanning `fraction` (clamped to `0..=1`) of its width.
 ///
-/// The fill / remainder split is two `Fill`-weighted leaves
-/// (`Fill(fraction)` and `Fill(1 − fraction)`), so the fill tracks the
+/// The fill / remainder split is two weighted leaves, so the fill tracks the
 /// resolved track width without the widget knowing it at record time.
 /// Visuals come from [`crate::ProgressBarTheme`] (theme slot
 /// `progress_bar`).
@@ -48,7 +47,7 @@ impl ProgressBar {
         // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
         // the same sentinel convention as theme padding/margin.
         if element.size == Sizes::default() {
-            element.size = (Sizing::FILL, Sizing::Fixed(height)).into();
+            element.size = (Sizing::FILL, Sizing::fixed(height)).into();
         }
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
@@ -58,7 +57,7 @@ impl ProgressBar {
             let fill_id = id.with("fill");
             let mut fill_el = Element::leaf();
             fill_el.salt = Salt::Verbatim(fill_id);
-            fill_el.size = (Sizing::Fill(fill), Sizing::FILL).into();
+            fill_el.size = (Sizing::share(fill), Sizing::FILL).into();
             ui.node(fill_id, fill_el, Some(&fill_bg), |_| {});
 
             // Remainder spacer — its `Fill` weight pushes the fill to the
@@ -66,7 +65,7 @@ impl ProgressBar {
             let rest_id = id.with("rest");
             let mut rest = Element::leaf();
             rest.salt = Salt::Verbatim(rest_id);
-            rest.size = (Sizing::Fill(spacer), Sizing::FILL).into();
+            rest.size = (Sizing::share(spacer), Sizing::FILL).into();
             ui.node(rest_id, rest, None, |_| {});
         });
         Response::lazy(id, ui)
@@ -85,7 +84,7 @@ struct WeightSplit {
 }
 
 /// Clamp `fraction` to `0..=1` and split it into the fill / remainder
-/// `Fill` weights. `0 → (0, 1)`, `1 → (1, 0)`, out-of-range clamps.
+/// weights. `0 → (0, 1)`, `1 → (1, 0)`, out-of-range clamps.
 fn fill_weights(fraction: f32) -> WeightSplit {
     let f = fraction.clamp(0.0, 1.0);
     WeightSplit {
@@ -117,7 +116,7 @@ mod tests {
             col.show(ui, |ui| {
                 sized = Some(
                     ProgressBar::new(0.3)
-                        .size((Sizing::Fixed(80.0), Sizing::Fixed(10.0)))
+                        .size((Sizing::fixed(80.0), Sizing::fixed(10.0)))
                         .show(ui)
                         .node(),
                 );
@@ -152,6 +151,27 @@ mod tests {
             // The two weights always partition 1.0 so the fill lands at
             // exactly `fraction` of the track.
             assert!((w.fill + w.spacer - 1.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn endpoint_segments_collapse_without_invalid_fill_weights() {
+        for (fraction, expected) in [(0.0, [0.0, 100.0]), (1.0, [100.0, 0.0])] {
+            let mut ui = Ui::for_test();
+            let mut root = None;
+            ui.run_at(UVec2::new(100, 20), |ui| {
+                root = Some(
+                    ProgressBar::new(fraction)
+                        .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))
+                        .show(ui)
+                        .node(),
+                );
+            });
+            let widths: Vec<_> = ui.forest.trees[Layer::Main]
+                .children(root.unwrap())
+                .map(|child| ui.layout[Layer::Main].rect[child.id.idx()].size.w)
+                .collect();
+            assert_eq!(widths, expected, "fraction {fraction}");
         }
     }
 }

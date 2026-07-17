@@ -487,7 +487,7 @@ fn text_reshape_skipped_when_unchanged() {
     let wrapped: Build = |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::Fixed(60.0), Sizing::Hug))
+            .size((Sizing::fixed(60.0), Sizing::HUG))
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("wrapped"))
@@ -499,7 +499,7 @@ fn text_reshape_skipped_when_unchanged() {
     let grid_intrinsic: Build = |ui| {
         Grid::new()
             .id(WidgetId::from_hash("g"))
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .size((Sizing::fixed(200.0), Sizing::HUG))
             .cols(Rc::from([Track::hug(), Track::fill()]))
             .show(ui, |ui| {
                 Text::new("label")
@@ -610,7 +610,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
 
     fn idle_body(ui: &mut Ui) {
         let mut element = Element::leaf();
-        element.size = (Sizing::Fixed(160.0), Sizing::Fixed(30.0)).into();
+        element.size = (Sizing::fixed(160.0), Sizing::fixed(30.0)).into();
         let id = ui.widget_id(&element);
         ui.node(id, element, None, |ui| {
             let text = ui.intern("idle interned window text");
@@ -690,7 +690,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
         move |ui: &mut Ui| {
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::Fixed(slot_w), Sizing::Hug))
+                .size((Sizing::fixed(slot_w), Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .id(WidgetId::from_hash("p"))
@@ -763,7 +763,7 @@ fn frame_pass_count_matches_action_trigger() {
     fn build_target(ui: &mut Ui) {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .sense(Sense::CLICK)
             .focusable(true)
             .show(ui, |_| {});
@@ -1867,7 +1867,7 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     fn build(ui: &mut Ui, w: f32) {
         Frame::new()
             .id(WidgetId::from_hash("f"))
-            .size((Sizing::Fixed(w), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(w), Sizing::fixed(50.0)))
             .show(ui);
     }
 

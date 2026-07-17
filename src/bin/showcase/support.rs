@@ -104,7 +104,7 @@ pub(crate) fn section<H: Hash + Copy>(
 ) {
     Panel::vstack()
         .id_salt(id)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .gap(6.0)
         .show(ui, |ui| {
             Text::new(title)
@@ -119,7 +119,7 @@ pub(crate) fn section<H: Hash + Copy>(
 pub(crate) fn row<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .id_salt(id)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .gap(8.0)
         .show(ui, body);
 }

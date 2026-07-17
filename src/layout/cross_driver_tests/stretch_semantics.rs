@@ -1,4 +1,4 @@
-//! Pin: `Sizing::Fill` is a **WPF Stretch** — measure-time it reports
+//! Pin: `Sizing::fill` is a **WPF Stretch** — measure-time it reports
 //! content size; arrange-time it fills its allocated slot.
 //!
 //! These tests pin the contract we want, independent of the current
@@ -13,7 +13,7 @@ use glam::{UVec2, Vec2};
 
 /// **Pin (the darkroom node case):** a Hug container that holds Fill
 /// children sizes to its content, not to the grandparent's allocation.
-/// `Sizing::Fill` is *not* a measure-time expansion — it cannot inflate
+/// `Sizing::fill` is *not* a measure-time expansion — it cannot inflate
 /// a Hug ancestor.
 #[test]
 fn hug_parent_with_fill_children_hugs_to_content() {
@@ -23,12 +23,12 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     ui.run_at(UVec2::new(800, 600), |ui| {
         Panel::vstack()
             .id(node_id)
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Button::new()
                     .id(button_id)
                     .label("Hi")
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui);
             });
     });
@@ -60,11 +60,11 @@ fn fill_child_stretches_to_fixed_parent() {
     ui.run_at(UVec2::new(800, 600), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::Fixed(400.0), Sizing::Hug))
+            .size((Sizing::fixed(400.0), Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(child_id)
-                    .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui);
             });
     });
@@ -82,15 +82,15 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
     ui.run_at(UVec2::new(800, 600), |ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::Fixed(400.0), Sizing::Hug))
+            .size((Sizing::fixed(400.0), Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(a)
-                    .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui);
                 Frame::new()
                     .id(b)
-                    .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui);
             });
     });
@@ -120,15 +120,15 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
                 Panel::vstack()
                     .id(node_id)
                     .position(Vec2::new(40.0, 40.0))
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         Panel::hstack()
                             .id(row_id)
-                            .size((Sizing::FILL, Sizing::Hug))
+                            .size((Sizing::FILL, Sizing::HUG))
                             .show(ui, |ui| {
                                 Frame::new()
                                     .auto_id()
-                                    .size((Sizing::Fixed(50.0), Sizing::Fixed(20.0)))
+                                    .size((Sizing::fixed(50.0), Sizing::fixed(20.0)))
                                     .show(ui);
                             });
                     });
@@ -164,7 +164,7 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
             Button::new().id(button).label("Hi").show(ui);
             Frame::new()
                 .id(spacer)
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .show(ui);
         });
     });

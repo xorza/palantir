@@ -17,7 +17,7 @@ impl App for Counter {
         Panel::vstack()
             .auto_id()
             .gap(8.0)
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Text::new(format!("clicks: {}", self.clicks))
                     .auto_id()

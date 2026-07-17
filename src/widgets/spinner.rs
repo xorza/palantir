@@ -75,7 +75,7 @@ impl Spinner {
         let size = self.size.unwrap_or(theme.size).max(1.0);
         let width = self.thickness.unwrap_or((size * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);
-        self.element.size = (Sizing::Fixed(size), Sizing::Fixed(size)).into();
+        self.element.size = (Sizing::fixed(size), Sizing::fixed(size)).into();
 
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {

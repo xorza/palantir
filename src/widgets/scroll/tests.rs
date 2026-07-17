@@ -19,11 +19,11 @@ fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
         .show(ui, |ui| {
             Scroll::vertical()
                 .id(WidgetId::from_hash("scroll"))
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(viewport_h)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(viewport_h)))
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("content"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(content_h)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(content_h)))
                         .show(ui);
                 });
         });
@@ -52,15 +52,15 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
         Scroll::both()
             .id(outer_id)
             .with_zoom()
-            .size((Sizing::Fixed(300.0), Sizing::Fixed(300.0)))
+            .size((Sizing::fixed(300.0), Sizing::fixed(300.0)))
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(inner_id)
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("content"))
-                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                             .show(ui);
                     });
             });
@@ -133,13 +133,13 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
     let build_m = |ui: &mut Ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .hide_bars()
             .content_margin(m)
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("content"))
-                    .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                     .show(ui);
             });
     };
@@ -170,11 +170,11 @@ fn horizontal_scroll_pans_only_x() {
             .show(ui, |ui| {
                 Scroll::horizontal()
                     .id(WidgetId::from_hash("hscroll"))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("hcontent"))
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
+                            .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
                             .show(ui);
                     });
             });
@@ -198,11 +198,11 @@ fn both_axis_scroll_pans_both_axes() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("xy"))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("xy-content"))
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);
                     });
             });
@@ -264,47 +264,47 @@ fn scroll_records_content_extent() {
         let scroll_node = ui.under_outer(surface, |ui| match axis {
             Axis::V => Scroll::vertical()
                 .id(WidgetId::from_hash("scroll"))
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .gap(4.0)
                 .show(ui, |ui| {
                     for i in 0..3u32 {
                         Frame::new()
                             .id(WidgetId::from_hash(("row", i)))
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
+                            .size((Sizing::fixed(180.0), Sizing::fixed(28.0)))
                             .show(ui);
                     }
                 })
                 .node(),
             Axis::H => Scroll::horizontal()
                 .id(WidgetId::from_hash("scroll"))
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                 .gap(8.0)
                 .show(ui, |ui| {
                     for i in 0..2u32 {
                         Frame::new()
                             .id(WidgetId::from_hash(("col", i)))
-                            .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                            .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                             .show(ui);
                     }
                 })
                 .node(),
             Axis::XY => Scroll::both()
                 .id(WidgetId::from_hash("scroll"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("wide"))
-                        .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
+                        .size((Sizing::fixed(300.0), Sizing::fixed(60.0)))
                         .show(ui);
                     Frame::new()
                         .id(WidgetId::from_hash("tall"))
-                        .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
+                        .size((Sizing::fixed(80.0), Sizing::fixed(250.0)))
                         .show(ui);
                 })
                 .node(),
             Axis::Empty => Scroll::vertical()
                 .id(WidgetId::from_hash("empty"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |_| {})
                 .node(),
         });
@@ -339,13 +339,13 @@ fn scroll_state_content_survives_measure_cache_hit() {
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .gap(4.0)
                     .show(ui, |ui| {
                         for i in 0..3u32 {
                             Frame::new()
                                 .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(28.0)))
                                 .show(ui);
                         }
                     });
@@ -435,7 +435,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("topbar"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(TEXT_GAP)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(TEXT_GAP)))
                         .show(ui);
                     Scroll::both()
                         .id(WidgetId::from_hash("xy"))
@@ -443,11 +443,11 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                             pivot: ZoomPivot::Pointer,
                             ..ZoomConfig::default()
                         })
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("content"))
-                                .size((Sizing::Fixed(content_size), Sizing::Fixed(content_size)))
+                                .size((Sizing::fixed(content_size), Sizing::fixed(content_size)))
                                 .show(ui);
                         });
                 });
@@ -544,11 +544,11 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                         pivot: ZoomPivot::Pointer,
                         ..ZoomConfig::default()
                     })
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("content"))
-                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                             .show(ui);
                     });
             });
@@ -590,11 +590,11 @@ fn pivot_zoom_preserves_underflow_pan_range() {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .with_zoom()
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("content"))
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                     .show(ui);
             });
     };
@@ -812,11 +812,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -835,11 +835,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("short"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
                                 .show(ui);
                         });
                 });
@@ -864,12 +864,12 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             for i in 0..30u32 {
                                 Frame::new()
                                     .id(WidgetId::from_hash(("row", i)))
-                                    .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
+                                    .size((Sizing::fixed(180.0), Sizing::fixed(28.0)))
                                     .show(ui);
                             }
                         });
@@ -914,7 +914,7 @@ mod bars {
                                     for i in 0..40u32 {
                                         Frame::new()
                                             .id(WidgetId::from_hash((tag, "item", i)))
-                                            .size((Sizing::Fixed(120.0), Sizing::Fixed(28.0)))
+                                            .size((Sizing::fixed(120.0), Sizing::fixed(28.0)))
                                             .show(ui);
                                     }
                                 });
@@ -940,11 +940,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -972,11 +972,11 @@ mod bars {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
                         .padding(16.0)
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(100.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -999,11 +999,11 @@ mod bars {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
                         .padding(16.0)
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(100.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -1042,11 +1042,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("body"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(content_h)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(content_h)))
                                 .show(ui);
                         });
                 });
@@ -1083,11 +1083,11 @@ mod bars {
                     Scroll::both()
                         .id(WidgetId::from_hash("scroll"))
                         .with_zoom()
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("big"))
-                                .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                                .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                                 .show(ui);
                         });
                 });
@@ -1131,11 +1131,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("big"))
-                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -1157,11 +1157,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("big"))
-                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -1208,11 +1208,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -1247,11 +1247,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("big"))
-                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -1301,12 +1301,12 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .bar_mode(BarMode::Overlay)
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("tall"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });
@@ -1341,11 +1341,11 @@ mod bars {
                 .show(ui, |ui| {
                     Scroll::vertical()
                         .id(WidgetId::from_hash("scroll"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("short"))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
                                 .show(ui);
                         });
                 });
@@ -1374,11 +1374,11 @@ fn drag_thumb_pans_proportionally() {
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);
                     });
             });
@@ -1439,11 +1439,11 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                     .show(ui, |ui| {
                         Scroll::horizontal()
                             .id(WidgetId::from_hash("hscroll"))
-                            .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                            .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                             .show(ui, |ui| {
                                 Frame::new()
                                     .id(WidgetId::from_hash("hcontent"))
-                                    .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
+                                    .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
                                     .show(ui);
                             });
                     });
@@ -1510,11 +1510,11 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                 Scroll::both()
                     .id(WidgetId::from_hash("zoomy"))
                     .with_zoom()
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("content"))
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                            .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);
                     });
             });
@@ -1560,11 +1560,11 @@ fn wheel_zoom_step_is_font_independent() {
                     Scroll::both()
                         .id(WidgetId::from_hash("fz"))
                         .with_zoom()
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("content"))
-                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                                 .show(ui);
                         });
                 });

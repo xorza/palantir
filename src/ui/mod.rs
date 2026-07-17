@@ -53,7 +53,6 @@ use crate::window::{
 use glam::UVec2;
 use std::cell::{RefCell, RefMut};
 use std::collections::hash_map::Entry;
-use std::panic::Location;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -700,15 +699,11 @@ impl Ui {
     /// at the top of every `frame`; widgets/showcases that need
     /// continuous animation call this each frame to keep the host
     /// awake.
-    #[track_caller]
     pub fn request_repaint(&mut self) {
-        let caller = Location::caller();
         tracing::trace!(
             target: "aperture.repaint",
-            "request_repaint @ {}:{} (frame={})",
-            caller.file(),
-            caller.line(),
-            self.frame_runtime.frame_id,
+            frame = self.frame_runtime.frame_id,
+            "request_repaint",
         );
         self.frame_runtime.repaint_requested = true;
     }
@@ -721,16 +716,12 @@ impl Ui {
     /// Callers don't need to re-request each frame. To cancel, schedule
     /// nothing else — the wake will fire once, the next frame will run
     /// briefly, and the queue drains.
-    #[track_caller]
     pub fn request_repaint_after(&mut self, after: Duration) {
-        let caller = Location::caller();
         tracing::trace!(
             target: "aperture.repaint",
-            "request_repaint_after({:?}) @ {}:{} (frame={})",
-            after,
-            caller.file(),
-            caller.line(),
-            self.frame_runtime.frame_id,
+            ?after,
+            frame = self.frame_runtime.frame_id,
+            "request_repaint_after",
         );
         let deadline = self.frame_runtime.time.saturating_add(after);
         self.schedule_wake(deadline, WakeReasons::REAL);

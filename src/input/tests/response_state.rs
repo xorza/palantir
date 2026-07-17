@@ -17,7 +17,7 @@ fn build_focusable_leaf(ui: &mut Ui) {
     Frame::new()
         .id(WidgetId::from_hash("focusable"))
         .focusable(true)
-        .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+        .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
         .show(ui);
 }
 
@@ -47,7 +47,7 @@ fn disabled_reflects_cascaded_ancestor_flag() {
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("child"))
-                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                     .show(ui);
             });
     };
@@ -72,7 +72,7 @@ fn disabled_false_when_chain_clean() {
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("child"))
-                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                     .show(ui);
             });
     };
@@ -148,7 +148,7 @@ fn build_button(id: WidgetId) -> impl FnMut(&mut Ui) {
             Button::new()
                 .id(id)
                 .label("hi")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }

@@ -84,7 +84,7 @@ fn text_row_list_batches_into_one_render() {
                             fill: bg.into(),
                             ..Default::default()
                         })
-                        .size((Sizing::Fixed(200.0), Sizing::Hug))
+                        .size((Sizing::fixed(200.0), Sizing::HUG))
                         .show(ui, |ui| {
                             Text::new(label)
                                 .auto_id()
@@ -142,7 +142,7 @@ fn text_row_list_survives_partial_damage_smoke() {
                                 fill: row_bg.into(),
                                 ..Default::default()
                             })
-                            .size((Sizing::Fixed(200.0), Sizing::Hug))
+                            .size((Sizing::fixed(200.0), Sizing::HUG))
                             .show(ui, |ui| {
                                 Text::new(*label)
                                     .id_salt(("row-label", i))

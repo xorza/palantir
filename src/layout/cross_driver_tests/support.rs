@@ -66,17 +66,17 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
     Panel::vstack().auto_id().show(ui, |ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("avatar"))
-                    .size((Sizing::Fixed(avatar_w), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(avatar_w), Sizing::fixed(40.0)))
                     .show(ui);
                 message_node = Some(
                     Text::new(text)
                         .auto_id()
                         .style(TextStyle::default().with_font_size(text_px))
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
                         .node(),

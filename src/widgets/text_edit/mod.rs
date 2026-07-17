@@ -7,7 +7,6 @@ use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -492,7 +491,7 @@ impl<'a> TextEdit<'a> {
         // `new()`) scissors anything that slips past the edge.
         //
         // Floor the editor's outer height at one shaped line plus
-        // top+bottom padding so a `Sizing::Hug` editor with an empty
+        // top+bottom padding so a `Sizing::HUG` editor with an empty
         // buffer still reserves a row's worth of space — without this
         // floor, Hug resolves to `0` (no content) and the editor
         // visually collapses, taking its clip rect (and any future
@@ -514,7 +513,7 @@ impl<'a> TextEdit<'a> {
             // Fold that reservation (the trailing sliver + the caret quad
             // itself) into the desired width so Hug accounts for it.
             // `Fixed`/`Fill` editors are meant to scroll, so leave them.
-            if matches!(element.size.w(), Sizing::Hug) {
+            if element.size.w().is_hug() {
                 let measure_str: &str = if self.text.is_empty() {
                     self.placeholder.as_ref()
                 } else {

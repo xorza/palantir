@@ -107,11 +107,11 @@ impl<'a> Switch<'a> {
             let track_id = id.with("track");
             let mut track = Element::canvas();
             track.salt = Salt::Verbatim(track_id);
-            track.size = (Sizing::Fixed(geom.track_w), Sizing::Fixed(track_h)).into();
+            track.size = (Sizing::fixed(geom.track_w), Sizing::fixed(track_h)).into();
             ui.node(track_id, track, Some(&look.background), |ui| {
                 let mut knob = Element::leaf();
                 knob.salt = Salt::Verbatim(knob_id);
-                knob.size = (Sizing::Fixed(geom.knob), Sizing::Fixed(geom.knob)).into();
+                knob.size = (Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)).into();
                 knob.position = Vec2::new(knob_x, geom.knob_y);
                 ui.node(knob_id, knob, Some(&knob_bg), |_| {});
             });

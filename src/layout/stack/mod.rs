@@ -5,9 +5,9 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
-    JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
+    JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, weighted_share,
+    zero_subtree,
 };
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
 
 /// One Fill child as the freeze loop sees it. Pushed onto
@@ -48,7 +48,7 @@ pub(crate) struct FillEntry {
 /// per pass while grid freezes one, and the two converge differently for
 /// mixed min/max violations — so a shared solver would silently change
 /// one driver's edge-case results.
-fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_weight: f32) {
+fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_weight: f64) {
     loop {
         if active_weight <= 0.0 {
             break;
@@ -58,7 +58,7 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
             if e.frozen_alloc.is_some() {
                 continue;
             }
-            let share = leftover * e.weight / active_weight;
+            let share = weighted_share(leftover, e.weight, active_weight);
             // Freeze any entry whose proportional share falls outside
             // `[floor, cap]`: it takes the violated bound and the rest
             // re-divide (CSS Flexbox-style). A `cap` below `floor`
@@ -71,7 +71,7 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
                 };
                 e.frozen_alloc = Some(alloc);
                 leftover -= alloc;
-                active_weight -= e.weight;
+                active_weight -= f64::from(e.weight);
                 new_freeze = true;
             }
         }
@@ -82,7 +82,7 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
     for e in entries.iter_mut() {
         if e.frozen_alloc.is_none() {
             let share = if active_weight > 0.0 {
-                leftover * e.weight / active_weight
+                weighted_share(leftover, e.weight, active_weight)
             } else {
                 e.floor
             };
@@ -121,14 +121,14 @@ fn push_fill_entries(
     let layouts = tree.records.layout();
     let pool_start = layout.scratch.stack_fill.pool.len();
     for c in tree.active_children(node) {
-        let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) else {
+        let Some(weight) = axis.main_sizing(layouts[c.idx()].size).fill_weight() else {
             continue;
         };
         let cap = axis.main(tree.bounds(c).max_size);
         let floor = floor_for(layout, c);
         layout.scratch.stack_fill.pool.push(FillEntry {
             node: c,
-            weight: w,
+            weight,
             floor,
             cap,
             frozen_alloc: None,
@@ -144,7 +144,7 @@ fn push_fill_entries(
 /// phases from drifting on the count / weight / gap construction.
 struct StackPlan {
     sum_non_fill_main: f32,
-    total_weight: f32,
+    total_weight: f64,
     count: usize,
     total_gap: f32,
 }
@@ -159,12 +159,12 @@ fn stack_plan(
 ) -> StackPlan {
     let layouts = tree.records.layout();
     let mut sum_non_fill_main = 0.0f32;
-    let mut total_weight = 0.0f32;
+    let mut total_weight = 0.0f64;
     let mut count = 0usize;
     for c in tree.active_children(node) {
         count += 1;
-        if let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) {
-            total_weight += w;
+        if let Some(weight) = axis.main_sizing(layouts[c.idx()].size).fill_weight() {
+            total_weight += f64::from(weight);
         } else {
             sum_non_fill_main += main_of(layout, c);
         }
@@ -292,9 +292,13 @@ pub(crate) fn measure(
             layout.scratch.stack_fill.pool.truncate(pool_start);
         } else {
             for c in tree.active_children(node) {
-                let Sizing::Fill(_) = axis.main_sizing(layouts[c.idx()].size) else {
+                if axis
+                    .main_sizing(layouts[c.idx()].size)
+                    .fill_weight()
+                    .is_none()
+                {
                     continue;
-                };
+                }
                 let d = layout.measure(
                     tree,
                     c,
@@ -396,7 +400,7 @@ pub(crate) fn arrange(
         }
         first = false;
 
-        let main_size = if matches!(axis.main_sizing(s.size), Sizing::Fill(_)) {
+        let main_size = if axis.main_sizing(s.size).fill_weight().is_some() {
             // unwrap: every Fill child pushed an entry above and the
             // resolve pass filled in `frozen_alloc`.
             let alloc = layout.scratch.stack_fill.pool[fill_cursor]

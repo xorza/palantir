@@ -101,7 +101,7 @@ impl Panel {
     /// next child wouldn't fit on the current row, wrap to a new row
     /// below. `.gap(g)` spaces siblings within a row; `.line_gap(g)`
     /// spaces rows. `.justify(...)` applies per row.
-    /// `Sizing::Fill` on a child's main axis is treated as `Hug` for
+    /// `Sizing::fill` on a child's main axis is treated as `Hug` for
     /// now (no per-row leftover distribution); cross-axis Fill stretches
     /// to row height.
     #[track_caller]

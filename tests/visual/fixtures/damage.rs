@@ -83,7 +83,7 @@ fn corner_pair_scene(
                 Frame::new()
                     .id_salt(("tl", tl_label))
                     .position(Vec2::new(0.0, 0.0))
-                    .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .background(Background {
                         fill: Color::rgb(0.2, 0.7, 0.4).into(),
                         ..Default::default()
@@ -92,7 +92,7 @@ fn corner_pair_scene(
                 Frame::new()
                     .id_salt(("br", br_label))
                     .position(Vec2::new(180.0, 180.0))
-                    .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .background(Background {
                         fill: Color::rgb(0.7, 0.3, 0.2).into(),
                         ..Default::default()
@@ -369,7 +369,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
                     Frame::new()
                         .id_salt("sliver")
                         .position(Vec2::new(60.0, 20.0))
-                        .size((Sizing::Fixed(2.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(2.0), Sizing::fixed(40.0)))
                         .background(Background {
                             fill: if on {
                                 Color::rgb(0.9, 0.5, 0.2)

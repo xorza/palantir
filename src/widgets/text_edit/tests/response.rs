@@ -22,7 +22,7 @@ fn frame(ui: &mut Ui, buf: &mut String) -> Signals {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = TextEdit::new(buf)
                 .id(WidgetId::from_hash(EDITOR))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
             out.changed |= r.changed;
             out.submitted |= r.submitted;
@@ -142,7 +142,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let r = TextEdit::new(buf)
                     .id(WidgetId::from_hash(EDITOR))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .disabled(true)
                     .show(ui);
                 out.changed |= r.changed;

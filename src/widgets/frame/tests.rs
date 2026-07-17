@@ -19,7 +19,7 @@ fn frame_paints_a_single_rounded_rect() {
             frame_node = Some(
                 Frame::new()
                     .id(WidgetId::from_hash("decoration"))
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         corners: Corners::all(6.0),
@@ -59,7 +59,7 @@ fn frame_with_sense_click_is_clickable() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new()
                 .id(WidgetId::from_hash("hitbox"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui);
         });
@@ -71,7 +71,7 @@ fn frame_with_sense_click_is_clickable() {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked |= Frame::new()
                 .id(WidgetId::from_hash("hitbox"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui)
                 .left

@@ -429,7 +429,7 @@ impl<'a> DragValue<'a> {
         // `min_size.w`) so a long value scrolls inside the chip's box instead
         // of growing a content-hugging row. Before the first chip frame gives
         // us a width to hold, fall back to the field's own width sizing.
-        let held_w = prev_rect.map(|r| Sizing::Fixed(r.size.w.max(self.element.min_size.w)));
+        let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(self.element.min_size.w)));
         let width = held_w.unwrap_or(self.element.size.w());
         // Entry edge: seed the buffer from the current value — a click and a
         // programmatic focus both get a fresh draft, never a previous

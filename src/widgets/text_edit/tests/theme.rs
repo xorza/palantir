@@ -21,7 +21,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                 Button::new()
                     .id(WidgetId::from_hash("btn"))
                     .label("hi")
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -29,7 +29,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
             ed_node = Some(
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -139,7 +139,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                 Button::new()
                     .id(WidgetId::from_hash("btn"))
                     .label("hi")
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -147,7 +147,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
             ed_node = Some(
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -209,7 +209,7 @@ fn textedit_style_override_replaces_default_theme() {
                     TextEdit::new(&mut buf)
                         .id(WidgetId::from_hash("ed"))
                         .style(style.clone())
-                        .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .node(),
                 );
@@ -237,7 +237,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             leaf_node = Some(
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -275,7 +275,7 @@ fn no_selection_paints_no_highlight_rect() {
             *leaf = Some(
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -306,7 +306,7 @@ fn shift_end_paints_selection_highlight() {
             *leaf = Some(
                 TextEdit::new(buf)
                     .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .node(),
             );
@@ -445,7 +445,7 @@ fn line_height_override_changes_caret_rect_height() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let mut e = TextEdit::new(buf)
                     .id(WidgetId::from_hash("ed"))
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)));
                 if let Some(s) = style.clone() {
                     e = e.style(s);
                 }

@@ -128,7 +128,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
         .show(ui, |ui| {
             Panel::hstack()
                 .gap(8.0)
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .child_align(Align::CENTER)
                 .show(ui, |ui| {
                     Text::new("Aperture — Frame Bench")
@@ -137,7 +137,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                         .show(ui);
                     Frame::new()
                         .id_salt("title-spacer")
-                        .size((Sizing::FILL, Sizing::Fixed(1.0)))
+                        .size((Sizing::FILL, Sizing::fixed(1.0)))
                         .show(ui);
                     for i in 0..5 {
                         let label = ui.fmt(format_args!("Action {i}"));
@@ -158,7 +158,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                     Panel::vstack()
                         .gap(4.0)
                         .padding(8.0)
-                        .size((Sizing::Fixed(220.0), Sizing::FILL))
+                        .size((Sizing::fixed(220.0), Sizing::FILL))
                         .background(panel_bg.clone())
                         .clip_rounded()
                         .show(ui, |ui| {
@@ -172,19 +172,19 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                         Button::new()
                                             .id_salt(("side", i))
                                             .label(label)
-                                            .size((Sizing::FILL, Sizing::Hug))
+                                            .size((Sizing::FILL, Sizing::HUG))
                                             .show(ui);
                                     }
                                 });
                             Frame::new()
                                 .id_salt("sb-divider")
-                                .size((Sizing::FILL, Sizing::Fixed(1.0)))
+                                .size((Sizing::FILL, Sizing::fixed(1.0)))
                                 .margin(4.0)
                                 .show(ui);
                             Panel::hstack()
                                 .gap(2.0)
                                 .justify(Justify::Center)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui, |ui| {
                                     for i in 0..3 {
                                         Button::new()
@@ -210,12 +210,12 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                 .gap(8.0)
                                 .padding(6.0)
                                 .child_align(Align::CENTER)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     TextEdit::new(&mut state.name)
                                         .id_salt("edit-name")
-                                        .size((Sizing::Fill(2.0), Sizing::Hug))
+                                        .size((Sizing::fill(2.0), Sizing::HUG))
                                         .show(ui);
                                     Checkbox::new(&mut state.enabled)
                                         .id_salt("enabled")
@@ -234,14 +234,14 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                 .id_salt("controls")
                                 .gap(8.0)
                                 .padding(6.0)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     Panel::hstack()
                                         .id_salt("controls-row")
                                         .gap(10.0)
                                         .child_align(Align::CENTER)
-                                        .size((Sizing::FILL, Sizing::Hug))
+                                        .size((Sizing::FILL, Sizing::HUG))
                                         .show(ui, |ui| {
                                             Switch::new(&mut state.dark_mode)
                                                 .id_salt("dark-mode")
@@ -251,7 +251,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                             let quality_opts = ["Low", "Medium", "High", "Ultra"];
                                             ComboBox::new(&mut state.quality, &quality_opts)
                                                 .id_salt("quality")
-                                                .size((Sizing::Fixed(140.0), Sizing::Hug))
+                                                .size((Sizing::fixed(140.0), Sizing::HUG))
                                                 .show(ui);
                                             DragValue::new(&mut state.zoom)
                                                 .id_salt("zoom")
@@ -259,19 +259,19 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                                 .range(0.0..=100.0)
                                                 .decimals(0)
                                                 .suffix("%")
-                                                .size((Sizing::Fixed(90.0), Sizing::Hug))
+                                                .size((Sizing::fixed(90.0), Sizing::HUG))
                                                 .show(ui);
                                         });
                                     Panel::hstack()
                                         .id_salt("slider-row")
                                         .gap(8.0)
                                         .child_align(Align::CENTER)
-                                        .size((Sizing::FILL, Sizing::Hug))
+                                        .size((Sizing::FILL, Sizing::HUG))
                                         .show(ui, |ui| {
                                             Text::new("Volume")
                                                 .id_salt("vol-label")
                                                 .style(TextStyle::default().with_font_size(13.0))
-                                                .size((Sizing::Fixed(56.0), Sizing::Hug))
+                                                .size((Sizing::fixed(56.0), Sizing::HUG))
                                                 .show(ui);
                                             Slider::new(&mut state.volume, 0.0..=1.0)
                                                 .id_salt("volume")
@@ -284,7 +284,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
 
                             Panel::canvas()
                                 .id_salt("shape-gallery")
-                                .size((Sizing::FILL, Sizing::Fixed(140.0)))
+                                .size((Sizing::FILL, Sizing::fixed(140.0)))
                                 .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     add_shape_gallery(ui);
@@ -292,12 +292,12 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
 
                             Panel::canvas()
                                 .id_salt("dot-canvas")
-                                .size((Sizing::FILL, Sizing::Fixed(80.0)))
+                                .size((Sizing::FILL, Sizing::fixed(80.0)))
                                 .show(ui, |ui| {
                                     for i in 0..canvas_dots {
                                         Frame::new()
                                             .id_salt(("dot", i))
-                                            .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
+                                            .size((Sizing::fixed(16.0), Sizing::fixed(16.0)))
                                             .position((
                                                 i as f32 * 22.0,
                                                 12.0 + (i % 3) as f32 * 18.0,
@@ -321,13 +321,13 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                         Panel::hstack()
                                             .id_salt(("chat-row", i))
                                             .gap(8.0)
-                                            .size((Sizing::FILL, Sizing::Hug))
+                                            .size((Sizing::FILL, Sizing::HUG))
                                             .show(ui, |ui| {
                                                 Frame::new()
                                                     .id_salt(("avatar", i))
                                                     .size((
-                                                        Sizing::Fixed(40.0),
-                                                        Sizing::Fixed(40.0),
+                                                        Sizing::fixed(40.0),
+                                                        Sizing::fixed(40.0),
                                                     ))
                                                     .background(Background {
                                                         fill: Brush::Radial(
@@ -343,7 +343,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                                 Panel::vstack()
                                                     .id_salt(("chat-text", i))
                                                     .gap(2.0)
-                                                    .size((Sizing::FILL, Sizing::Hug))
+                                                    .size((Sizing::FILL, Sizing::HUG))
                                                     .show(ui, |ui| {
                                                         let name = ui.fmt(format_args!("user_{i}"));
                                                         Text::new(name)
@@ -364,7 +364,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                                                 .with_font_size(13.0),
                                                         )
                                                         .text_wrap(TextWrap::Wrap)
-                                                        .size((Sizing::FILL, Sizing::Hug))
+                                                        .size((Sizing::FILL, Sizing::HUG))
                                                         .show(ui);
                                                     });
                                             });
@@ -405,7 +405,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                 .rows(rows)
                                 .gap(6.0)
                                 .padding(4.0)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui, |ui| {
                                     let labels = [
                                         "Name",
@@ -449,7 +449,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                 .id_salt("tags")
                                 .gap(4.0)
                                 .padding(6.0)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     for i in 0..tag_count {
@@ -460,13 +460,13 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
 
                             TextEdit::new(&mut state.notes)
                                 .id_salt("notes")
-                                .size((Sizing::FILL, Sizing::Fixed(60.0)))
+                                .size((Sizing::FILL, Sizing::fixed(60.0)))
                                 .show(ui);
                         });
                 });
 
             Panel::zstack()
-                .size((Sizing::FILL, Sizing::Fixed(36.0)))
+                .size((Sizing::FILL, Sizing::fixed(36.0)))
                 .show(ui, |ui| {
                     Frame::new()
                         .id_salt("footer-bg")
@@ -495,11 +495,11 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                             Text::new(ui.fmt(format_args!("Frame {:08}", state.tick)))
                                 .id_salt("footer-status")
                                 .style(TextStyle::default().with_font_size(12.0))
-                                .size((Sizing::Fixed(120.0), Sizing::Hug))
+                                .size((Sizing::fixed(120.0), Sizing::HUG))
                                 .show(ui);
                             Frame::new()
                                 .id_salt("footer-spacer")
-                                .size((Sizing::FILL, Sizing::Fixed(1.0)))
+                                .size((Sizing::FILL, Sizing::fixed(1.0)))
                                 .show(ui);
                             Text::new("v1.2.3 · many nodes")
                                 .id_salt("footer-meta")

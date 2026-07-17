@@ -51,7 +51,6 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
 /// snapshot lookups (one column reads the right index, another reads
 /// past its end). Pin the invariant after every operation that touches
 /// the cache.
-#[track_caller]
 fn assert_node_columns_aligned(ui: &Ui) {
     let n = &ui.layout_engine.cache.nodes;
     let len = n.desired.len();
@@ -187,14 +186,14 @@ fn changing_available_forces_miss_and_remeasure() {
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("inner"))
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Text::new(
                     "the quick brown fox jumps over the lazy dog \
                      pack my box with five dozen liquor jugs",
                 )
                 .id(WidgetId::from_hash("fill"))
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .style(TextStyle::default().with_font_size(16.0))
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);

@@ -27,7 +27,7 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
             let trigger = Button::new()
                 .id(WidgetId::from_hash("trigger"))
                 .label("right click me")
-                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .snapshot();
             ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {

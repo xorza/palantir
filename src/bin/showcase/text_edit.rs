@@ -44,13 +44,13 @@ pub(crate) fn build(ui: &mut Ui) {
                     TextEdit::new(&mut buf_a)
                         .id_salt("editor_a")
                         .placeholder("first field")
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .min_size((180.0, 32.0))
                         .show(ui);
                     TextEdit::new(&mut buf_b)
                         .id_salt("editor_b")
                         .placeholder("second field")
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .min_size((180.0, 32.0))
                         .show(ui);
                 });
@@ -106,7 +106,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     .text_align(Align::RIGHT)
                     .align(Align::RIGHT)
                     .placeholder("paste a paragraph here")
-                    .size((Sizing::FILL, Sizing::Fixed(110.0)))
+                    .size((Sizing::FILL, Sizing::fixed(110.0)))
                     .min_size((180.0, 80.0))
                     .show(ui);
             },
@@ -143,13 +143,13 @@ fn align_grid(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("align-grid")
         .gap(8.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for (v, vname) in ROWS {
                 Panel::hstack()
                     .id_salt(vname)
                     .gap(8.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         for (h, hname) in COLS {
                             let key = format!("textedit_align__{vname}_{hname}");
@@ -162,7 +162,7 @@ fn align_grid(ui: &mut Ui) {
                                 .id_salt(key.as_str())
                                 .text_align(Align::new(h, v))
                                 .placeholder(format!("{vname} / {hname}"))
-                                .size((Sizing::FILL, Sizing::Fixed(56.0)))
+                                .size((Sizing::FILL, Sizing::fixed(56.0)))
                                 .min_size((140.0, 56.0))
                                 .show(ui);
                             *ui.state_mut::<String>(buf_id) = buf;

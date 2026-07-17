@@ -23,7 +23,7 @@ pub(crate) fn build(ui: &mut Ui) {
         Panel::hstack()
             .id_salt("stacks-row")
             .gap(12.0)
-            .size((Sizing::FILL, Sizing::Fixed(170.0)))
+            .size((Sizing::FILL, Sizing::fixed(170.0)))
             .show(ui, |ui| {
                 demo_cell(ui, "HStack", |ui| {
                     Panel::hstack().auto_id().gap(6.0).show(ui, |ui| {
@@ -64,7 +64,7 @@ pub(crate) fn build(ui: &mut Ui) {
             |ui| {
                 Panel::wrap_hstack()
                     .id_salt("tags")
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .gap(8.0)
                     .line_gap(8.0)
                     .show(ui, |ui| {
@@ -78,7 +78,7 @@ pub(crate) fn build(ui: &mut Ui) {
         Panel::hstack()
             .id_salt("wrap-row")
             .gap(24.0)
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 section(
                     ui,
@@ -87,7 +87,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     |ui| {
                         Panel::wrap_vstack()
                             .id_salt("vwrap-col")
-                            .size((Sizing::Hug, Sizing::Fixed(130.0)))
+                            .size((Sizing::HUG, Sizing::fixed(130.0)))
                             .gap(6.0)
                             .line_gap(12.0)
                             .show(ui, |ui| {
@@ -104,7 +104,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     |ui| {
                         Panel::wrap_hstack()
                             .id_salt("centered-row")
-                            .size((Sizing::FILL, Sizing::Hug))
+                            .size((Sizing::FILL, Sizing::HUG))
                             .gap(10.0)
                             .line_gap(10.0)
                             .justify(Justify::Center)
@@ -143,7 +143,7 @@ pub(crate) fn build(ui: &mut Ui) {
                                     "rail",
                                     (1, 2),
                                     None,
-                                    Some((Sizing::Fixed(80.0), Sizing::FILL)),
+                                    Some((Sizing::fixed(80.0), Sizing::FILL)),
                                     support::D,
                                 );
                             });
@@ -201,7 +201,7 @@ const TAGS: &[&str] = &[
 fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
     Frame::new()
         .id_salt(id)
-        .size((Sizing::Fixed(w), Sizing::Fixed(h)))
+        .size((Sizing::fixed(w), Sizing::fixed(h)))
         .background(swatch_bg(c))
         .show(ui);
 }
@@ -243,7 +243,7 @@ fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
 fn badge<H: Hash>(ui: &mut Ui, key: H) {
     Frame::new()
         .id_salt(("badge", &key))
-        .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
+        .size((Sizing::fixed(80.0), Sizing::fixed(28.0)))
         .background(swatch_bg(support::A))
         .show(ui);
 }

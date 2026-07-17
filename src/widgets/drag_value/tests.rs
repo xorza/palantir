@@ -44,7 +44,7 @@ fn deferred_frame(
             .disabled(disabled)
             .speed(1.0)
             .decimals(2)
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
             .id(id)
             .show(ui);
         s.changed |= r.changed;
@@ -549,13 +549,13 @@ fn editing_a_long_value_holds_the_field_width() {
         let mut node = None;
         Panel::hstack()
             .id(WidgetId::from_hash("dv-row"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 node = Some(
                     DragValue::new(v)
                         .editable(true)
                         .decimals(3)
-                        .size((Sizing::Fill(1.0), Sizing::Hug))
+                        .size((Sizing::fill(1.0), Sizing::HUG))
                         .min_size((40.0, 0.0))
                         .id(id)
                         .show(ui)
@@ -608,12 +608,12 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
         Panel::zstack()
             .id(WidgetId::from_hash("dv-zoom-row"))
             .transform(TranslateScale::new(Vec2::ZERO, 0.5))
-            .size((Sizing::Fixed(120.0), Sizing::Fixed(60.0)))
+            .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 DragValue::new(v)
                     .editable(true)
                     .decimals(3)
-                    .size((Sizing::Fill(1.0), Sizing::Hug))
+                    .size((Sizing::fill(1.0), Sizing::HUG))
                     .min_size((100.0, 0.0))
                     .id(id)
                     .show(ui);

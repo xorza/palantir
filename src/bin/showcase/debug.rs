@@ -76,7 +76,7 @@ pub(crate) fn build(ui: &mut Ui) {
         Panel::hstack()
             .id_salt("zorder-row")
             .gap(12.0)
-            .size((Sizing::FILL, Sizing::Fixed(200.0)))
+            .size((Sizing::FILL, Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 zorder_cell(ui, "z-order — text on top of an earlier quad", false);
                 zorder_cell(ui, "z-order — quad declared AFTER text covers it", true);
@@ -85,7 +85,7 @@ pub(crate) fn build(ui: &mut Ui) {
         Panel::hstack()
             .id_salt("fixture-row")
             .gap(12.0)
-            .size((Sizing::FILL, Sizing::Fixed(190.0)))
+            .size((Sizing::FILL, Sizing::fixed(190.0)))
             .show(ui, |ui| {
                 captioned_cell(ui, "chrome concentricity", chrome_concentricity);
                 demo_cell(ui, "premul — solid α 0.5 (expect grey)", translucent_solid);
@@ -124,7 +124,7 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
                 if quad_after {
                     Frame::new()
                         .id_salt((label, "occluder"))
-                        .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
                         .background(swatch_bg(Color::hex(0x1a1a1a)))
                         .show(ui);
                 }
@@ -150,7 +150,7 @@ fn chrome_concentricity(ui: &mut Ui) {
         .show(ui, |ui| {
             Panel::zstack()
                 .auto_id()
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(120.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(120.0)))
                 .child_align(Align::CENTER)
                 .background(Background {
                     fill: Color::hex(0x0000ff).into(),

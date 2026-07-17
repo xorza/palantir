@@ -192,7 +192,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
         Panel::vstack()
             .id(WidgetId::from_hash(key))
             .position(pos)
-            .size((Sizing::Fixed(30.0), Sizing::Fixed(30.0)))
+            .size((Sizing::fixed(30.0), Sizing::fixed(30.0)))
             .show(ui, |ui| {
                 // Auto id — no `.id`/`.id_salt`; same call site for every
                 // node, so it collides across nodes and is disambiguated.
@@ -349,7 +349,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
     fn child(ui: &mut Ui, key: &str, fill: Color) {
         Frame::new()
             .id(WidgetId::from_hash(key))
-            .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+            .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
             .background(Background {
                 fill: fill.into(),
                 ..Default::default()
@@ -645,7 +645,7 @@ fn stable_painting_subtree_triggers_skip_jump() {
             .show(ui, |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("painting_parent"))
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(60.0)))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(60.0)))
                     .background(Background {
                         fill: BLUE.into(),
                         ..Default::default()
@@ -979,7 +979,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
-                    .size((Sizing::Fixed(a_size), Sizing::Fixed(20.0)))
+                    .size((Sizing::fixed(a_size), Sizing::fixed(20.0)))
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
@@ -987,7 +987,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                     .show(ui);
                 Frame::new()
                     .id(WidgetId::from_hash("b"))
-                    .size((Sizing::Fixed(30.0), Sizing::Fixed(20.0)))
+                    .size((Sizing::fixed(30.0), Sizing::fixed(20.0)))
                     .background(Background {
                         fill: Color::rgb(0.5, 0.5, 0.5).into(),
                         ..Default::default()
@@ -1309,7 +1309,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                         .show(ui, |ui| {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("inner"))
-                                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                                 .show(ui, |ui| {
                                     // Shape wider than the surface so
                                     // the clipped paint rect
@@ -1370,7 +1370,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                         .show(ui, |ui| {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("inner"))
-                                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                                 .show(ui, |ui| {
                                     ui.add_shape(Shape::RoundedRect {
                                         local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
@@ -1616,7 +1616,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                             let Some(fill) = fill else { continue };
                             Frame::new()
                                 .id(WidgetId::from_hash(key))
-                                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                                 .background(Background {
                                     fill: fill.into(),
                                     ..Default::default()
@@ -1940,7 +1940,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     let mut scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Fixed(60.0), Sizing::Fixed(120.0)))
+            .size((Sizing::fixed(60.0), Sizing::fixed(120.0)))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("big"))
@@ -2214,7 +2214,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                 .show(ui, |ui| {
                     Panel::zstack()
                         .id(WidgetId::from_hash("clip-root"))
-                        .size((Sizing::Fixed(viewport_size), Sizing::Fixed(viewport_size)))
+                        .size((Sizing::fixed(viewport_size), Sizing::fixed(viewport_size)))
                         .clip_rect()
                         .show(ui, |ui| {
                             *child = Some(
@@ -2270,7 +2270,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         ("shape", |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .background(Background {
                     fill: BLUE.into(),
                     ..Default::default()
@@ -2292,7 +2292,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         ("chrome", |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .background(Background {
                     fill: BLUE.into(),
                     shadow: Shadow {
@@ -2369,12 +2369,12 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                 .show(ui, |ui| {
                     Panel::zstack()
                         .id(WidgetId::from_hash("viewport"))
-                        .size((Sizing::Fixed(viewport), Sizing::Fixed(viewport)))
+                        .size((Sizing::fixed(viewport), Sizing::fixed(viewport)))
                         .clip_rect()
                         .show(ui, |ui| {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("card"))
-                                .size((Sizing::Fixed(card), Sizing::Fixed(card)))
+                                .size((Sizing::fixed(card), Sizing::fixed(card)))
                                 .background(Background {
                                     fill: fill.into(),
                                     ..Default::default()
@@ -2516,7 +2516,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
             .show(ui, |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("off"))
-                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                     .background(Background {
                         fill: BLUE.into(),
                         ..Default::default()
@@ -2550,7 +2550,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     frame(&mut ui, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
@@ -2628,7 +2628,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     frame(&mut ui, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
@@ -2636,7 +2636,7 @@ fn node_snapshot_decomposition_matches_cascade() {
             .show(ui, |ui| two_lines(ui));
         Panel::hstack()
             .id(WidgetId::from_hash("multi2"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
@@ -2675,7 +2675,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     let build = |moving_y: f32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::Fixed(180.0), Sizing::Fixed(180.0)))
+            .size((Sizing::fixed(180.0), Sizing::fixed(180.0)))
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
@@ -2779,7 +2779,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     let build = |fill: Color, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: fill.into(),
                 ..Default::default()
@@ -2822,7 +2822,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     let build = |include_middle: bool, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::Fixed(180.0), Sizing::Fixed(60.0)))
+            .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
@@ -2909,7 +2909,7 @@ fn shape_added_in_middle_damages_only_new() {
     let build = |include_middle: bool, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
-            .size((Sizing::Fixed(180.0), Sizing::Fixed(60.0)))
+            .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(red_rect),
@@ -2992,7 +2992,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("chrome_only"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
@@ -3058,7 +3058,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     let build = |text: &'static str, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
             .show(ui, |ui| {
                 let mut element = Element::leaf();
                 element.salt = Salt::Verbatim(leaf_id);
@@ -3175,7 +3175,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(host_id)
-                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .background(Background {
                     fill: BLUE.into(),
                     ..Default::default()

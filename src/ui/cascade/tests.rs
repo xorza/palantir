@@ -67,7 +67,7 @@ fn shape_rect_composes_self_transform() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
-                .size(Sizing::Fixed(300.0))
+                .size(Sizing::fixed(300.0))
                 .transform(xform)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::RoundedRect {
@@ -115,11 +115,11 @@ fn self_transform_anchors_scale_at_panel_origin() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("spacer"))
-                .size(Sizing::Fixed(50.0))
+                .size(Sizing::fixed(50.0))
                 .show(ui, |_| {});
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
-                .size(Sizing::Fixed(200.0))
+                .size(Sizing::fixed(200.0))
                 .transform(xform)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::RoundedRect {
@@ -171,7 +171,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("chrome"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .background(Background {
                     fill: Color::rgb(0.5, 0.5, 0.5).into(),
                     ..Default::default()
@@ -179,15 +179,15 @@ fn node_spans_rows_mirror_chrome_and_children() {
                 .show(ui, |_| {});
             Panel::hstack()
                 .id(WidgetId::from_hash("bare"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .show(ui, |_| {});
             Panel::hstack()
                 .id(WidgetId::from_hash("parent"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .show(ui, |ui| {
                     Panel::hstack()
                         .id(WidgetId::from_hash("kid"))
-                        .size((Sizing::Fixed(10.0), Sizing::Fixed(10.0)))
+                        .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
                         .show(ui, |_| {});
                 });
         });
@@ -294,7 +294,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
-                .size(Sizing::Fixed(300.0))
+                .size(Sizing::fixed(300.0))
                 .clip(ClipMode::Rect)
                 .transform(xform)
                 .show(ui, |ui| {
@@ -404,7 +404,7 @@ fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
     ui.run_at_acked(UVec2::splat(100), |ui| {
         Panel::zstack()
             .auto_id()
-            .size(Sizing::Fixed(100.0))
+            .size(Sizing::fixed(100.0))
             .show(ui, |ui| {
                 Frame::new().id(inert).size(Sizing::FILL).show(ui);
                 Frame::new()

@@ -17,7 +17,6 @@ pub struct Track {
 
 impl Track {
     pub const fn new(size: Sizing) -> Self {
-        size.assert_non_negative();
         Self {
             size,
             min: 0.0,
@@ -26,16 +25,16 @@ impl Track {
     }
 
     pub const fn fixed(v: f32) -> Self {
-        Self::new(Sizing::Fixed(v))
+        Self::new(Sizing::fixed(v))
     }
     pub const fn hug() -> Self {
-        Self::new(Sizing::Hug)
+        Self::new(Sizing::HUG)
     }
     pub const fn fill() -> Self {
         Self::new(Sizing::FILL)
     }
     pub const fn fill_weight(w: f32) -> Self {
-        Self::new(Sizing::Fill(w))
+        Self::new(Sizing::fill(w))
     }
 
     /// Set the lower size clamp.
@@ -151,8 +150,8 @@ mod tests {
         assert_eq!(PINNED.min, 5.0);
         assert_eq!(PINNED.max, 5.0);
 
-        let positive_zero = Track::new(Sizing::Fixed(0.0)).min(0.0);
-        let negative_zero = Track::new(Sizing::Fixed(-0.0)).min(-0.0);
+        let positive_zero = Track::new(Sizing::fixed(0.0)).min(0.0);
+        let negative_zero = Track::new(Sizing::fixed(-0.0)).min(-0.0);
         assert_eq!(positive_zero, negative_zero);
         assert_eq!(hash_value(positive_zero), hash_value(negative_zero));
     }

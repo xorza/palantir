@@ -230,7 +230,6 @@ fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
     }
 }
 
-#[track_caller]
 fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
     assert_ne!(
         a, b,

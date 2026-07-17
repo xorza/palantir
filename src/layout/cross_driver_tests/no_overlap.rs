@@ -25,7 +25,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
 fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
     Panel::vstack()
         .id(WidgetId::from_hash(id))
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .gap(6.0)
         .padding(8.0)
         .background(Background {
@@ -77,7 +77,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                 .show(ui, |ui| {
                     let mut g = Grid::new().auto_id();
                     if let Some(s) = *grid_main {
-                        g = g.size((s, Sizing::Hug));
+                        g = g.size((s, Sizing::HUG));
                     }
                     g.cols(Rc::from(*cols))
                         .rows(Rc::from([Track::hug()]))
@@ -160,7 +160,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                 section(ui, "property-grid", &mut |ui| {
                     Grid::new()
                         .id(WidgetId::from_hash("property-grid-inner"))
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
                         .gap_xy(6.0, 16.0)
@@ -220,7 +220,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
             .show(ui, |ui| {
                 Grid::new()
                     .id(WidgetId::from_hash("property-grid-inner"))
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .cols(Rc::from([Track::hug(), Track::fill()]))
                     .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
                     .gap_xy(6.0, 16.0)
@@ -274,7 +274,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             Panel::hstack().auto_id()
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |_| {});
             Panel::zstack().auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -303,7 +303,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                             });
                             section(ui, "property-grid", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("property-grid-inner"))
-                                    .size((Sizing::FILL, Sizing::Hug))
+                                    .size((Sizing::FILL, Sizing::HUG))
                                     .cols(Rc::from([Track::hug(), Track::fill()]))
                                     .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
                                     .gap_xy(6.0, 16.0)

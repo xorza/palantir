@@ -27,7 +27,7 @@ fn vstack_fill_weights_matches_golden() {
             .show(ui, |ui| {
                 Frame::new()
                     .id_salt("a")
-                    .size((Sizing::FILL, Sizing::Fill(1.0)))
+                    .size((Sizing::FILL, Sizing::fill(1.0)))
                     .background(Background {
                         fill: Color::rgb(0.85, 0.30, 0.30).into(),
                         ..Default::default()
@@ -35,7 +35,7 @@ fn vstack_fill_weights_matches_golden() {
                     .show(ui);
                 Frame::new()
                     .id_salt("b")
-                    .size((Sizing::FILL, Sizing::Fill(2.0)))
+                    .size((Sizing::FILL, Sizing::fill(2.0)))
                     .background(Background {
                         fill: Color::rgb(0.30, 0.85, 0.40).into(),
                         ..Default::default()
@@ -43,7 +43,7 @@ fn vstack_fill_weights_matches_golden() {
                     .show(ui);
                 Frame::new()
                     .id_salt("c")
-                    .size((Sizing::FILL, Sizing::Fill(1.0)))
+                    .size((Sizing::FILL, Sizing::fill(1.0)))
                     .background(Background {
                         fill: Color::rgb(0.30, 0.50, 0.95).into(),
                         ..Default::default()
@@ -151,7 +151,7 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
         Panel::vstack()
             .auto_id()
             .padding(12.0)
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Grid::new()
                     .id_salt("two-hug")

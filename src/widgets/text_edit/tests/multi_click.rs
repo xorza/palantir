@@ -17,7 +17,7 @@ fn double_and_triple_click_select_word_and_all() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("multi-ed"))
-                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }

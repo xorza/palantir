@@ -88,7 +88,7 @@ fn damage_animated_rect_alloc_free() {
                     fill: Color::WHITE.into(),
                     ..Default::default()
                 })
-                .size((Sizing::Fixed(w), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(w), Sizing::fixed(40.0)))
                 .show(ui);
         });
     });
@@ -112,7 +112,7 @@ fn text_edit_alloc_free() {
     audit_steady_state("text_edit", 0, move |ui| {
         TextEdit::new(&mut buf)
             .id_salt("edit")
-            .size((Sizing::FILL, Sizing::Fixed(28.0)))
+            .size((Sizing::FILL, Sizing::fixed(28.0)))
             .show(ui);
     });
 }
@@ -152,7 +152,7 @@ fn long_multiline_selection_alloc_free() {
             .id(editor_id)
             .multiline(true)
             .select_all_on_focus()
-            .size((Sizing::Fixed(360.0), Sizing::Fixed(500.0)))
+            .size((Sizing::fixed(360.0), Sizing::fixed(500.0)))
             .show(ui);
     });
 }
@@ -177,7 +177,7 @@ fn scroll_overflow_alloc_free() {
             .show(ui, |ui| {
                 Frame::new()
                     .id_salt("tall")
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                     .show(ui);
             });
     });
@@ -193,7 +193,7 @@ fn scroll_fits_alloc_free() {
             .show(ui, |ui| {
                 Frame::new()
                     .id_salt("short")
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui);
             });
     });

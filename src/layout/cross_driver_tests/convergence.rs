@@ -85,7 +85,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                                             .show(ui);
                                         Frame::new()
                                             .id(WidgetId::from_hash("right-fixed"))
-                                            .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
+                                            .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
                                             .show(ui);
                                     });
                             })
@@ -173,7 +173,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                         .auto_id()
                         .gap(6.0)
                         .line_gap(6.0)
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .show(ui, |ui| {
                             for label in LABELS {
                                 Button::new()
@@ -209,8 +209,8 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                                                 Frame::new()
                                                     .id(WidgetId::from_hash((id, "swatch")))
                                                     .size((
-                                                        Sizing::Fixed(content_w),
-                                                        Sizing::Fixed(40.0),
+                                                        Sizing::fixed(content_w),
+                                                        Sizing::fixed(40.0),
                                                     ))
                                                     .show(ui);
                                             });

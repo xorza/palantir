@@ -22,7 +22,7 @@ fn context_menu_cut_copy_paste_clear() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("ctx-ed"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -276,7 +276,7 @@ fn secondary_click_opens_text_edit_menu() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("ctx-ed-sec"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }

@@ -54,7 +54,7 @@ fn scroll_vertical_overflow_matches_golden() {
                                     corners: Corners::all(3.0),
                                     ..Default::default()
                                 })
-                                .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                                .size((Sizing::FILL, Sizing::fixed(20.0)))
                                 .show(ui);
                         }
                     });
@@ -90,7 +90,7 @@ fn scroll_horizontal_overflow_matches_golden() {
                                     corners: Corners::all(3.0),
                                     ..Default::default()
                                 })
-                                .size((Sizing::Fixed(40.0), Sizing::FILL))
+                                .size((Sizing::fixed(40.0), Sizing::FILL))
                                 .show(ui);
                         }
                     });
@@ -125,7 +125,7 @@ fn scroll_xy_overflow_matches_golden() {
                                 corners: Corners::all(6.0),
                                 ..Default::default()
                             })
-                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                             .show(ui);
                     });
             });
@@ -159,7 +159,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
                                 corners: Corners::all(3.0),
                                 ..Default::default()
                             })
-                            .size((Sizing::FILL, Sizing::Fixed(40.0)))
+                            .size((Sizing::FILL, Sizing::fixed(40.0)))
                             .show(ui);
                     });
             });
@@ -197,7 +197,7 @@ fn scroll_with_user_padding_matches_golden() {
                                     corners: Corners::all(3.0),
                                     ..Default::default()
                                 })
-                                .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                                .size((Sizing::FILL, Sizing::fixed(20.0)))
                                 .show(ui);
                         }
                     });
@@ -253,7 +253,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                                                 corners: Corners::all(3.0),
                                                 ..Default::default()
                                             })
-                                            .size((Sizing::FILL, Sizing::Fixed(18.0)))
+                                            .size((Sizing::FILL, Sizing::fixed(18.0)))
                                             .show(ui);
                                     }
                                 });

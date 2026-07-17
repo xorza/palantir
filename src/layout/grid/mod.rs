@@ -5,7 +5,7 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
-    AxisAlignPair, TextCtx, place_axis, resolved_axis_align, zero_subtree,
+    AxisAlignPair, TextCtx, place_axis, resolved_axis_align, weighted_share, zero_subtree,
 };
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -467,7 +467,7 @@ fn measure_inner(
     // Fixed cols read neither.
     let any_content_floor_col = col_tracks
         .iter()
-        .any(|t| matches!(t.size, Sizing::Hug | Sizing::Fill(_)));
+        .any(|t| t.size.is_hug() || t.size.fill_weight().is_some());
     if any_content_floor_col {
         for c in tree.active_children(node) {
             let cell = tree.bounds(c).grid;
@@ -476,25 +476,20 @@ fn measure_inner(
             }
             let t = &col_tracks[cell.col as usize];
             let i = cell.col as usize;
-            match t.size {
-                Sizing::Hug => {
-                    let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
-                    let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
-                    let (cols_min, cols_max) =
-                        layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
-                    cols_min[i] = cols_min[i].max(min);
-                    cols_max[i] = cols_max[i].max(max);
-                }
-                Sizing::Fill(_) => {
-                    let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
-                    let cols_min = layout
-                        .scratch
-                        .grid
-                        .hugs
-                        .slice_mut(idx, Axis::X, HugKind::Min);
-                    cols_min[i] = cols_min[i].max(min);
-                }
-                Sizing::Fixed(_) => {}
+            if t.size.is_hug() {
+                let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+                let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
+                let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
+                cols_min[i] = cols_min[i].max(min);
+                cols_max[i] = cols_max[i].max(max);
+            } else if t.size.fill_weight().is_some() {
+                let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+                let cols_min = layout
+                    .scratch
+                    .grid
+                    .hugs
+                    .slice_mut(idx, Axis::X, HugKind::Min);
+                cols_min[i] = cols_min[i].max(min);
             }
         }
     }
@@ -504,7 +499,7 @@ fn measure_inner(
     //
     // For Fill cols specifically, whether cells should see the resolved
     // Fill width or `INFINITY` depends on the *grid's* sizing on this
-    // axis. If the grid is `Sizing::Hug`, arrange's `inner.w` will be
+    // axis. If the grid is `Sizing::HUG`, arrange's `inner.w` will be
     // `grid.desired.w = sum_non_fill` — Fill cols get 0 leftover at
     // arrange. Cells measured at the measure-time finite Fill width
     // would commit row heights to a width arrange doesn't honor (the
@@ -580,16 +575,13 @@ fn measure_inner(
                 depth_stack, hugs, ..
             } = &mut layout.scratch.grid;
             let row = cell.row as usize;
-            match depth_stack.at(depth).row.tracks[row].size {
-                Sizing::Hug => {
-                    let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
-                    hug_max[row] = hug_max[row].max(d.h);
-                }
-                Sizing::Fill(_) => {
-                    let hug_min = hugs.slice_mut(idx, Axis::Y, HugKind::Min);
-                    hug_min[row] = hug_min[row].max(d.h);
-                }
-                Sizing::Fixed(_) => {}
+            let sizing = depth_stack.at(depth).row.tracks[row].size;
+            if sizing.is_hug() {
+                let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
+                hug_max[row] = hug_max[row].max(d.h);
+            } else if sizing.fill_weight().is_some() {
+                let hug_min = hugs.slice_mut(idx, Axis::Y, HugKind::Min);
+                hug_min[row] = hug_min[row].max(d.h);
             }
         }
     }
@@ -632,7 +624,7 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
         .iter()
         .zip(sizes.iter())
         .map(|(t, &s)| {
-            if matches!(t.size, Sizing::Fill(_)) {
+            if t.size.fill_weight().is_some() {
                 0.0
             } else {
                 s
@@ -643,8 +635,8 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
 
 fn resolve_fixed(a: &mut AxisScratch) {
     for (i, t) in a.tracks.iter().enumerate() {
-        if let Sizing::Fixed(v) = t.size {
-            a.sizes[i] = v.clamp(t.min, t.max);
+        if let Some(value) = t.size.fixed_value() {
+            a.sizes[i] = value.clamp(t.min, t.max);
             a.resolved.insert(i);
         }
     }
@@ -830,8 +822,7 @@ fn resolve_or_reuse(
     grid_sizing: Sizing,
 ) {
     let recorded_total = hugs.total_used(idx, axis);
-    let can_reuse =
-        !matches!(grid_sizing, Sizing::Hug) && recorded_total != 0.0 && recorded_total == total;
+    let can_reuse = !grid_sizing.is_hug() && recorded_total != 0.0 && recorded_total == total;
     if can_reuse {
         a.sizes.copy_from_slice(hugs.sizes_slice(idx, axis));
         return;
@@ -858,7 +849,7 @@ fn content_floor(track: &Track, min_content: f32) -> f32 {
 /// at measure time.
 ///
 /// **Algorithm**, four phases:
-/// 1. **Fixed:** clamp `Sizing::Fixed(v)` to `[Track.min, Track.max]`,
+/// 1. **Fixed:** clamp `Sizing::fixed(v)` to `[Track.min, Track.max]`,
 ///    consume from available.
 /// 2. **Hug:** constraint-solve each track's content range, with both
 ///    its min-content floor and preferred size capped by `Track.max`,
@@ -904,8 +895,8 @@ fn resolve_axis(
     // Phase 1: Fixed.
     let mut consumed = total_gap;
     for (i, t) in a.tracks.iter().enumerate() {
-        if let Sizing::Fixed(v) = t.size {
-            a.sizes[i] = v.clamp(t.min, t.max);
+        if let Some(value) = t.size.fixed_value() {
+            a.sizes[i] = value.clamp(t.min, t.max);
             a.resolved.insert(i);
             consumed += a.sizes[i];
         }
@@ -918,7 +909,7 @@ fn resolve_axis(
     let mut hug_min_sum = 0.0_f32;
     let mut hug_max_sum = 0.0_f32;
     for (i, t) in a.tracks.iter().enumerate() {
-        if matches!(t.size, Sizing::Hug) {
+        if t.size.is_hug() {
             let lo = content_floor(t, hug_min[i]);
             let hi = hug_max[i].max(lo).min(t.max);
             hug_min_sum += lo;
@@ -964,11 +955,11 @@ fn resolve_axis(
     // why the two aren't physically merged).
     let mut remaining = (total - consumed).max(0.0);
     a.flexible.clear();
-    let mut flexible_weight = 0.0_f32;
+    let mut flexible_weight = 0.0_f64;
     for (i, t) in a.tracks.iter().enumerate() {
-        if let Sizing::Fill(w) = t.size {
+        if let Some(weight) = t.size.fill_weight() {
             a.flexible.push(i);
-            flexible_weight += w;
+            flexible_weight += f64::from(weight);
         }
     }
 
@@ -980,10 +971,8 @@ fn resolve_axis(
     while !a.flexible.is_empty() && flexible_weight > 0.0 {
         let clamp_idx = a.flexible.iter().position(|&i| {
             let t = &a.tracks[i];
-            let Sizing::Fill(w) = t.size else {
-                unreachable!()
-            };
-            let candidate = remaining * w / flexible_weight;
+            let weight = t.size.fill_weight().unwrap();
+            let candidate = weighted_share(remaining, weight, flexible_weight);
             let lo = content_floor(t, hug_min[i]);
             candidate < lo || candidate > t.max
         });
@@ -991,23 +980,19 @@ fn resolve_axis(
             Some(k) => {
                 let i = a.flexible[k];
                 let t = &a.tracks[i];
-                let Sizing::Fill(w) = t.size else {
-                    unreachable!()
-                };
-                let candidate = remaining * w / flexible_weight;
+                let weight = t.size.fill_weight().unwrap();
+                let candidate = weighted_share(remaining, weight, flexible_weight);
                 let lo = content_floor(t, hug_min[i]);
                 let clamped = candidate.clamp(lo, t.max);
                 a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);
-                flexible_weight -= w;
+                flexible_weight -= f64::from(weight);
                 a.flexible.swap_remove(k);
             }
             None => {
                 for &i in a.flexible.iter() {
-                    let Sizing::Fill(w) = a.tracks[i].size else {
-                        unreachable!()
-                    };
-                    a.sizes[i] = remaining * w / flexible_weight;
+                    let weight = a.tracks[i].size.fill_weight().unwrap();
+                    a.sizes[i] = weighted_share(remaining, weight, flexible_weight);
                 }
                 break;
             }
@@ -1016,9 +1001,9 @@ fn resolve_axis(
 
     // Phase 4: commit Fill tracks as resolved when the grid's own axis
     // sizing guarantees measure-time `total` matches arrange-time slot.
-    if !matches!(grid_sizing, Sizing::Hug) && total.is_finite() {
+    if !grid_sizing.is_hug() && total.is_finite() {
         for (i, t) in a.tracks.iter().enumerate() {
-            if matches!(t.size, Sizing::Fill(_)) {
+            if t.size.fill_weight().is_some() {
                 a.resolved.insert(i);
             }
         }
@@ -1071,11 +1056,10 @@ pub(crate) fn intrinsic(
         .track_aggregator
         .resize(base + n_tracks, 0.0);
     for (i, t) in tracks.iter().enumerate() {
-        layout.scratch.grid.track_aggregator[base + i] = match t.size {
-            Sizing::Fixed(v) => v.clamp(t.min, t.max),
-            // Hug starts at Track.min; Fill stays at Track.min.
-            _ => t.min,
-        };
+        layout.scratch.grid.track_aggregator[base + i] = t
+            .size
+            .fixed_value()
+            .map_or(t.min, |value| value.clamp(t.min, t.max));
     }
 
     for c in tree.active_children(node) {
@@ -1087,7 +1071,7 @@ pub(crate) fn intrinsic(
         // (`Tree::check_grid_cell`) — same stance as `sum_spanned_known`.
         let track_idx = cell_span.start as usize;
         let t = &tracks[track_idx];
-        if !matches!(t.size, Sizing::Hug) {
+        if !t.size.is_hug() {
             continue;
         }
         let child_v = layout.intrinsic(tree, c, axis, req, tc);

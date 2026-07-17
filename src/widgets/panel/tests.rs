@@ -126,14 +126,14 @@ fn panel_hugs_largest_child_and_layers_them() {
                         a_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("a"))
-                                .size((Sizing::Fixed(80.0), Sizing::Fixed(30.0)))
+                                .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
                                 .show(ui)
                                 .node(),
                         );
                         b_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("b"))
-                                .size((Sizing::Fixed(60.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(60.0), Sizing::fixed(50.0)))
                                 .show(ui)
                                 .node(),
                         );
@@ -177,7 +177,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("p"))
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
                 .padding(10.0)
                 .show(ui, |ui| {
                     child_node = Some(
@@ -237,7 +237,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("locked"))
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                 .padding(20.0)
                 .background(Background {
                     fill: Color::rgb(0.2, 0.2, 0.2).into(),
@@ -247,7 +247,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                 .show(ui, |ui| {
                     let r = Button::new()
                         .id(WidgetId::from_hash("inside"))
-                        .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                         .show(ui);
                     if let Some(c) = captured {
                         *c = r.left.clicked();
@@ -278,7 +278,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                         a_node = Some(
                             Frame::new()
                                 .id(WidgetId::from_hash("a"))
-                                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                                .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .position(Vec2::new(10.0, 5.0))
                                 .show(ui)
                                 .node(),
@@ -286,7 +286,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                         b_node = Some(
                             Frame::new()
                                 .id(WidgetId::from_hash("b"))
-                                .size((Sizing::Fixed(30.0), Sizing::Fixed(60.0)))
+                                .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
                                 .position(Vec2::new(80.0, 40.0))
                                 .show(ui)
                                 .node(),
@@ -326,7 +326,7 @@ fn zstack_layers_children_without_painting_background() {
                         bg_node = Some(
                             Frame::new()
                                 .id(WidgetId::from_hash("bg"))
-                                .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
+                                .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
                                 .background(Background {
                                     fill: Color::rgb(0.1, 0.1, 0.2).into(),
                                     ..Default::default()
@@ -337,7 +337,7 @@ fn zstack_layers_children_without_painting_background() {
                         fg_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("fg"))
-                                .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
+                                .size((Sizing::fixed(60.0), Sizing::fixed(30.0)))
                                 .show(ui)
                                 .node(),
                         );
@@ -381,12 +381,12 @@ fn zstack_aligns_child_per_axis() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("box"))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
                     .show(ui, |ui| {
                         child_node = Some(
                             Frame::new()
                                 .id(WidgetId::from_hash("c"))
-                                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                                .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)
                                 .background(Background {
                                     fill: Color::rgb(0.5, 0.5, 0.5).into(),

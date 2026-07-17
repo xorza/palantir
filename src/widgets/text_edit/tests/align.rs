@@ -52,7 +52,7 @@ fn frame(
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
                 .id(WidgetId::from_hash("align-ed"))
-                .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(EDIT_H)));
+                .size((Sizing::fixed(EDIT_W), Sizing::fixed(EDIT_H)));
             if let Some(a) = text_align {
                 e = e.text_align(a);
             }
@@ -542,7 +542,7 @@ mod per_line {
                         .id(WidgetId::from_hash("fits-ml"))
                         .multiline(true)
                         .text_align(Align::TOP_RIGHT)
-                        .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                        .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                         .show(ui)
                         .node(),
                 );
@@ -603,7 +603,7 @@ mod per_line {
                     .id(WidgetId::from_hash("stable-ml"))
                     .multiline(true)
                     .text_align(Align::TOP_RIGHT)
-                    .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                    .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                     .show(ui);
             });
         };
@@ -654,7 +654,7 @@ mod per_line {
                         .multiline(true)
                         .text_align(Align::TOP_RIGHT)
                         .placeholder("type a paragraph here — long enough to actually wrap")
-                        .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                        .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                         .show(ui)
                         .node(),
                 );
@@ -821,7 +821,7 @@ mod per_line {
                     .id(WidgetId::from_hash("ml-right"))
                     .multiline(true)
                     .text_align(Align::TOP_RIGHT)
-                    .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                    .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                     .show(ui);
             });
         };
@@ -875,7 +875,7 @@ fn multiline_default_is_top_left() {
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("align-ed"))
                     .multiline(true)
-                    .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(80.0)))
+                    .size((Sizing::fixed(EDIT_W), Sizing::fixed(80.0)))
                     .show(ui)
                     .node(),
             );
@@ -914,7 +914,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
                     node = Some(
                         TextEdit::new(&mut buf)
                             .id(WidgetId::from_hash("zoom-ed"))
-                            .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(EDIT_H)))
+                            .size((Sizing::fixed(EDIT_W), Sizing::fixed(EDIT_H)))
                             .show(ui)
                             .node(),
                     );

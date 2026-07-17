@@ -81,12 +81,12 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
     let chrome = Background::fill(Color::linear_rgba(0.0, 0.0, 0.0, 0.75));
     ui.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
         Panel::hstack()
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .justify(Justify::End)
             .show(ui, |ui| {
                 Panel::hstack()
                     .background(chrome)
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .padding(Spacing::xy(4.0, 2.0))
                     .show(ui, |ui| {
                         Text::new(label).style(style).show(ui);

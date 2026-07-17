@@ -258,16 +258,18 @@ fn resolve_sizing(
     // than it can later arrange; deflate by padding. The clamp matches
     // `resolve_axis_size` below so children's `available` tracks the
     // parent's eventual arranged width.
-    let outer_w = match style.size.w() {
-        Sizing::Fixed(v) => v,
-        _ => (dispatch_avail.w - m_horiz).max(0.0),
-    }
-    .clamp(min_size.w, max_size.w);
-    let outer_h = match style.size.h() {
-        Sizing::Fixed(v) => v,
-        _ => (dispatch_avail.h - m_vert).max(0.0),
-    }
-    .clamp(min_size.h, max_size.h);
+    let outer_w = style
+        .size
+        .w()
+        .fixed_value()
+        .unwrap_or_else(|| (dispatch_avail.w - m_horiz).max(0.0))
+        .clamp(min_size.w, max_size.w);
+    let outer_h = style
+        .size
+        .h()
+        .fixed_value()
+        .unwrap_or_else(|| (dispatch_avail.h - m_vert).max(0.0))
+        .clamp(min_size.h, max_size.h);
     let inner_avail = Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0));
 
     let content = dispatch(inner_avail);
@@ -436,8 +438,8 @@ impl LayoutEngine {
                 // axes resolve to `available.max(desired)` — same as
                 // the prior surface-fill behavior.
                 let root_size = tree.records.layout()[root.idx()].size;
-                let synth_parent_w = Sizing::Fixed(available.w);
-                let synth_parent_h = Sizing::Fixed(available.h);
+                let synth_parent_w = Sizing::fixed(available.w);
+                let synth_parent_h = Sizing::fixed(available.h);
                 let size = Size::new(
                     stretched_extent(root_size.w(), desired.w, available.w, synth_parent_w),
                     stretched_extent(root_size.h(), desired.h, available.h, synth_parent_h),
@@ -540,20 +542,22 @@ impl LayoutEngine {
         // `intrinsic_min`. Cached per (node, axis, slot) so repeat
         // queries during the same `run` are O(1).
         //
-        // Per-axis gate: `Sizing::Fixed` ignores `intrinsic_min` in
+        // Per-axis gate: `Sizing::fixed` ignores `intrinsic_min` in
         // both `resolve_axis_size` (Fixed branch returns `v` verbatim)
         // and the `dispatch_avail.max(intrinsic_min)` floor below
         // (Fixed reads neither side). Skip the query on Fixed axes so
         // a Fixed leaf doesn't trigger a subtree intrinsic walk every
         // frame.
         let intrinsic_min = Size::new(
-            match style.size.w() {
-                Sizing::Fixed(_) => 0.0,
-                _ => self.intrinsic(tree, node, Axis::X, LenReq::MinContent, tc),
+            if style.size.w().fixed_value().is_some() {
+                0.0
+            } else {
+                self.intrinsic(tree, node, Axis::X, LenReq::MinContent, tc)
             },
-            match style.size.h() {
-                Sizing::Fixed(_) => 0.0,
-                _ => self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, tc),
+            if style.size.h().fixed_value().is_some() {
+                0.0
+            } else {
+                self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, tc)
             },
         );
 

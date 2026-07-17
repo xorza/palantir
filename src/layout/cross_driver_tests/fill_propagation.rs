@@ -35,7 +35,7 @@ fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
     );
 }
 
-/// Regression: a constrained ZStack (`Sizing::Fill`/`Fixed`) must pass
+/// Regression: a constrained ZStack (`Sizing::fill`/`Fixed`) must pass
 /// its inner size to children, not `INFINITY`. Without this,
 /// Grid Auto resolution falls back to max-content for any grid nested
 /// inside a ZStack (Phase-1 column intrinsics need a finite slot).
@@ -94,7 +94,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                             .show(ui);
                         Frame::new()
                             .id(WidgetId::from_hash("fixed-child"))
-                            .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                            .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                             .show(ui);
                     })
                     .node(),
@@ -173,7 +173,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
         Panel::vstack().auto_id().show(ui, |ui| {
             Grid::new()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .cols(Rc::from([Track::hug(), Track::fill()]))
                 .rows(Rc::from([Track::hug()]))
                 .show(ui, |ui| {
@@ -217,12 +217,12 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     ui.run_at_acked(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 grid_node = Some(
                     Grid::new()
                         .id(WidgetId::from_hash("pg"))
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug(), Track::hug()]))
                         .show(ui, |ui| {
@@ -274,16 +274,16 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     ui.run_at_acked(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::Fixed(400.0), Sizing::Hug))
+            .size((Sizing::fixed(400.0), Sizing::HUG))
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("hug-z"))
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         grid_node = Some(
                             Grid::new()
                                 .id(WidgetId::from_hash("nested-grid"))
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .cols(Rc::from([Track::hug(), Track::fill()]))
                                 .rows(Rc::from([Track::hug()]))
                                 .show(ui, |ui| {

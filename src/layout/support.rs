@@ -156,7 +156,7 @@ pub(crate) struct AxisCtx {
 ///
 /// The two cases where desired exceeds `available`:
 /// `max(content, intrinsic_min) > available` (rigid descendant or
-/// post-wrap content doesn't fit) or `Sizing::Fixed(v)`. An explicit
+/// post-wrap content doesn't fit) or `Sizing::fixed(v)`. An explicit
 /// `min_size` floor applies on top of all three branches via the
 /// trailing `clamp`.
 ///
@@ -164,24 +164,24 @@ pub(crate) struct AxisCtx {
 /// `available = INFINITY`) collapses to its content size — matches
 /// CSS Grid's `1fr` track in an auto-context parent.
 pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
-    let rendered = match ctx.sizing {
-        Sizing::Fixed(v) => v,
-        Sizing::Hug => {
-            if ctx.available.is_finite() {
-                ctx.content_plus_padding
-                    .min(ctx.available - ctx.margin)
-                    .max(ctx.intrinsic_min - ctx.margin)
-            } else {
-                ctx.content_plus_padding
-            }
+    let rendered = if let Some(value) = ctx.sizing.fixed_value() {
+        value
+    } else if ctx.sizing.is_hug() {
+        if ctx.available.is_finite() {
+            ctx.content_plus_padding
+                .min(ctx.available - ctx.margin)
+                .max(ctx.intrinsic_min - ctx.margin)
+        } else {
+            ctx.content_plus_padding
         }
+    } else {
         // WPF Stretch: Fill returns content at measure-time. The
         // "fill the slot" expansion happens at *arrange* — driver
         // arrange code redistributes leftover to Fill children
         // proportionally. Returning `available` here would balloon
         // any Hug ancestor to its grandparent's allocation (CSS auto-
         // sizing's classic Hug+Fill bug).
-        Sizing::Fill(_) => ctx.content_plus_padding.max(ctx.intrinsic_min - ctx.margin),
+        ctx.content_plus_padding.max(ctx.intrinsic_min - ctx.margin)
     };
     rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }
@@ -202,9 +202,10 @@ pub(crate) fn stretched_extent(
     available: f32,
     parent_sizing: Sizing,
 ) -> f32 {
-    match (child_sizing, parent_sizing) {
-        (Sizing::Fill(_), Sizing::Fill(_) | Sizing::Fixed(_)) => available.max(desired),
-        _ => desired,
+    if child_sizing.fill_weight().is_some() && !parent_sizing.is_hug() {
+        available.max(desired)
+    } else {
+        desired
     }
 }
 
@@ -331,12 +332,12 @@ pub(crate) fn measure_per_axis_hug(
     // with wrapping cells, etc.): intrinsic queries the unbounded shape,
     // while INF-measure runs the child's full layout under the committed cross.
     let child_avail = Size::new(
-        if matches!(style.size.w(), Sizing::Hug) {
+        if style.size.w().is_hug() {
             f32::INFINITY
         } else {
             inner_avail.w
         },
-        if matches!(style.size.h(), Sizing::Hug) {
+        if style.size.h().is_hug() {
             f32::INFINITY
         } else {
             inner_avail.h
@@ -365,6 +366,11 @@ pub(crate) struct AxisPlacement {
     pub(crate) offset: f32,
 }
 
+#[inline]
+pub(crate) fn weighted_share(space: f32, weight: f32, total_weight: f64) -> f32 {
+    (f64::from(space) * f64::from(weight) / total_weight) as f32
+}
+
 /// Resolve a child's alignment on both axes: child's own value if not `Auto`,
 /// else the parent's `child_align` for that axis. Single source of truth for
 /// the alignment cascade — every layout (stack, grid, zstack) calls this so
@@ -382,7 +388,7 @@ pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
 /// declared sizing, intrinsic desired size, and the inner span available.
 /// Used for stack cross-axis, ZStack per-axis, and Grid per-cell placement.
 ///
-/// `Sizing::Fill` always stretches — `align` only positions Hug/Fixed
+/// `Sizing::fill` always stretches — `align` only positions Hug/Fixed
 /// children inside their slot, since there's nothing to offset when the
 /// child already fills the slot. `AxisAlign::Stretch` is the explicit
 /// override that forces a Hug/Fixed child to stretch too (used by Grid
@@ -394,7 +400,7 @@ pub(crate) fn place_axis(
     desired: f32,
     inner: f32,
 ) -> AxisPlacement {
-    let stretch = matches!(sizing, Sizing::Fill(_)) || matches!(align, AxisAlign::Stretch);
+    let stretch = sizing.fill_weight().is_some() || matches!(align, AxisAlign::Stretch);
     let size = if stretch { inner } else { desired };
     let offset = match align {
         AxisAlign::Center => ((inner - size) * 0.5).max(0.0),
