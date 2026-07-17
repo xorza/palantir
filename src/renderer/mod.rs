@@ -14,8 +14,8 @@
 //! Both halves are owned and driven from the private
 //! [`WindowRenderer`](crate::host::window_renderer::WindowRenderer) behind the
 //! public host facades.
-pub(crate) mod backend;
 pub(crate) mod assets;
+pub(crate) mod backend;
 pub(crate) mod damage;
 pub(crate) mod frontend;
 pub(crate) mod gpu_view;
