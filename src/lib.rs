@@ -75,7 +75,8 @@ pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;
 pub use primitives::brush::{
-    Brush, ConicGradient, CurveBrush, Interp, LinearGradient, RadialGradient, Spread, Stop,
+    Brush, ConicGradient, CurveBrush, GradientStops, Interp, LinearGradient, RadialGradient,
+    Spread, Stop,
 };
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
