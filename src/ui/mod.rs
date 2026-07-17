@@ -555,7 +555,7 @@ impl Ui {
         }
         self.frame_runtime.prev_cascade_fp = Some(fp);
         self.cascades_engine
-            .run(&self.forest, &self.layout, &mut self.cascades);
+            .run(&self.forest, &self.layout, self.display, &mut self.cascades);
     }
 
     /// Paint-half of `frame`: diff seen ids against the last painted
@@ -1419,7 +1419,7 @@ pub(crate) mod test_support {
         /// Run only the cascade pass against the just-finished frame.
         pub(crate) fn run_cascades(&mut self) {
             self.cascades_engine
-                .run(&self.forest, &self.layout, &mut self.cascades);
+                .run(&self.forest, &self.layout, self.display, &mut self.cascades);
         }
 
         /// Rebuild the post-collapse damage region from `DamageEngine`'s

@@ -581,9 +581,9 @@ impl LineCapBits {
 }
 
 impl LineCap {
-    /// Decode the discriminant carried by `DrawPolylinePayload`.
+    /// Decode the discriminant carried by a draw payload.
     /// Caller invariant: encoder only ever writes valid `as u8`
-    /// values; an out-of-range byte means corrupted cmd buffer.
+    /// values; an out-of-range byte means a corrupted command buffer.
     pub(crate) const fn from_u8(v: u8) -> Self {
         match v {
             0 => LineCap::Butt,

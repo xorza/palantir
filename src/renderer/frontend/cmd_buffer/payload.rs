@@ -252,7 +252,8 @@ impl DrawTextPayload {
 ///
 /// Points are stored **owner-local**; the composer applies `origin`
 /// (the owner-rect top-left) before the active push-transform stack.
-/// `bbox` is in the same owner-local space.
+/// `bbox` is their owner-local centerline AABB; the composer applies
+/// stroke/cap/join/AA inflation once in physical space.
 ///
 /// [`RecordPayloads`]: crate::record_store::RecordPayloads
 #[padding_struct::padding_struct]
@@ -265,8 +266,9 @@ pub(crate) struct DrawPolylinePayload {
     /// Paint-time rotation (radians) about `bbox.center()` (owner-local),
     /// applied to each point before the ancestor transform. `0.0` = none,
     /// the common case. Set from a [`PaintAnim::Spin`] sample; the
-    /// encoder widens `bbox` to the rotation-invariant owner box so the
-    /// scissor cull stays correct and its centre is the spin pivot.
+    /// encoder widens the centerline `bbox` to the rotation-invariant
+    /// owner box so the scissor cull stays correct and its centre is
+    /// the spin pivot.
     ///
     /// [`PaintAnim::Spin`]: crate::forest::tree::paint_anims::PaintAnim::Spin
     pub(crate) rotation: f32,
@@ -429,8 +431,8 @@ impl DrawImagePayload {
 /// stored owner-local; the composer adds `origin` and the active
 /// push-transform stack before scaling to physical px and pushing the
 /// resulting `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is
-/// the owner-local stroked-AABB (already inflated by `width/2 + AA
-/// fringe` at lowering) used for clip culling and paint-order overlap.
+/// the owner-local centerline AABB; the composer applies the shared
+/// stroke/cap/AA bound in physical space for culling and overlap.
 /// `rotation` is the paint-time spin angle sampled from
 /// `PaintAnim::Spin` — non-zero only when the encoder replaced `bbox`
 /// with the rotation-invariant square whose centre is the spin pivot
@@ -452,10 +454,9 @@ pub(crate) struct DrawCurvePayload {
     /// the LUT row at `fill_lut_row` supplies the colour in that case.
     pub(crate) color: ColorF16,
     pub(crate) width: f32,
-    /// Cap kind packed as `u32` (Pod-safe; the variant tag from
-    /// `LineCap as u8` widened). Composer threads it into the
-    /// `CurveInstance.cap` lane verbatim.
-    pub(crate) cap: u32,
+    /// Typed Pod wire form; composer widens it only at the GPU
+    /// `CurveInstance.cap` boundary.
+    pub(crate) cap: LineCapBits,
     /// Brush kind tag (low byte: 0 = solid, 1 = linear). Only solid +
     /// linear are valid on curves; the lowering hard-asserts.
     pub(crate) fill_kind: FillKind,
@@ -532,8 +533,8 @@ pub(crate) struct DrawArcPayload {
     /// [`DrawCurvePayload::color`]).
     pub(crate) color: ColorF16,
     pub(crate) width: f32,
-    /// Cap kind packed as `u32` — see [`DrawCurvePayload::cap`].
-    pub(crate) cap: u32,
+    /// See [`DrawCurvePayload::cap`].
+    pub(crate) cap: LineCapBits,
     pub(crate) fill_kind: FillKind,
     pub(crate) fill_lut_row: LutRow,
 }

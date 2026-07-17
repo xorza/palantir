@@ -3026,12 +3026,11 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 /// `local_origin: Some(_)` damages the shaped-text bbox, not just the
 /// origin point.
 ///
-/// Before the fix, `paint_bbox_local` for `Text { local_origin: Some(_) }`
+/// Before the fix, the local bbox for `Text { local_origin: Some(_) }`
 /// returned `{ min: origin, size: ZERO }` — a degenerate point, because
 /// the glyph extent isn't known to the record. Cascade dutifully stored
-/// that point in `Cascades::shape_rects[idx]`; the diff's
-/// `diff_changed_shape_leg` then pushed two zero-size rects when text
-/// changed → effectively no damage from the text shape. The
+/// that point in the shape's paint row; damage then pushed two zero-size
+/// rects when text changed → effectively no damage from the text shape. The
 /// user-visible symptom: type a character in a `TextEdit`, and only the
 /// caret-sized strip got repainted while the rest of the text went
 /// stale.
