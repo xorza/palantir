@@ -13,7 +13,9 @@ and the one load-bearing architectural split.
   transitions on properties (Vizia regret), no thread-local reactive
   runtime (Floem regret).
 - **Two specs, one entry point.** Duration + easing for designed
-  motion; critically-damped spring for retargetable motion. Caller
+  motion; validated damped spring for retargetable motion. Durations
+  are finite and at most 60 seconds. Springs must decay by at least
+  1/s and fit within the bounded adaptive-integration budget. Caller
   picks; primitive dispatches.
 - **Frame-driven, not wallclock.** WindowRenderer hands `now: Duration` to
   `Ui::frame`; the frame runtime's `dt` is derived. No `Instant::now()` in widget

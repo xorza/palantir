@@ -15,8 +15,12 @@ pub(crate) mod spring;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
-use crate::animation::spring::{step as spring_step, within_duration_snap_eps, within_settle_eps};
-use crate::primitives::approx::approx_zero;
+use crate::animation::spring::{
+    params_are_valid as spring_params_are_valid, stable_substep_dt, step as spring_step,
+    within_duration_snap_eps, within_settle_eps,
+};
+use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::primitives::approx::EPS;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::any::{Any, TypeId};
@@ -65,13 +69,28 @@ impl From<&'static str> for AnimSlot {
 /// stiffness = 170.0
 /// damping = 26.0
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AnimSpec {
+    motion: AnimMotion,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum AnimMotion {
+    Duration {
+        secs: f32,
+        ease: Easing,
+    },
+    Spring {
+        stiffness: f32,
+        damping: f32,
+        substep_dt: f32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AnimSpec {
-    /// Eased interpolation over `secs` seconds. `secs ≈ 0` collapses
-    /// to a snap (single-frame settle).
+enum AnimSpecWire {
     Duration { secs: f32, ease: Easing },
-    /// Critically-damped spring (semi-implicit Euler).
     Spring { stiffness: f32, damping: f32 },
 }
 
@@ -81,50 +100,142 @@ enum AnimKind {
     Spring,
 }
 
+const MAX_DURATION_SECS: f32 = 60.0;
+const DURATION_ERROR: &str = "animation duration must be finite and in 0.0..=60.0 seconds";
+const SPRING_ERROR: &str =
+    "spring parameters must be positive, finite, convergent, and within the integration limit";
+
+const fn duration_is_valid(secs: f32) -> bool {
+    secs.is_finite() && secs >= 0.0 && secs <= MAX_DURATION_SECS
+}
+
 impl AnimSpec {
     /// 120 ms ease-out-cubic. Snappy hover/press default.
-    pub const FAST: Self = Self::Duration {
-        secs: 0.12,
-        ease: Easing::OutCubic,
+    pub const FAST: Self = Self {
+        motion: AnimMotion::Duration {
+            secs: 0.12,
+            ease: Easing::OutCubic,
+        },
     };
     /// 200 ms ease-out-cubic. Popup reveal / panel slide default.
-    pub const MEDIUM: Self = Self::Duration {
-        secs: 0.2,
-        ease: Easing::OutCubic,
+    pub const MEDIUM: Self = Self {
+        motion: AnimMotion::Duration {
+            secs: 0.2,
+            ease: Easing::OutCubic,
+        },
     };
-    /// Critically-damped spring tuned as a general-purpose default
-    /// (Apple-style soft spring).
-    pub const SPRING: Self = Self::Spring {
-        stiffness: 170.0,
-        damping: 26.0,
+    /// Near-critically-damped spring tuned as a general-purpose default.
+    pub const SPRING: Self = Self {
+        motion: AnimMotion::Spring {
+            stiffness: 170.0,
+            damping: 26.0,
+            substep_dt: ANIM_SUBSTEP_DT,
+        },
     };
 
+    /// Construct a duration animation. Values below `1e-4` canonicalize to an
+    /// instant snap.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `secs` is finite and in `0.0..=60.0`.
     pub const fn duration(secs: f32, ease: Easing) -> Self {
-        Self::Duration { secs, ease }
+        assert!(
+            duration_is_valid(secs),
+            "animation duration must be finite and in 0.0..=60.0 seconds"
+        );
+        Self::duration_from_validated(secs, ease)
     }
 
-    pub const fn spring(stiffness: f32, damping: f32) -> Self {
-        Self::Spring { stiffness, damping }
+    const fn duration_from_validated(secs: f32, ease: Easing) -> Self {
+        let secs = if secs < EPS { 0.0 } else { secs };
+        Self {
+            motion: AnimMotion::Duration { secs, ease },
+        }
+    }
+
+    /// Construct a damped spring whose convergence rate and adaptive
+    /// integration cost stay within the supported UI-animation domain.
+    ///
+    /// # Panics
+    ///
+    /// Panics when either parameter is non-positive/non-finite, the slowest
+    /// decay rate is below 1/s, or a maximally clamped frame would require
+    /// more than 256 integration substeps.
+    pub fn spring(stiffness: f32, damping: f32) -> Self {
+        let substep_dt = stable_substep_dt(stiffness, damping);
+        assert!(
+            spring_params_are_valid(stiffness, damping, substep_dt),
+            "{SPRING_ERROR}"
+        );
+        Self::spring_from_validated(stiffness, damping, substep_dt)
+    }
+
+    fn spring_from_validated(stiffness: f32, damping: f32, substep_dt: f32) -> Self {
+        Self {
+            motion: AnimMotion::Spring {
+                stiffness,
+                damping,
+                substep_dt,
+            },
+        }
     }
 
     /// True when this spec collapses to a single-frame snap — a
-    /// `Duration` with sub-epsilon (or negative) `secs`. Springs are
-    /// never instant by construction. `Ui::animate` short-circuits on
-    /// this *and* on `None`, so a manually-constructed
-    /// `Duration { secs: 0.0 }` behaves identically to passing `None`.
+    /// `Duration` canonicalized to zero seconds. Springs are never instant by
+    /// construction. `Ui::animate` short-circuits on this and on `None`.
     #[inline(always)]
     pub fn is_instant(self) -> bool {
-        match self {
-            Self::Duration { secs, .. } => approx_zero(secs) || secs < 0.0,
-            Self::Spring { .. } => false,
+        match self.motion {
+            AnimMotion::Duration { secs, .. } => secs == 0.0,
+            AnimMotion::Spring { .. } => false,
         }
     }
 
     #[inline]
     const fn kind(self) -> AnimKind {
-        match self {
-            Self::Duration { .. } => AnimKind::Duration,
-            Self::Spring { .. } => AnimKind::Spring,
+        match self.motion {
+            AnimMotion::Duration { .. } => AnimKind::Duration,
+            AnimMotion::Spring { .. } => AnimKind::Spring,
+        }
+    }
+}
+
+impl serde::Serialize for AnimSpec {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let wire = match self.motion {
+            AnimMotion::Duration { secs, ease } => AnimSpecWire::Duration { secs, ease },
+            AnimMotion::Spring {
+                stiffness, damping, ..
+            } => AnimSpecWire::Spring { stiffness, damping },
+        };
+        serde::Serialize::serialize(&wire, serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AnimSpec {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = <AnimSpecWire as serde::Deserialize>::deserialize(deserializer)?;
+        match wire {
+            AnimSpecWire::Duration { secs, ease } => {
+                if !duration_is_valid(secs) {
+                    return Err(serde::de::Error::custom(DURATION_ERROR));
+                }
+                Ok(Self::duration_from_validated(secs, ease))
+            }
+            AnimSpecWire::Spring { stiffness, damping } => {
+                let substep_dt = stable_substep_dt(stiffness, damping);
+                if !spring_params_are_valid(stiffness, damping, substep_dt) {
+                    return Err(serde::de::Error::custom(SPRING_ERROR));
+                }
+                Ok(Self::spring_from_validated(stiffness, damping, substep_dt))
+            }
         }
     }
 }
@@ -281,12 +392,12 @@ impl<T: Animatable> AnimMapTyped<T> {
         // `Animatable: PartialEq` lets us short-circuit with a
         // bytewise compare on the steady-state path.
         if row.target != target {
-            match spec {
-                AnimSpec::Duration { .. } => {
+            match spec.motion {
+                AnimMotion::Duration { .. } => {
                     row.segment_start = row.current.clone();
                     row.elapsed = 0.0;
                 }
-                AnimSpec::Spring { .. } => {
+                AnimMotion::Spring { .. } => {
                     let to_target = target.clone().sub(row.current.clone());
                     if dot(row.velocity.clone(), to_target) < 0.0 {
                         row.velocity = T::zero();
@@ -307,11 +418,11 @@ impl<T: Animatable> AnimMapTyped<T> {
         // residue (and checks velocity), duration uses a far tighter
         // position-only floor so a real target change always runs its
         // designed curve (see `spring.rs` for the rationale).
-        let close_enough = match spec {
-            AnimSpec::Duration { .. } => {
+        let close_enough = match spec.motion {
+            AnimMotion::Duration { .. } => {
                 within_duration_snap_eps(row.current.clone().sub(row.target.clone()))
             }
-            AnimSpec::Spring { .. } => within_settle_eps(
+            AnimMotion::Spring { .. } => within_settle_eps(
                 row.current.clone().sub(row.target.clone()),
                 row.velocity.clone(),
             ),
@@ -338,8 +449,8 @@ impl<T: Animatable> AnimMapTyped<T> {
             };
         }
 
-        match spec {
-            AnimSpec::Duration { secs, ease } => {
+        match spec.motion {
+            AnimMotion::Duration { secs, ease } => {
                 row.elapsed += dt;
                 let progress = row.elapsed / secs;
                 row.current = T::lerp(
@@ -357,10 +468,15 @@ impl<T: Animatable> AnimMapTyped<T> {
                     settled,
                 }
             }
-            AnimSpec::Spring { stiffness, damping } => {
+            AnimMotion::Spring {
+                stiffness,
+                damping,
+                substep_dt,
+            } => {
                 let step = spring_step(
                     stiffness,
                     damping,
+                    substep_dt,
                     row.current.clone(),
                     row.velocity.clone(),
                     row.target.clone(),

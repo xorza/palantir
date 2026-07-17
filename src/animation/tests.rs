@@ -5,8 +5,10 @@
 
 use crate::Ui;
 use crate::animation::*;
+use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::forest::element::Configure;
+use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame::FrameStamp;
@@ -55,46 +57,58 @@ fn setup_anim_ui(salt: &'static str) -> AnimUi {
 }
 
 fn linear_100ms() -> AnimSpec {
-    AnimSpec::Duration {
-        secs: 0.1,
-        ease: Easing::Linear,
-    }
+    AnimSpec::duration(0.1, Easing::Linear)
 }
 
-/// `AnimSpec::is_instant()` predicate: classifies degenerate
-/// `Duration { secs ≈ 0 }` as instant; springs are never instant.
-/// `Ui::animate` uses this to merge instant Duration into the snap
-/// path — same shape as passing `None`.
 #[test]
-fn is_instant_predicate() {
-    let instant_zero = AnimSpec::Duration {
-        secs: 0.0,
-        ease: Easing::Linear,
-    };
-    let instant_neg = AnimSpec::Duration {
-        secs: -1.0,
-        ease: Easing::Linear,
-    };
+fn anim_spec_construction_validates_and_canonicalizes() {
+    let instant_zero = AnimSpec::duration(0.0, Easing::Linear);
+    let instant_negative_zero = AnimSpec::duration(-0.0, Easing::Linear);
+    let instant_sub_eps = AnimSpec::duration(EPS * 0.5, Easing::Linear);
     assert!(instant_zero.is_instant());
-    assert!(instant_neg.is_instant());
+    assert!(instant_negative_zero.is_instant());
+    assert!(instant_sub_eps.is_instant());
+    assert!(!AnimSpec::duration(EPS, Easing::Linear).is_instant());
+    assert!(!AnimSpec::duration(60.0, Easing::Linear).is_instant());
     assert!(!AnimSpec::FAST.is_instant());
     assert!(!AnimSpec::SPRING.is_instant());
+
+    for secs in [
+        -1.0,
+        60.0 + f32::EPSILON * 64.0,
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| AnimSpec::duration(secs, Easing::Linear)).is_err(),
+            "duration constructor accepted {secs:?}",
+        );
+    }
+
+    for (stiffness, damping) in [
+        (0.0, 1.0),
+        (1.0, 0.0),
+        (-1.0, 1.0),
+        (1.0, -1.0),
+        (f32::NAN, 1.0),
+        (1.0, f32::INFINITY),
+        (1.0, 1.0),
+        (1.0, 100.0),
+        (f32::MAX, 2.0),
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| AnimSpec::spring(stiffness, damping)).is_err(),
+            "spring constructor accepted ({stiffness:?}, {damping:?})",
+        );
+    }
+
+    assert!(!AnimSpec::spring(1.0, 2.0).is_instant());
+    assert!(!AnimSpec::spring(1_000_000.0, 100.0).is_instant());
 }
 
-/// `AnimSpec` (with `Easing` payload on the `Duration` variant)
-/// round-trips through TOML. `ButtonTheme.anim` /
-/// `TextEditTheme.anim` are public theme-file fields, so the
-/// internally-tagged-on-`kind` representation has to stay stable
-/// across refactors. Without this test a renamed variant or a
-/// dropped `#[serde(rename_all = "snake_case")]` would compile and
-/// ship silently — no production path actually deserializes a theme
-/// with `anim` set today, so the derives have no other consumer.
-///
-/// Wrapped in a holder struct because TOML's top-level value must be
-/// a table; `Easing` (string-shaped variants) wouldn't serialize on
-/// its own at the root.
 #[test]
-fn anim_spec_serde_roundtrip() {
+fn anim_spec_serde_validates_and_roundtrips() {
     #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
     struct Holder {
         spec: AnimSpec,
@@ -103,32 +117,94 @@ fn anim_spec_serde_roundtrip() {
         AnimSpec::FAST,
         AnimSpec::MEDIUM,
         AnimSpec::SPRING,
-        AnimSpec::Duration {
-            secs: 0.1,
-            ease: Easing::Linear,
-        },
-        AnimSpec::Duration {
-            secs: 0.2,
-            ease: Easing::InOutCubic,
-        },
-        AnimSpec::Duration {
-            secs: 0.3,
-            ease: Easing::OutQuart,
-        },
-        AnimSpec::Duration {
-            secs: 0.4,
-            ease: Easing::OutBack,
-        },
-        AnimSpec::Spring {
-            stiffness: 100.0,
-            damping: 15.0,
-        },
+        AnimSpec::duration(0.1, Easing::Linear),
+        AnimSpec::duration(0.2, Easing::InOutCubic),
+        AnimSpec::duration(0.3, Easing::OutQuart),
+        AnimSpec::duration(0.4, Easing::OutBack),
+        AnimSpec::spring(100.0, 15.0),
+        AnimSpec::spring(1_000_000.0, 100.0),
     ];
     for spec in cases {
         let h = Holder { spec };
         let s = toml::to_string(&h).expect("serialize");
         let back: Holder = toml::from_str(&s).expect("parse");
         assert_eq!(back, h, "roundtrip mismatch for {spec:?}\nTOML:\n{s}");
+    }
+
+    let canonical: Holder = toml::from_str(
+        r#"
+            [spec]
+            kind = "duration"
+            secs = 0.00005
+            ease = "linear"
+        "#,
+    )
+    .expect("sub-epsilon duration is a valid instant");
+    assert!(canonical.spec.is_instant());
+    assert!(
+        toml::to_string(&canonical)
+            .expect("serialize canonical duration")
+            .contains("secs = 0.0"),
+    );
+
+    let invalid = [
+        (
+            "negative duration",
+            r#"
+                [spec]
+                kind = "duration"
+                secs = -1.0
+                ease = "linear"
+            "#,
+            "animation duration must be finite and in 0.0..=60.0 seconds",
+        ),
+        (
+            "non-finite duration",
+            r#"
+                [spec]
+                kind = "duration"
+                secs = nan
+                ease = "linear"
+            "#,
+            "animation duration must be finite and in 0.0..=60.0 seconds",
+        ),
+        (
+            "non-positive spring",
+            r#"
+                [spec]
+                kind = "spring"
+                stiffness = 170.0
+                damping = 0.0
+            "#,
+            "spring parameters must be positive, finite, convergent, and within the integration limit",
+        ),
+        (
+            "slow spring",
+            r#"
+                [spec]
+                kind = "spring"
+                stiffness = 1.0
+                damping = 100.0
+            "#,
+            "spring parameters must be positive, finite, convergent, and within the integration limit",
+        ),
+        (
+            "expensive spring",
+            r#"
+                [spec]
+                kind = "spring"
+                stiffness = 3.4028235e38
+                damping = 2.0
+            "#,
+            "spring parameters must be positive, finite, convergent, and within the integration limit",
+        ),
+    ];
+    for (label, input, expected) in invalid {
+        let error = toml::from_str::<Holder>(input).expect_err(label);
+        assert!(
+            error.to_string().contains(expected),
+            "{label}: unexpected serde error: {error}",
+        );
     }
 }
 
@@ -138,10 +214,7 @@ fn anim_spec_serde_roundtrip() {
 /// resets cleanly so a future real spec starts fresh.
 #[test]
 fn instant_duration_is_noop_and_drops_row() {
-    let instant = Some(AnimSpec::Duration {
-        secs: 0.0,
-        ease: Easing::Linear,
-    });
+    let instant = Some(AnimSpec::duration(0.0, Easing::Linear));
     let AnimUi {
         mut ui,
         id,
@@ -209,10 +282,7 @@ fn instant_duration_is_noop_and_drops_row() {
 /// 1e-4 snaps on *both* specs.
 #[test]
 fn target_below_snap_floor_snaps_without_animating() {
-    let duration = AnimSpec::Duration {
-        secs: 1.0,
-        ease: Easing::Linear,
-    };
+    let duration = AnimSpec::duration(1.0, Easing::Linear);
     let tiny = 1.0e-5; // below the duration floor (1e-4), the tighter one
     let cases: &[(&str, AnimSpec)] = &[("duration", duration), ("spring", AnimSpec::SPRING)];
     for (label, spec) in cases {
@@ -248,10 +318,7 @@ fn duration_floor_is_tighter_than_spring_floor() {
     assert_eq!(rs.current, delta, "spring snaps within its loose floor");
     assert!(rs.settled, "spring reports settled after snap");
 
-    let duration = AnimSpec::Duration {
-        secs: 1.0,
-        ease: Easing::Linear,
-    };
+    let duration = AnimSpec::duration(1.0, Easing::Linear);
     let mut dur_map = AnimMapTyped::<f32>::default();
     let did = wid("d");
     let _ = dur_map.tick(did, SLOT, 0.0, duration, 0.016, next_frame());
@@ -290,6 +357,25 @@ fn duration_settles_in_finite_steps() {
     let r = map.tick(id, SLOT, 1.0, spec, 0.05, next_frame());
     assert_eq!(r.current, 1.0, "must snap to target on settle");
     assert!(r.settled, "100ms total elapsed must settle");
+
+    let mut boundary_map = AnimMapTyped::<f32>::default();
+    let boundary_id = wid("maximum-duration");
+    let boundary = AnimSpec::duration(60.0, Easing::Linear);
+    let _ = boundary_map.tick(boundary_id, SLOT, 0.0, boundary, 0.0, next_frame());
+    let mut settled = None;
+    for step in 0..=600 {
+        let result = boundary_map.tick(boundary_id, SLOT, 1.0, boundary, MAX_ANIM_DT, next_frame());
+        assert!(result.current.is_finite());
+        if result.settled {
+            assert_eq!(result.current, 1.0);
+            settled = Some(step);
+            break;
+        }
+    }
+    assert!(
+        settled.is_some(),
+        "maximum duration did not settle after 60.1 seconds",
+    );
 }
 
 #[test]
@@ -327,28 +413,69 @@ fn dt_zero_does_not_advance_duration() {
 }
 
 #[test]
-fn spring_with_initial_displacement_converges_within_settle_eps() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = wid("a");
-    let _ = map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
-    let mut last = f32::NAN;
-    let mut settled_at = None;
-    for i in 0..600 {
-        let r = map.tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
-        last = r.current;
-        if r.settled {
-            settled_at = Some(i);
-            break;
+fn validated_springs_remain_finite_and_settle() {
+    let cases = [
+        ("minimum-decay", AnimSpec::spring(1.0, 2.0)),
+        ("default", AnimSpec::SPRING),
+        ("adaptive-step", AnimSpec::spring(1_000_000.0, 100.0)),
+    ];
+    let dts = [0.1, 1.0 / 60.0, 0.0042, 0.033];
+
+    for (label, spec) in cases {
+        let mut map = AnimMapTyped::<f32>::default();
+        let id = wid(label);
+        let _ = map.tick(id, SLOT, 400.0, spec, dts[0], next_frame());
+        let mut settled_at = None;
+        for i in 0..4_000 {
+            let result = map.tick(id, SLOT, -100.0, spec, dts[i % dts.len()], next_frame());
+            let row = &map.rows[&(id, SLOT)];
+            assert!(
+                result.current.is_finite() && row.velocity.is_finite(),
+                "{label} became non-finite at step {i}: {row:?}",
+            );
+            if result.settled {
+                assert_eq!(result.current, -100.0, "{label} did not snap to target");
+                assert_eq!(row.velocity, 0.0, "{label} retained settled velocity");
+                settled_at = Some(i);
+                break;
+            }
         }
+        assert!(
+            settled_at.is_some(),
+            "{label} did not settle under the deterministic frame sequence",
+        );
     }
-    assert!(
-        settled_at.is_some(),
-        "spring must settle within 600 frames (10s @ 60Hz); last = {last}",
-    );
-    assert!(
-        (last - 1.0).abs() < 0.01,
-        "settled value must equal target within eps; got {last}",
-    );
+}
+
+#[test]
+fn built_in_spring_preserves_validated_substep() {
+    let AnimMotion::Spring {
+        stiffness,
+        damping,
+        substep_dt,
+    } = AnimSpec::SPRING.motion
+    else {
+        panic!("built-in spring has the wrong motion kind");
+    };
+    assert!(spring::params_are_valid(stiffness, damping, substep_dt));
+    assert_eq!(substep_dt, spring::stable_substep_dt(stiffness, damping));
+}
+
+#[test]
+fn spring_parameters_change_trajectory() {
+    let mut default_map = AnimMapTyped::<f32>::default();
+    let mut custom_map = AnimMapTyped::<f32>::default();
+    let id = wid("spring-parameters");
+    let custom = AnimSpec::spring(100.0, 15.0);
+    let _ = default_map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
+    let _ = custom_map.tick(id, SLOT, 0.0, custom, 0.016, next_frame());
+    let default = default_map
+        .tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame())
+        .current;
+    let custom = custom_map
+        .tick(id, SLOT, 1.0, custom, 0.016, next_frame())
+        .current;
+    assert_ne!(default, custom);
 }
 
 /// Worst-case wall-clock `dt` (= `Ui::MAX_DT` after a stalled frame
@@ -925,10 +1052,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
         row.velocity,
     );
 
-    let dur = AnimSpec::Duration {
-        secs: 0.1,
-        ease: Easing::Linear,
-    };
+    let dur = AnimSpec::duration(0.1, Easing::Linear);
     let dt = 0.02;
     let result = map.tick(id, SLOT, 1.0_f32, dur, dt, next_frame());
     let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
@@ -944,10 +1068,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
 fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let mut map = AnimMapTyped::<f32>::default();
     let id = wid("round-trip-spec-switch");
-    let duration = AnimSpec::Duration {
-        secs: 1.0,
-        ease: Easing::Linear,
-    };
+    let duration = AnimSpec::duration(1.0, Easing::Linear);
     let _ = map.tick(id, SLOT, 0.0, duration, 0.0, next_frame());
     let duration_result = map.tick(id, SLOT, 1.0, duration, 0.4, next_frame());
     assert_eq!(duration_result.current, 0.4);

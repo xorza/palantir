@@ -8,7 +8,7 @@ use crate::InternedStr;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
-use crate::common::time::{ANIM_SUBSTEP_DT, coalesce_dt_for_refresh};
+use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::display::Display;
 use crate::forest::Forest;
@@ -127,7 +127,7 @@ impl Ui {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
     /// animation tickers instead of teleporting; the frame runtime's
     /// clock still tracks the host's true time.
-    pub(crate) const MAX_DT: f32 = 0.1;
+    pub(crate) const MAX_DT: f32 = MAX_ANIM_DT;
 
     /// Construct a per-window `Ui` from the host's shared [`HostContext`] and
     /// the window's [`RecordStore`]. Through the context the `Ui` shares the
