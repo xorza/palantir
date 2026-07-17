@@ -7,10 +7,10 @@
 //! What every window shares splits two ways: the GPU resources — render
 //! pipelines, glyph + gradient atlases, the image texture cache, the
 //! device/queue — live on the **one** shared `WgpuBackend` the host passes
-//! into every method; render caches, shaper, and the GPU-stats handle live on
-//! the [`HostContext`]. The record store is per-window and retained alongside
-//! this window's tree. So N windows render through one GPU renderer without
-//! sharing frame-local geometry.
+//! into every method; render assets, text shaping, diagnostics, and the window
+//! directory derive from [`HostShared`] capability views. Each `Ui` owns its
+//! per-window record store alongside its tree. So N windows render through one
+//! GPU renderer without sharing frame-local geometry.
 //!
 //! Two internal target paths share one CPU + GPU pipeline:
 //! [`WindowRenderer::frame`] (to a swapchain surface — acquires, submits,
@@ -22,18 +22,19 @@ use std::time::Instant;
 
 use crate::app::App;
 use crate::host::clock::{Clock, RealtimeClock};
-use crate::host::context::HostContext;
-use crate::record_store::RecordStore;
+use crate::host::shared::HostShared;
+use crate::input::InputEvent;
+use crate::input::response::InputDelta;
 use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::ui::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
-use crate::window::WindowToken;
+use crate::window::{CursorIcon, WindowCommands, WindowFrameState, WindowToken};
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
-/// [`WindowRendererBuilder`] from the shared [`HostContext`]; owns no GPU
+/// [`WindowRendererBuilder`] from the shared [`HostShared`]; owns no GPU
 /// resources except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
 pub(crate) struct WindowRenderer {
@@ -41,10 +42,6 @@ pub(crate) struct WindowRenderer {
     /// retained `Ui` cannot be driven under a different token on a later frame.
     pub(crate) token: WindowToken,
     pub(crate) ui: Ui,
-    /// Per-window record store retained in lockstep with `ui.forest`. The `Ui`
-    /// holds an `Rc` clone for record-time writes; frontend and backend phases
-    /// borrow this canonical handle explicitly.
-    record_store: RecordStore,
     /// Per-window CPU encode/compose scratch with its own retained
     /// `RenderBuffer` — this window's draw list.
     frontend: Frontend,
@@ -222,7 +219,7 @@ struct CpuFrame {
 #[derive(Debug)]
 pub(crate) struct WindowRendererBuilder<'a> {
     token: WindowToken,
-    ctx: &'a HostContext,
+    shared: &'a HostShared,
     max_texture_dim: u32,
     strategy: PresentStrategy,
     clock: Box<dyn Clock>,
@@ -246,11 +243,9 @@ impl WindowRendererBuilder<'_> {
     }
 
     pub(crate) fn build(self) -> WindowRenderer {
-        let record_store = RecordStore::default();
         WindowRenderer {
             token: self.token,
-            ui: Ui::new(self.ctx, record_store.clone()),
-            record_store,
+            ui: Ui::new(self.shared.ui_shared(), Default::default()),
             frontend: Frontend::new(self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
@@ -266,25 +261,29 @@ impl WindowRendererBuilder<'_> {
 }
 
 impl WindowRenderer {
-    /// Start building a renderer for `token` from the shared [`HostContext`].
-    /// Its `Ui` shares the context's shaper, caches, GPU-stats handle, and
-    /// app-global host state while receiving a fresh per-window record store.
+    /// Start building a renderer for `token` from the shared [`HostShared`].
+    /// Its `Ui` receives the render, diagnostics, and window-directory
+    /// capabilities plus a fresh per-window record store.
     /// `max_texture_dim` is the device's fixed texture limit used to cap
     /// `GpuView` targets. Defaults suit a swapchain window: direct adaptive
     /// presentation, realtime clock, and physical-pixel snapping.
     pub(crate) fn builder(
         token: WindowToken,
-        ctx: &HostContext,
+        shared: &HostShared,
         max_texture_dim: u32,
     ) -> WindowRendererBuilder<'_> {
         WindowRendererBuilder {
             token,
-            ctx,
+            shared,
             max_texture_dim,
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
             pixel_snap: true,
         }
+    }
+
+    pub(crate) fn on_input(&mut self, event: InputEvent) -> InputDelta {
+        self.ui.on_input(event)
     }
 
     /// Drive from the host's window-event handler. While occluded,
@@ -321,23 +320,23 @@ impl WindowRenderer {
     }
 
     /// Swapchain one-shot: run CPU + GPU + present through the shared
-    /// `gpu`. Folds the acquire dance (Suboptimal / Outdated / Lost /
+    /// `backend`. Folds the acquire dance (Suboptimal / Outdated / Lost /
     /// Timeout / Validation / Occluded) into the returned schedule.
     /// Reconfigure-required variants call `surface.configure` before
     /// returning. Skip frames bypass surface acquisition entirely.
     ///
-    /// All per-frame swapchain inputs ride in on [`FrameTarget`]: the
-    /// surface + its config (which alone defines the physical size) and the
-    /// display knobs. `Display` is built from the config here, so its size
-    /// can never disagree with the surface's. (The live-window set + debug
-    /// overlay reach the `Ui` through the shared [`HostContext`], not here.)
+    /// All per-frame swapchain and window-state inputs ride in on
+    /// [`WindowFrameInput`]. `Display` is built from the surface config here,
+    /// so its size can never disagree with the surface's. (The live-window
+    /// set + debug overlay reach the `Ui` through the shared [`HostShared`],
+    /// not here.)
     pub(crate) fn frame<T: App>(
         &mut self,
-        gpu: &mut WgpuBackend,
-        target: FrameTarget<'_>,
+        backend: &mut WgpuBackend,
+        input: WindowFrameInput<'_>,
         app: &mut T,
         pre_present: impl FnOnce(),
-    ) -> FramePresent {
+    ) -> WindowFrameOutput {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
         // back-to-back `finish_frame!()` ticks (which counts idle time
@@ -346,16 +345,19 @@ impl WindowRenderer {
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("WindowRenderer::frame");
 
-        if self.occluded_at.is_some() {
-            return FramePresent::Idle;
-        }
-
-        let FrameTarget {
+        let WindowFrameInput {
             surface,
             config,
             scale_factor,
             refresh_millihertz,
-        } = target;
+            state,
+        } = input;
+        self.ui.window_frame = state;
+        self.ui.window_requests.close_vetoed = false;
+
+        if self.occluded_at.is_some() {
+            return self.window_frame_output(FramePresent::Idle);
+        }
 
         // The surface config is the single source of truth for the
         // physical size; `Display` is derived from it so the two can't
@@ -377,16 +379,16 @@ impl WindowRenderer {
         // record the new size. First-paint takes the same path because
         // `configured` starts `None`.
         if self.configured != Some(display.physical) {
-            gpu.configure_surface(surface, config);
+            backend.configure_surface(surface, config);
             self.configured = Some(display.physical);
         }
 
         let cpu = self.cpu_frame(display, app);
-        let present = self.present(gpu, surface, config, cpu, pre_present);
+        let present = self.present(backend, surface, config, cpu, pre_present);
 
         profiling::finish_frame!();
 
-        present
+        self.window_frame_output(present)
     }
 
     /// Render one frame to a caller-supplied `wgpu::Texture` instead of a
@@ -398,7 +400,7 @@ impl WindowRenderer {
     /// offscreen compositing, the visual harness, and GPU benchmarks.
     pub(crate) fn frame_offscreen<T: App>(
         &mut self,
-        gpu: &mut WgpuBackend,
+        backend: &mut WgpuBackend,
         target: &wgpu::Texture,
         scale_factor: f32,
         app: &mut T,
@@ -412,7 +414,7 @@ impl WindowRenderer {
         // has no surface to reconfigure).
         self.note_format(target.format());
         let cpu = self.cpu_frame(display, app);
-        self.render_to_texture(gpu, target, cpu.mode);
+        self.render_to_texture(backend, target, cpu.mode);
     }
 
     /// The shared CPU half: app lifecycle → record / measure / arrange /
@@ -438,14 +440,14 @@ impl WindowRenderer {
         // compose, and resolve `GpuView` targets, all reading the now-frozen
         // `Ui` immutably. Skip frames build nothing.
         if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
-            let payloads = self.record_store.borrow();
+            let payloads = self.ui.record_store.borrow();
             self.frontend.build(&self.ui, &payloads, plan);
         }
         CpuFrame { report, mode }
     }
 
     /// GPU submit against a caller-supplied texture, through the shared
-    /// `gpu`, dispatching on the [`PresentMode`] `cpu_frame` sealed. On
+    /// `backend`, dispatching on the [`PresentMode`] `cpu_frame` sealed. On
     /// [`PresentMode::SkipCopy`], copies the persistent backbuffer onto
     /// `target` so callers that always present still see valid pixels.
     /// Shared by [`Self::frame`]'s present path (the acquired swapchain
@@ -453,7 +455,7 @@ impl WindowRenderer {
     #[profiling::function]
     fn render_to_texture(
         &mut self,
-        gpu: &mut WgpuBackend,
+        backend: &mut WgpuBackend,
         target: &wgpu::Texture,
         mode: PresentMode,
     ) {
@@ -481,7 +483,7 @@ impl WindowRenderer {
             PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
                 if !self.frontend.buffer.rounded_clips.is_empty() =>
             {
-                gpu.ensure_stencil(&mut self.stencil, size);
+                backend.ensure_stencil(&mut self.stencil, size);
                 Some(&self.stencil.as_ref().expect("ensure_stencil ran").view)
             }
             _ => None,
@@ -501,13 +503,13 @@ impl WindowRenderer {
                     .backbuffer
                     .as_ref()
                     .expect("SkipCopy implies a prior submitted paint frame");
-                gpu.copy_backbuffer_to_surface(bb, target);
+                backend.copy_backbuffer_to_surface(bb, target);
             }
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
-                let payloads = self.record_store.borrow();
-                gpu.submit(Submission {
+                let payloads = self.ui.record_store.borrow();
+                backend.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: None,
@@ -524,7 +526,8 @@ impl WindowRenderer {
             // Render into the backbuffer and copy it out; the backbuffer now
             // mirrors the target.
             PresentMode::ViaBackbuffer(plan) => {
-                let recreated = gpu.ensure_backbuffer(&mut self.backbuffer, size, target.format());
+                let recreated =
+                    backend.ensure_backbuffer(&mut self.backbuffer, size, target.format());
                 // A Partial reaches here un-escalated only when
                 // `backbuffer_fresh` — last frame rendered into the backbuffer
                 // at this size/format — so a recreate under Partial means the
@@ -535,8 +538,8 @@ impl WindowRenderer {
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"
                 );
-                let payloads = self.record_store.borrow();
-                gpu.submit(Submission {
+                let payloads = self.ui.record_store.borrow();
+                backend.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: self.backbuffer.as_ref(),
@@ -556,7 +559,7 @@ impl WindowRenderer {
     #[profiling::function]
     fn present(
         &mut self,
-        gpu: &mut WgpuBackend,
+        backend: &mut WgpuBackend,
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
         cpu: CpuFrame,
@@ -569,7 +572,7 @@ impl WindowRenderer {
             use wgpu::CurrentSurfaceTexture::*;
             match surface.get_current_texture() {
                 Success(frame) => {
-                    self.render_to_texture(gpu, &frame.texture, mode);
+                    self.render_to_texture(backend, &frame.texture, mode);
                     // Compositor hook (winit's `Window::pre_present_notify`)
                     // — required on Wayland to schedule the next frame
                     // callback. Without it, `RedrawRequested` throttling
@@ -577,12 +580,12 @@ impl WindowRenderer {
                     // behind the compositor's configure cadence. See
                     // winit #2609, slint #4200.
                     pre_present();
-                    gpu.present(frame);
+                    backend.present(frame);
                     report.repaint_requested
                 }
                 Suboptimal(_) | Outdated | Lost => {
                     tracing::warn!("surface acquire: suboptimal / outdated / lost");
-                    gpu.configure_surface(surface, config);
+                    backend.configure_surface(surface, config);
                     true
                 }
                 Timeout | Validation => {
@@ -605,15 +608,28 @@ impl WindowRenderer {
             FramePresent::Idle
         }
     }
+
+    fn window_frame_output(&mut self, present: FramePresent) -> WindowFrameOutput {
+        let close_vetoed = self.ui.window_requests.close_vetoed;
+        if self.ui.window_frame.close_requested && !close_vetoed {
+            self.ui.window_requests.commands.closes.push(self.token);
+        }
+        let mut commands = WindowCommands::default();
+        commands.append(&mut self.ui.window_requests.commands);
+        self.ui.window_frame = WindowFrameState::default();
+        WindowFrameOutput {
+            present,
+            cursor: self.ui.window_requests.cursor,
+            commands,
+        }
+    }
 }
 
-/// Every per-frame swapchain input [`WindowRenderer::frame`] needs from
-/// the windowing host, bundled into one borrowed argument. The surface
-/// `config` is the single source of truth for the physical pixel size —
-/// `WindowRenderer::frame` derives `Display.physical` from it, so the
-/// size is never passed (or asserted) twice.
+/// Every per-frame input [`WindowRenderer::frame`] needs from the windowing
+/// host. The surface `config` is the single source of truth for the physical
+/// pixel size, so the size is never passed or asserted twice.
 #[derive(Debug)]
-pub(crate) struct FrameTarget<'a> {
+pub(crate) struct WindowFrameInput<'a> {
     /// Swapchain surface to acquire + present this frame.
     pub(crate) surface: &'a wgpu::Surface<'static>,
     /// Its configuration; `width`/`height` define the physical size.
@@ -624,6 +640,15 @@ pub(crate) struct FrameTarget<'a> {
     /// floor so timed wakes never out-pace the panel), or `None` when the
     /// host can't determine it.
     pub(crate) refresh_millihertz: Option<u32>,
+    pub(crate) state: WindowFrameState,
+}
+
+#[derive(Debug)]
+pub(crate) struct WindowFrameOutput {
+    pub(crate) present: FramePresent,
+    pub(crate) cursor: CursorIcon,
+    /// Drained recorder commands ready for the host's event-loop boundary.
+    pub(crate) commands: WindowCommands,
 }
 
 /// WindowRenderer scheduling hint returned by [`WindowRenderer::frame`]. Three
@@ -645,9 +670,9 @@ pub(crate) enum FramePresent {
 
 #[cfg(test)]
 mod present_mode_tests {
-    use super::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
-    use super::PresentStrategy::{BackbufferCopy, DirectAdaptive};
-    use super::{PresentMode, present_mode};
+    use crate::host::window_renderer::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
+    use crate::host::window_renderer::PresentStrategy::{BackbufferCopy, DirectAdaptive};
+    use crate::host::window_renderer::{PresentMode, present_mode};
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
     use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
@@ -764,8 +789,8 @@ mod record_store_tests {
     use crate::app::App;
     use crate::app::test_support::RecordApp;
     use crate::host::clock::FixedClock;
-    use crate::host::context::HostContext;
-    use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
+    use crate::host::shared::HostShared;
+    use crate::host::window_renderer::{FramePresent, PresentStrategy, WindowRenderer};
     use crate::primitives::color::{Color, ColorU8};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
@@ -776,7 +801,7 @@ mod record_store_tests {
     use crate::widgets::panel::Panel;
     use crate::widgets::spinner::Spinner;
     use crate::widgets::text::Text;
-    use crate::{Configure, Display, WindowToken};
+    use crate::{Configure, CursorIcon, Display, WindowConfig, WindowToken};
 
     #[derive(Debug, PartialEq)]
     struct RecordPayloadSnapshot {
@@ -804,7 +829,7 @@ mod record_store_tests {
     }
 
     fn snapshot(renderer: &WindowRenderer) -> RecordPayloadSnapshot {
-        let payloads = renderer.record_store.borrow();
+        let payloads = renderer.ui.record_store.borrow();
         RecordPayloadSnapshot {
             mesh_vertices: payloads.meshes.vertices.clone(),
             mesh_indices: payloads.meshes.indices.clone(),
@@ -845,9 +870,9 @@ mod record_store_tests {
 
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
-        let ctx = HostContext::new(TextShaper::default());
+        let shared = HostShared::new(TextShaper::default());
         let token = WindowToken(17);
-        let mut window = WindowRenderer::builder(token, &ctx, 8192)
+        let mut window = WindowRenderer::builder(token, &shared, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .pixel_snap(false)
             .build();
@@ -864,17 +889,44 @@ mod record_store_tests {
             [token, token],
             "cold-start warmup and visible pass share the token",
         );
+
+        let opened = WindowToken(18);
+        window
+            .ui
+            .open_window(opened, WindowConfig::new("inspector"));
+        window.ui.set_cursor(CursorIcon::Pointer);
+        window.ui.window_frame.close_requested = true;
+        let output = window.window_frame_output(FramePresent::Idle);
+        assert!(matches!(output.present, FramePresent::Idle));
+        assert_eq!(output.cursor, CursorIcon::Pointer);
+        assert_eq!(output.commands.opens.len(), 1);
+        assert_eq!(output.commands.opens[0].token, opened);
+        assert_eq!(
+            output.commands.closes,
+            [token],
+            "unvetoed OS close is accepted"
+        );
+        assert!(window.ui.window_requests.commands.opens.is_empty());
+        assert!(window.ui.window_requests.commands.closes.is_empty());
+
+        window.ui.window_frame.close_requested = true;
+        window.ui.keep_open();
+        let vetoed = window.window_frame_output(FramePresent::Idle);
+        assert!(
+            vetoed.commands.closes.is_empty(),
+            "keep_open vetoes the host close input"
+        );
     }
 
     /// A record pass in one window must not replace the payloads retained by
     /// another window's animation-only frame.
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
-        let ctx = HostContext::new(TextShaper::default());
-        let mut window_a = WindowRenderer::builder(WindowToken(1), &ctx, 8192)
+        let shared = HostShared::new(TextShaper::default());
+        let mut window_a = WindowRenderer::builder(WindowToken(1), &shared, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
-        let mut window_b = WindowRenderer::builder(WindowToken(2), &ctx, 8192)
+        let mut window_b = WindowRenderer::builder(WindowToken(2), &shared, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);
