@@ -17,7 +17,7 @@ use crate::forest::layer::Layer;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::forest::tree::recording::Placement;
-use crate::host::context::HostContext;
+use crate::host::shared::UiShared;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -50,7 +50,8 @@ use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::{
-    CursorIcon, PendingWindow, WindowConfig, WindowGeometry, WindowMailbox, WindowToken,
+    CursorIcon, PendingWindow, WindowConfig, WindowFrameState, WindowGeometry, WindowRequests,
+    WindowToken,
 };
 use glam::UVec2;
 use std::cell::{RefCell, RefMut};
@@ -77,15 +78,9 @@ pub struct Ui {
     /// This window's retained record store. Cleared only when a record pass
     /// rebuilds the forest; `PaintOnly` keeps it paired with the retained tree.
     pub(crate) record_store: RecordStore,
-    /// App-global shared state cloned from the host at construction: the
-    /// render resources (`ctx.shaper` / `ctx.caches` / `ctx.pass_stats`) and
-    /// the host state behind it (the live-window set,
-    /// read by [`Self::window_open`], and the debug overlay, read at submit
-    /// time + by `Ui::frame` for the FPS readout, toggled via
-    /// [`Self::debug_overlay_mut`]). One handle so a new shared field
-    /// doesn't touch every `Ui` constructor; the wgpu backend clones the
-    /// same context (render handles only), so both see one set.
-    pub(crate) ctx: HostContext,
+    /// App-global capabilities selected for the recorder: shared render
+    /// resources, diagnostics, and the live-window directory.
+    pub(crate) shared: UiShared,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node + global
@@ -106,9 +101,10 @@ pub struct Ui {
     /// Retained frame clock, wake queue, repaint/relayout flags, and prior-frame
     /// validity state. Kept separate from the widget engines above.
     pub(crate) frame_runtime: FrameRuntime,
-    /// Deferred open/close requests and host-refreshed close, geometry, and
-    /// cursor state. Inert in headless contexts without a windowing host.
-    pub(crate) window_mailbox: WindowMailbox,
+    /// Recorder-to-host requests retained across frames.
+    pub(crate) window_requests: WindowRequests,
+    /// Host-to-recorder facts refreshed before each windowed frame.
+    pub(crate) window_frame: WindowFrameState,
 }
 
 impl std::fmt::Debug for Ui {
@@ -131,16 +127,14 @@ impl Ui {
     /// clock still tracks the host's true time.
     pub(crate) const MAX_DT: f32 = MAX_ANIM_DT;
 
-    /// Construct a per-window `Ui` from the host's shared [`HostContext`] and
-    /// the window's [`RecordStore`]. Through the context the `Ui` shares the
-    /// same `TextShaper` the wgpu backend uses (so layout-time measurement and
-    /// render-time shaping hit one buffer cache), the render caches +
-    /// GPU-stats, and the app-global host state (live-window set + debug
-    /// overlay). The store is shared only with this window's renderer so
-    /// retained shape spans remain valid across other windows' record passes.
-    pub(crate) fn new(ctx: &HostContext, record_store: RecordStore) -> Self {
+    /// Construct a per-window `Ui` from the host's [`UiShared`] capabilities and
+    /// a fresh [`RecordStore`]. The capabilities provide the same text and
+    /// render assets used by the backend, plus shared diagnostics and the live
+    /// window directory. The store remains owned by this `Ui`, so retained
+    /// shape spans are isolated from other windows' record passes.
+    pub(crate) fn new(shared: UiShared, record_store: RecordStore) -> Self {
         Self {
-            ctx: ctx.clone(),
+            shared,
             record_store,
             forest: Default::default(),
             theme: Default::default(),
@@ -156,7 +150,8 @@ impl Ui {
             damage_engine: Default::default(),
             anim: Default::default(),
             frame_runtime: Default::default(),
-            window_mailbox: Default::default(),
+            window_requests: Default::default(),
+            window_frame: Default::default(),
         }
     }
 
@@ -415,7 +410,7 @@ impl Ui {
             // would skip the record and the host would close the window
             // with the veto unconsulted (a spinner's every-frame ANIM
             // wake makes that deterministic, a caret blink a race).
-            && !self.window_mailbox.wants_close
+            && !self.window_frame.close_requested
             && fired_reasons.is_anim_only();
         if paint_only {
             FramePlan::PaintOnly
@@ -448,7 +443,7 @@ impl Ui {
             // re-asserted by whoever still wants it this pass; reset
             // here (not per frame) so PaintOnly frames keep the last
             // recorded cursor instead of flickering back to the arrow.
-            self.window_mailbox.cursor = CursorIcon::default();
+            self.window_requests.cursor = CursorIcon::default();
             // Snapshot whether any widget interaction is possible this
             // frame; `response_for` skips its per-button capture scans for
             // every widget when none is (the common idle frame).
@@ -525,7 +520,7 @@ impl Ui {
         let payloads = self.record_store.borrow();
         let tc = TextCtx {
             bytes: &payloads.fmt_scratch,
-            shaper: &self.ctx.shaper,
+            shaper: &self.shared.render.text,
         };
         self.layout_engine.run(
             &self.forest,
@@ -569,7 +564,7 @@ impl Ui {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
-        self.ctx.shaper.end_frame();
+        self.shared.render.text.end_frame();
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
@@ -693,7 +688,7 @@ impl Ui {
     /// (typically off its hover/drag response). The host applies it
     /// after the frame, only on change; ignored in headless contexts.
     pub fn set_cursor(&mut self, cursor: CursorIcon) {
-        self.window_mailbox.cursor = cursor;
+        self.window_requests.cursor = cursor;
     }
 
     /// Ask the host to schedule another frame after this one. Cleared
@@ -749,16 +744,18 @@ impl Ui {
     /// window inherits the app-global GPU settings from startup.
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
         if let Some(p) = self
-            .window_mailbox
-            .pending_windows
+            .window_requests
+            .commands
+            .opens
             .iter_mut()
             .find(|p| p.token == token)
         {
             p.config = config;
             return;
         }
-        self.window_mailbox
-            .pending_windows
+        self.window_requests
+            .commands
+            .opens
             .push(PendingWindow { token, config });
     }
 
@@ -767,7 +764,7 @@ impl Ui {
     /// last window closing exits the event loop. No-op if `token` names
     /// no live window, or in headless contexts.
     pub fn close_window(&mut self, token: WindowToken) {
-        self.window_mailbox.pending_closes.push(token);
+        self.window_requests.commands.closes.push(token);
     }
 
     /// `true` for the single frame where the OS asked to close this window
@@ -787,14 +784,14 @@ impl Ui {
     ///
     /// Always `false` in headless / offscreen contexts (no OS window).
     pub fn close_requested(&self) -> bool {
-        self.window_mailbox.wants_close
+        self.window_frame.close_requested
     }
 
     /// Veto the auto-close pending from this frame's [`Self::close_requested`].
     /// The window stays open past this frame; close it for real later with
     /// [`Self::close_window`]. A no-op when no close was requested.
     pub fn keep_open(&mut self) {
-        self.window_mailbox.close_vetoed = true;
+        self.window_requests.close_vetoed = true;
     }
 
     /// This window's live geometry for persist-and-restore across launches.
@@ -813,8 +810,8 @@ impl Ui {
                 (logical.w.round() as u32).max(1),
                 (logical.h.round() as u32).max(1),
             ),
-            outer_position: self.window_mailbox.position,
-            maximized: self.window_mailbox.maximized,
+            outer_position: self.window_frame.position,
+            maximized: self.window_frame.maximized,
         }
     }
 
@@ -826,13 +823,13 @@ impl Ui {
     /// window that handled the key. Drop the guard before other `Ui`
     /// calls; the `&mut self` borrow enforces that.
     pub fn debug_overlay_mut(&mut self) -> RefMut<'_, DebugOverlayConfig> {
-        self.ctx.debug_overlay_mut()
+        self.shared.diagnostics.debug_overlay_mut()
     }
 
     /// This app's current debug overlay. Read by the backend at submit
     /// time and by `Ui::frame` to drive the FPS readout.
     pub(crate) fn debug_overlay(&self) -> DebugOverlayConfig {
-        self.ctx.debug_overlay()
+        self.shared.diagnostics.debug_overlay()
     }
 
     /// Whether a window addressed by `token` is currently live. Reflects
@@ -843,7 +840,7 @@ impl Ui {
     /// instead of mirroring the state in app code — a window the user
     /// closed via its titlebar drops out of this set automatically.
     pub fn window_open(&self, token: WindowToken) -> bool {
-        self.ctx.window_open(token)
+        self.shared.windows.contains(token)
     }
 
     /// Attach a paint primitive to the active node. Direct text contributes to
@@ -859,7 +856,7 @@ impl Ui {
     /// [`Shape::Image`] every frame (`clone` it where it needs to live).
     /// The CPU bytes are dropped right after the upload.
     pub fn register_image(&self, image: Image) -> ImageHandle {
-        self.ctx.caches.images.register(image)
+        self.shared.render.assets.images.register(image)
     }
 
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
@@ -896,7 +893,7 @@ impl Ui {
             // First sight always paints — the texture doesn't exist yet.
             // The shared id source is disjoint from `self.gpu_views`.
             Entry::Vacant(e) => e.insert(GpuViewEntry {
-                texture_id: self.ctx.caches.texture_ids.reserve(),
+                texture_id: self.shared.render.assets.texture_ids.reserve(),
                 paint: GpuPaintRef(paint),
                 epoch: frame_id,
             }),
@@ -1261,6 +1258,7 @@ pub(crate) mod test_support {
     use crate::app::test_support::RecordApp;
     use crate::forest::layer::Layer;
     use crate::forest::tree::node::NodeId;
+    use crate::host::shared::HostShared;
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;
@@ -1282,7 +1280,7 @@ pub(crate) mod test_support {
     /// disconnected one.
     impl Default for Ui {
         fn default() -> Self {
-            Self::new(&HostContext::default(), RecordStore::default())
+            Self::new(HostShared::default().ui_shared(), RecordStore::default())
         }
     }
 
@@ -1325,8 +1323,8 @@ pub(crate) mod test_support {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
-            let ctx = HostContext::new(SHARED.with(|c| c.clone()));
-            let mut ui = Self::new(&ctx, RecordStore::default());
+            let shared = HostShared::new(SHARED.with(Clone::clone));
+            let mut ui = Self::new(shared.ui_shared(), RecordStore::default());
             ui.mark_warm_for_test();
             ui
         }

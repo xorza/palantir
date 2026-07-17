@@ -308,7 +308,7 @@ fn divider_requests_the_resize_cursor() {
     frame_with(&mut ui, &mut ratio);
     frame_with(&mut ui, &mut ratio);
     assert_eq!(
-        ui.window_mailbox.cursor,
+        ui.window_requests.cursor,
         CursorIcon::Default,
         "idle frame keeps the arrow"
     );
@@ -318,7 +318,7 @@ fn divider_requests_the_resize_cursor() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.5, 50.0)));
     frame_with(&mut ui, &mut ratio);
     assert_eq!(
-        ui.window_mailbox.cursor,
+        ui.window_requests.cursor,
         CursorIcon::EwResize,
         "hover shows resize"
     );
@@ -329,7 +329,7 @@ fn divider_requests_the_resize_cursor() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 50.0)));
     frame_with(&mut ui, &mut ratio);
     assert_eq!(
-        ui.window_mailbox.cursor,
+        ui.window_requests.cursor,
         CursorIcon::EwResize,
         "drag holds resize off-bar"
     );
@@ -340,7 +340,7 @@ fn divider_requests_the_resize_cursor() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     frame_with(&mut ui, &mut ratio);
     assert_eq!(
-        ui.window_mailbox.cursor,
+        ui.window_requests.cursor,
         CursorIcon::Default,
         "leave resets to the arrow"
     );
@@ -362,7 +362,7 @@ fn divider_requests_the_resize_cursor() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.5)));
     frame(&mut ui, &mut ratio);
     assert_eq!(
-        ui.window_mailbox.cursor,
+        ui.window_requests.cursor,
         CursorIcon::NsResize,
         "column split resizes vertically"
     );

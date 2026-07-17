@@ -34,12 +34,12 @@ use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
 use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::host::context::HostContext;
 use crate::primitives::urect::URect;
 use crate::record_store::RecordPayloads;
+use crate::renderer::assets::RenderAssets;
 use crate::renderer::backend::text::TextBackend;
-use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::text::TextShaper;
 use crate::ui::frame_report::RenderPlan;
 use rustc_hash::FxHashMap;
 use wgpu::util::StagingBelt;
@@ -110,8 +110,20 @@ pub(crate) struct Submission<'a> {
     pub(crate) debug_overlay: DebugOverlayConfig,
 }
 
-/// wgpu backend: owns the quad pipeline + text renderer and cloned
-/// device/queue handles (cheap, Arc-backed). The text side holds a
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct BackendConfig {
+    pub(crate) collect_gpu_stats: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct BackendShared {
+    pub(crate) text: TextShaper,
+    pub(crate) assets: RenderAssets,
+    pub(crate) pass_stats: GpuPassStats,
+}
+
+/// wgpu backend: solely owns the device/queue, pipelines, and text renderer.
+/// The text side holds a
 /// shared handle to the same `CosmicMeasure` the Ui side measures
 /// against (passed in at [`Self::new`]) so layout-time measurement
 /// and rasterization hit one buffer cache. No layout, no encode, no
@@ -147,13 +159,13 @@ pub(crate) struct WgpuBackend {
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
-    /// Shared cross-frame GPU resource caches (image registry +
+    /// Shared cross-frame render assets (image registry +
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
-    caches: RenderCaches,
+    assets: RenderAssets,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation and the device was created with `TIMESTAMP_QUERY`
-    /// enabled. Holds its own clone of the context's `GpuPassStats` handle;
+    /// enabled. Publishes into the host's shared `GpuPassStats` handle;
     /// with one shared backend the published sample reflects the most recently
     /// submitted window.
     gpu_timings: Option<GpuTimings>,
@@ -172,15 +184,18 @@ impl WgpuBackend {
         surface.configure(&self.device, config);
     }
 
-    /// Build the one shared GPU renderer from the shared [`HostContext`]
-    /// (cloning the render caches, shaper, and GPU-stats handle it needs).
+    /// Build the one shared GPU renderer from its app-global render handles.
     /// Owns the device/queue and every
     /// format-independent GPU resource (pipelines' shaders + buffers, the
     /// glyph + gradient atlases, the image texture cache). Format-agnostic
     /// at construction: each swapchain format's pipeline set builds lazily
     /// on the first submit that targets it (see [`Self::ensure_format`]).
-    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue, ctx: &HostContext) -> Self {
-        let caches = ctx.caches.clone();
+    pub(crate) fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        shared: BackendShared,
+        config: BackendConfig,
+    ) -> Self {
         // Gradient LUT atlas resources, shared by the quad and curve
         // pipelines (both sample gradient brushes). Owned here so neither
         // pipeline owns the other's input — each composes its layout
@@ -190,7 +205,7 @@ impl WgpuBackend {
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device);
         let curve = CurvePipeline::new(&device);
-        let text = TextBackend::new(&device, ctx.shaper.clone());
+        let text = TextBackend::new(&device, shared.text);
         let debug = DebugOverlay::new(&device);
         // Per-format pipeline sets build lazily on the first submit that
         // targets each format (`ensure_format`); none at construction.
@@ -200,7 +215,7 @@ impl WgpuBackend {
         // steady state. wgpu allocates a new chunk only when the
         // active one can't fit a write.
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
-        Self {
+        let mut backend = Self {
             device,
             queue: Queue::new(queue),
             staging_belt,
@@ -212,26 +227,23 @@ impl WgpuBackend {
             text,
             debug,
             pipelines,
-            caches,
+            assets: shared.assets,
             gpu_timings: None,
-        }
-    }
-
-    pub(crate) fn collect_gpu_stats(mut self, collect: bool, stats: GpuPassStats) -> Self {
-        let features = self.device.features();
-        self.gpu_timings = (collect
+        };
+        let features = backend.device.features();
+        backend.gpu_timings = (config.collect_gpu_stats
             && features.contains(wgpu::Features::TIMESTAMP_QUERY)
-            && self.queue.get_timestamp_period() > 0.0)
+            && backend.queue.get_timestamp_period() > 0.0)
             .then(|| {
                 GpuTimings::new(
-                    &self.device,
-                    self.queue.get_timestamp_period(),
+                    &backend.device,
+                    backend.queue.get_timestamp_period(),
                     features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
                     features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                    stats,
+                    shared.pass_stats,
                 )
             });
-        self
+        backend
     }
 
     /// Ensure the pipeline set for `format` exists, building + caching it
@@ -467,8 +479,8 @@ impl WgpuBackend {
             //   magenta fallback plus any baked rows composer queued.
             // - image registry: first-frame images need a bind group
             //   ready when the schedule's draw call lands.
-            self.gradient.upload(&ctx, &self.caches.gradients);
-            self.image.drain_registry(&mut ctx, &self.caches.images);
+            self.gradient.upload(&ctx, &self.assets.gradients);
+            self.image.drain_registry(&mut ctx, &self.assets.images);
 
             if dim_undamaged {
                 self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);

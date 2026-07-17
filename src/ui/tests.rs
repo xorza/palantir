@@ -28,8 +28,8 @@ fn measure_calls(ui: &Ui) -> u64 {
     ui.shared.render.text.measure_calls()
 }
 
-fn ui_with_context(ctx: &HostShared) -> Ui {
-    let mut ui = Ui::new(ctx.ui_shared(), RecordStore::default());
+fn ui_with_shared(shared: &HostShared) -> Ui {
+    let mut ui = Ui::new(shared.ui_shared(), RecordStore::default());
     ui.mark_warm_for_test();
     ui
 }
@@ -608,9 +608,9 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let ctx = HostShared::new(TextShaper::with_bundled_fonts());
-    let mut a = ui_with_context(&ctx);
-    let mut b = ui_with_context(&ctx);
+    let shared = HostShared::new(TextShaper::with_bundled_fonts());
+    let mut a = ui_with_shared(&shared);
+    let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
 
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 120.0));
@@ -619,15 +619,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let b_key = b.layout[Layer::Main].text_shapes[0].key;
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    assert!(ctx.render.text.has_cosmic_buffer(a_key));
-    assert!(ctx.render.text.has_cosmic_buffer(b_key));
+    assert!(shared.render.text.has_cosmic_buffer(a_key));
+    assert!(shared.render.text.has_cosmic_buffer(b_key));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(b.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b = ctx.render.text.measure_calls();
+    let after_b = shared.render.text.measure_calls();
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 140.0));
     assert_eq!(
-        ctx.render.text.measure_calls(),
+        shared.render.text.measure_calls(),
         after_b,
         "window B must not overwrite window A's identity reuse row",
     );
@@ -641,15 +641,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert!(!b.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b_removal = ctx.render.text.measure_calls();
+    let after_b_removal = shared.render.text.measure_calls();
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 160.0));
     assert_eq!(
-        ctx.render.text.measure_calls(),
+        shared.render.text.measure_calls(),
         after_b_removal,
         "window B removal must not evict window A's identity reuse row",
     );
-    assert!(ctx.render.text.has_cosmic_buffer(a_key));
-    assert!(ctx.render.text.has_cosmic_buffer(b_key));
+    assert!(shared.render.text.has_cosmic_buffer(a_key));
+    assert!(shared.render.text.has_cosmic_buffer(b_key));
 }
 
 #[test]
@@ -693,9 +693,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         });
     }
 
-    let ctx = HostShared::new(TextShaper::with_bundled_fonts());
-    let mut idle = Ui::new(ctx.ui_shared(), RecordStore::default());
-    let mut active = Ui::new(ctx.ui_shared(), RecordStore::default());
+    let shared = HostShared::new(TextShaper::with_bundled_fonts());
+    let mut idle = Ui::new(shared.ui_shared(), RecordStore::default());
+    let mut active = Ui::new(shared.ui_shared(), RecordStore::default());
     let display = Display::from_physical(SURFACE, 1.0);
 
     let idle_first = idle.record(FrameStamp::new(display, Duration::ZERO), idle_body);
@@ -709,9 +709,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    ctx.render.text.evict_cosmic_buffers(1);
+    shared.render.text.evict_cosmic_buffers(1);
     assert!(
-        !ctx.render.text.has_cosmic_buffer(idle_key),
+        !shared.render.text.has_cosmic_buffer(idle_key),
         "newer active-window churn must evict the idle window's key",
     );
 
@@ -722,7 +722,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     let plan = idle_paint
         .plan
         .expect("the animated text boundary must produce a paint plan");
-    assert!(!ctx.render.text.has_cosmic_buffer(idle_key));
+    assert!(!shared.render.text.has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(&idle, plan);
@@ -732,7 +732,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         "PaintOnly must emit the retained text run",
     );
     assert!(
-        ctx.render.text.has_cosmic_buffer(idle_key),
+        shared.render.text.has_cosmic_buffer(idle_key),
         "encoder must restore the idle window's evicted interned text",
     );
 }
@@ -1560,8 +1560,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     }
 
     let shared = HostShared::new(TextShaper::mono());
-    let mut a = ui_with_context(&shared);
-    let mut b = ui_with_context(&shared);
+    let mut a = ui_with_shared(&shared);
+    let mut b = ui_with_shared(&shared);
     let half = Duration::from_millis(500);
 
     a.run_at_acked(SURFACE, |ui| window_a(ui, half));
@@ -2058,31 +2058,31 @@ fn window_requests_queue_and_survive_the_frame() {
 
     // Filed during record, still pending after the frame returned —
     // nothing in the frame pipeline clears them.
-    assert_eq!(ui.window_requests.pending_windows.len(), 1);
-    assert_eq!(ui.window_requests.pending_windows[0].token, open);
+    assert_eq!(ui.window_requests.commands.opens.len(), 1);
+    assert_eq!(ui.window_requests.commands.opens[0].token, open);
     assert_eq!(
-        ui.window_requests.pending_windows[0].config.title,
+        ui.window_requests.commands.opens[0].config.title,
         "inspector"
     );
-    assert_eq!(ui.window_requests.pending_closes, vec![close]);
+    assert_eq!(ui.window_requests.commands.closes, vec![close]);
 
     // A quiet frame (no new requests) must not drop the still-undrained
     // queue — the host might not have ticked between these two frames.
     ui.run_at(SURFACE, |_| {});
     assert_eq!(
-        ui.window_requests.pending_windows.len(),
+        ui.window_requests.commands.opens.len(),
         1,
         "queue must outlive a quiet frame"
     );
-    assert_eq!(ui.window_requests.pending_closes, vec![close]);
+    assert_eq!(ui.window_requests.commands.closes, vec![close]);
 
     // The host drains by `append`/`drain`-ing the vecs; emulate that and
     // confirm a third frame leaves them empty (no re-queue).
-    ui.window_requests.pending_windows.clear();
-    ui.window_requests.pending_closes.clear();
+    ui.window_requests.commands.opens.clear();
+    ui.window_requests.commands.closes.clear();
     ui.run_at(SURFACE, |_| {});
-    assert!(ui.window_requests.pending_windows.is_empty());
-    assert!(ui.window_requests.pending_closes.is_empty());
+    assert!(ui.window_requests.commands.opens.is_empty());
+    assert!(ui.window_requests.commands.closes.is_empty());
 
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
@@ -2278,8 +2278,8 @@ fn open_window_dedups_by_token_within_a_frame() {
     ui.open_window(WindowToken(7), cfg("first"));
     ui.open_window(WindowToken(7), cfg("second"));
     ui.open_window(WindowToken(8), cfg("other"));
-    assert_eq!(ui.window_requests.pending_windows.len(), 2);
-    assert_eq!(ui.window_requests.pending_windows[0].token, WindowToken(7));
-    assert_eq!(ui.window_requests.pending_windows[0].config.title, "second");
-    assert_eq!(ui.window_requests.pending_windows[1].token, WindowToken(8));
+    assert_eq!(ui.window_requests.commands.opens.len(), 2);
+    assert_eq!(ui.window_requests.commands.opens[0].token, WindowToken(7));
+    assert_eq!(ui.window_requests.commands.opens[0].config.title, "second");
+    assert_eq!(ui.window_requests.commands.opens[1].token, WindowToken(8));
 }

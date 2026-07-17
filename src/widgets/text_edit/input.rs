@@ -40,7 +40,7 @@ pub(crate) struct InputResult {
 /// widget and return the caret + selection to render plus the frame's
 /// edge signals. Splitting this out of `show()` keeps the borrow
 /// choreography contained: we touch `ui.state`, `ui.input`, and
-/// `ui.ctx.shaper` here, but never the shape/tree storage.
+/// `ui.shared.render.text` here, but never the shape/tree storage.
 pub(crate) fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
@@ -60,7 +60,7 @@ pub(crate) fn handle_input(
     let menu_open = ContextMenu::is_open(ui, id);
 
     // Hold the state row once for the whole function (inside the
-    // `Editor`). `ui.state`, `ui.input`, and `ui.ctx.shaper` are
+    // `Editor`). `ui.state`, `ui.input`, and `ui.shared.render.text` are
     // disjoint fields of `Ui`, so the `&mut state` can stay alive
     // while also reading the input queues and dispatching to the text
     // measurer.
@@ -115,7 +115,7 @@ pub(crate) fn handle_input(
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
-        let hit = ui.ctx.shaper.byte_at_xy(
+        let hit = ui.shared.render.text.byte_at_xy(
             ed.text,
             local_x,
             if ctx.multiline { local_y } else { 0.0 },
@@ -186,7 +186,7 @@ pub(crate) fn handle_input(
     // then `apply_key` (edit / nav). Vertical-nav probes happen inline
     // because they need the shaper + layout. Indexing keeps the borrow
     // on `frame_keyboard_events` short-lived so we can dispatch to
-    // `ui.ctx.shaper` inside the same loop without a scratch Vec.
+    // `ui.shared.render.text` inside the same loop without a scratch Vec.
     let n = ui.input.frame_keyboard_events.len();
     for i in 0..n {
         match ui.input.frame_keyboard_events[i] {
@@ -210,7 +210,7 @@ pub(crate) fn handle_input(
                 match ed.apply_key(kp) {
                     KeyOutcome::Blur => blur = true,
                     KeyOutcome::Vertical { up, extend } => {
-                        ed.resolve_vertical(&ui.ctx.shaper, ctx.params(), up, extend);
+                        ed.resolve_vertical(&ui.shared.render.text, ctx.params(), up, extend);
                     }
                     KeyOutcome::None => {}
                 }
