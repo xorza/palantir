@@ -8,9 +8,7 @@
 //! Mesh / Text), every `Brush` variant (Solid / Linear / Radial /
 //! Conic), and the popup/tooltip layers.
 
-use std::cell::OnceCell;
 use std::f32::consts::FRAC_PI_2;
-use std::rc::Rc;
 
 use crate::forest::element::Configure;
 use crate::layout::types::align::Align;
@@ -81,6 +79,7 @@ pub struct FrameFixture {
     zoom: f64,
     quality: usize,
     dark_mode: bool,
+    grid_rows: Vec<Track>,
 }
 
 impl Default for FrameFixture {
@@ -96,6 +95,7 @@ impl Default for FrameFixture {
             zoom: 42.0_f64,
             quality: 2,
             dark_mode: true,
+            grid_rows: Vec::new(),
         }
     }
 }
@@ -112,6 +112,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
     let canvas_dots = 3 * scale;
     let prop_rows = 4 + scale;
     let tag_count = 3 * scale;
+    state.grid_rows.resize(prop_rows, Track::hug());
 
     let panel_bg = Background {
         fill: Color::rgb(0.14, 0.16, 0.22).into(),
@@ -371,38 +372,10 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                     }
                                 });
 
-                            // Per-frame `Rc::from([...])` / `Vec::collect()` would each
-                            // allocate; the strict-zero `alloc_free` bench catches it.
-                            // Cache the canonical `Rc<[Track]>`s once per thread so the
-                            // hot path is a refcount bump. Each bench process feeds a
-                            // single `scale`, so keying on it isn't needed.
-                            thread_local! {
-                                static GRID_COLS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
-                                static GRID_ROWS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
-                            }
-                            let cols = GRID_COLS.with(|c| {
-                                c.get_or_init(|| {
-                                    Rc::from([
-                                        Track::hug().min(80.0),
-                                        Track::fill(),
-                                        Track::fixed(60.0),
-                                    ])
-                                })
-                                .clone()
-                            });
-                            let rows = GRID_ROWS.with(|c| {
-                                c.get_or_init(|| {
-                                    (0..prop_rows)
-                                        .map(|_| Track::hug())
-                                        .collect::<Vec<_>>()
-                                        .into()
-                                })
-                                .clone()
-                            });
                             Grid::new()
                                 .id_salt("props")
-                                .cols(cols)
-                                .rows(rows)
+                                .cols([Track::hug().min(80.0), Track::fill(), Track::fixed(60.0)])
+                                .rows(state.grid_rows.as_slice())
                                 .gap(6.0)
                                 .padding(4.0)
                                 .size((Sizing::FILL, Sizing::HUG))

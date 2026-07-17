@@ -1,13 +1,11 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx;
-use std::rc::Rc;
+use crate::primitives::span::Span;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
 /// Star) with optional `[min, max]` clamps. Defaults: `min = 0.0`,
 /// `max = INFINITY` (no clamp).
 ///
-/// `From<Sizing>` lets bare sizing values land in `.cols([Sizing::FILL, …])`
-/// without the wrapper.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Track {
     pub(crate) size: Sizing,
@@ -88,34 +86,23 @@ impl std::hash::Hash for Track {
     }
 }
 
-/// Track definitions + axis gaps for a `Grid` panel. Stored on
-/// `GridArena` (a `Tree`-owned `Vec<GridDef>`) and addressed from
-/// `LayoutMode::Grid(u16)`. Track defs live behind `Rc<[Track]>` so
-/// callers can cache and share them across frames without the
-/// framework copying — the builder stores the `Rc`, the layout pass
-/// reads through it directly. Per-track hug sizes (computed in
-/// measure, read in arrange) live on `Layout` keyed by grid def
-/// index — the tree is read-only after recording.
-///
-/// Lives here (vocabulary, beside [`Track`]) rather than in the grid
-/// driver so `forest::tree` can store it without importing the driver
-/// — which itself imports `forest::tree`.
-#[derive(Clone, Debug)]
+/// Spans into a `Tree`'s retained flat track arena plus the gaps for one Grid.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct GridDef {
-    pub rows: Rc<[Track]>,
-    pub cols: Rc<[Track]>,
+    pub rows: Span,
+    pub cols: Span,
     pub row_gap: f32,
     pub col_gap: f32,
 }
 
-impl std::hash::Hash for GridDef {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u32(self.rows.len() as u32);
-        for t in self.rows.iter() {
+impl GridDef {
+    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, tracks: &[Track], h: &mut H) {
+        h.write_u32(self.rows.len);
+        for t in &tracks[self.rows.range()] {
             t.hash_visual(h);
         }
-        h.write_u32(self.cols.len() as u32);
-        for t in self.cols.iter() {
+        h.write_u32(self.cols.len);
+        for t in &tracks[self.cols.range()] {
             t.hash_visual(h);
         }
         approx::hash_visual_f32(self.row_gap, h);
@@ -128,9 +115,9 @@ mod tests {
     use crate::layout::types::sizing::Sizing;
     use crate::layout::types::track::{GridDef, Track};
     use crate::primitives::approx::EPS;
+    use crate::primitives::span::Span;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    use std::rc::Rc;
 
     fn hash_value(value: impl Hash) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -181,16 +168,70 @@ mod tests {
         }
     }
 
+    fn grid_content_hash(def: GridDef, tracks: &[Track]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        def.hash_visual(tracks, &mut hasher);
+        hasher.finish()
+    }
+
     #[test]
-    fn grid_content_hash_collapses_visual_zero_noise() {
-        let make = |row_gap| GridDef {
-            rows: Rc::from([Track::hug()]),
-            cols: Rc::from([Track::fill()]),
+    fn grid_content_hash_uses_tracks_not_arena_offsets_and_collapses_visual_noise() {
+        let tracks = [
+            Track::fixed(99.0),
+            Track::hug(),
+            Track::fill(),
+            Track::hug(),
+            Track::fill(),
+        ];
+        let make = |start, row_gap| GridDef {
+            rows: Span::new(start, 1),
+            cols: Span::new(start + 1, 1),
             row_gap,
             col_gap: -row_gap,
         };
 
-        assert_eq!(hash_value(make(0.0)), hash_value(make(EPS * 0.5)));
-        assert_ne!(hash_value(make(0.0)), hash_value(make(EPS * 2.0)));
+        assert_eq!(
+            grid_content_hash(make(1, 0.0), &tracks),
+            grid_content_hash(make(3, EPS * 0.5), &tracks),
+        );
+        assert_ne!(
+            grid_content_hash(make(1, 0.0), &tracks),
+            grid_content_hash(make(3, EPS * 2.0), &tracks),
+        );
+    }
+
+    #[test]
+    fn grid_content_hash_covers_empty_small_and_large_definitions() {
+        fn hash_definition(rows: &[Track], cols: &[Track]) -> u64 {
+            let mut tracks = Vec::with_capacity(rows.len() + cols.len());
+            tracks.extend_from_slice(rows);
+            tracks.extend_from_slice(cols);
+            let def = GridDef {
+                rows: Span::new(0, rows.len() as u32),
+                cols: Span::new(rows.len() as u32, cols.len() as u32),
+                row_gap: 2.0,
+                col_gap: 3.0,
+            };
+            grid_content_hash(def, &tracks)
+        }
+
+        let empty = hash_definition(&[], &[]);
+        assert_eq!(empty, hash_definition(&[], &[]));
+        assert_ne!(empty, hash_definition(&[], &[Track::fill()]));
+
+        let small_rows = [Track::fixed(10.0)];
+        let small_cols = [Track::hug(), Track::fill()];
+        let small = hash_definition(&small_rows, &small_cols);
+        assert_eq!(small, hash_definition(&small_rows, &small_cols));
+        assert_ne!(small, hash_definition(&small_cols, &small_rows));
+
+        let large = [Track::fill(); 64];
+        let mut changed_large = large;
+        changed_large[63] = Track::fixed(1.0);
+        assert_eq!(hash_definition(&large, &[]), hash_definition(&large, &[]));
+        assert_ne!(
+            hash_definition(&large, &[]),
+            hash_definition(&changed_large, &[]),
+        );
     }
 }

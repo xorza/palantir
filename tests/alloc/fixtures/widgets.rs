@@ -3,7 +3,6 @@ use aperture::{
     Background, Button, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Panel, Scroll,
     Shortcut, Sizing, Splitter, Text, TextEdit, Track, Ui, Vec2, WidgetId,
 };
-use std::rc::Rc;
 
 #[test]
 fn empty_frame_alloc_free() {
@@ -39,13 +38,11 @@ fn nested_vstack_64_alloc_free() {
 
 #[test]
 fn grid_8x8_alloc_free() {
-    let cols: Rc<[Track]> = Rc::from([Track::fill(); 8]);
-    let rows: Rc<[Track]> = Rc::from([Track::fill(); 8]);
-    audit_steady_state("grid_8x8", 0, move |ui| {
+    audit_steady_state("grid_8x8", 0, |ui| {
         Grid::new()
             .auto_id()
-            .cols(Rc::clone(&cols))
-            .rows(Rc::clone(&rows))
+            .cols([Track::fill(); 8])
+            .rows([Track::fill(); 8])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for r in 0..8u16 {

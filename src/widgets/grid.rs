@@ -1,12 +1,9 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::track::GridDef;
-use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
 use crate::widgets::{InnerResponse, Response, resolve_container_chrome};
-use std::rc::Rc;
-use std::sync::OnceLock;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
@@ -17,18 +14,19 @@ use std::sync::OnceLock;
 /// tracks resolve, weighted, with bounded constraint resolution if any
 /// `Track::min` / `Track::max` clamps fire.
 ///
-/// Track lists are passed as `Rc<[Track]>`; the framework only refcount-
-/// touches, never copies. Hoist a track list into app state and clone the
-/// `Rc` in each frame for zero-alloc steady state at any track count. Inline
-/// literals (`[Track::fixed(40.0), ...]`) are accepted via
-/// `Into<Rc<[Track]>>` and allocate once per frame for that grid.
+/// Arrays remain inline in the builder and borrowed slices remain borrowed.
+/// On `show`, tracks are copied into the current Tree's capacity-retained
+/// arena, so natural array declarations are allocation-free after warmup.
 ///
 /// The layout driver documents the three-phase solver and its explicit
 /// non-goals: no Auto-vs-Star cycle, `SharedSizeScope`, or auto-flow.
 #[derive(Debug)]
-pub struct Grid {
+pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
     element: Element,
-    def: GridDef,
+    rows: Rows,
+    cols: Cols,
+    row_gap: f32,
+    col_gap: f32,
     chrome: Option<Background>,
 }
 
@@ -38,43 +36,43 @@ impl Grid {
     pub fn new() -> Self {
         Self {
             element: Element::grid(),
-            def: GridDef {
-                rows: empty_tracks(),
-                cols: empty_tracks(),
-                row_gap: 0.0,
-                col_gap: 0.0,
-            },
+            rows: [],
+            cols: [],
+            row_gap: 0.0,
+            col_gap: 0.0,
             chrome: None,
         }
     }
+}
 
-    pub fn rows(mut self, rs: impl Into<Rc<[Track]>>) -> Self {
-        self.def.rows = rs.into();
-        self
+impl<Rows, Cols> Grid<Rows, Cols> {
+    pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols> {
+        Grid {
+            element: self.element,
+            rows,
+            cols: self.cols,
+            row_gap: self.row_gap,
+            col_gap: self.col_gap,
+            chrome: self.chrome,
+        }
     }
 
-    pub fn cols(mut self, cs: impl Into<Rc<[Track]>>) -> Self {
-        self.def.cols = cs.into();
-        self
-    }
-
-    /// Shorthand: `n` equal-weight `Fill` columns. Allocates the `Rc<[Track]>`
-    /// each call — hoist into app state if you want zero-alloc reuse.
-    pub fn equal_cols(self, n: usize) -> Self {
-        self.cols(vec![Track::new(Sizing::FILL); n])
-    }
-
-    /// Shorthand: `n` equal-weight `Fill` rows. Same alloc note as
-    /// `equal_cols`.
-    pub fn equal_rows(self, n: usize) -> Self {
-        self.rows(vec![Track::new(Sizing::FILL); n])
+    pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols> {
+        Grid {
+            element: self.element,
+            rows: self.rows,
+            cols,
+            row_gap: self.row_gap,
+            col_gap: self.col_gap,
+            chrome: self.chrome,
+        }
     }
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
     pub fn gap(mut self, g: f32) -> Self {
         debug_assert!(g >= 0.0, "Grid gap must be non-negative, got {g}");
-        self.def.row_gap = g;
-        self.def.col_gap = g;
+        self.row_gap = g;
+        self.col_gap = g;
         self
     }
 
@@ -84,8 +82,8 @@ impl Grid {
             row_gap >= 0.0 && col_gap >= 0.0,
             "Grid gaps must be non-negative, got row={row_gap}, col={col_gap}",
         );
-        self.def.row_gap = row_gap;
-        self.def.col_gap = col_gap;
+        self.row_gap = row_gap;
+        self.col_gap = col_gap;
         self
     }
 
@@ -105,9 +103,18 @@ impl Grid {
         self
     }
 
-    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
+    where
+        Rows: AsRef<[Track]>,
+        Cols: AsRef<[Track]>,
+    {
         let active_layer = ui.forest.current_layer();
-        let id = ui.forest.trees[active_layer].push_grid_def(self.def);
+        let id = ui.forest.trees[active_layer].push_grid_def(
+            self.rows.as_ref(),
+            self.cols.as_ref(),
+            self.row_gap,
+            self.col_gap,
+        );
         let mut element = self.element;
         element.set_grid_def(id);
 
@@ -128,17 +135,10 @@ impl Grid {
     }
 }
 
-impl Configure for Grid {
+impl<Rows, Cols> Configure for Grid<Rows, Cols> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
-}
-
-fn empty_tracks() -> Rc<[Track]> {
-    thread_local! {
-        static EMPTY: OnceLock<Rc<[Track]>> = const { OnceLock::new() };
-    }
-    EMPTY.with(|cell| cell.get_or_init(|| Rc::from(Vec::<Track>::new())).clone())
 }
 
 #[cfg(all(test, debug_assertions))]
@@ -148,12 +148,12 @@ mod tests {
     #[test]
     fn gaps_validate_and_store_values() {
         let uniform = Grid::new().gap(0.0);
-        assert_eq!(uniform.def.row_gap, 0.0);
-        assert_eq!(uniform.def.col_gap, 0.0);
+        assert_eq!(uniform.row_gap, 0.0);
+        assert_eq!(uniform.col_gap, 0.0);
 
         let asymmetric = Grid::new().gap_xy(3.0, 5.0);
-        assert_eq!(asymmetric.def.row_gap, 3.0);
-        assert_eq!(asymmetric.def.col_gap, 5.0);
+        assert_eq!(asymmetric.row_gap, 3.0);
+        assert_eq!(asymmetric.col_gap, 5.0);
 
         let invalid: [fn(Grid) -> Grid; 5] = [
             |grid| grid.gap(-1.0),

@@ -624,10 +624,9 @@ fn self_transform_change_flips_node_hash() {
 fn grid_per_node_hash_independent_of_arena_slot() {
     use crate::layout::types::track::Track;
     use crate::widgets::grid::Grid;
-    use std::rc::Rc;
 
-    let cols: Rc<[Track]> = Rc::from([Track::fill(), Track::fill()]);
-    let rows: Rc<[Track]> = Rc::from([Track::fill()]);
+    let cols = [Track::fill(), Track::fill()];
+    let rows = [Track::fill()];
 
     let mut ui1 = Ui::for_test();
     let mut g1 = None;
@@ -638,15 +637,15 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                 g1 = Some(
                     Grid::new()
                         .id(WidgetId::from_hash("target"))
-                        .cols(cols.clone())
-                        .rows(rows.clone())
+                        .cols(cols)
+                        .rows(rows)
                         .show(ui, |_| {})
                         .node(),
                 );
                 Grid::new()
                     .id(WidgetId::from_hash("other"))
-                    .cols(cols.clone())
-                    .rows(rows.clone())
+                    .cols(cols)
+                    .rows(rows)
                     .show(ui, |_| {});
             });
     });
@@ -658,14 +657,14 @@ fn grid_per_node_hash_independent_of_arena_slot() {
             .show(ui, |ui| {
                 Grid::new()
                     .id(WidgetId::from_hash("other"))
-                    .cols(cols.clone())
-                    .rows(rows.clone())
+                    .cols(cols)
+                    .rows(rows)
                     .show(ui, |_| {});
                 g2 = Some(
                     Grid::new()
                         .id(WidgetId::from_hash("target"))
-                        .cols(cols.clone())
-                        .rows(rows.clone())
+                        .cols(cols)
+                        .rows(rows)
                         .show(ui, |_| {})
                         .node(),
                 );

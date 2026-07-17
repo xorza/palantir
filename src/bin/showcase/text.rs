@@ -11,7 +11,6 @@ use aperture::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, TextWrap,
     Track, Ui,
 };
-use std::rc::Rc;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
@@ -105,8 +104,8 @@ fn compositions(ui: &mut Ui) {
         |ui| {
             Grid::new()
                 .id_salt("two-hug-inner")
-                .cols(Rc::from([Track::hug(), Track::hug()]))
-                .rows(Rc::from([Track::hug()]))
+                .cols([Track::hug(), Track::hug()])
+                .rows([Track::hug()])
                 .gap_xy(0.0, 16.0)
                 .show(ui, |ui| {
                     Text::new(PARAGRAPH)
@@ -132,8 +131,8 @@ fn compositions(ui: &mut Ui) {
             Grid::new()
                 .id_salt("property-grid-inner")
                 .size((Sizing::FILL, Sizing::HUG))
-                .cols(Rc::from([Track::hug(), Track::fill()]))
-                .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                .cols([Track::hug(), Track::fill()])
+                .rows([Track::hug(), Track::hug(), Track::hug()])
                 .gap_xy(6.0, 16.0)
                 .show(ui, |ui| {
                     let rows = [

@@ -12,7 +12,6 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::layout::{LayerLayout, ShapedText};
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
-use std::rc::Rc;
 
 /// Test helper: the leaf's single shaped-text result. Asserts the
 /// span holds exactly one entry — every cross-driver test today builds
@@ -37,8 +36,8 @@ pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
     let mut text_node = None;
     Grid::new()
         .auto_id()
-        .cols(Rc::from([Track::hug(), Track::hug()]))
-        .rows(Rc::from([Track::hug()]))
+        .cols([Track::hug(), Track::hug()])
+        .rows([Track::hug()])
         .show(ui, |ui| {
             text_node = Some(
                 Text::new(paragraph)

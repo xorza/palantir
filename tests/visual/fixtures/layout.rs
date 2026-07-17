@@ -6,7 +6,6 @@ use aperture::{
     Stroke, Text, TextStyle, TextWrap, Track,
 };
 use glam::UVec2;
-use std::rc::Rc;
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -155,8 +154,8 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
             .show(ui, |ui| {
                 Grid::new()
                     .id_salt("two-hug")
-                    .cols(Rc::from([Track::hug(), Track::hug()]))
-                    .rows(Rc::from([Track::hug()]))
+                    .cols([Track::hug(), Track::hug()])
+                    .rows([Track::hug()])
                     .gap_xy(16.0, 0.0)
                     .show(ui, |ui| {
                         Text::new(

@@ -13,7 +13,6 @@ use crate::shape::TextWrap;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-use std::rc::Rc;
 
 fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
     ui.forest.trees[Layer::Main]
@@ -393,15 +392,18 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                 Track::fixed(100.0),
             ];
             let secondary = [Track::fixed(40.0), Track::fixed(40.0)];
-            let mut g = Grid::new().auto_id();
-            if *swap {
-                g = g.rows(primary).cols(secondary);
+            let (rows, cols): (&[Track], &[Track]) = if *swap {
+                (&primary, &secondary)
             } else {
-                g = g.cols(primary).rows(secondary);
-            }
+                (&secondary, &primary)
+            };
             let span = if *swap { (3, 1) } else { (1, 3) };
             root = Some(
-                g.gap(10.0)
+                Grid::new()
+                    .auto_id()
+                    .rows(rows)
+                    .cols(cols)
+                    .gap(10.0)
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("header"))
@@ -471,11 +473,8 @@ const KNOWN_SPAN_CASES: [KnownSpanCase; 2] = [
     },
 ];
 
-fn fixed_tracks(case: KnownSpanCase) -> Rc<[Track]> {
-    (0..case.span)
-        .map(|_| Track::fixed(case.track))
-        .collect::<Vec<_>>()
-        .into()
+fn fixed_tracks(case: KnownSpanCase) -> Vec<Track> {
+    (0..case.span).map(|_| Track::fixed(case.track)).collect()
 }
 
 #[test]
@@ -542,46 +541,50 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
             let mut panel_node = None;
             let mut second_node = None;
             ui.run_at(UVec2::new(400, 400), |ui| {
-                let mut grid = Grid::new()
+                let primary = fixed_tracks(case);
+                let secondary = [Track::hug()];
+                let (rows, cols): (&[Track], &[Track]) = if axis == Axis::X {
+                    (&secondary, primary.as_ref())
+                } else {
+                    (primary.as_ref(), &secondary)
+                };
+                Grid::new()
                     .auto_id()
+                    .rows(rows)
+                    .cols(cols)
                     .gap_xy(
                         if axis == Axis::Y { case.gap } else { 0.0 },
                         if axis == Axis::X { case.gap } else { 0.0 },
                     )
-                    .size((Sizing::HUG, Sizing::HUG));
-                if axis == Axis::X {
-                    grid = grid.cols(fixed_tracks(case)).rows([Track::hug()]);
-                } else {
-                    grid = grid.cols([Track::hug()]).rows(fixed_tracks(case));
-                }
-                grid.show(ui, |ui| {
-                    let panel = match axis {
-                        Axis::X => Panel::wrap_hstack(),
-                        Axis::Y => Panel::wrap_vstack(),
-                    };
-                    panel_node = Some(
-                        panel
-                            .auto_id()
-                            .grid_span(match axis {
-                                Axis::X => (1, case.span),
-                                Axis::Y => (case.span, 1),
-                            })
-                            .show(ui, |ui| {
-                                Frame::new()
-                                    .auto_id()
-                                    .size(axis.compose_size(case.child_main, 20.0))
-                                    .show(ui);
-                                second_node = Some(
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        let panel = match axis {
+                            Axis::X => Panel::wrap_hstack(),
+                            Axis::Y => Panel::wrap_vstack(),
+                        };
+                        panel_node = Some(
+                            panel
+                                .auto_id()
+                                .grid_span(match axis {
+                                    Axis::X => (1, case.span),
+                                    Axis::Y => (case.span, 1),
+                                })
+                                .show(ui, |ui| {
                                     Frame::new()
                                         .auto_id()
                                         .size(axis.compose_size(case.child_main, 20.0))
-                                        .show(ui)
-                                        .node(),
-                                );
-                            })
-                            .node(),
-                    );
-                });
+                                        .show(ui);
+                                    second_node = Some(
+                                        Frame::new()
+                                            .auto_id()
+                                            .size(axis.compose_size(case.child_main, 20.0))
+                                            .show(ui)
+                                            .node(),
+                                    );
+                                })
+                                .node(),
+                        );
+                    });
             });
 
             let panel = panel_node.unwrap();
@@ -689,13 +692,13 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
 /// cells see `INF` (WPF intrinsic trick that defers Fill until arrange).
 #[test]
 fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
-    let tracks: Rc<[Track]> = Rc::from([Track::fixed(50.0), Track::hug(), Track::fill()]);
+    let tracks = [Track::fixed(50.0), Track::hug(), Track::fill()];
     let mut a = AxisScratch::default();
-    a.reset(tracks);
+    a.reset(tracks.len());
     let hug_min = [0.0, 10.0, 0.0];
     let hug_max = [0.0, 30.0, 0.0];
 
-    resolve_axis(&mut a, &hug_min, &hug_max, 200.0, 0.0, Sizing::HUG);
+    resolve_axis(&mut a, &tracks, &hug_min, &hug_max, 200.0, 0.0, false);
 
     assert!(
         a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),
@@ -756,7 +759,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let mut ui = Ui::for_test();
     let mut grid_node = None;
     let mut ghost_node = None;
-    let empty: Rc<[Track]> = Rc::from([] as [Track; 0]);
+    let empty: [Track; 0] = [];
     ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack()
             .auto_id()
@@ -766,7 +769,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                     Grid::new()
                         .id(WidgetId::from_hash("empty-grid"))
                         .cols([Track::fixed(50.0)])
-                        .rows(empty.clone())
+                        .rows(empty)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
                             ghost_node = Some(
@@ -788,6 +791,43 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let ghost = ui.layout[Layer::Main].rect[ghost_node.unwrap().idx()];
     assert_eq!(ghost.size.w, 0.0);
     assert_eq!(ghost.size.h, 0.0);
+}
+
+#[test]
+fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
+    const COLS: usize = 64;
+    let cols: [Track; COLS] = std::array::from_fn(|i| Track::fixed((i + 1) as f32));
+    let mut ui = Ui::for_test();
+    let mut grid_node = None;
+    let mut last_node = None;
+    ui.run_at(UVec2::new(3_000, 100), |ui| {
+        grid_node = Some(
+            Grid::new()
+                .id(WidgetId::from_hash("large-grid"))
+                .rows([Track::fixed(10.0)])
+                .cols(cols)
+                .gap_xy(0.0, 2.0)
+                .show(ui, |ui| {
+                    last_node = Some(
+                        Frame::new()
+                            .id(WidgetId::from_hash("last-cell"))
+                            .grid_cell((0, (COLS - 1) as u16))
+                            .show(ui)
+                            .node(),
+                    );
+                })
+                .node(),
+        );
+    });
+
+    // Sum 1..=64 = 2,080; 63 gaps × 2 = 126.
+    let grid = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
+    assert_eq!(grid.size, Size::new(2_206.0, 10.0));
+
+    // Sum 1..=63 = 2,016; 63 preceding gaps × 2 = 126.
+    let last = ui.layout[Layer::Main].rect[last_node.unwrap().idx()];
+    assert_eq!(last.min, glam::Vec2::new(2_142.0, 0.0));
+    assert_eq!(last.size, Size::new(64.0, 10.0));
 }
 
 /// Pin: each Hug row resolves to its own cells' max desired height,
