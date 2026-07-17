@@ -6,7 +6,7 @@
 use crate::forest::element::columns::LayoutCore;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Tree;
-use crate::forest::tree::iter::{TreeItem, TreeItems};
+use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
@@ -86,7 +86,7 @@ pub(crate) fn container_text_shapes<'a>(
     tc: &TextCtx<'a>,
     node: NodeId,
 ) -> impl Iterator<Item = TextShapeInput<'a>> {
-    TreeItems::new(&tree.records, &tree.shapes.records, node).filter_map(move |item| match item {
+    tree.tree_items(node).filter_map(move |item| match item {
         TreeItem::ShapeRecord(_, shape) => text_shape_input(shape, tc.bytes),
         TreeItem::Child(_) => None,
     })

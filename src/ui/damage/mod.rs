@@ -1,5 +1,5 @@
 //! Per-frame damage detection. Computed in [`Ui::frame`] after
-//! `compute_hashes`; rebuilds the prev-frame snapshot in the same
+//! `compute_rollups`; rebuilds the prev-frame snapshot in the same
 //! pass via the `entry()` API — vacant slots get inserted, occupied
 //! slots get diffed and either updated or evicted.
 //!
@@ -32,7 +32,7 @@
 //! tail rely on — every node painting *visible* pixels has an entry.
 //!
 //! **Paint order.** Child markers put the shape/child interleave into
-//! each node's row span, and `compute_hashes` folds child identity
+//! each node's row span, and `compute_rollups` folds child identity
 //! into `node_hash` — so a pure z-order change (raising a node, a
 //! shape crossing a child boundary, two coincident shapes swapping)
 //! routes its parent to the changed-paints arm, where the row
@@ -515,7 +515,7 @@ impl DamageEngine {
                         // authoring stream differed without touching own
                         // pixels — most commonly a child added/removed
                         // (the per-child marker folded into `node_hash`
-                        // by `compute_hashes`), already covered by the
+                        // by `compute_rollups`), already covered by the
                         // subtree/eviction diff. Repainting the union
                         // there spuriously re-damages every direct shape
                         // — e.g. all canvas connections when an

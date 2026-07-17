@@ -721,12 +721,8 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         scene = Some(build_wrapping_container_text(ui));
     });
     let scene = scene.unwrap();
-    let tree = &ui.forest.trees[Layer::Main];
-    assert_eq!(
-        tree.rollups.container_text.ones().collect::<Vec<_>>(),
-        [scene.container.idx()],
-    );
     let layout = &ui.layout[Layer::Main];
+    assert_eq!(layout.text_shapes.len(), 1);
     let container_rect = layout.rect[scene.container.idx()];
     let child_rect = layout.rect[scene.child.idx()];
 
@@ -736,16 +732,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let span = layout.text_spans[scene.container.idx()];
     assert_eq!(span.len, 1, "container owns one direct text run");
     let shaped = layout.text_shapes[span.start as usize];
-    assert!(
-        shaped.measured.w <= 80.0,
-        "text must wrap to the final 100px owner minus 20px padding; got {:?}",
-        shaped.measured,
-    );
-    assert!(
-        shaped.measured.h >= 32.0,
-        "the paragraph must wrap onto at least two 16px lines; got {:?}",
-        shaped.measured,
-    );
+    assert_eq!(shaped.measured, Size::new(73.0, 80.0));
 
     let draw_keys: Vec<_> = ui
         .encode_cmds()
@@ -757,17 +744,13 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         .collect();
     assert_eq!(draw_keys, [shaped.key]);
 
+    let mut leaf = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
-        Text::new("leaf-only").show(ui);
+        leaf = Some(Text::new("leaf-only").show(ui).node());
     });
-    assert!(
-        ui.forest.trees[Layer::Main]
-            .rollups
-            .container_text
-            .ones()
-            .next()
-            .is_none(),
-    );
+    let layout = &ui.layout[Layer::Main];
+    assert_eq!(layout.text_shapes.len(), 1);
+    assert_eq!(layout.text_spans[leaf.unwrap().idx()].len, 1);
 }
 
 #[test]
@@ -779,6 +762,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     });
     let first_scene = first_scene.unwrap();
     let first_layout = &ui.layout[Layer::Main];
+    assert_eq!(first_layout.text_shapes.len(), 3);
     let first_parent_span = first_layout.text_spans[first_scene.container.idx()];
     let first_child_span = first_layout.text_spans[first_scene.child.idx()];
     assert_eq!(first_parent_span.len, 2);
@@ -813,6 +797,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         "second identical frame should exercise measure-cache replay",
     );
     let second_layout = &ui.layout[Layer::Main];
+    assert_eq!(second_layout.text_shapes.len(), 3);
     let second_parent_span = second_layout.text_spans[second_scene.container.idx()];
     let second_child_span = second_layout.text_spans[second_scene.child.idx()];
     assert_eq!(second_parent_span.len, 2);

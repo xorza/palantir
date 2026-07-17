@@ -517,7 +517,7 @@ pub(crate) fn cascade_fingerprint(
         h.write_u8(layer as u8);
         for slot in &tree.roots {
             // The root's own id reaches no other hash —
-            // `compute_hashes` folds only child ids into parents,
+            // `compute_rollups` folds only child ids into parents,
             // and a root has no parent — so a re-keyed root with
             // identical content would otherwise reuse cascades
             // whose `by_id` still maps the dead old id.

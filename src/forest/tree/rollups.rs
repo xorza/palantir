@@ -35,9 +35,9 @@ impl SubtreeRollups {
     /// Reset and size every column for `n` records. Columns are
     /// resized with default values — filled by indexed assignment
     /// during the fused reverse-pre-order pass in
-    /// `Tree::compute_hashes`.
+    /// `Tree::compute_rollups`.
     pub(crate) fn reset_for(&mut self, n: usize) {
-        // Single-pass resize: `compute_hashes` overwrites every slot
+        // Single-pass resize: `compute_rollups` overwrites every slot
         // via indexed assignment, so the fill value is irrelevant —
         // `resize` is preferred over `clear()+resize_with` because it
         // avoids the truncate-then-grow round trip when `n` is steady.

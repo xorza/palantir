@@ -449,12 +449,23 @@ impl LayoutEngine {
                 self.arrange(tree, root, size, Rect { min: origin, size }, out);
             }
             let layouts = tree.records.layout();
+            // Container text is paint-only; its wrap width exists only after arrange.
             for index in tree.rollups.container_text.ones() {
                 let style = layouts[index];
                 if style.visibility().is_collapsed() {
                     continue;
                 }
-                self.shape_container_text(tree, NodeId(index as u32), style, tc, out);
+                let node = NodeId(index as u32);
+                let available_w =
+                    (out[self.active_layer].rect[index].size.w - style.padding.horiz()).max(0.0);
+                self.shape_text_runs(
+                    tree,
+                    node,
+                    available_w,
+                    tc.shaper,
+                    container_text_shapes(tree, tc, node),
+                    out,
+                );
             }
         }
         debug_assert_eq!(
@@ -745,29 +756,6 @@ impl LayoutEngine {
                 out,
             ),
         }
-    }
-
-    /// Shape direct text owned by a container after arrange. Container text is
-    /// paint-only, so it cannot affect desired size; waiting for arrange gives
-    /// wrapping and truncation the owner's committed padded width.
-    fn shape_container_text(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        style: LayoutCore,
-        tc: &TextCtx<'_>,
-        out: &mut Layout,
-    ) {
-        let available_w =
-            (out[self.active_layer].rect[node.idx()].size.w - style.padding.sums().horiz).max(0.0);
-        self.shape_text_runs(
-            tree,
-            node,
-            available_w,
-            tc.shaper,
-            container_text_shapes(tree, tc, node),
-            out,
-        );
     }
 
     fn shape_text_runs<'a>(
