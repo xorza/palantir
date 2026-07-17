@@ -10,7 +10,7 @@
 //! semantics conflict with "consume row leftover" and need explicit
 //! per-line distribution that's outside this MVP. Cross-axis Fill works
 //! identically to Stack: each line's cross size = max child cross, and
-//! `place_axis` with the `Auto-stretches-Fill` rule makes Fill children
+//! shared arrange-axis resolution makes Fill children
 //! grow to that height (CSS `align-items: stretch` default).
 
 use crate::forest::tree::Tree;
@@ -236,7 +236,8 @@ pub(crate) fn arrange(
             // Cross axis: each child placed within the line's cross
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
-            let cross_p = cross_place(axis, &s, parent_child_align, d, line_cross);
+            let bounds = tree.bounds(c);
+            let cross_p = cross_place(axis, &s, bounds, parent_child_align, d, line_cross);
             let main_size = axis.main(d);
             let child_rect = axis.compose_rect(
                 main_cursor,

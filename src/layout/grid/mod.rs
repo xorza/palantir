@@ -5,7 +5,7 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
-    AxisAlignPair, TextCtx, place_axis, resolved_axis_align, weighted_share, zero_subtree,
+    AxisAlignPair, TextCtx, arrange_axis, resolved_axis_align, weighted_share, zero_subtree,
 };
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -739,7 +739,8 @@ fn arrange_inner(
         }
         let i = c.idx();
         let s_node = layouts[i];
-        let cell = tree.bounds(c).grid;
+        let bounds = tree.bounds(c);
+        let cell = bounds.grid;
         let d = layout.scratch.desired[i];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
@@ -751,13 +752,10 @@ fn arrange_inner(
             (slot_x, slot_y, slot_w, slot_h)
         };
 
-        // Grid: a child with no explicit alignment stretches to fill its cell
-        // (WPF default). `or_stretch_if_auto` on each axis encodes the rule
-        // next to the enum so the next reader finds it there, not in this
-        // call site.
+        // Grid's default alignment stretches non-Fixed children to their cell.
         let AxisAlignPair { h, v } = resolved_axis_align(&s_node, parent_child_align);
-        let x = place_axis(h.or_stretch_if_auto(), s_node.size.w(), d.w, slot_w);
-        let y = place_axis(v.or_stretch_if_auto(), s_node.size.h(), d.h, slot_h);
+        let x = arrange_axis(Axis::X, h.or_stretch_if_auto(), &s_node, bounds, d, slot_w);
+        let y = arrange_axis(Axis::Y, v.or_stretch_if_auto(), &s_node, bounds, d, slot_h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),

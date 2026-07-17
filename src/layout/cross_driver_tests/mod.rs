@@ -7,6 +7,7 @@
 //! moving these to crate-root `tests/` would force widening half a
 //! dozen items to `pub` purely for tests.
 
+mod arrange_axis;
 mod convergence;
 mod fill_propagation;
 mod no_overlap;

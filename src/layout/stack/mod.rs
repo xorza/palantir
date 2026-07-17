@@ -121,10 +121,11 @@ fn push_fill_entries(
     let layouts = tree.records.layout();
     let pool_start = layout.scratch.stack_fill.pool.len();
     for c in tree.active_children(node) {
-        let Some(weight) = axis.main_sizing(layouts[c.idx()].size).fill_weight() else {
+        let style = layouts[c.idx()];
+        let Some(weight) = axis.main_sizing(style.size).fill_weight() else {
             continue;
         };
-        let cap = axis.main(tree.bounds(c).max_size);
+        let cap = axis.main(tree.bounds(c).max_size) + axis.spacing(style.margin);
         let floor = floor_for(layout, c);
         layout.scratch.stack_fill.pool.push(FillEntry {
             node: c,
@@ -412,7 +413,8 @@ pub(crate) fn arrange(
             axis.main(d)
         };
 
-        let cross_p = cross_place(axis, &s, parent_child_align, d, cross);
+        let bounds = tree.bounds(c);
+        let cross_p = cross_place(axis, &s, bounds, parent_child_align, d, cross);
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);

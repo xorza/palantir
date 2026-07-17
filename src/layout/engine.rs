@@ -10,12 +10,11 @@ use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
-    AxisCtx, TextCtx, TextShapeInput, container_text_shapes, leaf_text_shapes, resolve_axis_size,
-    stretched_extent, zero_subtree,
+    AxisCtx, TextCtx, TextShapeInput, arrange_axis, container_text_shapes, leaf_text_shapes,
+    resolve_axis_size, zero_subtree,
 };
-use crate::layout::types::align::HAlign;
+use crate::layout::types::align::{AxisAlign, HAlign};
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
     LayerLayout, Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
@@ -412,8 +411,7 @@ impl LayoutEngine {
                 //     measure against its full content height and flip
                 //     upward on the next frame.
                 // The root's own `Sizing` governs the painted size
-                // within that available — see the `stretched_extent`
-                // call below.
+                // within that available.
                 let (origin, available) = if layer == Layer::Main {
                     (surface.min, surface.size)
                 } else {
@@ -427,22 +425,27 @@ impl LayoutEngine {
                     (slot.placement.anchor, available)
                 };
                 let desired = self.measure(tree, root, available, tc, out);
-                // The layer engine *is* the parent for the root, so it
-                // does WPF Stretch's arrange-time grow here. Modeled
-                // as a synthetic `Fixed`-sized parent of size
-                // `available` so `stretched_extent` returns
-                // `available.max(desired)` for Fill roots (stretch to
-                // the layer's slot, rigid descendants overflow past
-                // it) and `desired` for Hug/Fixed roots. Main's
-                // implicit viewport root is `Fill × Fill`, so both
-                // axes resolve to `available.max(desired)` — same as
-                // the prior surface-fill behavior.
-                let root_size = tree.records.layout()[root.idx()].size;
-                let synth_parent_w = Sizing::fixed(available.w);
-                let synth_parent_h = Sizing::fixed(available.h);
+                let root_style = tree.records.layout()[root.idx()];
+                let bounds = tree.bounds(root);
                 let size = Size::new(
-                    stretched_extent(root_size.w(), desired.w, available.w, synth_parent_w),
-                    stretched_extent(root_size.h(), desired.h, available.h, synth_parent_h),
+                    arrange_axis(
+                        Axis::X,
+                        AxisAlign::Auto,
+                        &root_style,
+                        bounds,
+                        desired,
+                        available.w,
+                    )
+                    .size,
+                    arrange_axis(
+                        Axis::Y,
+                        AxisAlign::Auto,
+                        &root_style,
+                        bounds,
+                        desired,
+                        available.h,
+                    )
+                    .size,
                 );
                 // Root has no parent — pass its own outer size as a
                 // sensible default for any driver that reads

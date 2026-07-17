@@ -39,6 +39,7 @@ fn dashboard_matches_golden() {
                     .grid_cell((0, 0))
                     .grid_span((1, 2))
                     .size((Sizing::FILL, Sizing::FILL))
+                    .max_size((f32::INFINITY, 40.0))
                     .padding((10.0, 14.0, 10.0, 14.0))
                     .gap(8.0)
                     .background(Background {
@@ -148,6 +149,7 @@ fn dashboard_matches_golden() {
                     .id_salt("footer")
                     .grid_cell((2, 0))
                     .grid_span((1, 2))
+                    .max_size((f32::INFINITY, 24.0))
                     .padding((4.0, 10.0, 4.0, 10.0))
                     .background(Background {
                         fill: Color::rgb(0.10, 0.12, 0.18).into(),
