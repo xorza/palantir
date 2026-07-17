@@ -25,7 +25,7 @@ use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
-use crate::text::{LineFit, ShapeParams, TextShaper};
+use crate::text::{LineFit, ShapeParams, TextReuseCache, TextRunIdentity, TextShaper};
 use rustc_hash::FxHashSet;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
@@ -120,6 +120,7 @@ impl LayoutScratch {
 ///   iteration left, but no recursive code runs there to read it.
 /// - `scroll_states` — cross-frame `WidgetId → ScrollLayoutState` for
 ///   every scroll widget (see the field doc below).
+/// - `text_reuse` — per-window widget-identity shaping cache.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
 ///
@@ -139,6 +140,7 @@ pub(crate) struct LayoutEngine {
     /// mutates `offset` from input. Keyed by the inner viewport
     /// node's id — see [`scroll::ScrollLayoutState`].
     pub(crate) scroll_states: ScrollStates,
+    pub(crate) text_reuse: TextReuseCache,
     pub(crate) cache: MeasureCache,
 }
 
@@ -299,11 +301,9 @@ fn resolve_sizing(
 }
 
 impl LayoutEngine {
-    /// Drop cross-frame measure-cache entries and scroll-state rows for
-    /// `WidgetId`s that vanished this frame. Called from `Ui::frame`
-    /// with the same `removed` slice that `DamageEngine` and `TextShaper`
-    /// consume. One iteration over `removed`; both stores are reached
-    /// directly because they're co-located on `LayoutEngine`.
+    /// Drop cross-frame layout and text-reuse rows for `WidgetId`s that
+    /// vanished from this window. Called from `Ui::frame` with the same
+    /// `removed` set that feeds the other per-widget stores.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         for wid in removed {
             if let Some(snap) = self.cache.snapshots.remove(wid) {
@@ -313,6 +313,7 @@ impl LayoutEngine {
             }
             self.scroll_states.remove(wid);
         }
+        self.text_reuse.sweep_removed(removed);
         self.cache.maybe_compact();
     }
 
@@ -788,15 +789,19 @@ impl LayoutEngine {
     ) -> Size {
         let wid = tree.records.widget_id()[node.idx()];
         let curr_hash = tree.rollups.node[node.idx()];
+        let identity = TextRunIdentity {
+            widget_id: wid,
+            ordinal,
+            authoring_hash: curr_hash,
+        };
 
         // Refresh the unbounded measurement only when the authoring hash
         // has shifted. Crucially, when only the wrap target changed
         // (e.g. animated parent width), the unbounded cache is
         // preserved and only the wrap reshape runs in shape_wrap.
-        let unbounded = text.shape_unbounded(
-            wid,
-            ordinal,
-            curr_hash,
+        let unbounded = self.text_reuse.shape_unbounded(
+            text,
+            identity,
             ts.text,
             ts.text_hash,
             ShapeParams {
@@ -848,10 +853,9 @@ impl LayoutEngine {
             // cache keys on the same 1px grid, so this keeps a cache hit
             // from blitting text shaped for a sub-pixel-different target.
             let target = target_q as f32;
-            text.shape_wrap(
-                wid,
-                ordinal,
-                curr_hash,
+            self.text_reuse.shape_wrap(
+                text,
+                identity,
                 ts.text,
                 ShapeParams {
                     font_size_px: ts.font_size_px,

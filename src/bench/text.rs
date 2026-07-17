@@ -2,12 +2,21 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
-use crate::text::{FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextShaper};
+use crate::text::{
+    FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextReuseCache, TextRunIdentity,
+    TextShaper,
+};
 use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
 
 const TEXT: &str = "A long property label used to exercise character-precise truncation across many previously unseen widths.";
 const WIDTHS_PER_BATCH: u32 = 256;
+
+#[derive(Debug)]
+struct BenchState {
+    shaper: TextShaper,
+    reuse: TextReuseCache,
+}
 
 fn params(width: f32) -> ShapeParams {
     ShapeParams {
@@ -22,20 +31,25 @@ fn params(width: f32) -> ShapeParams {
 
 fn measure_truncated_width(
     shaper: &TextShaper,
+    reuse: &mut TextReuseCache,
     wid: WidgetId,
     text: &str,
     params: ShapeParams,
 ) -> MeasureResult {
     let text_hash = hash_str(text);
     let hash = ContentHash(text_hash);
-    shaper.shape_unbounded(wid, 0, hash, text, text_hash, params);
+    let identity = TextRunIdentity {
+        widget_id: wid,
+        ordinal: 0,
+        authoring_hash: hash,
+    };
+    reuse.shape_unbounded(shaper, identity, text, text_hash, params);
     let target = params
         .max_width_px
         .expect("truncation benchmark requires a finite width");
-    shaper.shape_wrap(
-        wid,
-        0,
-        hash,
+    reuse.shape_wrap(
+        shaper,
+        identity,
         text,
         params,
         (target.max(0.0) * 64.0).round() as u32,
@@ -49,13 +63,19 @@ pub fn bench(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let shaper = TextShaper::with_bundled_fonts();
-                measure_truncated_width(&shaper, wid, TEXT, params(39.75));
-                shaper
+                let mut reuse = TextReuseCache::default();
+                measure_truncated_width(&shaper, &mut reuse, wid, TEXT, params(39.75));
+                BenchState { shaper, reuse }
             },
-            |shaper| {
+            |mut state| {
                 for i in 0..WIDTHS_PER_BATCH {
-                    let measured =
-                        measure_truncated_width(&shaper, wid, TEXT, params(40.0 + i as f32 * 0.25));
+                    let measured = measure_truncated_width(
+                        &state.shaper,
+                        &mut state.reuse,
+                        wid,
+                        TEXT,
+                        params(40.0 + i as f32 * 0.25),
+                    );
                     black_box(measured.size);
                 }
             },

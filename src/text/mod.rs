@@ -11,6 +11,9 @@
 //!   `font_size_px * 0.5` wide; runs measured this way carry
 //!   [`TextCacheKey::INVALID`] and the renderer drops them. Lets the engine
 //!   run in tests and headless tools without a font system.
+//! - [`TextReuseCache`] — per-window identity cache keyed by widget and
+//!   within-widget text ordinal. It skips shaping dispatch when authoring
+//!   and layout inputs are unchanged without coupling windows that reuse ids.
 //!
 //! There's no `TextMeasure` trait: the renderer needs concrete access to
 //! `CosmicMeasure`'s `FontSystem` + cache, so a trait would just be a
@@ -96,19 +99,18 @@ pub enum FontWeight {
     Bold = 1,
 }
 
-/// Shared, cloneable text shaper. Holds (1) an optional [`CosmicMeasure`]
-/// for real shaping (`None` ⇒ mono fallback), (2) a cross-frame reuse
-/// cache keyed by `(WidgetId, ordinal)` so layout skips `measure`
-/// dispatch when a `Text` leaf's inputs are unchanged, and (3) a
-/// `measure_calls` counter for cache-effectiveness tests.
+/// Shared, cloneable text shaper. Holds an optional [`CosmicMeasure`] for
+/// real shaping (`None` ⇒ mono fallback) and a `measure_calls` counter for
+/// cache-effectiveness tests. Per-window widget identity reuse lives in
+/// [`TextReuseCache`].
 ///
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump). The window renderer holds the
-/// canonical handle and passes a clone to both `Ui` (via
-/// `Ui::with_text`) and the backend (constructor arg) so both sides
-/// see one buffer cache.
+/// re-entry. Cloning is cheap (refcount bump). [`HostContext`](crate::host::context::HostContext)
+/// holds the canonical handle; each window's `Ui` reaches it through its
+/// context clone, and the backend holds another clone, so all consumers see
+/// one content cache.
 ///
 /// Two paths, picked at construction:
 ///
@@ -126,28 +128,38 @@ pub struct TextShaper {
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
+/// Per-window cross-frame cache of text shaping output. `LayoutEngine`
+/// owns one, keeping identical widget ids in different windows independent
+/// while their [`TextCacheKey`] content buffers remain shared by
+/// [`TextShaper`].
+#[derive(Debug, Default)]
+pub(crate) struct TextReuseCache {
+    entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
+}
+
+/// Per-window identity of one text run. The widget and ordinal select the
+/// reuse row; `authoring_hash` validates its contents.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TextRunIdentity {
+    pub(crate) widget_id: WidgetId,
+    pub(crate) ordinal: u16,
+    pub(crate) authoring_hash: ContentHash,
+}
+
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
-/// Both [`crate::Ui`] (layout-time measurement + reuse cache) and
-/// [`crate::WgpuBackend`] (shaping during render) borrow this; backend
-/// only touches `cosmic` via [`TextShaper::with_render_split`].
+/// Both [`crate::Ui`] (layout-time measurement) and [`crate::WgpuBackend`]
+/// (shaping during render) borrow this; backend only touches `cosmic` via
+/// [`TextShaper::with_render_split`].
 #[derive(Debug, Default)]
 pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
-    /// Total shaping dispatches: reuse-cache misses in
-    /// `shape_unbounded` / `shape_wrap`, plus every bypass
-    /// [`TextShaper::measure`] call — which may still hit the cosmic
-    /// buffer cache, so this counts dispatches, not reshapes. Reuse-
-    /// cache hits don't increment. Read by tests pinning reshape-skip
-    /// behaviour via [`test_support::measure_calls`].
+    /// Total shaping dispatches: [`TextReuseCache`] misses plus every
+    /// bypass [`TextShaper::measure`] call — which may still hit the
+    /// cosmic buffer cache, so this counts dispatches, not reshapes.
+    /// Identity-cache hits don't increment. Read by tests pinning
+    /// reshape-skip behaviour via [`test_support::measure_calls`].
     pub(crate) measure_calls: u64,
-    /// Cross-frame cache of shaping output keyed by
-    /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
-    /// by authoring hash. The ordinal disambiguates leaves with
-    /// multiple `ShapeRecord::Text` runs. The wrap slot's `target_q`
-    /// quantization is layout policy chosen at the call site. Read by
-    /// tests via [`test_support::has_reuse_entry`].
-    pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
 /// Max cosmic buffers retained after per-frame maintenance. Missing entries
@@ -203,24 +215,25 @@ impl TextShaper {
         inner.measure_calls += 1;
         inner.dispatch_direct(text, params)
     }
+}
 
+impl TextReuseCache {
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
     /// clearing any stale wrap entry) when the authoring hash has
     /// shifted.
     pub(crate) fn shape_unbounded(
-        &self,
-        wid: WidgetId,
-        ordinal: u16,
-        hash: ContentHash,
+        &mut self,
+        shaper: &TextShaper,
+        identity: TextRunIdentity,
         text: &str,
         text_hash: u64,
         params: ShapeParams,
     ) -> MeasureResult {
-        let mut inner = self.inner.borrow_mut();
+        let mut inner = shaper.inner.borrow_mut();
         let inner = &mut *inner;
         // Cache hit: same authoring hash, return last frame's result.
-        if let Entry::Occupied(o) = inner.reuse.entry((wid, ordinal))
-            && o.get().hash == hash
+        if let Entry::Occupied(o) = self.entries.entry((identity.widget_id, identity.ordinal))
+            && o.get().hash == identity.authoring_hash
         {
             return o.get().unbounded;
         }
@@ -242,10 +255,10 @@ impl TextShaper {
             LineFit::Wrap,
             TextCacheKey::INVALID,
         );
-        inner.reuse.insert(
-            (wid, ordinal),
+        self.entries.insert(
+            (identity.widget_id, identity.ordinal),
             TextReuseEntry {
-                hash,
+                hash: identity.authoring_hash,
                 unbounded,
                 wrap: None,
             },
@@ -262,33 +275,30 @@ impl TextShaper {
     /// `(wid, ordinal)` this frame so the parent entry exists and is fresh —
     /// checked against `hash`, the same authoring hash the unbounded call
     /// validated the entry with.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_wrap(
-        &self,
-        wid: WidgetId,
-        ordinal: u16,
-        hash: ContentHash,
+        &mut self,
+        shaper: &TextShaper,
+        identity: TextRunIdentity,
         text: &str,
         params: ShapeParams,
         target_q: u32,
         fit: LineFit,
     ) -> MeasureResult {
         let halign = params.halign;
-        let mut inner = self.inner.borrow_mut();
+        let mut inner = shaper.inner.borrow_mut();
         let ShaperInner {
             cosmic,
             measure_calls,
-            reuse,
             ..
         } = &mut *inner;
-        let mut entry = match reuse.entry((wid, ordinal)) {
+        let mut entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
             Entry::Occupied(o) => o,
             Entry::Vacant(_) => panic!(
                 "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
             ),
         };
         debug_assert!(
-            entry.get().hash == hash,
+            entry.get().hash == identity.authoring_hash,
             "shape_wrap on a stale entry — shape_unbounded must run first with the current hash",
         );
         if let Some(w) = entry.get().wrap
@@ -317,6 +327,16 @@ impl TextShaper {
         m
     }
 
+    /// Drop identity rows for widgets absent from this window's final tree.
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+        if removed.is_empty() {
+            return;
+        }
+        self.entries.retain(|(wid, _), _| !removed.contains(wid));
+    }
+}
+
+impl TextShaper {
     /// Borrow the shaped cosmic `Buffer` for `(text, fs, lh, mw)`,
     /// shaping on demand if the cache misses. Returns `None` on the
     /// mono fallback (no cosmic installed) or empty text (cosmic
@@ -477,25 +497,10 @@ impl TextShaper {
         }
     }
 
-    /// Drop reuse entries for the supplied removed-widget set. Called
-    /// from `Ui::post_record` against the same per-frame diff fed to
-    /// `DamageEngine::compute` so cleanup stays bounded under widget churn
-    /// without a second `seen_ids` scan.
-    pub(crate) fn sweep_removed(&self, removed: &FxHashSet<WidgetId>) {
-        if removed.is_empty() {
-            return;
-        }
-        self.inner
-            .borrow_mut()
-            .reuse
-            .retain(|(wid, _), _| !removed.contains(wid));
-    }
-
     /// Per-frame maintenance hook. Called once per frame from
-    /// `Ui::finalize_frame`, **after** [`Self::sweep_removed`] has pruned
-    /// dead `reuse` entries. Currently bounds the reconstructible cosmic
-    /// buffer LRU; the home for future per-frame text upkeep. No-op on the
-    /// mono fallback.
+    /// `Ui::finalize_frame`. Currently bounds the reconstructible cosmic
+    /// buffer LRU; the home for future shared per-frame text upkeep. No-op
+    /// on the mono fallback.
     pub(crate) fn end_frame(&self) {
         self.inner.borrow_mut().end_frame();
     }
@@ -967,11 +972,6 @@ pub(crate) mod test_support {
             self.inner.borrow().measure_calls
         }
 
-        /// `true` iff a reuse entry exists for `(wid, ordinal)`.
-        pub(crate) fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
-            self.inner.borrow().reuse.contains_key(&(wid, ordinal))
-        }
-
         pub(crate) fn has_cosmic_buffer(&self, key: TextCacheKey) -> bool {
             self.inner
                 .borrow()
@@ -987,6 +987,13 @@ pub(crate) mod test_support {
                 .as_mut()
                 .expect("cosmic buffer eviction requires a cosmic text shaper")
                 .end_frame_evict(max_keep);
+        }
+    }
+
+    impl TextReuseCache {
+        /// `true` iff an identity row exists for `(wid, ordinal)`.
+        pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
+            self.entries.contains_key(&(wid, ordinal))
         }
     }
 }

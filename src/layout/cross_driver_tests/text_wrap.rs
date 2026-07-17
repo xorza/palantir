@@ -827,7 +827,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same
 /// node has both runs shaped (`text_spans[node].len == 2`) at distinct
-/// `TextCacheKey`s (no `TextShaper.reuse` collision). Replaces the
+/// `TextCacheKey`s (no `TextReuseCache` collision). Replaces the
 /// old "one ShapeRecord::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {

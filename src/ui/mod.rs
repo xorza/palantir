@@ -569,7 +569,6 @@ impl Ui {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
-        self.ctx.shaper.sweep_removed(removed);
         self.ctx.shaper.end_frame();
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
