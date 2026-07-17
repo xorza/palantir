@@ -201,8 +201,8 @@ impl Element {
     }
 
     #[track_caller]
-    pub(crate) fn grid(id: GridDefId) -> Self {
-        Self::new(LayoutMode::Grid, ModePayload::grid(id))
+    pub(crate) fn grid() -> Self {
+        Self::new(LayoutMode::Grid, ModePayload::grid(GridDefId::PENDING))
     }
 
     #[track_caller]

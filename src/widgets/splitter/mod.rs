@@ -2,7 +2,6 @@ use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;
@@ -113,7 +112,7 @@ impl<'a> Splitter<'a> {
     #[track_caller]
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         // The clipped root contains the grab overlay's overhang within the splitter.
-        let mut element = Element::grid(GridDefId::PENDING);
+        let mut element = Element::grid();
         element.size = (Sizing::FILL, Sizing::FILL).into();
         element.flags.set_clip(ClipMode::Rect);
         Self {

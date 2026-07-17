@@ -61,7 +61,7 @@ fn layout_mode_size() {
 }
 
 #[test]
-fn public_constructors_cover_every_payloadless_layout_mode() {
+fn constructors_install_layout_modes_and_payloads() {
     let cases = [
         (Element::leaf(), LayoutMode::Leaf),
         (Element::hstack(), LayoutMode::HStack),
@@ -76,6 +76,14 @@ fn public_constructors_cover_every_payloadless_layout_mode() {
         assert_eq!(element.mode, expected);
         assert_eq!(element.mode_payload, ModePayload::NONE);
     }
+
+    let grid = Element::grid();
+    assert_eq!(grid.mode, LayoutMode::Grid);
+    assert_eq!(grid.grid_def_id(), GridDefId::PENDING);
+
+    let scroll = Element::scroll(ScrollSpec::VERTICAL);
+    assert_eq!(scroll.mode, LayoutMode::Scroll);
+    assert_eq!(scroll.scroll_spec(), ScrollSpec::VERTICAL);
 }
 
 #[test]
