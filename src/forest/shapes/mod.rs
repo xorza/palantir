@@ -3,6 +3,9 @@ pub(crate) mod lower;
 pub(crate) mod paint;
 pub(crate) mod record;
 
+#[cfg(test)]
+mod tests;
+
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::hash_str;
 use crate::forest::shapes::hash::compute_record_hash;
@@ -68,11 +71,11 @@ impl Shapes {
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
     pub(crate) fn add(&mut self, shape: Shape<'_>, store: &RecordStore) -> Option<u32> {
-        if shape.is_noop() {
-            return None;
-        }
         if let Shape::Polyline { points, colors, .. } = &shape {
             colors.assert_matches(points.len());
+        }
+        if shape.is_noop() {
+            return None;
         }
         let record = match shape {
             Shape::RoundedRect {

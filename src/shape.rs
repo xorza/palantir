@@ -84,7 +84,7 @@ pub enum Shape<'a> {
     /// framework copies `points` and `colors` into the active tree's
     /// record stores at `add_shape` time, so the borrows only have
     /// to outlive the call. `colors` length is constrained by `mode`
-    /// (see [`PolylineColors`]); mismatches debug-assert.
+    /// (see [`PolylineColors`]); mismatches panic.
     Polyline {
         points: &'a [Vec2],
         colors: PolylineColors<'a>,
@@ -520,24 +520,24 @@ pub enum PolylineColors<'a> {
 }
 
 impl PolylineColors<'_> {
-    /// Debug-assert the per-variant length contract against `points_len`.
+    /// Assert the per-variant length contract against `points_len`.
     /// `Single` has none; `PerPoint` must equal; `PerSegment` must be
     /// one less. Called at the `Ui::add_shape` boundary so violations
     /// blow up at the authoring call site rather than deep in the
     /// per-frame lowering pass.
-    pub fn assert_matches(&self, points_len: usize) {
+    pub(crate) fn assert_matches(&self, points_len: usize) {
         match self {
             PolylineColors::Single(_) => {}
-            PolylineColors::PerPoint(cs) => debug_assert_eq!(
+            PolylineColors::PerPoint(cs) => assert_eq!(
                 cs.len(),
                 points_len,
                 "Shape::Polyline PerPoint colors len {} != points len {}",
                 cs.len(),
                 points_len,
             ),
-            PolylineColors::PerSegment(cs) => debug_assert_eq!(
-                cs.len() + 1,
-                points_len,
+            PolylineColors::PerSegment(cs) => assert_eq!(
+                cs.len(),
+                points_len.saturating_sub(1),
                 "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",
                 cs.len(),
                 points_len.saturating_sub(1),
