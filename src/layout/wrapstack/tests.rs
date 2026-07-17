@@ -3,7 +3,10 @@ use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
-use crate::layout::types::{justify::Justify, sizing::Sizing};
+use crate::layout::types::{
+    justify::Justify,
+    sizing::{Sizes, Sizing},
+};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
@@ -20,6 +23,47 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
             ..Default::default()
         })
         .show(ui)
+        .node()
+}
+
+fn axis_sizes(axis: Axis, main: Sizing, cross: Sizing) -> Sizes {
+    match axis {
+        Axis::X => Sizes::new(main, cross),
+        Axis::Y => Sizes::new(cross, main),
+    }
+}
+
+fn fill_cross_cell(ui: &mut Ui, id: &'static str, axis: Axis, main: f32, min_cross: f32) -> NodeId {
+    Frame::new()
+        .id(WidgetId::from_hash(id))
+        .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
+        .min_size(axis.compose_size(0.0, min_cross))
+        .show(ui)
+        .node()
+}
+
+fn max_capped_fill_cross_cell(
+    ui: &mut Ui,
+    id: &'static str,
+    axis: Axis,
+    main: f32,
+    content_cross: f32,
+    max_cross: f32,
+) -> NodeId {
+    Panel::zstack()
+        .id(WidgetId::from_hash(id))
+        .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
+        .max_size(axis.compose_size(f32::INFINITY, max_cross))
+        .show(ui, |ui| {
+            Frame::new()
+                .id(WidgetId::from_hash("max-capped-content"))
+                .size(axis_sizes(
+                    axis,
+                    Sizing::fixed(0.0),
+                    Sizing::fixed(content_cross),
+                ))
+                .show(ui);
+        })
         .node()
 }
 
@@ -358,6 +402,183 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
         filler.size.h, 60.0,
         "Fill-on-cross child stretches to row height"
     );
+}
+
+#[test]
+fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
+    #[derive(Debug)]
+    struct Case {
+        label: &'static str,
+        floors: &'static [f32],
+        expected_cross_positions: &'static [f32],
+        expected_cross_sizes: &'static [f32],
+        expected_wrap_cross: f32,
+    }
+
+    let cases = [
+        Case {
+            label: "one_line",
+            floors: &[20.0, 30.0],
+            expected_cross_positions: &[0.0, 0.0],
+            expected_cross_sizes: &[30.0, 30.0],
+            expected_wrap_cross: 30.0,
+        },
+        Case {
+            label: "two_lines",
+            floors: &[20.0, 30.0, 40.0],
+            expected_cross_positions: &[0.0, 0.0, 37.0],
+            expected_cross_sizes: &[30.0, 30.0, 40.0],
+            expected_wrap_cross: 77.0,
+        },
+    ];
+
+    for axis in [Axis::X, Axis::Y] {
+        for case in &cases {
+            let mut ui = Ui::for_test();
+            let mut children = Vec::new();
+            let wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+                let panel = match axis {
+                    Axis::X => Panel::wrap_hstack(),
+                    Axis::Y => Panel::wrap_vstack(),
+                };
+                panel
+                    .id(WidgetId::from_hash("all-fill-wrap"))
+                    .size(axis_sizes(axis, Sizing::fixed(125.0), Sizing::HUG))
+                    .gap(5.0)
+                    .line_gap(7.0)
+                    .show(ui, |ui| {
+                        for (index, floor) in case.floors.iter().enumerate() {
+                            children.push(fill_cross_cell(
+                                ui,
+                                ["fill-a", "fill-b", "fill-c"][index],
+                                axis,
+                                60.0,
+                                *floor,
+                            ));
+                        }
+                    })
+                    .node()
+            });
+
+            let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+            assert_eq!(
+                axis.main(wrap_rect.size),
+                125.0,
+                "{axis:?} {} wrap main",
+                case.label
+            );
+            assert_eq!(
+                axis.cross(wrap_rect.size),
+                case.expected_wrap_cross,
+                "{axis:?} {} wrap cross",
+                case.label
+            );
+            for (index, child) in children.iter().enumerate() {
+                let rect = ui.layout[Layer::Main].rect[child.idx()];
+                assert_eq!(
+                    axis.main_v(rect.min),
+                    [0.0, 65.0, 0.0][index],
+                    "{axis:?} {} child {index} main position",
+                    case.label
+                );
+                assert_eq!(
+                    axis.cross_v(rect.min),
+                    case.expected_cross_positions[index],
+                    "{axis:?} {} child {index} cross position",
+                    case.label
+                );
+                assert_eq!(
+                    axis.main(rect.size),
+                    60.0,
+                    "{axis:?} {} child {index} main size",
+                    case.label
+                );
+                assert_eq!(
+                    axis.cross(rect.size),
+                    case.expected_cross_sizes[index],
+                    "{axis:?} {} child {index} cross size",
+                    case.label
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn fill_floor_can_establish_a_mixed_line_cross_extent() {
+    for axis in [Axis::X, Axis::Y] {
+        let mut ui = Ui::for_test();
+        let mut children = Vec::new();
+        let wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+            let panel = match axis {
+                Axis::X => Panel::wrap_hstack(),
+                Axis::Y => Panel::wrap_vstack(),
+            };
+            panel
+                .id(WidgetId::from_hash("mixed-fill-wrap"))
+                .size(axis_sizes(axis, Sizing::fixed(105.0), Sizing::HUG))
+                .gap(5.0)
+                .line_gap(7.0)
+                .show(ui, |ui| {
+                    children.push(fill_cross_cell(ui, "mixed-fill", axis, 50.0, 40.0));
+                    let fixed_size = axis.compose_size(50.0, 20.0);
+                    children.push(cell(ui, "mixed-fixed", fixed_size.w, fixed_size.h));
+                    let next_size = axis.compose_size(50.0, 10.0);
+                    children.push(cell(ui, "mixed-next", next_size.w, next_size.h));
+                })
+                .node()
+        });
+
+        let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+        assert_eq!(axis.cross(wrap_rect.size), 57.0, "{axis:?} wrap cross");
+        let fill = ui.layout[Layer::Main].rect[children[0].idx()];
+        let fixed = ui.layout[Layer::Main].rect[children[1].idx()];
+        let next = ui.layout[Layer::Main].rect[children[2].idx()];
+        assert_eq!(axis.cross(fill.size), 40.0, "{axis:?} fill cross");
+        assert_eq!(axis.cross(fixed.size), 20.0, "{axis:?} fixed cross");
+        assert_eq!(axis.cross_v(next.min), 47.0, "{axis:?} second line origin");
+    }
+}
+
+#[test]
+fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
+    for axis in [Axis::X, Axis::Y] {
+        let mut ui = Ui::for_test();
+        let mut children = Vec::new();
+        let wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+            let panel = match axis {
+                Axis::X => Panel::wrap_hstack(),
+                Axis::Y => Panel::wrap_vstack(),
+            };
+            panel
+                .id(WidgetId::from_hash("bounded-fill-wrap"))
+                .size(axis_sizes(axis, Sizing::fixed(105.0), Sizing::HUG))
+                .gap(5.0)
+                .line_gap(5.0)
+                .show(ui, |ui| {
+                    children.push(fill_cross_cell(ui, "min-fill", axis, 50.0, 25.0));
+                    children.push(max_capped_fill_cross_cell(
+                        ui, "max-fill", axis, 50.0, 50.0, 35.0,
+                    ));
+                    children.push(fill_cross_cell(ui, "next-fill", axis, 50.0, 15.0));
+                })
+                .node()
+        });
+
+        let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+        assert_eq!(axis.cross(wrap_rect.size), 55.0, "{axis:?} wrap cross");
+        let min_fill = ui.layout[Layer::Main].rect[children[0].idx()];
+        let max_fill = ui.layout[Layer::Main].rect[children[1].idx()];
+        let next_fill = ui.layout[Layer::Main].rect[children[2].idx()];
+        assert_eq!(axis.cross(min_fill.size), 35.0, "{axis:?} min fill");
+        assert_eq!(axis.cross(max_fill.size), 35.0, "{axis:?} max fill");
+        assert_eq!(
+            axis.cross_v(next_fill.min),
+            40.0,
+            "{axis:?} second line origin"
+        );
+        assert_eq!(axis.cross(next_fill.size), 15.0, "{axis:?} next fill");
+    }
 }
 
 /// Pin: a collapsed child mid-pack contributes nothing — neither main
