@@ -372,12 +372,7 @@ fn rasterize_and_insert(
         SwashContent::Color => ContentType::Color,
         SwashContent::Mask | SwashContent::SubpixelMask => ContentType::Mask,
     };
-    let Some(metadata) = PackedGlyphMetadata::checked(
-        image.placement.width,
-        image.placement.height,
-        image.placement.left,
-        image.placement.top,
-    ) else {
+    let Ok(metadata): Result<PackedGlyphMetadata, _> = (&image.placement).try_into() else {
         tracing::warn!(
             ?key,
             width = image.placement.width,

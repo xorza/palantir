@@ -1,6 +1,6 @@
 //! Glyph atlas: one struct for both mask + color content.
 
-use cosmic_text::CacheKey;
+use cosmic_text::{CacheKey, Placement};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -42,17 +42,21 @@ impl PackedGlyphMetadata {
         top: 0,
     };
 
-    pub(crate) fn checked(width: u32, height: u32, left: i32, top: i32) -> Option<Self> {
-        Some(Self {
-            width: u16::try_from(width).ok()?,
-            height: u16::try_from(height).ok()?,
-            left: i16::try_from(left).ok()?,
-            top: i16::try_from(top).ok()?,
-        })
-    }
-
     pub(crate) fn is_empty(self) -> bool {
         self.width == 0 || self.height == 0
+    }
+}
+
+impl TryFrom<&Placement> for PackedGlyphMetadata {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(placement: &Placement) -> Result<Self, Self::Error> {
+        Ok(Self {
+            width: placement.width.try_into()?,
+            height: placement.height.try_into()?,
+            left: placement.left.try_into()?,
+            top: placement.top.try_into()?,
+        })
     }
 }
 
@@ -609,37 +613,45 @@ mod tests {
 
     #[test]
     fn packed_glyph_metadata_checks_every_wire_boundary() {
+        let placement = |width, height, left, top| Placement {
+            left,
+            top,
+            width,
+            height,
+        };
         assert_eq!(
-            PackedGlyphMetadata::checked(0, 0, 0, 0),
-            Some(PackedGlyphMetadata {
+            PackedGlyphMetadata::try_from(&placement(0, 0, 0, 0)).unwrap(),
+            PackedGlyphMetadata {
                 width: 0,
                 height: 0,
                 left: 0,
                 top: 0,
-            })
+            }
         );
         assert_eq!(
-            PackedGlyphMetadata::checked(
+            PackedGlyphMetadata::try_from(&placement(
                 u16::MAX as u32,
                 u16::MAX as u32,
                 i16::MIN as i32,
                 i16::MAX as i32,
-            ),
-            Some(PackedGlyphMetadata {
+            ))
+            .unwrap(),
+            PackedGlyphMetadata {
                 width: u16::MAX,
                 height: u16::MAX,
                 left: i16::MIN,
                 top: i16::MAX,
-            })
+            }
         );
         assert_eq!(
-            PackedGlyphMetadata::checked(1, 1, i16::MAX as i32, i16::MIN as i32),
-            Some(PackedGlyphMetadata {
+            PackedGlyphMetadata::try_from(&placement(1, 1, i16::MAX as i32, i16::MIN as i32,))
+                .unwrap(),
+            PackedGlyphMetadata {
                 width: 1,
                 height: 1,
                 left: i16::MAX,
                 top: i16::MIN,
-            })
+            }
         );
 
         let invalid = [
@@ -652,7 +664,7 @@ mod tests {
         ];
         for (width, height, left, top, case) in invalid {
             assert!(
-                PackedGlyphMetadata::checked(width, height, left, top).is_none(),
+                PackedGlyphMetadata::try_from(&placement(width, height, left, top)).is_err(),
                 "{case}"
             );
         }
