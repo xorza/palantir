@@ -2,7 +2,7 @@
 //!
 //! Constructed only when at least `TIMESTAMP_QUERY` is enabled on the
 //! device (the host requests it at adapter time when supported — see
-//! `winit_host.rs`). Optionally adds:
+//! `host/winit/gpu.rs`). Optionally adds:
 //!
 //! - **`TIMESTAMP_QUERY_INSIDE_PASSES`** (per-batch timestamps). When
 //!   on, we `RenderPass::write_timestamp` at every category transition
@@ -26,7 +26,7 @@
 //! Readback is one-frame-lagged (the `map_async` callback fires after
 //! the GPU completes the submission). Rigorous benchmarking should use
 //! explicit `device.poll(Wait)` and then read the `GpuPassStats`
-//! handle (e.g. via `WindowRenderer::gpu_pass_stats`).
+//! handle (e.g. via `OffscreenHost::gpu_pass_stats`).
 
 use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 use std::cell::{Cell, RefCell};
