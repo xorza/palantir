@@ -13,14 +13,35 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
+use crate::primitives::size::Size;
 use crate::renderer::frontend::cmd_buffer::Command;
 use crate::shape::{Shape, TextWrap};
 use crate::text::{FontFamily, FontWeight};
-use crate::widgets::{button::Button, grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
+
+fn direct_text(
+    text: &'static str,
+    font_size_px: f32,
+    line_height_px: f32,
+    wrap: TextWrap,
+    local_origin: Option<glam::Vec2>,
+) -> Shape<'static> {
+    Shape::Text {
+        local_origin,
+        text: text.into(),
+        color: Color::WHITE,
+        font_size_px,
+        line_height_px,
+        wrap,
+        align: Default::default(),
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+    }
+}
 
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
@@ -626,6 +647,199 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
         });
     });
     ui.node_for_widget_id(leaf_id)
+}
+
+#[derive(Debug)]
+struct ContainerTextScene {
+    container: NodeId,
+    child: NodeId,
+}
+
+fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
+    let mut child = None;
+    let container = Panel::vstack()
+        .id_salt("wrapping-container-text")
+        .size((Sizing::Hug, Sizing::Hug))
+        .padding(10.0)
+        .show(ui, |ui| {
+            ui.add_shape(direct_text(PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None));
+            child = Some(
+                Frame::new()
+                    .id_salt("container-size-driver")
+                    .size((Sizing::Fixed(80.0), Sizing::Fixed(20.0)))
+                    .show(ui)
+                    .node(),
+            );
+        })
+        .node();
+    ContainerTextScene {
+        container,
+        child: child.unwrap(),
+    }
+}
+
+fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
+    let mut child = None;
+    let container = Panel::vstack()
+        .id_salt("interleaved-container-text")
+        .size((Sizing::Fixed(240.0), Sizing::Fixed(100.0)))
+        .show(ui, |ui| {
+            ui.add_shape(direct_text(
+                "parent-before",
+                12.0,
+                14.0,
+                TextWrap::SingleLine,
+                Some(glam::Vec2::new(0.0, 0.0)),
+            ));
+            child = Some(
+                Text::new("child-between")
+                    .id_salt("interleaved-child")
+                    .style(TextStyle::default().with_font_size(18.0))
+                    .show(ui)
+                    .node(),
+            );
+            ui.add_shape(direct_text(
+                "parent-after-is-longer",
+                14.0,
+                16.0,
+                TextWrap::SingleLine,
+                Some(glam::Vec2::new(0.0, 60.0)),
+            ));
+        })
+        .node();
+    ContainerTextScene {
+        container,
+        child: child.unwrap(),
+    }
+}
+
+#[test]
+fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut scene = None;
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        scene = Some(build_wrapping_container_text(ui));
+    });
+    let scene = scene.unwrap();
+    let tree = &ui.forest.trees[Layer::Main];
+    assert_eq!(
+        tree.rollups.container_text.ones().collect::<Vec<_>>(),
+        [scene.container.idx()],
+    );
+    let layout = &ui.layout[Layer::Main];
+    let container_rect = layout.rect[scene.container.idx()];
+    let child_rect = layout.rect[scene.child.idx()];
+
+    assert_eq!(child_rect.size, Size::new(80.0, 20.0));
+    assert_eq!(container_rect.size, Size::new(100.0, 40.0));
+
+    let span = layout.text_spans[scene.container.idx()];
+    assert_eq!(span.len, 1, "container owns one direct text run");
+    let shaped = layout.text_shapes[span.start as usize];
+    assert!(
+        shaped.measured.w <= 80.0,
+        "text must wrap to the final 100px owner minus 20px padding; got {:?}",
+        shaped.measured,
+    );
+    assert!(
+        shaped.measured.h >= 32.0,
+        "the paragraph must wrap onto at least two 16px lines; got {:?}",
+        shaped.measured,
+    );
+
+    let draw_keys: Vec<_> = ui
+        .encode_cmds()
+        .iter()
+        .filter_map(|command| match command {
+            Command::DrawText(payload) => Some(payload.key),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(draw_keys, [shaped.key]);
+
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        Text::new("leaf-only").show(ui);
+    });
+    assert!(
+        ui.forest.trees[Layer::Main]
+            .rollups
+            .container_text
+            .ones()
+            .next()
+            .is_none(),
+    );
+}
+
+#[test]
+fn container_and_child_text_keep_independent_order_across_cache_hit() {
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut first_scene = None;
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        first_scene = Some(build_interleaved_container_text(ui));
+    });
+    let first_scene = first_scene.unwrap();
+    let first_layout = &ui.layout[Layer::Main];
+    let first_parent_span = first_layout.text_spans[first_scene.container.idx()];
+    let first_child_span = first_layout.text_spans[first_scene.child.idx()];
+    assert_eq!(first_parent_span.len, 2);
+    assert_eq!(first_child_span.len, 1);
+    let first_parent_keys = [
+        first_layout.text_shapes[first_parent_span.start as usize].key,
+        first_layout.text_shapes[(first_parent_span.start + 1) as usize].key,
+    ];
+    let first_child_key = first_layout.text_shapes[first_child_span.start as usize].key;
+    assert_ne!(first_parent_keys[0], first_child_key);
+    assert_ne!(first_parent_keys[1], first_child_key);
+    let first_draw_keys: Vec<_> = ui
+        .encode_cmds()
+        .iter()
+        .filter_map(|command| match command {
+            Command::DrawText(payload) => Some(payload.key),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        first_draw_keys,
+        [first_parent_keys[0], first_child_key, first_parent_keys[1]],
+    );
+
+    let mut second_scene = None;
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        second_scene = Some(build_interleaved_container_text(ui));
+    });
+    let second_scene = second_scene.unwrap();
+    assert!(
+        !ui.layout_engine.scratch.cache_hits.is_empty(),
+        "second identical frame should exercise measure-cache replay",
+    );
+    let second_layout = &ui.layout[Layer::Main];
+    let second_parent_span = second_layout.text_spans[second_scene.container.idx()];
+    let second_child_span = second_layout.text_spans[second_scene.child.idx()];
+    assert_eq!(second_parent_span.len, 2);
+    assert_eq!(second_child_span.len, 1);
+    let second_parent_keys = [
+        second_layout.text_shapes[second_parent_span.start as usize].key,
+        second_layout.text_shapes[(second_parent_span.start + 1) as usize].key,
+    ];
+    let second_child_key = second_layout.text_shapes[second_child_span.start as usize].key;
+    assert_eq!(second_parent_keys, first_parent_keys);
+    assert_eq!(second_child_key, first_child_key);
+    let second_draw_keys: Vec<_> = ui
+        .encode_cmds()
+        .iter()
+        .filter_map(|command| match command {
+            Command::DrawText(payload) => Some(payload.key),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        second_draw_keys,
+        [
+            second_parent_keys[0],
+            second_child_key,
+            second_parent_keys[1],
+        ],
+    );
 }
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same

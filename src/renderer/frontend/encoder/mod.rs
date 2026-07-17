@@ -655,6 +655,11 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
             }
         }
     }
+    debug_assert_eq!(
+        text_ordinal,
+        ctx.layout.text_spans[id.idx()].len,
+        "encoder text count differs from the node's shaped-text span",
+    );
     if transform.is_some() {
         out.pop_transform();
     }

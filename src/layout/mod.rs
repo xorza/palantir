@@ -30,10 +30,10 @@ use std::ops::{Index, IndexMut};
 #[derive(Default)]
 pub(crate) struct LayerLayout {
     pub(crate) rect: Vec<Rect>,
-    /// Flat per-frame buffer of shaped text runs. Grows during the
-    /// measure pass: each `ShapeRecord::Text` on each leaf appends one
-    /// entry. Indexed via `text_spans[node]`. Mirrors `tree.shapes` +
-    /// `records.shape_span()` for the layout-derived counterpart.
+    /// Flat per-frame buffer of shaped text runs. Leaf text appends during
+    /// measure because it drives desired size; container text appends after
+    /// arrange against its final padded width. Indexed via
+    /// `text_spans[node]`.
     pub(crate) text_shapes: Vec<ShapedText>,
     /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
     /// nodes that didn't shape text. Same length as `rect`.
