@@ -655,17 +655,7 @@ impl Composer {
                     if self.cull_bounds(quad_urect) {
                         continue;
                     }
-                    // Shadow quads use a 2σ-deflated rect for the
-                    // overlap check: the outer 2σ rim of a Gaussian
-                    // contributes <5% alpha and is visually
-                    // indistinguishable from the background, so we
-                    // shouldn't force a batch flush for that ring.
-                    // Keeps adjacent text in the same batch when a
-                    // soft drop shadow sits 1–2σ away from text.
-                    let sigma_phys =
-                        p.fill_axis.lanes()[2].max(0.0) * current_transform.scale * scale;
-                    let overlap_urect = quad_urect.deflated((2.0 * sigma_phys) as u32);
-                    self.quad_forces_flush(overlap_urect, out);
+                    self.quad_forces_flush(quad_urect, out);
                     let world_radius = p.corners.scaled_by(current_transform.scale);
                     let phys_radius = world_radius.scaled_by(scale);
                     // Live shadow parameters are logical-px scalars; scale

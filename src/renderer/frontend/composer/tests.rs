@@ -887,6 +887,30 @@ fn compose_flushes_when_later_quad_overlaps_prior_text() {
     );
 }
 
+#[test]
+fn compose_shadow_outer_halo_after_text_splits_group() {
+    let sigma = 4.0;
+    let source = rect(50.0, 50.0, 50.0, 50.0);
+    let shadow_rect = source.inflated(3.0 * sigma);
+    let buf = run(
+        |b, _arena| {
+            text(b, rect(39.0, 60.0, 2.0, 10.0));
+            b.draw_shadow(
+                shadow_rect,
+                Corners::ZERO,
+                Color::BLACK.into(),
+                FillKind::SHADOW_DROP,
+                FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+
+    assert_eq!(buf.groups.len(), 2, "outer halo overlap must split");
+    assert_eq!(buf.text_batches[0].last_group, 0);
+    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
+}
+
 /// Pin: `Quad → Quad → Text` fits in one group. The text comes after
 /// both quads and renders on top of both — the common case (button
 /// background + button stroke + label).
