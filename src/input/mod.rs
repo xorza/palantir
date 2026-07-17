@@ -180,7 +180,8 @@ pub enum InputEvent {
     /// Multiple events in one frame multiply into
     /// the frame's zoom total. Wheel-based zoom is *not*
     /// translated into `Zoom` — the active scroll widget decides at
-    /// record time whether wheel ticks count as pan or zoom.
+    /// record time whether wheel ticks count as pan or zoom. Non-positive
+    /// and non-finite factors are discarded at ingress.
     Zoom(f32),
     /// Logical key was pressed. `repeat` reflects OS-level key repeat
     /// (held keys re-emit). Modifier state isn't carried on the event;
@@ -204,6 +205,36 @@ pub enum InputEvent {
     /// (not a delta). Consumers track the latest snapshot to disambiguate
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
     ModifiersChanged(Modifiers),
+}
+
+const MIN_POSITIVE_ZOOM_FACTOR: f32 = f32::MIN_POSITIVE;
+
+#[inline]
+pub(crate) fn zoom_factor_is_valid(factor: f32) -> bool {
+    factor.is_finite() && factor > 0.0
+}
+
+/// Multiply zoom factors without allowing valid sequences to underflow
+/// to zero or overflow to infinity.
+#[inline]
+pub(crate) fn combine_zoom_factors(lhs: f32, rhs: f32) -> f32 {
+    debug_assert!(zoom_factor_is_valid(lhs));
+    debug_assert!(!rhs.is_nan() && rhs >= 0.0);
+    let product = f64::from(lhs) * f64::from(rhs);
+    if product <= f64::from(MIN_POSITIVE_ZOOM_FACTOR) {
+        MIN_POSITIVE_ZOOM_FACTOR
+    } else if product >= f64::from(f32::MAX) {
+        f32::MAX
+    } else {
+        product as f32
+    }
+}
+
+#[inline]
+pub(crate) fn wheel_zoom_factor(step: f32, notches: f32) -> f32 {
+    debug_assert!(zoom_factor_is_valid(step));
+    debug_assert!(!notches.is_nan());
+    combine_zoom_factors(1.0, step.powf(-notches))
 }
 
 impl InputEvent {
@@ -240,7 +271,12 @@ impl InputEvent {
                     ElementState::Released => InputEvent::PointerReleased(pb),
                 });
             }
-            WindowEvent::PinchGesture { delta, .. } => emit(InputEvent::Zoom(1.0 + *delta as f32)),
+            WindowEvent::PinchGesture { delta, .. } => {
+                let factor = 1.0 + *delta as f32;
+                if zoom_factor_is_valid(factor) {
+                    emit(InputEvent::Zoom(factor));
+                }
+            }
             // Convert to "positive delta = pan offset forward" so widgets can
             // do `offset += delta` directly. winit reports +y when the wheel
             // rotates *away* from the user (scroll up) and +x when it rotates
@@ -496,6 +532,11 @@ impl InputState {
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) -> InputDelta {
+        if let InputEvent::Zoom(factor) = event
+            && !zoom_factor_is_valid(factor)
+        {
+            return InputDelta::default();
+        }
         // Any host-pushed event disqualifies the next frame from the
         // paint-anim-only short-circuit — the recording closure might
         // observe even a pointer move (hover styling) or modifier
@@ -659,7 +700,7 @@ impl InputState {
             InputEvent::Zoom(f) => {
                 let routed = self.pinch_target.is_some();
                 if routed {
-                    self.frame_zoom_delta *= f;
+                    self.frame_zoom_delta = combine_zoom_factors(self.frame_zoom_delta, f);
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Zoom { pos, factor: f });
                 routed || subbed
