@@ -17,11 +17,11 @@
 
 use crate::app::App;
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::host::clock::{Clock, RealtimeClock};
+use crate::host::clock::Clock;
 use crate::host::context::HostContext;
 use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
+use crate::renderer::backend::WgpuBackend;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
-use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::WindowToken;
@@ -32,107 +32,44 @@ use crate::window::WindowToken;
 pub struct OffscreenHost {
     gpu: WgpuBackend,
     window: WindowRenderer,
-    token: WindowToken,
-}
-
-/// Builder for [`OffscreenHost`] — see [`OffscreenHost::builder`]. The
-/// required GPU/text resources come from that constructor; the rest start at
-/// the general screenshot defaults.
-#[derive(Debug)]
-pub struct OffscreenHostBuilder {
-    token: WindowToken,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    shaper: TextShaper,
-    collect_gpu_stats: bool,
-    target_persists: bool,
-    clock: Box<dyn Clock>,
-}
-
-impl OffscreenHostBuilder {
-    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
-    /// queries). Default `false` — the per-frame readback is non-trivial.
-    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
-        self.collect_gpu_stats = collect;
-        self
-    }
-
-    /// Declare that the caller reuses one render target across frames,
-    /// enabling the direct-to-target / skip-noop fast paths. Default `false`:
-    /// a fresh texture each `frame_offscreen` (screenshots, the visual
-    /// harness) must be fully filled via backbuffer+copy.
-    pub fn target_persists(mut self, persists: bool) -> Self {
-        self.target_persists = persists;
-        self
-    }
-
-    /// Per-frame time source. Default a wall-clock
-    /// [`RealtimeClock`](crate::host::clock::RealtimeClock); a
-    /// [`FixedClock`](crate::host::clock::FixedClock) makes the render reproducible
-    /// (golden tests, thumbnails) — animations sample a fixed phase.
-    pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
-        self.clock = Box::new(clock);
-        self
-    }
-
-    pub fn build(self) -> OffscreenHost {
-        // The shared context outlives this call only as the clones in the
-        // backend + window's `Ui`/`Frontend` (Rc-backed handles, including
-        // the shared host state); the offscreen path never opens a second
-        // window. The render target's format (per `frame_offscreen` call)
-        // drives the lazy per-format pipeline build.
-        let ctx = HostContext::new(self.shaper);
-        ctx.set_open_windows([self.token]);
-        let gpu = WgpuBackend::new(
-            self.device,
-            self.queue,
-            &ctx,
-            WgpuBackendConfig {
-                collect_gpu_stats: self.collect_gpu_stats,
-            },
-        );
-        // A reused target can take the direct-present path (full repaints go
-        // straight in, small partials ride the backbuffer, skip frames keep its
-        // last render); a fresh target each call must be fully filled via
-        // backbuffer+copy.
-        let strategy = if self.target_persists {
-            PresentStrategy::DirectAdaptive
-        } else {
-            PresentStrategy::BackbufferCopy
-        };
-        let window = WindowRenderer::builder(&ctx, gpu.max_texture_dim())
-            .strategy(strategy)
-            .clock(self.clock)
-            .build();
-        OffscreenHost {
-            gpu,
-            window,
-            token: self.token,
-        }
-    }
 }
 
 impl OffscreenHost {
-    /// Start building an offscreen host whose single window is addressed by
-    /// `token`. `device` / `queue` / `shaper` are the GPU + text resources;
-    /// the rest default to the general screenshot case (no GPU stats, a fresh
-    /// target each frame, the wall clock) and are tuned via
-    /// [`OffscreenHostBuilder`].
-    pub fn builder(
+    /// Create an offscreen host whose single window is addressed by `token`.
+    /// It starts with a realtime clock and GPU timing disabled; configure the
+    /// returned host directly before its first frame when needed.
+    pub fn new(
         token: WindowToken,
         device: wgpu::Device,
         queue: wgpu::Queue,
         shaper: TextShaper,
-    ) -> OffscreenHostBuilder {
-        OffscreenHostBuilder {
-            token,
-            device,
-            queue,
-            shaper,
-            collect_gpu_stats: false,
-            target_persists: false,
-            clock: Box::new(RealtimeClock::new()),
-        }
+    ) -> Self {
+        // The context survives through Rc-backed handles cloned into the
+        // backend and renderer. The target format remains lazy because each
+        // frame supplies its own texture.
+        let ctx = HostContext::new(shaper);
+        ctx.set_open_windows([token]);
+        let gpu = WgpuBackend::new(device, queue, &ctx);
+        let window = WindowRenderer::new(token, &ctx, gpu.max_texture_dim())
+            .strategy(PresentStrategy::BackbufferCopy);
+        Self { gpu, window }
+    }
+
+    /// Opt into GPU timestamp and pipeline-statistics collection. The supplied
+    /// device must have the corresponding wgpu features enabled.
+    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
+        self.window.assert_not_started();
+        let stats = self.window.ui.ctx.pass_stats.clone();
+        self.gpu = self.gpu.collect_gpu_stats(collect, stats);
+        self
+    }
+
+    /// Replace the realtime clock before rendering. A
+    /// [`FixedClock`](crate::FixedClock) makes screenshots and thumbnails
+    /// reproducible by holding animations at a caller-controlled phase.
+    pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
+        self.window = self.window.clock(Box::new(clock));
+        self
     }
 
     /// Mutable access to the window's `Ui` for building scenes.
@@ -148,7 +85,9 @@ impl OffscreenHost {
         *self.window.ui.ctx.debug_overlay_mut() = overlay;
     }
 
-    /// Run one offscreen application frame against `target`. The host's
+    /// Run one offscreen application frame against `target`, filling the
+    /// supplied texture even when the UI has not changed since the previous
+    /// call. The target may be replaced between calls. The host's
     /// [`WindowToken`] is passed to [`App::update`] and [`App::record`], with
     /// the same once-only update and replayable record semantics as
     /// [`crate::WinitHost`].
@@ -159,7 +98,7 @@ impl OffscreenHost {
         app: &mut T,
     ) {
         self.window
-            .frame_offscreen(&mut self.gpu, target, scale_factor, self.token, app);
+            .frame_offscreen(&mut self.gpu, target, scale_factor, app);
     }
 
     /// Cloneable handle to the most-recent GPU instrumentation sample —
@@ -194,7 +133,7 @@ pub(crate) mod test_support {
     use crate::host::clock::Clock;
     use crate::host::context::HostContext;
     use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
-    use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
+    use crate::renderer::backend::WgpuBackend;
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::window::WindowToken;
@@ -217,24 +156,15 @@ pub(crate) mod test_support {
         ) -> Self {
             let ctx = HostContext::new(shaper);
             ctx.set_open_windows([WindowToken(0), WindowToken(1)]);
-            let gpu = WgpuBackend::new(
-                device,
-                queue,
-                &ctx,
-                WgpuBackendConfig {
-                    collect_gpu_stats: false,
-                },
-            );
+            let gpu = WgpuBackend::new(device, queue, &ctx);
             let max_texture_dim = gpu.max_texture_dim();
             let [clock_a, clock_b] = clocks;
-            let window_a = WindowRenderer::builder(&ctx, max_texture_dim)
+            let window_a = WindowRenderer::new(WindowToken(0), &ctx, max_texture_dim)
                 .strategy(PresentStrategy::BackbufferCopy)
-                .clock(clock_a)
-                .build();
-            let window_b = WindowRenderer::builder(&ctx, max_texture_dim)
+                .clock(clock_a);
+            let window_b = WindowRenderer::new(WindowToken(1), &ctx, max_texture_dim)
                 .strategy(PresentStrategy::BackbufferCopy)
-                .clock(clock_b)
-                .build();
+                .clock(clock_b);
             Self {
                 gpu,
                 windows: [window_a, window_b],
@@ -249,13 +179,7 @@ pub(crate) mod test_support {
             record: impl FnMut(&mut Ui),
         ) {
             let mut app = RecordApp::new(record);
-            self.windows[window].frame_offscreen(
-                &mut self.gpu,
-                target,
-                scale_factor,
-                WindowToken(window as u64),
-                &mut app,
-            );
+            self.windows[window].frame_offscreen(&mut self.gpu, target, scale_factor, &mut app);
         }
     }
 }

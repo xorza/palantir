@@ -96,14 +96,13 @@ impl Harness {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
         // Fresh target texture per render() → must fill the whole target each
-        // frame, so stay on the backbuffer+copy path (target_persists = false).
+        // frame, so use the public backbuffer+copy path.
         // A fixed clock makes goldens reproducible: any animated widget (the
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::builder(WINDOW, g.device.clone(), g.queue.clone(), shaper)
-            .clock(FixedClock::new(Duration::ZERO))
-            .build();
+        let host = OffscreenHost::new(WINDOW, g.device.clone(), g.queue.clone(), shaper)
+            .clock(FixedClock::new(Duration::ZERO));
 
         Self {
             device: g.device.clone(),

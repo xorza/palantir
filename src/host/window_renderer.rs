@@ -37,6 +37,9 @@ use crate::{Display, FrameReport, FrameStamp};
 /// except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
 pub(crate) struct WindowRenderer {
+    /// Stable application identity for this render stream. Stored here so a
+    /// retained `Ui` cannot be driven under a different token on a later frame.
+    pub(crate) token: WindowToken,
     pub(crate) ui: Ui,
     /// Per-window record store retained in lockstep with `ui.forest`. The `Ui`
     /// holds an `Rc` clone for record-time writes; frontend and backend phases
@@ -109,15 +112,13 @@ pub(crate) enum PresentStrategy {
     /// persistent backbuffer and copies out, so the whole target is filled
     /// regardless of its prior contents; skip frames copy the backbuffer.
     BackbufferCopy,
-    /// A direct-present target — the swapchain (the host owns skip frames), or a
-    /// reused offscreen texture. Full frames repaint straight into the target
-    /// (no copy); small partials paint just the damage region into the
-    /// backbuffer and copy it out (cheaper than repainting the whole surface);
-    /// a near-full partial is promoted to a direct full repaint (its
-    /// near-whole-surface re-shade plus a copy would beat a plain direct
-    /// repaint). A direct frame leaves the backbuffer stale, so the next partial
-    /// resyncs it with one full repaint before cheap partials resume. Skip
-    /// frames are a no-op (the target already holds the last render).
+    /// A direct-present swapchain target, where the host owns skip frames. Full
+    /// frames repaint straight into the target (no copy); small partials paint
+    /// just the damage region into the backbuffer and copy it out (cheaper than
+    /// repainting the whole surface); a near-full partial is promoted to a
+    /// direct full repaint. A direct frame leaves the backbuffer stale, so the
+    /// next partial resyncs it with one full repaint before cheap partials
+    /// resume.
     DirectAdaptive,
 }
 
@@ -130,8 +131,8 @@ enum PresentMode {
     /// Skip frame on a backbuffer-copy window: copy the backbuffer onto the
     /// target so it's filled regardless of its prior contents.
     SkipCopy,
-    /// Skip frame on a direct-present window: the target already holds the last
-    /// render (or the host owns the skip), so there's nothing to do.
+    /// Skip frame on a direct-present window: the host owns the skip, so there
+    /// is no target to update.
     SkipNoop,
     /// Full repaint rendered directly into the target — no backbuffer copy.
     Direct(RenderPlan),
@@ -173,8 +174,7 @@ fn present_mode(
 ) -> PresentMode {
     match strategy {
         PresentStrategy::DirectAdaptive => match plan {
-            // Swapchain skips never reach here (the host owns them); a reused
-            // offscreen target keeps its last render. Either way, nothing to do.
+            // Swapchain skips never acquire a target because the host owns them.
             None => PresentMode::SkipNoop,
             Some(p) => match p.kind {
                 // Already a whole-surface repaint — straight into the target.
@@ -216,71 +216,52 @@ struct CpuFrame {
     mode: PresentMode,
 }
 
-/// Builder for [`WindowRenderer`] — see [`WindowRenderer::builder`]. The
-/// required inputs (`ctx`, `max_texture_dim`) come from that constructor;
-/// `strategy` and `clock` start at the on-screen-window defaults.
-pub(crate) struct WindowRendererBuilder<'a> {
-    ctx: &'a HostContext,
-    max_texture_dim: u32,
-    strategy: PresentStrategy,
-    clock: Box<dyn Clock>,
-}
-
-impl WindowRendererBuilder<'_> {
-    /// Present strategy. Default [`PresentStrategy::DirectAdaptive`]; the
-    /// offscreen host sets [`PresentStrategy::BackbufferCopy`] when it hands a
-    /// fresh target each frame.
-    pub(crate) fn strategy(mut self, strategy: PresentStrategy) -> Self {
-        self.strategy = strategy;
-        self
-    }
-
-    /// Per-frame time source. Default a wall-clock [`RealtimeClock`]; a
-    /// [`FixedClock`](crate::host::clock::FixedClock) makes an offscreen render
-    /// reproducible.
-    pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
-        self.clock = clock;
-        self
-    }
-
-    pub(crate) fn build(self) -> WindowRenderer {
+impl WindowRenderer {
+    /// Create a renderer for `token` from the shared [`HostContext`].
+    /// Its `Ui` shares the context's shaper / caches / GPU-stats handle and
+    /// receives a fresh per-window record store. The `Ui` also shares the
+    /// context's app-global host state (live-window set + debug overlay) so all
+    /// windows agree. `max_texture_dim` is the device's `max_texture_dimension_2d`
+    /// (fixed for its lifetime), handed to the `Frontend` to cap `GpuView`
+    /// target sizes — the only GPU fact the CPU pipeline needs.
+    /// Defaults to direct swapchain presentation and a realtime clock. Hosts
+    /// with different target ownership or timing configure the returned
+    /// renderer directly before its first frame.
+    pub(crate) fn new(token: WindowToken, ctx: &HostContext, max_texture_dim: u32) -> Self {
         let record_store = RecordStore::default();
-        WindowRenderer {
-            ui: Ui::new(self.ctx, record_store.clone()),
+        Self {
+            token,
+            ui: Ui::new(ctx, record_store.clone()),
             record_store,
-            frontend: Frontend::new(self.max_texture_dim),
+            frontend: Frontend::new(max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
             stencil: None,
-            strategy: self.strategy,
-            clock: self.clock,
+            strategy: PresentStrategy::DirectAdaptive,
+            clock: Box::new(RealtimeClock::new()),
             occluded_at: None,
             configured: None,
             last_format: None,
         }
     }
-}
 
-impl WindowRenderer {
-    /// Start building a per-window renderer from the shared [`HostContext`]:
-    /// its `Ui` shares the context's shaper / caches / GPU-stats handle and
-    /// receives a fresh per-window record store. The `Ui` also shares the context's
-    /// app-global host state (live-window set + debug overlay) so all windows
-    /// agree. `max_texture_dim` is the device's `max_texture_dimension_2d`
-    /// (fixed for its lifetime), handed to the `Frontend` to cap `GpuView`
-    /// target sizes — the only GPU fact the CPU pipeline needs.
-    ///
-    /// Defaults suit an on-screen window: [`PresentStrategy::DirectAdaptive`]
-    /// and a wall-clock [`RealtimeClock`]. Override either via
-    /// [`WindowRendererBuilder::strategy`] / [`WindowRendererBuilder::clock`]
-    /// before [`WindowRendererBuilder::build`] (the offscreen host does both).
-    pub(crate) fn builder(ctx: &HostContext, max_texture_dim: u32) -> WindowRendererBuilder<'_> {
-        WindowRendererBuilder {
-            ctx,
-            max_texture_dim,
-            strategy: PresentStrategy::DirectAdaptive,
-            clock: Box::new(RealtimeClock::new()),
-        }
+    pub(crate) fn strategy(mut self, strategy: PresentStrategy) -> Self {
+        self.assert_not_started();
+        self.strategy = strategy;
+        self
+    }
+
+    pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
+        self.assert_not_started();
+        self.clock = clock;
+        self
+    }
+
+    pub(crate) fn assert_not_started(&self) {
+        assert_eq!(
+            self.ui.frame_runtime.frame_id, 0,
+            "renderer configuration must happen before the first frame",
+        );
     }
 
     /// Drive from the host's window-event handler. While occluded,
@@ -332,7 +313,6 @@ impl WindowRenderer {
         gpu: &mut WgpuBackend,
         target: FrameTarget<'_>,
         app: &mut T,
-        win: WindowToken,
         pre_present: impl FnOnce(),
     ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
@@ -378,7 +358,7 @@ impl WindowRenderer {
             self.configured = Some(display.physical);
         }
 
-        let cpu = self.cpu_frame(display, win, app);
+        let cpu = self.cpu_frame(display, app);
         let present = self.present(gpu, surface, config, cpu, pre_present);
 
         profiling::finish_frame!();
@@ -398,7 +378,6 @@ impl WindowRenderer {
         gpu: &mut WgpuBackend,
         target: &wgpu::Texture,
         scale_factor: f32,
-        win: WindowToken,
         app: &mut T,
     ) {
         let size = target.size();
@@ -407,7 +386,7 @@ impl WindowRenderer {
         // Force a full repaint when the target's format changes (offscreen
         // has no surface to reconfigure).
         self.note_format(target.format());
-        let cpu = self.cpu_frame(display, win, app);
+        let cpu = self.cpu_frame(display, app);
         self.render_to_texture(gpu, target, cpu.mode);
     }
 
@@ -421,10 +400,10 @@ impl WindowRenderer {
     /// `Frontend` at construction. Shared by [`Self::frame`] (surface) and
     /// [`Self::frame_offscreen`] (texture).
     #[profiling::function]
-    fn cpu_frame<T: App>(&mut self, display: Display, win: WindowToken, app: &mut T) -> CpuFrame {
+    fn cpu_frame<T: App>(&mut self, display: Display, app: &mut T) -> CpuFrame {
         let report = self
             .ui
-            .frame(FrameStamp::new(display, self.clock.now()), win, app);
+            .frame(FrameStamp::new(display, self.clock.now()), self.token, app);
         self.finish_cpu_frame(report)
     }
 
@@ -842,23 +821,26 @@ mod record_store_tests {
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let ctx = HostContext::new(TextShaper::default());
-        let mut window = WindowRenderer::builder(&ctx, 8192)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
-        let mut app = LifecycleApp::default();
         let token = WindowToken(17);
+        let mut window =
+            WindowRenderer::new(token, &ctx, 8192).clock(Box::new(FixedClock::new(Duration::ZERO)));
+        let mut app = LifecycleApp::default();
 
-        let _ = window.cpu_frame(
-            Display::from_physical(UVec2::new(112, 112), 1.0),
-            token,
-            &mut app,
-        );
+        let _ = window.cpu_frame(Display::from_physical(UVec2::new(112, 112), 1.0), &mut app);
 
         assert_eq!(app.updates, [token], "update runs once");
         assert_eq!(
             app.records,
             [token, token],
             "cold-start warmup and visible pass share the token",
+        );
+
+        let reconfigure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = window.clock(Box::new(FixedClock::new(Duration::ZERO)));
+        }));
+        assert!(
+            reconfigure.is_err(),
+            "renderer configuration must be sealed by its first frame",
         );
     }
 
@@ -867,12 +849,10 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let ctx = HostContext::new(TextShaper::default());
-        let mut window_a = WindowRenderer::builder(&ctx, 8192)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
-        let mut window_b = WindowRenderer::builder(&ctx, 8192)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
+        let mut window_a = WindowRenderer::new(WindowToken(1), &ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)));
+        let mut window_b = WindowRenderer::new(WindowToken(2), &ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)));
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);
 
         let mesh_a = Mesh::filled_triangle(
@@ -924,7 +904,7 @@ mod record_store_tests {
         let mut app_a = RecordApp::new(|ui| {
             record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
         });
-        let _ = window_a.cpu_frame(display, WindowToken(1), &mut app_a);
+        let _ = window_a.cpu_frame(display, &mut app_a);
         window_a.ui.frame_runtime.frame_submitted = true;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
@@ -941,11 +921,11 @@ mod record_store_tests {
                 "window-b",
             );
         });
-        let _ = window_b.cpu_frame(display, WindowToken(2), &mut app_b);
+        let _ = window_b.cpu_frame(display, &mut app_b);
         window_b.ui.frame_runtime.frame_submitted = true;
         assert_eq!(snapshot(&window_a), retained);
 
-        let paint_only = window_a.cpu_frame(display, WindowToken(1), &mut app_a);
+        let paint_only = window_a.cpu_frame(display, &mut app_a);
         assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
         assert_eq!(snapshot(&window_a), retained);
     }

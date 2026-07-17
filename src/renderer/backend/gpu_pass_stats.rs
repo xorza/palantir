@@ -93,7 +93,7 @@ pub struct GpuPassStats {
 impl GpuPassStats {
     /// Whole-pass duration in milliseconds, or `None` until the first
     /// frame's resolve has landed (or always `None` on adapters
-    /// without `TIMESTAMP_QUERY` / when `collect_gpu_stats` is off).
+    /// without `TIMESTAMP_QUERY` or when collection is disabled).
     pub fn last_pass_ms(&self) -> Option<f32> {
         self.inner.borrow().pass_ns.map(ns_to_ms)
     }
