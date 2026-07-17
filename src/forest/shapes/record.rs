@@ -8,7 +8,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::renderer::render_buffer::curve::{HALF_FRINGE, stroked_bbox};
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::text_in_rect;
@@ -267,7 +266,7 @@ pub(crate) enum ShapeRecord {
 /// stays inside the source. `local_rect = None` ⇒ source covers the full
 /// owner; `Some(r)` ⇒ source is `r` at owner-relative coords. **Sole formula
 /// source** for the shadow paint extent: the encoder (per-quad paint rect) and
-/// [`ShapeRecord::paint_bbox_local`] (cascade's per-node ink union) both call
+/// [`ShapeRecord::bbox_local`] (cascade's per-node ink union) both call
 /// this so the two views can't drift.
 pub(crate) fn shadow_paint_rect_local(
     local_rect: Option<Rect>,
@@ -296,19 +295,16 @@ pub(crate) fn shadow_paint_rect_local(
 }
 
 impl ShapeRecord {
-    /// Owner-local paint bbox this shape draws into — cascade unions
-    /// across siblings to seed `subtree_paint_rects` (and damage
-    /// recomputes the same union on demand), encoder reads the
-    /// world-space form for damage culling. Drop shadows extend
-    /// beyond the owner via [`shadow_paint_rect_local`]; `Polyline` /
-    /// `Curve` carry a pre-computed owner-relative centerline bbox;
-    /// their stroke extent is applied here using `raster_scale`. The rest
-    /// paint into `local_rect` (when set) or the owner's full rect at
-    /// `(0, 0)`. Does **not** handle `Text` — its bbox depends on the
-    /// shaped extent from the layout pass and is computed by
+    /// Owner-local bbox used as the basis for cascade's screen-space paint
+    /// bound. `Polyline` / `Curve` / `Arc` return their tight centerline
+    /// bbox because stroke width and the physical-pixel AA fringe are applied
+    /// after the bbox reaches screen space. Drop shadows include their full
+    /// local extent via [`shadow_paint_rect_local`]; the remaining shapes
+    /// return their paint bbox directly. Does **not** handle `Text` — its bbox
+    /// depends on the shaped extent from the layout pass and is computed by
     /// [`text_paint_bbox_local`], which cascade calls directly.
     #[inline]
-    pub(crate) fn paint_bbox_local(&self, owner_size: Size, raster_scale: f32) -> Rect {
+    pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
         match self {
             ShapeRecord::Shadow {
                 local_rect, shadow, ..
@@ -327,26 +323,9 @@ impl ShapeRecord {
                     shadow.inset(),
                 )
             }
-            ShapeRecord::Polyline {
-                width,
-                cap,
-                join,
-                points,
-                bbox,
-                ..
-            } => stroked_bbox(
-                *bbox,
-                *width,
-                HALF_FRINGE / raster_scale,
-                *cap,
-                (points.len > 2).then_some(*join),
-            ),
-            ShapeRecord::Curve {
-                width, cap, bbox, ..
-            }
-            | ShapeRecord::Arc {
-                width, cap, bbox, ..
-            } => stroked_bbox(*bbox, *width, HALF_FRINGE / raster_scale, *cap, None),
+            ShapeRecord::Polyline { bbox, .. }
+            | ShapeRecord::Curve { bbox, .. }
+            | ShapeRecord::Arc { bbox, .. } => *bbox,
             ShapeRecord::Triangle { bbox, .. } => *bbox,
             // A mesh's vertex hull can exceed the owner rect (rotated /
             // overflowing meshes), so it must report that hull — like
@@ -541,7 +520,7 @@ mod tests {
         };
 
         assert_eq!(
-            mesh(None).paint_bbox_local(owner, 1.0),
+            mesh(None).bbox_local(owner),
             hull,
             "the paint bbox is the vertex hull, not the owner rect"
         );
@@ -553,58 +532,13 @@ mod tests {
             size: Size::new(99.0, 99.0),
         };
         assert_eq!(
-            mesh(Some(offset)).paint_bbox_local(owner, 1.0),
+            mesh(Some(offset)).bbox_local(owner),
             Rect {
                 min: hull.min + offset.min,
                 size: hull.size,
             },
             "local_rect offsets the hull; the size is unchanged"
         );
-    }
-
-    #[test]
-    fn stroke_paint_bbox_keeps_half_pixel_fringe_across_raster_scales() {
-        #[derive(Debug)]
-        struct Case {
-            raster_scale: f32,
-            expected: Rect,
-        }
-
-        let curve = ShapeRecord::Curve {
-            p0: Vec2::new(10.0, 20.0),
-            p1: Vec2::new(20.0, 20.0),
-            p2: Vec2::new(30.0, 60.0),
-            p3: Vec2::new(40.0, 60.0),
-            width: 4.0,
-            fill: ShapeBrush::Solid(ColorF16::from(Color::WHITE)),
-            fill_grad_hash: 0,
-            cap: LineCap::Butt,
-            bbox: Rect::new(10.0, 20.0, 30.0, 40.0),
-        };
-        // Core half-width is 2 logical px. The 0.5 physical-px fringe
-        // becomes 1, 0.5, and 0.25 logical px at these raster scales.
-        let cases = [
-            Case {
-                raster_scale: 0.5,
-                expected: Rect::new(7.0, 17.0, 36.0, 46.0),
-            },
-            Case {
-                raster_scale: 1.0,
-                expected: Rect::new(7.5, 17.5, 35.0, 45.0),
-            },
-            Case {
-                raster_scale: 2.0,
-                expected: Rect::new(7.75, 17.75, 34.5, 44.5),
-            },
-        ];
-
-        for case in cases {
-            assert_eq!(
-                curve.paint_bbox_local(Size::ZERO, case.raster_scale),
-                case.expected,
-                "{case:?}",
-            );
-        }
     }
 
     /// Same authoring fields, different shape kind: swapping a
