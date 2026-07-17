@@ -374,6 +374,35 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
     assert_eq!(buf.groups[2].scissor, Some(URect::new(30, 30, 50, 50)));
 }
 
+fn push_distinct_rounded_clips(buffer: &mut RenderCmdBuffer, depth: u32) {
+    for level in 1..=depth {
+        buffer.push_clip_rounded(rect(0.0, 0.0, 400.0, 400.0), Corners::all(level as f32));
+    }
+}
+
+#[test]
+fn rounded_clip_chain_accepts_stencil_depth_255() {
+    let buf = run(
+        |buffer, _payloads| {
+            push_distinct_rounded_clips(buffer, 255);
+            draw(buffer, rect(100.0, 100.0, 20.0, 20.0));
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+
+    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(buf.groups[0].rounded_clips.len, 255);
+}
+
+#[test]
+#[should_panic(expected = "rounded clip chain depth 256 exceeds stencil capacity 255")]
+fn rounded_clip_chain_rejects_stencil_depth_256() {
+    let _ = run(
+        |buffer, _payloads| push_distinct_rounded_clips(buffer, 256),
+        &params(1.0, UVec2::new(400, 400)),
+    );
+}
+
 /// Re-pushing the innermost rounded clip verbatim (same rect + radii)
 /// adds no chain depth and — like the redundant rect Push/Pop — is a
 /// full no-op: no batch split, no group flush.
@@ -885,6 +914,30 @@ fn compose_flushes_when_later_quad_overlaps_prior_text() {
         2,
         "overlapping quad-after-text must start a new group",
     );
+}
+
+#[test]
+fn compose_shadow_outer_halo_after_text_splits_group() {
+    let sigma = 4.0;
+    let source = rect(50.0, 50.0, 50.0, 50.0);
+    let shadow_rect = source.inflated(3.0 * sigma);
+    let buf = run(
+        |b, _arena| {
+            text(b, rect(39.0, 60.0, 2.0, 10.0));
+            b.draw_shadow(
+                shadow_rect,
+                Corners::ZERO,
+                Color::BLACK.into(),
+                FillKind::SHADOW_DROP,
+                FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+
+    assert_eq!(buf.groups.len(), 2, "outer halo overlap must split");
+    assert_eq!(buf.text_batches[0].last_group, 0);
+    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
 }
 
 /// Pin: `Quad → Quad → Text` fits in one group. The text comes after
@@ -2098,6 +2151,45 @@ fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
 }
 
 #[test]
+fn prune_non_fast_cover_insets_exact_half_pixel_aa_fringe() {
+    #[derive(Debug)]
+    struct Case {
+        label: &'static str,
+        under: Rect,
+        expected_quads: usize,
+    }
+
+    let cases = [
+        Case {
+            label: "identical_fractional_edges",
+            under: rect(10.25, 10.25, 100.0, 100.0),
+            expected_quads: 2,
+        },
+        Case {
+            label: "touches_full_coverage_boundary",
+            under: rect(10.75, 10.75, 99.0, 99.0),
+            expected_quads: 1,
+        },
+        Case {
+            label: "crosses_full_coverage_boundary",
+            under: rect(10.74, 10.75, 99.0, 99.0),
+            expected_quads: 2,
+        },
+    ];
+
+    for case in cases {
+        let buf = run(
+            |b, _| {
+                draw(b, case.under);
+                draw(b, rect(10.25, 10.25, 100.0, 100.0));
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        assert_eq!(buf.quads.len(), case.expected_quads, "{}", case.label);
+    }
+}
+
+#[test]
 fn prune_keeps_quad_not_fully_covered_by_smaller_later_quad() {
     // The on-top quad is smaller than the under quad — under survives.
     // `Rect::contains_rect` is asymmetric.
@@ -2165,9 +2257,9 @@ fn prune_does_not_drop_stroked_quad_under_solid_cover() {
 #[test]
 fn prune_rounded_on_top_uses_deflated_cover() {
     // Phase 3: a rounded-corner quad IS an occluder — but its
-    // cover rect is its bounding rect deflated per side by
-    // `max(adjacent_radii) * (1 - 1/sqrt(2))` ≈ 0.293·r. So a
-    // rounded occluder strictly smaller (by the deflation margin)
+    // cover rect is its bounding rect deflated per side by the corner
+    // inset plus the SDF's 0.5px AA transition. So a rounded occluder
+    // strictly smaller (by the deflation margin)
     // than the under-quad does NOT fully cover it. Reversed: when
     // a sharp opaque quad on top exactly covers a rounded under,
     // the under is dropped (sharp cover == its own bounding rect,
@@ -2234,8 +2326,8 @@ fn prune_keeps_transparent_solid_as_non_occluder() {
 fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
     // Phase 3: a rounded-corner opaque occluder fully covers a
     // sharp under-quad that fits entirely inside its inscribed
-    // (KAPPA-deflated) rect. Rounded radius 10 ⇒ cover deflation
-    // ≈ 2.93 per side → cover = (2.93, 2.93, 94.14, 94.14).
+    // (KAPPA-deflated) rect. Rounded radius 10 plus the AA transition
+    // gives a cover deflation of ≈3.43 per side.
     // An under-quad at (10,10,80,80) is well inside cover and
     // should be dropped.
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
@@ -2409,8 +2501,9 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
 ///
 /// Fixture: top quad = rect (0,0,100,100), sharp corners, opaque white
 /// fill; stroke width 4 at scale 1. Hand-computed cover per case:
-/// - noop / opaque stroke → cover = full rect (0,0)..(100,100).
-/// - 50%-alpha stroke     → cover = deflated by 4/side = (4,4)..(96,96).
+/// - noop stroke → fast path, cover = full rect (0,0)..(100,100).
+/// - opaque stroke → cover = AA-deflated (0.5,0.5)..(99.5,99.5).
+/// - 50%-alpha stroke → cover = deflated by 4.5/side.
 /// - 50%-alpha stroke w=60 → deflation 60/side exceeds the 50 half-
 ///   extent → empty cover, no occluder recorded.
 ///
@@ -2436,10 +2529,10 @@ fn prune_occluder_stroke_translucency_gates_cover() {
             pruned: true,
         },
         Case {
-            label: "opaque_stroke_full_cover",
+            label: "opaque_stroke_aa_edge_not_covered",
             under: rect(0.0, 0.0, 100.0, 100.0),
             stroke: Stroke::solid(Color::rgb(0.0, 1.0, 0.0), 4.0),
-            pruned: true,
+            pruned: false,
         },
         Case {
             label: "translucent_stroke_ring_not_covered",

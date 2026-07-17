@@ -10,7 +10,7 @@ use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
 use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
-use crate::renderer::quad::Quad;
+use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
@@ -20,7 +20,7 @@ use crate::renderer::render_buffer::curve::{
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::text::TextRun;
-use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
+use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
@@ -511,10 +511,14 @@ impl Composer {
                         if out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
                             parent_chain
                         } else {
+                            let depth = parent_chain.len + 1;
+                            if depth > MAX_ROUNDED_CLIP_DEPTH {
+                                rounded_clip_depth_overflow(depth);
+                            }
                             let chain_start = out.rounded_clips.len() as u32;
                             out.rounded_clips.extend_from_within(parent_chain.range());
                             out.rounded_clips.push(rc);
-                            Span::new(chain_start, parent_chain.len + 1)
+                            Span::new(chain_start, depth)
                         }
                     } else {
                         // Rect clip nested inside rounded ancestors: inherit
@@ -632,31 +636,16 @@ impl Composer {
                         fill_lut_row: p.fill_lut_row,
                         fill_axis: p.fill_axis,
                     });
-                    // Occlusion-prune annotation: a solid-opaque
-                    // quad fully covers a sub-rect of its bounding
-                    // rect — for sharp corners the cover is the
-                    // whole rect; for rounded corners it's the
-                    // inscribed rect deflated by KAPPA·radius per
-                    // side. quad.wgsl strokes are INNER-edge and
-                    // coverage-partitioned with the fill (annulus
-                    // alpha = stroke alpha), so a translucent stroke
-                    // leaves its ring non-opaque: only the fill-only
-                    // interior — the inscribed rect deflated by the
-                    // stroke width on every side — is guaranteed
-                    // opaque. A noop stroke or a fully-opaque stroke
-                    // colour keeps the full inscribed cover (opaque
-                    // annulus + opaque fill = opaque rect). A stroke
-                    // wider than half the rect deflates the cover to
-                    // empty — nothing is recorded. Record the cover
-                    // rect with the in-flight slice index so `flush()`
-                    // can drop earlier quads contained in it.
                     if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
                         let inscribed = phys_rect.inscribed_for_corners(phys_radius);
-                        let cover = if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
-                            inscribed
-                        } else {
-                            inscribed.deflated_by(Spacing::all(stroke_width_phys))
-                        };
+                        let stroke_inset =
+                            if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
+                                0.0
+                            } else {
+                                stroke_width_phys
+                            };
+                        let aa_inset = if fast { 0.0 } else { AA_RADIUS };
+                        let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
                         if !cover.is_paint_empty() {
                             let idx = out.quads.len() as u32 - 1 - self.cursors.quads;
                             self.occlusion.record_opaque(idx, cover);
@@ -670,17 +659,7 @@ impl Composer {
                     if self.cull_bounds(quad_urect) {
                         continue;
                     }
-                    // Shadow quads use a 2σ-deflated rect for the
-                    // overlap check: the outer 2σ rim of a Gaussian
-                    // contributes <5% alpha and is visually
-                    // indistinguishable from the background, so we
-                    // shouldn't force a batch flush for that ring.
-                    // Keeps adjacent text in the same batch when a
-                    // soft drop shadow sits 1–2σ away from text.
-                    let sigma_phys =
-                        p.fill_axis.lanes()[2].max(0.0) * current_transform.scale * scale;
-                    let overlap_urect = quad_urect.deflated((2.0 * sigma_phys) as u32);
-                    self.quad_forces_flush(overlap_urect, out);
+                    self.quad_forces_flush(quad_urect, out);
                     let world_radius = p.corners.scaled_by(current_transform.scale);
                     let phys_radius = world_radius.scaled_by(scale);
                     // Live shadow parameters are logical-px scalars; scale
@@ -1437,6 +1416,12 @@ fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URe
 /// decisions must not split on span identity alone.
 fn chains_equal(out: &RenderBuffer, a: Span, b: Span) -> bool {
     out.rounded_clips[a.range()] == out.rounded_clips[b.range()]
+}
+
+#[cold]
+#[inline(never)]
+fn rounded_clip_depth_overflow(depth: u32) -> ! {
+    panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
 /// Physical-px scissor for a stroked shape's owner-local `bbox`. Folds

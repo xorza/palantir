@@ -3,7 +3,7 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use crate::forest::element::columns::LayoutCore;
+use crate::forest::element::columns::{BoundsExtras, LayoutCore};
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Tree;
 use crate::forest::tree::iter::TreeItem;
@@ -186,29 +186,6 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
     rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }
 
-/// Per-axis WPF Stretch arrange-time grow. `Fill` returns the parent's
-/// slot extent (`available`) when the parent is constrained on this
-/// axis (`Fill`/`Fixed`); otherwise it stays at content (`desired`) so a
-/// Hug parent doesn't balloon. Anything not-`Fill` always returns
-/// `desired`. Single source of truth shared by `canvas::arrange` and
-/// the root-arrange in `LayoutEngine::run` so the rule can't drift.
-/// Stack does the equivalent via `freeze_distribute` (which also
-/// honors per-child weights and `max_size` caps), and zstack via
-/// `place_axis`.
-#[inline]
-pub(crate) fn stretched_extent(
-    child_sizing: Sizing,
-    desired: f32,
-    available: f32,
-    parent_sizing: Sizing,
-) -> f32 {
-    if child_sizing.fill_weight().is_some() && !parent_sizing.is_hug() {
-        available.max(desired)
-    } else {
-        desired
-    }
-}
-
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
 /// directly — no recursion, no child cursors.
@@ -384,27 +361,33 @@ pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
     }
 }
 
-/// Compute size + offset along one axis given the child's alignment, its
-/// declared sizing, intrinsic desired size, and the inner span available.
-/// Used for stack cross-axis, ZStack per-axis, and Grid per-cell placement.
-///
-/// `Sizing::fill` always stretches — `align` only positions Hug/Fixed
-/// children inside their slot, since there's nothing to offset when the
-/// child already fills the slot. `AxisAlign::Stretch` is the explicit
-/// override that forces a Hug/Fixed child to stretch too (used by Grid
-/// to make its WPF-cell-default behavior work without threading a
-/// per-driver flag here).
-pub(crate) fn place_axis(
+/// Resolve the outer extent and alignment offset for one arranged axis.
+/// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
+/// grow to their slot without shrinking below measured content, while the
+/// element's outer min/max bounds remain authoritative.
+pub(crate) fn arrange_axis(
+    axis: Axis,
     align: AxisAlign,
-    sizing: Sizing,
-    desired: f32,
-    inner: f32,
+    child: &LayoutCore,
+    bounds: &BoundsExtras,
+    desired: Size,
+    slot: f32,
 ) -> AxisPlacement {
-    let stretch = sizing.fill_weight().is_some() || matches!(align, AxisAlign::Stretch);
-    let size = if stretch { inner } else { desired };
+    let margin = axis.spacing(child.margin);
+    let min = axis.main(bounds.min_size) + margin;
+    let max = axis.main(bounds.max_size) + margin;
+    let desired = axis.main(desired).clamp(min, max);
+    let sizing = axis.main_sizing(child.size);
+    let stretch = sizing.fill_weight().is_some()
+        || matches!(align, AxisAlign::Stretch) && sizing.fixed_value().is_none();
+    let size = if stretch {
+        slot.max(desired).clamp(min, max)
+    } else {
+        desired
+    };
     let offset = match align {
-        AxisAlign::Center => ((inner - size) * 0.5).max(0.0),
-        AxisAlign::End => (inner - size).max(0.0),
+        AxisAlign::Center => ((slot - size) * 0.5).max(0.0),
+        AxisAlign::End => (slot - size).max(0.0),
         _ => 0.0,
     };
     AxisPlacement { size, offset }
@@ -412,13 +395,14 @@ pub(crate) fn place_axis(
 
 /// Cross-axis placement for a child of a main-axis stack (Stack /
 /// WrapStack). Resolves the alignment cascade, picks the cross axis
-/// from the resolved (h, v) pair, and runs `place_axis` against the
+/// from the resolved (h, v) pair, and runs [`arrange_axis`] against the
 /// child's cross sizing + desired + the parent's cross extent. Single
 /// source of truth so the cascade rule can't drift between Stack and
 /// WrapStack.
 pub(crate) fn cross_place(
     main_axis: Axis,
     child: &LayoutCore,
+    bounds: &BoundsExtras,
     parent_child_align: Align,
     desired: Size,
     inner_cross: f32,
@@ -428,10 +412,9 @@ pub(crate) fn cross_place(
         Axis::X => v,
         Axis::Y => h,
     };
-    place_axis(
-        cross_align,
-        main_axis.cross_sizing(child.size),
-        main_axis.cross(desired),
-        inner_cross,
-    )
+    let cross_axis = match main_axis {
+        Axis::X => Axis::Y,
+        Axis::Y => Axis::X,
+    };
+    arrange_axis(cross_axis, cross_align, child, bounds, desired, inner_cross)
 }

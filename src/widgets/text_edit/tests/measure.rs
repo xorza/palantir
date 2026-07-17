@@ -5,7 +5,7 @@
 //! measure.
 //!
 //! See `text_edit::mod.rs::show` ("Text or placeholder…" block) and
-//! `support::place_axis` for the two invariants this test guards.
+//! `support::arrange_axis` for the two invariants this test guards.
 
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;

@@ -31,7 +31,7 @@ use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
-use crate::renderer::backend::text::atlas::GlyphAtlas;
+use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// One text run resolved to a cosmic buffer + placement.
@@ -295,13 +295,13 @@ pub(crate) fn encode_batch<'a>(
                         physical.cache_key,
                     ) {
                         Some(i) => i,
-                        None => continue, // genuine atlas-full at GPU max
+                        None => continue,
                     },
                 };
                 let slot = ctx.atlas.slots[idx as usize];
 
                 if slot.alloc.is_none() {
-                    continue; // zero-area glyph
+                    continue;
                 }
 
                 let abs_x = physical.x + slot.left as i32;
@@ -372,15 +372,27 @@ fn rasterize_and_insert(
         SwashContent::Color => ContentType::Color,
         SwashContent::Mask | SwashContent::SubpixelMask => ContentType::Mask,
     };
-    let w = image.placement.width as u16;
-    let h = image.placement.height as u16;
-    let left = image.placement.left as i16;
-    let top = image.placement.top as i16;
+    let Some(metadata) = PackedGlyphMetadata::checked(
+        image.placement.width,
+        image.placement.height,
+        image.placement.left,
+        image.placement.top,
+    ) else {
+        tracing::warn!(
+            ?key,
+            width = image.placement.width,
+            height = image.placement.height,
+            left = image.placement.left,
+            top = image.placement.top,
+            "skipping glyph raster outside packed atlas metadata range",
+        );
+        return Some(atlas.insert_unallocated(key, content, PackedGlyphMetadata::EMPTY));
+    };
 
-    if w == 0 || h == 0 {
-        return Some(atlas.insert_empty(key, content, left, top));
+    if metadata.is_empty() {
+        return Some(atlas.insert_unallocated(key, content, metadata));
     }
-    atlas.insert(device, key, content, w, h, left, top, &image.data)
+    atlas.insert(device, key, content, metadata, &image.data)
 }
 
 #[cfg(test)]

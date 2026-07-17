@@ -33,8 +33,8 @@ use crate::window::WindowToken;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
-/// [`Self::new`] from the shared [`HostContext`]; owns no GPU resources
-/// except its own [`Backbuffer`] + [`Stencil`].
+/// [`WindowRendererBuilder`] from the shared [`HostContext`]; owns no GPU
+/// resources except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
 pub(crate) struct WindowRenderer {
     /// Stable application identity for this render stream. Stored here so a
@@ -74,6 +74,8 @@ pub(crate) struct WindowRenderer {
     /// for on-screen windows, [`FixedClock`](crate::host::clock::FixedClock) for a
     /// reproducible offscreen render) so the pipeline doesn't branch on it.
     clock: Box<dyn Clock>,
+    /// Whether axis-aligned paint edges snap to physical pixels.
+    pixel_snap: bool,
     /// `Some(instant the window went occluded)` while occluded — `frame()`
     /// short-circuits to `Idle` without running `cpu_frame`. Every
     /// per-frame Ui flag (damage, repaint_requested, animation driver
@@ -216,52 +218,73 @@ struct CpuFrame {
     mode: PresentMode,
 }
 
-impl WindowRenderer {
-    /// Create a renderer for `token` from the shared [`HostContext`].
-    /// Its `Ui` shares the context's shaper / caches / GPU-stats handle and
-    /// receives a fresh per-window record store. The `Ui` also shares the
-    /// context's app-global host state (live-window set + debug overlay) so all
-    /// windows agree. `max_texture_dim` is the device's `max_texture_dimension_2d`
-    /// (fixed for its lifetime), handed to the `Frontend` to cap `GpuView`
-    /// target sizes — the only GPU fact the CPU pipeline needs.
-    /// Defaults to direct swapchain presentation and a realtime clock. Hosts
-    /// with different target ownership or timing configure the returned
-    /// renderer directly before its first frame.
-    pub(crate) fn new(token: WindowToken, ctx: &HostContext, max_texture_dim: u32) -> Self {
-        let record_store = RecordStore::default();
-        Self {
-            token,
-            ui: Ui::new(ctx, record_store.clone()),
-            record_store,
-            frontend: Frontend::new(max_texture_dim),
-            backbuffer: None,
-            backbuffer_fresh: false,
-            stencil: None,
-            strategy: PresentStrategy::DirectAdaptive,
-            clock: Box::new(RealtimeClock::new()),
-            occluded_at: None,
-            configured: None,
-            last_format: None,
-        }
-    }
+/// Seals per-window policy before allocating the recorder and frontend.
+#[derive(Debug)]
+pub(crate) struct WindowRendererBuilder<'a> {
+    token: WindowToken,
+    ctx: &'a HostContext,
+    max_texture_dim: u32,
+    strategy: PresentStrategy,
+    clock: Box<dyn Clock>,
+    pixel_snap: bool,
+}
 
+impl WindowRendererBuilder<'_> {
     pub(crate) fn strategy(mut self, strategy: PresentStrategy) -> Self {
-        self.assert_not_started();
         self.strategy = strategy;
         self
     }
 
     pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
-        self.assert_not_started();
         self.clock = clock;
         self
     }
 
-    pub(crate) fn assert_not_started(&self) {
-        assert_eq!(
-            self.ui.frame_runtime.frame_id, 0,
-            "renderer configuration must happen before the first frame",
-        );
+    pub(crate) fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+        self.pixel_snap = pixel_snap;
+        self
+    }
+
+    pub(crate) fn build(self) -> WindowRenderer {
+        let record_store = RecordStore::default();
+        WindowRenderer {
+            token: self.token,
+            ui: Ui::new(self.ctx, record_store.clone()),
+            record_store,
+            frontend: Frontend::new(self.max_texture_dim),
+            backbuffer: None,
+            backbuffer_fresh: false,
+            stencil: None,
+            strategy: self.strategy,
+            clock: self.clock,
+            pixel_snap: self.pixel_snap,
+            occluded_at: None,
+            configured: None,
+            last_format: None,
+        }
+    }
+}
+
+impl WindowRenderer {
+    /// Start building a renderer for `token` from the shared [`HostContext`].
+    /// Its `Ui` shares the context's shaper, caches, GPU-stats handle, and
+    /// app-global host state while receiving a fresh per-window record store.
+    /// `max_texture_dim` is the device's fixed texture limit used to cap
+    /// `GpuView` targets. Defaults suit a swapchain window: direct adaptive
+    /// presentation, realtime clock, and physical-pixel snapping.
+    pub(crate) fn builder(
+        token: WindowToken,
+        ctx: &HostContext,
+        max_texture_dim: u32,
+    ) -> WindowRendererBuilder<'_> {
+        WindowRendererBuilder {
+            token,
+            ctx,
+            max_texture_dim,
+            strategy: PresentStrategy::DirectAdaptive,
+            clock: Box::new(RealtimeClock::new()),
+            pixel_snap: true,
+        }
     }
 
     /// Drive from the host's window-event handler. While occluded,
@@ -340,7 +363,7 @@ impl WindowRenderer {
         let display = Display {
             physical: glam::UVec2::new(config.width, config.height),
             scale_factor,
-            pixel_snap: true,
+            pixel_snap: self.pixel_snap,
             refresh_millihertz,
         };
 
@@ -381,8 +404,10 @@ impl WindowRenderer {
         app: &mut T,
     ) {
         let size = target.size();
-        let display =
-            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
+        let display = Display {
+            pixel_snap: self.pixel_snap,
+            ..Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor)
+        };
         // Force a full repaint when the target's format changes (offscreen
         // has no surface to reconfigure).
         self.note_format(target.format());
@@ -740,7 +765,7 @@ mod record_store_tests {
     use crate::app::test_support::RecordApp;
     use crate::host::clock::FixedClock;
     use crate::host::context::HostContext;
-    use crate::host::window_renderer::WindowRenderer;
+    use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
     use crate::primitives::color::{Color, ColorU8};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
@@ -822,8 +847,13 @@ mod record_store_tests {
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let ctx = HostContext::new(TextShaper::default());
         let token = WindowToken(17);
-        let mut window =
-            WindowRenderer::new(token, &ctx, 8192).clock(Box::new(FixedClock::new(Duration::ZERO)));
+        let mut window = WindowRenderer::builder(token, &ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .pixel_snap(false)
+            .build();
+        assert_eq!(window.strategy, PresentStrategy::DirectAdaptive);
+        assert!(!window.pixel_snap);
+        assert_eq!(window.clock.now(), Duration::ZERO);
         let mut app = LifecycleApp::default();
 
         let _ = window.cpu_frame(Display::from_physical(UVec2::new(112, 112), 1.0), &mut app);
@@ -834,14 +864,6 @@ mod record_store_tests {
             [token, token],
             "cold-start warmup and visible pass share the token",
         );
-
-        let reconfigure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = window.clock(Box::new(FixedClock::new(Duration::ZERO)));
-        }));
-        assert!(
-            reconfigure.is_err(),
-            "renderer configuration must be sealed by its first frame",
-        );
     }
 
     /// A record pass in one window must not replace the payloads retained by
@@ -849,10 +871,12 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let ctx = HostContext::new(TextShaper::default());
-        let mut window_a = WindowRenderer::new(WindowToken(1), &ctx, 8192)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)));
-        let mut window_b = WindowRenderer::new(WindowToken(2), &ctx, 8192)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)));
+        let mut window_a = WindowRenderer::builder(WindowToken(1), &ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
+        let mut window_b = WindowRenderer::builder(WindowToken(2), &ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);
 
         let mesh_a = Mesh::filled_triangle(

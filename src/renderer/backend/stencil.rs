@@ -11,6 +11,8 @@
 //! and the face ops — mismatched bits would silently mis-clip text or
 //! images under a rounded panel.
 
+use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
+
 /// Format used for the lazy stencil attachment. `Stencil8` is the
 /// minimum that satisfies the rounded-clip mask path; no depth
 /// component is needed (UI is 2D, no z-test).
@@ -35,7 +37,7 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
         stencil: wgpu::StencilState {
             front: face,
             back: face,
-            read_mask: 0xff,
+            read_mask: MAX_ROUNDED_CLIP_DEPTH,
             write_mask: 0x00,
         },
         bias: wgpu::DepthBiasState::default(),

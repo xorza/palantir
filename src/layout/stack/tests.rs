@@ -473,7 +473,7 @@ fn parent_max_size_clamps_children_available() {
 /// `Sizing::fill` stretches to the parent's cross-axis slot regardless
 /// of the child's `align`. Setting `.align(Align::LEFT/CENTER/RIGHT)` on a
 /// Fill child used to silently downgrade it to its content size (since
-/// `place_axis` only stretched when `align == Auto && Fill`); now Fill
+/// cross-axis placement only stretched when `align == Auto && Fill`); now Fill
 /// is sufficient on its own. `align` is meaningful only for Hug/Fixed
 /// children, which actually have room to be offset inside their slot.
 #[test]

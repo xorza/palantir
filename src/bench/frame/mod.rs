@@ -160,13 +160,14 @@ fn gpu() -> &'static Gpu {
 /// the shared bench device with GPU instrumentation on. Every bench arm
 /// wants the same shape — bundled fonts and a timestamp-enabled device.
 fn bench_host(g: &Gpu) -> OffscreenHost {
-    OffscreenHost::new(
+    OffscreenHost::builder(
         WindowToken(0),
         g.device.clone(),
         g.queue.clone(),
         TextShaper::with_bundled_fonts(),
     )
     .collect_gpu_stats(true)
+    .build()
 }
 
 fn frame_offscreen(

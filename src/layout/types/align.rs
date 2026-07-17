@@ -98,7 +98,7 @@ impl Align {
 }
 
 /// Internal axis-agnostic alignment used by the layout math. Both `HAlign`
-/// and `VAlign` map into this so `place_axis` is single-sourced.
+/// and `VAlign` map into this so arrange-axis resolution is single-sourced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AxisAlign {
     Auto,
@@ -110,9 +110,9 @@ pub(crate) enum AxisAlign {
 
 impl AxisAlign {
     /// `Auto → Stretch`, otherwise unchanged. Grid's per-cell default
-    /// is stretch (WPF semantics): a child with no explicit alignment
-    /// fills its cell on each axis. Other drivers leave `Auto` alone
-    /// (`place_axis` resolves it via the child's `Sizing`).
+    /// is stretch (WPF semantics): a non-Fixed child with no explicit
+    /// alignment fills its cell on each axis. Other drivers leave `Auto`
+    /// alone (arrange-axis resolution consults the child's `Sizing`).
     #[inline]
     pub(crate) const fn or_stretch_if_auto(self) -> AxisAlign {
         match self {

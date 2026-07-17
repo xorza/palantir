@@ -53,7 +53,8 @@ impl FillAxis {
     /// scalar f16 round-trip.
     #[inline]
     pub(crate) fn scaled(self, s: f32) -> Self {
-        Self(self.0.scaled(s))
+        let [a, b, c, d] = self.lanes();
+        Self::from_lanes(a * s, b * s, c * s, d * s)
     }
 }
 

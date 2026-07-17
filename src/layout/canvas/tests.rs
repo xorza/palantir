@@ -213,7 +213,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
 /// Pin: Canvas places children at their explicit `.position(...)` and
 /// **ignores `.align(...)`** — children's alignment values do not
 /// participate in placement (Canvas is the "explicit position wins"
-/// driver). Stack/ZStack/Grid all consume align via `place_axis`;
+/// driver). Stack/ZStack/Grid all consume align via shared axis resolution;
 /// Canvas does not. Adding align-cascade to Canvas would seem like a
 /// reasonable change but would break the contract that Canvas users
 /// rely on for free-form placement.
