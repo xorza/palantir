@@ -31,6 +31,7 @@ use crate::forest::shapes::Shapes;
 use crate::forest::shapes::lower;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::shapes::paint::ChromeRow;
+use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::extras::{ExtrasIdx, Slot};
 use crate::forest::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::forest::tree::node::{NodeId, NodeRecord, SubtreeEnd};
@@ -133,7 +134,7 @@ impl Tree {
         self.roots.clear();
     }
 
-    /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
+    /// Finalize this tree: populate the hash columns and derived owner sets.
     /// Capacity retained across frames. The paint-anim wake fold lives
     /// on [`crate::forest::Forest::min_paint_anim_wake`] — `Ui::frame`
     /// calls it at the tail of every frame (both record + paint-only
@@ -149,19 +150,20 @@ impl Tree {
             "paint_anims.by_shape exceeds shapes.records",
         );
         self.rollups.reset_for(self.records.len());
-        self.compute_hashes();
+        self.compute_rollups();
     }
 
-    /// Fused reverse-pre-order pass: computes both `rollups.node[i]`
-    /// and `rollups.subtree[i]` in a single sweep. `subtree[i]` reads
-    /// `node[i]` (just written this iteration) and the already-finalized
-    /// `subtree[children]` (visited earlier in the reverse pass).
-    fn compute_hashes(&mut self) {
+    /// Fused reverse-pre-order pass: computes both hash columns and
+    /// discovers non-leaf direct-text owners in a single sweep.
+    /// `subtree[i]` reads `node[i]` (just written this iteration) and
+    /// the already-finalized `subtree[children]` (visited earlier in
+    /// the reverse pass).
+    fn compute_rollups(&mut self) {
         let n = self.records.len();
         let layouts = self.records.layout();
         let attrs = self.records.attrs();
         // Per-shape hashes are canonical — populated by `Shapes::add`
-        // at lowering time. compute_hashes just folds them into the
+        // at lowering time. compute_rollups just folds them into the
         // owner's node hasher in record order.
         let shape_hashes = self.shapes.hashes.as_slice();
         let widget_ids = self.records.widget_id();
@@ -170,8 +172,13 @@ impl Tree {
         let panel_tab = self.panel_table.as_slice();
         let chrome_tab = self.chrome_table.as_slice();
         let grid_defs = &self.grid_defs;
-        let node_out = self.rollups.node.as_mut_slice();
-        let subtree_out = self.rollups.subtree.as_mut_slice();
+        let SubtreeRollups {
+            node,
+            subtree,
+            container_text,
+        } = &mut self.rollups;
+        let node_out = node.as_mut_slice();
+        let subtree_out = subtree.as_mut_slice();
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
@@ -229,9 +236,13 @@ impl Tree {
             // child-hop loop.
             let mut sh = Hasher::new();
             let mut has_children = false;
+            let mut has_direct_text = false;
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
-                    TreeItem::ShapeRecord(idx, _) => h.write_u64(shape_hashes[idx as usize].0),
+                    TreeItem::ShapeRecord(idx, shape) => {
+                        h.write_u64(shape_hashes[idx as usize].0);
+                        has_direct_text |= matches!(shape, ShapeRecord::Text { .. });
+                    }
                     TreeItem::Child(c) => {
                         h.write_u8(0xFF);
                         h.write_u64(widget_ids[c.id.idx()].0);
@@ -239,6 +250,10 @@ impl Tree {
                         has_children = true;
                     }
                 }
+            }
+            if has_direct_text && layouts[i].mode != LayoutMode::Leaf {
+                container_text.grow(n);
+                container_text.insert(i);
             }
             if layouts[i].mode == LayoutMode::Grid {
                 let id = layouts[i].grid_def_id();

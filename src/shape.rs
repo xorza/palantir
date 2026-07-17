@@ -143,6 +143,10 @@ pub enum Shape<'a> {
         brush: CurveBrush,
         cap: LineCap,
     },
+    /// Shaped text owned by the active node. On a leaf it contributes to the
+    /// node's desired size. On a container it is paint-only and shapes against
+    /// the final padded width; use a [`crate::Text`] child when text should
+    /// participate in stack or grid layout.
     Text {
         /// `None` → encoder owns positioning: the glyph bbox is
         /// placed inside the owner's padded inner rect via `align`.

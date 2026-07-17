@@ -6,6 +6,7 @@
 use crate::forest::element::columns::LayoutCore;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Tree;
+use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
@@ -32,9 +33,10 @@ pub(crate) struct TextCtx<'a> {
 }
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
-/// [`leaf_text_shapes`]; named so the fields aren't a tuple.
+/// [`leaf_text_shapes`] and [`container_text_shapes`]; named so the fields
+/// aren't a tuple.
 #[derive(Debug)]
-pub(crate) struct LeafTextShape<'a> {
+pub(crate) struct TextShapeInput<'a> {
     pub(crate) text: &'a str,
     pub(crate) text_hash: u64,
     pub(crate) font_size_px: f32,
@@ -52,7 +54,7 @@ pub(crate) struct LeafTextShape<'a> {
 }
 
 /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth for
-/// the layout-side leaf walk — `mod.rs::leaf_content_size` drives wrap
+/// the layout-side leaf walk — `LayoutEngine::measure_dispatch` drives wrap
 /// shaping, `intrinsic::leaf` drives the unbounded content axis.
 /// Filtering and destructuring happen here so neither side can drift
 /// on which shape variants contribute to size.
@@ -60,7 +62,7 @@ pub(crate) fn leaf_text_shapes<'a>(
     tree: &'a Tree,
     tc: &TextCtx<'a>,
     node: NodeId,
-) -> impl Iterator<Item = LeafTextShape<'a>> {
+) -> impl Iterator<Item = TextShapeInput<'a>> {
     // Direct slice into `tree.shapes` for `node`. Leaves have no children,
     // so the `records.shape_span()[i]` span is exactly the leaf's own direct
     // shapes — contiguous, no child boundaries to skip.
@@ -74,29 +76,46 @@ pub(crate) fn leaf_text_shapes<'a>(
     let hi = lo + span.len as usize;
     tree.shapes.records[lo..hi]
         .iter()
-        .filter_map(move |s| match s {
-            ShapeRecord::Text {
-                text,
-                text_hash,
-                font_size_px,
-                line_height_px,
-                wrap,
-                family,
-                weight,
-                align,
-                ..
-            } => Some(LeafTextShape {
-                text: text.as_str(tc.bytes),
-                text_hash: *text_hash,
-                font_size_px: *font_size_px,
-                line_height_px: *line_height_px,
-                wrap: *wrap,
-                family: *family,
-                weight: *weight,
-                halign: align.halign(),
-            }),
-            _ => None,
-        })
+        .filter_map(move |s| text_shape_input(s, tc.bytes))
+}
+
+/// Iterate the direct text shapes on a container, skipping text belonging to
+/// descendant nodes while preserving this node's within-owner record order.
+pub(crate) fn container_text_shapes<'a>(
+    tree: &'a Tree,
+    tc: &TextCtx<'a>,
+    node: NodeId,
+) -> impl Iterator<Item = TextShapeInput<'a>> {
+    tree.tree_items(node).filter_map(move |item| match item {
+        TreeItem::ShapeRecord(_, shape) => text_shape_input(shape, tc.bytes),
+        TreeItem::Child(_) => None,
+    })
+}
+
+fn text_shape_input<'a>(shape: &'a ShapeRecord, bytes: &'a str) -> Option<TextShapeInput<'a>> {
+    match shape {
+        ShapeRecord::Text {
+            text,
+            text_hash,
+            font_size_px,
+            line_height_px,
+            wrap,
+            family,
+            weight,
+            align,
+            ..
+        } => Some(TextShapeInput {
+            text: text.as_str(bytes),
+            text_hash: *text_hash,
+            font_size_px: *font_size_px,
+            line_height_px: *line_height_px,
+            wrap: *wrap,
+            family: *family,
+            weight: *weight,
+            halign: align.halign(),
+        }),
+        _ => None,
+    }
 }
 
 /// Per-axis inputs for [`resolve_axis_size`]. Bundles the seven

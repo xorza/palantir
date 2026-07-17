@@ -1189,7 +1189,7 @@ fn child_iter_traverses_correctly_after_finalize() {
 
 /// `Tree.shapes.hashes` is parallel to `Tree.shapes.records` after
 /// `post_record`: one slot per shape, populated by the existing
-/// `compute_hashes` walk so we don't pay a second per-shape sweep.
+/// `compute_rollups` walk so we don't pay a second per-shape sweep.
 #[test]
 fn shape_hashes_column_sized_to_shape_records() {
     let mut ui = Ui::for_test();
@@ -1236,7 +1236,7 @@ fn shape_hashes_column_sized_to_shape_records() {
         assert_ne!(
             *h,
             ContentHash::default(),
-            "shape_hashes[{i}] left at default — compute_hashes missed a record",
+            "shape_hashes[{i}] left at default — compute_rollups missed a record",
         );
     }
 }

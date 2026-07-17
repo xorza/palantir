@@ -34,7 +34,7 @@ pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
     /// Per-shape authoring hash, parallel to `records`. Computed once
     /// in [`Self::add`] at lowering time (the canonical value);
-    /// `Tree::compute_hashes` only folds the stored hash into the
+    /// `Tree::compute_rollups` only folds the stored hash into the
     /// owner's node hash, never recomputes it. Keys the per-shape
     /// damage diff (`(WidgetId, ordinal)` identity) in
     /// `DamageEngine::compute`, letting a single moved shape on a
