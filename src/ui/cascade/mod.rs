@@ -517,7 +517,7 @@ pub(crate) fn cascade_fingerprint(
         h.write_u8(layer as u8);
         for slot in &tree.roots {
             // The root's own id reaches no other hash —
-            // `compute_hashes` folds only child ids into parents,
+            // `compute_rollups` folds only child ids into parents,
             // and a root has no parent — so a re-keyed root with
             // identical content would otherwise reuse cascades
             // whose `by_id` still maps the dead old id.
@@ -999,11 +999,9 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                     continue;
                 }
             };
-            // Text shapes live only on Leaf nodes (`leaf_text_shapes`
-            // asserts the same), so when this node has any text shape
-            // `text_span.len` must equal the count of `Text` variants
-            // yielded by `TreeItems` here. Drift would silently fall
-            // back to the owner rect — assert instead.
+            // Every direct text shape has one layout-derived entry, whether
+            // measure produced it for a leaf or post-arrange shaping produced
+            // it for a container.
             let (local, text_measured) = match s {
                 ShapeRecord::Text {
                     local_origin,
@@ -1012,8 +1010,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                 } => {
                     debug_assert!(
                         text_ord < text_span.len,
-                        "cascade saw a text shape without a matching ShapedText entry — \
-                         leaf_content_size and the cascade walk are out of sync",
+                        "cascade saw a text shape without a matching ShapedText entry",
                     );
                     let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
                     text_ord += 1;
@@ -1034,6 +1031,10 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
             }
             push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }
+        debug_assert_eq!(
+            text_ord, text_span.len,
+            "cascade text count differs from the node's shaped-text span",
+        );
     }
 
     let paints_len = arena.rows.len() as u32 - paints_start;

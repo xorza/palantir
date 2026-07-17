@@ -1,7 +1,7 @@
 //! Canonical per-[`ShapeRecord`] hash. One entry point —
 //! [`compute_record_hash`] — used by `Shapes::add` to populate the
 //! parallel `Shapes::hashes` arena, and by tests that pin the hash
-//! schedule. `Tree::compute_hashes` and damage diff both read those
+//! schedule. `Tree::compute_rollups` and damage diff both read those
 //! precomputed `ContentHash`es; no production code rehashes records.
 //!
 //! The schedule is `discriminant byte → per-variant fields`. Stable

@@ -114,7 +114,7 @@ fn unchanged_authoring_produces_no_damage() {
 
 /// Pin: removing a child of a fixed-size canvas that paints its own
 /// direct shapes must **not** re-damage those shapes. A node's
-/// `node_hash` folds in a per-immediate-child marker (`compute_hashes`),
+/// `node_hash` folds in a per-immediate-child marker (`compute_rollups`),
 /// so dropping a child flips the parent's `node_hash` and routes it to
 /// the per-shape diff arm — but with `cascade_input` unchanged and every
 /// own `Paint` bit-identical, the parent's pixels didn't move. Only the
@@ -571,7 +571,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
 }
 
 /// Pin the re-key tradeoff: child identity lives in `node_hash` (via
-/// the child markers `compute_hashes` folds), so re-keying a child —
+/// the child markers `compute_rollups` folds), so re-keying a child —
 /// same content, new `WidgetId` — flips its parent's hash and routes
 /// the parent to the changed-paints arm. That arm must emit nothing
 /// for the parent itself: the swapped marker rows are paint-empty, and
