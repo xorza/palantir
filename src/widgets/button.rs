@@ -1,7 +1,6 @@
 use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
@@ -22,7 +21,7 @@ impl Button {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        let mut element = Element::new(LayoutMode::Leaf);
+        let mut element = Element::leaf();
         element.flags.set_sense(Sense::CLICK);
         Self {
             element,

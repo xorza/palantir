@@ -8,7 +8,6 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::{chat_message, two_hug_cols_with_wrap};
 use crate::layout::support::TextCtx;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
@@ -619,7 +618,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
 fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
     let leaf_id = WidgetId::from_hash("multi-text-leaf");
     Panel::vstack().auto_id().show(ui, |ui| {
-        let mut element = Element::new(LayoutMode::Leaf);
+        let mut element = Element::leaf();
         element.salt = Salt::Verbatim(leaf_id);
         ui.node(leaf_id, element, None, |ui| {
             ui.add_shape(Shape::Text {

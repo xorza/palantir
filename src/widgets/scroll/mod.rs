@@ -4,7 +4,7 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::scroll::{ScrollLayoutState, TrackPage};
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
+use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -210,7 +210,7 @@ fn push_bar_nodes(
     theme: &ScrollbarTheme,
 ) {
     let radius = Corners::all(theme.radius);
-    let mut track = Element::new(LayoutMode::Leaf);
+    let mut track = Element::leaf();
     track.salt = Salt::Verbatim(track_id);
     track.size = (
         Sizing::Fixed(plan.track_rect.size.w),
@@ -233,7 +233,7 @@ fn push_bar_nodes(
     } else {
         theme.thumb
     };
-    let mut thumb = Element::new(LayoutMode::Leaf);
+    let mut thumb = Element::leaf();
     thumb.salt = Salt::Verbatim(thumb_id);
     thumb.size = (
         Sizing::Fixed(plan.thumb_rect.size.w),
@@ -290,10 +290,11 @@ struct ScrollWrappers {
 /// `clip` — read off `flags` before this runs — and the pan
 /// `transform`).
 fn scroll_wrappers(element: Element) -> ScrollWrappers {
+    let scroll_spec = element.scroll_spec();
     let Element {
         salt,
-        mode,
-        mode_payload,
+        mode: _,
+        mode_payload: _,
         size,
         min_size,
         max_size,
@@ -312,7 +313,7 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
         transform: _,
     } = element;
 
-    let mut outer = Element::new(LayoutMode::ZStack);
+    let mut outer = Element::zstack();
     outer.salt = salt;
     outer.size = size;
     outer.min_size = min_size;
@@ -326,8 +327,7 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
     outer.flags.set_focusable(flags.is_focusable());
     outer.visibility = visibility;
 
-    let mut inner = Element::new(mode);
-    inner.mode_payload = mode_payload;
+    let mut inner = Element::scroll(scroll_spec);
     // Inner fills the outer wrapper; the outer carries the user's
     // `Sizing` and drives the actual size.
     inner.size = (Sizing::FILL, Sizing::FILL).into();
@@ -391,8 +391,7 @@ impl Scroll {
 
     #[track_caller]
     fn with_axes(spec: ScrollSpec) -> Self {
-        let mut element = Element::new(LayoutMode::Scroll);
-        element.set_scroll_spec(spec);
+        let mut element = Element::scroll(spec);
         element.flags.set_sense(Sense::SCROLL);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
@@ -465,11 +464,6 @@ impl Scroll {
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let id = ui.widget_id(&self.element);
-        let mode = self.element.mode;
-        debug_assert!(
-            matches!(mode, LayoutMode::Scroll),
-            "Scroll widget must carry LayoutMode::Scroll",
-        );
         let pan = self.element.scroll_spec().pan_mask();
         if self.zoom.is_some() {
             debug_assert!(
@@ -752,7 +746,7 @@ impl Scroll {
             // record order, hit-tested above inner via cascade order.
             if !matches!(self.bar_mode, BarMode::Hidden) && (plan_v.is_some() || plan_h.is_some()) {
                 let bars_id = scroll_id.with("__bars");
-                let mut overlay = Element::new(LayoutMode::Canvas);
+                let mut overlay = Element::canvas();
                 overlay.salt = Salt::Verbatim(bars_id);
                 overlay.size = (Sizing::FILL, Sizing::FILL).into();
                 ui.node(bars_id, overlay, None, |ui| {

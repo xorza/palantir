@@ -1,7 +1,6 @@
 use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
@@ -37,7 +36,7 @@ pub struct Switch<'a> {
 impl<'a> Switch<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
-        let mut element = Element::new(LayoutMode::HStack);
+        let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             element,
@@ -106,11 +105,11 @@ impl<'a> Switch<'a> {
 
         ui.node(id, element, None, |ui| {
             let track_id = id.with("track");
-            let mut track = Element::new(LayoutMode::Canvas);
+            let mut track = Element::canvas();
             track.salt = Salt::Verbatim(track_id);
             track.size = (Sizing::Fixed(geom.track_w), Sizing::Fixed(track_h)).into();
             ui.node(track_id, track, Some(&look.background), |ui| {
-                let mut knob = Element::new(LayoutMode::Leaf);
+                let mut knob = Element::leaf();
                 knob.salt = Salt::Verbatim(knob_id);
                 knob.size = (Sizing::Fixed(geom.knob), Sizing::Fixed(geom.knob)).into();
                 knob.position = Vec2::new(knob_x, geom.knob_y);

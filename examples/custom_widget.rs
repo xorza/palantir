@@ -5,7 +5,7 @@
 //! surface, so this example doubles as a compile-time proof that the
 //! surface is complete:
 //!
-//! * `Element::new` + the `Configure` builder (implemented for `Element`
+//! * `Element` constructors + the `Configure` builder (implemented for `Element`
 //!   itself) — construct and configure layout nodes.
 //! * `Ui::widget_id` — resolve a stable [`WidgetId`] once per widget.
 //! * `Ui::node` — open a node, run its body, close it.
@@ -17,9 +17,9 @@
 //! Run with: `cargo run --example custom_widget`
 
 use aperture::{
-    Align, App, Background, Color, Configure, Corners, Element, HostHandle, LayoutMode, LineCap,
-    LineJoin, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing, Stroke,
-    Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost,
+    Align, App, Background, Color, Configure, Corners, Element, HostHandle, LineCap, LineJoin,
+    Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing, Stroke, Text, Ui,
+    VAlign, Vec2, WidgetId, WindowToken, WinitHost,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
@@ -39,7 +39,7 @@ impl<'a> Stepper<'a> {
     #[track_caller]
     pub fn new(value: &'a mut i32) -> Self {
         Self {
-            element: Element::new(LayoutMode::HStack),
+            element: Element::hstack(),
             value,
             min: i32::MIN,
             max: i32::MAX,
@@ -130,7 +130,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
         corners: Corners::all(5.0),
         shadow: Shadow::NONE,
     };
-    let el = Element::new(LayoutMode::Leaf)
+    let el = Element::leaf()
         .id(id)
         .size((Sizing::Fixed(24.0), Sizing::Fixed(24.0)))
         .sense(Sense::CLICK);

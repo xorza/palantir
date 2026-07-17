@@ -61,6 +61,24 @@ fn layout_mode_size() {
 }
 
 #[test]
+fn public_constructors_cover_every_payloadless_layout_mode() {
+    let cases = [
+        (Element::leaf(), LayoutMode::Leaf),
+        (Element::hstack(), LayoutMode::HStack),
+        (Element::vstack(), LayoutMode::VStack),
+        (Element::wrap_hstack(), LayoutMode::WrapHStack),
+        (Element::wrap_vstack(), LayoutMode::WrapVStack),
+        (Element::zstack(), LayoutMode::ZStack),
+        (Element::canvas(), LayoutMode::Canvas),
+    ];
+
+    for (element, expected) in cases {
+        assert_eq!(element.mode, expected);
+        assert_eq!(element.mode_payload, ModePayload::NONE);
+    }
+}
+
+#[test]
 fn layout_core_round_trips_mode_align_visibility() {
     use crate::forest::visibility::Visibility;
     use crate::layout::types::align::{Align, HAlign, VAlign};
@@ -139,8 +157,7 @@ fn layout_core_round_trips_mode_align_visibility() {
         ),
     ];
     for &(mode, payload, align, vis) in cases {
-        let mut element = Element::new(mode);
-        element.mode_payload = payload;
+        let mut element = Element::new(mode, payload);
         element.align = align;
         element.visibility = vis;
         let core = LayoutCore::from_element(&element);
@@ -157,13 +174,13 @@ fn layout_core_round_trips_mode_align_visibility() {
 
 #[test]
 fn element_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
-    let min_then_max = Element::new(LayoutMode::Leaf)
+    let min_then_max = Element::leaf()
         .min_size((10.0, 20.0))
         .max_size((10.0, 30.0));
     assert_eq!(min_then_max.min_size, Size::new(10.0, 20.0));
     assert_eq!(min_then_max.max_size, Size::new(10.0, 30.0));
 
-    let max_then_min = Element::new(LayoutMode::Leaf)
+    let max_then_min = Element::leaf()
         .max_size((30.0, 20.0))
         .min_size((10.0, 20.0));
     assert_eq!(max_then_min.min_size, Size::new(10.0, 20.0));
@@ -176,22 +193,22 @@ fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
 
     let cases: &[Case] = &[
         ("minimum exceeds existing x maximum", || {
-            Element::new(LayoutMode::Leaf)
+            Element::leaf()
                 .max_size((10.0, f32::INFINITY))
                 .min_size((11.0, 0.0))
         }),
         ("minimum exceeds existing y maximum", || {
-            Element::new(LayoutMode::Leaf)
+            Element::leaf()
                 .max_size((f32::INFINITY, 10.0))
                 .min_size((0.0, 11.0))
         }),
         ("maximum is below existing x minimum", || {
-            Element::new(LayoutMode::Leaf)
+            Element::leaf()
                 .min_size((11.0, 0.0))
                 .max_size((10.0, f32::INFINITY))
         }),
         ("maximum is below existing y minimum", || {
-            Element::new(LayoutMode::Leaf)
+            Element::leaf()
                 .min_size((0.0, 11.0))
                 .max_size((f32::INFINITY, 10.0))
         }),

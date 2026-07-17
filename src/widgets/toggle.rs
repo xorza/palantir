@@ -2,7 +2,6 @@ use crate::animation::AnimSpec;
 use crate::forest::element::{Configure, Element, Salt};
 use crate::input::response::ResponseState;
 use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
@@ -82,7 +81,7 @@ pub(crate) fn toggle_row(
 
     ui.node(id, element, None, |ui| {
         let box_id = id.with("box");
-        let mut box_elem = Element::new(LayoutMode::Leaf);
+        let mut box_elem = Element::leaf();
         box_elem.salt = Salt::Verbatim(box_id);
         box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
         ui.node(box_id, box_elem, Some(&look.background), |ui| {

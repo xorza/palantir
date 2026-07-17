@@ -1,6 +1,5 @@
 use crate::forest::element::{Configure, Element};
 use crate::forest::tree::paint_anims::PaintAnim;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::LinearGradient;
 use crate::primitives::color::Color;
@@ -44,7 +43,7 @@ impl Spinner {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            element: Element::new(LayoutMode::Leaf),
+            element: Element::leaf(),
             size: None,
             color: None,
             thickness: None,

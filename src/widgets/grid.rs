@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
+use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::GridDef;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
@@ -37,10 +37,8 @@ impl Grid {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        let mut element = Element::new(LayoutMode::Grid);
-        element.set_grid_def(GridDefId::PENDING);
         Self {
-            element,
+            element: Element::grid(GridDefId::PENDING),
             def: GridDef {
                 rows: empty_tracks(),
                 cols: empty_tracks(),

@@ -2,7 +2,6 @@ use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
@@ -46,7 +45,7 @@ pub struct ComboBox<'a> {
 impl<'a> ComboBox<'a> {
     #[track_caller]
     pub fn new(selected: &'a mut usize, options: &'a [&'a str]) -> Self {
-        let mut element = Element::new(LayoutMode::HStack);
+        let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             element,
@@ -93,7 +92,7 @@ impl<'a> ComboBox<'a> {
                 .show(ui);
 
             let arrow_id = id.with("arrow");
-            let mut arrow = Element::new(LayoutMode::Leaf);
+            let mut arrow = Element::leaf();
             arrow.salt = Salt::Verbatim(arrow_id);
             arrow.size = (Sizing::Fixed(ARROW_W), Sizing::Fixed(ARROW_H)).into();
             ui.node(arrow_id, arrow, None, |ui| {

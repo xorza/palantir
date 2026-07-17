@@ -28,7 +28,6 @@ use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::TextCtx;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
@@ -460,7 +459,7 @@ impl Ui {
         // declared `Sizing` / `Sense` on the top-level widget. ZStack +
         // Fill matches the historical "root paints full surface"
         // behavior while letting user roots respect their own sizing.
-        let mut viewport = Element::new(LayoutMode::ZStack);
+        let mut viewport = Element::zstack();
         viewport.size = Sizing::FILL.into();
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`

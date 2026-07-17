@@ -1,6 +1,5 @@
 use crate::forest::element::{Configure, Element};
 use crate::layout::types::align::Align;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
 use crate::text::FontWeight;
@@ -47,7 +46,7 @@ impl Text {
     #[track_caller]
     pub fn new(text: impl Into<InternedStr>) -> Self {
         Self {
-            element: Element::new(LayoutMode::Leaf),
+            element: Element::leaf(),
             text: text.into(),
             style: None,
             weight: None,

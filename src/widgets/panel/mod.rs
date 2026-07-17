@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
@@ -25,10 +24,9 @@ pub struct Panel {
 }
 
 impl Panel {
-    #[track_caller]
-    fn auto(mode: LayoutMode) -> Self {
+    fn auto(element: Element) -> Self {
         Self {
-            element: Element::new(mode),
+            element,
             chrome: None,
         }
     }
@@ -91,12 +89,12 @@ impl Panel {
 
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::auto(LayoutMode::HStack)
+        Self::auto(Element::hstack())
     }
 
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::auto(LayoutMode::VStack)
+        Self::auto(Element::vstack())
     }
 
     /// HStack with overflow wrap: children flow left-to-right; when the
@@ -108,7 +106,7 @@ impl Panel {
     /// to row height.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::auto(LayoutMode::WrapHStack)
+        Self::auto(Element::wrap_hstack())
     }
 
     /// VStack with overflow wrap: children flow top-to-bottom; when the
@@ -117,14 +115,14 @@ impl Panel {
     /// axes swapped.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::auto(LayoutMode::WrapVStack)
+        Self::auto(Element::wrap_vstack())
     }
 
     /// Layered children: each child placed at the parent's inner top-left,
     /// sized per its own `Sizing`. Last sibling paints on top.
     #[track_caller]
     pub fn zstack() -> Self {
-        Self::auto(LayoutMode::ZStack)
+        Self::auto(Element::zstack())
     }
 
     /// Children placed at their declared `Layout.position` (parent-inner
@@ -132,7 +130,7 @@ impl Panel {
     /// box of placed children.
     #[track_caller]
     pub fn canvas() -> Self {
-        Self::auto(LayoutMode::Canvas)
+        Self::auto(Element::canvas())
     }
 }
 

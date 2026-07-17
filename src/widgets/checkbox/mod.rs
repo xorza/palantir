@@ -1,6 +1,5 @@
 use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
@@ -32,7 +31,7 @@ pub struct Checkbox<'a> {
 impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
-        let mut element = Element::new(LayoutMode::HStack);
+        let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             element,

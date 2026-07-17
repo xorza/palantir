@@ -4,7 +4,6 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::background::Background;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -61,7 +60,7 @@ pub struct ContextMenu {
 
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
-        let mut element = Element::new(LayoutMode::VStack);
+        let mut element = Element::vstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             for_id,
@@ -212,7 +211,7 @@ pub struct MenuItem {
 impl MenuItem {
     #[track_caller]
     pub fn new(label: impl Into<InternedStr>) -> Self {
-        let mut element = Element::new(LayoutMode::HStack);
+        let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             element,

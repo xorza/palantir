@@ -1,7 +1,6 @@
 use crate::forest::element::{Configure, Element};
 use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::ui::Ui;
@@ -108,7 +107,7 @@ pub struct Popup {
 impl Popup {
     #[track_caller]
     pub fn anchored_to(anchor: Vec2) -> Self {
-        let mut element = Element::new(LayoutMode::VStack);
+        let mut element = Element::vstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             anchor,
