@@ -149,12 +149,17 @@ To get a Fill column to actually fill, the grid must be `Fixed` or
 
 Implemented in `stack::measure`. Two-pass:
 
-1. **First pass** — measure every child with `available.main = INFINITY`
-   (the WPF intrinsic trick). Children report their natural main size.
+1. **First pass** — measure non-Fill children against the stack's committed
+   main-axis extent. A bounded stack propagates its finite bound so descendants
+   wrap or scroll within that contract; an unbounded stack passes `INFINITY`,
+   so children report their natural main size.
 2. **Second pass** — only if the stack itself has a finite main-axis
    size _and_ there are Fill children: re-measure each Fill child at
    its resolved Fill share, clamped to
    `[intrinsic(MinContent), max_size]`.
+
+The source of truth is [`stack::measure`](stack/mod.rs); its `main_avail`
+derives from the stack's already-resolved `inner_avail`.
 
 Wrap text in Fill children reshapes via the existing `shape_text`
 reshape branch because the second-pass available width is smaller than

@@ -14,10 +14,12 @@ use std::rc::Rc;
 /// through the image pipeline — so the view clips, rounds, and z-orders
 /// like any other widget.
 ///
-/// The renderer persists across frames in the widget's per-`WidgetId`
-/// state (the off-screen texture frees automatically when the widget
-/// disappears). Per-frame parameters are natural: mutate your own `Rc`
-/// before constructing the widget.
+/// The renderer callback persists across frames in the widget's per-`WidgetId`
+/// state. The framework-owned off-screen texture has a shorter lifetime: it is
+/// reclaimed whenever this view is absent from a backend submission, including
+/// when unchanged content is culled. [`GpuPaint::init`] can therefore run again
+/// when the view next paints. Per-frame parameters are natural: mutate your own
+/// `Rc` before constructing the widget.
 ///
 /// ```ignore
 /// let scene = self.scene.clone();          // Rc<RefCell<MyScene>>
@@ -65,10 +67,14 @@ impl GpuView {
     /// Whether the view's content changed this frame (default `true` —
     /// repaint every frame). Pass `false` when your scene is unchanged: the
     /// widget is then treated as **undamaged**, so a frame forced by other
-    /// widgets culls this view and skips its `GpuPaint::paint`, reusing last
-    /// frame's pixels. The off-screen texture is kept alive for as long as the
-    /// widget is recorded, so a later repaint doesn't re-`init`. Drive the
-    /// dirty signal from your own change tracking (camera moved, sim ticked).
+    /// widgets leaves its already-presented surface pixels untouched and skips
+    /// `GpuPaint::paint`. Because a culled view is absent from the backend's
+    /// target list, its off-screen texture is reclaimed; a later repaint
+    /// allocates a new target and calls [`GpuPaint::init`] again. Guard expensive
+    /// setup against re-entry. The authoritative callback contract is
+    /// [`GpuPaint::init`]; target retention is implemented in
+    /// `src/renderer/backend/image_pipeline/render_target.rs`. Drive the dirty
+    /// signal from your own change tracking (camera moved, sim ticked).
     pub fn repaint(mut self, repaint: bool) -> Self {
         self.repaint = repaint;
         self
