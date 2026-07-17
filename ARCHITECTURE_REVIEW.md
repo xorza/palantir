@@ -6,7 +6,7 @@ Aperture's core decomposition is sound: immediate recording produces a compact t
 
 The main risks are narrower contract gaps at subsystem boundaries. The host lifecycle replay issue is now resolved; several public numeric and layout representations still admit states their consumers cannot handle, three layout paths disagree with the documented sizing contract, and two renderer optimizations use non-conservative coverage bounds even though false negatives change pixels or paint order. Most fixes are boundary tightening and shared-policy consolidation rather than a broad rewrite.
 
-This report contains 20 actions in six implementation batches, with thirteen now completed. The first four batches are correctness work; the last two are performance, capacity, build, and documentation cleanup. Review scope was production code under `src/`, `anim-derive`, the crate manifest, and architecture documents. Tests, benches, showcase code, and examples were excluded as review targets.
+This report contains 20 actions in six implementation batches, with fourteen now completed. The first four batches are correctness work; the last two are performance, capacity, build, and documentation cleanup. Review scope was production code under `src/`, `anim-derive`, the crate manifest, and architecture documents. Tests, benches, showcase code, and examples were excluded as review targets.
 
 Verification baseline while reviewing:
 
@@ -65,7 +65,7 @@ Ui::frame
 
 - [x] **Reject rounded-clip chains deeper than the stencil can represent.** The shared rounded-chain contract now owns the eight-bit stencil limit used by both composer and backend mask states. Composer rejects the 256th distinct mask through an out-of-line cold panic before extending frame storage or reaching GPU submission, while depth 255 remains valid. Exact boundary tests pin both outcomes without deriving their expectations from the implementation constant.
 
-- [ ] **Check glyph raster metadata before narrowing it into the packed atlas representation.** The raster path casts `u32` width/height and `i32` placement directly to `u16`/`i16` (`src/renderer/backend/text/encode.rs:361`). Oversized glyphs can wrap to a smaller allocation or even the empty-glyph sentinel while retaining the original bitmap, and large offsets wrap positioning. Use checked conversions and reject/skip a glyph that cannot fit the atlas wire types; keep the decision next to atlas dimension limits and emit a useful diagnostic. Validate each exact boundary and one-above case for width, height, left, and top without relying on an actual giant system font.
+- [x] **Check glyph raster metadata before narrowing it into the packed atlas representation.** Atlas-owned `PackedGlyphMetadata` now checks raster dimensions and placement before any wire-type conversion. Unsupported metadata emits a diagnostic and is cached through the existing unallocated-slot path, preventing repeated rasterization and warning churn while the glyph remains active. Exact tests cover zero, every accepted `u16`/`i16` boundary, and each first out-of-range width, height, left, and top value without requiring a giant font.
 
 ## Batch 5 — Medium: remove duplicated work and silent capacity failures
 

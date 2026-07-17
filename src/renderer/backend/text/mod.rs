@@ -892,7 +892,7 @@ mod gpu_regression {
     }
 
     /// A zero-area glyph entry (whitespace) swept by the periodic
-    /// empty-entry sweep must re-insert cleanly through `insert_empty`
+    /// empty-entry sweep must re-insert cleanly through `insert_unallocated`
     /// on next use.
     #[test]
     fn swept_empty_glyph_reinserts() {
@@ -956,7 +956,7 @@ mod gpu_regression {
 
         // Re-encoding the same run re-inserts the empty entry (the
         // encoded cache was itself swept after 120 idle frames, so this
-        // is a full walk through rasterize_and_insert → insert_empty).
+        // is a full walk through rasterize_and_insert → insert_unallocated).
         run_one_frame(&device, &queue, &mut backend, 1.0, &runs);
         assert_eq!(
             empties(&backend),
