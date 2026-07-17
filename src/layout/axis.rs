@@ -45,12 +45,6 @@ impl Axis {
             Axis::Y => s.h(),
         }
     }
-    pub(crate) fn cross_sizing(self, s: Sizes) -> Sizing {
-        match self {
-            Axis::X => s.h(),
-            Axis::Y => s.w(),
-        }
-    }
     /// Total spacing along this axis (left+right for X, top+bottom for Y).
     pub(crate) fn spacing(self, s: Spacing) -> f32 {
         match self {
