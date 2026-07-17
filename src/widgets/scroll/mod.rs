@@ -1,4 +1,5 @@
 use crate::forest::element::{Configure, Element, Salt};
+use crate::input;
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
@@ -47,25 +48,45 @@ pub enum ZoomPivot {
 /// [`Scroll::with_zoom`] / [`Scroll::with_zoom_config`].
 #[derive(Clone, Debug)]
 pub struct ZoomConfig {
-    /// Inclusive `[min, max]` zoom range. Default `0.1..=10.0`.
-    pub range: RangeInclusive<f32>,
-    /// Multiplicative factor per wheel notch; `step.powf(notches)`.
-    /// Default `1.03` (3% per notch).
-    pub step: f32,
+    range: RangeInclusive<f32>,
+    step: f32,
     /// Wheel-vs-pinch routing. Default [`ZoomModifier::Ctrl`].
     pub modifier: ZoomModifier,
     /// Where the zoom step pivots. Default [`ZoomPivot::Pointer`].
     pub pivot: ZoomPivot,
 }
 
-impl Default for ZoomConfig {
-    fn default() -> Self {
+const ZOOM_RANGE_ERROR: &str = "zoom range must satisfy 0 < min <= max with finite bounds";
+const ZOOM_STEP_ERROR: &str = "zoom step must be finite and positive";
+
+impl ZoomConfig {
+    /// Configure the inclusive zoom range and multiplicative wheel factor.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both range bounds are finite, `0 < min <= max`, and
+    /// `step` is finite and positive.
+    #[track_caller]
+    pub fn new(range: RangeInclusive<f32>, step: f32) -> Self {
+        let min = *range.start();
+        let max = *range.end();
+        assert!(
+            input::zoom_factor_is_valid(min) && input::zoom_factor_is_valid(max) && min <= max,
+            "{ZOOM_RANGE_ERROR}"
+        );
+        assert!(input::zoom_factor_is_valid(step), "{ZOOM_STEP_ERROR}");
         Self {
-            range: 0.1..=10.0,
-            step: 1.03,
+            range,
+            step,
             modifier: ZoomModifier::Ctrl,
             pivot: ZoomPivot::Pointer,
         }
+    }
+}
+
+impl Default for ZoomConfig {
+    fn default() -> Self {
+        Self::new(0.1..=10.0, 1.03)
     }
 }
 
@@ -508,11 +529,14 @@ impl Scroll {
         // which by convention zooms *out* (factor < 1).
         let (pan_delta, wheel_zoom_factor) = if wheel_zoom_gate {
             let cfg = self.zoom.as_ref().unwrap();
-            (Vec2::ZERO, cfg.step.powf(-wheel_notches.y))
+            (
+                Vec2::ZERO,
+                input::wheel_zoom_factor(cfg.step, wheel_notches.y),
+            )
         } else {
             (pan_delta_raw, 1.0_f32)
         };
-        let zoom_delta = pinch_delta * wheel_zoom_factor;
+        let zoom_delta = input::combine_zoom_factors(pinch_delta, wheel_zoom_factor);
         // Pivot in widget-local coords (outer rect origin). On the
         // first frame the response rect is None — fall back to viewport
         // center, which makes the zoom *feel* anchored even before

@@ -6,3 +6,4 @@ mod response_state;
 mod scroll;
 mod scroll_routing;
 mod subscriptions;
+mod zoom;

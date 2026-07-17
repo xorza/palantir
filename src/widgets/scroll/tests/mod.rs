@@ -1,3 +1,5 @@
+mod zoom_config;
+
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
@@ -370,8 +372,6 @@ fn scroll_state_content_survives_measure_cache_hit() {
 
 #[test]
 fn pinch_zoom_keeps_point_under_cursor_fixed() {
-    use crate::widgets::scroll::{ZoomConfig, ZoomPivot};
-
     const OUTER_PAD: f32 = 16.0;
     const TEXT_GAP: f32 = 24.0;
 
@@ -440,10 +440,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .show(ui);
                     Scroll::both()
                         .id(WidgetId::from_hash("xy"))
-                        .with_zoom_config(ZoomConfig {
-                            pivot: ZoomPivot::Pointer,
-                            ..ZoomConfig::default()
-                        })
+                        .with_zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
@@ -532,8 +529,6 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 /// natural range works, pan further out is blocked.
 #[test]
 fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
-    use crate::widgets::scroll::{ZoomConfig, ZoomPivot};
-
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack()
@@ -541,10 +536,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("xy"))
-                    .with_zoom_config(ZoomConfig {
-                        pivot: ZoomPivot::Pointer,
-                        ..ZoomConfig::default()
-                    })
+                    .with_zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
