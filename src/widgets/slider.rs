@@ -73,10 +73,10 @@ impl<'a> Slider<'a> {
         let knob_color = theme.knob;
 
         // Pointer drives the value: pressing or dragging the rail maps
-        // the cursor x (relative to last frame's rect) to the value.
+        // the cursor x against the last frame's logical width.
         if !state.disabled
             && (state.pressed() || state.left.drag.dragging())
-            && let (Some(local), Some(rect)) = (state.pointer_local, state.rect)
+            && let (Some(local), Some(rect)) = (state.pointer_local, state.layout_rect)
         {
             let f = pointer_to_fraction(local.x, rect.size.w, knob);
             let v = snap_to_step(
@@ -186,12 +186,14 @@ mod tests {
     use crate::forest::element::Configure;
     use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
+    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::widget_id::WidgetId;
     use crate::widgets::panel::Panel;
     use crate::widgets::slider::{
         Slider, clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step,
         value_to_fraction,
     };
-    use glam::UVec2;
+    use glam::{UVec2, Vec2};
 
     /// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
     /// default (the `Sizes::default()` "caller didn't set a size"
@@ -287,6 +289,43 @@ mod tests {
         // Past the ends clamps.
         assert!((pointer_to_fraction(0.0, track_w, knob) - 0.0).abs() < 1e-6);
         assert!((pointer_to_fraction(200.0, track_w, knob) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pointer_mapping_is_scale_invariant() {
+        let id = WidgetId::from_hash("scaled-slider");
+        for scale in [0.5, 1.0, 2.0] {
+            for (local_x, expected) in [(9.0, 0.0), (34.5, 0.25), (111.0, 1.0)] {
+                let mut ui = Ui::for_test();
+                let mut value = 0.5;
+                let build = |ui: &mut Ui, value: &mut f32| {
+                    Panel::zstack()
+                        .id(WidgetId::from_hash("scaled-slider-parent"))
+                        .transform(TranslateScale::from_scale(scale))
+                        .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
+                        .show(ui, |ui| {
+                            Slider::new(value, 0.0..=1.0)
+                                .id(id)
+                                .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
+                                .show(ui);
+                        });
+                };
+                ui.run_at_acked(UVec2::new(300, 100), |ui| build(ui, &mut value));
+
+                let response = ui.response_for(id);
+                let layout = response.layout_rect.expect("slider arranged");
+                let pointer = response
+                    .transform
+                    .apply_point(layout.min + Vec2::new(local_x, 9.0));
+                ui.press_at(pointer);
+                ui.run_at_acked(UVec2::new(300, 100), |ui| build(ui, &mut value));
+
+                assert!(
+                    (value - expected).abs() < 1e-6,
+                    "logical x={local_x} at {scale}× produced {value}, expected {expected}",
+                );
+            }
+        }
     }
 
     #[test]

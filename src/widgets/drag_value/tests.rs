@@ -7,6 +7,7 @@ use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::drag_value::{DragEdit, DragNum, DragValue, round_to_decimals};
+use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
 #[derive(Debug)]
@@ -103,6 +104,48 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
     let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
     assert!(!s.changed && !s.committed);
     assert_eq!(canonical, 35.0);
+}
+
+#[test]
+fn scrub_distance_is_scale_invariant() {
+    use crate::primitives::transform::TranslateScale;
+
+    let id = WidgetId::from_hash("scaled-drag-value");
+    for scale in [0.5, 1.0, 2.0] {
+        let mut ui = Ui::for_test();
+        let mut value = 10.0_f64;
+        let build = |ui: &mut Ui, value: &mut f64| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("scaled-drag-value-parent"))
+                .transform(TranslateScale::from_scale(scale))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .show(ui, |ui| {
+                    DragValue::new(value)
+                        .editable(false)
+                        .speed(1.0)
+                        .decimals(2)
+                        .id(id)
+                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                        .show(ui);
+                });
+        };
+        ui.run_at_acked(UVec2::new(300, 120), |ui| build(ui, &mut value));
+
+        let response = ui.response_for(id);
+        let layout = response.layout_rect.expect("drag value arranged");
+        let press = response
+            .transform
+            .apply_point(layout.min + Vec2::new(50.0, 20.0));
+        let drag = response
+            .transform
+            .apply_point(layout.min + Vec2::new(70.0, 20.0));
+        ui.on_input(InputEvent::PointerMoved(press));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerMoved(drag));
+        ui.run_at_acked(UVec2::new(300, 120), |ui| build(ui, &mut value));
+
+        assert_eq!(value, 30.0, "20 logical px at {scale}× must add exactly 20",);
+    }
 }
 
 #[test]

@@ -955,7 +955,7 @@ impl InputState {
                 && press.target == id
                 && press.drag != PressDrag::None
             {
-                let delta = pointer - press.origin;
+                let delta = transform.inverse_vector(pointer - press.origin);
                 drag = if press.drag == PressDrag::Started {
                     Drag::Started { delta }
                 } else {
@@ -985,7 +985,10 @@ impl InputState {
             },
             zoom: self.zoom_delta_for(id),
         };
-        let pointer_local = self.pointer_pos.zip(rect).map(|(p, r)| p - r.min);
+        let pointer_local = self.pointer_pos.zip(layout_rect).map(|(pointer, layout)| {
+            let surface_origin = transform.apply_point(layout.min);
+            transform.inverse_vector(pointer - surface_origin)
+        });
 
         ResponseState {
             rect,

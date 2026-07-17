@@ -27,11 +27,12 @@ pub struct InputDelta {
 /// `None` → `Started` (the threshold-crossing frame) → `Active` (every
 /// following held frame) → `Stopped` (the release frame) → `None`.
 ///
-/// `delta` is the cumulative pointer travel since press —
-/// rect-independent; the pointer may leave the widget's rect mid-drag
-/// and the delta keeps tracking. `Stopped` carries no delta: the
-/// capture is already gone, so commit-on-release gestures stash the
-/// running value while `Started`/`Active` and commit it on `Stopped`.
+/// `delta` is the cumulative pointer travel since press in pre-transform
+/// widget-local logical coordinates. It is rect-independent; the pointer
+/// may leave the widget's rect mid-drag and the delta keeps tracking.
+/// `Stopped` carries no delta: the capture is already gone, so
+/// commit-on-release gestures stash the running value while
+/// `Started`/`Active` and commit it on `Stopped`.
 ///
 /// A same-frame stop-and-relatch (release + press + threshold-crossing
 /// move all in one event batch) reports the fresh `Started` — the new
@@ -224,7 +225,8 @@ impl Default for ScrollDelta {
 }
 
 /// Snapshot of one widget's interaction state for the current frame.
-/// `rect` is the widget's last-frame logical-pixel rect (`None` on first frame).
+/// `rect` is the widget's last-frame visible surface-space rect (`None`
+/// on first frame), after ancestor transforms and clipping.
 ///
 /// `disabled` is the **cascaded** disabled flag (the widget OR any ancestor),
 /// read from the previous frame's cascade — one-frame stale, like
@@ -248,17 +250,14 @@ pub struct ResponseState {
     /// owner-local offset under another.
     pub layout_rect: Option<Rect>,
     /// Cumulative ancestor transform mapping this widget's `layout_rect`
-    /// into `rect` (screen space): `rect == transform.apply_rect(layout_rect)`.
+    /// into unclipped surface space. The visible [`Self::rect`] may be
+    /// smaller when an ancestor clips the widget.
     /// [`TranslateScale::IDENTITY`] when the widget sits under no transform.
-    /// Use it to convert a surface-space pointer into the widget's own
-    /// logical coordinates — e.g. `transform.inverse_vector(ptr - rect.min)`
-    /// for hit-testing content laid out in logical px under a zoomed canvas.
     pub transform: TranslateScale,
-    /// Cursor position relative to this widget's `rect.min`. `None`
-    /// when the pointer is off-surface or the widget didn't arrange
-    /// (no `rect`). Useful as a pivot for zoom-about-cursor or any
-    /// custom local-space hit math without recomputing the rect
-    /// origin at every call site.
+    /// Cursor position in pre-transform widget-local logical coordinates,
+    /// relative to [`Self::layout_rect`]'s origin. `None` when the pointer
+    /// is off-surface or the widget didn't arrange. This remains relative
+    /// to the full widget when ancestor clipping trims [`Self::rect`].
     pub pointer_local: Option<Vec2>,
     pub hovered: bool,
     pub disabled: bool,

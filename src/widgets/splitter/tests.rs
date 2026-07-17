@@ -7,8 +7,10 @@ use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::frame::Frame;
+use crate::widgets::panel::Panel;
 use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::CursorIcon;
@@ -89,6 +91,71 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         (ratio - 0.875).abs() < 1e-6,
         "ratio holds after release, got {ratio}"
     );
+}
+
+#[test]
+fn divider_drag_is_scale_invariant() {
+    for scale in [0.5, 1.0, 2.0] {
+        let mut ui = Ui::for_test();
+        let mut ratio = 0.5;
+        let frame = |ui: &mut Ui, ratio: &mut f32| {
+            ui.run_at_acked(UVec2::new(1_000, 400), |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("scaled-split-parent"))
+                    .transform(TranslateScale::from_scale(scale))
+                    .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
+                    .show(ui, |ui| {
+                        Splitter::horizontal(ratio)
+                            .id(split_id())
+                            .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
+                            .min_pane(50.0)
+                            .show(ui, |_, _| {});
+                    });
+            });
+        };
+        frame(&mut ui, &mut ratio);
+        frame(&mut ui, &mut ratio);
+
+        let divider = ui
+            .response_for(split_id().with("divider"))
+            .rect
+            .expect("divider arranged");
+        ui.press_at(divider.center());
+        let splitter = ui.response_for(split_id());
+        let layout = splitter.layout_rect.expect("splitter arranged");
+        let pointer = splitter
+            .transform
+            .apply_point(layout.min + Vec2::new(300.5, 50.0));
+        ui.on_input(InputEvent::PointerMoved(pointer));
+        frame(&mut ui, &mut ratio);
+
+        assert!(
+            (ratio - 0.75).abs() < 1e-6,
+            "logical pointer 300.5 over span 400 at {scale}× produced {ratio}",
+        );
+
+        let beyond_limit = splitter
+            .transform
+            .apply_point(layout.min + Vec2::new(380.0, 50.0));
+        ui.on_input(InputEvent::PointerMoved(beyond_limit));
+        frame(&mut ui, &mut ratio);
+        let first = ui.node_for_widget_id(split_id().with("first"));
+        assert_eq!(
+            ui.layout[Layer::Main].rect[first.idx()].size.w,
+            350.0,
+            "50 px second-pane minimum at {scale}×",
+        );
+
+        let next = splitter
+            .transform
+            .apply_point(layout.min + Vec2::new(381.0, 50.0));
+        ui.on_input(InputEvent::PointerMoved(next));
+        frame(&mut ui, &mut ratio);
+        assert!(
+            (ratio - 0.875).abs() < 1e-6,
+            "minimum-pane ratio at {scale}× produced {ratio}",
+        );
+    }
 }
 
 #[test]

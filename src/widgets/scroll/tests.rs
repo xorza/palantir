@@ -5,6 +5,7 @@ use crate::input::InputEvent;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -614,6 +615,51 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     let panned = *ui.scroll_state(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset.y, zoomed.offset.y);
+}
+
+#[test]
+fn pointer_zoom_pivot_is_scale_invariant() {
+    let id = WidgetId::from_hash("scaled-scroll");
+    let scroll_id = id.with("__viewport");
+    let logical_pointer = Vec2::new(50.0, 70.0);
+
+    for scale in [0.5, 1.0, 2.0] {
+        let mut ui = Ui::for_test();
+        let build = |ui: &mut Ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("scaled-scroll-parent"))
+                .transform(TranslateScale::from_scale(scale))
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    Scroll::both()
+                        .id(id)
+                        .with_zoom()
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("scaled-scroll-content"))
+                                .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+                                .show(ui);
+                        });
+                });
+        };
+        ui.run_at_acked(SURFACE, build);
+
+        let response = ui.response_for(id);
+        let layout = response.layout_rect.expect("scroll arranged");
+        let pointer = response.transform.apply_point(layout.min + logical_pointer);
+        ui.on_input(InputEvent::PointerMoved(pointer));
+        ui.on_input(InputEvent::Zoom(1.5));
+        ui.run_at_acked(SURFACE, build);
+
+        let state = *ui.scroll_state(scroll_id);
+        assert_eq!(state.zoom, 1.5, "zoom at {scale}×");
+        assert_eq!(
+            state.offset,
+            logical_pointer * 0.5,
+            "pointer pivot at {scale}×",
+        );
+    }
 }
 
 mod bars {
@@ -1367,52 +1413,59 @@ mod bars {
 #[test]
 fn drag_thumb_pans_proportionally() {
     use crate::input::pointer::PointerButton;
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id(WidgetId::from_hash("tall"))
-                            .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                            .show(ui);
-                    });
-            });
-    };
-    ui.run_at_acked(SURFACE, build);
-    ui.run_at_acked(SURFACE, build);
+    for scale in [0.5, 1.0, 2.0] {
+        let mut ui = Ui::for_test();
+        let build = |ui: &mut Ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("scaled-scrollbar-parent"))
+                .transform(TranslateScale::from_scale(scale))
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
+                                .show(ui);
+                        });
+                });
+        };
+        ui.run_at_acked(SURFACE, build);
+        ui.run_at_acked(SURFACE, build);
 
-    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-    let thumb_id = scroll_id.with("__vthumb");
-    let thumb_rect = ui.response_for(thumb_id).rect.expect("thumb visible");
-    let press = thumb_rect.min + Vec2::new(thumb_rect.size.w * 0.5, thumb_rect.size.h * 0.5);
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let thumb_id = scroll_id.with("__vthumb");
+        let thumb_rect = ui.response_for(thumb_id).rect.expect("thumb visible");
+        let press = thumb_rect.min + Vec2::new(thumb_rect.size.w * 0.5, thumb_rect.size.h * 0.5);
 
-    ui.on_input(InputEvent::PointerMoved(press));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerMoved(press + Vec2::new(0.0, 30.0)));
+        ui.on_input(InputEvent::PointerMoved(press));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerMoved(
+            press + Vec2::new(0.0, 30.0 * scale),
+        ));
+        ui.run_at_acked(SURFACE, build);
 
-    ui.run_at_acked(SURFACE, build);
+        // viewport = 200, content = 800 ⇒ max_offset = 600.
+        // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
+        // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
+        let offset_y = ui.scroll_state(scroll_id).offset.y;
+        assert!(
+            (offset_y - 120.0).abs() < 0.5,
+            "30 logical px at {scale}× should produce offset 120, got {offset_y}",
+        );
 
-    // viewport = 200, content = 800 ⇒ max_offset = 600.
-    // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
-    // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
-    let offset_y = ui.scroll_state(scroll_id).offset.y;
-    assert!(
-        (offset_y - 120.0).abs() < 0.5,
-        "expected offset.y ≈ 120 after 30 px drag (factor=4), got {offset_y}",
-    );
-
-    ui.on_input(InputEvent::PointerMoved(press + Vec2::new(0.0, 9_999.0)));
-    ui.run_at_acked(SURFACE, build);
-    assert_eq!(
-        ui.scroll_state(scroll_id).offset.y,
-        600.0,
-        "drag past end clamps to max_offset (content - viewport)",
-    );
+        ui.on_input(InputEvent::PointerMoved(
+            press + Vec2::new(0.0, 9_999.0 * scale),
+        ));
+        ui.run_at_acked(SURFACE, build);
+        assert_eq!(
+            ui.scroll_state(scroll_id).offset.y,
+            600.0,
+            "drag past end at {scale}× clamps to max offset",
+        );
+    }
 }
 
 #[test]
@@ -1429,69 +1482,74 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
         ("vertical", AxisCase::V, "scroll", "__vtrack", 200.0),
         ("horizontal", AxisCase::H, "hscroll", "__htrack", 200.0),
     ];
-    for (label, axis, scroll_key, track_suffix, page_step) in cases {
-        let mut ui = Ui::for_test();
-        let build_axis = |ui: &mut Ui| match axis {
-            AxisCase::V => build(ui, 200.0, 800.0),
-            AxisCase::H => {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("root"))
-                    .show(ui, |ui| {
-                        Scroll::horizontal()
-                            .id(WidgetId::from_hash("hscroll"))
-                            .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
-                            .show(ui, |ui| {
-                                Frame::new()
-                                    .id(WidgetId::from_hash("hcontent"))
-                                    .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
-                                    .show(ui);
-                            });
+    for scale in [0.5, 1.0, 2.0] {
+        for (label, axis, scroll_key, track_suffix, page_step) in cases {
+            let mut ui = Ui::for_test();
+            let build_axis = |ui: &mut Ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("scaled-track-parent"))
+                    .transform(TranslateScale::from_scale(scale))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                    .show(ui, |ui| match axis {
+                        AxisCase::V => build(ui, 200.0, 800.0),
+                        AxisCase::H => {
+                            Panel::vstack()
+                                .id(WidgetId::from_hash("root"))
+                                .show(ui, |ui| {
+                                    Scroll::horizontal()
+                                        .id(WidgetId::from_hash("hscroll"))
+                                        .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
+                                        .show(ui, |ui| {
+                                            Frame::new()
+                                                .id(WidgetId::from_hash("hcontent"))
+                                                .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
+                                                .show(ui);
+                                        });
+                                });
+                        }
                     });
-            }
-        };
-        ui.run_at_acked(SURFACE, build_axis);
+            };
+            ui.run_at_acked(SURFACE, build_axis);
 
-        let scroll_id = WidgetId::from_hash(*scroll_key).with("__viewport");
-        let track_id = scroll_id.with(*track_suffix);
-        let track_rect = ui.response_for(track_id).rect.expect("track visible");
-        let (forward_press, back_press) = match axis {
-            AxisCase::V => (
-                track_rect.min + Vec2::new(track_rect.size.w * 0.5, track_rect.size.h - 4.0),
-                track_rect.min + Vec2::new(track_rect.size.w * 0.5, 4.0),
-            ),
-            AxisCase::H => (
-                track_rect.min + Vec2::new(track_rect.size.w - 4.0, track_rect.size.h * 0.5),
-                track_rect.min + Vec2::new(4.0, track_rect.size.h * 0.5),
-            ),
-        };
+            let scroll_id = WidgetId::from_hash(*scroll_key).with("__viewport");
+            let track_id = scroll_id.with(*track_suffix);
+            let track = ui.response_for(track_id);
+            let layout = track.layout_rect.expect("track arranged");
+            let (forward_local, back_local) = match axis {
+                AxisCase::V => (Vec2::new(6.0, 196.0), Vec2::new(6.0, 4.0)),
+                AxisCase::H => (Vec2::new(196.0, 6.0), Vec2::new(4.0, 6.0)),
+            };
+            let forward_press = track.transform.apply_point(layout.min + forward_local);
+            let back_press = track.transform.apply_point(layout.min + back_local);
 
-        ui.on_input(InputEvent::PointerMoved(forward_press));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-        ui.run_at_acked(SURFACE, build_axis);
-        let offset = ui.scroll_state(scroll_id).offset;
-        let forward = match axis {
-            AxisCase::V => offset.y,
-            AxisCase::H => offset.x,
-        };
-        assert_eq!(
-            forward, *page_step,
-            "case: {label} — click past thumb pages forward by viewport",
-        );
+            ui.on_input(InputEvent::PointerMoved(forward_press));
+            ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+            ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            ui.run_at_acked(SURFACE, build_axis);
+            let offset = ui.scroll_state(scroll_id).offset;
+            let forward = match axis {
+                AxisCase::V => offset.y,
+                AxisCase::H => offset.x,
+            };
+            assert_eq!(
+                forward, *page_step,
+                "case: {label} at {scale}× — click past thumb pages forward",
+            );
 
-        ui.on_input(InputEvent::PointerMoved(back_press));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-        ui.run_at_acked(SURFACE, build_axis);
-        let offset = ui.scroll_state(scroll_id).offset;
-        let back = match axis {
-            AxisCase::V => offset.y,
-            AxisCase::H => offset.x,
-        };
-        assert_eq!(
-            back, 0.0,
-            "case: {label} — click before thumb pages back to 0"
-        );
+            ui.on_input(InputEvent::PointerMoved(back_press));
+            ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+            ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            ui.run_at_acked(SURFACE, build_axis);
+            let offset = ui.scroll_state(scroll_id).offset;
+            let back = match axis {
+                AxisCase::V => offset.y,
+                AxisCase::H => offset.x,
+            };
+            assert_eq!(
+                back, 0.0,
+                "case: {label} at {scale}× — click before thumb pages back",
+            );
+        }
     }
 }
 

@@ -98,20 +98,12 @@ pub(crate) fn handle_input(
     // to release regardless of pointer position, so the caret follows the
     // clamped hit (byte 0 / end-of-text) and the selection grows instead
     // of freezing and dropping the anchor at the edge. When the pointer
-    // has left the surface (`pointer_pos == None`) the inner `let` fails
+    // has left the surface (`pointer_local == None`) the inner `let` fails
     // and we fall through *without* clearing the anchor — the gesture is
     // still live, just position-less this frame.
     if resp_state.left.held()
-        && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
+        && let Some(pointer_offset) = resp_state.pointer_local
     {
-        // `ptr` and `rect` are in surface (post-transform) space, but glyphs
-        // are laid out — and `byte_at_xy` hit-tests — in logical px. Under a
-        // scaled ancestor (canvas zoom) the widget's on-screen size differs
-        // from its layout size, so divide out the transform's scale to bring
-        // the click's offset into logical space before subtracting the logical
-        // padding / align / scroll — else the caret lands on the wrong glyph
-        // whenever zoom ≠ 1.
-        let pointer_offset = resp_state.transform.inverse_vector(ptr - rect.min);
         // Hit-test runs against the *unscrolled* shaped layout, so
         // we add last frame's scroll back into the pointer's local
         // coords. Updated scroll for this frame is computed after
