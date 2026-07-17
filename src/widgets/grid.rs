@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::GridDef;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
@@ -38,7 +37,7 @@ impl Grid {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            element: Element::grid(GridDefId::PENDING),
+            element: Element::grid(),
             def: GridDef {
                 rows: empty_tracks(),
                 cols: empty_tracks(),
