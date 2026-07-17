@@ -1,12 +1,14 @@
-//! Critically-damped spring step (semi-implicit Euler), generic over
-//! [`Animatable`]. One step advances `(current, velocity)` toward
-//! `target` by `dt` seconds. Settle thresholds are tuned for
-//! normalized 0..1 / pixel-scale values; visually settled animations
-//! reach the threshold in <1s for typical stiffness.
+//! Damped spring step (semi-implicit Euler), generic over [`Animatable`].
+//! Accepted parameters have a bounded convergence rate and integration cost;
+//! each call adapts its substep to the spring's actual stability boundary.
 
 use crate::animation::animatable::Animatable;
-use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT};
 use crate::primitives::approx::EPS;
+
+const STABILITY_SAFETY: f64 = 0.8;
+const MIN_DECAY_RATE: f64 = 1.0;
+const MAX_SUBSTEPS_PER_FRAME: f32 = 256.0;
 
 // Spring settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to
 // give the integrator a more forgiving floor in pixel-scale animations
@@ -60,20 +62,44 @@ pub(crate) struct SpringStep<T: Animatable> {
     pub(crate) settled: bool,
 }
 
+pub(crate) fn stable_substep_dt(stiffness: f32, damping: f32) -> f32 {
+    let stiffness = f64::from(stiffness);
+    let damping = f64::from(damping);
+    let boundary = 4.0 / ((damping * damping + 4.0 * stiffness).sqrt() + damping);
+    ANIM_SUBSTEP_DT.min((boundary * STABILITY_SAFETY) as f32)
+}
+
+fn decay_rate(stiffness: f32, damping: f32) -> f64 {
+    let stiffness = f64::from(stiffness);
+    let half_damping = f64::from(damping) * 0.5;
+    let discriminant = half_damping * half_damping - stiffness;
+    if discriminant <= 0.0 {
+        half_damping
+    } else {
+        stiffness / (half_damping + discriminant.sqrt())
+    }
+}
+
+pub(crate) fn params_are_valid(stiffness: f32, damping: f32, substep_dt: f32) -> bool {
+    if !(stiffness.is_finite() && stiffness > 0.0 && damping.is_finite() && damping > 0.0) {
+        return false;
+    }
+    decay_rate(stiffness, damping) >= MIN_DECAY_RATE
+        && substep_dt > 0.0
+        && (MAX_ANIM_DT / substep_dt).ceil() <= MAX_SUBSTEPS_PER_FRAME
+}
+
 pub(crate) fn step<T: Animatable>(
     stiffness: f32,
     damping: f32,
+    substep_dt: f32,
     current: T,
     velocity: T,
     target: T,
     dt: f32,
 ) -> SpringStep<T> {
-    // Sub-step so the inner Euler dt is always safely below the
-    // stability boundary. `ceil(dt / ANIM_SUBSTEP_DT)` substeps of
-    // equal width; for the typical 60Hz frame (dt = 0.016) this is 4
-    // substeps, for the worst-case stalled frame (dt at its 0.1s clamp)
-    // it's 24. Cheap relative to a single layout pass.
-    let n = (dt / ANIM_SUBSTEP_DT).ceil().max(1.0);
+    debug_assert!(dt.is_finite() && (0.0..=MAX_ANIM_DT).contains(&dt));
+    let n = (dt / substep_dt).ceil().max(1.0);
     let sub_dt = dt / n;
     let mut cur = current;
     let mut vel = velocity;
