@@ -150,7 +150,7 @@ impl Tree {
             "paint_anims.by_shape exceeds shapes.records",
         );
         self.rollups.reset_for(self.records.len());
-        self.compute_hashes();
+        self.compute_rollups();
     }
 
     /// Fused reverse-pre-order pass: computes both hash columns and
@@ -158,12 +158,12 @@ impl Tree {
     /// `subtree[i]` reads `node[i]` (just written this iteration) and
     /// the already-finalized `subtree[children]` (visited earlier in
     /// the reverse pass).
-    fn compute_hashes(&mut self) {
+    fn compute_rollups(&mut self) {
         let n = self.records.len();
         let layouts = self.records.layout();
         let attrs = self.records.attrs();
         // Per-shape hashes are canonical — populated by `Shapes::add`
-        // at lowering time. compute_hashes just folds them into the
+        // at lowering time. compute_rollups just folds them into the
         // owner's node hasher in record order.
         let shape_hashes = self.shapes.hashes.as_slice();
         let widget_ids = self.records.widget_id();

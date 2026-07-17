@@ -2093,7 +2093,7 @@ fn close_request_veto_protocol() {
 
 /// O5 stage-0 completeness for the *identity* cascade inputs: the
 /// layer a root subtree lives on and the root's own `WidgetId`.
-/// Neither reaches any subtree hash (`compute_hashes` folds only
+/// Neither reaches any subtree hash (`compute_rollups` folds only
 /// child ids into parents, and roots have no parent), so the
 /// fingerprint folds them explicitly. A wrongly matching fingerprint
 /// here reuses per-layer cascade columns sized for the previous
