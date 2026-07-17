@@ -1,10 +1,12 @@
 use crate::Ui;
 use crate::app::App;
 use crate::display::Display;
+use crate::host::winit::WinitHost;
+use crate::host::winit::config::WinitHostConfig;
 use crate::input::InputEvent;
 use crate::ui::frame::{FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::FrameProcessing;
-use crate::window::WindowToken;
+use crate::window::{WindowConfig, WindowToken};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -34,6 +36,40 @@ impl App for CountingApp {
             ui.request_relayout();
         }
     }
+}
+
+#[test]
+fn builder_retains_defaults_and_granular_overrides() {
+    let defaults = WinitHost::<CountingApp>::builder(WindowToken(3));
+    assert_eq!(defaults.first_token, WindowToken(3));
+    assert_eq!(defaults.config.present_mode, wgpu::PresentMode::AutoVsync);
+    assert_eq!(
+        defaults.config.power_preference,
+        wgpu::PowerPreference::LowPower
+    );
+    assert!(!defaults.config.collect_gpu_stats);
+
+    let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
+        .config(WinitHostConfig {
+            window: WindowConfig::new("config"),
+            present_mode: wgpu::PresentMode::Fifo,
+            power_preference: wgpu::PowerPreference::None,
+            collect_gpu_stats: false,
+        })
+        .window(WindowConfig::new("window"))
+        .title("title")
+        .present_mode(wgpu::PresentMode::Immediate)
+        .power_preference(wgpu::PowerPreference::HighPerformance)
+        .collect_gpu_stats(true);
+
+    assert_eq!(builder.first_token, WindowToken(9));
+    assert_eq!(builder.config.window.title, "title");
+    assert_eq!(builder.config.present_mode, wgpu::PresentMode::Immediate);
+    assert_eq!(
+        builder.config.power_preference,
+        wgpu::PowerPreference::HighPerformance
+    );
+    assert!(builder.config.collect_gpu_stats);
 }
 
 fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessing {

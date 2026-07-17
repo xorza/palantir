@@ -170,7 +170,7 @@ impl Gpu {
 
     /// Build the one shared [`WgpuBackend`] every window renders through,
     /// cloning the shared resources it needs from `ctx`. Format-agnostic —
-    /// each window attaches via `WindowRenderer::new` and its
+    /// each window attaches via `WindowRenderer::builder` and its
     /// format's pipelines build lazily on first submit.
     pub(crate) fn make_backend(&self, ctx: &HostContext) -> WgpuBackend {
         WgpuBackend::new(self.device.clone(), self.queue.clone(), ctx)

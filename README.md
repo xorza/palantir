@@ -112,13 +112,10 @@ impl App for Counter {
 }
 
 fn main() {
-    // `new` takes the first window's token and a factory that
-    // constructs the app once its `Ui` and host handle are live.
-    WinitHost::new(WindowToken(0), |_ui, _host| {
-        Counter { clicks: 0 }
-    })
-    .title("counter")
-    .run();
+    WinitHost::builder(WindowToken(0))
+        .title("counter")
+        .build(|_ui, _host| Counter { clicks: 0 })
+        .run();
 }
 ```
 

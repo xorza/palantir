@@ -122,13 +122,14 @@ fn target(device: &wgpu::Device) -> wgpu::Texture {
 }
 
 fn host(gpu: &Gpu) -> OffscreenHost {
-    let mut host = OffscreenHost::new(
+    let mut host = OffscreenHost::builder(
         WindowToken(0),
         gpu.device.clone(),
         gpu.queue.clone(),
         TextShaper::with_bundled_fonts(),
     )
-    .collect_gpu_stats(true);
+    .collect_gpu_stats(true)
+    .build();
     host.ui().theme.panel_background = None;
     host
 }
