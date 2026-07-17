@@ -105,12 +105,13 @@ pub fn bench() {
     let g = gpu();
     // The public offscreen path always copies from its backbuffer so the
     // per-frame alloc floor this bench pins excludes the direct-present path.
-    let mut host = OffscreenHost::new(
+    let mut host = OffscreenHost::builder(
         WindowToken(0),
         g.device.clone(),
         g.queue.clone(),
         aperture::TextShaper::with_bundled_fonts(),
-    );
+    )
+    .build();
     let mut state = FrameFixture::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {

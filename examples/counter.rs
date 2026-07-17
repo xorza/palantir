@@ -30,7 +30,8 @@ impl App for Counter {
 }
 
 fn main() {
-    WinitHost::new(WindowToken(0), Counter::new)
+    WinitHost::builder(WindowToken(0))
         .title("counter")
+        .build(Counter::new)
         .run();
 }
