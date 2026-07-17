@@ -791,7 +791,7 @@ fn empty_line_x(max_width_px: Option<f32>, halign: HAlign) -> f32 {
 /// shifted by the alignment offset, `size` = the measured bbox (the
 /// composer takes `min` as the glyph origin and `size` as the clip
 /// bounds). Glyphs don't stretch, so `Auto`/`Stretch` collapse to
-/// start — matches `place_axis` for non-stretchable content — and
+/// start — matches arrange-axis placement for non-stretchable content — and
 /// overflow on an axis clamps that axis's offset to zero so oversized
 /// text pins to the leading edge.
 ///

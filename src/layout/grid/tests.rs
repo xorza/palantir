@@ -177,8 +177,8 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
     );
 }
 
-/// A `Hug` column with a `.max()` clamp caps both shrinkable and rigid
-/// content instead of stretching the track past its declared maximum.
+/// A `Hug` column with a `.max()` clamp caps the track. Shrinkable content
+/// follows that slot; Fixed content keeps its exact extent and overflows.
 #[test]
 fn hug_column_max_caps_shrinkable_and_rigid_content() {
     use crate::shape::TextWrap;
@@ -207,10 +207,9 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     let btn = child_rects(&ui, root.unwrap())[0];
     assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
 
-    // Cramped grid: min(max(200px rigid floor, 0), 150px cap) = 150px,
-    // even though the grid itself has only 100px available.
+    // The track caps at 150, but the Fixed(200) child remains exact.
     let rigid = rigid_first_col_rects(Track::hug().max(150.0), 100);
-    assert_eq!(rigid[0].size.w, 150.0, "the rigid cell is capped");
+    assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(
         rigid[1].min.x, 150.0,
         "the next track starts after the capped Hug track",
@@ -284,10 +283,10 @@ fn grid_fill_weights_and_clamps() {
         assert_eq!(kids[1].size.w, *want1, "case: {label} col1");
     }
 
-    // Equal Fill shares start at 200px. The rigid floor is capped to the
-    // first track's 100px max, which donates the 300px remainder to col 1.
+    // The first track caps at 100px and donates the 300px remainder to col 1;
+    // its Fixed(200) child overflows without changing track distribution.
     let rigid = rigid_first_col_rects(Track::fill().max(100.0), 400);
-    assert_eq!(rigid[0].size.w, 100.0, "the rigid cell is capped");
+    assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(rigid[1].min.x, 100.0, "col 0 track is capped at 100px");
     assert_eq!(rigid[1].size.w, 300.0, "col 1 receives 400 - 100");
 }

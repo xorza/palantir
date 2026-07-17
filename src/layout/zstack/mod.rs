@@ -5,9 +5,10 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
-    AxisAlignPair, TextCtx, children_max_intrinsic, measure_per_axis_hug, place_axis,
+    AxisAlignPair, TextCtx, arrange_axis, children_max_intrinsic, measure_per_axis_hug,
     resolved_axis_align, zero_subtree,
 };
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::{rect::Rect, size::Size};
 use glam::Vec2;
 
@@ -70,12 +71,17 @@ pub(crate) fn arrange(
             continue;
         }
         let i = c.idx();
-        let d = layout.scratch.desired[i];
         let s = layouts[i];
+        let bounds = tree.bounds(c);
+        let mut d = layout.scratch.desired[i];
+        if s.mode == LayoutMode::Scroll {
+            // Scroll content sizes its Hug wrapper, but its viewport clips to the slot.
+            d = d.min(inner.size);
+        }
 
         let AxisAlignPair { h, v } = resolved_axis_align(&s, parent_child_align);
-        let x = place_axis(h, s.size.w(), d.w, inner.size.w);
-        let y = place_axis(v, s.size.h(), d.h, inner.size.h);
+        let x = arrange_axis(Axis::X, h, &s, bounds, d, inner.size.w);
+        let y = arrange_axis(Axis::Y, v, &s, bounds, d, inner.size.h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),
