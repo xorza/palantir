@@ -2,10 +2,11 @@
 //! recorded tree is finalized.
 
 use crate::common::content_hash::ContentHash;
+use fixedbitset::FixedBitSet;
 
-/// Per-node hash columns populated by [`crate::forest::Tree::post_record`].
-/// Both slices index by `NodeId.0` and are length `records.len()`
-/// after `post_record`. Capacity retained across frames.
+/// Per-node derived data populated by [`crate::forest::Tree::post_record`].
+/// The hash columns index by `NodeId.0` and are length `records.len()`
+/// after `post_record`. Storage capacity is retained across frames.
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
 ///   extras / shapes / grid def). Read by damage diff and the leaf
@@ -15,21 +16,19 @@ use crate::common::content_hash::ContentHash;
 ///   across frames means nothing in the subtree changed; the
 ///   cross-frame measure cache keys on this. See
 ///   `src/layout/measure-cache.md`.
+/// - `container_text` — non-leaf owners of direct text shapes. Layout
+///   iterates the set after arrange to shape paint-only text against
+///   its final padded width.
 ///
 /// Per-chrome authoring hash lives inline on `ChromeRow.hash` (only
 /// chromed nodes pay storage); per-shape canonical hash lives on
 /// `Tree.shapes.hashes`.
 ///
-/// "Does this node directly contribute pixels?" used to live here as
-/// a `paints: FixedBitSet`; the unified
-/// `Cascades::paint_arenas[].node_spans` answers a superset of that
-/// question (empty span means "no rows" — no chrome, no shapes, and
-/// no children, since child markers occupy rows too), so the bitset
-/// was removed.
 #[derive(Debug, Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<ContentHash>,
     pub(crate) subtree: Vec<ContentHash>,
+    pub(crate) container_text: FixedBitSet,
 }
 
 impl SubtreeRollups {
@@ -44,6 +43,7 @@ impl SubtreeRollups {
         // avoids the truncate-then-grow round trip when `n` is steady.
         self.node.resize(n, ContentHash::default());
         self.subtree.resize(n, ContentHash::default());
+        self.container_text.clear();
     }
 }
 
