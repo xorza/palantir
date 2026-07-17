@@ -9,6 +9,14 @@ fn lh(font_size: f32) -> f32 {
     font_size
 }
 
+fn identity(widget_id: WidgetId, authoring_hash: ContentHash) -> TextRunIdentity {
+    TextRunIdentity {
+        widget_id,
+        ordinal: 0,
+        authoring_hash,
+    }
+}
+
 fn measure_truncated(
     cosmic: &mut CosmicMeasure,
     text: &str,
@@ -333,13 +341,13 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
     // a different hash — pin that the measure cache respects the
     // hash distinction.
     let m = TextShaper::default();
+    let mut reuse = TextReuseCache::default();
     let wid = WidgetId::from_hash("a");
     let h1 = ContentHash(1);
     let h2 = ContentHash(2);
-    let r1 = m.shape_unbounded(
-        wid,
-        0,
-        h1,
+    let r1 = reuse.shape_unbounded(
+        &m,
+        identity(wid, h1),
         "hi",
         hash_str("hi"),
         ShapeParams {
@@ -351,10 +359,9 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
             halign: HAlign::Auto,
         },
     );
-    let r2 = m.shape_unbounded(
-        wid,
-        0,
-        h2,
+    let r2 = reuse.shape_unbounded(
+        &m,
+        identity(wid, h2),
         "hi",
         hash_str("hi"),
         ShapeParams {
@@ -370,12 +377,11 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
         r1.size.h, r2.size.h,
         "different leading via different hash → distinct cache entries",
     );
-    // Re-querying with the original hash returns the original (16
-    // px height), proving the entry wasn't overwritten.
-    let r1_again = m.shape_unbounded(
-        wid,
-        0,
-        h1,
+    // Re-querying the original hash after refreshing the single identity
+    // row must recover the original 16 px measurement.
+    let r1_again = reuse.shape_unbounded(
+        &m,
+        identity(wid, h1),
         "hi",
         hash_str("hi"),
         ShapeParams {
@@ -398,11 +404,11 @@ fn shape_wrap_panics_without_prime() {
     // Pin the panic so a future caller that wraps without priming
     // first fails loudly instead of silently losing the cache.
     let m = TextShaper::default();
+    let mut reuse = TextReuseCache::default();
     let wid = WidgetId::from_hash("a");
-    m.shape_wrap(
-        wid,
-        0,
-        ContentHash(1),
+    reuse.shape_wrap(
+        &m,
+        identity(wid, ContentHash(1)),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -959,12 +965,12 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     // align changes glyph positions). Pin that the reuse cache
     // discriminates on halign, not just target_q.
     let m = TextShaper::with_bundled_fonts();
+    let mut reuse = TextReuseCache::default();
     let wid = WidgetId::from_hash("w");
     let hash = ContentHash(7);
-    m.shape_unbounded(
-        wid,
-        0,
-        hash,
+    reuse.shape_unbounded(
+        &m,
+        identity(wid, hash),
         "hi",
         hash_str("hi"),
         ShapeParams {
@@ -978,10 +984,9 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     );
     let baseline = m.measure_calls();
     // First wrap shape — dispatches once.
-    m.shape_wrap(
-        wid,
-        0,
-        hash,
+    reuse.shape_wrap(
+        &m,
+        identity(wid, hash),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -997,10 +1002,9 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
     // Repeat same call — cache hit, no dispatch.
-    m.shape_wrap(
-        wid,
-        0,
-        hash,
+    reuse.shape_wrap(
+        &m,
+        identity(wid, hash),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -1019,10 +1023,9 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         "identical wrap call must hit cache"
     );
     // Same target, different halign — must dispatch again.
-    m.shape_wrap(
-        wid,
-        0,
-        hash,
+    reuse.shape_wrap(
+        &m,
+        identity(wid, hash),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -1044,16 +1047,15 @@ fn shape_wrap_busts_on_halign_change_same_target() {
 
 #[test]
 fn sweep_removed_evicts_reuse_entries() {
-    // `Ui::post_record` calls this with the per-frame removed set so
-    // dropped widgets don't leak text-shape cache rows. Pin: entries
-    // for removed ids vanish; entries for surviving ids stay.
+    // `LayoutEngine::sweep_removed` calls this with the per-window removed
+    // set. Pin: removed ids vanish while surviving ids stay.
     let m = TextShaper::default();
+    let mut reuse = TextReuseCache::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    m.shape_unbounded(
-        a,
-        0,
-        ContentHash(1),
+    reuse.shape_unbounded(
+        &m,
+        identity(a, ContentHash(1)),
         "hi",
         hash_str("hi"),
         ShapeParams {
@@ -1065,10 +1067,9 @@ fn sweep_removed_evicts_reuse_entries() {
             halign: HAlign::Auto,
         },
     );
-    m.shape_unbounded(
-        b,
-        0,
-        ContentHash(2),
+    reuse.shape_unbounded(
+        &m,
+        identity(b, ContentHash(2)),
         "yo",
         hash_str("yo"),
         ShapeParams {
@@ -1080,15 +1081,15 @@ fn sweep_removed_evicts_reuse_entries() {
             halign: HAlign::Auto,
         },
     );
-    assert!(m.has_reuse_entry(a, 0));
-    assert!(m.has_reuse_entry(b, 0));
+    assert!(reuse.has_entry(a, 0));
+    assert!(reuse.has_entry(b, 0));
     let removed: FxHashSet<WidgetId> = FxHashSet::from_iter([a]);
-    m.sweep_removed(&removed);
-    assert!(!m.has_reuse_entry(a, 0), "removed widget's entry evicted");
-    assert!(m.has_reuse_entry(b, 0), "surviving widget's entry kept");
+    reuse.sweep_removed(&removed);
+    assert!(!reuse.has_entry(a, 0), "removed widget's entry evicted");
+    assert!(reuse.has_entry(b, 0), "surviving widget's entry kept");
     // Empty removed set is a no-op (early return path).
-    m.sweep_removed(&FxHashSet::default());
-    assert!(m.has_reuse_entry(b, 0));
+    reuse.sweep_removed(&FxHashSet::default());
+    assert!(reuse.has_entry(b, 0));
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands

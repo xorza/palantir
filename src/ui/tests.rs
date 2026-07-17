@@ -579,7 +579,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let wid = WidgetId::from_hash("transient");
     assert!(
-        ui.ctx.shaper.has_reuse_entry(wid, 0),
+        ui.layout_engine.text_reuse.has_entry(wid, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -587,9 +587,69 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !ui.ctx.shaper.has_reuse_entry(wid, 0),
+        !ui.layout_engine.text_reuse.has_entry(wid, 0),
         "removed widget's reuse entry must be swept",
     );
+}
+
+#[test]
+fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
+    use crate::layout::types::sizing::Sizing;
+    use crate::text::TextShaper;
+
+    fn text_window(ui: &mut Ui, content: &'static str, width: f32) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("shared-root"))
+            .size((Sizing::fixed(width), Sizing::HUG))
+            .show(ui, |ui| {
+                Text::new(content)
+                    .id(WidgetId::from_hash("shared-text"))
+                    .show(ui);
+            });
+    }
+
+    let ctx = HostContext::new(TextShaper::with_bundled_fonts());
+    let mut a = ui_with_context(&ctx);
+    let mut b = ui_with_context(&ctx);
+    let text_id = WidgetId::from_hash("shared-text");
+
+    a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 120.0));
+    let a_key = a.layout[Layer::Main].text_shapes[0].key;
+    b.run_at_acked(SURFACE, |ui| text_window(ui, "window B", 120.0));
+    let b_key = b.layout[Layer::Main].text_shapes[0].key;
+
+    assert_ne!(a_key, b_key, "different window text needs distinct keys");
+    assert!(ctx.shaper.has_cosmic_buffer(a_key));
+    assert!(ctx.shaper.has_cosmic_buffer(b_key));
+    assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
+    assert!(b.layout_engine.text_reuse.has_entry(text_id, 0));
+
+    let after_b = ctx.shaper.measure_calls();
+    a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 140.0));
+    assert_eq!(
+        ctx.shaper.measure_calls(),
+        after_b,
+        "window B must not overwrite window A's identity reuse row",
+    );
+
+    b.run_at_acked(SURFACE, |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("shared-root"))
+            .size((Sizing::fixed(120.0), Sizing::HUG))
+            .show(ui, |_| {});
+    });
+    assert!(!b.layout_engine.text_reuse.has_entry(text_id, 0));
+    assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
+
+    let after_b_removal = ctx.shaper.measure_calls();
+    a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 160.0));
+    assert_eq!(
+        ctx.shaper.measure_calls(),
+        after_b_removal,
+        "window B removal must not evict window A's identity reuse row",
+    );
+    assert!(ctx.shaper.has_cosmic_buffer(a_key));
+    assert!(ctx.shaper.has_cosmic_buffer(b_key));
 }
 
 #[test]

@@ -22,7 +22,7 @@ use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::shape::TextWrap;
-use crate::text::ShapeParams;
+use crate::text::{ShapeParams, TextRunIdentity};
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -129,7 +129,7 @@ fn content_intrinsic(
     style: LayoutCore,
 ) -> f32 {
     match style.mode {
-        LayoutMode::Leaf => leaf(tree, node, axis, req, tc),
+        LayoutMode::Leaf => leaf(engine, tree, node, axis, req, tc),
         LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, req, tc),
         LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, tc),
         LayoutMode::WrapHStack => wrapstack::intrinsic(engine, tree, node, Axis::X, axis, req, tc),
@@ -163,7 +163,14 @@ fn content_intrinsic(
 /// don't drive size. Lives here rather than in a `leaf` module because
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
-fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) -> f32 {
+fn leaf(
+    engine: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    req: LenReq,
+    tc: &TextCtx<'_>,
+) -> f32 {
     let wid = tree.records.widget_id()[node.idx()];
     let curr_hash = tree.rollups.node[node.idx()];
     let mut acc = 0.0_f32;
@@ -173,10 +180,13 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
     // so the counter must derive identically on both sides.
     let mut ordinal: u16 = 0;
     for ts in leaf_text_shapes(tree, tc, node) {
-        let m = tc.shaper.shape_unbounded(
-            wid,
-            ordinal,
-            curr_hash,
+        let m = engine.text_reuse.shape_unbounded(
+            tc.shaper,
+            TextRunIdentity {
+                widget_id: wid,
+                ordinal,
+                authoring_hash: curr_hash,
+            },
             ts.text,
             ts.text_hash,
             ShapeParams {
