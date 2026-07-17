@@ -78,8 +78,8 @@ pub struct Ui {
     /// This window's retained record store. Cleared only when a record pass
     /// rebuilds the forest; `PaintOnly` keeps it paired with the retained tree.
     pub(crate) record_store: RecordStore,
-    /// App-global capabilities selected for the recorder: shared render
-    /// resources, diagnostics, and the live-window directory.
+    /// App-global capabilities selected for the recorder: text shaping,
+    /// render assets, diagnostics, and the live-window directory.
     pub(crate) shared: UiShared,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
@@ -520,7 +520,7 @@ impl Ui {
         let payloads = self.record_store.borrow();
         let tc = TextCtx {
             bytes: &payloads.fmt_scratch,
-            shaper: &self.shared.render.text,
+            shaper: &self.shared.text,
         };
         self.layout_engine.run(
             &self.forest,
@@ -564,7 +564,7 @@ impl Ui {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
-        self.shared.render.text.end_frame();
+        self.shared.text.end_frame();
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
@@ -856,7 +856,7 @@ impl Ui {
     /// [`Shape::Image`] every frame (`clone` it where it needs to live).
     /// The CPU bytes are dropped right after the upload.
     pub fn register_image(&self, image: Image) -> ImageHandle {
-        self.shared.render.assets.images.register(image)
+        self.shared.assets.images.register(image)
     }
 
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
@@ -893,7 +893,7 @@ impl Ui {
             // First sight always paints — the texture doesn't exist yet.
             // The shared id source is disjoint from `self.gpu_views`.
             Entry::Vacant(e) => e.insert(GpuViewEntry {
-                texture_id: self.shared.render.assets.texture_ids.reserve(),
+                texture_id: self.shared.assets.texture_ids.reserve(),
                 paint: GpuPaintRef(paint),
                 epoch: frame_id,
             }),
