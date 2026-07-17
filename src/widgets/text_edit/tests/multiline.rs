@@ -53,7 +53,7 @@ fn single_line_enter_does_not_insert_newline() {
 #[test]
 fn multiline_paste_keeps_newlines() {
     let _cb_guard = test_support::test_serialize_guard();
-    clipboard::set("line1\nline2\nline3");
+    clipboard::set("line1\nline2\nline3").unwrap();
 
     let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
     let mut buf = String::new();
