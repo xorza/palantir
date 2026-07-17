@@ -32,7 +32,7 @@ use self::quad_pipeline::QuadPipeline;
 use self::queue::Queue;
 use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
-use self::viewport::{ViewportPush, build_damage_scissors};
+use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::host::context::HostContext;
 use crate::primitives::urect::URect;
@@ -40,8 +40,7 @@ use crate::record_store::RecordPayloads;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::{RenderKind, RenderPlan};
+use crate::ui::frame_report::RenderPlan;
 use rustc_hash::FxHashMap;
 use wgpu::util::StagingBelt;
 
@@ -418,21 +417,8 @@ impl WgpuBackend {
         let format = surface_tex.format();
         self.ensure_format(format);
 
-        // Build the per-frame scissor list. `Full` → empty list →
-        // single Clear+full-viewport pass. `Partial` → one entry per
-        // rect in the region (see `build_damage_scissors`).
-        let mut damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]> = Default::default();
-        build_damage_scissors(&mut damage_scissors, plan, buffer);
-        // A Partial region's rects are surface-clipped and non-empty
-        // (`DamageRegion::collapse_from`), and the AA padding keeps every
-        // physical scissor nonzero — so an empty list under a Partial plan
-        // means plan and draw list disagree. Degrading to a Full pass would
-        // clear the target under a Partial-culled draw list, erasing
-        // undamaged content; crash instead.
-        debug_assert!(
-            !damage_scissors.is_empty() || !matches!(plan.kind, RenderKind::Partial { .. }),
-            "Partial plan produced no damage scissors"
-        );
+        let repaint_scissors = build_repaint_scissors(plan.kind, buffer);
+        let is_partial = matches!(repaint_scissors, RepaintScissors::Partial(_));
         // `dim_undamaged` debug mode: every Partial frame, before any
         // damage passes, draw one full-viewport 40%-translucent black
         // quad onto the backbuffer with `LoadOp::Load`. Each frame
@@ -442,7 +428,7 @@ impl WgpuBackend {
         // toward black while moving content stays current — far less
         // jarring than the prior `LoadOp::Clear` flash and visually
         // pins which regions are actually repainting.
-        let dim_undamaged = debug_overlay.dim_undamaged && !damage_scissors.is_empty();
+        let dim_undamaged = debug_overlay.dim_undamaged && is_partial;
 
         // The stencil texture (rounded-clip masking) is ensured by the
         // caller; `stencil_view` is `Some` exactly when `use_stencil`. The
@@ -528,7 +514,7 @@ impl WgpuBackend {
             );
             self.curve.upload(&mut ctx, &buffer.curves);
 
-            if !damage_scissors.is_empty() {
+            if is_partial {
                 self.quad
                     .upload_clear(&mut ctx, buffer.viewport_phys_f, clear);
             }
@@ -562,11 +548,10 @@ impl WgpuBackend {
             overlay_count
         };
 
-        // Two paths, branching on whether the frame is a Full or
-        // Partial repaint. Both go through one `begin_render_pass`:
-        // - `damage_scissors` empty ⇒ Full: one schedule walk with no
-        //   scissor, `LoadOp::Clear(color)` covers the backbuffer.
-        // - `damage_scissors` non-empty ⇒ Partial: an optional dim
+        // Both repaint shapes go through one `begin_render_pass`:
+        // - Full: one schedule walk with no scissor,
+        //   `LoadOp::Clear(color)` covers the backbuffer.
+        // - Partial: an optional dim
         //   pre-pass (`dim_undamaged`) that paints a 40% black quad
         //   over the full backbuffer with `LoadOp::Load` in its own
         //   render pass (no-stencil pipeline incompatible with the
@@ -599,39 +584,30 @@ impl WgpuBackend {
                 &surface_view
             }
         };
-        if damage_scissors.is_empty() {
-            tracing::trace!("wgpu_backend.submit.pass.full");
-            self.run_main_pass(
-                fmt,
-                color_view,
-                stencil_view,
-                &mut encoder,
-                buffer,
-                None,
-                clear_color,
-            );
-        } else {
-            if dim_undamaged {
-                tracing::trace!("wgpu_backend.submit.pass.dim");
-                let viewport = ViewportPush {
-                    size: buffer.viewport_phys_f,
-                };
-                self.run_dim_pass(fmt, color_view, &mut encoder, viewport);
-            }
+        if let RepaintScissors::Partial(rects) = &repaint_scissors {
             tracing::trace!(
-                rects = damage_scissors.len(),
+                rects = rects.iter().count(),
                 "wgpu_backend.submit.pass.partial"
             );
-            self.run_main_pass(
-                fmt,
-                color_view,
-                stencil_view,
-                &mut encoder,
-                buffer,
-                Some(damage_scissors.as_slice()),
-                clear_color,
-            );
+        } else {
+            tracing::trace!("wgpu_backend.submit.pass.full");
         }
+        if dim_undamaged {
+            tracing::trace!("wgpu_backend.submit.pass.dim");
+            let viewport = ViewportPush {
+                size: buffer.viewport_phys_f,
+            };
+            self.run_dim_pass(fmt, color_view, &mut encoder, viewport);
+        }
+        self.run_main_pass(
+            fmt,
+            color_view,
+            stencil_view,
+            &mut encoder,
+            buffer,
+            &repaint_scissors,
+            clear_color,
+        );
 
         if let Some(bb) = via_backbuffer {
             self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
@@ -713,10 +689,9 @@ impl WgpuBackend {
     /// `render_groups` call's fresh `active_mask = None` therefore
     /// always matches the true stencil contents.
     ///
-    /// `partial_scissors == None` ⇒ Full frame: one schedule walk with
-    /// no damage scissor, `LoadOp::Clear(color)` covers the whole
-    /// backbuffer. `Some(rects)` ⇒ Partial: `LoadOp::Load`, one walk
-    /// per rect inside the same pass.
+    /// `RepaintScissors::Full` runs one schedule walk with no damage
+    /// scissor and clears the whole backbuffer. `Partial` loads the
+    /// prior color and runs once per non-empty scissor.
     #[profiling::function]
     #[allow(clippy::too_many_arguments)]
     fn run_main_pass(
@@ -726,7 +701,7 @@ impl WgpuBackend {
         stencil_view: Option<&wgpu::TextureView>,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
-        partial_scissors: Option<&[URect]>,
+        repaint_scissors: &RepaintScissors,
         clear: wgpu::Color,
     ) {
         let use_stencil = stencil_view.is_some();
@@ -744,9 +719,9 @@ impl WgpuBackend {
                     store: wgpu::StoreOp::Discard,
                 }),
             });
-        let load_op = match partial_scissors {
-            None => wgpu::LoadOp::Clear(clear),
-            Some(_) => wgpu::LoadOp::Load,
+        let load_op = match repaint_scissors {
+            RepaintScissors::Full => wgpu::LoadOp::Clear(clear),
+            RepaintScissors::Partial(_) => wgpu::LoadOp::Load,
         };
         // Timestamp writes via the descriptor cover the basic mode
         // (TIMESTAMP_QUERY only — pass begin / end). In per-batch
@@ -777,13 +752,14 @@ impl WgpuBackend {
             }
             t.begin_pipeline_stats(&mut pass);
         }
-        match partial_scissors {
-            None => self.render_groups(fmt, &mut pass, buffer, None, use_stencil),
-            Some(rects) => {
-                for (i, &r) in rects.iter().enumerate() {
+        match repaint_scissors {
+            RepaintScissors::Full => self.render_groups(fmt, &mut pass, buffer, None, use_stencil),
+            RepaintScissors::Partial(rects) => {
+                let rect_count = rects.iter().count();
+                for (i, r) in rects.iter().enumerate() {
                     tracing::trace!(
                         rect = i,
-                        of = rects.len(),
+                        of = rect_count,
                         scissor = ?r,
                         "wgpu_backend.submit.pass.partial_rect"
                     );
