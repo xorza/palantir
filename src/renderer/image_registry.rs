@@ -100,8 +100,8 @@ impl std::fmt::Debug for ImageHandle {
 /// Shared image lifecycle: hands the backend the bytes of newly
 /// registered images (once) and the ids of dropped handles (to free
 /// their GPU textures). Clone is cheap — the inner state is `Rc`-shared.
-/// `WindowRenderer` constructs one and hands clones to `Ui` (for registration) and
-/// the wgpu backend (for upload + release).
+/// `HostShared` retains it in `RenderAssets`; the host derives capability
+/// clones for `Ui` registration and backend upload/release.
 #[derive(Clone, Debug)]
 pub(crate) struct ImageRegistry {
     inner: Rc<RefCell<Inner>>,

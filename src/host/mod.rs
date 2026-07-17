@@ -1,8 +1,9 @@
 //! The host layer — everything between the OS/GPU and the [`Ui`](crate::Ui)
 //! recorder. [`HostShared`](shared::HostShared) owns the app-global resources
 //! exposed to each `Ui` and the one shared `WgpuBackend`;
-//! [`WindowRenderer`](window_renderer::WindowRenderer) owns each window's
-//! record store and drives frames through that backend; [`winit`] and
+//! [`WindowRenderer`](window_renderer::WindowRenderer) owns each window's `Ui`
+//! and drives frames through that backend; the `Ui` owns its retained record
+//! store. [`winit`] and
 //! [`offscreen`] are the two
 //! drivers (swapchain windows / render-to-texture); [`clock`] is the injected
 //! per-frame time source. The backend-agnostic *vocabulary* the recorder
