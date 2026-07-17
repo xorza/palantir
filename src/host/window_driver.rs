@@ -1,4 +1,4 @@
-//! `WindowRenderer` — everything one window owns *above* the shared
+//! `WindowDriver` — everything one window owns *above* the shared
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend): its [`Ui`]
 //! recorder, a per-window [`Frontend`] (CPU encode/compose scratch), the
 //! persistent [`Backbuffer`] (this surface's last-frame pixels), and the
@@ -13,9 +13,9 @@
 //! GPU renderer without sharing frame-local geometry.
 //!
 //! Two internal target paths share one CPU + GPU pipeline:
-//! [`WindowRenderer::frame`] (to a swapchain surface — acquires, submits,
+//! [`WindowDriver::frame`] (to a swapchain surface — acquires, submits,
 //! presents, returns a [`FramePresent`] schedule) and
-//! [`WindowRenderer::frame_offscreen`] (to a caller-supplied
+//! [`WindowDriver::frame_offscreen`] (to a caller-supplied
 //! `wgpu::Texture` — no acquire/present, used by [`crate::OffscreenHost`]).
 
 use std::time::Instant;
@@ -34,10 +34,10 @@ use crate::window::{CursorIcon, WindowCommands, WindowFrameState, WindowToken};
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
-/// [`WindowRendererBuilder`] from the shared [`HostShared`]; owns no GPU
+/// [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU
 /// resources except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
-pub(crate) struct WindowRenderer {
+pub(crate) struct WindowDriver {
     /// Stable application identity for this render stream. Stored here so a
     /// retained `Ui` cannot be driven under a different token on a later frame.
     pub(crate) token: WindowToken,
@@ -217,7 +217,7 @@ struct CpuFrame {
 
 /// Seals per-window policy before allocating the recorder and frontend.
 #[derive(Debug)]
-pub(crate) struct WindowRendererBuilder<'a> {
+pub(crate) struct WindowDriverBuilder<'a> {
     token: WindowToken,
     shared: &'a HostShared,
     max_texture_dim: u32,
@@ -226,7 +226,7 @@ pub(crate) struct WindowRendererBuilder<'a> {
     pixel_snap: bool,
 }
 
-impl WindowRendererBuilder<'_> {
+impl WindowDriverBuilder<'_> {
     pub(crate) fn strategy(mut self, strategy: PresentStrategy) -> Self {
         self.strategy = strategy;
         self
@@ -242,8 +242,8 @@ impl WindowRendererBuilder<'_> {
         self
     }
 
-    pub(crate) fn build(self) -> WindowRenderer {
-        WindowRenderer {
+    pub(crate) fn build(self) -> WindowDriver {
+        WindowDriver {
             token: self.token,
             ui: Ui::new(self.shared.ui_shared(), Default::default()),
             frontend: Frontend::new(self.max_texture_dim),
@@ -260,8 +260,8 @@ impl WindowRendererBuilder<'_> {
     }
 }
 
-impl WindowRenderer {
-    /// Start building a renderer for `token` from the shared [`HostShared`].
+impl WindowDriver {
+    /// Start building a driver for `token` from the shared [`HostShared`].
     /// Its `Ui` receives the render, diagnostics, and window-directory
     /// capabilities plus a fresh per-window record store.
     /// `max_texture_dim` is the device's fixed texture limit used to cap
@@ -271,8 +271,8 @@ impl WindowRenderer {
         token: WindowToken,
         shared: &HostShared,
         max_texture_dim: u32,
-    ) -> WindowRendererBuilder<'_> {
-        WindowRendererBuilder {
+    ) -> WindowDriverBuilder<'_> {
+        WindowDriverBuilder {
             token,
             shared,
             max_texture_dim,
@@ -343,7 +343,7 @@ impl WindowRenderer {
         // between user input as one giant "lagging" frame).
         #[cfg(feature = "profile-with-tracy")]
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
-        profiling::scope!("WindowRenderer::frame");
+        profiling::scope!("WindowDriver::frame");
 
         let WindowFrameInput {
             surface,
@@ -625,7 +625,7 @@ impl WindowRenderer {
     }
 }
 
-/// Every per-frame input [`WindowRenderer::frame`] needs from the windowing
+/// Every per-frame input [`WindowDriver::frame`] needs from the windowing
 /// host. The surface `config` is the single source of truth for the physical
 /// pixel size, so the size is never passed or asserted twice.
 #[derive(Debug)]
@@ -651,7 +651,7 @@ pub(crate) struct WindowFrameOutput {
     pub(crate) commands: WindowCommands,
 }
 
-/// WindowRenderer scheduling hint returned by [`WindowRenderer::frame`]. Three
+/// WindowDriver scheduling hint returned by [`WindowDriver::frame`]. Three
 /// mutually-exclusive states the event loop must service:
 ///
 /// - [`Self::Immediate`] — call `request_redraw` right away
@@ -670,9 +670,9 @@ pub(crate) enum FramePresent {
 
 #[cfg(test)]
 mod present_mode_tests {
-    use crate::host::window_renderer::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
-    use crate::host::window_renderer::PresentStrategy::{BackbufferCopy, DirectAdaptive};
-    use crate::host::window_renderer::{PresentMode, present_mode};
+    use crate::host::window_driver::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
+    use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive};
+    use crate::host::window_driver::{PresentMode, present_mode};
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
     use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
@@ -790,7 +790,7 @@ mod record_store_tests {
     use crate::app::test_support::RecordApp;
     use crate::host::clock::FixedClock;
     use crate::host::shared::HostShared;
-    use crate::host::window_renderer::{FramePresent, PresentStrategy, WindowRenderer};
+    use crate::host::window_driver::{FramePresent, PresentStrategy, WindowDriver};
     use crate::primitives::color::{Color, ColorU8};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
@@ -828,8 +828,8 @@ mod record_store_tests {
         }
     }
 
-    fn snapshot(renderer: &WindowRenderer) -> RecordPayloadSnapshot {
-        let payloads = renderer.ui.record_store.borrow();
+    fn snapshot(driver: &WindowDriver) -> RecordPayloadSnapshot {
+        let payloads = driver.ui.record_store.borrow();
         RecordPayloadSnapshot {
             mesh_vertices: payloads.meshes.vertices.clone(),
             mesh_indices: payloads.meshes.indices.clone(),
@@ -872,7 +872,7 @@ mod record_store_tests {
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = HostShared::new(TextShaper::default());
         let token = WindowToken(17);
-        let mut window = WindowRenderer::builder(token, &shared, 8192)
+        let mut window = WindowDriver::builder(token, &shared, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .pixel_snap(false)
             .build();
@@ -923,10 +923,10 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = HostShared::new(TextShaper::default());
-        let mut window_a = WindowRenderer::builder(WindowToken(1), &shared, 8192)
+        let mut window_a = WindowDriver::builder(WindowToken(1), &shared, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
-        let mut window_b = WindowRenderer::builder(WindowToken(2), &shared, 8192)
+        let mut window_b = WindowDriver::builder(WindowToken(2), &shared, 8192)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);
