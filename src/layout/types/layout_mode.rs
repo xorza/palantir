@@ -1,3 +1,4 @@
+use crate::common::index16::Index16;
 use glam::BVec2;
 
 #[repr(u8)]
@@ -16,23 +17,17 @@ pub(crate) enum LayoutMode {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct GridDefId(u16);
+pub(crate) struct GridDefId(Index16);
 
 impl GridDefId {
-    pub(crate) const PENDING: Self = Self(u16::MAX);
-
     pub(crate) fn from_index(index: usize) -> Self {
-        debug_assert!(
-            index < u16::MAX as usize,
-            "more than 65 535 Grid panels in a single frame",
-        );
-        Self(index as u16)
+        Self(Index16::new(index))
     }
 }
 
 impl From<GridDefId> for usize {
     fn from(value: GridDefId) -> Self {
-        value.0 as usize
+        value.0.idx()
     }
 }
 
@@ -80,8 +75,8 @@ pub(crate) struct ModePayload(u16);
 impl ModePayload {
     pub(crate) const NONE: Self = Self(0);
 
-    pub(crate) const fn grid(id: GridDefId) -> Self {
-        Self(id.0)
+    pub(crate) fn grid(id: GridDefId) -> Self {
+        Self(u16::from(id.0))
     }
 
     pub(crate) const fn scroll(spec: ScrollSpec) -> Self {
@@ -94,7 +89,10 @@ impl ModePayload {
             LayoutMode::Grid,
             "grid payload read from {mode:?} node",
         );
-        GridDefId(self.0)
+        GridDefId(
+            Index16::from_raw(self.0)
+                .expect("grid definition id read before its payload was installed"),
+        )
     }
 
     pub(crate) fn scroll_spec(self, mode: LayoutMode) -> ScrollSpec {

@@ -202,7 +202,7 @@ impl Element {
 
     #[track_caller]
     pub(crate) fn grid() -> Self {
-        Self::new(LayoutMode::Grid, ModePayload::grid(GridDefId::PENDING))
+        Self::new(LayoutMode::Grid, ModePayload::NONE)
     }
 
     #[track_caller]

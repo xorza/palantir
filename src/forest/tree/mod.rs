@@ -25,6 +25,7 @@
 use crate::ClipMode;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::common::index16::Index16;
 use crate::forest::element::Element;
 use crate::forest::element::columns::{BoundsExtras, PanelExtras};
 use crate::forest::shapes::Shapes;
@@ -32,7 +33,7 @@ use crate::forest::shapes::lower;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::shapes::paint::ChromeRow;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::extras::{ExtrasIdx, Slot};
+use crate::forest::tree::extras::ExtrasIdx;
 use crate::forest::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::forest::tree::node::{NodeId, NodeRecord, SubtreeEnd};
 use crate::forest::tree::paint_anims::PaintAnims;
@@ -70,8 +71,8 @@ use std::hash::{Hash, Hasher as _};
 pub(crate) struct Tree {
     pub(crate) records: Soa<NodeRecord>,
 
-    /// One row per node; each `u16` field indexes the matching dense
-    /// `*_table` `Vec` (or holds `Slot::ABSENT`). See
+    /// One row per node; each optional two-byte field indexes the matching
+    /// dense `*_table` `Vec`. See
     /// [`ExtrasIdx`] for the packing rationale.
     pub(crate) extras_idx: Vec<ExtrasIdx>,
     pub(crate) bounds_table: Vec<BoundsExtras>,
@@ -187,17 +188,17 @@ impl Tree {
             let mut h = Hasher::new();
             layouts[i].hash_with_flags(attrs[i], &mut h);
             let ex = extras[i];
-            if let Some(s) = ex.bounds.get() {
-                bounds_tab[s].hash(&mut h);
+            if let Some(s) = ex.bounds {
+                bounds_tab[s.idx()].hash(&mut h);
             }
-            if let Some(s) = ex.panel.get() {
+            if let Some(s) = ex.panel {
                 // `PanelExtras::hash` already folds `transform`
                 // (identity-filtered), which is required so a
                 // self-transform shift dirties `node_hash` — direct
                 // shapes paint inside the transform per the
                 // `Panel::transform` contract. Pinned by
                 // `self_transform_change_flips_node_hash`.
-                panel_tab[s].hash(&mut h);
+                panel_tab[s.idx()].hash(&mut h);
             }
             // Chrome authoring hash is pre-computed at lowering time
             // (`shapes::lower::background`) and stored inline on
@@ -205,9 +206,9 @@ impl Tree {
             // before any payload so a chromeless node's stream can't
             // collide with a chromed node whose hash happens to start
             // `0x00`.
-            if let Some(s) = ex.chrome.get() {
+            if let Some(s) = ex.chrome {
                 h.write_u8(1);
-                h.write_u64(chrome_tab[s].hash.0);
+                h.write_u64(chrome_tab[s.idx()].hash.0);
             } else {
                 h.write_u8(0);
             }
@@ -372,11 +373,11 @@ impl Tree {
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
-            ex.bounds = Slot::from_len(self.bounds_table.len());
+            ex.bounds = Some(Index16::new(self.bounds_table.len()));
             self.bounds_table.push(cols.bounds);
         }
         if !cols.panel.is_default() {
-            ex.panel = Slot::from_len(self.panel_table.len());
+            ex.panel = Some(Index16::new(self.panel_table.len()));
             self.panel_table.push(cols.panel);
         }
         if let Some(ChromeInput { bg, store }) = chrome {
@@ -399,7 +400,7 @@ impl Tree {
                 !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
                 let row = lower::background(store, bg);
-                ex.chrome = Slot::from_len(self.chrome_table.len());
+                ex.chrome = Some(Index16::new(self.chrome_table.len()));
                 self.chrome_table.push(row);
             }
         }
@@ -420,7 +421,7 @@ impl Tree {
         // Column length-equality. `records` + `extras_idx` are the two
         // per-node SoA columns and must agree on `len`; a missed push
         // silently shifts every later node's index. (The `bounds`/`panel`/
-        // `chrome` tables are `Slot`-indexed and sparse, so they're not
+        // `chrome` tables are `Index16`-indexed and sparse, so they're not
         // 1:1 with `records`.)
         debug_assert_eq!(self.extras_idx.len(), self.records.len());
         let ancestor_or_self_disabled =
@@ -433,7 +434,7 @@ impl Tree {
         scratch.open_frames.push(OpenFrame {
             node: new_id,
             ancestor_or_self_disabled,
-            paint_rows: u32::from(ex.chrome.get().is_some()),
+            paint_rows: u32::from(ex.chrome.is_some()),
         });
         new_id
     }
@@ -528,8 +529,7 @@ impl Tree {
     pub(crate) fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
         self.extras_idx[id.idx()]
             .panel
-            .get()
-            .map(|s| self.panel_table[s].transform)
+            .map(|s| self.panel_table[s.idx()].transform)
             .filter(|t| !t.is_noop())
     }
 
@@ -541,16 +541,14 @@ impl Tree {
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
         self.extras_idx[id.idx()]
             .bounds
-            .get()
-            .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s])
+            .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s.idx()])
     }
 
     #[inline]
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
         self.extras_idx[id.idx()]
             .panel
-            .get()
-            .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s])
+            .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s.idx()])
     }
 
     /// Chrome paint for `id`. Present whenever the node has visible
@@ -562,8 +560,7 @@ impl Tree {
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&ChromeRow> {
         self.extras_idx[id.idx()]
             .chrome
-            .get()
-            .map(|s| &self.chrome_table[s])
+            .map(|s| &self.chrome_table[s.idx()])
     }
 }
 

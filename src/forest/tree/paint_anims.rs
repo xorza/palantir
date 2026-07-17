@@ -29,6 +29,7 @@
 //! ship today; pulse or marquee variants would need further encoder
 //! transform-mod plumbing.
 
+use crate::common::index16::Index16;
 use crate::primitives::approx::approx_zero;
 use std::f32::consts::TAU;
 use std::time::Duration;
@@ -190,15 +191,9 @@ fn duration_div_floor(a: Duration, b: Duration) -> u64 {
     (a.as_nanos() / bn) as u64
 }
 
-/// Sentinel in [`PaintAnims::by_shape`] meaning "this shape has no
-/// paint-anim registration". `u16::MAX` mirrors the niche convention
-/// used by `Slot::ABSENT` for the sparse extras tables — keeps the
-/// encoder's per-shape lookup a single load + cmp.
-const PAINT_ANIM_NONE: u16 = u16::MAX;
-
 /// One row per registered paint animation. Lives in
 /// [`PaintAnims::entries`], indexed by `by_shape[shape_idx]` (which
-/// holds [`PAINT_ANIM_NONE`] when the shape isn't animated).
+/// is `None` when the shape isn't animated).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
@@ -228,14 +223,13 @@ pub(crate) struct PaintAnims {
     /// Sparse `shape_idx → entries[idx]` lookup. Empty when no shape
     /// this frame is animated (the common case). Grown only when the
     /// first animated shape arrives — padded out to `shape_idx + 1`
-    /// with [`PAINT_ANIM_NONE`] and the animated slot stamped. Encoder
+    /// with `None` and the animated slot stamped. Encoder
     /// treats `shape_idx >= by_shape.len()` as "no anim", so unanimated
     /// shapes pay zero `Vec::push` per frame.
     ///
-    /// Capacity caps animated shapes per tree at `u16::MAX - 1`,
-    /// which is well past anything realistic (caret, spinner, pulse
-    /// — order of dozens, not thousands).
-    pub(crate) by_shape: Vec<u16>,
+    /// The last valid entry index is 65,534, which is well past anything
+    /// realistic (caret, spinner, pulse — order of dozens, not thousands).
+    pub(crate) by_shape: Vec<Option<Index16>>,
 }
 
 impl PaintAnims {
@@ -250,19 +244,15 @@ impl PaintAnims {
     /// Register `entry` against the just-pushed shape at `shape_idx`
     /// (its index into `Tree::shapes.records`). Lazily grows
     /// `by_shape` to `shape_idx + 1`, padding any preceding
-    /// (unanimated) shapes with [`PAINT_ANIM_NONE`]. Asserts the
-    /// `entries` cap so a `u16` index always fits in `by_shape`.
+    /// (unanimated) shapes with `None`. Checks the
+    /// `entries` cap before mutating either column.
     pub(crate) fn push_entry(&mut self, shape_idx: u32, entry: PaintAnimEntry) {
-        let idx = self.entries.len();
-        debug_assert!(
-            idx < PAINT_ANIM_NONE as usize,
-            "more than {PAINT_ANIM_NONE} paint-anim entries in one tree — bump by_shape to u32",
-        );
+        let idx = Index16::new(self.entries.len());
         let shape_idx = shape_idx as usize;
         if self.by_shape.len() <= shape_idx {
-            self.by_shape.resize(shape_idx + 1, PAINT_ANIM_NONE);
+            self.by_shape.resize(shape_idx + 1, None);
         }
-        self.by_shape[shape_idx] = idx as u16;
+        self.by_shape[shape_idx] = Some(idx);
         self.entries.push(entry);
     }
 
@@ -272,13 +262,10 @@ impl PaintAnims {
     /// unconditionally once we ship variants beyond binary blink.
     #[inline]
     pub(crate) fn sample(&self, shape_idx: u32, now: Duration) -> PaintMod {
-        let Some(&slot) = self.by_shape.get(shape_idx as usize) else {
+        let Some(&Some(slot)) = self.by_shape.get(shape_idx as usize) else {
             return PaintMod::IDENTITY;
         };
-        if slot == PAINT_ANIM_NONE {
-            return PaintMod::IDENTITY;
-        }
-        self.entries[slot as usize].anim.sample(now)
+        self.entries[slot.idx()].anim.sample(now)
     }
 }
 
@@ -288,6 +275,31 @@ mod tests {
 
     const HP: Duration = Duration::from_millis(500);
     const START: Duration = Duration::from_secs(1);
+
+    #[test]
+    fn registry_keeps_sparse_shapes_unanimated_and_samples_registered_shape() {
+        let mut anims = PaintAnims::default();
+        anims.push_entry(
+            2,
+            PaintAnimEntry {
+                anim: PaintAnim::BlinkOpacity {
+                    half_period: HP,
+                    started_at: START,
+                },
+                row: 4,
+                node_idx: 7,
+            },
+        );
+
+        assert_eq!(anims.by_shape.len(), 3);
+        assert_eq!(anims.by_shape[0], None);
+        assert_eq!(anims.by_shape[1], None);
+        assert_eq!(anims.by_shape[2].map(Index16::idx), Some(0));
+        assert_eq!(anims.sample(0, START), PaintMod::IDENTITY);
+        assert_eq!(anims.sample(1, START), PaintMod::IDENTITY);
+        assert_eq!(anims.sample(2, START).alpha, 1.0);
+        assert_eq!(anims.sample(2, START + HP).alpha, 0.0);
+    }
 
     #[test]
     fn blink_solid_at_start() {
