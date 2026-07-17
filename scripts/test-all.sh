@@ -12,6 +12,8 @@
 #   - internals          (cache helpers + render-debug knobs +
 #                         damage fixtures + the deeper bench targets)
 #   - showcase           (bundled widget-tour binary + logging setup)
+#   - profile-with-tracy (the supported profiler backend)
+#   - all features       (aggregate compatibility)
 #
 # The full run checks:
 #   1. cargo fmt --all                     (once, up front)
@@ -41,6 +43,7 @@ COMBOS=(
   ""                       # no features
   "internals"
   "showcase"
+  "profile-with-tracy"
 )
 
 if [[ "${FAST:-0}" != "1" ]]; then
@@ -71,5 +74,14 @@ for features in "${COMBOS[@]}"; do
     cargo test --features "$features"
   fi
 done
+
+banner "features = <all>"
+if [[ "${FAST:-0}" != "1" ]]; then
+  step "clippy"
+  cargo clippy --all-targets --all-features -- -D warnings
+fi
+
+step "test"
+cargo test --all-features
 
 printf '\n%sall combos passed%s\n' "$green" "$reset"

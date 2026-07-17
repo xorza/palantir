@@ -6,13 +6,13 @@ Aperture's core decomposition is sound: immediate recording produces a compact t
 
 The main risks are narrower contract gaps at subsystem boundaries. The host lifecycle replay issue is now resolved; several public numeric and layout representations still admit states their consumers cannot handle, three layout paths disagree with the documented sizing contract, and two renderer optimizations use non-conservative coverage bounds even though false negatives change pixels or paint order. Most fixes are boundary tightening and shared-policy consolidation rather than a broad rewrite.
 
-This report contains 20 actions in six implementation batches, with fourteen now completed. The first four batches are correctness work; the last two are performance, capacity, build, and documentation cleanup. Review scope was production code under `src/`, `anim-derive`, the crate manifest, and architecture documents. Tests, benches, showcase code, and examples were excluded as review targets.
+This report contains 20 actions in six implementation batches, with nineteen now completed. The first four batches are correctness work; the last two are performance, capacity, build, and documentation cleanup. Review scope was production code under `src/`, `anim-derive`, the crate manifest, and architecture documents. Tests, benches, showcase code, and examples were excluded as review targets.
 
 Verification baseline while reviewing:
 
 - `cargo check -p aperture` passed.
-- Each profiler feature passed independently: `profile-with-tracy` and `profile-with-puffin`.
-- `cargo check -p aperture --all-features` failed inside `profiling` because both mutually exclusive backends define the same macros.
+- Tracy is the sole supported profiler backend, and the feature matrix covers it independently plus the aggregate `--all-features` build.
+- `cargo check -p aperture --all-features` passes.
 
 ## Current flow
 
@@ -75,11 +75,11 @@ Ui::frame
 
 - [x] **Replace debug-only packed-index checks with non-aliasing capacity types.** Shared valid-only `Index16` uses a nonzero encoding so `Option<Index16>` preserves the two-byte sparse representation while every real index passes through one release-checked constructor with an out-of-line cold overflow path. Sparse extras, `GridDefId`, and paint-animation lookup slots represent absence explicitly; overflow is rejected before registry mutation, pending Grid ids panic instead of becoming an index, and exact tests accept 65,534 while rejecting 65,535.
 
-- [ ] **Validate Tooltip timing at the same serialized boundary as animation timing.** `TooltipTheme` derives `Deserialize` while exposing raw `f32` delay and warmup (`src/widgets/theme/tooltip.rs:16`, `src/widgets/theme/tooltip.rs:30`), and the widget also accepts a raw override (`src/widgets/tooltip/mod.rs:102`). Every show converts both with `Duration::from_secs_f32`, which panics for negative, NaN, or infinite values (`src/widgets/tooltip/mod.rs:119`). Reuse a validated finite non-negative seconds type for theme fields and the builder, with custom serde and conversion outside the recording hot path. Validate zero-delay/warmup semantics and deserialize-time rejection of negative/non-finite values.
+- [x] **Validate Tooltip timing at the same serialized boundary as animation timing.** Theme delay and warmup plus per-tooltip overrides now use `Duration`, making invalid runtime states unrepresentable and removing float conversion from recording. Custom field serde preserves scalar seconds in theme files while rejecting negative, non-finite, and finite-but-unrepresentable values. Exact tests retain the 0.5/1.0 defaults and TOML round-trip, reject every invalid class on both fields, and pin zero delay plus zero-warmup behavior.
 
 ## Batch 6 — Low: simplify feature topology and repair misleading contracts
 
-- [ ] **Select a canonical profiler backend instead of publishing mutually exclusive additive features.** The manifest exposes Tracy and Puffin as normal Cargo features (`Cargo.toml:143`), but enabling both activates duplicate macro implementations in `profiling`; `--all-features` therefore cannot build. The feature-matrix script claims broad combination coverage but tests neither backend (`scripts/test-all.sh:1`, `scripts/test-all.sh:40`). Because the host already contains Tracy-specific frame integration (`src/host/window_renderer.rs:339`), the default recommendation is to retain Tracy and remove Puffin plus its feature/dependency. If both remain necessary, isolate backend selection so one dependency feature is chosen per build and add each supported combination to the matrix. The final topology should make the supported aggregate build succeed rather than fail in a transitive crate.
+- [x] **Select a canonical profiler backend instead of publishing mutually exclusive additive features.** Tracy is now Aperture's sole profiler backend; the Puffin feature was removed while the existing Tracy-specific host frame integration remains. The feature-matrix script tests Tracy independently and the aggregate `--all-features` configuration, so the supported feature topology no longer fails inside `profiling`.
 
 - [ ] **Correct lifecycle and layout documentation that currently states the opposite of production behavior.** `GpuView::repaint(false)` says its offscreen texture remains alive and later repaint will not reinitialize (`src/widgets/gpu_view.rs:66`), while the `GpuPaint` contract and backend say a culled target is reclaimed and `init` runs again (`src/renderer/gpu_view.rs:35`, `src/renderer/backend/image_pipeline/render_target.rs:81`). Separately, the intrinsic design note says Stack pass 1 always measures the main axis at infinity (`src/layout/intrinsic.md:148`), while production deliberately propagates a committed finite main bound (`src/layout/stack/mod.rs:193`) and `AGENTS.md:52` calls that behavior canonical. Update both documents to name the actual lifetime and finite-bound rules, and link each statement to its source-of-truth implementation so future refactors do not restore the obsolete behavior.
 
