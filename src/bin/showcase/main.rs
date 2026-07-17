@@ -86,9 +86,8 @@ fn main() {
         )
         .init();
 
-    WinitHost::builder(MAIN_WINDOW)
+    WinitHost::new(MAIN_WINDOW, State::new)
         .title("aperture showcase")
-        .build(State::new)
         .run();
 }
 

@@ -9,7 +9,7 @@ use glam::{IVec2, UVec2};
 
 /// Caller-chosen opaque identity for a window. Supplied at
 /// [`Ui::open_window`](crate::Ui::open_window) (and
-/// [`WinitHost::builder`](crate::WinitHost::builder) or
+/// [`WinitHost::new`](crate::WinitHost::new) or
 /// [`OffscreenHost::new`](crate::OffscreenHost::new) for a host's
 /// first window),
 /// handed back to [`App::update`](crate::App::update) and
