@@ -24,6 +24,11 @@ use glam::Vec2;
 use std::time::Duration;
 use strum::EnumCount as _;
 
+fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: TranslateScale) -> Vec2 {
+    let surface_origin = transform.apply_point(layout_origin);
+    transform.inverse_vector(pointer - surface_origin)
+}
+
 /// Per-button capture. One slot per [`PointerButton`]; three
 /// all-or-nothing pieces instead of twelve loose fields, so the old
 /// by-convention invariants (a capture always has a press origin, a
@@ -909,6 +914,14 @@ impl InputState {
                 .all(|c| c.press.is_none() && c.release.is_none());
     }
 
+    pub(crate) fn pointer_local_for(&self, id: WidgetId, cascades: &Cascades) -> Option<Vec2> {
+        let pointer = self.pointer_pos?;
+        let entry_idx = cascades.entry_idx_of(id)? as usize;
+        let layout_rect = cascades.entries.layout_rect()[entry_idx];
+        let transform = cascades.entries.transform()[entry_idx];
+        Some(pointer_in_widget_space(pointer, layout_rect.min, transform))
+    }
+
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
         // Geometry half — needed every frame for theme picking and
         // layout-relative math. `entry_idx_of` is the lone hash probe.
@@ -1026,10 +1039,10 @@ impl InputState {
             },
             zoom: self.zoom_delta_for(id),
         };
-        let pointer_local = self.pointer_pos.zip(layout_rect).map(|(pointer, layout)| {
-            let surface_origin = transform.apply_point(layout.min);
-            transform.inverse_vector(pointer - surface_origin)
-        });
+        let pointer_local = self
+            .pointer_pos
+            .zip(layout_rect)
+            .map(|(pointer, layout)| pointer_in_widget_space(pointer, layout.min, transform));
 
         ResponseState {
             rect,
