@@ -10,8 +10,8 @@
 //! semantics conflict with "consume row leftover" and need explicit
 //! per-line distribution that's outside this MVP. Cross-axis Fill works
 //! identically to Stack: each line's cross size = max child cross, and
-//! `place_axis` with the `Auto-stretches-Fill` rule makes Fill children
-//! grow to that height (CSS `align-items: stretch` default).
+//! shared arrange-axis resolution makes Fill children grow to that
+//! height without shrinking below their measured content.
 
 use crate::forest::tree::Tree;
 use crate::forest::tree::node::NodeId;
@@ -22,17 +22,13 @@ use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
     JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
-use crate::layout::types::sizing::Sizes;
 use crate::primitives::{rect::Rect, size::Size};
 
-/// One child's contribution to the current line. `m` always comes from
-/// the child's main-axis desired size; `x` is the cross contribution
-/// the line should hug to, zero for Fill-on-cross children (CSS flex
-/// parity — Fill stretches to the row, doesn't drive its height).
+/// One child's measured contribution to the current line.
 #[derive(Clone, Copy, Debug)]
 struct ChildPack {
-    m: f32,
-    x: f32,
+    main: f32,
+    cross: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -43,23 +39,18 @@ struct LinePack {
 }
 
 #[inline]
-fn child_pack(axis: Axis, child_size: Sizes, d: Size) -> ChildPack {
+fn child_pack(axis: Axis, d: Size) -> ChildPack {
     ChildPack {
-        m: axis.main(d),
-        x: if axis.cross_sizing(child_size).fill_weight().is_some() {
-            0.0
-        } else {
-            axis.cross(d)
-        },
+        main: axis.main(d),
+        cross: axis.cross(d),
     }
 }
 
-/// True iff appending a child of main-axis extent `m` to the current
-/// line would push it past `main_avail`. The first child on an empty
-/// line never wraps — it always sets the line's start.
+/// True iff appending a child to the current line would push it past
+/// `main_avail`. The first child on an empty line never wraps.
 #[inline]
-fn would_wrap(line: LinePack, gap: f32, m: f32, main_avail: f32) -> bool {
-    line.occupied && line.main + gap + m > main_avail
+fn would_wrap(line: LinePack, gap: f32, child_main: f32, main_avail: f32) -> bool {
+    line.occupied && line.main + gap + child_main > main_avail
 }
 
 /// Advance the line-packing state by one child. When the child won't fit
@@ -76,20 +67,20 @@ fn pack_child(
     pack: ChildPack,
     mut complete_line: impl FnMut(f32, f32),
 ) {
-    let ChildPack { m, x } = pack;
-    if would_wrap(*line, gap, m, main_avail) {
+    let ChildPack { main, cross } = pack;
+    if would_wrap(*line, gap, main, main_avail) {
         complete_line(line.main, line.cross);
         *line = LinePack {
-            main: m,
-            cross: x,
+            main,
+            cross,
             occupied: true,
         };
     } else {
         if line.occupied {
             line.main += gap;
         }
-        line.main += m;
-        line.cross = line.cross.max(x);
+        line.main += main;
+        line.cross = line.cross.max(cross);
         line.occupied = true;
     }
 }
@@ -136,15 +127,14 @@ pub(crate) fn measure(
     // Measure each non-collapsed child once. Pass `INF` on main with the
     // committed cross — same height-given-width pattern as Stack pass-1
     // (so wrap text in a child shapes against `cross_avail`).
-    let layouts = tree.records.layout();
     let mut max_line_main = 0.0f32;
     let mut total_cross = 0.0f32;
     let mut line = LinePack::default();
     let mut line_count = 0usize;
 
-    let mut complete_line = |lm: f32, lx: f32| {
-        max_line_main = max_line_main.max(lm);
-        total_cross += lx;
+    let mut complete_line = |line_main: f32, line_cross: f32| {
+        max_line_main = max_line_main.max(line_main);
+        total_cross += line_cross;
         line_count += 1;
     };
     for c in tree.active_children(node) {
@@ -155,7 +145,7 @@ pub(crate) fn measure(
             tc,
             out,
         );
-        let pack = child_pack(axis, layouts[c.idx()].size, d);
+        let pack = child_pack(axis, d);
         pack_child(&mut line, gap, main_avail, pack, &mut complete_line);
     }
     // Flush last line.
@@ -236,7 +226,8 @@ pub(crate) fn arrange(
             // Cross axis: each child placed within the line's cross
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
-            let cross_p = cross_place(axis, &s, parent_child_align, d, line_cross);
+            let bounds = tree.bounds(c);
+            let cross_p = cross_place(axis, &s, bounds, parent_child_align, d, line_cross);
             let main_size = axis.main(d);
             let child_rect = axis.compose_rect(
                 main_cursor,
@@ -275,12 +266,19 @@ pub(crate) fn arrange(
 
         let i = c.idx();
         let d = layout.scratch.desired[i];
-        let pack = child_pack(axis, layouts[i].size, d);
+        let pack = child_pack(axis, d);
         // On wrap, `pack_child` places the just-finished line (which
         // empties the pool back to this depth's start); the child that
         // triggered the wrap is then pushed as the new line's first node.
-        pack_child(&mut line, gap, main_avail, pack, |lm, lx| {
-            place_line(layout, out, lm, lx, &mut cross_cursor, &mut first_line)
+        pack_child(&mut line, gap, main_avail, pack, |line_main, line_cross| {
+            place_line(
+                layout,
+                out,
+                line_main,
+                line_cross,
+                &mut cross_cursor,
+                &mut first_line,
+            )
         });
         layout.scratch.wrap.pool.push(c);
     }

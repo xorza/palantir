@@ -18,12 +18,43 @@ const INITIAL_MASK_ATLAS_SIZE: u32 = 1024;
 const INITIAL_COLOR_ATLAS_SIZE: u32 = 256;
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
-/// Sweep cadence (frames) for stale zero-area entries (`alloc: None`).
+/// Sweep cadence (frames) for stale non-drawing entries (`alloc: None`).
 /// `evict_one` skips them (nothing to deallocate), so every whitespace
-/// glyph at every scale rung would otherwise accumulate forever and
-/// bloat its linear scan. 512 ≈ 8 s at 60 fps — far outside any
-/// flicker, and rare enough that the O(map) retain amortizes to noise.
-const EMPTY_SWEEP_INTERVAL: u64 = 512;
+/// or rejected glyph at every scale rung would otherwise accumulate
+/// forever and bloat its linear scan. 512 ≈ 8 s at 60 fps — far
+/// outside any flicker, and rare enough that the O(map) retain
+/// amortizes to noise.
+const UNALLOCATED_SWEEP_INTERVAL: u64 = 512;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PackedGlyphMetadata {
+    width: u16,
+    height: u16,
+    left: i16,
+    top: i16,
+}
+
+impl PackedGlyphMetadata {
+    pub(crate) const EMPTY: Self = Self {
+        width: 0,
+        height: 0,
+        left: 0,
+        top: 0,
+    };
+
+    pub(crate) fn checked(width: u32, height: u32, left: i32, top: i32) -> Option<Self> {
+        Some(Self {
+            width: u16::try_from(width).ok()?,
+            height: u16::try_from(height).ok()?,
+            left: i16::try_from(left).ok()?,
+            top: i16::try_from(top).ok()?,
+        })
+    }
+
+    pub(crate) fn is_empty(self) -> bool {
+        self.width == 0 || self.height == 0
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GlyphSlot {
@@ -170,35 +201,31 @@ impl GlyphAtlas {
     /// `queue.write_texture` calls. Grows if full; returns `None`
     /// only at GPU-max and still doesn't fit. On success returns the
     /// new slot's slab index.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn insert(
         &mut self,
         device: &wgpu::Device,
         key: CacheKey,
         content: ContentType,
-        width: u16,
-        height: u16,
-        left: i16,
-        top: i16,
+        metadata: PackedGlyphMetadata,
         pixels: &[u8],
     ) -> Option<u32> {
-        let alloc = self.allocate(device, content, width, height)?;
+        let alloc = self.allocate(device, content, metadata.width, metadata.height)?;
         self.enqueue_upload(
             content,
             alloc.rectangle.min.x as u32,
             alloc.rectangle.min.y as u32,
-            width as u32,
-            height as u32,
+            metadata.width as u32,
+            metadata.height as u32,
             pixels,
         );
 
         let slot = GlyphSlot {
             x: alloc.rectangle.min.x as u16,
             y: alloc.rectangle.min.y as u16,
-            width,
-            height,
-            left,
-            top,
+            width: metadata.width,
+            height: metadata.height,
+            left: metadata.left,
+            top: metadata.top,
             content,
             alloc: Some(alloc.id),
             last_use: self.current_frame,
@@ -356,23 +383,22 @@ impl GlyphAtlas {
         self.pending_copies.clear();
     }
 
-    /// Insert a zero-area glyph entry (no atlas slot, no upload).
-    /// Subsequent lookups still hit the cache and skip swash. Returns
-    /// the entry's slab index.
-    pub(crate) fn insert_empty(
+    /// Cache a non-drawing glyph (no atlas slot or upload). Subsequent
+    /// lookups still hit the cache and skip swash.
+    pub(crate) fn insert_unallocated(
         &mut self,
         key: CacheKey,
         content: ContentType,
-        left: i16,
-        top: i16,
+        metadata: PackedGlyphMetadata,
     ) -> u32 {
+        debug_assert!(metadata.is_empty());
         let slot = GlyphSlot {
             x: 0,
             y: 0,
             width: 0,
             height: 0,
-            left,
-            top,
+            left: metadata.left,
+            top: metadata.top,
             content,
             alloc: None,
             last_use: self.current_frame,
@@ -381,10 +407,10 @@ impl GlyphAtlas {
     }
 
     /// Frame teardown: advance the LRU frame counter and periodically
-    /// sweep stale zero-area entries.
+    /// sweep stale non-drawing entries.
     pub(crate) fn end_frame(&mut self) {
         self.current_frame += 1;
-        sweep_stale_empties(
+        sweep_stale_unallocated(
             &mut self.cache,
             &self.slots,
             &mut self.free,
@@ -498,23 +524,24 @@ impl Side {
     }
 }
 
-/// Drop zero-area entries (`alloc: None`) not used within the last
-/// [`EMPTY_SWEEP_INTERVAL`] frames, returning their slab indices to
+/// Drop non-drawing entries (`alloc: None`) not used within the last
+/// [`UNALLOCATED_SWEEP_INTERVAL`] frames, returning their slab indices to
 /// `free`. Runs only on interval frames so steady-state `end_frame`
 /// stays O(1). Allocated entries are `evict_one`'s job; a swept empty
-/// re-inserts via `insert_empty` on next use. No `eviction_count`
-/// bump: empty slots carry no uv coords and encoded-run caches never
-/// record them, so no encoded-cache entry can go stale.
-fn sweep_stale_empties(
+/// or rejected glyph re-inserts via `insert_unallocated` on next use.
+/// No `eviction_count` bump: unallocated slots carry no uv coords and
+/// encoded-run caches never record them, so no encoded-cache entry can
+/// go stale.
+fn sweep_stale_unallocated(
     cache: &mut FxHashMap<CacheKey, u32>,
     slots: &[GlyphSlot],
     free: &mut Vec<u32>,
     current_frame: u64,
 ) {
-    if !current_frame.is_multiple_of(EMPTY_SWEEP_INTERVAL) {
+    if !current_frame.is_multiple_of(UNALLOCATED_SWEEP_INTERVAL) {
         return;
     }
-    let cutoff = current_frame - EMPTY_SWEEP_INTERVAL;
+    let cutoff = current_frame - UNALLOCATED_SWEEP_INTERVAL;
     cache.retain(|_, idx| {
         let s = &slots[*idx as usize];
         let keep = s.alloc.is_some() || s.last_use >= cutoff;
@@ -581,6 +608,57 @@ mod tests {
     }
 
     #[test]
+    fn packed_glyph_metadata_checks_every_wire_boundary() {
+        assert_eq!(
+            PackedGlyphMetadata::checked(0, 0, 0, 0),
+            Some(PackedGlyphMetadata {
+                width: 0,
+                height: 0,
+                left: 0,
+                top: 0,
+            })
+        );
+        assert_eq!(
+            PackedGlyphMetadata::checked(
+                u16::MAX as u32,
+                u16::MAX as u32,
+                i16::MIN as i32,
+                i16::MAX as i32,
+            ),
+            Some(PackedGlyphMetadata {
+                width: u16::MAX,
+                height: u16::MAX,
+                left: i16::MIN,
+                top: i16::MAX,
+            })
+        );
+        assert_eq!(
+            PackedGlyphMetadata::checked(1, 1, i16::MAX as i32, i16::MIN as i32),
+            Some(PackedGlyphMetadata {
+                width: 1,
+                height: 1,
+                left: i16::MAX,
+                top: i16::MIN,
+            })
+        );
+
+        let invalid = [
+            (u16::MAX as u32 + 1, 1, 0, 0, "width above u16"),
+            (1, u16::MAX as u32 + 1, 0, 0, "height above u16"),
+            (1, 1, i16::MIN as i32 - 1, 0, "left below i16"),
+            (1, 1, i16::MAX as i32 + 1, 0, "left above i16"),
+            (1, 1, 0, i16::MIN as i32 - 1, "top below i16"),
+            (1, 1, 0, i16::MAX as i32 + 1, "top above i16"),
+        ];
+        for (width, height, left, top, case) in invalid {
+            assert!(
+                PackedGlyphMetadata::checked(width, height, left, top).is_none(),
+                "{case}"
+            );
+        }
+    }
+
+    #[test]
     fn empty_sweep_drops_only_stale_unallocated_entries() {
         // Sweep at frame 1024 uses cutoff 1024 - 512 = 512: empties
         // with last_use < 512 go, everything else stays.
@@ -597,11 +675,11 @@ mod tests {
         let mut free = Vec::new();
 
         // Off-interval frame: no-op even though key(1) is already stale.
-        sweep_stale_empties(&mut cache, &slots, &mut free, 1023);
+        sweep_stale_unallocated(&mut cache, &slots, &mut free, 1023);
         assert_eq!(cache.len(), 4);
         assert!(free.is_empty());
 
-        sweep_stale_empties(&mut cache, &slots, &mut free, 1024);
+        sweep_stale_unallocated(&mut cache, &slots, &mut free, 1024);
         assert!(!cache.contains_key(&key(1)), "stale empty must be swept");
         assert!(cache.contains_key(&key(2)), "last_use == cutoff survives");
         assert!(cache.contains_key(&key(3)), "fresh empty survives");

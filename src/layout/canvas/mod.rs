@@ -5,8 +5,9 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::support::{
-    TextCtx, children_max_intrinsic_offset, measure_per_axis_hug, stretched_extent, zero_subtree,
+    TextCtx, arrange_axis, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
 };
+use crate::layout::types::align::AxisAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
 
@@ -72,11 +73,6 @@ pub(crate) fn arrange(
     let layouts = tree.records.layout();
     let canvas_size = layouts[node.idx()].size;
     let self_outer = out[layout.active_layer].rect[node.idx()].size;
-    // Hug canvas: `stretched_extent` returns `desired` for Fill
-    // children here — stretching them to `inner.size` would inflate
-    // them to the canvas's own intrinsic, which already counts
-    // `position`. Constrained (Fixed/Fill) canvases let Fill children
-    // fill the canvas's actual slot.
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -85,12 +81,23 @@ pub(crate) fn arrange(
         }
         let d = layout.scratch.desired[c.idx()];
         let pos = tree.bounds(c).position;
-        let s = layouts[c.idx()].size;
+        let style = layouts[c.idx()];
+        let bounds = tree.bounds(c);
+        let slot_w = if canvas_size.w().is_hug() {
+            d.w
+        } else {
+            inner.size.w
+        };
+        let slot_h = if canvas_size.h().is_hug() {
+            d.h
+        } else {
+            inner.size.h
+        };
         let child_rect = Rect {
             min: inner.min + pos,
             size: Size::new(
-                stretched_extent(s.w(), d.w, inner.size.w, canvas_size.w()),
-                stretched_extent(s.h(), d.h, inner.size.h, canvas_size.h()),
+                arrange_axis(Axis::X, AxisAlign::Auto, &style, bounds, d, slot_w).size,
+                arrange_axis(Axis::Y, AxisAlign::Auto, &style, bounds, d, slot_h).size,
             ),
         };
         layout.arrange(tree, c, self_outer, child_rect, out);

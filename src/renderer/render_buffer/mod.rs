@@ -19,6 +19,10 @@ use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::render_buffer::text::TextRun;
 
+/// Deepest rounded-mask chain representable by the renderer's
+/// eight-bit stencil counter.
+pub(crate) const MAX_ROUNDED_CLIP_DEPTH: u32 = u8::MAX as u32;
+
 /// Output of `compose`: physical-px instances grouped by scissor region plus
 /// the wgpu callback sidecar for composited `GpuView`s.
 ///

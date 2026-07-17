@@ -55,10 +55,10 @@ pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
 /// instead of a swapchain (screenshots, thumbnails, server-side
 /// compositing); also backs the visual harness + GPU benches.
-pub use host::offscreen::OffscreenHost;
-pub use host::winit::WinitHost;
+pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 pub use host::winit::config::WinitHostConfig;
 pub use host::winit::handle::{HostHandle, UserEvent};
+pub use host::winit::{WinitHost, WinitHostBuilder};
 pub use input::InputEvent;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};

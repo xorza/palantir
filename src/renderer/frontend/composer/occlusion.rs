@@ -26,13 +26,9 @@ struct Occluder {
 /// Each [`Occluder`] pairs the quad's slice-relative index (for
 /// "drawn-on-top" ordering — only indices `> i` can occlude quad `i`)
 /// with its **cover rect**: the largest axis-aligned rect guaranteed to
-/// receive full opaque coverage. For sharp-cornered quads
-/// `cover == Quad.rect`; for rounded quads, `cover` is `Quad.rect`
-/// deflated per-side by `max(adjacent_radii) * (1 − 1/√2)` (the
-/// inscribed-square offset of a corner arc); for quads with a
-/// translucent inner-edge stroke the composer additionally deflates by
-/// the stroke width (the annulus alpha equals the stroke alpha, so only
-/// the fill-only interior is opaque).
+/// receive full opaque coverage. Only pixel-aligned fast-path quads use
+/// their full rect. Other covers are inset for corners, translucent
+/// inner-edge strokes, and the SDF's half-pixel AA transition.
 #[derive(Debug, Default)]
 pub(crate) struct OcclusionPruner {
     /// Solid-opaque occluders in the in-flight group, in push order
@@ -73,9 +69,7 @@ impl OcclusionPruner {
     ///   slice (composer's flush boundary contract).
     /// - `opaque_in_group` holds an entry for every solid-opaque quad
     ///   pushed into the slice whose cover survived the composer's
-    ///   stroke rule (see the `DrawRect` arm: full inscribed cover for a
-    ///   noop or fully-opaque stroke, deflated by the stroke width for a
-    ///   translucent one), in push order (ascending `idx`).
+    ///   corner, stroke, and AA rules, in push order (ascending `idx`).
     ///
     /// Behaviour:
     /// - For each quad at slice index `i`, compute its painted extent as

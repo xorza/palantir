@@ -8,6 +8,9 @@ use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
 
+/// Half-width of the quad SDF's physical-pixel antialiasing transition.
+pub(crate) const AA_RADIUS: f32 = 0.5;
+
 /// Per-instance quad data (60 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
 /// `vertex_attr_array` in `QuadPipeline::new` (in the backend) for the

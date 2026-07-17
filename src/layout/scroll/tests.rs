@@ -241,6 +241,30 @@ fn hug_scroll_caps_at_max_and_scrolls() {
     let st = state_for(&mut ui, "scroll");
     assert_eq!(st.content.h, 400.0, "records full content extent");
     assert!(st.overflow.1, "content past the cap overflows on Y");
+
+    let mut ui = Ui::for_test();
+    ui.run_at(SURFACE, |ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("parent-capped-scroll"))
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .show(ui, |ui| {
+                        for i in 0..8u32 {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("parent-capped-row", i)))
+                                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
+                                .show(ui);
+                        }
+                    });
+            });
+    });
+    let st = state_for(&mut ui, "parent-capped-scroll");
+    assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
+    assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
+    assert!(st.overflow.1, "parent-capped content overflows on Y");
 }
 
 /// Counterpart guard: a `Fill` scroll keeps the content-independent
