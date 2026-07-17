@@ -158,6 +158,58 @@ pub struct Element {
     pub(crate) transform: TranslateScale,
 }
 impl Element {
+    /// Paint/layout leaf for custom widget content.
+    #[track_caller]
+    pub fn leaf() -> Self {
+        Self::new(LayoutMode::Leaf, ModePayload::NONE)
+    }
+
+    /// Horizontal stack container for custom widgets.
+    #[track_caller]
+    pub fn hstack() -> Self {
+        Self::new(LayoutMode::HStack, ModePayload::NONE)
+    }
+
+    /// Vertical stack container for custom widgets.
+    #[track_caller]
+    pub fn vstack() -> Self {
+        Self::new(LayoutMode::VStack, ModePayload::NONE)
+    }
+
+    /// Wrapping horizontal stack container for custom widgets.
+    #[track_caller]
+    pub fn wrap_hstack() -> Self {
+        Self::new(LayoutMode::WrapHStack, ModePayload::NONE)
+    }
+
+    /// Wrapping vertical stack container for custom widgets.
+    #[track_caller]
+    pub fn wrap_vstack() -> Self {
+        Self::new(LayoutMode::WrapVStack, ModePayload::NONE)
+    }
+
+    /// Layered stack container for custom widgets.
+    #[track_caller]
+    pub fn zstack() -> Self {
+        Self::new(LayoutMode::ZStack, ModePayload::NONE)
+    }
+
+    /// Absolute-positioned container for custom widgets.
+    #[track_caller]
+    pub fn canvas() -> Self {
+        Self::new(LayoutMode::Canvas, ModePayload::NONE)
+    }
+
+    #[track_caller]
+    pub(crate) fn grid(id: GridDefId) -> Self {
+        Self::new(LayoutMode::Grid, ModePayload::grid(id))
+    }
+
+    #[track_caller]
+    pub(crate) fn scroll(spec: ScrollSpec) -> Self {
+        Self::new(LayoutMode::Scroll, ModePayload::scroll(spec))
+    }
+
     pub(crate) fn set_grid_def(&mut self, id: GridDefId) {
         debug_assert_eq!(
             self.mode,
@@ -186,22 +238,12 @@ impl Element {
         self.mode_payload.scroll_spec(self.mode)
     }
 
-    /// Build an `Element` with a call-site-derived auto id. `#[track_caller]`
-    /// propagates through every widget constructor that's also marked
-    /// `#[track_caller]`, so `Foo::new()` at the user's source line yields a
-    /// distinct id per call site. Override with [`Configure::id_salt`] /
-    /// [`Configure::id`] when call order isn't stable across frames.
-    ///
-    /// Public so library users can author their own widgets: build an
-    /// `Element`, chain [`Configure`] setters on it (`Element` itself
-    /// implements `Configure`), resolve its id with [`crate::Ui::widget_id`],
-    /// and open it with [`crate::Ui::node`].
     #[track_caller]
-    pub fn new(mode: LayoutMode) -> Self {
+    fn new(mode: LayoutMode, mode_payload: ModePayload) -> Self {
         Self {
             salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
-            mode_payload: ModePayload::NONE,
+            mode_payload,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -455,7 +497,7 @@ pub trait Configure: Sized {
 /// A bare `Element` is its own configurable builder, so widget authors
 /// can chain the [`Configure`] setters on the child nodes they construct
 /// inside their `show` body — e.g.
-/// `Element::new(LayoutMode::Leaf).id(my_id).size(...).sense(Sense::CLICK)`.
+/// `Element::leaf().id(my_id).size(...).sense(Sense::CLICK)`.
 impl Configure for Element {
     #[inline]
     fn element_mut(&mut self) -> &mut Element {

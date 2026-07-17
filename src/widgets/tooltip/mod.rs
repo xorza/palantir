@@ -2,7 +2,6 @@ use crate::forest::element::Salt;
 use crate::forest::element::{Configure, Element};
 use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -73,7 +72,7 @@ impl<'r> Tooltip<'r> {
     /// borrow before recording the tooltip body.
     #[track_caller]
     pub fn on(snapshot: &'r ResponseSnapshot) -> Self {
-        let mut element = Element::new(LayoutMode::VStack);
+        let mut element = Element::vstack();
         // Bubble must never claim hover — would shadow its own trigger.
         element.flags.set_sense(Sense::empty());
         Self {

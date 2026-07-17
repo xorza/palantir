@@ -1,6 +1,5 @@
 use crate::forest::element::{Configure, Element};
 use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -40,7 +39,7 @@ impl Separator {
     #[track_caller]
     fn axis(horizontal: bool) -> Self {
         Self {
-            element: Element::new(LayoutMode::Leaf),
+            element: Element::leaf(),
             horizontal,
             thickness: None,
             color: None,

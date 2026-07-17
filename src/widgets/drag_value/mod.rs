@@ -1,6 +1,4 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::LayoutMode;
-
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
@@ -217,7 +215,7 @@ pub struct DragValue<'a> {
 impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
-        let mut element = Element::new(LayoutMode::Leaf);
+        let mut element = Element::leaf();
         element.flags.set_sense(Sense::DRAG);
         Self {
             element,

@@ -2,7 +2,7 @@ use glam::BVec2;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LayoutMode {
+pub(crate) enum LayoutMode {
     Leaf = 0,
     HStack = 1,
     VStack = 2,

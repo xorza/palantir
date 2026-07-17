@@ -1,6 +1,5 @@
 use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::rect::Rect;
@@ -34,7 +33,7 @@ pub struct RadioButton<'a, T: PartialEq> {
 impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
     pub fn new(current: &'a mut T, value: T) -> Self {
-        let mut element = Element::new(LayoutMode::HStack);
+        let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
             element,

@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
 use crate::ui::Ui;
@@ -54,7 +53,7 @@ impl GpuView {
     /// sized to this widget's physical rect.
     #[track_caller]
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
-        let mut element = Element::new(LayoutMode::Leaf);
+        let mut element = Element::leaf();
         element.size = (Sizing::Fill(1.0), Sizing::Fill(1.0)).into();
         Self {
             element,

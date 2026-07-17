@@ -71,7 +71,6 @@ pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
-pub use layout::types::layout_mode::LayoutMode;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;

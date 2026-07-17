@@ -3,8 +3,6 @@ pub(crate) mod model;
 
 use crate::common::clipboard;
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::LayoutMode;
-
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign};
@@ -185,7 +183,7 @@ pub struct TextEdit<'a> {
 impl<'a> TextEdit<'a> {
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
-        let mut element = Element::new(LayoutMode::Leaf);
+        let mut element = Element::leaf();
         element.flags.set_sense(Sense::CLICK);
         element.flags.set_focusable(true);
         // Clip glyphs, caret, and selection wash to the editor's own

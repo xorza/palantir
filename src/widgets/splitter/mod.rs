@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;
@@ -113,7 +113,7 @@ impl<'a> Splitter<'a> {
     #[track_caller]
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         // The clipped root contains the grab overlay's overhang within the splitter.
-        let mut element = Element::new(LayoutMode::Grid);
+        let mut element = Element::grid(GridDefId::PENDING);
         element.size = (Sizing::FILL, Sizing::FILL).into();
         element.flags.set_clip(ClipMode::Rect);
         Self {
@@ -233,7 +233,7 @@ impl<'a> Splitter<'a> {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
             let rule_id = id.with("rule");
-            let mut rule = Element::new(LayoutMode::Leaf);
+            let mut rule = Element::leaf();
             rule.salt = Salt::Verbatim(rule_id);
             rule.size = (Sizing::FILL, Sizing::FILL).into();
             set_main_cell(&mut rule, axis, 1);
@@ -242,7 +242,7 @@ impl<'a> Splitter<'a> {
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
             let inset = (rule_thickness - thickness) * 0.5;
-            let mut bar = Element::new(LayoutMode::Leaf);
+            let mut bar = Element::leaf();
             bar.salt = Salt::Verbatim(divider_id);
             bar.flags.set_sense(Sense::DRAG);
             bar.size = (Sizing::FILL, Sizing::FILL).into();
@@ -266,7 +266,7 @@ impl Configure for Splitter<'_> {
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
-    let mut el = Element::new(LayoutMode::ZStack);
+    let mut el = Element::zstack();
     el.salt = Salt::Verbatim(id);
     el.size = (Sizing::FILL, Sizing::FILL).into();
     el.flags.set_clip(ClipMode::Rect);

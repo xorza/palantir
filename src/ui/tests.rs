@@ -599,7 +599,6 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     use crate::forest::tree::paint_anims::PaintAnim;
     use crate::host::context::HostContext;
     use crate::layout::types::align::Align;
-    use crate::layout::types::layout_mode::LayoutMode;
     use crate::layout::types::sizing::Sizing;
     use crate::record_store::RecordStore;
     use crate::renderer::frontend::Frontend;
@@ -610,7 +609,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     const HALF: Duration = Duration::from_millis(500);
 
     fn idle_body(ui: &mut Ui) {
-        let mut element = Element::new(LayoutMode::Leaf);
+        let mut element = Element::leaf();
         element.size = (Sizing::Fixed(160.0), Sizing::Fixed(30.0)).into();
         let id = ui.widget_id(&element);
         ui.node(id, element, None, |ui| {

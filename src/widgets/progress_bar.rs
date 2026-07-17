@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element, Salt};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -26,7 +25,7 @@ impl ProgressBar {
     #[track_caller]
     pub fn new(fraction: f32) -> Self {
         Self {
-            element: Element::new(LayoutMode::HStack),
+            element: Element::hstack(),
             fraction,
             style: None,
         }
@@ -57,7 +56,7 @@ impl ProgressBar {
         let id = ui.widget_id(&element);
         ui.node(id, element, Some(&track), |ui| {
             let fill_id = id.with("fill");
-            let mut fill_el = Element::new(LayoutMode::Leaf);
+            let mut fill_el = Element::leaf();
             fill_el.salt = Salt::Verbatim(fill_id);
             fill_el.size = (Sizing::Fill(fill), Sizing::FILL).into();
             ui.node(fill_id, fill_el, Some(&fill_bg), |_| {});
@@ -65,7 +64,7 @@ impl ProgressBar {
             // Remainder spacer — its `Fill` weight pushes the fill to the
             // correct fraction of the track width.
             let rest_id = id.with("rest");
-            let mut rest = Element::new(LayoutMode::Leaf);
+            let mut rest = Element::leaf();
             rest.salt = Salt::Verbatim(rest_id);
             rest.size = (Sizing::Fill(spacer), Sizing::FILL).into();
             ui.node(rest_id, rest, None, |_| {});

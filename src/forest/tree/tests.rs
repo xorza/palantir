@@ -6,7 +6,7 @@ use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Tree;
 use crate::forest::tree::node::NodeId;
 use crate::forest::tree::recording::RecordingScratch;
-use crate::layout::types::{justify::Justify, layout_mode::LayoutMode, sizing::Sizing};
+use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::{Color, ColorU8};
@@ -29,7 +29,7 @@ fn open_node_rejects_non_next_id() {
         &mut RecordingScratch::default(),
         NodeId(1),
         WidgetId::from_hash("wrong-slot"),
-        Element::new(LayoutMode::Leaf),
+        Element::leaf(),
         None,
     );
 }

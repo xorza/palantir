@@ -2,7 +2,6 @@ use crate::forest::element::{Configure, Element, Salt};
 use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -44,7 +43,7 @@ impl Modal {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        let mut element = Element::new(LayoutMode::VStack);
+        let mut element = Element::vstack();
         element.flags.set_sense(BLOCK);
         Self {
             element,
@@ -90,7 +89,7 @@ impl Modal {
             // Root fills the surface, dims it, eats stray pointer events,
             // and centers the card. The card re-senses `BLOCK` so clicks
             // on it never fall through to this dismiss-backdrop.
-            let mut root = Element::new(LayoutMode::ZStack);
+            let mut root = Element::zstack();
             root.salt = Salt::Verbatim(root_id);
             root.size = (Sizing::FILL, Sizing::FILL).into();
             root.child_align = Align::CENTER;

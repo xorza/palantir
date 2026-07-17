@@ -305,7 +305,7 @@ impl ScrollLayoutState {
 /// input.
 pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 
-/// Measure dispatch arm for [`crate::LayoutMode::Scroll`]. Single
+/// Measure dispatch arm for `LayoutMode::Scroll`. Single
 /// child-measurement pass with `INF` on the panned axes — no
 /// reservation, no awareness of bars. Records the panned-axis content
 /// extent into the persistent state row, and returns the
@@ -366,7 +366,7 @@ pub(crate) fn measure(
     )
 }
 
-/// Arrange dispatch arm for [`crate::LayoutMode::Scroll`]. Delegates to
+/// Arrange dispatch arm for `LayoutMode::Scroll`. Delegates to
 /// stack/zstack arrange so children land in `inner` (already deflated
 /// by user padding), then writes the layout-derived fields onto the
 /// state row: `viewport` is `inner.size`, overflow follows from

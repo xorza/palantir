@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::background::Background;
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -20,7 +19,7 @@ impl Frame {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            element: Element::new(LayoutMode::Leaf),
+            element: Element::leaf(),
             chrome: None,
         }
     }

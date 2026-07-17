@@ -1,7 +1,6 @@
 use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -33,7 +32,7 @@ pub struct Slider<'a> {
 impl<'a> Slider<'a> {
     #[track_caller]
     pub fn new(value: &'a mut f32, range: RangeInclusive<f32>) -> Self {
-        let mut element = Element::new(LayoutMode::HStack);
+        let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK | Sense::DRAG);
         Self {
             element,
@@ -130,14 +129,14 @@ impl Configure for Slider<'_> {
 }
 
 fn rail_leaf(ui: &mut Ui, id: WidgetId, w: Sizing, h: f32, bg: &Background) {
-    let mut el = Element::new(LayoutMode::Leaf);
+    let mut el = Element::leaf();
     el.salt = Salt::Verbatim(id);
     el.size = (w, Sizing::Fixed(h)).into();
     ui.node(id, el, Some(bg), |_| {});
 }
 
 fn knob_leaf(ui: &mut Ui, id: WidgetId, size: f32, bg: &Background) {
-    let mut el = Element::new(LayoutMode::Leaf);
+    let mut el = Element::leaf();
     el.salt = Salt::Verbatim(id);
     el.size = (Sizing::Fixed(size), Sizing::Fixed(size)).into();
     ui.node(id, el, Some(bg), |_| {});
