@@ -15,7 +15,7 @@
 //! [`crate::forest::shapes::lower`].
 
 use crate::common::hash::hash_str;
-use crate::primitives::brush::{FillAxis, Interp, MAX_STOPS, Stop};
+use crate::primitives::brush::{FillAxis, GradientStops, Interp};
 use crate::primitives::color::ColorU8;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::interned_str::InternedStr;
@@ -25,7 +25,6 @@ use glam::Vec2;
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::Write as _;
 use std::rc::Rc;
-use tinyvec::ArrayVec;
 
 /// Record-local handle into [`RecordPayloads::gradients`].
 #[repr(transparent)]
@@ -38,7 +37,7 @@ pub(crate) struct GradientId(pub(crate) u32);
 pub(crate) struct RecordedGradient {
     pub(crate) axis: FillAxis,
     pub(crate) kind: FillKind,
-    pub(crate) stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub(crate) stops: GradientStops,
     pub(crate) interp: Interp,
 }
 

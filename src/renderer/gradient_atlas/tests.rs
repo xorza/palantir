@@ -1,4 +1,4 @@
-use crate::primitives::brush::LinearGradient;
+use crate::primitives::brush::{GradientStops, Interp, LinearGradient, Stop};
 use crate::primitives::color::ColorU8;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
@@ -500,10 +500,10 @@ fn flush_returns_bytes_once_then_none() {
 #[test]
 fn register_stops_dedups_across_variants() {
     let mut atlas = GradientCpuAtlas::default();
-    let stops = [
+    let stops = GradientStops::new([
         Stop::new(0.0, ColorU8::rgb(255, 64, 0)),
         Stop::new(1.0, ColorU8::rgb(0, 128, 255)),
-    ];
+    ]);
     let r_linear = atlas.register_stops(&stops, Interp::Oklab);
     let r_radial = atlas.register_stops(&stops, Interp::Oklab);
     assert_eq!(r_linear, r_radial);

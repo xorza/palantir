@@ -6,9 +6,7 @@ use glam::Vec2;
 use tinyvec::ArrayVec;
 
 /// Hard cap on stops in a single gradient. 8 covers >99% of UI use
-/// (2-3 stops dominate, multi-stop bars rarely exceed 5). Hard-asserted
-/// in `LinearGradient::new` — exceeding the cap is a caller bug, not a
-/// silent truncation.
+/// (2-3 stops dominate, multi-stop bars rarely exceed 5).
 pub(crate) const MAX_STOPS: usize = 8;
 
 /// GPU-wire form of a gradient's axis: four f16 lanes (`[u16; 4]`,
@@ -60,8 +58,8 @@ impl FillAxis {
 
 /// One colour stop in a gradient. `offset_u8` is the 0..1 parametric
 /// position quantized to 8 bits (256 levels — finer than the LUT it
-/// bakes into). `color` is 8-bit sRGB. Total 5 B / stop, align 1, so
-/// `ArrayVec<[Stop; 8]>` is 40 B inline vs. 64 B with f32 offsets.
+/// bakes into). `color` is 8-bit linear RGB. Total 5 B / stop, align 1, so
+/// `GradientStops` is 40 B inline vs. 64 B with f32 offsets.
 /// Stops are storage-only (never animated; snap on morph), feed a u8
 /// LUT, and out-of-range positions clamp at construction — 8-bit
 /// precision is sufficient and saves ~24 B per gradient.
@@ -88,23 +86,27 @@ impl serde::Serialize for Stop {
 
 impl<'de> serde::Deserialize<'de> for Stop {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+
         #[derive(serde::Deserialize)]
         struct Raw {
             offset: f32,
             color: ColorU8,
         }
         let r = Raw::deserialize(d)?;
+        if !r.offset.is_finite() {
+            return Err(D::Error::custom("gradient stop offset must be finite"));
+        }
         Ok(Stop::new(r.offset, r.color))
     }
 }
 
 impl Stop {
-    /// Construct a stop. `offset` is clamped to 0..=1 and quantized to
-    /// u8 (round-to-nearest); out-of-range values clamp at construction
-    /// rather than at bake time so the stored value matches what
-    /// authors expect to round-trip.
+    /// Construct a stop. Finite offsets are clamped to 0..=1 and
+    /// quantized to u8 (round-to-nearest).
     #[inline]
     pub fn new(offset: f32, color: impl Into<ColorU8>) -> Self {
+        assert!(offset.is_finite(), "gradient stop offset must be finite");
         let q = (offset.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
         Self {
             offset_u8: q,
@@ -117,6 +119,66 @@ impl Stop {
     #[inline]
     pub const fn offset(self) -> f32 {
         self.offset_u8 as f32 / 255.0
+    }
+}
+
+/// Inline gradient-stop sequence whose length is always two through eight.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GradientStops(ArrayVec<[Stop; MAX_STOPS]>);
+
+impl GradientStops {
+    /// Collect stops into inline storage, panicking on an invalid count.
+    pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
+        let mut values = ArrayVec::new();
+        for stop in stops {
+            assert!(
+                values.len() < MAX_STOPS,
+                "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}",
+            );
+            values.push(stop);
+        }
+        assert!(
+            values.len() >= 2,
+            "gradient requires at least 2 stops, got {}",
+            values.len(),
+        );
+        Self(values)
+    }
+}
+
+impl std::ops::Deref for GradientStops {
+    type Target = [Stop];
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_slice()
+    }
+}
+
+impl std::ops::DerefMut for GradientStops {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut_slice()
+    }
+}
+
+impl serde::Serialize for GradientStops {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for GradientStops {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+
+        let values: ArrayVec<[Stop; MAX_STOPS]> = serde::Deserialize::deserialize(deserializer)?;
+        if values.len() < 2 {
+            return Err(D::Error::custom(format_args!(
+                "gradient requires at least 2 stops, got {}",
+                values.len(),
+            )));
+        }
+        Ok(Self(values))
     }
 }
 
@@ -157,18 +219,17 @@ pub enum Interp {
 /// (0 = →, π/2 = ↓). Object-space: gradient spans the brush owner's
 /// bounding rect end-to-end at the given angle.
 ///
-/// Stops live inline via `ArrayVec<[Stop; MAX_STOPS]>` so a
-/// `LinearGradient` value is heap-free. Total size is ~80 B (4 B angle
-/// + 64 B stops + 1 B spread + 1 B interp + pad).
+/// Stops live inline via [`GradientStops`] so a
+/// `LinearGradient` value is heap-free. Total size is 48 B.
 ///
-/// **Not `Copy`** — the 40 B `ArrayVec` made implicit per-frame
+/// **Not `Copy`** — the 40 B [`GradientStops`] made implicit per-frame
 /// copies expensive through the recording chain; see `Brush`'s
 /// comment for the auto-`Copy` audit story. `.clone()` is cheap
 /// (one inline memcpy) — just explicit.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LinearGradient {
     pub angle: f32,
-    pub stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub stops: GradientStops,
     pub spread: Spread,
     pub interp: Interp,
 }
@@ -195,7 +256,7 @@ impl LinearGradient {
     pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             angle,
-            stops: collect_stops(stops, "LinearGradient"),
+            stops: GradientStops::new(stops),
             spread: Spread::default(),
             interp: Interp::default(),
         }
@@ -249,7 +310,7 @@ impl LinearGradient {
 pub struct RadialGradient {
     pub center: Vec2,
     pub radius: Vec2,
-    pub stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub stops: GradientStops,
     pub spread: Spread,
     pub interp: Interp,
 }
@@ -269,11 +330,10 @@ impl std::hash::Hash for RadialGradient {
 
 impl RadialGradient {
     pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self {
-        let stops = collect_stops(stops, "RadialGradient");
         Self {
             center,
             radius,
-            stops,
+            stops: GradientStops::new(stops),
             spread: Spread::default(),
             interp: Interp::Oklab,
         }
@@ -314,7 +374,7 @@ impl RadialGradient {
 pub struct ConicGradient {
     pub center: Vec2,
     pub start_angle: f32,
-    pub stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub stops: GradientStops,
     pub spread: Spread,
     pub interp: Interp,
 }
@@ -336,11 +396,10 @@ impl std::hash::Hash for ConicGradient {
 
 impl ConicGradient {
     pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
-        let stops = collect_stops(stops, "ConicGradient");
         Self {
             center,
             start_angle,
-            stops,
+            stops: GradientStops::new(stops),
             spread: Spread::default(),
             interp: Interp::Linear,
         }
@@ -364,32 +423,11 @@ impl ConicGradient {
     }
 }
 
-/// Shared 2..=MAX_STOPS validation used by every gradient constructor.
-fn collect_stops(
-    stops: impl IntoIterator<Item = Stop>,
-    ty: &'static str,
-) -> ArrayVec<[Stop; MAX_STOPS]> {
-    let mut sv: ArrayVec<[Stop; MAX_STOPS]> = ArrayVec::new();
-    for s in stops {
-        assert!(
-            sv.len() < MAX_STOPS,
-            "{ty}: stop count exceeds MAX_STOPS = {MAX_STOPS}",
-        );
-        sv.push(s);
-    }
-    assert!(
-        sv.len() >= 2,
-        "{ty} requires at least 2 stops, got {}",
-        sv.len(),
-    );
-    sv
-}
-
 /// Per-stop hash loop, identical across all three gradient variants —
 /// only the geometry prefix differs. Each stop folds its colour + 8-bit
 /// offset into one `u64` write.
 #[inline]
-fn hash_stops<H: std::hash::Hasher>(state: &mut H, stops: &ArrayVec<[Stop; MAX_STOPS]>) {
+fn hash_stops<H: std::hash::Hasher>(state: &mut H, stops: &GradientStops) {
     for s in stops.iter() {
         state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
     }
@@ -443,7 +481,7 @@ gradient_common!(LinearGradient, RadialGradient, ConicGradient);
 /// gradient morph animations snap across variants and across distinct
 /// gradients of the same variant.
 // `Brush` is intentionally **not `Copy`** — the gradient variants
-// carry a 40 B `ArrayVec<[Stop; 8]>` and the whole enum is 60 B. The
+// carry 40 B of inline stops and the whole enum is 60 B. The
 // recording chain used to thread `Brush` (often inside `Background`)
 // through 3-4 functions per chromed widget by value; auto-`Copy` hid
 // an O(N) of `vmovups` per frame in `Ui::node`. Hot paths
@@ -619,256 +657,4 @@ impl Animatable for Brush {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::primitives::brush::*;
-    use std::collections::hash_map::DefaultHasher;
-    use std::f32::consts::{FRAC_PI_4, PI};
-    use std::hash::{Hash, Hasher};
-
-    fn h(b: Brush) -> u64 {
-        let mut s = DefaultHasher::new();
-        b.hash(&mut s);
-        s.finish()
-    }
-
-    /// `LinearGradient::Hash` feeds `GradientCpuAtlas::register`'s
-    /// content-hashed row addressing — `±0.0` and NaN bit-pattern variants
-    /// must collapse so visually-identical gradients reuse one atlas row.
-    #[test]
-    fn linear_gradient_canon_bits_collapses_equivalent_f32_patterns() {
-        let nan_a = f32::from_bits(0x7fc0_0001);
-        let nan_b = f32::from_bits(0x7fc0_0002);
-        assert!(nan_a.is_nan() && nan_b.is_nan());
-        let cases: &[(&str, Brush, Brush)] = &[
-            (
-                "angle_neg_zero_eq_pos_zero",
-                Brush::Linear(LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE)),
-                Brush::Linear(LinearGradient::two_stop(-0.0, Color::BLACK, Color::WHITE)),
-            ),
-            (
-                "angle_nan_bit_patterns_collapse",
-                Brush::Linear(LinearGradient::two_stop(nan_a, Color::BLACK, Color::WHITE)),
-                Brush::Linear(LinearGradient::two_stop(nan_b, Color::BLACK, Color::WHITE)),
-            ),
-            (
-                "stop_offset_neg_zero_eq_pos_zero",
-                Brush::Linear(LinearGradient::new(
-                    0.0,
-                    [Stop::new(0.0, Color::BLACK), Stop::new(1.0, Color::WHITE)],
-                )),
-                Brush::Linear(LinearGradient::new(
-                    0.0,
-                    [Stop::new(-0.0, Color::BLACK), Stop::new(1.0, Color::WHITE)],
-                )),
-            ),
-        ];
-        for (label, x, y) in cases {
-            assert_eq!(h(x.clone()), h(y.clone()), "case: {label}");
-        }
-    }
-
-    #[test]
-    fn from_color_round_trip() {
-        let c = Color::WHITE;
-        let b: Brush = c.into();
-        assert_eq!(b, Brush::Solid(c));
-        assert_eq!(b.as_solid(), Some(c));
-    }
-
-    #[test]
-    fn solid_solid_animatable_lerp_matches_color() {
-        let a = Color::BLACK;
-        let b = Color::WHITE;
-        let mid_color = Color::lerp(a, b, 0.5);
-        let mid_brush = Brush::lerp(Brush::Solid(a), Brush::Solid(b), 0.5);
-        assert_eq!(mid_brush, Brush::Solid(mid_color));
-    }
-
-    #[test]
-    fn solid_is_noop_iff_color_is_noop() {
-        assert!(Brush::Solid(Color::TRANSPARENT).is_noop());
-        assert!(!Brush::Solid(Color::BLACK).is_noop());
-    }
-
-    /// `LinearGradient` is inline-stored on every `Brush::Linear`, so
-    /// its size sets the floor for `Brush`, `Background.fill`,
-    /// `Stroke.brush`, and every `Shape::*` variant carrying a brush.
-    /// Pin the size so any silent footprint regression (added field,
-    /// stop-cap bump) trips a test rather than diffusing through the
-    /// codebase. The exact number below is a function of `MAX_STOPS = 8`
-    /// + `repr(C)` field layout; recompute when those change.
-    #[test]
-    fn linear_gradient_size_is_compact() {
-        // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 ColorU8)
-        // + 1 (spread) + 1 (interp) + tail-pad. Recompute if MAX_STOPS or
-        // Stop layout changes. Pinned to catch unintended layout drift.
-        assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
-    }
-
-    #[test]
-    fn linear_two_stop_authoring() {
-        let g = LinearGradient::two_stop(0.0, Color::hex(0x1a1a2e), Color::hex(0x16213e));
-        assert_eq!(g.stops.len(), 2);
-        assert_eq!(g.stops[0].offset(), 0.0);
-        assert_eq!(g.stops[1].offset(), 1.0);
-        assert_eq!(g.spread, Spread::Pad);
-        assert_eq!(g.interp, Interp::Oklab);
-        assert!(!g.is_noop());
-
-        // `with_spread`/`with_interp` (shared via `gradient_common!`)
-        // override only the named field, leaving stops/angle untouched.
-        let overridden = g
-            .clone()
-            .with_spread(Spread::Repeat)
-            .with_interp(Interp::Linear);
-        assert_eq!(overridden.spread, Spread::Repeat);
-        assert_eq!(overridden.interp, Interp::Linear);
-        assert_eq!(overridden.stops, g.stops);
-        assert_eq!(overridden.angle, g.angle);
-    }
-
-    #[test]
-    fn linear_three_stop_authoring() {
-        let g = LinearGradient::three_stop(
-            PI / 2.0,
-            Color::hex(0x000000),
-            Color::hex(0x808080),
-            Color::hex(0xffffff),
-        );
-        assert_eq!(g.stops.len(), 3);
-        // 0.5 round-trips through u8 quantization (0.5 * 255 + 0.5 → 128 → 128/255 ≈ 0.5019).
-        assert!((g.stops[1].offset() - 0.5).abs() < 1.0 / 255.0);
-    }
-
-    #[test]
-    fn linear_all_transparent_is_noop() {
-        let g =
-            LinearGradient::two_stop(0.0, ColorU8::TRANSPARENT, ColorU8::rgba(255, 255, 255, 0));
-        assert!(g.is_noop());
-        assert!(Brush::Linear(g).is_noop());
-    }
-
-    #[test]
-    #[should_panic(expected = "exceeds MAX_STOPS")]
-    fn linear_too_many_stops_panics() {
-        let many: Vec<Stop> = (0..=MAX_STOPS)
-            .map(|i| Stop::new(i as f32 / 8.0, Color::WHITE))
-            .collect();
-        let _ = LinearGradient::new(0.0, many);
-    }
-
-    #[test]
-    #[should_panic(expected = "at least 2 stops")]
-    fn linear_one_stop_panics() {
-        let _ = LinearGradient::new(0.0, [Stop::new(0.0, Color::WHITE)]);
-    }
-
-    #[test]
-    fn linear_brush_animatable_snaps_on_t_one() {
-        let g0 = LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE);
-        let g1 = LinearGradient::two_stop(0.0, Color::WHITE, Color::BLACK);
-        let a = Brush::Linear(g0);
-        let b = Brush::Linear(g1);
-        // t < 1.0 snaps to a; t >= 1.0 snaps to b.
-        assert_eq!(Brush::lerp(a.clone(), b.clone(), 0.5), a);
-        assert_eq!(Brush::lerp(a, b.clone(), 1.0), b);
-    }
-
-    #[test]
-    fn radial_default_centered() {
-        let g = RadialGradient::two_stop_centered(Color::WHITE, Color::BLACK);
-        assert_eq!(g.center, Vec2::splat(0.5));
-        assert_eq!(g.radius, Vec2::splat(0.5));
-        assert_eq!(g.interp, Interp::Oklab);
-        assert_eq!(g.spread, Spread::Pad);
-        // axis packs (cx, cy, rx, ry).
-        let a = g.axis();
-        assert_eq!(a.lanes(), [0.5, 0.5, 0.5, 0.5]);
-    }
-
-    #[test]
-    fn conic_default_linear_interp_per_variant() {
-        let g =
-            ConicGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
-        // Per-variant default: conic prefers Linear interp (predictable
-        // hue sweeps). Linear/Radial default to Oklab.
-        assert_eq!(g.interp, Interp::Linear);
-        let l = LinearGradient::two_stop(0.0, Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
-        assert_eq!(l.interp, Interp::Oklab);
-        let r =
-            RadialGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
-        assert_eq!(r.interp, Interp::Oklab);
-    }
-
-    #[test]
-    fn conic_axis_packs_start_angle() {
-        let g = ConicGradient::new(
-            Vec2::new(0.4, 0.6),
-            FRAC_PI_4,
-            [
-                Stop::new(0.0, Color::rgb(1.0, 0.0, 0.0)),
-                Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
-            ],
-        );
-        let [dx, dy, t0, _] = g.axis().lanes();
-        // f16 quantization: 0.4/0.6 don't round-trip exactly; the
-        // assertion is at f16 tolerance (~1/2048).
-        assert!((dx - 0.4).abs() < 1e-3);
-        assert!((dy - 0.6).abs() < 1e-3);
-        assert!((t0 - FRAC_PI_4).abs() < 1e-3);
-    }
-
-    #[test]
-    fn brush_radial_conic_noop_when_all_transparent() {
-        let r = RadialGradient::two_stop_centered(ColorU8::TRANSPARENT, ColorU8::TRANSPARENT);
-        let c = ConicGradient::two_stop_centered(ColorU8::TRANSPARENT, ColorU8::TRANSPARENT);
-        assert!(Brush::Radial(r).is_noop());
-        assert!(Brush::Conic(c).is_noop());
-    }
-
-    #[test]
-    fn brush_radial_conic_as_solid_is_none() {
-        let r =
-            RadialGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
-        let c =
-            ConicGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
-        assert!(Brush::Radial(r).as_solid().is_none());
-        assert!(Brush::Conic(c).as_solid().is_none());
-    }
-
-    /// Brush hashing: variant tag distinguishes Radial vs Conic vs
-    /// Linear even when stops match.
-    #[test]
-    fn brush_variant_tag_distinguishes_hash() {
-        let stops = [
-            Stop::new(0.0, Color::rgb(1.0, 0.0, 0.0)),
-            Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
-        ];
-        let l = Brush::Linear(LinearGradient::new(0.0, stops));
-        let r = Brush::Radial(RadialGradient::new(
-            Vec2::splat(0.5),
-            Vec2::splat(0.5),
-            stops,
-        ));
-        let c = Brush::Conic(ConicGradient::new(Vec2::splat(0.5), 0.0, stops));
-        assert_ne!(h(l.clone()), h(r.clone()));
-        assert_ne!(h(r), h(c.clone()));
-        assert_ne!(h(l), h(c));
-    }
-
-    #[test]
-    #[should_panic(expected = "exceeds MAX_STOPS")]
-    fn radial_too_many_stops_panics() {
-        let many: Vec<Stop> = (0..=MAX_STOPS)
-            .map(|i| Stop::new(i as f32 / 8.0, Color::WHITE))
-            .collect();
-        let _ = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), many);
-    }
-
-    #[test]
-    fn linear_brush_hash_stable_across_construction() {
-        let g0 = LinearGradient::two_stop(0.5, Color::hex(0x336699), Color::hex(0xddaa44));
-        let g1 = LinearGradient::two_stop(0.5, Color::hex(0x336699), Color::hex(0xddaa44));
-        assert_eq!(h(Brush::Linear(g0)), h(Brush::Linear(g1)));
-    }
-}
+mod tests;

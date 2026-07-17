@@ -1,6 +1,6 @@
 //! Shared cross-frame handle for CPU gradient registration and flushing.
 
-use crate::primitives::brush::{Interp, Stop};
+use crate::primitives::brush::{GradientStops, Interp};
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::{FlushedRows, GradientCpuAtlas};
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ pub(crate) struct GradientAtlas {
 
 impl GradientAtlas {
     #[inline]
-    pub(crate) fn register_stops(&self, stops: &[Stop], interp: Interp) -> LutRow {
+    pub(crate) fn register_stops(&self, stops: &GradientStops, interp: Interp) -> LutRow {
         self.inner.borrow_mut().register_stops(stops, interp)
     }
 

@@ -1,18 +1,13 @@
 //! Gradient-stop interpolation into one linear-f16 LUT row.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
+use crate::primitives::brush::{GradientStops, Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
 pub(crate) type LutRowTexels = [ColorF16; LUT_ROW_TEXELS];
 
-pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut LutRowTexels) {
-    assert!(
-        (2..=MAX_STOPS).contains(&stops.len()),
-        "bake_stops requires 2..={MAX_STOPS} stops, got {}",
-        stops.len(),
-    );
+pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRowTexels) {
     let mut sorted: [Stop; MAX_STOPS] = Default::default();
     let count = stops.len();
     sorted[..count].copy_from_slice(stops);

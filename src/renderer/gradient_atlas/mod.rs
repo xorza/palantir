@@ -38,7 +38,7 @@
 //!   uniform; CSS Color 4 default.
 
 use crate::common::hash::Hasher as FxHasher;
-use crate::primitives::brush::{Interp, Stop};
+use crate::primitives::brush::{GradientStops, Interp};
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
@@ -174,7 +174,7 @@ impl GradientCpuAtlas {
     ///
     /// Bumps the per-row LRU stamp on every call so eviction picks the
     /// least-recently-touched row when the table is full.
-    pub(crate) fn register_stops(&mut self, stops: &[Stop], interp: Interp) -> LutRow {
+    pub(crate) fn register_stops(&mut self, stops: &GradientStops, interp: Interp) -> LutRow {
         self.clock = self.clock.wrapping_add(1);
         let content_hash = hash_stops(stops, interp);
         // Probe starting at `1 + (hash mod 255)` so row 0 is never
@@ -208,7 +208,13 @@ impl GradientCpuAtlas {
     /// hash, LRU stamp, epoch stamp, dirty-range widening. The one place
     /// a row's bookkeeping is written — shared by `register_stops`'
     /// empty-slot and evict arms so they can't drift.
-    fn claim_row(&mut self, row: u32, content_hash: u64, stops: &[Stop], interp: Interp) -> LutRow {
+    fn claim_row(
+        &mut self,
+        row: u32,
+        content_hash: u64,
+        stops: &GradientStops,
+        interp: Interp,
+    ) -> LutRow {
         bake_stops(stops, interp, &mut self.baked[row as usize]);
         self.rows[row as usize] = Some(content_hash);
         self.last_used[row as usize] = self.clock;
@@ -292,10 +298,10 @@ impl GradientCpuAtlas {
 /// interp reuse one row regardless of geometry (linear angle, radial
 /// centre/radius, conic centre/start-angle).
 #[inline]
-fn hash_stops(stops: &[Stop], interp: Interp) -> u64 {
+fn hash_stops(stops: &GradientStops, interp: Interp) -> u64 {
     let mut h = FxHasher::new();
     h.write_u16(((interp as u16) << 8) | (stops.len() as u16));
-    for s in stops {
+    for s in stops.iter() {
         // Pack `(color_u32, offset_u8)` into one u64 — one hasher
         // write per stop instead of five. `offset` is already u8
         // quantized; no `canon_bits` needed (no NaN / -0 to canonicalise).
