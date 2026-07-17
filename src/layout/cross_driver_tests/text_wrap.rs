@@ -176,7 +176,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &ui.record_store.borrow().fmt_scratch,
-            shaper: &ui.shared.render.text,
+            shaper: &ui.shared.text,
         },
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -186,7 +186,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         LenReq::MinContent,
         &TextCtx {
             bytes: &ui.record_store.borrow().fmt_scratch,
-            shaper: &ui.shared.render.text,
+            shaper: &ui.shared.text,
         },
     );
     let max_h = ui.layout_engine.intrinsic(
@@ -196,7 +196,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &ui.record_store.borrow().fmt_scratch,
-            shaper: &ui.shared.render.text,
+            shaper: &ui.shared.text,
         },
     );
 
@@ -439,7 +439,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &ui.record_store.borrow().fmt_scratch,
-            shaper: &ui.shared.render.text,
+            shaper: &ui.shared.text,
         },
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -449,7 +449,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         LenReq::MinContent,
         &TextCtx {
             bytes: &ui.record_store.borrow().fmt_scratch,
-            shaper: &ui.shared.render.text,
+            shaper: &ui.shared.text,
         },
     );
     assert!(
@@ -512,7 +512,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &probe.record_store.borrow().fmt_scratch,
-            shaper: &probe.shared.render.text,
+            shaper: &probe.shared.text,
         },
     );
     assert!(label_full > 0.0);
@@ -586,7 +586,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &probe.record_store.borrow().fmt_scratch,
-            shaper: &probe.shared.render.text,
+            shaper: &probe.shared.text,
         },
     );
     assert!(label_full > 0.0);
