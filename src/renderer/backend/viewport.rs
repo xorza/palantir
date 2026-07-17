@@ -10,9 +10,37 @@ use crate::primitives::urect::URect;
 use crate::renderer::damage::DAMAGE_AA_PADDING;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::{RenderKind, RenderPlan};
+use crate::ui::frame_report::RenderKind;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
+use tinyvec::ArrayVec;
+
+#[derive(Debug)]
+pub(crate) enum RepaintScissors {
+    Full,
+    Partial(PartialScissors),
+}
+
+#[derive(Debug)]
+pub(crate) struct PartialScissors {
+    first: URect,
+    rest: ArrayVec<[URect; DAMAGE_RECT_CAP]>,
+}
+
+impl PartialScissors {
+    fn new(mut rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>) -> Self {
+        assert!(
+            !rects.is_empty(),
+            "Partial plan produced no damage scissors"
+        );
+        let first = rects.remove(0);
+        Self { first, rest: rects }
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = URect> + '_ {
+        std::iter::once(self.first).chain(self.rest.iter().copied())
+    }
+}
 
 /// Convert a logical-px damage rect to a physical-px scissor, padded
 /// by [`DAMAGE_AA_PADDING`] on every side and clamped to the viewport.
@@ -32,25 +60,28 @@ fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect>
     }
 }
 
-/// Fill `out` with the per-rect physical-px scissors for this frame.
-/// `Full` and `Skip` leave it empty; `Partial(region)` produces one
-/// entry per rect after physical-px scaling, AA padding, and viewport
-/// clamping. Region rects arrive surface-clipped and non-empty
+/// Build the physical-px repaint shape for this frame. `Full` stays
+/// distinct from `Partial`, which carries one or more scissors after
+/// physical-px scaling, AA padding, and viewport clamping. Region rects
+/// arrive surface-clipped and non-empty
 /// (`DamageRegion::collapse_from`) and the AA padding keeps their
-/// scissors nonzero, so `Partial` always yields at least one entry —
-/// `WgpuBackend::submit` asserts that rather than degrade.
+/// scissors nonzero. An empty result means the plan and composed draw
+/// list disagree; it must not degrade to a full clear.
 #[profiling::function]
-pub(crate) fn build_damage_scissors(
-    out: &mut tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
-    plan: RenderPlan,
+pub(crate) fn build_repaint_scissors(
+    render_kind: RenderKind,
     buffer: &RenderBuffer,
-) {
-    out.clear();
-    if let RenderKind::Partial { region } = plan.kind {
-        for r in region.iter_rects() {
-            if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
-                out.push(s);
+) -> RepaintScissors {
+    match render_kind {
+        RenderKind::Full => RepaintScissors::Full,
+        RenderKind::Partial { region } => {
+            let mut rects = ArrayVec::new();
+            for r in region.iter_rects() {
+                if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
+                    rects.push(s);
+                }
             }
+            RepaintScissors::Partial(PartialScissors::new(rects))
         }
     }
 }
@@ -81,5 +112,63 @@ impl ViewportPush {
     /// `set_immediates` validation rejects an unbound pipeline.
     pub(crate) fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_immediates(Self::OFFSET, &self.encode());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::display::Display;
+    use crate::primitives::rect::Rect;
+    use crate::primitives::urect::URect;
+    use crate::renderer::backend::viewport::{RepaintScissors, build_repaint_scissors};
+    use crate::renderer::render_buffer::RenderBuffer;
+    use crate::renderer::render_buffer::owner::RenderOwnerId;
+    use crate::ui::damage::region::DamageRegion;
+    use crate::ui::frame_report::RenderKind;
+    use glam::UVec2;
+
+    fn buffer() -> RenderBuffer {
+        let mut buffer = RenderBuffer::new(RenderOwnerId::reserve());
+        buffer.start_frame(Display::from_physical(UVec2::new(100, 100), 2.0));
+        buffer
+    }
+
+    #[test]
+    fn full_repaint_has_no_partial_scissors() {
+        let repaint = build_repaint_scissors(RenderKind::Full, &buffer());
+        assert!(matches!(repaint, RepaintScissors::Full));
+    }
+
+    #[test]
+    fn partial_repaint_preserves_padded_physical_scissors() {
+        let region = DamageRegion::collapse_from(
+            &[
+                Rect::new(5.0, 5.0, 5.0, 5.0),
+                Rect::new(30.0, 20.0, 10.0, 5.0),
+            ],
+            0.0,
+            Rect::new(0.0, 0.0, 50.0, 50.0),
+        );
+        let repaint = build_repaint_scissors(RenderKind::Partial { region }, &buffer());
+        let RepaintScissors::Partial(rects) = repaint else {
+            panic!("partial plan produced a full repaint");
+        };
+        // At 2x, the rects are (10,10)-(20,20) and (60,40)-(80,50).
+        // Extending each edge by the 2px AA pad gives these exact scissors.
+        assert_eq!(
+            rects.iter().collect::<Vec<_>>(),
+            [URect::new(8, 8, 14, 14), URect::new(58, 38, 24, 14),]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Partial plan produced no damage scissors")]
+    fn partial_repaint_rejects_scissors_clamped_outside_viewport() {
+        build_repaint_scissors(
+            RenderKind::Partial {
+                region: DamageRegion::from(Rect::new(200.0, 200.0, 10.0, 10.0)),
+            },
+            &buffer(),
+        );
     }
 }
