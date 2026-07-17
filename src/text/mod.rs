@@ -115,7 +115,7 @@ pub enum FontWeight {
 /// Two paths, picked at construction:
 ///
 /// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
-///   glyph is `font_size_px * 0.5` wide). WindowRenderer drops these runs
+///   glyph is `font_size_px * 0.5` wide). WindowDriver drops these runs
 ///   because they carry no renderable shaped-buffer key. Useful
 ///   for tests, headless drivers, and the `Ui::for_test()` state.
 /// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real

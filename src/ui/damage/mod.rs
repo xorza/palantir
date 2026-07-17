@@ -171,7 +171,7 @@ struct ParentFrame {
 pub(crate) struct DamageInput<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) cascades: &'a Cascades,
-    /// WindowRenderer-arranged surface rect for this frame. A degenerate
+    /// WindowDriver-arranged surface rect for this frame. A degenerate
     /// zero-area surface is a caller logic error: hosts clamp physical
     /// size to ≥ 1 px and skip occluded windows before `Ui::frame`
     /// runs, and `DamageRegion::collapse_from` asserts on it — the one
@@ -199,7 +199,7 @@ impl std::fmt::Debug for DamageInput<'_> {
 /// Checked against the region's sealed [`DamageRegion::coverage`]. (The
 /// renderer's `DirectAdaptive` strategy applies its own, lower promote threshold
 /// to the *Partial* range below this line — `DIRECT_PROMOTE_COVERAGE` in
-/// `window_renderer` — but that's a present-path GPU-cost call kept out of this
+/// `window_driver` — but that's a present-path GPU-cost call kept out of this
 /// damage-tracking one.)
 ///
 /// The previous 0.5 was tuned for the single-rect-union accumulator, where two

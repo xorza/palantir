@@ -43,7 +43,7 @@ impl WakeReasons {
     }
 }
 
-/// WindowRenderer-supplied per-frame inputs — monotonic time + active
+/// WindowDriver-supplied per-frame inputs — monotonic time + active
 /// [`Display`]. Single struct so callers pass one argument and
 /// `Ui` carries one `Option<FrameStamp>` for prior-frame state
 /// instead of two parallel fields. `time` is the host's monotonic
@@ -88,7 +88,7 @@ pub(crate) struct FrameRuntime {
     /// Bumped once per [`crate::Ui::frame`], before either record pass,
     /// so a settling pass cannot double-advance animation.
     pub(crate) frame_id: u64,
-    /// WindowRenderer-supplied monotonic timestamp for this frame.
+    /// WindowDriver-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
     /// Time + display from the previous frame, or `None` before the
     /// first frame. Drives surface-change classification and the

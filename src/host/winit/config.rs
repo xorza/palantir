@@ -19,7 +19,7 @@ pub struct WinitHostConfig {
     /// Opt into GPU instrumentation (timestamp + pipeline-statistics
     /// queries). Off by default because the per-frame readback
     /// round-trip is non-trivial. Gates device-feature requests at
-    /// startup; every window's `WindowRenderer` inherits the result.
+    /// startup; every window's `WindowDriver` inherits the result.
     pub collect_gpu_stats: bool,
 }
 

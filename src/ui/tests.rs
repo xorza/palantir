@@ -95,7 +95,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // quads should be stroked, magenta-ish, and rect-equal to the two
     // colliding buttons' arranged rects.
     // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowRenderer wiring
+    // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(
@@ -168,7 +168,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let main_rect = ui.layout[Layer::Main].rect[pair.first.node.idx()];
     let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.idx()];
     // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowRenderer wiring
+    // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(
