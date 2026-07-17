@@ -155,10 +155,10 @@ pub(crate) struct EntryRow {
     /// scrolling/zoomed parent's coordinate system.
     pub layout_rect: Rect,
     /// The cumulative ancestor transform mapping this node's `layout_rect`
-    /// into `rect` (screen space): `rect == transform.apply_rect(layout_rect)`.
-    /// Surfaced via `ResponseState::transform` so a widget can convert a
-    /// surface-space pointer back into its own logical coordinates (e.g.
-    /// caret hit-testing under a zoomed canvas) — `IDENTITY` when untransformed.
+    /// into unclipped surface space. The visible `rect` may be smaller
+    /// after ancestor clipping. Surfaced via `ResponseState::transform`
+    /// for converting surface-space vectors into widget-local logical
+    /// coordinates — `IDENTITY` when untransformed.
     pub transform: TranslateScale,
 }
 

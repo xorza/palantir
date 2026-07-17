@@ -3,6 +3,7 @@ use crate::forest::element::Configure;
 use crate::input::pointer::PointerButton;
 use crate::input::{InputEvent, InputState, Press, PressDrag, Release, ReleaseKind};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
@@ -187,9 +188,8 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 }
 
 /// With the pointer resting over a widget the frame is non-quiescent, so
-/// `response_for` runs the full interaction path: hover resolves and
-/// `pointer_local` is the cursor relative to the widget's `rect.min` —
-/// proving the fast-path early-return doesn't suppress real interaction.
+/// `response_for` runs the full interaction path and computes the
+/// pre-transform widget-local pointer.
 #[test]
 fn non_quiescent_frame_computes_interaction() {
     let mut ui = Ui::for_test();
@@ -203,14 +203,99 @@ fn non_quiescent_frame_computes_interaction() {
     ui.run_at_acked(button_surface(), build_button(id));
 
     let r = ui.response_for(id);
-    let rect = r.rect.expect("arranged rect present");
+    let layout_rect = r.layout_rect.expect("arranged layout rect present");
     assert!(
         r.hovered,
         "pointer resting inside the button rect hovers it"
     );
     assert_eq!(
         r.pointer_local,
-        Some(pointer - rect.min),
-        "pointer_local is the cursor offset from rect.min on the full path",
+        Some(pointer - layout_rect.min),
+        "pointer_local is the cursor offset from layout_rect.min",
+    );
+}
+
+#[test]
+fn pointer_and_drag_vectors_are_scale_invariant() {
+    let id = WidgetId::from_hash("scaled-button");
+    let local_pointer = Vec2::new(25.0, 10.0);
+    let local_delta = Vec2::new(12.0, -8.0);
+
+    for scale in [0.5, 1.0, 2.0] {
+        let mut ui = Ui::for_test();
+        let build = |ui: &mut Ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("scaled-parent"))
+                .transform(TranslateScale::from_scale(scale))
+                .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
+                .show(ui, |ui| {
+                    Button::new()
+                        .id(id)
+                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                        .show(ui);
+                });
+        };
+        ui.run_at_acked(UVec2::new(300, 200), build);
+
+        let arranged = ui.response_for(id);
+        let layout = arranged.layout_rect.expect("button arranged");
+        let press = arranged.transform.apply_point(layout.min + local_pointer);
+        let pointer = arranged
+            .transform
+            .apply_point(layout.min + local_pointer + local_delta);
+        ui.on_input(InputEvent::PointerMoved(press));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerMoved(pointer));
+        ui.run_at_acked(UVec2::new(300, 200), build);
+
+        let response = ui.response_for(id);
+        assert_eq!(
+            response.pointer_local,
+            Some(local_pointer + local_delta),
+            "pointer position at {scale}×",
+        );
+        assert_eq!(
+            response.left.drag.delta(),
+            Some(local_delta),
+            "drag vector at {scale}×",
+        );
+    }
+}
+
+#[test]
+fn pointer_local_uses_unclipped_widget_origin() {
+    let mut ui = Ui::for_test();
+    let id = WidgetId::from_hash("clipped-child");
+    let build = |ui: &mut Ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("clipper"))
+            .clip_rect()
+            .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(id)
+                    .position(Vec2::new(-20.0, 0.0))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                    .show(ui);
+            });
+    };
+    ui.run_at_acked(button_surface(), build);
+
+    let arranged = ui.response_for(id);
+    let visible = arranged.rect.expect("child visible through clip");
+    let layout = arranged.layout_rect.expect("child arranged");
+    let surface_origin = arranged.transform.apply_point(layout.min);
+    assert_ne!(
+        visible.min, surface_origin,
+        "the clip must trim the widget's leading edge",
+    );
+
+    let pointer = visible.min + Vec2::new(10.0, 10.0);
+    ui.on_input(InputEvent::PointerMoved(pointer));
+    ui.run_at_acked(button_surface(), build);
+    let response = ui.response_for(id);
+    assert_eq!(
+        response.pointer_local,
+        Some(response.transform.inverse_vector(pointer - surface_origin)),
     );
 }

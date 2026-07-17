@@ -517,17 +517,15 @@ impl Scroll {
         // first frame the response rect is None — fall back to viewport
         // center, which makes the zoom *feel* anchored even before
         // pointer-tracked anchoring kicks in.
-        let resp_rect = ui.response_for(id).rect;
-        let widget_origin = resp_rect.map(|r| r.min);
-        let widget_size = resp_rect.map(|r| r.size);
+        let outer_response = ui.response_for(id);
+        let widget_size = outer_response.layout_rect.map(|r| r.size);
         let pivot_local = if (zoom_delta - 1.0).abs() > f32::EPSILON {
-            let pointer_local = ui.input.pointer_pos.zip(widget_origin).map(|(p, o)| p - o);
             let cfg_pivot = self
                 .zoom
                 .as_ref()
                 .map(|c| c.pivot)
                 .unwrap_or(ZoomPivot::Pointer);
-            match (cfg_pivot, pointer_local, widget_size) {
+            match (cfg_pivot, outer_response.pointer_local, widget_size) {
                 (ZoomPivot::Pointer, Some(p), _) => Some(p),
                 (_, _, Some(sz)) => Some(Vec2::new(sz.w * 0.5, sz.h * 0.5)),
                 _ => None,
@@ -551,7 +549,6 @@ impl Scroll {
         let resp_h = ui.response_for(thumb_id_h);
         let resp_track_v = ui.response_for(track_id_v);
         let resp_track_h = ui.response_for(track_id_h);
-        let pointer = ui.input.pointer_pos;
 
         let (scroll, bl) = {
             let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
@@ -604,9 +601,7 @@ impl Scroll {
                 row.apply_thumb_drag(axis, resp.left.drag.started(), resp.left.drag.delta(), geom);
             }
             // 4) Click-on-track to page. Press above/below the thumb pages
-            //    the offset by one viewport. The track's main-axis origin
-            //    is 0 in outer-local coords, so the click position along
-            //    the bar is `pointer.main - widget_origin.main`.
+            //    the offset by one viewport.
             let panned_axes = [
                 (Axis::Y, resp_track_v, pan.y),
                 (Axis::X, resp_track_h, pan.x),
@@ -615,7 +610,7 @@ impl Scroll {
                 if !panned || !resp_track.left.clicked() {
                     continue;
                 }
-                let (Some(ptr), Some(origin)) = (pointer, widget_origin) else {
+                let Some(pointer_local) = resp_track.pointer_local else {
                     continue;
                 };
                 let page_step = axis.main(bl.bar_viewport);
@@ -628,7 +623,7 @@ impl Scroll {
                     &theme,
                 )
                 .map(|g| TrackPage {
-                    click_main: axis.main_v(ptr) - axis.main_v(origin),
+                    click_main: axis.main_v(pointer_local),
                     thumb_offset: g.thumb_offset,
                     thumb_size: g.thumb_size,
                     page_step,

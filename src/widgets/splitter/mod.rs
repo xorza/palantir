@@ -136,7 +136,7 @@ impl<'a> Splitter<'a> {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
             if divider.left.drag.dragging()
-                && let (Some(local), Some(rect)) = (state.pointer_local, state.rect)
+                && let (Some(local), Some(rect)) = (state.pointer_local, state.layout_rect)
             {
                 layout_ratio = pointer_to_ratio(
                     axis.main_v(local),

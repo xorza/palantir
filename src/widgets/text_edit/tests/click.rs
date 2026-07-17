@@ -520,6 +520,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
 
     let full = caret_at_scale(1.0);
     let zoomed_out = caret_at_scale(0.5);
+    let zoomed_in = caret_at_scale(2.0);
     assert!(
         full > 0 && full < 10,
         "click should land mid-text, got {full}"
@@ -527,6 +528,10 @@ fn caret_click_is_scale_invariant_under_zoom() {
     assert_eq!(
         full, zoomed_out,
         "caret placement must be zoom-invariant (1x={full}, 0.5x={zoomed_out})"
+    );
+    assert_eq!(
+        full, zoomed_in,
+        "caret placement must be zoom-invariant (1x={full}, 2x={zoomed_in})"
     );
 }
 
