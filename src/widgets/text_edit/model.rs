@@ -251,7 +251,9 @@ impl<'a> Editor<'a> {
         let Some(r) = self.state.sel_range() else {
             return;
         };
-        clipboard::set(&self.text[r.clone()]);
+        if clipboard::set(&self.text[r.clone()]).is_err() {
+            return;
+        }
         self.record_edit(EditKind::Other);
         self.text.replace_range(r.clone(), "");
         self.state.caret = r.start;
@@ -262,7 +264,7 @@ impl<'a> Editor<'a> {
     /// Copy the live selection to the clipboard. No-op without one.
     pub(crate) fn copy(&self) {
         if let Some(r) = self.state.sel_range() {
-            clipboard::set(&self.text[r]);
+            let _ = clipboard::set(&self.text[r]);
         }
     }
 
