@@ -41,6 +41,57 @@ fn tooltip_near_right_edge_keeps_natural_width() {
 }
 
 #[test]
+fn content_growth_and_shrink_reposition_without_input_or_settling() {
+    const SHORT: &str = "tip";
+    const LONG: &str =
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron";
+
+    let mut ui = Ui::for_test();
+    let trigger_id = WidgetId::from_hash("dynamic-tooltip-trigger");
+    let trigger = Rect::new(350.0, 250.0, 40.0, 24.0);
+    let snapshot = ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(trigger),
+            hovered: true,
+            ..ResponseState::default()
+        },
+    };
+    let bubble_id = trigger_id.with("tooltip.bubble");
+    let frame = |ui: &mut Ui, text: &'static str| {
+        let mut passes = 0;
+        ui.run_at_acked(SURFACE, |ui| {
+            passes += 1;
+            Tooltip::on(&snapshot)
+                .text(text)
+                .delay(Duration::ZERO)
+                .show(ui);
+        });
+        assert_eq!(passes, 1, "tooltip placement must be single-pass");
+        ui.response_for(bubble_id)
+            .rect
+            .expect("tooltip bubble arranged")
+    };
+
+    let small = frame(&mut ui, SHORT);
+    let large = frame(&mut ui, LONG);
+    let shrunk = frame(&mut ui, SHORT);
+    let above_edge = trigger.min.y - ui.theme.tooltip.gap;
+
+    assert_eq!(small.max().y, above_edge);
+    assert_eq!(large.max().y, above_edge);
+    assert!(
+        large.size.w > small.size.w || large.size.h > small.size.h,
+        "long content must change the measured bubble size",
+    );
+    assert_eq!(large.max().x, SURFACE.x as f32);
+    assert_eq!(
+        shrunk, small,
+        "shrinking must restore placement immediately"
+    );
+}
+
+#[test]
 fn tooltip_breaks_long_tokens_inside_bubble() {
     let ui = visible_tooltip_at(
         40.0,
@@ -80,7 +131,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {
             .show(ui);
     });
 
-    assert_eq!(passes, 2, "first show measures then places the bubble");
+    assert_eq!(passes, 1, "measured placement resolves in the layout pass");
     passes = 0;
     ui.run_at_acked(SURFACE, |ui| {
         passes += 1;
@@ -340,8 +391,7 @@ fn tooltip_inside_popup_records_without_panic() {
     let mut ui = Ui::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
 
-    // Near top-left so the popup never flips its anchor — the trigger
-    // rect stays put across the settle frames we read it on.
+    // Near top-left so the popup never flips and the trigger stays put.
     let popup_anchor = Vec2::new(40.0, 40.0);
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
@@ -373,7 +423,7 @@ fn tooltip_inside_popup_records_without_panic() {
         );
     };
 
-    // Settle the popup's first-open relayout, then grab the trigger rect.
+    // Record once so the trigger rect is available to the next frame.
     frame_at(&mut ui, 0.0, &mut captured);
     frame_at(&mut ui, 0.01, &mut captured);
     let trigger_id = captured.expect("button id");

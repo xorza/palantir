@@ -16,6 +16,7 @@ use crate::forest::element::Element;
 use crate::forest::layer::Layer;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::paint_anims::PaintAnim;
+use crate::forest::tree::recording::Placement;
 use crate::host::context::HostContext;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
@@ -28,6 +29,7 @@ use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::TextCtx;
+use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
@@ -961,7 +963,20 @@ impl Ui {
         size: Option<Size>,
         body: impl FnOnce(&mut Ui),
     ) {
-        self.forest.push_layer(layer, anchor, size);
+        self.placed_layer(layer, Placement::fixed(anchor, size), body);
+    }
+
+    pub(crate) fn overlay_layer(
+        &mut self,
+        layer: Layer,
+        position: OverlayPosition,
+        body: impl FnOnce(&mut Ui),
+    ) {
+        self.placed_layer(layer, Placement::overlay(position), body);
+    }
+
+    fn placed_layer(&mut self, layer: Layer, placement: Placement, body: impl FnOnce(&mut Ui)) {
+        self.forest.push_layer(layer, placement);
         body(self);
         self.forest.pop_layer();
     }

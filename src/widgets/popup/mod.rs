@@ -1,11 +1,12 @@
 use crate::forest::element::{Configure, Element};
 use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
+use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
+use crate::primitives::rect::Rect;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
-use crate::widgets::overlay_position::OverlayPosition;
 use crate::widgets::resolve_container_chrome;
 use glam::Vec2;
 use std::cell::Cell;
@@ -78,15 +79,11 @@ impl PopupResponse {
     }
 }
 
-/// A side-layer container placed at a screen-space point. Records
-/// into [`Layer::Popup`] so it draws above all `Main` siblings,
-/// escapes ancestor clip, and hit-tests on top.
-///
-/// `anchor` is the body's top-left, typically derived from a trigger
-/// widget's last-frame `Response.state.rect` (e.g. its bottom-left
-/// for a dropdown). Sizing is governed by the body's own `Sizing`
-/// chain — `Hug` shrinks to content, `Fill` fills the remaining
-/// surface, `Fixed` is exact. Mid-recording is supported.
+/// A side-layer container placed relative to a screen-space anchor.
+/// Records into [`Layer::Popup`] so it draws above all `Main` siblings,
+/// escapes ancestor clip, and hit-tests on top. Placement is resolved
+/// from the body's current measured size, then flipped or shifted to fit
+/// the surface.
 ///
 /// Outside clicks are handled per [`ClickOutside`]: a full-surface
 /// "click-eater" leaf is recorded in the `Popup` layer underneath
@@ -98,7 +95,7 @@ impl PopupResponse {
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
 #[derive(Debug)]
 pub struct Popup {
-    anchor: Vec2,
+    position: OverlayPosition,
     click_outside: ClickOutside,
     element: Element,
     chrome: Option<Background>,
@@ -107,10 +104,35 @@ pub struct Popup {
 impl Popup {
     #[track_caller]
     pub fn anchored_to(anchor: Vec2) -> Self {
+        Self::positioned(OverlayPosition::at_point(anchor))
+    }
+
+    #[track_caller]
+    pub fn below(anchor: Rect) -> Self {
+        Self::positioned(OverlayPosition::below(anchor, 0.0))
+    }
+
+    #[track_caller]
+    pub fn above(anchor: Rect) -> Self {
+        Self::positioned(OverlayPosition::above(anchor, 0.0))
+    }
+
+    #[track_caller]
+    pub fn left_of(anchor: Rect) -> Self {
+        Self::positioned(OverlayPosition::left_of(anchor, 0.0))
+    }
+
+    #[track_caller]
+    pub fn right_of(anchor: Rect) -> Self {
+        Self::positioned(OverlayPosition::right_of(anchor, 0.0))
+    }
+
+    #[track_caller]
+    fn positioned(position: OverlayPosition) -> Self {
         let mut element = Element::vstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
-            anchor,
+            position,
             click_outside: ClickOutside::Dismiss,
             element,
             chrome: None,
@@ -139,9 +161,6 @@ impl Popup {
         // the trigger lives.
         let body_id = ui.widget_id(&self.element);
         let eater_id = body_id.with("eater");
-        let surface = ui.display().logical_rect();
-        let prev_size = ui.response_for(body_id).rect.map(|r| r.size);
-        let position = OverlayPosition::around(self.anchor).resolve(prev_size, surface);
         // Eater records first → paints under the body. Hit-test runs
         // reverse-iter so the body's leaves still win inside its rect.
         //
@@ -168,7 +187,7 @@ impl Popup {
             ui.theme.panel_clip,
         );
         let handle = PopupHandle::new();
-        position.show(ui, Layer::Popup, |ui| {
+        ui.overlay_layer(Layer::Popup, self.position, |ui| {
             ui.node(body_id, element, chrome.as_ref(), |ui| body(ui, &handle));
         });
         let dismiss_mode = self.click_outside == ClickOutside::Dismiss;

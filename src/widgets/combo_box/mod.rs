@@ -19,7 +19,7 @@ const ARROW_W: f32 = 10.0;
 const ARROW_H: f32 = 6.0;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 struct ComboState {
     open: bool,
 }
@@ -115,10 +115,9 @@ impl<'a> ComboBox<'a> {
 
         if open && let Some(rect) = trigger_rect {
             let panel = ui.theme.context_menu.panel.clone();
-            let anchor = Vec2::new(rect.min.x, rect.min.y + rect.size.h);
             let options = self.options;
             let selected = self.selected;
-            let mut popup = Popup::anchored_to(anchor)
+            let mut popup = Popup::below(rect)
                 .click_outside(ClickOutside::Dismiss)
                 .background(panel)
                 .id(id.with("list"));
@@ -156,3 +155,6 @@ fn chevron_pts() -> [Vec2; 3] {
         Vec2::new(ARROW_W, 0.0),
     ]
 }
+
+#[cfg(test)]
+mod tests;

@@ -384,7 +384,6 @@ impl LayoutEngine {
             self.scratch.intrinsic_computes = 0;
             self.scratch.cache_hits.clear();
         }
-        let surface_end = surface.max();
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
             self.active_layer = layer;
@@ -395,34 +394,10 @@ impl LayoutEngine {
             self.scratch.resize_for(tree);
             for slot in &tree.roots {
                 let root = slot.first_node;
-                // Main: implicit root spans the surface. Side layers:
-                // `slot.placement.anchor` is the paint placement. `slot.placement.size`
-                // controls the measurement available:
-                //   - `None` → "fill from anchor to bottom-right", so
-                //     `available = surface - anchor`. The dropdown /
-                //     tooltip default: body never overflows past the
-                //     viewport regardless of how its own `Sizing`
-                //     resolves.
-                //   - `Some(s)` → anchor-independent cap clamped to
-                //     the surface size. The caller takes responsibility
-                //     for placement (typically via the popup's smart
-                //     flip-then-clamp). Decouples measurement from
-                //     anchor so a popup near the bottom edge can still
-                //     measure against its full content height and flip
-                //     upward on the next frame.
-                // The root's own `Sizing` governs the painted size
-                // within that available.
-                let (origin, available) = if layer == Layer::Main {
-                    (surface.min, surface.size)
+                let available = if layer == Layer::Main {
+                    surface.size
                 } else {
-                    let available = match slot.placement.size {
-                        None => {
-                            let rem = (surface_end - slot.placement.anchor).max(glam::Vec2::ZERO);
-                            Size::new(rem.x, rem.y)
-                        }
-                        Some(s) => Size::new(s.w.min(surface.size.w), s.h.min(surface.size.h)),
-                    };
-                    (slot.placement.anchor, available)
+                    slot.placement.available(surface)
                 };
                 let desired = self.measure(tree, root, available, tc, out);
                 let root_style = tree.records.layout()[root.idx()];
@@ -447,6 +422,13 @@ impl LayoutEngine {
                     )
                     .size,
                 );
+                // Overlay policies need the current measured body, not a
+                // response rect retained from an earlier frame.
+                let origin = if layer == Layer::Main {
+                    surface.min
+                } else {
+                    slot.placement.origin(size, surface)
+                };
                 // Root has no parent — pass its own outer size as a
                 // sensible default for any driver that reads
                 // `parent_outer` (today only scroll, when mounted as

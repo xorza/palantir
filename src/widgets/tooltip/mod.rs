@@ -2,6 +2,7 @@ use crate::forest::element::Salt;
 use crate::forest::element::{Configure, Element};
 use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
+use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -9,7 +10,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
-use crate::widgets::overlay_position::OverlayPosition;
 use crate::widgets::text::Text;
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -17,13 +17,11 @@ use std::time::Duration;
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
-/// the frame runtime's `MAX_DT` clamp on idle wakes. `last_size` caches the
-/// previous frame's bubble extent for anchor flip/clamp.
+/// the frame runtime's `MAX_DT` clamp on idle wakes.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct TooltipState {
     pub(crate) hover_started_at: Option<Duration>,
     pub(crate) visible: bool,
-    pub(crate) last_size: Option<Size>,
 }
 
 /// Singleton tracking the most recent moment any tooltip was visible.
@@ -171,12 +169,7 @@ impl<'r> Tooltip<'r> {
             && let Some(trigger_rect) = trigger_rect
         {
             global.last_visible_at = Some(now);
-            let viewport = ui.display().logical_rect();
-            if let Some(rect) = ui.response_for(bubble_id).rect {
-                state.last_size = Some(rect.size);
-            }
-            let position =
-                OverlayPosition::below(trigger_rect, gap).resolve(state.last_size, viewport);
+            let position = OverlayPosition::below(trigger_rect, gap);
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
@@ -192,7 +185,7 @@ impl<'r> Tooltip<'r> {
             if element.max_size == Size::INF {
                 element.max_size = ui.theme.tooltip.max_size;
             }
-            position.show(ui, Layer::Tooltip, |ui| {
+            ui.overlay_layer(Layer::Tooltip, position, |ui| {
                 ui.node(bubble_id, element, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(text_style)

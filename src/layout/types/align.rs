@@ -99,6 +99,7 @@ impl Align {
 
 /// Internal axis-agnostic alignment used by the layout math. Both `HAlign`
 /// and `VAlign` map into this so arrange-axis resolution is single-sourced.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AxisAlign {
     Auto,
