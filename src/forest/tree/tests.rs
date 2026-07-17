@@ -79,7 +79,7 @@ fn interleaved_shapes_record_correct_order() {
         p = Some(
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                 .show(ui, |ui| {
                     ui.add_shape(pos_rect(0));
                     Frame::new()
@@ -88,7 +88,7 @@ fn interleaved_shapes_record_correct_order() {
                             fill: Color::rgb(0.0, 1.0, 0.0).into(),
                             ..Default::default()
                         })
-                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                         .show(ui);
                     ui.add_shape(pos_rect(1));
                     Frame::new()
@@ -97,7 +97,7 @@ fn interleaved_shapes_record_correct_order() {
                             fill: Color::rgb(0.0, 0.0, 1.0).into(),
                             ..Default::default()
                         })
-                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                         .show(ui);
                     ui.add_shape(pos_rect(2));
                 })
@@ -166,7 +166,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
         parent_id = Some(
             Panel::vstack()
                 .auto_id()
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |ui| {
                     child_id = Some(
                         Frame::new()
@@ -175,7 +175,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                                 fill: Color::rgb(0.0, 1.0, 0.0).into(),
                                 ..Default::default()
                             })
-                            .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                            .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                             .show(ui)
                             .node(),
                     );
@@ -331,14 +331,14 @@ fn changing_layout_property_changes_hash() {
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                     .show(ui, |_| {})
                     .node()
             },
             |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("root"))
-                    .size((Sizing::Fixed(101.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(101.0), Sizing::fixed(50.0)))
                     .show(ui, |_| {})
                     .node()
             },
@@ -1196,7 +1196,7 @@ fn shape_hashes_column_sized_to_shape_records() {
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
@@ -1250,7 +1250,7 @@ fn shape_hash_stable_across_frames() {
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
@@ -1284,7 +1284,7 @@ fn one_shape_change_only_flips_its_own_hash() {
     let build = |b_endpoint: glam::Vec2, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
-            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()

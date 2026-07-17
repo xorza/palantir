@@ -12,7 +12,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
     let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .padding(10.0)
             .show(ui, |ui| {
                 Frame::new()
@@ -41,7 +41,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
     let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
@@ -117,7 +117,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("neg"))
@@ -149,7 +149,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
 /// The old "Fill = 0 in Canvas" rule (Fill always intrinsic) was a
 /// Canvas-specific quirk that broke constraint propagation for Hug Grid
 /// children. Authors who genuinely want "no Fill behavior" can use
-/// `Sizing::Hug`.
+/// `Sizing::HUG`.
 #[test]
 fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
     let cases: &[(&str, Option<f32>, f32)] = &[
@@ -161,7 +161,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
         let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
             let mut canvas = Panel::canvas().auto_id();
             if let Some(s) = *fixed_size {
-                canvas = canvas.size((Sizing::Fixed(s), Sizing::Fixed(s)));
+                canvas = canvas.size((Sizing::fixed(s), Sizing::fixed(s)));
             }
             canvas
                 .show(ui, |ui| {
@@ -189,7 +189,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
     let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
@@ -224,7 +224,7 @@ fn canvas_ignores_child_align() {
     let _panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 child = Some(
                     Frame::new()

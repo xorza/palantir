@@ -391,7 +391,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                 Panel::zstack()
                     .id_salt("rounded")
                     .position(Vec2::new(-6.0, -6.0))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(150.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
                     .background(Background {
                         fill: Color::TRANSPARENT.into(),
                         stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 4.0),
@@ -530,7 +530,7 @@ fn interleaved_shapes_paint_in_record_order() {
                         fill: Color::rgb(0.0, 1.0, 1.0).into(),
                         ..Default::default()
                     })
-                    .size((Sizing::Fixed(60.0), Sizing::FILL))
+                    .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(30.0, 0.0, 60.0, 60.0)),
@@ -544,7 +544,7 @@ fn interleaved_shapes_paint_in_record_order() {
                         fill: Color::rgb(1.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
-                    .size((Sizing::Fixed(60.0), Sizing::FILL))
+                    .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(90.0, 0.0, 60.0, 60.0)),
@@ -1109,7 +1109,7 @@ fn drag_value_matches_golden() {
                 DragValue::new(&mut v)
                     .decimals(1)
                     .suffix(" px")
-                    .size((Sizing::Fixed(100.0), Sizing::Hug))
+                    .size((Sizing::fixed(100.0), Sizing::HUG))
                     .id_salt("dv")
                     .show(ui);
             });
@@ -1132,7 +1132,7 @@ fn combo_box_closed_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ComboBox::new(&mut sel, &opts)
-                    .size((Sizing::Fixed(160.0), Sizing::Hug))
+                    .size((Sizing::fixed(160.0), Sizing::HUG))
                     .id_salt("cb")
                     .show(ui);
             });

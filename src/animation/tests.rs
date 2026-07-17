@@ -355,7 +355,7 @@ fn spring_with_initial_displacement_converges_within_settle_eps() {
 /// or a tab-switch redraw gap) must not blow up the integrator: a
 /// single-step semi-implicit Euler at `dt = 0.1` with default spring
 /// `(170, 26)` produces a `current` far past the target (negative for
-/// the showcase animation widths, triggering the `Sizing::Fixed`
+/// the showcase animation widths, triggering the `Sizing::fixed`
 /// invariant). Pin: stepping a 400→80 spring with `dt = 0.1` keeps
 /// `current` within `[80, 400]`.
 #[test]
@@ -433,7 +433,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
 /// zeroes it so the new segment can't swing far past the target.
 /// Without the projection, a fast click-then-reverse can drag the
 /// value well below zero / above any plausible bound; the
-/// `Sizing::Fixed` invariant in the showcase relied on this.
+/// `Sizing::fixed` invariant in the showcase relied on this.
 #[test]
 fn spring_retarget_zeroes_opposing_velocity_only() {
     let mut map = AnimMapTyped::<f32>::default();

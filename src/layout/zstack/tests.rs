@@ -12,7 +12,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
     let panel = ui.under_outer(UVec2::new(800, 600), |ui| {
         Panel::zstack()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
@@ -36,7 +36,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
     let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .padding(8.0)
             .show(ui, |ui| {
                 Frame::new()
@@ -98,7 +98,7 @@ fn zstack_per_axis_alignment() {
         let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
             let mut p = Panel::zstack()
                 .auto_id()
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)));
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)));
             if let Some(a) = *parent_align {
                 p = p.child_align(a);
             }
@@ -135,7 +135,7 @@ fn zstack_fill_child_stretches_to_inner() {
     let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
                 Frame::new()
@@ -165,7 +165,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("filler"))
@@ -185,7 +185,7 @@ fn zstack_collapsed_child_does_not_grow_panel() {
     let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::zstack()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))

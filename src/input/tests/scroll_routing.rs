@@ -14,12 +14,12 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("outer"))
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("inner"))
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                     .sense(Sense::SCROLL)
                     .show(ui, |_| {});
             });
@@ -49,7 +49,7 @@ fn scroll_delta_zero_for_non_target() {
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("scroller"))
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
@@ -73,7 +73,7 @@ fn pointer_left_clears_scroll_target() {
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("scroller"))
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
@@ -102,7 +102,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(id)
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
@@ -143,7 +143,7 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(id)
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
@@ -182,7 +182,7 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(id)
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .sense(Sense::PINCH)
             .show(ui, |_| {});
     };

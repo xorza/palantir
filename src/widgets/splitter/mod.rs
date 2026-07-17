@@ -75,9 +75,9 @@ impl SplitterState {
             .find(|tracks| Rc::strong_count(tracks) == 1)
             .expect("one splitter track buffer must be reusable each record");
         let tracks = Rc::get_mut(main_tracks).unwrap();
-        tracks[0] = Track::fill_weight(ratio);
+        tracks[0] = Track::new(Sizing::share(ratio));
         tracks[1] = Track::fixed(rule_thickness);
-        tracks[2] = Track::fill_weight(1.0 - ratio);
+        tracks[2] = Track::new(Sizing::share(1.0 - ratio));
         let main_tracks = Rc::clone(main_tracks);
         let cross_tracks = Rc::clone(&self.cross_tracks);
 

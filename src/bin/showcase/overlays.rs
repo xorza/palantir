@@ -77,7 +77,7 @@ fn popup_section(ui: &mut Ui) {
     let resp = Popup::anchored_to(anchor)
         .id_salt("popup-menu")
         .padding(6.0)
-        .size((Sizing::Hug, Sizing::Hug))
+        .size((Sizing::HUG, Sizing::HUG))
         // `min_size` floors the body so the popup doesn't collapse to
         // bare label width — the inner Fill buttons then expand to the
         // floored width.
@@ -92,7 +92,7 @@ fn popup_section(ui: &mut Ui) {
                 if Button::new()
                     .id_salt(("popup-item", label))
                     .label(label)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui)
                     .left
                     .clicked()
@@ -247,14 +247,14 @@ fn context_menu_section(ui: &mut Ui) {
             Panel::hstack()
                 .id_salt("ctx-surfaces")
                 .gap(12.0)
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     // A generic Frame surface (Sense::CLICK so it can
                     // receive secondary clicks) with the theme-driven
                     // default menu look.
                     let surface = Frame::new()
                         .id_salt("ctx-surface")
-                        .size((Sizing::FILL, Sizing::Fixed(90.0)))
+                        .size((Sizing::FILL, Sizing::fixed(90.0)))
                         .sense(Sense::CLICK)
                         .background(surface_bg())
                         .show(ui)
@@ -265,7 +265,7 @@ fn context_menu_section(ui: &mut Ui) {
                     // a max width — ContextMenu's Configure surface.
                     let wide = Frame::new()
                         .id_salt("ctx-wide-surface")
-                        .size((Sizing::FILL, Sizing::Fixed(90.0)))
+                        .size((Sizing::FILL, Sizing::fixed(90.0)))
                         .sense(Sense::CLICK)
                         .background(support::panel_bg())
                         .show(ui)
@@ -283,7 +283,7 @@ enum MenuFlavor {
 }
 
 fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flavor: MenuFlavor) {
-    let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::Hug, Sizing::Hug));
+    let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::HUG, Sizing::HUG));
     if let MenuFlavor::Wide = flavor {
         menu = menu
             .min_size((260.0, 0.0))

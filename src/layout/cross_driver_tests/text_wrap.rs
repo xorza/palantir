@@ -49,7 +49,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::Fixed(60.0), Sizing::Hug))
+            .size((Sizing::fixed(60.0), Sizing::HUG))
             .show(ui, |ui| {
                 text_node = Some(
                     Text::new(PARAGRAPH)
@@ -94,7 +94,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .auto_id()
-            .size((Sizing::Fixed(80.0), Sizing::Hug))
+            .size((Sizing::fixed(80.0), Sizing::HUG))
             .show(ui, |ui| {
                 node = Some(Button::new().auto_id().label(PARAGRAPH).show(ui).node());
             });
@@ -316,7 +316,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 section_node = Some(Panel::vstack().auto_id()
-                                    .size((Sizing::FILL, Sizing::Hug))
+                                    .size((Sizing::FILL, Sizing::HUG))
                                     .gap(6.0)
                                     .show(ui, |ui| {
                                         Text::new(
@@ -475,7 +475,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
             .id(WidgetId::from_hash("grid"))
             .cols(Rc::from([Track::hug(), Track::hug()]))
             .rows(Rc::from([Track::hug()]))
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 paragraph_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
@@ -553,7 +553,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
             .id(WidgetId::from_hash("grid"))
             .cols(Rc::from([Track::hug(), Track::hug()]))
             .rows(Rc::from([Track::hug()]))
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog. pack my box with five dozen liquor jugs")
                     .auto_id()
@@ -658,14 +658,14 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
     let mut child = None;
     let container = Panel::vstack()
         .id_salt("wrapping-container-text")
-        .size((Sizing::Hug, Sizing::Hug))
+        .size((Sizing::HUG, Sizing::HUG))
         .padding(10.0)
         .show(ui, |ui| {
             ui.add_shape(direct_text(PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None));
             child = Some(
                 Frame::new()
                     .id_salt("container-size-driver")
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(20.0)))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(20.0)))
                     .show(ui)
                     .node(),
             );
@@ -681,7 +681,7 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
     let mut child = None;
     let container = Panel::vstack()
         .id_salt("interleaved-container-text")
-        .size((Sizing::Fixed(240.0), Sizing::Fixed(100.0)))
+        .size((Sizing::fixed(240.0), Sizing::fixed(100.0)))
         .show(ui, |ui| {
             ui.add_shape(direct_text(
                 "parent-before",
@@ -979,7 +979,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
             .show(ui, |ui| {
                 inner = Panel::vstack()
                     .id_salt("inner")
-                    .size((Sizing::Fixed(360.0), Sizing::Hug))
+                    .size((Sizing::fixed(360.0), Sizing::HUG))
                     .padding(8.0)
                     .show(ui, |ui| {
                         Text::new(

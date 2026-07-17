@@ -46,7 +46,7 @@ fn scene(ui: &mut aperture::Ui) {
             Button::new()
                 .id_salt("btn")
                 .label("format")
-                .size((Sizing::FILL, Sizing::Fixed(32.0)))
+                .size((Sizing::FILL, Sizing::fixed(32.0)))
                 .show(ui);
         });
 }

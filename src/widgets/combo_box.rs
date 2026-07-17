@@ -94,7 +94,7 @@ impl<'a> ComboBox<'a> {
             let arrow_id = id.with("arrow");
             let mut arrow = Element::leaf();
             arrow.salt = Salt::Verbatim(arrow_id);
-            arrow.size = (Sizing::Fixed(ARROW_W), Sizing::Fixed(ARROW_H)).into();
+            arrow.size = (Sizing::fixed(ARROW_W), Sizing::fixed(ARROW_H)).into();
             ui.node(arrow_id, arrow, None, |ui| {
                 let pts = chevron_pts();
                 ui.add_shape(

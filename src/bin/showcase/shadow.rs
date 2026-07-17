@@ -147,7 +147,7 @@ fn chrome_card(ui: &mut Ui, bg: Background) {
         .show(ui, |ui| {
             Panel::zstack()
                 .auto_id()
-                .size((Sizing::Fixed(140.0), Sizing::Fixed(80.0)))
+                .size((Sizing::fixed(140.0), Sizing::fixed(80.0)))
                 .background(bg)
                 .show(ui, |_| {});
         });

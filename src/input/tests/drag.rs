@@ -13,7 +13,7 @@ use glam::{UVec2, Vec2};
 fn build_clickable(ui: &mut Ui) {
     Panel::hstack()
         .id(WidgetId::from_hash("target"))
-        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+        .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
         .sense(Sense::CLICK)
         .show(ui, |_| {});
 }
@@ -23,7 +23,7 @@ fn build_draggable(ui: &mut Ui) {
     // is true for both CLICK and DRAG, so this still captures.
     Panel::hstack()
         .id(WidgetId::from_hash("target"))
-        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+        .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
         .sense(Sense::DRAG)
         .show(ui, |_| {});
 }
@@ -433,7 +433,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("target"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui, |_| {});
         });
@@ -480,7 +480,7 @@ impl Card {
     fn record(&mut self, ui: &mut Ui) {
         let r = Frame::new()
             .id(WidgetId::from_hash(self.label))
-            .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
+            .size((Sizing::fixed(CARD_SIZE), Sizing::fixed(CARD_SIZE)))
             .position(self.pos)
             .sense(Sense::DRAG)
             .show(ui);
@@ -506,7 +506,7 @@ fn frame_with(ui: &mut Ui, mut body: impl FnMut(&mut Ui)) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("canvas"))
-                .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                 .show(ui, |ui| body(ui));
         });
     });
@@ -611,7 +611,7 @@ fn drag_started_fires_only_on_latch_frame() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::canvas()
                     .id(WidgetId::from_hash("canvas"))
-                    .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                    .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                     .show(ui, |ui| {
                         a.record(ui);
                         latched |= ui.response_for(card_id("a")).left.drag.started();
@@ -655,11 +655,11 @@ fn canvas_rearranges_with_dragged_child_position() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("canvas"))
-                .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                 .show(ui, |ui| {
                     let r = Frame::new()
                         .id(WidgetId::from_hash("a"))
-                        .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
+                        .size((Sizing::fixed(CARD_SIZE), Sizing::fixed(CARD_SIZE)))
                         .position(a.pos)
                         .sense(Sense::DRAG)
                         .show(ui);

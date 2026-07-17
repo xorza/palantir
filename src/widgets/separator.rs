@@ -66,10 +66,10 @@ impl Separator {
         // the same sentinel convention as theme padding/margin.
         if self.element.size == Sizes::default() {
             if self.horizontal {
-                self.element.size = (Sizing::Hug, Sizing::Fixed(t)).into();
+                self.element.size = (Sizing::HUG, Sizing::fixed(t)).into();
                 self.element.align = Align::h(HAlign::Stretch);
             } else {
-                self.element.size = (Sizing::Fixed(t), Sizing::Hug).into();
+                self.element.size = (Sizing::fixed(t), Sizing::HUG).into();
                 self.element.align = Align::v(VAlign::Stretch);
             }
         }
@@ -110,7 +110,7 @@ mod tests {
             col.show(ui, |ui| {
                 sized = Some(
                     Separator::horizontal()
-                        .size((Sizing::Fixed(50.0), Sizing::Fixed(3.0)))
+                        .size((Sizing::fixed(50.0), Sizing::fixed(3.0)))
                         .show(ui)
                         .node(),
                 );

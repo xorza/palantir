@@ -686,12 +686,12 @@ fn nested_clips_each_emit_their_own_pair() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("outer"))
-                .size(Sizing::Fixed(100.0))
+                .size(Sizing::fixed(100.0))
                 .clip_rect()
                 .show(ui, |ui| {
                     Panel::zstack()
                         .id(WidgetId::from_hash("inner"))
-                        .size(Sizing::Fixed(50.0))
+                        .size(Sizing::fixed(50.0))
                         .clip_rect()
                         .show(ui, |_| {});
                 });
@@ -712,7 +712,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             child_node = Some(
                 Frame::new()
                     .auto_id()
-                    .size(Sizing::Fixed(40.0))
+                    .size(Sizing::fixed(40.0))
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
@@ -762,7 +762,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
             Button::new()
                 .id(WidgetId::from_hash("padded"))
                 .label("ok")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+                .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                 .padding(20.0)
                 .show(ui);
         });
@@ -805,7 +805,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
-                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
@@ -813,7 +813,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     .show(ui);
                 Frame::new()
                     .id(WidgetId::from_hash("b"))
-                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                     .background(Background {
                         fill: Color::rgb(0.0, 1.0, 0.0).into(),
                         ..Default::default()
@@ -866,12 +866,12 @@ fn damage_filter_culls_subtree_outside_damage() {
                 match wrap {
                     Wrap::Clipped => Panel::hstack()
                         .id(WidgetId::from_hash("clipped"))
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .clip_rect()
                         .show(ui, inner),
                     Wrap::Transformed => Panel::hstack()
                         .id(WidgetId::from_hash("transformed"))
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .transform(TranslateScale::from_translation(Vec2::new(5.0, 5.0)))
                         .show(ui, inner),
                 };
@@ -903,7 +903,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                 for (key, x, y) in &[("tl", 0.0, 0.0), ("tr", 160.0, 0.0), ("bl", 0.0, 160.0)] {
                     Frame::new()
                         .id(WidgetId::from_hash(*key))
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .position(Vec2::new(*x, *y))
                         .background(Background {
                             fill: Color::rgb(1.0, 0.0, 0.0).into(),
@@ -986,12 +986,12 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("overflow-parent"))
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("overflowing-child"))
                         .position((60.0, 0.0))
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .background(Background {
                             fill: Color::rgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
@@ -1043,7 +1043,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                     Frame::new()
                         .id(WidgetId::from_hash("neighbour"))
                         .position(Vec2::new(100.0, 100.0))
-                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                         .background(Background {
                             fill: Color::rgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
@@ -1146,7 +1146,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("spin_owner"))
-                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .show(ui, |ui| {
                     ui.add_shape_animated(
                         Shape::Polyline {
@@ -1213,7 +1213,7 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("arc_spin_owner"))
-                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .show(ui, |ui| {
                     ui.add_shape_animated(
                         Shape::arc(Vec2::new(50.0, 20.0), 10.0, 0.0, PI, 2.0).brush(Color::WHITE),
@@ -1276,7 +1276,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
-                .size(Sizing::Fixed(300.0))
+                .size(Sizing::fixed(300.0))
                 .transform(xform)
                 .show(ui, |ui| {
                     ui.add_shape(Shape::RoundedRect {
@@ -1341,7 +1341,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
-                .size(Sizing::Fixed(150.0))
+                .size(Sizing::fixed(150.0))
                 .transform(xform)
                 .background(Background {
                     fill: chrome_color.into(),
@@ -1359,7 +1359,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
         .find(|(c, _)| *c == chrome_f16)
         .expect("chrome must paint");
 
-    // Chrome paints at the panel's own layout rect (Sizing::Fixed(150.0)
+    // Chrome paints at the panel's own layout rect (Sizing::fixed(150.0)
     // inside a 400×400 surface, hstack with one child → top-left at (0,0)
     // by default). The transform must NOT scale chrome to 300×300.
     assert!(

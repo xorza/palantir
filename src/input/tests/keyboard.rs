@@ -222,7 +222,7 @@ fn focus_policy_routing() {
             Button::new()
                 .id(WidgetId::from_hash("editable"))
                 .focusable(true)
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     };
@@ -264,11 +264,11 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
             Button::new()
                 .id(WidgetId::from_hash("editable"))
                 .focusable(true)
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
             Button::new()
                 .id(WidgetId::from_hash("plain"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     };
@@ -298,7 +298,7 @@ fn focus_is_evicted_when_widget_disappears() {
             Button::new()
                 .id(WidgetId::from_hash("editable"))
                 .focusable(true)
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     });
@@ -347,7 +347,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
                 let b = Button::new()
                     .id(WidgetId::from_hash("editable"))
                     .focusable(true)
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)));
+                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)));
                 match mode {
                     Mode::Hidden => b.visibility(Visibility::Hidden).show(ui),
                     Mode::Disabled => b.disabled(true).show(ui),

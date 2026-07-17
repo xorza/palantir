@@ -31,7 +31,7 @@ fn frame_with(ui: &mut Ui, ratio: &mut f32) -> usize {
         passes += 1;
         Splitter::horizontal(ratio)
             .id(split_id())
-            .size((Sizing::Fixed(401.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
             .min_pane(50.0)
             .show(ui, |_, _| {});
     });
@@ -113,9 +113,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                 splitter
                     .id(split_id())
                     .size(if horizontal {
-                        (Sizing::Fixed(401.0), Sizing::Fixed(100.0))
+                        (Sizing::fixed(401.0), Sizing::fixed(100.0))
                     } else {
-                        (Sizing::Fixed(100.0), Sizing::Fixed(401.0))
+                        (Sizing::fixed(100.0), Sizing::fixed(401.0))
                     })
                     .min_pane(50.0)
                     .show(ui, |ui, half| {
@@ -123,9 +123,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                             Frame::new()
                                 .id(split_id().with("rigid"))
                                 .size(if horizontal {
-                                    (Sizing::Fixed(180.0), Sizing::FILL)
+                                    (Sizing::fixed(180.0), Sizing::FILL)
                                 } else {
-                                    (Sizing::FILL, Sizing::Fixed(180.0))
+                                    (Sizing::FILL, Sizing::fixed(180.0))
                                 })
                                 .show(ui);
                         }
@@ -285,7 +285,7 @@ fn divider_requests_the_resize_cursor() {
         ui.run_at_acked(SURFACE, |ui| {
             Splitter::vertical(ratio)
                 .id(split_id())
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(201.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(201.0)))
                 .show(ui, |_, _| {});
         });
     };
@@ -312,7 +312,7 @@ fn divider_requests_the_resize_cursor() {
                 };
                 Splitter::horizontal(ratio)
                     .id(split_id())
-                    .size((Sizing::Fixed(401.0), Sizing::Fixed(100.0)))
+                    .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                     .style(style)
                     .show(ui, |_, _| {});
             });
@@ -368,4 +368,26 @@ fn sanitize_ratio_clamps_and_pins_non_finite() {
     assert_eq!(sanitize_ratio(1.5), 1.0);
     assert_eq!(sanitize_ratio(f32::NAN), 0.5);
     assert_eq!(sanitize_ratio(f32::INFINITY), 0.5);
+}
+
+#[test]
+fn endpoint_ratios_collapse_exactly_one_pane() {
+    for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
+        let mut ui = Ui::for_test();
+        let mut ratio = ratio;
+        ui.run_at_acked(SURFACE, |ui| {
+            Splitter::horizontal(&mut ratio)
+                .id(split_id())
+                .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
+                .show(ui, |_, _| {});
+        });
+        let first = ui.node_for_widget_id(split_id().with("first"));
+        let second = ui.node_for_widget_id(split_id().with("second"));
+        let rects = &ui.layout[Layer::Main].rect;
+        assert_eq!(
+            [rects[first.idx()].size.w, rects[second.idx()].size.w],
+            expected,
+            "ratio {ratio}",
+        );
+    }
 }

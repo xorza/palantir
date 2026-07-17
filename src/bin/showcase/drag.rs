@@ -66,7 +66,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
 
     let r = Frame::new()
         .id(id)
-        .size((Sizing::Fixed(CARD_W), Sizing::Fixed(CARD_H)))
+        .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
         .position(pos)
         .sense(Sense::DRAG)
         .background(Background {

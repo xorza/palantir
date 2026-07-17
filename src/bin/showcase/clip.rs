@@ -58,7 +58,7 @@ pub(crate) fn build(ui: &mut Ui) {
         Panel::hstack()
             .id_salt("transform-row")
             .gap(12.0)
-            .size((Sizing::FILL, Sizing::Fixed(160.0)))
+            .size((Sizing::FILL, Sizing::fixed(160.0)))
             .show(ui, |ui| {
                 demo_cell(ui, "transform — translate (40, 30)", |ui| {
                     Panel::zstack()
@@ -122,7 +122,7 @@ fn clip_card(ui: &mut Ui, label: &'static str, mode: ClipMode, padding: f32) {
 fn spiller(ui: &mut Ui, id: impl Hash) {
     Frame::new()
         .id_salt(id)
-        .size((Sizing::Fixed(240.0), Sizing::Fixed(280.0)))
+        .size((Sizing::fixed(240.0), Sizing::fixed(280.0)))
         .margin((-24.0, -24.0, -24.0, -24.0))
         .background(Background {
             fill: support::B.into(),
@@ -135,7 +135,7 @@ fn spiller(ui: &mut Ui, id: impl Hash) {
 fn tile(ui: &mut Ui, id: &'static str) {
     Frame::new()
         .id_salt(id)
-        .size((Sizing::Fixed(60.0), Sizing::Fixed(60.0)))
+        .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
         .background(swatch_bg(support::A))
         .show(ui);
 }

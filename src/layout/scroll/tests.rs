@@ -33,12 +33,12 @@ fn vertical_scroll_records_content_extent() {
     ui.run_at(SURFACE, |ui| {
         Scroll::vertical()
             .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
                 for i in 0..5u32 {
                     Frame::new()
                         .id(WidgetId::from_hash(("row", i)))
-                        .size((Sizing::FILL, Sizing::Fixed(50.0)))
+                        .size((Sizing::FILL, Sizing::fixed(50.0)))
                         .show(ui);
                 }
             });
@@ -56,13 +56,13 @@ fn horizontal_scroll_records_content_extent() {
             .show(ui, |ui| {
                 Scroll::horizontal()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                     .gap(4.0)
                     .show(ui, |ui| {
                         for i in 0..10u32 {
                             Frame::new()
                                 .id(WidgetId::from_hash(("col", i)))
-                                .size((Sizing::Fixed(40.0), Sizing::FILL))
+                                .size((Sizing::fixed(40.0), Sizing::FILL))
                                 .show(ui);
                         }
                     });
@@ -83,11 +83,11 @@ fn both_axis_scroll_records_content_extent() {
     ui.run_at(SURFACE, |ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("wide-tall"))
-                    .size((Sizing::Fixed(300.0), Sizing::Fixed(250.0)))
+                    .size((Sizing::fixed(300.0), Sizing::fixed(250.0)))
                     .show(ui);
             });
     });
@@ -108,12 +108,12 @@ fn state_survives_across_frames() {
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Fixed(150.0), Sizing::Fixed(100.0)))
+                    .size((Sizing::fixed(150.0), Sizing::fixed(100.0)))
                     .show(ui, |ui| {
                         for i in 0..4u32 {
                             Frame::new()
                                 .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::FILL, Sizing::Fixed(40.0)))
+                                .size((Sizing::FILL, Sizing::fixed(40.0)))
                                 .show(ui);
                         }
                     });
@@ -141,12 +141,12 @@ fn content_margin_leaves_content_size_unchanged() {
     ui.run_at(SURFACE, |ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .content_margin((20.0, 50.0))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("box"))
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(160.0)))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(160.0)))
                     .show(ui);
             });
     });
@@ -170,18 +170,18 @@ fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
     ui.run_at(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .min_size((0.0, min_h))
                     .max_size((f32::INFINITY, max_h))
                     .show(ui, |ui| {
                         for i in 0..count {
                             Frame::new()
                                 .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::Fixed(120.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
                                 .show(ui);
                         }
                     });
@@ -221,17 +221,17 @@ fn hug_scroll_caps_at_max_and_scrolls() {
     ui.run_at(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .max_size((f32::INFINITY, 200.0))
                     .show(ui, |ui| {
                         for i in 0..8u32 {
                             Frame::new()
                                 .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::Fixed(120.0), Sizing::Fixed(50.0)))
+                                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
                                 .show(ui);
                         }
                     });
@@ -254,15 +254,15 @@ fn fill_scroll_does_not_grow_hug_parent() {
     ui.run_at(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Hug, Sizing::Fill(1.0)))
+                    .size((Sizing::HUG, Sizing::fill(1.0)))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("row"))
-                            .size((Sizing::Fixed(120.0), Sizing::Fixed(150.0)))
+                            .size((Sizing::fixed(120.0), Sizing::fixed(150.0)))
                             .show(ui);
                     });
             });
@@ -287,22 +287,22 @@ fn toggling_scroll_sizing_busts_measure_cache() {
     let build = |ui: &mut Ui, pan_h: Sizing| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::Hug, pan_h))
+                    .size((Sizing::HUG, pan_h))
                     .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("row"))
-                            .size((Sizing::Fixed(120.0), Sizing::Fixed(150.0)))
+                            .size((Sizing::fixed(120.0), Sizing::fixed(150.0)))
                             .show(ui);
                     });
             });
     };
-    ui.run_at(SURFACE, |ui| build(ui, Sizing::Hug));
+    ui.run_at(SURFACE, |ui| build(ui, Sizing::HUG));
     assert_eq!(scroll_height(&ui, "scroll"), 150.0, "Hug fits its content");
-    ui.run_at(SURFACE, |ui| build(ui, Sizing::Fill(1.0)));
+    ui.run_at(SURFACE, |ui| build(ui, Sizing::fill(1.0)));
     assert_eq!(
         scroll_height(&ui, "scroll"),
         0.0,

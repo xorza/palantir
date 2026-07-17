@@ -20,7 +20,6 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::types::sizing::Sizing;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::shape::TextWrap;
 use crate::text::ShapeParams;
@@ -98,12 +97,11 @@ pub(crate) fn compute(
     // `content_plus_padding`). Skip the content query and padding read
     // for Fixed: `resolve_axis_size` short-circuits Fixed and never
     // reads `content_plus_padding`.
-    let content_plus_padding = match sizing {
-        Sizing::Fixed(_) => 0.0,
-        Sizing::Hug | Sizing::Fill(_) => {
-            let pad = axis.spacing(style.padding);
-            content_intrinsic(engine, tree, node, axis, req, tc, style) + pad
-        }
+    let content_plus_padding = if sizing.fixed_value().is_some() {
+        0.0
+    } else {
+        let pad = axis.spacing(style.padding);
+        content_intrinsic(engine, tree, node, axis, req, tc, style) + pad
     };
 
     resolve_axis_size(AxisCtx {
@@ -253,12 +251,12 @@ mod tests {
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("lorem ipsum dolor sit amet")
                         .id_salt("msg")
                         .text_wrap(TextWrap::WrapWithOverflow)
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
                 })
                 .node();
@@ -287,12 +285,12 @@ mod tests {
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("hello world")
                         .id_salt("msg")
                         .text_wrap(TextWrap::WrapWithOverflow)
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
                 })
                 .node();
@@ -341,7 +339,7 @@ mod tests {
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
-                .size((Sizing::Hug, Sizing::Hug))
+                .size((Sizing::HUG, Sizing::HUG))
                 .show(ui, |ui| {
                     Text::new("abc").id_salt("a").show(ui);
                     Text::new("defgh").id_salt("b").show(ui);

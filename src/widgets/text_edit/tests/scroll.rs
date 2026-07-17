@@ -15,7 +15,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("scroll-ed"))
-                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -66,7 +66,7 @@ fn hug_width_editor_shows_full_text_after_growth() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("hug-ed"))
-                .size((Sizing::Hug, Sizing::Fixed(40.0)))
+                .size((Sizing::HUG, Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -107,7 +107,7 @@ fn click_hit_test_compensates_for_scroll() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("hit-ed"))
-                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }

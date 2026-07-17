@@ -20,7 +20,7 @@ fn input_state_press_release_emits_click() {
             Button::new()
                 .id(WidgetId::from_hash("target"))
                 .label("hi")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     };
@@ -33,7 +33,7 @@ fn input_state_press_release_emits_click() {
             got_click |= Button::new()
                 .id(WidgetId::from_hash("target"))
                 .label("hi")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .left
                 .clicked();
@@ -47,7 +47,7 @@ fn input_state_press_release_emits_click() {
             still_clicking |= Button::new()
                 .id(WidgetId::from_hash("target"))
                 .label("hi")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .left
                 .clicked();
@@ -98,7 +98,7 @@ fn stack_sense_routing() {
                 .show(ui, |ui| {
                     Button::new()
                         .id(WidgetId::from_hash("inside"))
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .show(ui);
                 });
         };
@@ -116,7 +116,7 @@ fn stack_sense_routing() {
                 .show(ui, |ui| {
                     child_clicked |= Button::new()
                         .id(WidgetId::from_hash("inside"))
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .left
                         .clicked();
@@ -147,7 +147,7 @@ fn input_state_release_outside_does_not_click() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("target"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     });
@@ -160,7 +160,7 @@ fn input_state_release_outside_does_not_click() {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
                 .id(WidgetId::from_hash("target"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .left
                 .clicked();
@@ -180,12 +180,12 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("clipper"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .clip_rect()
                 .show(ui, |ui| {
                     *capture |= Button::new()
                         .id(WidgetId::from_hash("inner"))
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui)
                         .left
                         .clicked();
@@ -224,12 +224,12 @@ fn zoom_panel_routes_clicks_by_world_rect() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("zoomer"))
-                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                     .transform(TranslateScale::from_scale(*scale))
                     .show(ui, |ui| {
                         *capture |= Button::new()
                             .id(WidgetId::from_hash("inner"))
-                            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                            .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                             .show(ui)
                             .left
                             .clicked();
@@ -255,7 +255,7 @@ fn secondary_click_press_release_emits_secondary_clicked() {
             let r = Button::new()
                 .id(WidgetId::from_hash("rc_target"))
                 .label("rc")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
             *sink |= r.right.clicked();
             // Left-click must NOT flip secondary_clicked.
@@ -288,7 +288,7 @@ fn two_left_clicks_within_window_emit_double_clicked() {
             let r = Button::new()
                 .id(WidgetId::from_hash("dc_target"))
                 .label("dc")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
             *single |= r.left.clicked();
             *double |= r.left.double_clicked();
@@ -341,7 +341,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
             let r = Button::new()
                 .id(WidgetId::from_hash("dc_radius_target"))
                 .label("dc")
-                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui);
             *double |= r.left.double_clicked();
         });
@@ -372,7 +372,7 @@ fn click_on_different_widget_resets_double_click() {
             *a |= Button::new()
                 .id(WidgetId::from_hash("dc_a"))
                 .label("a")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .left
                 .click_count()
@@ -380,7 +380,7 @@ fn click_on_different_widget_resets_double_click() {
             *b |= Button::new()
                 .id(WidgetId::from_hash("dc_b"))
                 .label("b")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .left
                 .click_count()
@@ -410,7 +410,7 @@ fn left_and_right_click_are_independent() {
             let r = Button::new()
                 .id(WidgetId::from_hash("indep"))
                 .label("x")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .show(ui);
             *lc |= r.left.clicked();
             *rc |= r.right.clicked();
@@ -467,7 +467,7 @@ fn press_started_counts_multi_press_runs() {
                 Button::new()
                     .id(id)
                     .label("hi")
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
                 let r = ui.response_for(id);
                 seen.0 |= r.left.press_count() > 0;

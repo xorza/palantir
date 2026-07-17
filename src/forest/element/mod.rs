@@ -351,10 +351,7 @@ pub trait Configure: Sized {
     }
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
-        let s = s.into();
-        s.w().debug_assert_non_negative();
-        s.h().debug_assert_non_negative();
-        self.element_mut().size = s;
+        self.element_mut().size = s.into();
         self
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
@@ -424,7 +421,7 @@ pub trait Configure: Sized {
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
-    /// Ignored when any child has [`crate::Sizing::Fill`] on the main axis.
+    /// Ignored when any child has [`crate::Sizing::fill`] on the main axis.
     fn justify(mut self, j: Justify) -> Self {
         self.element_mut().justify = j;
         self

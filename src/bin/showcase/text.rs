@@ -36,12 +36,12 @@ pub(crate) fn build(ui: &mut Ui) {
                 Panel::vstack()
                     .id_salt("col-l")
                     .gap(16.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, wrapping);
                 Panel::vstack()
                     .id_salt("col-r")
                     .gap(16.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, compositions);
             });
     });
@@ -85,7 +85,7 @@ fn wrapping(ui: &mut Ui) {
 fn wrap_panel(ui: &mut Ui, id: &'static str, width: f32, text: &'static str) {
     Panel::vstack()
         .id_salt(id)
-        .size((Sizing::Fixed(width), Sizing::Hug))
+        .size((Sizing::fixed(width), Sizing::HUG))
         .padding(8.0)
         .background(support::panel_bg())
         .show(ui, |ui| {
@@ -131,7 +131,7 @@ fn compositions(ui: &mut Ui) {
         |ui| {
             Grid::new()
                 .id_salt("property-grid-inner")
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .cols(Rc::from([Track::hug(), Track::fill()]))
                 .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
                 .gap_xy(6.0, 16.0)
@@ -169,7 +169,7 @@ fn compositions(ui: &mut Ui) {
         |ui| {
             Panel::vstack()
                 .id_salt("chat-list")
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .gap(8.0)
                 .show(ui, |ui| {
                     chat_row(
@@ -196,12 +196,12 @@ fn compositions(ui: &mut Ui) {
 fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
     Panel::hstack()
         .id_salt(("chat-row", key))
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .gap(10.0)
         .show(ui, |ui| {
             Frame::new()
                 .id_salt(("avatar", key))
-                .size((Sizing::Fixed(36.0), Sizing::Fixed(36.0)))
+                .size((Sizing::fixed(36.0), Sizing::fixed(36.0)))
                 .background(Background {
                     fill: avatar_color.into(),
                     corners: Corners::all(18.0),
@@ -211,7 +211,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
             Text::new(message)
                 .id_salt(("message", key))
                 .style(body_style())
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
         });

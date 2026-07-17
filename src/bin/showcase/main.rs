@@ -162,7 +162,7 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                 .auto_id()
                 .gap(6.0)
                 .line_gap(6.0)
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {
                         let mut btn = Button::new().id_salt(*label).label(*label);

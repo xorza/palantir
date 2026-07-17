@@ -59,20 +59,20 @@ fn collapsed_does_not_consume_fill_weight() {
     ui.run_at(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
-            .size((Sizing::FILL, Sizing::Hug))
+            .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
-                    .size((Sizing::Fill(1.0), Sizing::Hug))
+                    .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
                 Frame::new()
                     .id(WidgetId::from_hash("gone"))
-                    .size((Sizing::Fill(3.0), Sizing::Hug))
+                    .size((Sizing::fill(3.0), Sizing::HUG))
                     .collapsed()
                     .show(ui);
                 Frame::new()
                     .id(WidgetId::from_hash("b"))
-                    .size((Sizing::Fill(1.0), Sizing::Hug))
+                    .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
             })
             .node();
@@ -160,7 +160,7 @@ fn hidden_button_does_not_click() {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("invisible"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .hidden()
                 .show(ui);
         });
@@ -173,7 +173,7 @@ fn hidden_button_does_not_click() {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked = Button::new()
                 .id(WidgetId::from_hash("invisible"))
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .hidden()
                 .show(ui)
                 .left

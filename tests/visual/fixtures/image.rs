@@ -19,7 +19,7 @@ fn strip_pane(ui: &mut Ui, handle: &aperture::ImageHandle, x: f32, filter: Image
     Panel::zstack()
         .id_salt(("filter_pane", x as i32))
         .position(glam::Vec2::new(x, 0.0))
-        .size((Sizing::Fixed(128.0), Sizing::Fixed(64.0)))
+        .size((Sizing::fixed(128.0), Sizing::fixed(64.0)))
         .show(ui, |ui| {
             ui.add_shape(Shape::Image {
                 handle: handle.clone(),

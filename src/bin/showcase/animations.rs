@@ -85,7 +85,7 @@ fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, targ
         .show(ui, |ui| {
             Frame::new()
                 .id(id)
-                .size((Sizing::Fixed(width), Sizing::Fixed(20.0)))
+                .size((Sizing::fixed(width), Sizing::fixed(20.0)))
                 .background(support::swatch_bg(support::A))
                 .show(ui);
             Text::new(label).auto_id().show(ui);

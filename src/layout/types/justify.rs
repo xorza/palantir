@@ -1,5 +1,5 @@
 /// Main-axis distribution of leftover space in a stack panel. Mirrors CSS
-/// `justify-content`. Has no effect when any child is `Sizing::Fill` along
+/// `justify-content`. Has no effect when any child is `Sizing::fill` along
 /// the main axis — Fill consumes the leftover first.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]

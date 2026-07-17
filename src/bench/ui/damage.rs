@@ -51,7 +51,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                 Panel::hstack()
                     .id_salt(("row", r))
                     .gap(2.0)
-                    .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui, |ui| {
                         for c in 0..COLS {
                             let i = r * COLS + c;
@@ -62,7 +62,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                             };
                             Frame::new()
                                 .id_salt(("cell", r, c))
-                                .size((Sizing::Fixed(30.0), Sizing::FILL))
+                                .size((Sizing::fixed(30.0), Sizing::FILL))
                                 .background(Background {
                                     fill: fill.into(),
                                     ..Default::default()
@@ -92,7 +92,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                 Panel::hstack()
                     .id_salt(("row", r))
                     .gap(2.0)
-                    .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .background(Background {
                         fill: row_bg.into(),
                         ..Default::default()
@@ -107,7 +107,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                             };
                             Frame::new()
                                 .id_salt(("cell", r, c))
-                                .size((Sizing::Fixed(30.0), Sizing::FILL))
+                                .size((Sizing::fixed(30.0), Sizing::FILL))
                                 .background(Background {
                                     fill: fill.into(),
                                     ..Default::default()
@@ -269,14 +269,14 @@ fn bench_workloads(c: &mut Criterion) {
                             Panel::hstack()
                                 .id_salt(("row", r))
                                 .gap(2.0)
-                                .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                                .size((Sizing::FILL, Sizing::fixed(20.0)))
                                 .show(ui, |ui| {
                                     for c in 0..COLS {
                                         let i = r * COLS + c;
                                         let phase = (i as u32 + frame_n) as f32 * 0.013;
                                         Frame::new()
                                             .id_salt(("cell", r, c))
-                                            .size((Sizing::Fixed(30.0), Sizing::FILL))
+                                            .size((Sizing::fixed(30.0), Sizing::FILL))
                                             .background(Background {
                                                 fill: Color::rgb(
                                                     0.4 + (phase.sin() * 0.4),
@@ -333,7 +333,7 @@ fn bench_workloads(c: &mut Criterion) {
     let canvas_body = |c: usize, count: u32, ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash(("canvas", c)))
-            .size((Sizing::Fixed(40.0), Sizing::Fixed(25.0)))
+            .size((Sizing::fixed(40.0), Sizing::fixed(25.0)))
             .background(Background {
                 fill: Color::rgb(0.1, 0.1, 0.12).into(),
                 ..Default::default()
@@ -360,7 +360,7 @@ fn bench_workloads(c: &mut Criterion) {
                 for r in 0..CANVAS_ROWS {
                     Panel::hstack()
                         .id_salt(("row", r))
-                        .size((Sizing::FILL, Sizing::Fixed(25.0)))
+                        .size((Sizing::FILL, Sizing::fixed(25.0)))
                         .show(ui, |ui| {
                             for col in 0..CANVAS_COLS {
                                 let c = r * CANVAS_COLS + col;

@@ -56,7 +56,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 row(ui, "combo-row", |ui| {
                     let mut fruit = ui.state_mut::<State>(state_id).fruit;
                     ComboBox::new(&mut fruit, &options)
-                        .size((Sizing::Fixed(180.0), Sizing::Hug))
+                        .size((Sizing::fixed(180.0), Sizing::HUG))
                         .id_salt("combo")
                         .show(ui);
                     ui.state_mut::<State>(state_id).fruit = fruit;

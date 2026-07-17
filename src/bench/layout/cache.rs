@@ -63,14 +63,14 @@ fn build(ui: &mut Ui) {
         .id_salt("nested-root")
         .gap(4.0)
         .padding(8.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for g in 0..GROUPS {
                 Panel::vstack()
                     .id_salt(("group", g))
                     .gap(2.0)
                     .padding(4.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         Text::new("Group header")
                             .id_salt(("g-hdr", g))
@@ -80,11 +80,11 @@ fn build(ui: &mut Ui) {
                             Panel::hstack()
                                 .id_salt(("row", g, r))
                                 .gap(6.0)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui, |ui| {
                                     Frame::new()
                                         .id_salt(("avatar", g, r))
-                                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                                         .show(ui);
                                     Text::new("row name")
                                         .id_salt(("name", g, r))
@@ -98,7 +98,7 @@ fn build(ui: &mut Ui) {
                         }
                         Frame::new()
                             .id_salt(("g-ftr", g))
-                            .size((Sizing::FILL, Sizing::Fixed(2.0)))
+                            .size((Sizing::FILL, Sizing::fixed(2.0)))
                             .show(ui);
                     });
             }
@@ -134,14 +134,14 @@ fn build_heavy(ui: &mut Ui) {
         .id_salt("heavy-root")
         .gap(6.0)
         .padding(12.0)
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for g in 0..HEAVY_GROUPS {
                 Panel::vstack()
                     .id_salt(("h-group", g))
                     .gap(4.0)
                     .padding(8.0)
-                    .size((Sizing::FILL, Sizing::Hug))
+                    .size((Sizing::FILL, Sizing::HUG))
                     .background(group_bg.clone())
                     .clip_rounded()
                     .show(ui, |ui| {
@@ -154,7 +154,7 @@ fn build_heavy(ui: &mut Ui) {
                                 .id_salt(("h-row", g, r))
                                 .gap(8.0)
                                 .padding(6.0)
-                                .size((Sizing::FILL, Sizing::Hug))
+                                .size((Sizing::FILL, Sizing::HUG))
                                 .background(row_bg.clone())
                                 .clip_rounded()
                                 .show(ui, |ui| {
@@ -162,7 +162,7 @@ fn build_heavy(ui: &mut Ui) {
                                     // measure on a deeper tree.
                                     Panel::zstack()
                                         .id_salt(("h-avatar-wrap", g, r))
-                                        .size((Sizing::Fixed(24.0), Sizing::Fixed(24.0)))
+                                        .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
                                         .show(ui, |ui| {
                                             Frame::new()
                                                 .id_salt(("h-avatar", g, r))
@@ -193,14 +193,14 @@ fn build_deep_level(ui: &mut Ui, depth: usize) {
     if depth == DEEP_DEPTH {
         Frame::new()
             .id_salt("deep-leaf")
-            .size((Sizing::FILL, Sizing::Fixed(1.0)))
+            .size((Sizing::FILL, Sizing::fixed(1.0)))
             .show(ui);
         return;
     }
 
     Panel::vstack()
         .id_salt(("deep", depth))
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| build_deep_level(ui, depth + 1));
 }
 
@@ -215,12 +215,12 @@ fn build_broad_variant(ui: &mut Ui, changed: bool) {
 fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
     Panel::vstack()
         .id_salt(("broad", depth, key))
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             if depth == BROAD_DEPTH {
                 Frame::new()
                     .id_salt(("broad-leaf", key))
-                    .size((Sizing::FILL, Sizing::Fixed(1.0)))
+                    .size((Sizing::FILL, Sizing::fixed(1.0)))
                     .background(Background {
                         fill: if changed && key == 0 {
                             Color::rgb(0.5, 0.25, 0.75).into()

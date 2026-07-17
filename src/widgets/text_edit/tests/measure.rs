@@ -19,13 +19,13 @@ fn frame(ui: &mut Ui, buf: &mut String) -> NodeId {
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 node = Some(
                     TextEdit::new(buf)
                         .id(WidgetId::from_hash("editor"))
                         .placeholder(PLACEHOLDER)
-                        .size((Sizing::Hug, Sizing::Hug))
+                        .size((Sizing::HUG, Sizing::HUG))
                         .show(ui)
                         .node(),
                 );
@@ -78,12 +78,12 @@ fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizin
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
-            .size((Sizing::Fixed(container_w), Sizing::Fixed(40.0)))
+            .size((Sizing::fixed(container_w), Sizing::fixed(40.0)))
             .show(ui, |ui| {
                 node = Some(
                     TextEdit::new(buf)
                         .id(WidgetId::from_hash("editor"))
-                        .size((editor_w, Sizing::Fixed(40.0)))
+                        .size((editor_w, Sizing::fixed(40.0)))
                         .show(ui)
                         .node(),
                 );
@@ -113,7 +113,7 @@ fn fill_width_editor_shrinks_below_text_content() {
 
     // Natural text width: a Hug editor in a wide container hugs its buffer.
     let mut buf = LONG.to_string();
-    let hug = sized_editor(&mut ui, &mut buf, 2000.0, Sizing::Hug);
+    let hug = sized_editor(&mut ui, &mut buf, 2000.0, Sizing::HUG);
     let text_w = ui.layout[Layer::Main].rect[hug.idx()].size.w;
     assert!(
         text_w > NARROW_W,

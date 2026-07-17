@@ -294,7 +294,7 @@ fn drag_select_continues_past_editor_bounds() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("drag-ed"))
-                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     }
@@ -396,11 +396,11 @@ fn two_textedits_only_one_focused_at_a_time() {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(a)
                 .id(WidgetId::from_hash("a"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
             TextEdit::new(b)
                 .id(WidgetId::from_hash("b"))
-                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     };
@@ -447,11 +447,11 @@ fn select_all_on_focus_gates_on_the_flag() {
             TextEdit::new(on)
                 .id(on_id)
                 .select_all_on_focus()
-                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui);
             TextEdit::new(off)
                 .id(off_id)
-                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
     };
@@ -497,11 +497,11 @@ fn caret_click_is_scale_invariant_under_zoom() {
             Panel::zstack()
                 .id(WidgetId::from_hash("scale-row"))
                 .transform(TranslateScale::new(Vec2::ZERO, scale))
-                .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
+                .size((Sizing::fixed(300.0), Sizing::fixed(60.0)))
                 .show(ui, |ui| {
                     TextEdit::new(buf)
                         .id(id)
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                         .show(ui);
                 });
         };
@@ -542,12 +542,12 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
             Panel::hstack().id(holder).show(ui, |ui| {
                 TextEdit::new(&mut buf)
                     .id(editor)
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
             });
             Panel::hstack()
                 .id(bystander)
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                 .show(ui, |_| {});
         });
     };

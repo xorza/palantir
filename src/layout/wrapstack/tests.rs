@@ -14,7 +14,7 @@ use glam::{UVec2, Vec2};
 fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
     Frame::new()
         .id(WidgetId::from_hash(id))
-        .size((Sizing::Fixed(w), Sizing::Fixed(h)))
+        .size((Sizing::fixed(w), Sizing::fixed(h)))
         .background(Background {
             fill: Color::WHITE.into(),
             ..Default::default()
@@ -85,7 +85,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
             };
             panel
                 .id(WidgetId::from_hash("wrap"))
-                .size((Sizing::Hug, Sizing::Hug))
+                .size((Sizing::HUG, Sizing::HUG))
                 .gap(5.0)
                 .show(ui, |ui| {
                     children.push(cell(ui, "zero", zero_size.w, zero_size.h));
@@ -132,7 +132,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
         let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
-                .size((Sizing::Fixed(200.0), Sizing::Hug))
+                .size((Sizing::fixed(200.0), Sizing::HUG))
                 .gap(10.0)
                 .line_gap(8.0)
                 .show(ui, |ui| {
@@ -162,7 +162,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
-            .size((Sizing::Fixed(100.0), Sizing::Hug))
+            .size((Sizing::fixed(100.0), Sizing::HUG))
             .gap(10.0)
             .line_gap(8.0)
             .show(ui, |ui| {
@@ -192,7 +192,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .size((Sizing::fixed(200.0), Sizing::HUG))
             .gap(0.0)
             .line_gap(0.0)
             .show(ui, |ui| {
@@ -231,7 +231,7 @@ fn wrap_hstack_justify_per_line() {
         let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
-                .size((Sizing::Fixed(200.0), Sizing::Hug))
+                .size((Sizing::fixed(200.0), Sizing::HUG))
                 .gap(10.0)
                 .line_gap(0.0)
                 .justify(*justify)
@@ -265,7 +265,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_vstack()
             .id(WidgetId::from_hash("w"))
-            .size((Sizing::Hug, Sizing::Fixed(100.0)))
+            .size((Sizing::HUG, Sizing::fixed(100.0)))
             .gap(10.0)
             .line_gap(8.0)
             .show(ui, |ui| {
@@ -302,7 +302,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         wrap_node = Some(
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
-                .size((Sizing::Fixed(200.0), Sizing::Hug))
+                .size((Sizing::fixed(200.0), Sizing::HUG))
                 .gap(10.0)
                 .line_gap(8.0)
                 .show(ui, |ui| {
@@ -321,7 +321,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     assert_eq!(r.size.h, 48.0);
 }
 
-/// Pin: cross-axis `Sizing::Fill` stretches to the row's tallest-child
+/// Pin: cross-axis `Sizing::fill` stretches to the row's tallest-child
 /// height (CSS `align-items: stretch` default). Mirrors Stack cross.
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
@@ -330,7 +330,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
-            .size((Sizing::Fixed(300.0), Sizing::Hug))
+            .size((Sizing::fixed(300.0), Sizing::HUG))
             .gap(10.0)
             .show(ui, |ui| {
                 // Tall child sets the row height = 60.
@@ -340,7 +340,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 kids.push(
                     Frame::new()
                         .id(WidgetId::from_hash("filler"))
-                        .size((Sizing::Fixed(100.0), Sizing::FILL))
+                        .size((Sizing::fixed(100.0), Sizing::FILL))
                         .background(Background {
                             fill: Color::rgb(0.5, 0.5, 0.5).into(),
                             ..Default::default()
@@ -372,14 +372,14 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
     let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .size((Sizing::fixed(200.0), Sizing::HUG))
             .gap(10.0)
             .show(ui, |ui| {
                 kids.push(cell(ui, "a", 60.0, 20.0));
                 kids.push(
                     Frame::new()
                         .id(WidgetId::from_hash("hidden"))
-                        .size((Sizing::Fixed(60.0), Sizing::Fixed(20.0)))
+                        .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
                         .collapsed()
                         .show(ui)
                         .node(),
@@ -398,7 +398,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
     assert_eq!((hidden.size.w, hidden.size.h), (0.0, 0.0));
 }
 
-/// Pin (today's behavior): `Sizing::Fill` on a child's main axis is
+/// Pin (today's behavior): `Sizing::fill` on a child's main axis is
 /// treated as `Hug` — measure runs at INF main and the child reports
 /// its content size, no per-row leftover distribution. Future work
 /// adding flex-style row-leftover distribution should update this
@@ -410,14 +410,14 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
-            .size((Sizing::Fixed(300.0), Sizing::Hug))
+            .size((Sizing::fixed(300.0), Sizing::HUG))
             .gap(10.0)
             .show(ui, |ui| {
                 cell(ui, "fixed-a", 60.0, 20.0);
                 filler_node = Some(
                     Frame::new()
                         .id(WidgetId::from_hash("filler"))
-                        .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                        .size((Sizing::FILL, Sizing::fixed(20.0)))
                         // min_size makes Fill measurable as a positive
                         // number even with no row-leftover distribution.
                         .min_size((40.0, 0.0))
@@ -450,7 +450,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let _ = ui.under_outer(UVec2::new(600, 400), |ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("outer"))
-            .size((Sizing::Fixed(500.0), Sizing::Hug))
+            .size((Sizing::fixed(500.0), Sizing::HUG))
             .gap(10.0)
             .line_gap(10.0)
             .show(ui, |ui| {
@@ -458,7 +458,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
                 // cells.
                 Panel::wrap_hstack()
                     .id(WidgetId::from_hash("inner-card"))
-                    .size((Sizing::Fixed(120.0), Sizing::Hug))
+                    .size((Sizing::fixed(120.0), Sizing::HUG))
                     .gap(5.0)
                     .show(ui, |ui| {
                         inner_a = Some(cell(ui, "ia", 50.0, 20.0));
@@ -505,7 +505,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
                         .auto_id()
                         .gap(6.0)
                         .line_gap(6.0)
-                        .size((Sizing::FILL, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::HUG))
                         .show(ui, |ui| {
                             for label in [
                                 "text",
@@ -572,11 +572,11 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
     ui.run_at(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("col"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Panel::wrap_vstack()
                     .id(WidgetId::from_hash("wrap"))
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .max_size((f32::INFINITY, 100.0))
                     .gap(10.0)
                     .line_gap(12.0)
@@ -587,7 +587,7 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
                             nodes.push(
                                 Frame::new()
                                     .id(WidgetId::from_hash(("c", i)))
-                                    .size((Sizing::Fixed(50.0), Sizing::Fixed(40.0)))
+                                    .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                     .show(ui)
                                     .node(),
                             );
@@ -628,12 +628,12 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
     ui.run_at(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("col"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .max_size((f32::INFINITY, 100.0))
             .show(ui, |ui| {
                 Panel::wrap_vstack()
                     .id(WidgetId::from_hash("wrap"))
-                    .size((Sizing::Hug, Sizing::Hug)) // no cap of its own
+                    .size((Sizing::HUG, Sizing::HUG)) // no cap of its own
                     .gap(10.0)
                     .line_gap(12.0)
                     .show(ui, |ui| {
@@ -643,7 +643,7 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
                             nodes.push(
                                 Frame::new()
                                     .id(WidgetId::from_hash(("c", i)))
-                                    .size((Sizing::Fixed(50.0), Sizing::Fixed(40.0)))
+                                    .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                     .show(ui)
                                     .node(),
                             );
@@ -679,21 +679,21 @@ fn capped_hstack_of_columns_wraps_func_lists() {
     ui.run_at(UVec2::new(800, 600), |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("cols"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .max_size((f32::INFINITY, 100.0))
             .show(ui, |ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("cat"))
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         // Category header above the wrapping function list.
                         Frame::new()
                             .id(WidgetId::from_hash("hdr"))
-                            .size((Sizing::Fixed(60.0), Sizing::Fixed(15.0)))
+                            .size((Sizing::fixed(60.0), Sizing::fixed(15.0)))
                             .show(ui);
                         Panel::wrap_vstack()
                             .id(WidgetId::from_hash("wrap"))
-                            .size((Sizing::Hug, Sizing::Hug))
+                            .size((Sizing::HUG, Sizing::HUG))
                             .gap(10.0)
                             .line_gap(12.0)
                             .show(ui, |ui| {
@@ -702,7 +702,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
                                     funcs.push(
                                         Frame::new()
                                             .id(WidgetId::from_hash(("f", i)))
-                                            .size((Sizing::Fixed(50.0), Sizing::Fixed(40.0)))
+                                            .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                             .show(ui)
                                             .node(),
                                     );
@@ -733,20 +733,20 @@ fn capped_vstack_bounds_wrap_through_hstack() {
     ui.run_at(UVec2::new(800, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("popup"))
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .max_size((f32::INFINITY, 100.0))
             .show(ui, |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("cols"))
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("cat"))
-                            .size((Sizing::Hug, Sizing::Hug))
+                            .size((Sizing::HUG, Sizing::HUG))
                             .show(ui, |ui| {
                                 Panel::wrap_vstack()
                                     .id(WidgetId::from_hash("wrap"))
-                                    .size((Sizing::Hug, Sizing::Hug))
+                                    .size((Sizing::HUG, Sizing::HUG))
                                     .gap(10.0)
                                     .line_gap(12.0)
                                     .show(ui, |ui| {
@@ -755,8 +755,8 @@ fn capped_vstack_bounds_wrap_through_hstack() {
                                                 Frame::new()
                                                     .id(WidgetId::from_hash(("f", i)))
                                                     .size((
-                                                        Sizing::Fixed(50.0),
-                                                        Sizing::Fixed(40.0),
+                                                        Sizing::fixed(50.0),
+                                                        Sizing::fixed(40.0),
                                                     ))
                                                     .show(ui)
                                                     .node(),

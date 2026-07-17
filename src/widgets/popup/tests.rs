@@ -43,7 +43,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
                 .show(ui, |ui, _popup| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-content"))
-                        .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
+                        .size((Sizing::fixed(100.0), Sizing::fixed(60.0)))
                         .show(ui, |_| {});
                 });
             *dismissed |= r.dismissed;
@@ -156,7 +156,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                         .show(ui, |ui, _popup| {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
-                                .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
+                                .size((Sizing::fixed(100.0), Sizing::fixed(60.0)))
                                 .show(ui, |_| {});
                         });
                     if r.dismissed {
@@ -189,7 +189,7 @@ fn popup_body_sizing_matches_sizing_mode() {
     use crate::forest::layer::Layer;
     let anchor = Vec2::new(20.0, 30.0);
     let cases: &[(Sizing, Sizing, Size, Vec2)] = &[
-        (Sizing::Hug, Sizing::Hug, Size::new(100.0, 60.0), anchor),
+        (Sizing::HUG, Sizing::HUG, Size::new(100.0, 60.0), anchor),
         (
             Sizing::FILL,
             Sizing::FILL,
@@ -197,8 +197,8 @@ fn popup_body_sizing_matches_sizing_mode() {
             Vec2::ZERO,
         ),
         (
-            Sizing::Fixed(80.0),
-            Sizing::Fixed(40.0),
+            Sizing::fixed(80.0),
+            Sizing::fixed(40.0),
             Size::new(80.0, 40.0),
             anchor,
         ),
@@ -217,7 +217,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                         .show(ui, |ui, _popup| {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
-                                .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
+                                .size((Sizing::fixed(100.0), Sizing::fixed(60.0)))
                                 .show(ui, |_| {});
                         });
                 });
@@ -261,11 +261,11 @@ fn popup_near_bottom_flips_upward() {
                 Popup::anchored_to(anchor)
                     .id(WidgetId::from_hash("flip-popup"))
                     .padding(0.0)
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui, _popup| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("flip-content"))
-                            .size((Sizing::Fixed(content.w), Sizing::Fixed(content.h)))
+                            .size((Sizing::fixed(content.w), Sizing::fixed(content.h)))
                             .show(ui, |_| {});
                     });
             });
@@ -316,11 +316,11 @@ fn popup_flip_reaches_cascade_not_just_layout() {
                 Popup::anchored_to(anchor)
                     .id(body_id)
                     .padding(0.0)
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui, _popup| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("cascade-flip-content"))
-                            .size((Sizing::Fixed(content.w), Sizing::Fixed(content.h)))
+                            .size((Sizing::fixed(content.w), Sizing::fixed(content.h)))
                             .show(ui, |_| {});
                     });
             });
@@ -372,16 +372,16 @@ fn popup_with_scroll_settles_in_one_frame() {
                 Popup::anchored_to(anchor)
                     .id(WidgetId::from_hash("scroll-popup"))
                     .padding(0.0)
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .max_size((f32::INFINITY, 100.0))
                     .show(ui, |ui, _| {
                         Scroll::vertical()
                             .id(WidgetId::from_hash("popup-scroll"))
-                            .size((Sizing::Hug, Sizing::Fill(1.0)))
+                            .size((Sizing::HUG, Sizing::fill(1.0)))
                             .show(ui, |ui| {
                                 Panel::vstack()
                                     .id(WidgetId::from_hash("scroll-content"))
-                                    .size((Sizing::Fixed(80.0), Sizing::Fixed(300.0)))
+                                    .size((Sizing::fixed(80.0), Sizing::fixed(300.0)))
                                     .show(ui, |_| {});
                             });
                     });
@@ -429,11 +429,11 @@ fn popup_placement_is_stable_across_frames() {
                 Popup::anchored_to(anchor)
                     .id(WidgetId::from_hash("stable-popup"))
                     .padding(0.0)
-                    .size((Sizing::Hug, Sizing::Hug))
+                    .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui, _popup| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("stable-content"))
-                            .size((Sizing::Fixed(content.w), Sizing::Fixed(content.h)))
+                            .size((Sizing::fixed(content.w), Sizing::fixed(content.h)))
                             .show(ui, |_| {});
                     });
             });
@@ -479,7 +479,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
                     .show(ui, |ui, _| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("popup-content"))
-                            .size((Sizing::Fixed(BODY_W), Sizing::Fixed(BODY_H)))
+                            .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
                             .show(ui, |_| {});
                     });
             });

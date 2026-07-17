@@ -83,7 +83,7 @@ pub(crate) fn toggle_row(
         let box_id = id.with("box");
         let mut box_elem = Element::leaf();
         box_elem.salt = Salt::Verbatim(box_id);
-        box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
+        box_elem.size = (Sizing::fixed(box_size), Sizing::fixed(box_size)).into();
         ui.node(box_id, box_elem, Some(&look.background), |ui| {
             paint_indicator(ui, box_size)
         });

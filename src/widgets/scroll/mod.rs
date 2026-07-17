@@ -213,8 +213,8 @@ fn push_bar_nodes(
     let mut track = Element::leaf();
     track.salt = Salt::Verbatim(track_id);
     track.size = (
-        Sizing::Fixed(plan.track_rect.size.w),
-        Sizing::Fixed(plan.track_rect.size.h),
+        Sizing::fixed(plan.track_rect.size.w),
+        Sizing::fixed(plan.track_rect.size.h),
     )
         .into();
     track.position = plan.track_rect.min;
@@ -236,8 +236,8 @@ fn push_bar_nodes(
     let mut thumb = Element::leaf();
     thumb.salt = Salt::Verbatim(thumb_id);
     thumb.size = (
-        Sizing::Fixed(plan.thumb_rect.size.w),
-        Sizing::Fixed(plan.thumb_rect.size.h),
+        Sizing::fixed(plan.thumb_rect.size.w),
+        Sizing::fixed(plan.thumb_rect.size.h),
     )
         .into();
     thumb.position = plan.thumb_rect.min;
@@ -681,7 +681,7 @@ impl Scroll {
         // padding (encoder deflates the clip mask by it), and the
         // `Scroll` layout mode that runs children with INF on panned
         // axes. The reservation gutter is its margin — ZStack arrange
-        // deflates `Sizing::Fill` by margin, so inner's rendered rect =
+        // deflates `Sizing::fill` by margin, so inner's rendered rect =
         // outer.rect minus the reserved strip on the cross axes.
         //
         // Encode the user's per-axis `Sizing` into the viewport's fit
@@ -690,10 +690,7 @@ impl Scroll {
         // widget (bounded by `max_size`/available, scrolling past the
         // cap); `Fill`/`Fixed` keep the content-independent viewport.
         let user = self.element.size;
-        let fit = glam::BVec2::new(
-            pan.x && matches!(user.w(), Sizing::Hug),
-            pan.y && matches!(user.h(), Sizing::Hug),
-        );
+        let fit = glam::BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
         inner.set_scroll_spec(self.element.scroll_spec().with_fit(fit));
         inner.salt = Salt::Verbatim(scroll_id);
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);

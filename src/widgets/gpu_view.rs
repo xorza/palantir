@@ -23,7 +23,7 @@ use std::rc::Rc;
 /// let scene = self.scene.clone();          // Rc<RefCell<MyScene>>
 /// scene.borrow_mut().camera = self.camera;
 /// GpuView::new(scene)
-///     .size((Sizing::Fill(1.0), Sizing::Fill(1.0)))  // Configure::size
+///     .size((Sizing::fill(1.0), Sizing::fill(1.0)))  // Configure::size
 ///     .show(ui);
 /// ```
 ///
@@ -54,7 +54,7 @@ impl GpuView {
     #[track_caller]
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
         let mut element = Element::leaf();
-        element.size = (Sizing::Fill(1.0), Sizing::Fill(1.0)).into();
+        element.size = (Sizing::fill(1.0), Sizing::fill(1.0)).into();
         Self {
             element,
             paint,
@@ -131,7 +131,7 @@ mod tests {
             Panel::hstack().auto_id().show(ui, |ui| {
                 node = Some(
                     GpuView::new(scene())
-                        .size((Sizing::Fixed(150.0), Sizing::Fixed(90.0)))
+                        .size((Sizing::fixed(150.0), Sizing::fixed(90.0)))
                         .show(ui)
                         .node(),
                 );
@@ -173,7 +173,7 @@ mod tests {
                 GpuView::new(scene())
                     .id(id)
                     .sense(Sense::CLICK)
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                     .show(ui);
             });
         });
@@ -184,7 +184,7 @@ mod tests {
                 clicked |= GpuView::new(scene())
                     .id(id)
                     .sense(Sense::CLICK)
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                     .show(ui)
                     .left
                     .clicked();

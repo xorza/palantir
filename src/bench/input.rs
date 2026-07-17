@@ -111,7 +111,7 @@ fn build_ui(ui: &mut Ui) {
                     Panel::vstack()
                         .auto_id()
                         .gap(0.0)
-                        .size((Sizing::Fixed(4000.0), Sizing::Fixed(4000.0)))
+                        .size((Sizing::fixed(4000.0), Sizing::fixed(4000.0)))
                         .show(ui, |ui| {
                             for i in 0..64 {
                                 Text::new("scroll content")
@@ -120,7 +120,7 @@ fn build_ui(ui: &mut Ui) {
                             }
                             Frame::new()
                                 .auto_id()
-                                .size((Sizing::Fixed(4000.0), Sizing::Fixed(4000.0)))
+                                .size((Sizing::fixed(4000.0), Sizing::fixed(4000.0)))
                                 .show(ui);
                         });
                 });

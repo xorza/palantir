@@ -97,7 +97,7 @@ impl<'a> Slider<'a> {
         // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
         // the same sentinel convention as theme padding/margin.
         if element.size == Sizes::default() {
-            element.size = (Sizing::FILL, Sizing::Fixed(knob)).into();
+            element.size = (Sizing::FILL, Sizing::fixed(knob)).into();
         }
         element.child_align = Align::v(VAlign::Center);
 
@@ -105,7 +105,7 @@ impl<'a> Slider<'a> {
             rail_leaf(
                 ui,
                 id.with("fill"),
-                Sizing::Fill(fraction),
+                Sizing::share(fraction),
                 rail_h,
                 &fill_bg,
             );
@@ -113,7 +113,7 @@ impl<'a> Slider<'a> {
             rail_leaf(
                 ui,
                 id.with("rail"),
-                Sizing::Fill(1.0 - fraction),
+                Sizing::share(1.0 - fraction),
                 rail_h,
                 &rail_bg,
             );
@@ -131,14 +131,14 @@ impl Configure for Slider<'_> {
 fn rail_leaf(ui: &mut Ui, id: WidgetId, w: Sizing, h: f32, bg: &Background) {
     let mut el = Element::leaf();
     el.salt = Salt::Verbatim(id);
-    el.size = (w, Sizing::Fixed(h)).into();
+    el.size = (w, Sizing::fixed(h)).into();
     ui.node(id, el, Some(bg), |_| {});
 }
 
 fn knob_leaf(ui: &mut Ui, id: WidgetId, size: f32, bg: &Background) {
     let mut el = Element::leaf();
     el.salt = Salt::Verbatim(id);
-    el.size = (Sizing::Fixed(size), Sizing::Fixed(size)).into();
+    el.size = (Sizing::fixed(size), Sizing::fixed(size)).into();
     ui.node(id, el, Some(bg), |_| {});
 }
 
@@ -208,7 +208,7 @@ mod tests {
             col.show(ui, |ui| {
                 sized = Some(
                     Slider::new(&mut v, 0.0..=1.0)
-                        .size((Sizing::Fixed(120.0), Sizing::Fixed(30.0)))
+                        .size((Sizing::fixed(120.0), Sizing::fixed(30.0)))
                         .show(ui)
                         .node(),
                 );
@@ -220,6 +220,28 @@ mod tests {
         assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
         let d = rects[default.unwrap().idx()];
         assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
+    }
+
+    #[test]
+    fn endpoint_rails_collapse_without_invalid_fill_weights() {
+        for (value, expected) in [(0.0, [0.0, 18.0, 102.0]), (1.0, [102.0, 18.0, 0.0])] {
+            let mut ui = Ui::for_test();
+            let mut value = value;
+            let mut root = None;
+            ui.run_at(UVec2::new(120, 30), |ui| {
+                root = Some(
+                    Slider::new(&mut value, 0.0..=1.0)
+                        .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
+                        .show(ui)
+                        .node(),
+                );
+            });
+            let widths: Vec<_> = ui.forest.trees[Layer::Main]
+                .children(root.unwrap())
+                .map(|child| ui.layout[Layer::Main].rect[child.id.idx()].size.w)
+                .collect();
+            assert_eq!(widths, expected, "value {value}");
+        }
     }
 
     #[test]

@@ -132,7 +132,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     };
     let el = Element::leaf()
         .id(id)
-        .size((Sizing::Fixed(24.0), Sizing::Fixed(24.0)))
+        .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
         .sense(Sense::CLICK);
     ui.node(id, el, Some(&chrome), |ui| {
         // Glyphs in node-local coordinates (0..24 on each axis). A

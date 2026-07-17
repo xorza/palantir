@@ -77,7 +77,7 @@ pub(crate) fn build(ui: &mut Ui) {
 fn form(ui: &mut Ui, s: &mut State) {
     Panel::vstack()
         .id_salt("form")
-        .size((Sizing::Fixed(340.0), Sizing::Hug))
+        .size((Sizing::fixed(340.0), Sizing::HUG))
         .padding(16.0)
         .gap(10.0)
         .background(support::panel_bg())
@@ -89,7 +89,7 @@ fn form(ui: &mut Ui, s: &mut State) {
                 .show(ui);
             Panel::vstack()
                 .id_salt("net-group")
-                .size((Sizing::FILL, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::HUG))
                 .gap(10.0)
                 .disabled(s.airplane)
                 .show(ui, |ui| {
@@ -151,7 +151,7 @@ fn form(ui: &mut Ui, s: &mut State) {
                     .range(24.0..=240.0)
                     .decimals(0)
                     .suffix(" fps")
-                    .size((Sizing::Fixed(110.0), Sizing::Hug))
+                    .size((Sizing::fixed(110.0), Sizing::HUG))
                     .id_salt("fps")
                     .show(ui);
                 Text::new("drag to scrub, click to type")
@@ -219,7 +219,7 @@ fn form(ui: &mut Ui, s: &mut State) {
 fn side(ui: &mut Ui, s: &State) {
     Panel::vstack()
         .id_salt("side")
-        .size((Sizing::FILL, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::HUG))
         .gap(16.0)
         .show(ui, |ui| {
             section(
@@ -267,12 +267,12 @@ fn side(ui: &mut Ui, s: &State) {
                     row(ui, "b-elide", |ui| {
                         Button::new()
                             .id_salt("e-1")
-                            .size((Sizing::Fixed(140.0), Sizing::Hug))
+                            .size((Sizing::fixed(140.0), Sizing::HUG))
                             .label("Screenshot 2026-05-28 at 01.21.25.png")
                             .show(ui);
                         Button::new()
                             .id_salt("e-2")
-                            .size((Sizing::Fixed(140.0), Sizing::Hug))
+                            .size((Sizing::fixed(140.0), Sizing::HUG))
                             .text_wrap(TextWrap::SingleLine)
                             .label("Screenshot 2026-05-28 at 01.21.25.png")
                             .show(ui);

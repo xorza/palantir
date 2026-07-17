@@ -45,8 +45,8 @@ pub(crate) fn measure(
     out: &mut Layout,
 ) -> Size {
     let canvas_size = tree.records.layout()[node.idx()].size;
-    let pos_inflates_x = matches!(canvas_size.w(), Sizing::Hug);
-    let pos_inflates_y = matches!(canvas_size.h(), Sizing::Hug);
+    let pos_inflates_x = canvas_size.w().is_hug();
+    let pos_inflates_y = canvas_size.h().is_hug();
     // Active children only: a collapsed child at (100,100) must not
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
@@ -114,7 +114,7 @@ pub(crate) fn intrinsic(
 ) -> f32 {
     let pos_inflates = matches!(
         axis.main_sizing(tree.records.layout()[node.idx()].size),
-        Sizing::Hug
+        Sizing::HUG
     );
     children_max_intrinsic_offset(layout, tree, node, axis, req, tc, |tree, c| {
         if pos_inflates {

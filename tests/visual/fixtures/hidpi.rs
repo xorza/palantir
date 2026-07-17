@@ -58,7 +58,7 @@ fn dashboard_matches_golden() {
                             .show(ui);
                         Frame::new()
                             .id_salt("spacer")
-                            .size((Sizing::FILL, Sizing::Fixed(1.0)))
+                            .size((Sizing::FILL, Sizing::fixed(1.0)))
                             .show(ui);
                         Button::new().id_salt("btn-save").label("save").show(ui);
                         Button::new().id_salt("btn-export").label("export").show(ui);
@@ -79,7 +79,7 @@ fn dashboard_matches_golden() {
                         for i in 0..5 {
                             Frame::new()
                                 .id_salt(("nav-bg", i))
-                                .size((Sizing::FILL, Sizing::Fixed(28.0)))
+                                .size((Sizing::FILL, Sizing::fixed(28.0)))
                                 .padding((6.0, 8.0, 6.0, 8.0))
                                 .background(Background {
                                     fill: if i == 1 {
