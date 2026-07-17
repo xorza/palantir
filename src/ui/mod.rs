@@ -119,7 +119,7 @@ impl std::fmt::Debug for Ui {
 
 /// Construction + host-driven frame lifecycle: `frame` and the private
 /// record / clock / classify / cascade / finalize passes it runs. User
-/// code never calls these directly — `WindowRenderer` drives them. The widget
+/// code never calls these directly — `WindowDriver` drives them. The widget
 /// authoring API lives in the second `impl Ui` block below.
 impl Ui {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
@@ -189,7 +189,7 @@ impl Ui {
         self.frame_runtime.relayout_requested = false;
         self.display = stamp.display;
 
-        // Pending until the renderer (`WindowRenderer::render_to_texture`)
+        // Pending until the renderer (`WindowDriver::render_to_texture`)
         // confirms a successful submit. Tests driving the lifecycle directly must
         // ack via `ui.frame_runtime.frame_submitted = true` or the next
         // frame's `classify_frame` will force a `Full`.
@@ -1386,7 +1386,7 @@ pub(crate) mod test_support {
         /// doesn't auto-escalate to `Full`. For tests and for benches
         /// that drive `record` + a standalone
         /// [`crate::renderer::frontend::Frontend::build_for_test`]
-        /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
+        /// instead of going through `WindowDriver` (the `frame/*_cpu` arms).
         pub(crate) fn mark_frame_submitted(&mut self) {
             self.frame_runtime.frame_submitted = true;
         }

@@ -17,7 +17,7 @@ and the one load-bearing architectural split.
   are finite and at most 60 seconds. Springs must decay by at least
   1/s and fit within the bounded adaptive-integration budget. Caller
   picks; primitive dispatches.
-- **Frame-driven, not wallclock.** WindowRenderer hands `now: Duration` to
+- **Frame-driven, not wallclock.** WindowDriver hands `now: Duration` to
   `Ui::frame`; the frame runtime's `dt` is derived. No `Instant::now()` in widget
   code — keeps animation deterministic and host-portable.
 - **No new authoring model.** A widget still does
@@ -53,5 +53,5 @@ wake have different consumers.
   200ms` syntax — no styling layer to attach it to, and Vizia's
   experience says it creates a dual source-of-truth with imperative
   setters.
-- **GPU-side interpolation.** All math is CPU during record. WindowRenderer
+- **GPU-side interpolation.** All math is CPU during record. WindowDriver
   sees only finalized values.

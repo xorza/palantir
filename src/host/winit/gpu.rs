@@ -138,7 +138,7 @@ impl SurfaceFactory {
     /// Pick an sRGB swapchain format and bundle `surface` with a fresh
     /// `SurfaceConfiguration` into a [`WindowSurface`] — *without* calling
     /// `surface.configure` (distinct from `WgpuBackend::configure_surface`,
-    /// which applies it). `WindowRenderer::frame` applies it lazily on first
+    /// which applies it). `WindowDriver::frame` applies it lazily on first
     /// paint (it notices `configured == None`), so there's no eager GPU
     /// reconfigure here.
     fn build_window_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {

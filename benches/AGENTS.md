@@ -42,14 +42,14 @@ driver activity.
   measure → arrange → cascade → damage and then, when the frame
   produces a render plan, encode + compose — then acks the present
   (`Ui::mark_frame_submitted`) so `classify_frame` matches a real
-  host. **Driving the CPU arms through `WindowRenderer::frame_offscreen` + a poll
+  host. **Driving the CPU arms through `WindowDriver::frame_offscreen` + a poll
   was the old shape and was wrong**: a non-blocking `device.poll`
   charges each iter a driver ioctl, and on `RenderPlan::Skip` the host
   does a GPU backbuffer copy — together ~20 % NVIDIA/kernel self-time on
   `cached_cpu` and ~50 % on `resizing_cpu` (multi-MB backbuffer
   realloc per size, `ensure_backbuffer → create_texture`), swamping the
   aperture cost. Time is advanced from a real `Instant` like
-  `WindowRenderer::cpu_frame` so wake cadence matches production.
+  `WindowDriver::cpu_frame` so wake cadence matches production.
 - **`frame/*_gpu`** — the full public path: `OffscreenHost::frame_offscreen`
   against an offscreen `wgpu::Texture` + `PollType::Wait`. Wall time
   covers the whole CPU + GPU pipeline. The per-frame `write_stats` dump

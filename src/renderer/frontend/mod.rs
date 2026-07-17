@@ -5,7 +5,7 @@
 //! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
-//!    persistent per-frame allocation. [`WindowRenderer`] calls [`Frontend::build`]
+//!    persistent per-frame allocation. [`WindowDriver`] calls [`Frontend::build`]
 //!    once per frame and hands the composed buffer to the backend; the
 //!    backend reads its own clone of `RenderAssets` (image registry +
 //!    gradient atlas) for upload.
@@ -13,7 +13,7 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 //!
-//! [`WindowRenderer`]: crate::host::window_renderer::WindowRenderer
+//! [`WindowDriver`]: crate::host::window_driver::WindowDriver
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
@@ -34,7 +34,7 @@ use crate::ui::frame_report::RenderPlan;
 /// No GPU handles; gradient atlas state lives on `RenderAssets`,
 /// shared with the backend.
 ///
-/// Owned by [`WindowRenderer`](crate::host::window_renderer::WindowRenderer);
+/// Owned by [`WindowDriver`](crate::host::window_driver::WindowDriver);
 /// the host builds into the staged [`Self::buffer`] before GPU submission.
 #[derive(Debug)]
 pub(crate) struct Frontend {

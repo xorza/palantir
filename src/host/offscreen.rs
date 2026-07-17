@@ -1,6 +1,6 @@
 //! [`OffscreenHost`] — the headless peer of
 //! [`WinitHost`](crate::WinitHost). Like `WinitHost` it owns the one
-//! shared [`WgpuBackend`] and drives a [`WindowRenderer`] (built from a
+//! shared [`WgpuBackend`] and drives a [`WindowDriver`] (built from a
 //! [`HostShared`]); unlike it there's no winit, no swapchain, and exactly
 //! one window — it renders to a caller-supplied `wgpu::Texture`.
 //! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
@@ -19,23 +19,23 @@ use crate::app::App;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
-use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
+use crate::host::window_driver::{PresentStrategy, WindowDriver};
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::WindowToken;
 
-/// One shared `WgpuBackend` + one `WindowRenderer`, rendering to a
+/// One shared `WgpuBackend` + one `WindowDriver`, rendering to a
 /// texture instead of a surface. The offscreen analogue of `WinitHost`.
 #[derive(Debug)]
 pub struct OffscreenHost {
     shared: HostShared,
     backend: WgpuBackend,
-    renderer: WindowRenderer,
+    driver: WindowDriver,
 }
 
-/// Seals offscreen policy before allocating the backend and window renderer.
+/// Seals offscreen policy before allocating the backend and window driver.
 #[derive(Debug)]
 pub struct OffscreenHostBuilder {
     token: WindowToken,
@@ -69,7 +69,7 @@ impl OffscreenHostBuilder {
         self
     }
 
-    /// Allocate the backend and window renderer from the sealed settings.
+    /// Allocate the backend and window driver from the sealed settings.
     pub fn build(self) -> OffscreenHost {
         let shared = HostShared::new(self.shaper);
         shared.windows.insert(self.token);
@@ -81,7 +81,7 @@ impl OffscreenHostBuilder {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         );
-        let renderer = WindowRenderer::builder(self.token, &shared, backend.max_texture_dim())
+        let driver = WindowDriver::builder(self.token, &shared, backend.max_texture_dim())
             .strategy(PresentStrategy::BackbufferCopy)
             .clock(self.clock)
             .pixel_snap(self.pixel_snap)
@@ -89,7 +89,7 @@ impl OffscreenHostBuilder {
         OffscreenHost {
             shared,
             backend,
-            renderer,
+            driver,
         }
     }
 }
@@ -117,7 +117,7 @@ impl OffscreenHost {
 
     /// Mutable access to the window's `Ui` for building scenes.
     pub fn ui(&mut self) -> &mut Ui {
-        &mut self.renderer.ui
+        &mut self.driver.ui
     }
 
     /// Set the app-global debug overlay for subsequent frames. The
@@ -140,7 +140,7 @@ impl OffscreenHost {
         scale_factor: f32,
         app: &mut T,
     ) {
-        self.renderer
+        self.driver
             .frame_offscreen(&mut self.backend, target, scale_factor, app);
     }
 
@@ -175,7 +175,7 @@ pub(crate) mod test_support {
     use crate::app::test_support::RecordApp;
     use crate::host::clock::Clock;
     use crate::host::shared::HostShared;
-    use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
+    use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::renderer::backend::{BackendConfig, WgpuBackend};
     use crate::text::TextShaper;
     use crate::ui::Ui;
@@ -187,7 +187,7 @@ pub(crate) mod test_support {
     #[derive(Debug)]
     pub struct TwoWindowOffscreenHost {
         backend: WgpuBackend,
-        windows: [WindowRenderer; 2],
+        windows: [WindowDriver; 2],
     }
 
     impl TwoWindowOffscreenHost {
@@ -208,11 +208,11 @@ pub(crate) mod test_support {
             );
             let max_texture_dim = backend.max_texture_dim();
             let [clock_a, clock_b] = clocks;
-            let window_a = WindowRenderer::builder(WindowToken(0), &shared, max_texture_dim)
+            let window_a = WindowDriver::builder(WindowToken(0), &shared, max_texture_dim)
                 .strategy(PresentStrategy::BackbufferCopy)
                 .clock(clock_a)
                 .build();
-            let window_b = WindowRenderer::builder(WindowToken(1), &shared, max_texture_dim)
+            let window_b = WindowDriver::builder(WindowToken(1), &shared, max_texture_dim)
                 .strategy(PresentStrategy::BackbufferCopy)
                 .clock(clock_b)
                 .build();

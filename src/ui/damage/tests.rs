@@ -863,7 +863,7 @@ fn skip_frame_does_not_force_next_to_full() {
     ));
     ui.frame_runtime.frame_submitted = true;
 
-    // Identical content → Skip. WindowRenderer::render confirms submitted on
+    // Identical content → Skip. WindowDriver::render confirms submitted on
     // the skip path too (copies the backbuffer onto the swapchain);
     // the test mirrors that ack.
     let skip = ui
@@ -875,7 +875,7 @@ fn skip_frame_does_not_force_next_to_full() {
     ui.frame_runtime.frame_submitted = true;
 
     // Next frame: still no diff. Pre-fix this could regress to Full if
-    // the skip wasn't acked — WindowRenderer::render owns that ack now.
+    // the skip wasn't acked — WindowDriver::render owns that ack now.
     let next = ui
         .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             one_frame(ui, BLUE)
@@ -911,7 +911,7 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
     ));
     ui.frame_runtime.frame_submitted = true;
 
-    // Identical content → Skip. WindowRenderer bypasses `render()` entirely and
+    // Identical content → Skip. WindowDriver bypasses `render()` entirely and
     // never acks; `Ui::frame` must self-ack the skip.
     let skip = ui
         .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
@@ -3164,7 +3164,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     use crate::forest::layer::Layer;
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
-    // WindowRenderer panel: 80×40, padding 4 each side via background. The
+    // WindowDriver panel: 80×40, padding 4 each side via background. The
     // direct shape extends to x=400 (well past 80). After the cascade
     // walk, `shape_rects[idx]` must be clipped to the host's deflated
     // mask, not span the full 400 px.

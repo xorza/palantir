@@ -12,7 +12,7 @@
 //! the same frame result so they composite through the image path.
 //!
 //! Both halves are owned and driven from the private
-//! [`WindowRenderer`](crate::host::window_renderer::WindowRenderer) behind the
+//! [`WindowDriver`](crate::host::window_driver::WindowDriver) behind the
 //! public host facades.
 pub(crate) mod assets;
 pub(crate) mod backend;

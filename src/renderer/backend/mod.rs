@@ -68,8 +68,9 @@ pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 /// backbuffer entirely and renders straight into the surface.
 ///
 /// Sized to match the surface texture; recreated on resize or format change.
-/// Owned per-window by [`WindowRenderer`](crate::WindowRenderer); the backend
-/// is otherwise window-agnostic.
+/// Owned per-window by
+/// [`WindowDriver`](crate::host::window_driver::WindowDriver); the backend is
+/// otherwise window-agnostic.
 #[derive(Debug)]
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
@@ -86,7 +87,7 @@ pub(crate) struct Backbuffer {
 /// separate from [`Backbuffer`] so the direct-present path can have a stencil
 /// without paying for a backbuffer color texture it never uses. Transient:
 /// cleared at pass open, never read across frames. Owned per-window by
-/// [`WindowRenderer`](crate::WindowRenderer).
+/// [`WindowDriver`](crate::host::window_driver::WindowDriver).
 #[derive(Debug)]
 pub(crate) struct Stencil {
     pub(crate) view: wgpu::TextureView,
@@ -383,7 +384,7 @@ impl WgpuBackend {
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
     ///
-    /// Skip frames never reach this method — `WindowRenderer::render_to_texture`
+    /// Skip frames never reach this method — `WindowDriver::render_to_texture`
     /// dispatches them to the copy / no-op paths.
     ///
     /// `via_backbuffer` `Some` renders into that backbuffer and copies the
@@ -391,7 +392,7 @@ impl WgpuBackend {
     /// `surface_tex` (direct present). `plan` is the *effective* plan — every
     /// escalation (promote / resync) was sealed in `present_mode` *before* the
     /// draw list was built, so `plan` and `buffer` always agree; the caller
-    /// (`WindowRenderer`) has also ensured the stencil + backbuffer.
+    /// (`WindowDriver`) has also ensured the stencil + backbuffer.
     #[profiling::function]
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
         let Submission {
