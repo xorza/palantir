@@ -9,6 +9,7 @@
 //! Conic), and the popup/tooltip layers.
 
 use std::f32::consts::FRAC_PI_2;
+use std::time::Duration;
 
 use crate::forest::element::Configure;
 use crate::layout::types::align::Align;
@@ -147,7 +148,10 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                             .label(label)
                             .show(ui)
                             .snapshot();
-                        Tooltip::on(&btn).text("Header action").delay(0.0).show(ui);
+                        Tooltip::on(&btn)
+                            .text("Header action")
+                            .delay(Duration::ZERO)
+                            .show(ui);
                     }
                 });
 

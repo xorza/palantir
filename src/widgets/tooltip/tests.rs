@@ -74,14 +74,20 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {
     let mut passes = 0;
     ui.run_at_acked(SURFACE, |ui| {
         passes += 1;
-        Tooltip::on(&snapshot).text(text).delay(0.0).show(ui);
+        Tooltip::on(&snapshot)
+            .text(text)
+            .delay(Duration::ZERO)
+            .show(ui);
     });
 
     assert_eq!(passes, 2, "first show measures then places the bubble");
     passes = 0;
     ui.run_at_acked(SURFACE, |ui| {
         passes += 1;
-        Tooltip::on(&snapshot).text(text).delay(0.0).show(ui);
+        Tooltip::on(&snapshot)
+            .text(text)
+            .delay(Duration::ZERO)
+            .show(ui);
     });
     assert_eq!(passes, 1, "a measured tooltip stays single-pass");
     ui
@@ -102,7 +108,10 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     };
     let frame_at = |ui: &mut Ui, time: Duration| {
         ui.record(FrameStamp::new(display, time), |ui| {
-            Tooltip::on(&snapshot).text("tip").delay(0.25).show(ui);
+            Tooltip::on(&snapshot)
+                .text("tip")
+                .delay(Duration::from_millis(250))
+                .show(ui);
         });
     };
 
@@ -178,7 +187,10 @@ fn delay_gates_visibility() {
                             .show(ui)
                             .snapshot();
                         *captured = Some(r.id);
-                        Tooltip::on(&r).text("tip").delay(0.3).show(ui);
+                        Tooltip::on(&r)
+                            .text("tip")
+                            .delay(Duration::from_millis(300))
+                            .show(ui);
                     });
             },
         );
@@ -227,13 +239,24 @@ fn delay_gates_visibility() {
         "tooltip must become visible after delay (started_at={:?})",
         late.hover_started_at
     );
-
-    // The tooltip subtree should have been recorded into the Tooltip
-    // layer (non-empty NodeRecords beyond the root).
     let tooltip_tree = &ui.forest.trees[Layer::Tooltip];
     assert!(
         tooltip_tree.records.len() > 1,
         "Tooltip layer must contain at least one recorded node",
+    );
+
+    ui.theme.tooltip.warmup = Duration::ZERO;
+    t += 0.1;
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(350.0, 250.0)));
+    frame_at(&mut ui, t, &mut captured);
+    assert!(!ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
+
+    t += 0.1;
+    ui.on_input(InputEvent::PointerMoved(trigger_pos));
+    frame_at(&mut ui, t, &mut captured);
+    assert!(
+        !ui.try_state::<TooltipState>(trigger_id).unwrap().visible,
+        "zero warmup must not bypass the delay on a new hover",
     );
 }
 
@@ -260,7 +283,10 @@ fn hover_clears_after_tooltip_visible() {
                             .show(ui)
                             .snapshot();
                         *captured = Some(r.id);
-                        Tooltip::on(&r).text("tip").delay(0.3).show(ui);
+                        Tooltip::on(&r)
+                            .text("tip")
+                            .delay(Duration::from_millis(300))
+                            .show(ui);
                     });
             },
         );
@@ -337,7 +363,10 @@ fn tooltip_inside_popup_records_without_panic() {
                                     .show(ui)
                                     .snapshot();
                                 *captured = Some(r.id);
-                                Tooltip::on(&r).text("tip").delay(0.3).show(ui);
+                                Tooltip::on(&r)
+                                    .text("tip")
+                                    .delay(Duration::from_millis(300))
+                                    .show(ui);
                             });
                     });
             },

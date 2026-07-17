@@ -58,7 +58,7 @@ static GLOBAL_STATE_ID: LazyLock<WidgetId> =
 pub struct Tooltip<'r> {
     snapshot: &'r ResponseSnapshot,
     text: Cow<'static, str>,
-    delay: Option<f32>,
+    delay: Option<Duration>,
     show_when_disabled: bool,
     element: Element,
     chrome: Option<Background>,
@@ -98,10 +98,10 @@ impl<'r> Tooltip<'r> {
         self
     }
 
-    /// Override the per-tooltip delay (seconds). Falls back to
+    /// Override the per-tooltip delay. Falls back to
     /// [`crate::widgets::theme::tooltip::TooltipTheme::delay`] when unset.
-    pub fn delay(mut self, secs: f32) -> Self {
-        self.delay = Some(secs);
+    pub fn delay(mut self, delay: Duration) -> Self {
+        self.delay = Some(delay);
         self
     }
 
@@ -116,8 +116,8 @@ impl<'r> Tooltip<'r> {
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
     pub fn show(self, ui: &mut Ui) {
-        let delay = Duration::from_secs_f32(self.delay.unwrap_or(ui.theme.tooltip.delay));
-        let warmup = Duration::from_secs_f32(ui.theme.tooltip.warmup);
+        let delay = self.delay.unwrap_or(ui.theme.tooltip.delay);
+        let warmup = ui.theme.tooltip.warmup;
         let gap = ui.theme.tooltip.gap;
 
         let trigger_id = self.snapshot.id;

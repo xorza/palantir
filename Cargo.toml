@@ -146,11 +146,10 @@ required-features = ["internals"]
 internals = ["dep:criterion", "dep:dhat", "dep:gethostname"]
 # Enables the bundled widget-tour binary and its logging setup.
 showcase = ["dep:tracing-subscriber"]
-# Profiler backends — pick one. Off by default (zero overhead).
+# Profiler backend — off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
 profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
-profile-with-puffin = ["profiling/profile-with-puffin"]
 
 [profile.bench]
 debug = true

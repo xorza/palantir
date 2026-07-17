@@ -6,6 +6,8 @@
 //! ContextMenus attach to any sensed widget and auto-open on
 //! secondary-click at the pointer position.
 
+use std::time::Duration;
+
 use crate::support;
 use crate::support::{row, section, surface_bg};
 use aperture::{
@@ -134,7 +136,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .snapshot();
                 Tooltip::on(&r)
                     .text("No delay — fires the frame the pointer arrives.")
-                    .delay(0.0)
+                    .delay(Duration::ZERO)
                     .show(ui);
 
                 let r = Button::new()
@@ -144,7 +146,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .snapshot();
                 Tooltip::on(&r)
                     .text("Held for 1.5 s before showing.")
-                    .delay(1.5)
+                    .delay(Duration::from_millis(1_500))
                     .show(ui);
 
                 let r = Button::new()

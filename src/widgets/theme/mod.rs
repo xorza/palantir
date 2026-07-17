@@ -254,6 +254,7 @@ mod tests {
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
     use crate::widgets::theme::*;
+    use std::time::Duration;
 
     /// `set_text_scale` multiplies every font size by `new/old` (so
     /// it's an absolute target, not cumulative), touches both the
@@ -467,11 +468,47 @@ mod tests {
     #[test]
     fn tooltip_theme_defaults() {
         let t = TooltipTheme::default();
-        assert!((t.delay - 0.5).abs() < 1e-6);
-        assert!((t.warmup - 1.0).abs() < 1e-6);
+        assert_eq!(t.delay, Duration::from_millis(500));
+        assert_eq!(t.warmup, Duration::from_secs(1));
         assert!((t.max_size.w - 280.0).abs() < 1e-6);
         assert!(t.max_size.h.is_infinite());
         assert!((t.gap - 6.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn tooltip_timing_serde_stays_scalar_and_rejects_invalid_seconds() {
+        let serialized = toml::to_string_pretty(&TooltipTheme::default()).expect("serialize");
+        assert!(serialized.contains("delay = 0.5"));
+        assert!(serialized.contains("warmup = 1.0"));
+
+        for (field, valid, invalid) in [
+            ("delay", "0.5", "-0.1"),
+            ("delay", "0.5", "nan"),
+            ("delay", "0.5", "inf"),
+            ("delay", "0.5", "3.4028235e38"),
+            ("warmup", "1.0", "-0.1"),
+            ("warmup", "1.0", "nan"),
+            ("warmup", "1.0", "inf"),
+        ] {
+            let input = serialized.replace(
+                &format!("{field} = {valid}"),
+                &format!("{field} = {invalid}"),
+            );
+            let error = toml::from_str::<TooltipTheme>(&input).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("tooltip timing must be finite, non-negative, and representable"),
+                "{field}={invalid}: {error}",
+            );
+        }
+
+        let zeroed = serialized
+            .replace("delay = 0.5", "delay = 0.0")
+            .replace("warmup = 1.0", "warmup = 0.0");
+        let parsed = toml::from_str::<TooltipTheme>(&zeroed).expect("zero timing");
+        assert_eq!(parsed.delay, Duration::ZERO);
+        assert_eq!(parsed.warmup, Duration::ZERO);
     }
 
     /// `AnimatedLook::line_height_px` delegates to `TextStyle`'s
