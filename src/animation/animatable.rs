@@ -1,7 +1,8 @@
 //! Vocabulary for "things that can animate." A type is `Animatable`
-//! when it supports linear interpolation, vector add/sub/scale, and
-//! has a squared magnitude (used by spring settle checks). Built-in
-//! impls cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
+//! when it supports interpolation, spring displacement arithmetic,
+//! and a squared magnitude used by settle checks. Value-dependent
+//! snap-only fields normalize before that arithmetic. Built-in impls
+//! cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
 //! `aperture-anim-derive` and the type-erased `AnimMap` storage.
 
@@ -36,6 +37,14 @@ pub trait Animatable: Clone + PartialEq + 'static {
     /// For derived compound types: sum of component squared magnitudes.
     fn magnitude_squared(self) -> f32;
     fn zero() -> Self;
+
+    /// Normalize fields that cannot participate in spring arithmetic.
+    ///
+    /// Compound derives forward this hook fieldwise. Implementations can
+    /// install the target and clear only their matching velocity without
+    /// disturbing independently animated sibling fields.
+    #[inline]
+    fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) {}
 }
 
 impl Animatable for f32 {

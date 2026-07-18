@@ -260,6 +260,44 @@ fn linear_brush_animatable_snaps_on_t_one() {
     assert_eq!(Brush::lerp(a, b.clone(), 1.0), b);
 }
 
+fn assert_spring_normalizes_to_target(mut current: Brush, target: Brush) {
+    let mut velocity = Brush::Solid(Color::rgba(0.25, -0.5, 0.75, 1.0));
+    current.normalize_for_spring(&target, &mut velocity);
+    assert_eq!(current, target);
+    assert_eq!(velocity, Brush::TRANSPARENT);
+}
+
+#[test]
+fn gradient_brush_spring_normalization_is_direction_independent() {
+    let solid = Brush::Solid(Color::hex(0x336699));
+    let gradients = [
+        Brush::Linear(LinearGradient::two_stop(0.25, Color::BLACK, Color::WHITE)),
+        Brush::Radial(RadialGradient::two_stop_centered(
+            Color::BLACK,
+            Color::WHITE,
+        )),
+        Brush::Conic(ConicGradient::two_stop_centered(Color::BLACK, Color::WHITE)),
+    ];
+    let replacement_gradients = [
+        Brush::Linear(LinearGradient::two_stop(0.75, Color::WHITE, Color::BLACK)),
+        Brush::Radial(RadialGradient::two_stop_centered(
+            Color::WHITE,
+            Color::BLACK,
+        )),
+        Brush::Conic(ConicGradient::two_stop_centered(Color::WHITE, Color::BLACK)),
+    ];
+
+    for gradient in &gradients {
+        assert_spring_normalizes_to_target(solid.clone(), gradient.clone());
+        assert_spring_normalizes_to_target(gradient.clone(), solid.clone());
+    }
+    for source in &gradients {
+        for target in &replacement_gradients {
+            assert_spring_normalizes_to_target(source.clone(), target.clone());
+        }
+    }
+}
+
 #[test]
 fn radial_default_centered() {
     let g = RadialGradient::two_stop_centered(Color::WHITE, Color::BLACK);

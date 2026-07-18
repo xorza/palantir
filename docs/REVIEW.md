@@ -84,8 +84,8 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The three findings above describe the earlier pruned
-pass; the two findings below are additional. These supplemental batches are
-ordered by priority and are independently implementable.
+pass; the remaining finding below is additional and independently
+implementable.
 
 ## Batch 5 — Medium: Reject malformed values at their owning boundary
 
@@ -110,26 +110,6 @@ ordered by priority and are independently implementable.
   recording; theme input must fail deserialization and runtime shaping must
   return the exact invalid/no-command result without entering cache or renderer
   state.
-
-## Batch 6 — Medium: Make snap-only animation explicit
-
-- [ ] **Represent gradient brushes as snap-only spring fields instead of
-  emulating vector arithmetic.** `Brush` claims every transition involving a
-  gradient settles on the first spring tick at
-  `src/primitives/brush/mod.rs:599-606`, but mismatched `sub` returns its left
-  operand at `src/primitives/brush/mod.rs:626-630`. `spring::step` treats that
-  operand as displacement at `src/animation/spring.rs:110-128`, and retargeting
-  uses the same invalid algebra to decide whether velocity aids the new motion
-  at `src/animation/mod.rs:386-403`. Gradient→Solid starts with zero-magnitude
-  gradient displacement and snaps, while Solid→Gradient can spring the solid
-  toward transparent for many frames before snapping; carried velocity makes
-  the asymmetry worse. Add an explicit fieldwise spring-normalization hook to
-  `Animatable` and its derive: Solid/Solid retains color math, while any pair
-  involving a gradient installs the target brush with zero field velocity
-  without stopping sibling fields in compound values. Validate both directions
-  for all gradient variants, gradient→gradient, nonzero carried velocity,
-  derived `Background`/look types, unchanged Solid/Solid trajectories, and no
-  surplus repaint ticks after genuine fields settle.
 
 ## Targeted text-carrier consolidation review — 2026-07-18
 

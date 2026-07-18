@@ -641,6 +641,54 @@ fn color_spring_converges_to_target() {
     );
 }
 
+#[test]
+fn solid_brush_spring_matches_color_trajectory() {
+    use crate::primitives::brush::Brush;
+
+    let mut color_map = AnimMapTyped::<Color>::default();
+    let mut brush_map = AnimMapTyped::<Brush>::default();
+    let color_id = wid("solid-color-trajectory");
+    let brush_id = wid("solid-brush-trajectory");
+    let start = Color::rgba(0.1, 0.2, 0.3, 0.4);
+    let target = Color::rgba(0.9, 0.7, 0.5, 0.8);
+    let _ = color_map.tick(color_id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
+    let _ = brush_map.tick(
+        brush_id,
+        SLOT,
+        Brush::Solid(start),
+        AnimSpec::SPRING,
+        0.0,
+        next_frame(),
+    );
+
+    let mut settled = false;
+    for _ in 0..600 {
+        let color = color_map.tick(
+            color_id,
+            SLOT,
+            target,
+            AnimSpec::SPRING,
+            0.016,
+            next_frame(),
+        );
+        let brush = brush_map.tick(
+            brush_id,
+            SLOT,
+            Brush::Solid(target),
+            AnimSpec::SPRING,
+            0.016,
+            next_frame(),
+        );
+        assert_eq!(brush.current.as_solid(), Some(color.current));
+        assert_eq!(brush.settled, color.settled);
+        settled = brush.settled;
+        if settled {
+            break;
+        }
+    }
+    assert!(settled, "solid brush and color springs must both settle");
+}
+
 /// End-to-end through `Ui::animate` + `FrameOutput::repaint_requested`:
 /// first-touch settled → no repaint; retarget in-flight → repaint;
 /// repeated frames eventually settle and stop requesting repaint.
@@ -1033,6 +1081,141 @@ fn spring_snap_fields_carry_target_immediately() {
         r.current.fill.as_solid().unwrap().r < target.fill.as_solid().unwrap().r - 0.05,
         "animated fill should still be mid-flight; got {:?}",
         r.current.fill,
+    );
+}
+
+#[test]
+fn gradient_snap_clears_only_its_background_velocity() {
+    use crate::primitives::background::Background;
+    use crate::primitives::brush::{Brush, LinearGradient};
+    use crate::primitives::corners::Corners;
+    use crate::primitives::shadow::Shadow;
+    use crate::primitives::stroke::Stroke;
+
+    let mut map = AnimMapTyped::<Background>::default();
+    let id = wid("gradient-background-velocity");
+    let start = Background {
+        fill: Brush::Solid(Color::BLACK),
+        stroke: Stroke::solid(Color::BLACK, 0.0),
+        corners: Corners::ZERO,
+        shadow: Shadow::NONE,
+    };
+    let moving = Background {
+        fill: Brush::Solid(Color::WHITE),
+        stroke: Stroke::solid(Color::BLACK, 10.0),
+        corners: Corners::ZERO,
+        shadow: Shadow::NONE,
+    };
+    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
+    for _ in 0..3 {
+        let _ = map.tick(
+            id,
+            SLOT,
+            moving.clone(),
+            AnimSpec::SPRING,
+            0.016,
+            next_frame(),
+        );
+    }
+    let stroke_velocity = map.rows[&(id, SLOT)].velocity.stroke.width;
+    assert!(
+        stroke_velocity > 0.0,
+        "test setup must carry positive stroke velocity",
+    );
+
+    let gradient = Brush::Linear(LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE));
+    let target = Background {
+        fill: gradient.clone(),
+        stroke: Stroke::solid(Color::BLACK, 20.0),
+        corners: Corners::ZERO,
+        shadow: Shadow::NONE,
+    };
+    let result = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.0, next_frame());
+    let row = &map.rows[&(id, SLOT)];
+    assert_eq!(result.current.fill, gradient);
+    assert_eq!(row.velocity.fill, Brush::TRANSPARENT);
+    assert_eq!(row.velocity.stroke.width, stroke_velocity);
+    assert!(
+        !result.settled,
+        "the independently animated stroke still has real displacement",
+    );
+}
+
+#[test]
+fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
+    use crate::primitives::background::Background;
+    use crate::primitives::brush::{Brush, RadialGradient};
+    use crate::widgets::theme::text_style::TextStyle;
+    use crate::widgets::theme::widget_look::AnimatedLook;
+
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("gradient-look-settle");
+    let start = AnimatedLook {
+        background: Background::fill(Color::BLACK),
+        text: TextStyle::default().with_color(Color::BLACK),
+    };
+    let gradient = Brush::Radial(RadialGradient::two_stop_centered(
+        Color::BLACK,
+        Color::WHITE,
+    ));
+    let target = AnimatedLook {
+        background: Background::fill(gradient.clone()),
+        text: TextStyle::default().with_color(Color::WHITE),
+    };
+
+    let first = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let current = ui.animate(id, SLOT, start.clone(), Some(AnimSpec::SPRING));
+        assert_eq!(current, start);
+        Frame::new()
+            .id(WidgetId::from_hash("gradient-look-settle"))
+            .show(ui);
+    });
+    assert!(!first.repaint_requested);
+
+    let mut now = Duration::from_millis(16);
+    let retarget = ui.record(FrameStamp::new(display, now), |ui| {
+        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
+        assert_eq!(current.background.fill, gradient);
+        assert_ne!(current.text.color, target.text.color);
+        Frame::new()
+            .id(WidgetId::from_hash("gradient-look-settle"))
+            .show(ui);
+    });
+    assert!(retarget.repaint_requested);
+
+    let mut settled_at = None;
+    for frame in 0..600 {
+        now += Duration::from_millis(16);
+        let mut current = target.clone();
+        let output = ui.record(FrameStamp::new(display, now), |ui| {
+            current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
+            assert_eq!(current.background.fill, gradient);
+            Frame::new()
+                .id(WidgetId::from_hash("gradient-look-settle"))
+                .show(ui);
+        });
+        if !output.repaint_requested {
+            assert_eq!(current, target);
+            settled_at = Some(frame);
+            break;
+        }
+    }
+    assert!(settled_at.is_some(), "the look's color spring must settle");
+
+    now += Duration::from_millis(16);
+    let after_settle = ui.record(FrameStamp::new(display, now), |ui| {
+        let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
+        assert_eq!(current, target);
+        Frame::new()
+            .id(WidgetId::from_hash("gradient-look-settle"))
+            .show(ui);
+    });
+    assert!(
+        !after_settle.repaint_requested,
+        "a settled look must not request a surplus repaint",
     );
 }
 
