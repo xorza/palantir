@@ -5,6 +5,7 @@ use crate::forest::element::{Configure, Element, Salt};
 use crate::forest::layer::Layer;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::node::NodeId;
+use crate::forest::visibility::Visibility;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::{chat_message, two_hug_cols_with_wrap};
 use crate::layout::support::TextCtx;
@@ -711,6 +712,18 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
     }
 }
 
+fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> NodeId {
+    Panel::vstack()
+        .id_salt("container-text-visibility")
+        .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+        .padding(10.0)
+        .visibility(visibility)
+        .show(ui, |ui| {
+            ui.add_shape(direct_text(PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None));
+        })
+        .node()
+}
+
 #[test]
 fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
@@ -749,6 +762,55 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let layout = &ui.layout[Layer::Main];
     assert_eq!(layout.text_shapes.len(), 1);
     assert_eq!(layout.text_spans[leaf.unwrap().idx()].len, 1);
+}
+
+#[test]
+fn container_text_visibility_distinguishes_hidden_from_collapsed() {
+    let surface = UVec2::new(400, 400);
+    let mut ui = Ui::for_test_at_text(surface);
+    let mut container = None;
+    ui.run_at_acked(surface, |ui| {
+        container = Some(build_container_text_with_visibility(ui, Visibility::Hidden));
+    });
+    let hidden_node = container.unwrap();
+    let hidden_layout = &ui.layout[Layer::Main];
+    assert_eq!(
+        hidden_layout.rect[hidden_node.idx()].size,
+        Size::new(100.0, 100.0),
+    );
+    assert_eq!(hidden_layout.text_spans[hidden_node.idx()].len, 0);
+    assert!(hidden_layout.text_shapes.is_empty());
+
+    ui.run_at_acked(surface, |ui| {
+        container = Some(build_container_text_with_visibility(
+            ui,
+            Visibility::Collapsed,
+        ));
+    });
+    let collapsed_node = container.unwrap();
+    let collapsed_layout = &ui.layout[Layer::Main];
+    assert_eq!(collapsed_layout.rect[collapsed_node.idx()].size, Size::ZERO);
+    assert_eq!(collapsed_layout.text_spans[collapsed_node.idx()].len, 0);
+    assert!(collapsed_layout.text_shapes.is_empty());
+
+    ui.run_at_acked(surface, |ui| {
+        container = Some(build_container_text_with_visibility(
+            ui,
+            Visibility::Visible,
+        ));
+    });
+    let visible_node = container.unwrap();
+    let visible_layout = &ui.layout[Layer::Main];
+    assert_eq!(
+        visible_layout.rect[visible_node.idx()].size,
+        Size::new(100.0, 100.0),
+    );
+    let span = visible_layout.text_spans[visible_node.idx()];
+    assert_eq!(span.len, 1);
+    assert_eq!(
+        visible_layout.text_shapes[span.start as usize].measured,
+        Size::new(73.0, 80.0),
+    );
 }
 
 #[test]

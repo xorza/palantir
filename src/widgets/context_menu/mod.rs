@@ -164,7 +164,9 @@ impl ContextMenu {
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        ui.state_mut::<ContextMenuState>(for_id).anchor = None;
+        if let Some(state) = ui.try_state_mut::<ContextMenuState>(for_id) {
+            state.anchor = None;
+        }
     }
 
     /// `true` while the menu keyed off `for_id` has an active anchor.

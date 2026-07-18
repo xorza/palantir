@@ -189,6 +189,58 @@ struct BarPlan {
     thumb_rect: Rect,
 }
 
+#[derive(Copy, Clone, Debug)]
+struct BarResponses {
+    theme: ScrollbarTheme,
+    thumb_id_v: WidgetId,
+    thumb_id_h: WidgetId,
+    track_id_v: WidgetId,
+    track_id_h: WidgetId,
+    resp_v: ResponseState,
+    resp_h: ResponseState,
+    resp_track_v: ResponseState,
+    resp_track_h: ResponseState,
+}
+
+impl BarResponses {
+    fn read(ui: &Ui, scroll_id: WidgetId) -> Self {
+        let thumb_id_v = scroll_id.with("__vthumb");
+        let thumb_id_h = scroll_id.with("__hthumb");
+        let track_id_v = scroll_id.with("__vtrack");
+        let track_id_h = scroll_id.with("__htrack");
+        Self {
+            theme: ui.theme.scrollbar,
+            thumb_id_v,
+            thumb_id_h,
+            track_id_v,
+            track_id_h,
+            resp_v: ui.response_for(thumb_id_v),
+            resp_h: ui.response_for(thumb_id_h),
+            resp_track_v: ui.response_for(track_id_v),
+            resp_track_h: ui.response_for(track_id_h),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct BarPlans {
+    vertical: Option<BarPlan>,
+    horizontal: Option<BarPlan>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct BarFrame {
+    responses: BarResponses,
+    layout: BarLayout,
+    plans: BarPlans,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ScrollFrame {
+    scroll: ScrollLayoutState,
+    bars: Option<BarFrame>,
+}
+
 fn bar_plan(
     bar_viewport: Size,
     outer: Size,
@@ -557,24 +609,13 @@ impl Scroll {
         } else {
             None
         };
-        // Thumb-drag input. Read drag state of each thumb leaf
-        // *before* taking the `&mut` borrow on `scroll_states` —
-        // `response_for` walks `cascades`, which lives next to the
-        // scroll-state map on `Ui`. On the first frame the thumbs
-        // were recorded, the cascade doesn't see them yet → all
-        // fields default. Same one-frame settle as other scroll
-        // bookkeeping.
-        let theme = ui.theme.scrollbar;
-        let thumb_id_v = scroll_id.with("__vthumb");
-        let thumb_id_h = scroll_id.with("__hthumb");
-        let track_id_v = scroll_id.with("__vtrack");
-        let track_id_h = scroll_id.with("__htrack");
-        let resp_v = ui.response_for(thumb_id_v);
-        let resp_h = ui.response_for(thumb_id_h);
-        let resp_track_v = ui.response_for(track_id_v);
-        let resp_track_h = ui.response_for(track_id_h);
+        let bar_responses = if self.bar_mode == BarMode::Hidden {
+            None
+        } else {
+            Some(BarResponses::read(ui, scroll_id))
+        };
 
-        let (scroll, bl) = {
+        let frame = {
             let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
             // Keep margin separate from measured content so overflow
             // and bars continue to reflect the real content bounds.
@@ -595,74 +636,103 @@ impl Scroll {
             if !preserve_zoom_underflow {
                 row.clamp_to_natural();
             }
-            // 3) Thumb-drag pan. Bars use the *scaled* content extent so
-            //    dragging inside a zoomed viewport tracks the cursor 1:1
-            //    with the visible thumb; `(factor, max_off)` is the only
-            //    theme-derived input the row method needs.
-            let bl = bar_layout(row, pan, self.element.padding, &theme, self.bar_mode);
-            for (axis, resp) in [(Axis::Y, resp_v), (Axis::X, resp_h)] {
-                let panned = match axis {
-                    Axis::Y => pan.y,
-                    Axis::X => pan.x,
-                };
-                if !panned {
-                    continue;
+            let bars = bar_responses.map(|responses| {
+                // Bars use the *scaled* content extent so dragging inside a
+                // zoomed viewport tracks the cursor 1:1 with the visible thumb.
+                let bl = bar_layout(
+                    row,
+                    pan,
+                    self.element.padding,
+                    &responses.theme,
+                    self.bar_mode,
+                );
+                for (axis, resp) in [(Axis::Y, responses.resp_v), (Axis::X, responses.resp_h)] {
+                    let panned = match axis {
+                        Axis::Y => pan.y,
+                        Axis::X => pan.x,
+                    };
+                    if !panned {
+                        continue;
+                    }
+                    let track_main = axis.main(bl.bar_viewport);
+                    let main_content = axis.main(bl.scaled_content);
+                    let geom = bar_geometry(
+                        track_main,
+                        main_content,
+                        axis.main_v(row.offset),
+                        track_main,
+                        &responses.theme,
+                    )
+                    .map(|g| {
+                        let travel = (track_main - g.thumb_size).max(f32::EPSILON);
+                        let max_off = (main_content - track_main).max(0.0);
+                        (max_off / travel, max_off)
+                    });
+                    row.apply_thumb_drag(
+                        axis,
+                        resp.left.drag.started(),
+                        resp.left.drag.delta(),
+                        geom,
+                    );
                 }
-                let track_main = axis.main(bl.bar_viewport);
-                let main_content = axis.main(bl.scaled_content);
-                let geom = bar_geometry(
-                    track_main,
-                    main_content,
-                    axis.main_v(row.offset),
-                    track_main,
-                    &theme,
-                )
-                .map(|g| {
-                    let travel = (track_main - g.thumb_size).max(f32::EPSILON);
-                    let max_off = (main_content - track_main).max(0.0);
-                    (max_off / travel, max_off)
-                });
-                row.apply_thumb_drag(axis, resp.left.drag.started(), resp.left.drag.delta(), geom);
-            }
-            // 4) Click-on-track to page. Press above/below the thumb pages
-            //    the offset by one viewport.
-            let panned_axes = [
-                (Axis::Y, resp_track_v, pan.y),
-                (Axis::X, resp_track_h, pan.x),
-            ];
-            for (axis, resp_track, panned) in panned_axes {
-                if !panned || !resp_track.left.clicked() {
-                    continue;
+                for (axis, resp_track, panned) in [
+                    (Axis::Y, responses.resp_track_v, pan.y),
+                    (Axis::X, responses.resp_track_h, pan.x),
+                ] {
+                    if !panned || !resp_track.left.clicked() {
+                        continue;
+                    }
+                    let Some(pointer_local) = resp_track.pointer_local else {
+                        continue;
+                    };
+                    let page_step = axis.main(bl.bar_viewport);
+                    let main_content = axis.main(bl.scaled_content);
+                    let page = bar_geometry(
+                        page_step,
+                        main_content,
+                        axis.main_v(row.offset),
+                        page_step,
+                        &responses.theme,
+                    )
+                    .map(|g| TrackPage {
+                        click_main: axis.main_v(pointer_local),
+                        thumb_offset: g.thumb_offset,
+                        thumb_size: g.thumb_size,
+                        page_step,
+                        max_off: (main_content - page_step).max(0.0),
+                    });
+                    row.apply_track_page(axis, page);
                 }
-                let Some(pointer_local) = resp_track.pointer_local else {
-                    continue;
+                let plans = BarPlans {
+                    vertical: bar_plan(
+                        bl.bar_viewport,
+                        row.outer,
+                        bl.scaled_content,
+                        row.offset,
+                        Axis::Y,
+                        pan.y,
+                        &responses.theme,
+                    ),
+                    horizontal: bar_plan(
+                        bl.bar_viewport,
+                        row.outer,
+                        bl.scaled_content,
+                        row.offset,
+                        Axis::X,
+                        pan.x,
+                        &responses.theme,
+                    ),
                 };
-                let page_step = axis.main(bl.bar_viewport);
-                let main_content = axis.main(bl.scaled_content);
-                let page = bar_geometry(
-                    page_step,
-                    main_content,
-                    axis.main_v(row.offset),
-                    page_step,
-                    &theme,
-                )
-                .map(|g| TrackPage {
-                    click_main: axis.main_v(pointer_local),
-                    thumb_offset: g.thumb_offset,
-                    thumb_size: g.thumb_size,
-                    page_step,
-                    max_off: (main_content - page_step).max(0.0),
-                });
-                row.apply_track_page(axis, page);
-            }
-            // `bl` is derived from content/zoom/outer/padding, none of
-            // which the thumb-drag / track-page steps above mutate (they
-            // only move `offset`), so it's still valid for the record-time
-            // bar geometry below — hand it out instead of recomputing.
-            (*row, bl)
+                BarFrame {
+                    responses,
+                    layout: bl,
+                    plans,
+                }
+            });
+            ScrollFrame { scroll: *row, bars }
         };
 
-        if !scroll.seen {
+        if frame.bars.is_some() && !frame.scroll.seen {
             // Cold-mount: state is default, so `bar_plan` below will
             // see `content = 0`, decide "no overflow", and skip the
             // thumb. After this pass's arrange the row is filled in
@@ -673,18 +743,12 @@ impl Scroll {
             // thumb-or-no-thumb decision is stale.
             ui.request_relayout();
         }
-        let outer_size = scroll.outer;
-        let zoom = scroll.zoom;
-        let offset = scroll.offset;
-        // `bl` (reservation + post-zoom content + bar-main length) was
-        // computed in the state-mutation block above and is derived from
-        // `outer - reservation - user_padding` rather than the cached
-        // `viewport` (which lags by one arrange pass during cold-mount),
-        // so it's stable at record time and reused as-is here.
-        let scaled_content = bl.scaled_content;
-        let bar_viewport = bl.bar_viewport;
-        let reserve_y = bl.reserve_y;
-        let reserve_x = bl.reserve_x;
+        let zoom = frame.scroll.zoom;
+        let offset = frame.scroll.offset;
+        let (reserve_y, reserve_x) = frame
+            .bars
+            .map(|bars| (bars.layout.reserve_y, bars.layout.reserve_x))
+            .unwrap_or_default();
 
         // Outer: bare ZStack that holds the inner viewport + a bar
         // overlay. The reservation gutter lives on `inner.margin` —
@@ -734,25 +798,6 @@ impl Scroll {
             inner.transform = TranslateScale::new(-offset, zoom);
         }
 
-        let plan_v = bar_plan(
-            bar_viewport,
-            outer_size,
-            scaled_content,
-            offset,
-            Axis::Y,
-            pan.y,
-            &theme,
-        );
-        let plan_h = bar_plan(
-            bar_viewport,
-            outer_size,
-            scaled_content,
-            offset,
-            Axis::X,
-            pan.x,
-            &theme,
-        );
-
         let inner_value = ui.node(id, outer, None, |ui| {
             let inner_value = ui.node(scroll_id, inner, inner_chrome.as_ref(), body);
             // Bar overlay: Canvas sibling of inner, Fill on both axes
@@ -760,17 +805,34 @@ impl Scroll {
             // the overlay (paint first); thumbs are Sense::DRAG leaves
             // positioned absolutely on top. Painted after inner via
             // record order, hit-tested above inner via cascade order.
-            if !matches!(self.bar_mode, BarMode::Hidden) && (plan_v.is_some() || plan_h.is_some()) {
+            if let Some(bars) = frame
+                .bars
+                .filter(|bars| bars.plans.vertical.is_some() || bars.plans.horizontal.is_some())
+            {
                 let bars_id = scroll_id.with("__bars");
                 let mut overlay = Element::canvas();
                 overlay.salt = Salt::Verbatim(bars_id);
                 overlay.size = (Sizing::FILL, Sizing::FILL).into();
                 ui.node(bars_id, overlay, None, |ui| {
-                    if let Some(p) = plan_v {
-                        push_bar_nodes(ui, p, track_id_v, thumb_id_v, resp_v, &theme);
+                    if let Some(p) = bars.plans.vertical {
+                        push_bar_nodes(
+                            ui,
+                            p,
+                            bars.responses.track_id_v,
+                            bars.responses.thumb_id_v,
+                            bars.responses.resp_v,
+                            &bars.responses.theme,
+                        );
                     }
-                    if let Some(p) = plan_h {
-                        push_bar_nodes(ui, p, track_id_h, thumb_id_h, resp_h, &theme);
+                    if let Some(p) = bars.plans.horizontal {
+                        push_bar_nodes(
+                            ui,
+                            p,
+                            bars.responses.track_id_h,
+                            bars.responses.thumb_id_h,
+                            bars.responses.resp_h,
+                            &bars.responses.theme,
+                        );
                     }
                 });
             }

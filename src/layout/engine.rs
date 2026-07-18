@@ -348,11 +348,13 @@ impl LayoutEngine {
         // children, so the children's own cache-hit restore comes too late
         // — only a lookup here stops the ancestor cold-recursing through
         // every unchanged sibling subtree.
-        let wid = tree.records.widget_id()[idx];
-        let hash = tree.rollups.subtree[idx];
-        if let Some(v) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
-            self.scratch.intrinsics[idx][slot] = v;
-            return v;
+        if tree.records.layout()[idx].mode != LayoutMode::Leaf {
+            let wid = tree.records.widget_id()[idx];
+            let hash = tree.rollups.subtree[idx];
+            if let Some(v) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
+                self.scratch.intrinsics[idx][slot] = v;
+                return v;
+            }
         }
         #[cfg(test)]
         {
@@ -440,7 +442,7 @@ impl LayoutEngine {
             // Container text is paint-only; its wrap width exists only after arrange.
             for index in tree.rollups.container_text.ones() {
                 let style = layouts[index];
-                if style.visibility().is_collapsed() {
+                if !style.visibility().is_visible() {
                     continue;
                 }
                 let node = NodeId(index as u32);
@@ -479,7 +481,7 @@ impl LayoutEngine {
             return Size::ZERO;
         }
 
-        // Phase-2 measure-cache short-circuit: any node. Same
+        // Phase-2 measure-cache short-circuit: any non-leaf node. Same
         // `WidgetId`, same rolled subtree hash, same quantized
         // `available` → restore the *whole subtree*'s `desired` and
         // text shapes from last frame's snapshot and skip recursion
@@ -487,27 +489,32 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        let cache_wid = tree.records.widget_id()[node.idx()];
-        let cache_hash = tree.rollups.subtree[node.idx()];
-        let cache_avail = quantize_available(available);
-        if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
-            #[cfg(test)]
-            self.scratch.cache_hits.push(cache_wid);
-            let curr_start = node.idx();
-            let curr_end = curr_start + hit.arenas.desired.len();
-            // Subtree hash includes child count + per-child rollups,
-            // so a length mismatch here would mean the rollup is broken.
-            debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
-            self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
-            restore_after_cache_hit(
-                &mut self.scratch,
-                tree,
-                curr_start..curr_end,
-                &hit.arenas,
-                &mut out[self.active_layer],
-            );
-            return hit.root;
-        }
+        let cache_key = if style.mode == LayoutMode::Leaf {
+            None
+        } else {
+            let cache_wid = tree.records.widget_id()[node.idx()];
+            let cache_hash = tree.rollups.subtree[node.idx()];
+            let cache_avail = quantize_available(available);
+            if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
+                #[cfg(test)]
+                self.scratch.cache_hits.push(cache_wid);
+                let curr_start = node.idx();
+                let curr_end = curr_start + hit.arenas.desired.len();
+                // Subtree hash includes child count + per-child rollups,
+                // so a length mismatch here would mean the rollup is broken.
+                debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
+                self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
+                restore_after_cache_hit(
+                    &mut self.scratch,
+                    tree,
+                    curr_start..curr_end,
+                    &hit.arenas,
+                    &mut out[self.active_layer],
+                );
+                return hit.root;
+            }
+            Some((cache_wid, cache_hash, cache_avail))
+        };
 
         // Mark where this subtree's text shapes start in the flat
         // per-frame buffer. After dispatch returns, the subtree owns
@@ -580,7 +587,7 @@ impl LayoutEngine {
         // Bench: `caches/{measure,heavy/measure,dense/measure}/forced_miss`
         // improves 4.5–6.6%, `cached` arms neutral (the leaf entries
         // they used to populate are never read on the hit path).
-        if style.mode != LayoutMode::Leaf {
+        if let Some((cache_wid, cache_hash, cache_avail)) = cache_key {
             let start = node.idx();
             let end = tree.subtree_end_of(start) as usize;
             self.scratch.tmp_hugs.clear();

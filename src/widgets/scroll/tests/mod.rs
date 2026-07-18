@@ -656,20 +656,26 @@ fn pointer_zoom_pivot_is_scale_invariant() {
 
 mod bars {
     use crate::Ui;
+    use crate::display::Display;
     use crate::forest::element::Configure;
     use crate::forest::layer::Layer;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::node::NodeId;
+    use crate::input::InputEvent;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
+    use crate::primitives::size::Size;
     use crate::primitives::widget_id::WidgetId;
+    use crate::ui::frame::FrameStamp;
+    use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
     use crate::widgets::theme::scrollbar::ScrollbarTheme;
-    use glam::UVec2;
+    use glam::{UVec2, Vec2};
+    use std::time::Duration;
 
     fn theme() -> ScrollbarTheme {
         ScrollbarTheme::default()
@@ -840,6 +846,65 @@ mod bars {
             }
         }
         out
+    }
+
+    #[test]
+    fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
+        let surface = UVec2::new(400, 400);
+        let display = Display::from_physical(surface, 1.0);
+        let outer_id = WidgetId::from_hash("hidden-scroll");
+        let scroll_id = outer_id.with("__viewport");
+        let build = |ui: &mut Ui| {
+            Scroll::both()
+                .id(outer_id)
+                .hide_bars()
+                .with_zoom()
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("hidden-content"))
+                        .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+                        .show(ui);
+                });
+        };
+
+        let mut ui = Ui::for_test();
+        let mut records = 0;
+        let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+            records += 1;
+            build(ui);
+        });
+        ui.mark_frame_submitted();
+        assert_eq!(report.processing, FrameProcessing::SingleLayout);
+        assert_eq!(
+            records, 1,
+            "hidden cold mount must not settle bar visibility"
+        );
+
+        let tree = &ui.forest.trees[Layer::Main];
+        for tag in ["__bars", "__vtrack", "__htrack", "__vthumb", "__hthumb"] {
+            assert!(
+                !tree
+                    .records
+                    .widget_id()
+                    .iter()
+                    .any(|widget_id| *widget_id == scroll_id.with(tag)),
+                "hidden scroll recorded bar id {tag}",
+            );
+        }
+
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
+        ui.on_input(InputEvent::Zoom(1.5));
+        ui.run_at_acked(surface, build);
+        let state = *ui.scroll_state(scroll_id);
+        assert_eq!(state.viewport, Size::new(200.0, 200.0));
+        assert_eq!(state.zoom, 1.5);
+        assert_eq!(
+            state.offset,
+            Vec2::new(65.0, 85.0),
+            "pivot adds (25, 25), then wheel pan adds (40, 60)",
+        );
     }
 
     #[test]

@@ -158,7 +158,7 @@ implemented and validated independently.
 
 ## Batch 3 — Low-risk hot-path simplifications
 
-- [ ] **Consume the already-owned `WidgetLook` instead of cloning its
+- [x] **Consume the already-owned `WidgetLook` instead of cloning its
   `Background` twice.** `resolve_look` clones the selected look at
   `src/widgets/theme/mod.rs:186-206`, then `WidgetLook::animate(&self)` clones
   the large background again at
@@ -172,7 +172,7 @@ implemented and validated independently.
   also the first concrete source change recommended by
   `docs/frame-cpu-profile-2026-07-17.md:143-154`.
 
-- [ ] **Skip `MeasureCache` probes for leaves, which are deliberately never
+- [x] **Skip `MeasureCache` probes for leaves, which are deliberately never
   inserted.** `LayoutEngine::measure` unconditionally computes the cache key,
   quantizes availability, and probes at `src/layout/engine.rs:493-510`, while
   the write path explicitly excludes leaves because leaf snapshots measured as
@@ -183,7 +183,7 @@ implemented and validated independently.
   cache correctness and compare forced-miss and resize layout benchmarks,
   especially leaf-heavy trees.
 
-- [ ] **Give `BarMode::Hidden` a real no-bar path.** Hidden Scroll widgets still
+- [x] **Give `BarMode::Hidden` a real no-bar path.** Hidden Scroll widgets still
   derive four IDs, perform four response lookups, read pointer state, compute
   drag/page geometry, and build both bar plans at
   `src/widgets/scroll/mod.rs:538-637,718-735`. They also request a cold-mount
@@ -195,7 +195,7 @@ implemented and validated independently.
   bar-induced second pass while pan and zoom remain exact; benchmark many
   hidden Scroll scopes.
 
-- [ ] **Do not shape paint-only container text on an explicitly hidden owner.**
+- [x] **Do not shape paint-only container text on an explicitly hidden owner.**
   The post-arrange container-text loop skips only `Collapsed` at
   `src/layout/engine.rs:456-466`, so a `Hidden` container still shapes and
   appends paint-only text every frame even though it cannot render. Require
@@ -204,7 +204,7 @@ implemented and validated independently.
   made visible. Ancestor-hidden pruning can follow only if effective
   visibility becomes available without adding another tree walk.
 
-- [ ] **Add a non-allocating mutable state probe.** `Ui` exposes allocating
+- [x] **Add a non-allocating mutable state probe.** `Ui` exposes allocating
   `state_mut` and immutable `try_state`, but no `try_state_mut`
   (`src/ui/mod.rs:1074-1092`). DragValue therefore probes and then performs a
   second lookup to mutate at `src/widgets/drag_value/mod.rs:305-318,438-448`;

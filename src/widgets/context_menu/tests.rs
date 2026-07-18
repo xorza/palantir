@@ -7,7 +7,7 @@ use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::button::Button;
-use crate::widgets::context_menu::{ContextMenu, MenuItem};
+use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
 use crate::widgets::panel::Panel;
 use crate::{Sense, Ui};
 use glam::{UVec2, Vec2};
@@ -47,6 +47,13 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
 
 fn menu_open(ui: &Ui) -> bool {
     ContextMenu::is_open(ui, trigger_id())
+}
+
+#[test]
+fn close_before_open_does_not_create_state() {
+    let mut ui = Ui::for_test();
+    ContextMenu::close(&mut ui, trigger_id());
+    assert!(ui.try_state::<ContextMenuState>(trigger_id()).is_none());
 }
 
 #[test]

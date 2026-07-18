@@ -1102,6 +1102,13 @@ impl Ui {
         self.state.try_get::<S>(id)
     }
 
+    /// Mutable peek at an existing cross-frame state row. `None` if
+    /// `(id, T)` has never been stored; unlike [`Self::state_mut`], this
+    /// does not allocate a typed store or insert a default row.
+    pub fn try_state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S> {
+        self.state.try_get_mut::<S>(id)
+    }
+
     /// Advance an animation row keyed by `(id, slot)` and return the
     /// current value. `spec = None` snaps to `target` and drops any
     /// stale row without requesting a repaint — the canonical
