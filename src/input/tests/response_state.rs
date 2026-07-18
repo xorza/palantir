@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::pointer::PointerButton;
-use crate::input::{InputEvent, InputState, Press, PressDrag, Release, ReleaseKind};
+use crate::input::{InputEvent, InputState, Press, PressDrag, Release, ReleaseKind, TargetDeltas};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -109,6 +109,9 @@ fn frame_quiescent_predicate() {
     broken("hovered", &|s| s.hovered = Some(id));
     broken("scroll_target", &|s| s.scroll_target = Some(id));
     broken("pinch_target", &|s| s.pinch_target = Some(id));
+    broken("frame_target_deltas", &|s| {
+        s.frame_target_deltas.push(TargetDeltas::new(id))
+    });
     broken("capture.press", &|s| {
         s.captures[PointerButton::Left.idx()].press = Some(Press {
             target: id,

@@ -142,7 +142,7 @@ fn scroll_subscriber_receives_an_event_without_creating_a_widget_delta() {
     let delta = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
 
     assert!(delta.requests_repaint);
-    assert_eq!(ui.input.frame_scroll_pixels, Vec2::ZERO);
+    assert!(ui.input.frame_target_deltas.is_empty());
     assert!(matches!(
         ui.pointer_events(),
         [PointerEvent::Scroll {

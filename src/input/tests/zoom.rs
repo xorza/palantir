@@ -13,9 +13,13 @@ fn pinch(delta: f64) -> WindowEvent {
 
 fn pinch_state() -> InputState {
     InputState {
-        pinch_target: Some(WidgetId::from_hash("pinch")),
+        pinch_target: Some(pinch_id()),
         ..InputState::default()
     }
+}
+
+fn pinch_id() -> WidgetId {
+    WidgetId::from_hash("pinch")
 }
 
 #[test]
@@ -39,7 +43,12 @@ fn native_zoom_ingress_rejects_every_invalid_factor_class() {
     for factor in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         let delta = state.on_input(InputEvent::Zoom(factor), &cascades);
         assert!(!delta.requests_repaint, "invalid factor {factor:?}");
-        assert_eq!(state.frame_zoom_delta, 1.0, "invalid factor {factor:?}");
+        assert_eq!(
+            state.scroll_delta_for(pinch_id()).zoom,
+            1.0,
+            "invalid factor {factor:?}"
+        );
+        assert!(state.frame_target_deltas.is_empty());
         assert!(
             !state.had_input_since_last_frame,
             "invalid factor {factor:?}"
@@ -53,7 +62,7 @@ fn pinch_gesture_accumulates_zoom_delta() {
     let cascades = Cascades::default();
     state.on_input(InputEvent::Zoom(1.1), &cascades);
     state.on_input(InputEvent::Zoom(1.05), &cascades);
-    assert!((state.frame_zoom_delta - 1.155).abs() < 1e-5);
+    assert!((state.scroll_delta_for(pinch_id()).zoom - 1.155).abs() < 1e-5);
 }
 
 #[test]
@@ -63,14 +72,16 @@ fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
         let mut state = pinch_state();
         for _ in 0..10_000 {
             state.on_input(InputEvent::Zoom(factor), &cascades);
-            assert!(zoom_factor_is_valid(state.frame_zoom_delta));
+            assert!(zoom_factor_is_valid(
+                state.scroll_delta_for(pinch_id()).zoom
+            ));
         }
         let expected = if factor > 1.0 {
             f32::MAX
         } else {
             f32::MIN_POSITIVE
         };
-        assert_eq!(state.frame_zoom_delta, expected);
+        assert_eq!(state.scroll_delta_for(pinch_id()).zoom, expected);
     }
 
     for direction in [-1.0, 1.0] {
@@ -95,7 +106,8 @@ fn post_record_resets_zoom_delta_to_identity() {
     let mut state = pinch_state();
     let cascades = Cascades::default();
     state.on_input(InputEvent::Zoom(1.2), &cascades);
-    assert!((state.frame_zoom_delta - 1.2).abs() < 1e-5);
+    assert!((state.scroll_delta_for(pinch_id()).zoom - 1.2).abs() < 1e-5);
     state.end_frame(&cascades);
-    assert_eq!(state.frame_zoom_delta, 1.0);
+    assert_eq!(state.scroll_delta_for(pinch_id()).zoom, 1.0);
+    assert!(state.frame_target_deltas.is_empty());
 }

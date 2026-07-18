@@ -129,24 +129,10 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The seven-item count above describes the earlier pruned
-pass; the eight findings below are additional. These supplemental batches are
+pass; the seven findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 
 ## Batch 3 — High: Restore frame- and pass-scoped ownership
-
-- [ ] **Attribute accumulated scroll and pinch deltas to their event-time
-  targets.** Pointer moves immediately replace `scroll_target` and
-  `pinch_target` at `src/input/mod.rs:552-580`, but subsequent scroll and zoom
-  events accumulate into three frame-global totals at
-  `src/input/mod.rs:681-711`. Response construction later assigns all totals to
-  whichever target is current at record time at
-  `src/input/mod.rs:853-894,1024-1040`. Thus “scroll over A, move to B, render”
-  delivers A's delta to B; multiple targets in one host-event batch collapse
-  onto the last one, and pinch has the same defect. Retain capacity-backed
-  per-`WidgetId` pixel, line, and zoom accumulators, clear their lengths at
-  frame end, and query by id. Validate A→B routing with and without a second
-  delta, pointer leave after a delta, multiplicative pinch accumulation, and
-  stable capacities after warmup.
 
 - [ ] **Drain deferred window commands after every offscreen frame.**
   `Ui::open_window` and `Ui::close_window` enqueue requests at

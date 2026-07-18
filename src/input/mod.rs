@@ -171,19 +171,19 @@ pub enum InputEvent {
     /// `MouseScrollDelta::PixelDelta`. Logical pixels. Positive `y`
     /// means the user wants content to scroll *down* (a scroll widget
     /// should add to its vertical offset). Multiple events in one frame
-    /// accumulate in the frame's pixel-scroll total.
+    /// accumulate on the scroll target active when each event arrived.
     ScrollPixels(Vec2),
     /// Notched scroll delta — classic wheel /
     /// `MouseScrollDelta::LineDelta`. Carries the raw line count
     /// (sign-flipped to match `ScrollPixels`); the consuming widget
     /// multiplies by its own font-derived line step at record time
     /// rather than this layer baking in a constant. Multiple events
-    /// in one frame accumulate in the frame's line-scroll total.
+    /// in one frame accumulate on their event-time scroll targets.
     ScrollLines(Vec2),
     /// Multiplicative zoom factor from a touch / touchpad pinch gesture.
     /// `1.0` is identity; `1.05` zooms in 5%, `0.95` zooms out 5%.
-    /// Multiple events in one frame multiply into
-    /// the frame's zoom total. Wheel-based zoom is *not*
+    /// Multiple events in one frame multiply into their event-time
+    /// pinch targets' zoom totals. Wheel-based zoom is *not*
     /// translated into `Zoom` — the active scroll widget decides at
     /// record time whether wheel ticks count as pan or zoom. Non-positive
     /// and non-finite factors are discarded at ingress.
@@ -240,6 +240,25 @@ pub(crate) fn wheel_zoom_factor(step: f32, notches: f32) -> f32 {
     debug_assert!(zoom_factor_is_valid(step));
     debug_assert!(!notches.is_nan());
     combine_zoom_factors(1.0, step.powf(-notches))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TargetDeltas {
+    target: WidgetId,
+    pixels: Vec2,
+    lines: Vec2,
+    zoom: f32,
+}
+
+impl TargetDeltas {
+    fn new(target: WidgetId) -> Self {
+        Self {
+            target,
+            pixels: Vec2::ZERO,
+            lines: Vec2::ZERO,
+            zoom: 1.0,
+        }
+    }
 }
 
 impl InputEvent {
@@ -351,42 +370,27 @@ pub(crate) struct InputState {
     pub(crate) pointer_pos: Option<Vec2>,
     pub(crate) hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
-    /// whenever the pointer moves and at `end_frame`. The scroll widget
-    /// matching this id consumes [`Self::frame_scroll_pixels`].
+    /// whenever the pointer moves and at `end_frame`. New scroll events
+    /// are attributed to this id when they arrive.
     pub(crate) scroll_target: Option<WidgetId>,
     /// Topmost `Sense::PINCH` widget under the pointer, recomputed
     /// alongside `scroll_target`. Pinch zoom factors route to this id
     /// instead of `scroll_target` so a widget can opt into pan-via-
     /// scroll *without* committing to pinch zoom (and vice versa).
     pub(crate) pinch_target: Option<WidgetId>,
+    /// Pixel, line, and pinch deltas accumulated by their event-time
+    /// target. One row per touched [`WidgetId`]; capacity is retained
+    /// when the rows are cleared in [`Self::drain_per_frame_queues`].
+    pub(crate) frame_target_deltas: Vec<TargetDeltas>,
     /// Per-button press capture (active widget, press pos, drag latch,
     /// frame edges for `drag_started` and `clicked`). Indexed by
     /// [`PointerButton`] via [`PointerButton::idx`]. Independent per
     /// button — a left-drag in progress doesn't block a right-click.
     pub(crate) captures: [Capture; PointerButton::COUNT],
-    /// Pixel-precise wheel / touchpad delta accumulated this frame
-    /// (logical px from `ScrollPixels`). Cleared in
-    /// [`Self::end_frame`]. Read by scroll widgets at record time
-    /// alongside [`Self::frame_scroll_lines`] — the widget combines
-    /// the two via its font-derived line step.
-    pub(crate) frame_scroll_pixels: Vec2,
-    /// Notched wheel delta accumulated this frame (line count from
-    /// `ScrollLines`). Cleared in [`Self::end_frame`]. The scroll
-    /// widget multiplies by its own line-px step at consumption time
-    /// instead of baking a constant in here, so wheel feel tracks the
-    /// active font size. Also read directly by zoom routing (each line
-    /// = one notch, no roundtrip through a pixel constant).
-    pub(crate) frame_scroll_lines: Vec2,
-    /// Multiplicative pinch-zoom delta accumulated this frame; `1.0` =
-    /// no zoom. Cleared in [`Self::end_frame`]. Read by scroll widgets
-    /// configured with a `ZoomConfig`. Wheel-based zoom is computed
-    /// at the widget from [`Self::frame_scroll_pixels`] under the
-    /// `ZoomConfig::modifier` gate, not accumulated here.
-    pub(crate) frame_zoom_delta: f32,
     /// Frame-snapshot of "no widget can hold any non-default interaction
     /// state this frame" — no pointer on the surface, no routed
-    /// scroll/pinch target, no live button capture or click/double-click
-    /// edge. Filled once per record pass via
+    /// scroll/pinch target or pending target delta, no live button
+    /// capture or click/double-click edge. Filled once per record pass via
     /// [`Self::snapshot_frame_quiescent`];
     /// read in [`Self::response_for`] to default the whole interaction
     /// half out for every widget instead of re-deriving it per call.
@@ -467,10 +471,8 @@ impl Default for InputState {
             hovered: None,
             scroll_target: None,
             pinch_target: None,
+            frame_target_deltas: Vec::new(),
             captures: [Capture::default(); PointerButton::COUNT],
-            frame_scroll_pixels: Vec2::ZERO,
-            frame_scroll_lines: Vec2::ZERO,
-            frame_zoom_delta: 1.0,
             // Recomputed each record pass before any `response_for`
             // call; `false` is the safe pre-frame default (forces the
             // full path).
@@ -490,6 +492,24 @@ impl Default for InputState {
 }
 
 impl InputState {
+    fn target_deltas(&self, target: WidgetId) -> Option<&TargetDeltas> {
+        self.frame_target_deltas
+            .iter()
+            .find(|deltas| deltas.target == target)
+    }
+
+    fn target_deltas_mut(&mut self, target: WidgetId) -> &mut TargetDeltas {
+        if let Some(index) = self
+            .frame_target_deltas
+            .iter()
+            .position(|deltas| deltas.target == target)
+        {
+            return &mut self.frame_target_deltas[index];
+        }
+        self.frame_target_deltas.push(TargetDeltas::new(target));
+        self.frame_target_deltas.last_mut().unwrap()
+    }
+
     #[inline]
     fn capture(&self, b: PointerButton) -> &Capture {
         &self.captures[b.idx()]
@@ -679,36 +699,37 @@ impl InputState {
                 observable
             }
             InputEvent::ScrollPixels(d) => {
-                let routed = self.scroll_target.is_some();
-                if routed {
-                    self.frame_scroll_pixels += d;
+                let target = self.scroll_target;
+                if let Some(target) = target {
+                    self.target_deltas_mut(target).pixels += d;
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
                     pos,
                     pixels: d,
                     lines: Vec2::ZERO,
                 });
-                routed || subbed
+                target.is_some() || subbed
             }
             InputEvent::ScrollLines(d) => {
-                let routed = self.scroll_target.is_some();
-                if routed {
-                    self.frame_scroll_lines += d;
+                let target = self.scroll_target;
+                if let Some(target) = target {
+                    self.target_deltas_mut(target).lines += d;
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
                     pos,
                     pixels: Vec2::ZERO,
                     lines: d,
                 });
-                routed || subbed
+                target.is_some() || subbed
             }
             InputEvent::Zoom(f) => {
-                let routed = self.pinch_target.is_some();
-                if routed {
-                    self.frame_zoom_delta = combine_zoom_factors(self.frame_zoom_delta, f);
+                let target = self.pinch_target;
+                if let Some(target) = target {
+                    let deltas = self.target_deltas_mut(target);
+                    deltas.zoom = combine_zoom_factors(deltas.zoom, f);
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Zoom { pos, factor: f });
-                routed || subbed
+                target.is_some() || subbed
             }
             InputEvent::KeyDown {
                 key,
@@ -792,9 +813,7 @@ impl InputState {
         self.repaint_requested_since_last_frame = false;
         self.frame_had_action = false;
         self.frame_pointer_events.clear();
-        self.frame_scroll_pixels = Vec2::ZERO;
-        self.frame_scroll_lines = Vec2::ZERO;
-        self.frame_zoom_delta = 1.0;
+        self.frame_target_deltas.clear();
         self.frame_keyboard_events.clear();
     }
 
@@ -850,55 +869,24 @@ impl InputState {
         self.refresh_pointer_targets(cascades);
     }
 
-    /// Returns this frame's combined scroll delta if `id` is the
-    /// current scroll hit-target; otherwise `Vec2::ZERO`. Combines the
-    /// pixel-precise accumulator with the line-discrete accumulator
-    /// scaled by `line_px` — caller supplies the line step (typically
-    /// `theme.text.line_height_for(font_size)`) so wheel feel tracks
-    /// the active font size instead of a hard-coded constant.
-    pub(crate) fn scroll_delta_for(&self, id: WidgetId, line_px: f32) -> Vec2 {
-        if self.scroll_target == Some(id) {
-            self.frame_scroll_pixels + self.frame_scroll_lines * line_px
-        } else {
-            Vec2::ZERO
-        }
-    }
-
-    /// Returns this frame's notched scroll count if `id` is the
-    /// current scroll hit-target; otherwise `Vec2::ZERO`. Combines
-    /// real line deltas (classic wheel) with touchpad-pixel deltas
-    /// converted via `line_px` — so a touchpad gesture under a
-    /// zoom modifier produces fractional notches at the same rate
-    /// the pan side would have moved pixels, matching the pre-split
-    /// behavior. Used by zoom routing.
-    pub(crate) fn scroll_notches_for(&self, id: WidgetId, line_px: f32) -> Vec2 {
-        if self.scroll_target != Some(id) {
-            return Vec2::ZERO;
-        }
-        let denom = line_px.max(f32::EPSILON);
-        self.frame_scroll_lines + self.frame_scroll_pixels / denom
-    }
-
-    /// Returns this frame's pinch-zoom factor if `id` is the current
-    /// pinch hit-target (separate from `scroll_target` since
-    /// `Sense::PINCH` and `Sense::SCROLL` are independent bits);
-    /// otherwise `1.0`. Pinch ingest is unconditional (touch already
-    /// disambiguates intent), so widgets get the raw multiplicative
-    /// factor regardless of `ZoomConfig::modifier`.
-    pub(crate) fn zoom_delta_for(&self, id: WidgetId) -> f32 {
-        if self.pinch_target == Some(id) {
-            self.frame_zoom_delta
-        } else {
-            1.0
-        }
+    /// Returns the raw scroll and pinch deltas attributed to `id` when
+    /// their events arrived. Widget policy decides how line deltas map
+    /// to pixels and whether modifiers turn wheel input into zoom.
+    pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> ScrollDelta {
+        self.target_deltas(id)
+            .map_or_else(ScrollDelta::default, |deltas| ScrollDelta {
+                pixels: deltas.pixels,
+                lines: deltas.lines,
+                zoom: deltas.zoom,
+            })
     }
 
     /// Snapshot into [`Self::frame_quiescent`] whether any widget can
     /// hold non-default interaction state this frame: no pointer on the
-    /// surface, no routed scroll/pinch target, and no live button
-    /// capture or per-frame click/double-click edge. Taken once per
-    /// record pass so [`Self::response_for`] can default the interaction
-    /// half out for every widget at once.
+    /// surface, no routed scroll/pinch target or pending event-time
+    /// delta, and no live button capture or per-frame click/double-click
+    /// edge. Taken once per record pass so [`Self::response_for`] can
+    /// default the interaction half out for every widget at once.
     ///
     /// `focused` is deliberately *not* part of this: [`crate::Ui::request_focus`]
     /// can set it mid-record, after the snapshot is taken, so
@@ -908,6 +896,7 @@ impl InputState {
             && self.hovered.is_none()
             && self.scroll_target.is_none()
             && self.pinch_target.is_none()
+            && self.frame_target_deltas.is_empty()
             && self
                 .captures
                 .iter()
@@ -1021,24 +1010,7 @@ impl InputState {
         }
         let [left, right, middle] = buttons;
 
-        // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
-        // Both gates fire even when the routed delta is `Vec2::ZERO`
-        // / `1.0` — the caller checks against the identity value to
-        // distinguish "not routed" from "routed but quiet".
-        let scrolled = self.scroll_target == Some(id);
-        let scroll = ScrollDelta {
-            pixels: if scrolled {
-                self.frame_scroll_pixels
-            } else {
-                Vec2::ZERO
-            },
-            lines: if scrolled {
-                self.frame_scroll_lines
-            } else {
-                Vec2::ZERO
-            },
-            zoom: self.zoom_delta_for(id),
-        };
+        let scroll = self.scroll_delta_for(id);
         let pointer_local = self
             .pointer_pos
             .zip(layout_rect)
