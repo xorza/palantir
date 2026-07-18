@@ -49,6 +49,14 @@ impl StateMap {
         Some(&store.data[idx])
     }
 
+    pub(crate) fn try_get_mut<T: 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
+        let store = (self.by_type.get_mut(&TypeId::of::<T>())?.as_mut() as &mut dyn Any)
+            .downcast_mut::<Store<T>>()
+            .expect("TypeId is stable per T, downcast cannot fail");
+        let idx = *store.map.get(&id)? as usize;
+        Some(&mut store.data[idx])
+    }
+
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         if removed.is_empty() {
             return;
@@ -142,8 +150,15 @@ mod tests {
     #[test]
     fn value_persists_across_frames() {
         let mut map = StateMap::default();
+        assert!(map.try_get_mut::<u32>(wid(1)).is_none());
+        assert!(
+            map.by_type.is_empty(),
+            "missing mutable probe must not create a typed store",
+        );
         *map.get_or_insert_with(wid(1), || 0u32) = 42;
-        assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 42);
+        *map.try_get_mut::<u32>(wid(1)).unwrap() = 43;
+        assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 43);
+        assert!(map.try_get_mut::<u32>(wid(2)).is_none());
     }
 
     #[test]

@@ -309,8 +309,9 @@ impl<'a> DragValue<'a> {
         // mid-edit `.editable(false)` or disable can never replay later as a
         // phantom commit. The probe is read-only — idle chips get no state
         // row.
-        if ui.try_state::<DragEdit>(id).is_some_and(|e| e.editing) {
-            let edit = ui.state_mut::<DragEdit>(id);
+        if let Some(edit) = ui.try_state_mut::<DragEdit>(id)
+            && edit.editing
+        {
             edit.editing = false;
             if self.editable && !state.disabled {
                 changed = self.value.parse_from(&edit.buffer, self.min, self.max);
@@ -443,8 +444,11 @@ impl<'a> DragValue<'a> {
             edit.buffer = self.value.edit_string();
         }
         let mut buffer = std::mem::take(&mut edit.buffer);
-        if entering && ui.try_state::<DragAnchor>(id).is_some_and(|a| a.armed) {
-            ui.state_mut::<DragAnchor>(id).armed = false;
+        if entering
+            && let Some(anchor) = ui.try_state_mut::<DragAnchor>(id)
+            && anchor.armed
+        {
+            anchor.armed = false;
         }
         let submitted = {
             let resp = TextEdit::new(&mut buffer)

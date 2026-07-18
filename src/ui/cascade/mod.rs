@@ -627,7 +627,8 @@ fn run_tree(
         let layout_core = layout_col[iu];
 
         let disabled = parent_dis || attrs.is_disabled();
-        let invisible = parent_inv || !layout_core.visibility().is_visible();
+        let owner_visible = layout_core.visibility().is_visible();
+        let invisible = parent_inv || !owner_visible;
 
         let layout_rect = layout.rect[iu];
         // `.end()` strips the packed grid flag — downstream uses (walk
@@ -672,24 +673,29 @@ fn run_tree(
         } else {
             parent_clip
         };
-        let paint_rect = compute_paint_rect(
-            PaintRectCtx {
-                tree,
-                layout,
-                node: id,
-                layout_rect,
-                visible_rect,
-                padding: layout_core.padding,
-                parent_transform,
-                parent_clip,
-                shape_clip,
-                shape_transform: desc_transform,
-                display_scale,
-                clips,
-                has_children,
-            },
-            &mut lc.paint_arena,
-        );
+        let paint_rect = if owner_visible {
+            compute_paint_rect(
+                PaintRectCtx {
+                    tree,
+                    layout,
+                    node: id,
+                    layout_rect,
+                    visible_rect,
+                    padding: layout_core.padding,
+                    parent_transform,
+                    parent_clip,
+                    shape_clip,
+                    shape_transform: desc_transform,
+                    display_scale,
+                    clips,
+                    has_children,
+                },
+                &mut lc.paint_arena,
+            )
+        } else {
+            lc.paint_arena.node_spans[iu] = Span::new(lc.paint_arena.rows.len() as u32, 0);
+            Rect::ZERO
+        };
         // Invisible nodes never paint, so seeding their subtree
         // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
         // from inflating the ancestor's `subtree_paint_rect` (and

@@ -15,8 +15,8 @@ use aperture_anim_derive::Animatable;
 /// inherits [`crate::Theme::text`], so an app changing
 /// `theme.text.color` moves every label that didn't override it.
 ///
-/// Per-theme `pick(state)` returns `&WidgetLook`; widgets call
-/// [`Self::animate`] to interpolate the look's components and get an
+/// Per-theme `pick(state)` returns `&WidgetLook`; widgets clone the selected
+/// look, then call [`Self::animate`] to interpolate its components and get an
 /// [`AnimatedLook`] ready to render with.
 // **Not `Copy`** because `Background` isn't — `WidgetLook` shows up in
 // theme definitions and is cheap to `.clone()` (one branch for each
@@ -65,20 +65,18 @@ impl WidgetLook {
     /// on motion.
     ///
     /// `fallback_text` is used when `self.text == None` — pass
-    /// `ui.theme.text` (TextStyle is `Copy`). Takes `&self` so a look
-    /// borrowed from an owned theme animates without a clone; callers
-    /// whose look borrows `ui.theme` still clone first to end that
-    /// borrow before `ui` is reborrowed mutably.
+    /// `ui.theme.text` (TextStyle is `Copy`). The selected look is consumed so
+    /// its background moves into the animation target.
     #[inline(always)]
     pub fn animate(
-        &self,
+        self,
         ui: &mut Ui,
         id: WidgetId,
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
         let target = AnimatedLook {
-            background: self.background.clone().unwrap_or_default(),
+            background: self.background.unwrap_or_default(),
             text: self.text.unwrap_or(fallback_text),
         };
         ui.animate(id, Self::SLOT_LOOK, target, spec)
