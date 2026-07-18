@@ -229,7 +229,7 @@ implemented and validated independently.
   authored shape so visibility transitions can resume it. Validate self-hidden,
   self-collapsed, ancestor-hidden, and hide/show transition cases.
 
-- [ ] **Invalidate encoded text by glyph-slot generation, not by any atlas
+- [x] **Invalidate encoded text by glyph-slot generation, not by any atlas
   eviction.** `GlyphAtlas` exposes one global `eviction_count` at
   `src/renderer/backend/text/atlas.rs:105-125`; every encoded run stores it and
   misses after any eviction at
@@ -242,7 +242,7 @@ implemented and validated independently.
   one loses a slot, and benchmark mixed stable/churning text plus
   `text_atlas/zoom_cold`.
 
-- [ ] **Choose the least-recently-used eligible glyph when an atlas scan is
+- [x] **Choose the least-recently-used eligible glyph when an atlas scan is
   already required.** Slots maintain `last_use`, but `evict_one` selects the
   first eligible hash-map entry at
   `src/renderer/backend/text/atlas.rs:445-470`. Victim choice is therefore hash
