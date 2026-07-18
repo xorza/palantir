@@ -159,6 +159,7 @@ mod hot_struct_sizes {
     use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::extras::ExtrasIdx;
     use crate::forest::tree::node::NodeRecord;
+    use crate::input::TargetDeltas;
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
@@ -260,9 +261,10 @@ mod hot_struct_sizes {
         // Cross-frame hash keys.
         ContentHash => "rollups::ContentHash": 8 / 8,
         CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
-        // Cascade per-node rows.
+        // Cascade per-node and input per-target rows.
         EntryRow => "cascade::EntryRow": 56 / 8,
         Paint => "cascade::Paint": 24 / 8,
+        TargetDeltas => "input::TargetDeltas": 32 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,
         NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,

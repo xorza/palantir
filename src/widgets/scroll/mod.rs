@@ -560,9 +560,10 @@ impl Scroll {
         // now the active theme's text size is a good proxy and stays
         // consistent with what the user is reading.
         let line_px = ui.theme.text.line_height_for(ui.theme.text.font_size_px);
-        let pan_delta_raw = ui.input.scroll_delta_for(id, line_px);
-        let wheel_notches = ui.input.scroll_notches_for(id, line_px);
-        let pinch_delta = ui.input.zoom_delta_for(id);
+        let scroll_delta = ui.input.scroll_delta_for(id);
+        let pan_delta_raw = scroll_delta.pixels + scroll_delta.lines * line_px;
+        let wheel_notches = scroll_delta.lines + scroll_delta.pixels / line_px.max(f32::EPSILON);
+        let pinch_delta = scroll_delta.zoom;
         let mods = ui.input.modifiers;
         // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
         // platform (macOS Cmd not honored), and `alt`-wheel shouldn't

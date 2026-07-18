@@ -189,8 +189,8 @@ impl ButtonState {
 /// Only non-identity when the widget has
 /// [`Sense::SCROLL`](crate::input::sense::Sense::SCROLL) /
 /// [`Sense::PINCH`](crate::input::sense::Sense::PINCH) AND was the
-/// topmost routed target under the pointer — and identity even then
-/// when no event arrived this frame.
+/// topmost routed target when an event arrived. Later pointer movement
+/// does not reassign an accumulated delta.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollDelta {
     /// Pixel-precise scroll delta in logical pixels — the touchpad /
