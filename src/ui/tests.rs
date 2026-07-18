@@ -10,7 +10,6 @@ use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::record_store::RecordStore;
 use crate::renderer::frontend::Frontend;
 use crate::shape::TextWrap;
 use crate::ui::damage::Damage;
@@ -29,7 +28,7 @@ fn measure_calls(ui: &Ui) -> u64 {
 }
 
 fn ui_with_shared(shared: &HostShared) -> Ui {
-    let mut ui = Ui::new(shared.ui_shared(), RecordStore::default());
+    let mut ui = Ui::new(shared.ui_shared());
     ui.mark_warm_for_test();
     ui
 }
@@ -659,7 +658,6 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     use crate::host::shared::HostShared;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
-    use crate::record_store::RecordStore;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
     use crate::text::{FontFamily, FontWeight, TextShaper};
@@ -694,8 +692,8 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     }
 
     let shared = HostShared::new(TextShaper::with_bundled_fonts());
-    let mut idle = Ui::new(shared.ui_shared(), RecordStore::default());
-    let mut active = Ui::new(shared.ui_shared(), RecordStore::default());
+    let mut idle = Ui::new(shared.ui_shared());
+    let mut active = Ui::new(shared.ui_shared());
     let display = Display::from_physical(SURFACE, 1.0);
 
     let idle_first = idle.record(FrameStamp::new(display, Duration::ZERO), idle_body);
