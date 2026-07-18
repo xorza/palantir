@@ -919,21 +919,15 @@ impl Ui {
         self.record_store.intern_fmt(args)
     }
 
-    /// Copy `s` into the record-pass text storage and return an arena-backed
-    /// [`InternedStr`]. Format-less twin of
-    /// [`Self::fmt`] for plain `&str` borrows whose lifetime doesn't
-    /// reach `'static` — turns a per-frame `String` allocation into a
-    /// memcpy into the retained text arena. Same retention rules as
-    /// [`Self::fmt`].
+    /// Normalize borrowed, owned, or already-interned text into an
+    /// [`InternedStr`]. Borrowed and owned inputs are copied into the
+    /// record-pass text arena; an [`InternedStr`] passes through unchanged.
+    /// Format-less twin of [`Self::fmt`] with the same retention rules.
     #[must_use]
-    pub fn intern(&mut self, s: &str) -> InternedStr {
-        self.record_store.intern_str(s)
-    }
-
-    pub(crate) fn intern_text<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
+    pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
         match text.into() {
-            TextInput::Borrowed(text) => self.intern(text),
-            TextInput::Owned(text) => self.intern(&text),
+            TextInput::Borrowed(text) => self.record_store.intern_str(text),
+            TextInput::Owned(text) => self.record_store.intern_str(&text),
             TextInput::Interned(text) => text,
         }
     }

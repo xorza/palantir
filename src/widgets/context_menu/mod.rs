@@ -287,7 +287,7 @@ impl<'a> MenuItem<'a> {
         element.padding = padding;
         element.gaps.set_gap(16.0);
 
-        let label = ui.intern_text(self.label);
+        let label = ui.intern(self.label);
         let shortcut = self.shortcut;
         // Shortcut intercept: while the menu is open, a matching
         // keypress synthesizes a click and closes the menu. Resolved

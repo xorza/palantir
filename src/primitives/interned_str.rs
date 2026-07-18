@@ -82,15 +82,9 @@ impl Default for TextInput<'_> {
     }
 }
 
-impl<'a> From<&'a str> for TextInput<'a> {
-    fn from(text: &'a str) -> Self {
-        Self::Borrowed(text)
-    }
-}
-
-impl<'a> From<&'a String> for TextInput<'a> {
-    fn from(text: &'a String) -> Self {
-        Self::Borrowed(text)
+impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for TextInput<'a> {
+    fn from(text: &'a T) -> Self {
+        Self::Borrowed(text.as_ref())
     }
 }
 
@@ -143,6 +137,7 @@ impl Hash for RecordedText {
 mod tests {
     use crate::primitives::interned_str::{InternedStr, TextArena, TextInput};
     use crate::primitives::span::Span;
+    use std::borrow::Cow;
     use std::rc::Rc;
 
     #[test]
@@ -159,5 +154,17 @@ mod tests {
                 .is_empty()
         );
         assert!(!TextInput::Interned(InternedStr::arena_backed(Span::new(0, 1), arena)).is_empty());
+
+        let nested_borrow = "nested";
+        let TextInput::Borrowed(text) = TextInput::from(&nested_borrow) else {
+            panic!("nested string borrow must stay borrowed");
+        };
+        assert_eq!(text, "nested");
+
+        let cow = Cow::Borrowed("cow");
+        let TextInput::Borrowed(text) = TextInput::from(&cow) else {
+            panic!("borrowed Cow must stay borrowed");
+        };
+        assert_eq!(text, "cow");
     }
 }

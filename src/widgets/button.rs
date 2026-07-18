@@ -92,7 +92,7 @@ impl<'a> Button<'a> {
 
         ui.node(id, element, Some(&look.background), |ui| {
             if !label.is_empty() {
-                let label = ui.intern_text(label);
+                let label = ui.intern(label);
                 ui.add_shape(Shape::Text {
                     local_origin: None,
                     text: label,
