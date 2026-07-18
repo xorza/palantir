@@ -216,9 +216,24 @@ impl WgpuBackend {
         // steady state. wgpu allocates a new chunk only when the
         // active one can't fit a write.
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
-        let mut backend = Self {
+        let queue = Queue::new(queue);
+        let features = device.features();
+        let timestamp_period = queue.get_timestamp_period();
+        let gpu_timings = (config.collect_gpu_stats
+            && features.contains(wgpu::Features::TIMESTAMP_QUERY)
+            && timestamp_period > 0.0)
+            .then(|| {
+                GpuTimings::new(
+                    &device,
+                    timestamp_period,
+                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+                    features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
+                    shared.pass_stats,
+                )
+            });
+        Self {
             device,
-            queue: Queue::new(queue),
+            queue,
             staging_belt,
             gradient,
             quad,
@@ -229,22 +244,8 @@ impl WgpuBackend {
             debug,
             pipelines,
             assets: shared.assets,
-            gpu_timings: None,
-        };
-        let features = backend.device.features();
-        backend.gpu_timings = (config.collect_gpu_stats
-            && features.contains(wgpu::Features::TIMESTAMP_QUERY)
-            && backend.queue.get_timestamp_period() > 0.0)
-            .then(|| {
-                GpuTimings::new(
-                    &backend.device,
-                    backend.queue.get_timestamp_period(),
-                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-                    features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                    shared.pass_stats,
-                )
-            });
-        backend
+            gpu_timings,
+        }
     }
 
     /// Ensure the pipeline set for `format` exists, building + caching it
