@@ -14,16 +14,16 @@ use crate::primitives::size::Size;
 
 /// One entry on the recording ancestor stack
 /// ([`RecordingScratch::open_frames`]). Carries the open node's
-/// `NodeId` and a precomputed `disabled` cascade bit
-/// (`parent.ancestor_or_self_disabled || new_node.disabled`) so
-/// [`RecordingScratch::ancestor_disabled`] is an O(1) read. The node's
-/// resolved `WidgetId` is read on demand via
+/// `NodeId` plus precomputed disabled and effective-visibility cascade
+/// bits, so inherited state is available during recording without a
+/// tree walk. The node's resolved `WidgetId` is read on demand via
 /// `records.id[node.idx()]` at the one site that needs it
 /// (`Ui::widget_id`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
     pub(crate) ancestor_or_self_disabled: bool,
+    pub(crate) effectively_visible: bool,
     /// Paint-arena rows this node's span holds so far: the chrome row
     /// (seeded to 1 when a `ChromeRow` was allocated at open) plus one
     /// per direct shape / immediate child, bumped in record order.
@@ -45,10 +45,9 @@ pub(crate) struct RecordingScratch {
     /// `pre_record` ↔ root `close_node` window. Capacity retained across
     /// frames.
     ///
-    /// Each frame carries a precomputed `ancestor_or_self_disabled` bit:
-    /// on push, OR the new node's `disabled` with the parent frame's
-    /// bit. That makes [`Self::ancestor_disabled`] a one-element load
-    /// (read from `last()`) instead of an O(depth) walk.
+    /// Each frame carries precomputed disabled and effective-visibility
+    /// cascade bits. That makes inherited state a one-element load
+    /// instead of an O(depth) walk.
     pub(crate) open_frames: Vec<OpenFrame>,
 
     /// Placement for the active `Forest::push_layer` scope. Root mints

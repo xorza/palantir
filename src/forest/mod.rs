@@ -227,6 +227,8 @@ impl Forest {
     /// `PaintMod` at paint time and `post_record` folds the anim's
     /// `next_wake` into the host's repaint queue. Drops silently
     /// (no entry pushed) if the shape itself was noop-collapsed.
+    /// Effectively invisible shapes stay authored but omit their
+    /// animation row until a visible record pass resumes them.
     pub(crate) fn add_shape_animated(
         &mut self,
         shape: Shape<'_>,
@@ -243,6 +245,9 @@ impl Forest {
         };
         let row = frame.paint_rows;
         frame.paint_rows += 1;
+        if !frame.effectively_visible {
+            return;
+        }
         tree.paint_anims.push_entry(
             shape_idx,
             PaintAnimEntry {
