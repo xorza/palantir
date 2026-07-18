@@ -127,15 +127,15 @@ impl Ui {
     /// clock still tracks the host's true time.
     pub(crate) const MAX_DT: f32 = MAX_ANIM_DT;
 
-    /// Construct a per-window `Ui` from the host's [`UiShared`] capabilities and
-    /// a fresh [`RecordStore`]. The capabilities provide the same text and
-    /// render assets used by the backend, plus shared diagnostics and the live
-    /// window directory. The store remains owned by this `Ui`, so retained
-    /// shape spans are isolated from other windows' record passes.
-    pub(crate) fn new(shared: UiShared, record_store: RecordStore) -> Self {
+    /// Construct a per-window `Ui` from the host's [`UiShared`] capabilities.
+    /// The capabilities provide the same text and render assets used by the
+    /// backend, plus shared diagnostics and the live window directory. Each
+    /// `Ui` creates its own [`RecordStore`], so retained shape spans are
+    /// isolated from other windows' record passes.
+    pub(crate) fn new(shared: UiShared) -> Self {
         Self {
             shared,
-            record_store,
+            record_store: RecordStore::default(),
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
@@ -1280,7 +1280,7 @@ pub(crate) mod test_support {
     /// disconnected one.
     impl Default for Ui {
         fn default() -> Self {
-            Self::new(HostShared::default().ui_shared(), RecordStore::default())
+            Self::new(HostShared::default().ui_shared())
         }
     }
 
@@ -1324,7 +1324,7 @@ pub(crate) mod test_support {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
             let shared = HostShared::new(SHARED.with(Clone::clone));
-            let mut ui = Self::new(shared.ui_shared(), RecordStore::default());
+            let mut ui = Self::new(shared.ui_shared());
             ui.mark_warm_for_test();
             ui
         }

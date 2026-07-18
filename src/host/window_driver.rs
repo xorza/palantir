@@ -245,7 +245,7 @@ impl WindowDriverBuilder<'_> {
     pub(crate) fn build(self) -> WindowDriver {
         WindowDriver {
             token: self.token,
-            ui: Ui::new(self.shared.ui_shared(), Default::default()),
+            ui: Ui::new(self.shared.ui_shared()),
             frontend: Frontend::new(self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
