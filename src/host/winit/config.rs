@@ -12,7 +12,9 @@ use crate::window::WindowConfig;
 pub struct WinitHostConfig {
     /// The first window's options.
     pub window: WindowConfig,
-    /// Swapchain present mode for every window's surface.
+    /// App-global presentation policy requested for every window. Supported
+    /// explicit modes are kept; unsupported ones use the matching automatic
+    /// policy for that surface.
     pub present_mode: wgpu::PresentMode,
     /// Adapter power preference — selects the shared adapter at startup.
     pub power_preference: wgpu::PowerPreference,

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use glam::UVec2;
-use winit::window::Window;
+use winit::window::{Window, WindowId};
 
 use crate::host::shared::HostShared;
 use crate::host::winit::config::WinitHostConfig;
@@ -20,9 +20,9 @@ pub(crate) struct SurfaceFactory {
     /// the device's lifetime, cached so the host's per-event resize clamp
     /// doesn't re-query `device.limits()`.
     pub(crate) max_texture_dim: u32,
-    /// Swapchain present mode applied to every window's surface — fixed
-    /// at startup from `WinitHostConfig`, app-global.
-    present_mode: wgpu::PresentMode,
+    /// App-global presentation policy requested through `WinitHostConfig`.
+    /// Each surface negotiates it against its own capabilities.
+    requested_present_mode: wgpu::PresentMode,
 }
 
 /// A window's swapchain pieces, produced by [`SurfaceFactory::make_surface`]. The
@@ -111,11 +111,14 @@ impl GpuInit {
             instance,
             adapter,
             max_texture_dim,
-            present_mode: cfg.present_mode,
+            requested_present_mode: cfg.present_mode,
         };
         let size = window.inner_size();
-        let first_surface =
-            surfaces.build_window_surface(surface, UVec2::new(size.width, size.height));
+        let first_surface = surfaces.build_window_surface(
+            surface,
+            UVec2::new(size.width, size.height),
+            window.id(),
+        );
         Self {
             surfaces,
             backend,
@@ -132,7 +135,7 @@ impl SurfaceFactory {
             .create_surface(window.clone())
             .expect("create surface");
         let size = window.inner_size();
-        self.build_window_surface(surface, UVec2::new(size.width, size.height))
+        self.build_window_surface(surface, UVec2::new(size.width, size.height), window.id())
     }
 
     /// Pick an sRGB swapchain format and bundle `surface` with a fresh
@@ -141,8 +144,23 @@ impl SurfaceFactory {
     /// which applies it). `WindowDriver::frame` applies it lazily on first
     /// paint (it notices `configured == None`), so there's no eager GPU
     /// reconfigure here.
-    fn build_window_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {
+    fn build_window_surface(
+        &self,
+        surface: wgpu::Surface<'static>,
+        size: UVec2,
+        window_id: WindowId,
+    ) -> WindowSurface {
         let caps = surface.get_capabilities(&self.adapter);
+        let present_mode = negotiate_present_mode(self.requested_present_mode, &caps.present_modes);
+        if present_mode != self.requested_present_mode {
+            tracing::warn!(
+                ?window_id,
+                requested = ?self.requested_present_mode,
+                fallback = ?present_mode,
+                supported = ?caps.present_modes,
+                "requested present mode is unsupported by this surface"
+            );
+        }
         // Color pipeline assumes an sRGB swapchain target — see the
         // colour section of AGENTS.md. Non-sRGB would skip the GPU
         // linear→sRGB encode and silently darken every paint.
@@ -163,7 +181,7 @@ impl SurfaceFactory {
             color_space: wgpu::SurfaceColorSpace::Srgb,
             width: size.x.max(1),
             height: size.y.max(1),
-            present_mode: self.present_mode,
+            present_mode,
             alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
                 wgpu::CompositeAlphaMode::Opaque
             } else {
@@ -175,5 +193,107 @@ impl SurfaceFactory {
             desired_maximum_frame_latency: 1,
         };
         WindowSurface { surface, config }
+    }
+}
+
+fn negotiate_present_mode(
+    requested: wgpu::PresentMode,
+    supported: &[wgpu::PresentMode],
+) -> wgpu::PresentMode {
+    match requested {
+        wgpu::PresentMode::AutoVsync | wgpu::PresentMode::AutoNoVsync => requested,
+        explicit if supported.contains(&explicit) => explicit,
+        wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => wgpu::PresentMode::AutoVsync,
+        wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox => wgpu::PresentMode::AutoNoVsync,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wgpu::PresentMode;
+
+    use crate::host::winit::gpu::negotiate_present_mode;
+
+    #[derive(Debug)]
+    struct PresentModeCase {
+        requested: PresentMode,
+        supported: Vec<PresentMode>,
+        expected: PresentMode,
+    }
+
+    #[test]
+    fn present_mode_negotiation_preserves_supported_modes_and_policy() {
+        let cases = [
+            PresentModeCase {
+                requested: PresentMode::AutoVsync,
+                supported: vec![],
+                expected: PresentMode::AutoVsync,
+            },
+            PresentModeCase {
+                requested: PresentMode::AutoNoVsync,
+                supported: vec![PresentMode::Fifo],
+                expected: PresentMode::AutoNoVsync,
+            },
+            PresentModeCase {
+                requested: PresentMode::Fifo,
+                supported: vec![PresentMode::Fifo],
+                expected: PresentMode::Fifo,
+            },
+            PresentModeCase {
+                requested: PresentMode::FifoRelaxed,
+                supported: vec![PresentMode::Fifo, PresentMode::FifoRelaxed],
+                expected: PresentMode::FifoRelaxed,
+            },
+            PresentModeCase {
+                requested: PresentMode::Immediate,
+                supported: vec![PresentMode::Immediate],
+                expected: PresentMode::Immediate,
+            },
+            PresentModeCase {
+                requested: PresentMode::Mailbox,
+                supported: vec![PresentMode::Mailbox],
+                expected: PresentMode::Mailbox,
+            },
+            PresentModeCase {
+                requested: PresentMode::Fifo,
+                supported: vec![],
+                expected: PresentMode::AutoVsync,
+            },
+            PresentModeCase {
+                requested: PresentMode::FifoRelaxed,
+                supported: vec![PresentMode::Fifo],
+                expected: PresentMode::AutoVsync,
+            },
+            PresentModeCase {
+                requested: PresentMode::Immediate,
+                supported: vec![PresentMode::Fifo],
+                expected: PresentMode::AutoNoVsync,
+            },
+            PresentModeCase {
+                requested: PresentMode::Mailbox,
+                supported: vec![PresentMode::Fifo],
+                expected: PresentMode::AutoNoVsync,
+            },
+        ];
+
+        for case in cases {
+            assert_eq!(
+                negotiate_present_mode(case.requested, &case.supported),
+                case.expected,
+                "{case:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn present_mode_is_negotiated_independently_for_each_surface() {
+        let requested = PresentMode::Mailbox;
+        let bootstrap_mode =
+            negotiate_present_mode(requested, &[PresentMode::Fifo, PresentMode::Mailbox]);
+        let secondary_mode = negotiate_present_mode(requested, &[PresentMode::Fifo]);
+
+        assert_eq!(bootstrap_mode, PresentMode::Mailbox);
+        assert_eq!(secondary_mode, PresentMode::AutoNoVsync);
+        assert_ne!(bootstrap_mode, secondary_mode);
     }
 }

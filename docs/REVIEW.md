@@ -129,24 +129,10 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The seven-item count above describes the earlier pruned
-pass; the seven findings below are additional. These supplemental batches are
+pass; the six findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 
 ## Batch 4 — High: Preserve GPU surface and target contracts
-
-- [ ] **Negotiate explicit present modes against each surface's
-  capabilities.** `WinitHostConfig` accepts every `wgpu::PresentMode` at
-  `src/host/winit/config.rs:11-18`, and the builder forwards it unchanged at
-  `src/host/winit/mod.rs:324-328`. `SurfaceFactory` reads capabilities but
-  negotiates only format and alpha mode, then writes the requested mode
-  directly into the configuration at `src/host/winit/gpu.rs:144-176`. An
-  unsupported explicit `Mailbox`, `Immediate`, or `FifoRelaxed` consequently
-  reaches `surface.configure` on first paint at
-  `src/host/window_driver.rs:376-384`. Resolve the mode per surface: preserve
-  automatic modes, keep supported explicit modes, and map unsupported explicit
-  modes to the matching `AutoVsync` or `AutoNoVsync` policy with a contextual
-  warning. Table-test synthetic capability lists and exercise both bootstrap
-  and secondary-window surface creation.
 
 - [ ] **Carry each transformed `GpuView`'s effective raster scale and preserve
   aspect ratio when capped.** The composer applies the ancestor transform

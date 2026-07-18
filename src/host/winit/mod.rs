@@ -321,7 +321,8 @@ where
         self
     }
 
-    /// Set the swapchain present mode for every window's surface.
+    /// Set the app-global presentation policy. An explicit mode unsupported by
+    /// a surface falls back to its matching automatic policy.
     pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
         self.config.present_mode = mode;
         self
