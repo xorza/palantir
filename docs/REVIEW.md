@@ -122,3 +122,169 @@ validated independently.
   backend's damage-to-scissor conversion. They deliberately differ in snapping,
   outward rounding, and antialias padding.
 - Cargo dependency analysis found no unused Aperture dependencies.
+
+## Supplemental full-module review — 2026-07-18
+
+This follow-up pass re-read every production Rust and WGSL file under `src/`,
+the animation derive crate and manifests, the local architecture/design notes,
+and the current review. Tests were consulted only to verify contracts and
+prescribe regressions. The seven-item count above describes the earlier pruned
+pass; the nine findings below are additional. These supplemental batches are
+ordered by priority and are independently implementable.
+
+## Batch 3 — High: Restore frame- and pass-scoped ownership
+
+- [ ] **Make record-pass-scoped text impossible to misresolve in release.**
+  `Ui::fmt` and `Ui::intern` promise that reuse after the next record pass
+  panics at `src/ui/mod.rs:904-930`, and `RecordStore::clear` advances the
+  generation before reusing its scratch bytes at
+  `src/record_store.rs:114-128`. The only generation check is a
+  `debug_assert_eq!` at `src/record_store.rs:164-172`, however. Release
+  lowering therefore accepts a stale carrier and reuses its obsolete hash at
+  `src/forest/shapes/mod.rs:175-183`, while resolution slices the replacement
+  arena solely through the stale span at
+  `src/primitives/interned_str.rs:51-65`. A same-length replacement can bind
+  new bytes to the old hash and return an unrelated shaped-buffer hit; a
+  shorter replacement can panic later at an unrelated slice. Replace the
+  cloneable stale-capable representation with generation-owned arena storage
+  whose bytes and hash remain paired, recycling arenas once their last handles
+  drop so correct steady state remains allocation-free. Validate release builds
+  with same-length, shorter, and longer replacements plus settling-pass reuse,
+  and benchmark the carrier clone/drop cost.
+
+- [ ] **Attribute accumulated scroll and pinch deltas to their event-time
+  targets.** Pointer moves immediately replace `scroll_target` and
+  `pinch_target` at `src/input/mod.rs:552-580`, but subsequent scroll and zoom
+  events accumulate into three frame-global totals at
+  `src/input/mod.rs:681-711`. Response construction later assigns all totals to
+  whichever target is current at record time at
+  `src/input/mod.rs:853-894,1024-1040`. Thus “scroll over A, move to B, render”
+  delivers A's delta to B; multiple targets in one host-event batch collapse
+  onto the last one, and pinch has the same defect. Retain capacity-backed
+  per-`WidgetId` pixel, line, and zoom accumulators, clear their lengths at
+  frame end, and query by id. Validate A→B routing with and without a second
+  delta, pointer leave after a delta, multiplicative pinch accumulation, and
+  stable capacities after warmup.
+
+- [ ] **Drain deferred window commands after every offscreen frame.**
+  `Ui::open_window` and `Ui::close_window` enqueue requests at
+  `src/ui/mod.rs:726-768`, with close appending unconditionally. Windowed frames
+  drain them through `window_frame_output` at
+  `src/host/window_driver.rs:612-624`, called from
+  `src/host/window_driver.rs:386-392`; the offscreen path renders and returns
+  without that completion step at `src/host/window_driver.rs:394-418`, and
+  `OffscreenHost` delegates directly at `src/host/offscreen.rs:131-145`.
+  Repeated headless close requests therefore grow without bound, while distinct
+  opens remain permanently queued, contradicting both APIs' documented
+  headless no-op behavior. Add a capacity-retaining headless completion path
+  that clears opens/closes and resets window-frame/veto state after rendering.
+  Cover cold-start and replay passes, assert empty queues after every frame,
+  verify capacity stabilization, and keep offscreen pixels unchanged.
+
+## Batch 4 — High: Preserve GPU surface and target contracts
+
+- [ ] **Negotiate explicit present modes against each surface's
+  capabilities.** `WinitHostConfig` accepts every `wgpu::PresentMode` at
+  `src/host/winit/config.rs:11-18`, and the builder forwards it unchanged at
+  `src/host/winit/mod.rs:324-328`. `SurfaceFactory` reads capabilities but
+  negotiates only format and alpha mode, then writes the requested mode
+  directly into the configuration at `src/host/winit/gpu.rs:144-176`. An
+  unsupported explicit `Mailbox`, `Immediate`, or `FifoRelaxed` consequently
+  reaches `surface.configure` on first paint at
+  `src/host/window_driver.rs:376-384`. Resolve the mode per surface: preserve
+  automatic modes, keep supported explicit modes, and map unsupported explicit
+  modes to the matching `AutoVsync` or `AutoNoVsync` policy with a contextual
+  warning. Table-test synthetic capability lists and exercise both bootstrap
+  and secondary-window surface creation.
+
+- [ ] **Carry each transformed `GpuView`'s effective raster scale and preserve
+  aspect ratio when capped.** The composer applies the ancestor transform
+  before deriving the physical target and then clamps width and height
+  independently at `src/renderer/frontend/composer/mod.rs:782-820`.
+  `RenderTargetDraw` carries only id, used size, and callback at
+  `src/renderer/render_buffer/image.rs:10-22`, so the backend supplies the
+  window's DPR to every callback at `src/renderer/backend/mod.rs:522-528` and
+  `src/renderer/backend/image_pipeline/render_target.rs:26-77`, despite
+  `GpuFrameCtx::scale` promising the logical-to-physical scale at
+  `src/renderer/gpu_view.rs:73-82`. A view under a 2x ancestor gets a 2x target
+  but sees only DPR; independently capping one dimension also stretches its
+  rendered content when composited. Apply one uniform downsample factor when
+  either axis exceeds the device cap, carry the resulting effective scale on
+  `RenderTargetDraw`, and pass that per-view value to the callback. Validate
+  nested transforms at DPR 1 and 2, wide and tall over-cap targets, and
+  callback-rendered circles/squares before compositing.
+
+## Batch 5 — Medium: Reject malformed values at their owning boundary
+
+- [ ] **Establish one text-metric invariant across theme loading, layout, and
+  shaping.** `TextStyle` exposes raw `font_size_px` and `line_height_mult` and
+  derives unrestricted deserialization at
+  `src/widgets/theme/text_style.rs:14-40`; its helpers perform no validation at
+  `src/widgets/theme/text_style.rs:65-97`. `Theme` validates only
+  `text_scale`, mutates it before multiplying every stored size, and does not
+  preflight overflow at `src/widgets/theme/mod.rs:100-157`. At the shaping
+  boundary, `ShapeParams` is also raw at `src/text/mod.rs:170-184`: mono
+  accepts every non-empty input and computes with negative/NaN metrics at
+  `src/text/mod.rs:699-727`, while cosmic checks only
+  `font_size_px <= 0.0` before quantization and `Metrics::new` at
+  `src/text/cosmic.rs:53-55,311-335`; `Shape::is_noop` ignores both metrics at
+  `src/shape.rs:827-834`. Introduce a named, invariant-bearing text-metrics
+  value with font size and line height finite and above the UI epsilon, use it for
+  deserialization and every mono/cosmic dispatch, and preflight all scaled
+  styles before atomically updating a theme. Define finite wrap-width semantics
+  separately. Table-test zero, negative, sub-EPS, NaN, and infinity across
+  theme TOML, direct/reuse shaping, wrap/clip/ellipsis, and Text/TextEdit
+  recording; theme input must fail deserialization and runtime shaping must
+  return the exact invalid/no-command result without entering cache or renderer
+  state.
+
+- [ ] **Enforce the public `Mesh` index invariant while constructing the
+  mesh.** `Mesh::vertex` truncates `usize` to `u32`, `triangle` accepts
+  arbitrary indices, and `append` performs unchecked rebasing at
+  `src/primitives/mesh.rs:125-158`. `is_noop` checks only vertex presence and
+  triangle-count divisibility at `src/primitives/mesh.rs:102-107`, after which
+  lowering copies malformed indices directly into the shared GPU payload at
+  `src/forest/shapes/mod.rs:224-243`. Use checked vertex-index conversion,
+  assert every triangle index is in range, and checked-add rebased indices in
+  `append`, so authoring mistakes fail at their source rather than producing
+  robust-access geometry. Validate each invalid triangle position, the largest
+  valid boundary, exact append rebasing, and unchanged procedural
+  vertices/indices/hashes/bounds.
+
+- [ ] **Close non-finite and f16-overflow holes in layout inputs.**
+  `Track::min` permits positive infinity at
+  `src/layout/types/track.rs:38-49`; the element-bound validator likewise
+  accepts an infinite lower bound at `src/forest/element/mod.rs:292-304`.
+  Stack/WrapStack gap setters accept positive infinity and values above f16's
+  finite ceiling at `src/forest/element/mod.rs:403-420`, which `Gaps` silently
+  packs to infinity at `src/forest/element/columns.rs:39-60`; Grid's f32 gaps
+  have the same finite-value hole at `src/widgets/grid.rs:71-87`. These values
+  reach outer clamps at `src/layout/engine.rs:251-274`, Grid content floors at
+  `src/layout/grid/mod.rs:779-782`, and even `infinity * 0 = NaN` for an empty
+  Stack at `src/layout/stack/mod.rs:153-178`. Require finite lower bounds,
+  reserve positive infinity for upper-bound sentinels, and centralize
+  nonnegative finite/f16-representable gap validation; keep immediate-mode
+  authoring checks debug-only where required by the hot-path policy, but reject
+  serialized/cold invalid input in release. Test NaN, both infinities,
+  f16-overflow values, the largest finite f16 gap, infinite maxima, and finite
+  zero/one/two-child layouts.
+
+## Batch 6 — Medium: Make snap-only animation explicit
+
+- [ ] **Represent gradient brushes as snap-only spring fields instead of
+  emulating vector arithmetic.** `Brush` claims every transition involving a
+  gradient settles on the first spring tick at
+  `src/primitives/brush/mod.rs:599-606`, but mismatched `sub` returns its left
+  operand at `src/primitives/brush/mod.rs:626-630`. `spring::step` treats that
+  operand as displacement at `src/animation/spring.rs:110-128`, and retargeting
+  uses the same invalid algebra to decide whether velocity aids the new motion
+  at `src/animation/mod.rs:386-403`. Gradient→Solid starts with zero-magnitude
+  gradient displacement and snaps, while Solid→Gradient can spring the solid
+  toward transparent for many frames before snapping; carried velocity makes
+  the asymmetry worse. Add an explicit fieldwise spring-normalization hook to
+  `Animatable` and its derive: Solid/Solid retains color math, while any pair
+  involving a gradient installs the target brush with zero field velocity
+  without stopping sibling fields in compound values. Validate both directions
+  for all gradient variants, gradient→gradient, nonzero carried velocity,
+  derived `Background`/look types, unchanged Solid/Solid trajectories, and no
+  surplus repaint ticks after genuine fields settle.
