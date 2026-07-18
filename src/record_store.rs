@@ -17,7 +17,7 @@ use crate::common::hash::hash_str;
 use crate::primitives::brush::{FillAxis, GradientStops, Interp};
 use crate::primitives::color::ColorU8;
 use crate::primitives::fill_wire::FillKind;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::{InternedStr, RecordedText, TextArena};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::span::Span;
 use glam::Vec2;
@@ -60,10 +60,6 @@ pub(crate) struct RecordStore {
 /// spans recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default, Debug)]
 pub(crate) struct RecordPayloads {
-    /// Incremented by every [`RecordStore::clear`]. Record-local text
-    /// handles capture this value so a later record pass cannot reuse
-    /// their span and cached hash against replacement bytes.
-    record_pass_generation: u64,
     /// User-supplied mesh geometry (`Shape::Mesh`), written at record
     /// time only — compose reads the payloads, never appends.
     pub(crate) meshes: Mesh,
@@ -83,13 +79,16 @@ pub(crate) struct RecordPayloads {
     /// needs the record payloads (not the originating tree) to resolve a
     /// gradient id.
     pub(crate) gradients: Vec<RecordedGradient>,
-    /// `Ui::fmt` formatter scratch. Frame-local handles returned by
-    /// [`RecordStore::intern_fmt`] point into this buffer; owned text
-    /// keeps its bytes inline on `ShapeRecord::Text`. Cross-tree on
-    /// purpose so handles survive `Ui::layer(...)` scopes. Cleared per
-    /// record pass, capacity retained — steady-state `ui.fmt(...)`
-    /// flows skip the `format!() → String` allocation entirely.
-    pub(crate) fmt_scratch: String,
+    text: TextStore,
+}
+
+/// Cross-tree text storage for one window. Handles can cross layer scopes and
+/// retain their source bytes; the active/spare pair keeps that safe while
+/// recycling allocations once escaped handles drop.
+#[derive(Debug, Default)]
+struct TextStore {
+    active: Rc<TextArena>,
+    spare: Option<Rc<TextArena>>,
 }
 
 impl RecordPayloads {
@@ -99,6 +98,67 @@ impl RecordPayloads {
         );
         self.gradients.push(gradient);
         id
+    }
+
+    pub(crate) fn text_bytes(&self) -> Ref<'_, str> {
+        self.text.bytes()
+    }
+}
+
+impl TextStore {
+    fn bytes(&self) -> Ref<'_, str> {
+        Ref::map(self.active.bytes.borrow(), String::as_str)
+    }
+
+    fn clear(&mut self) {
+        if Rc::strong_count(&self.active) == 1 {
+            self.active.bytes.borrow_mut().clear();
+            return;
+        }
+
+        let previous = std::mem::take(&mut self.active);
+        self.active = match self.spare.take() {
+            Some(arena) if Rc::strong_count(&arena) == 1 => arena,
+            Some(_) | None => Rc::default(),
+        };
+        self.active.bytes.borrow_mut().clear();
+        self.spare = Some(previous);
+    }
+
+    fn intern_str(&self, text: &str) -> InternedStr {
+        let mut bytes = self.active.bytes.borrow_mut();
+        let start = bytes.len();
+        bytes.push_str(text);
+        InternedStr::arena_backed(
+            Span::new(start as u32, text.len() as u32),
+            self.active.clone(),
+        )
+    }
+
+    fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr {
+        let mut bytes = self.active.bytes.borrow_mut();
+        let start = bytes.len();
+        bytes.write_fmt(args).unwrap();
+        let end = bytes.len();
+        InternedStr::arena_backed(
+            Span::new(start as u32, (end - start) as u32),
+            self.active.clone(),
+        )
+    }
+
+    fn record(&self, text: InternedStr) -> RecordedText {
+        let source = text.arena.bytes.borrow();
+        let source = &source[text.span.range()];
+        let hash = hash_str(source);
+        let span = if Rc::ptr_eq(&text.arena, &self.active) {
+            text.span
+        } else {
+            let mut target = self.active.bytes.borrow_mut();
+            let start = target.len();
+            target.push_str(source);
+            Span::new(start as u32, source.len() as u32)
+        };
+        RecordedText::new(span, hash)
     }
 }
 
@@ -111,64 +171,41 @@ impl RecordStore {
         self.payloads.borrow_mut()
     }
 
-    /// Drop all record-pass storage and invalidate its text handles.
-    /// PaintOnly skips this so the retained tree and payload generation
-    /// remain valid together.
+    /// Drop all record-pass storage.
+    /// PaintOnly skips this so the retained tree and payload storage remain
+    /// valid together.
     pub(crate) fn clear(&self) {
         let mut payloads = self.payloads.borrow_mut();
-        payloads.record_pass_generation = payloads
-            .record_pass_generation
-            .checked_add(1)
-            .expect("RecordStore generation overflowed");
         payloads.meshes.clear();
         payloads.polyline_points.clear();
         payloads.polyline_colors.clear();
         payloads.gradients.clear();
-        payloads.fmt_scratch.clear();
+        payloads.text.clear();
     }
 
-    /// Copy `s` into the record-pass text storage and return a frame-local
+    /// Copy `s` into the record-pass text storage and return an arena-backed
     /// [`InternedStr`]. Backs [`crate::Ui::intern`] for the format-less
     /// case (plain `&str` borrow, no `format_args!`).
     #[must_use]
     pub(crate) fn intern_str(&self, s: &str) -> InternedStr {
-        let mut payloads = self.payloads.borrow_mut();
-        let start = payloads.fmt_scratch.len();
-        payloads.fmt_scratch.push_str(s);
-        let hash = hash_str(s);
-        InternedStr::frame_local(
-            Span::new(start as u32, s.len() as u32),
-            hash,
-            payloads.record_pass_generation,
-        )
+        let payloads = self.payloads.borrow();
+        payloads.text.intern_str(s)
     }
 
     /// Format `args` directly into the record-pass text storage and return
-    /// a frame-local [`InternedStr`] spanning the freshly-written bytes.
+    /// an arena-backed [`InternedStr`] spanning the freshly-written bytes.
     /// Backs [`crate::Ui::fmt`].
     #[must_use]
     pub(crate) fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr {
-        let mut payloads = self.payloads.borrow_mut();
-        let start = payloads.fmt_scratch.len();
-        payloads.fmt_scratch.write_fmt(args).unwrap();
-        let end = payloads.fmt_scratch.len();
-        let bytes = &payloads.fmt_scratch.as_str()[start..end];
-        let hash = hash_str(bytes);
-        InternedStr::frame_local(
-            Span::new(start as u32, (end - start) as u32),
-            hash,
-            payloads.record_pass_generation,
-        )
+        let payloads = self.payloads.borrow();
+        payloads.text.intern_fmt(args)
     }
 
-    /// Enforce that a frame-local text handle belongs to the active
-    /// record pass before its cached hash enters the shape tree.
-    #[inline]
-    pub(crate) fn assert_text_generation(&self, generation: u64) {
-        debug_assert_eq!(
-            generation,
-            self.payloads.borrow().record_pass_generation,
-            "frame-local text reused after record store reset",
-        );
+    /// Normalize user-facing text into storage owned by this record pass.
+    /// Handles from another arena are copied once so every recorded span
+    /// resolves against `RecordPayloads::text_bytes`.
+    pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
+        let payloads = self.payloads.borrow();
+        payloads.text.record(text)
     }
 }
