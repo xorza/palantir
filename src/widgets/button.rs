@@ -12,7 +12,7 @@ use crate::widgets::{Response, WidgetEntry, enter_widget};
 pub struct Button<'a> {
     element: Element,
     style: Option<ButtonTheme>,
-    label: Option<TextInput<'a>>,
+    label: TextInput<'a>,
     label_align: Align,
     label_wrap: TextWrap,
 }
@@ -26,7 +26,7 @@ impl<'a> Button<'a> {
         Self {
             element,
             style: None,
-            label: None,
+            label: TextInput::default(),
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
@@ -44,7 +44,7 @@ impl<'a> Button<'a> {
         self
     }
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = Some(label.into());
+        self.label = label.into();
         self
     }
 
@@ -86,12 +86,13 @@ impl<'a> Button<'a> {
             self.style.as_ref(),
             |t| &t.button,
         );
-        let label = self.label.map(|label| ui.intern_text(label));
+        let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
         ui.node(id, element, Some(&look.background), |ui| {
-            if let Some(label) = label {
+            if !label.is_empty() {
+                let label = ui.intern_text(label);
                 ui.add_shape(Shape::Text {
                     local_origin: None,
                     text: label,

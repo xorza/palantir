@@ -24,7 +24,7 @@ use glam::Vec2;
 pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
-    label: Option<TextInput<'a>>,
+    label: TextInput<'a>,
     style: Option<ToggleTheme>,
 }
 
@@ -36,13 +36,13 @@ impl<'a> Checkbox<'a> {
         Self {
             element,
             value,
-            label: None,
+            label: TextInput::default(),
             style: None,
         }
     }
 
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = Some(label.into());
+        self.label = label.into();
         self
     }
 
@@ -63,7 +63,6 @@ impl<'a> Checkbox<'a> {
             *self.value = !*self.value;
         }
         let checked = *self.value;
-        let label = self.label.map(|label| ui.intern_text(label));
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.checkbox);
         let chrome = ToggleChrome::new(theme, state, checked, false);
@@ -76,7 +75,7 @@ impl<'a> Checkbox<'a> {
             self.element,
             raw_state,
             chrome,
-            label,
+            self.label,
             |ui, box_size| {
                 if checked {
                     let pts = check_pts(box_size);

@@ -29,7 +29,7 @@ const TRACK_ASPECT: f32 = 1.75;
 pub struct Switch<'a> {
     element: Element,
     value: &'a mut bool,
-    label: Option<TextInput<'a>>,
+    label: TextInput<'a>,
     style: Option<ToggleTheme>,
 }
 
@@ -41,13 +41,13 @@ impl<'a> Switch<'a> {
         Self {
             element,
             value,
-            label: None,
+            label: TextInput::default(),
             style: None,
         }
     }
 
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = Some(label.into());
+        self.label = label.into();
         self
     }
 
@@ -68,7 +68,7 @@ impl<'a> Switch<'a> {
             *self.value = !*self.value;
         }
         let on = *self.value;
-        let label = self.label.map(|label| ui.intern_text(label));
+        let label = self.label;
 
         // Resolve everything off the theme before the `&mut ui` animate
         // reborrow (the borrow may point into `ui.theme`).
@@ -115,7 +115,7 @@ impl<'a> Switch<'a> {
                 ui.node(knob_id, knob, Some(&knob_bg), |_| {});
             });
 
-            if let Some(label) = label {
+            if !label.is_empty() {
                 Text::new(label)
                     .id(id.with("label"))
                     .style(look.text)
