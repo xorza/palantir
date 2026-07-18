@@ -1,6 +1,6 @@
-//! Cross-frame shared GPU resource caches: the image registry and the
-//! gradient LUT atlas, bundled so subsystems thread one handle instead
-//! of two. Both inner fields are `Rc`-shared, so cloning [`RenderCaches`]
+//! Cross-frame shared render assets: the image registry and the gradient LUT
+//! atlas, bundled so subsystems thread one handle instead
+//! of two. Both inner fields are `Rc`-shared, so cloning [`RenderAssets`]
 //! is cheap and every clone observes the same state.
 //!
 //! Lifetime: app-global, shared by every window and the one backend. Distinct
@@ -12,7 +12,7 @@ use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id::TextureIdSource;
 
 #[derive(Clone, Debug)]
-pub(crate) struct RenderCaches {
+pub(crate) struct RenderAssets {
     /// Shared authority for registered images and `GpuView` render targets.
     pub(crate) texture_ids: TextureIdSource,
     /// Image cache. Authoring code stages bytes once via
@@ -25,7 +25,7 @@ pub(crate) struct RenderCaches {
     pub(crate) gradients: GradientAtlas,
 }
 
-impl RenderCaches {
+impl RenderAssets {
     pub(crate) fn new() -> Self {
         let texture_ids = TextureIdSource::default();
         Self {
@@ -36,7 +36,7 @@ impl RenderCaches {
     }
 }
 
-impl Default for RenderCaches {
+impl Default for RenderAssets {
     fn default() -> Self {
         Self::new()
     }
@@ -44,15 +44,15 @@ impl Default for RenderCaches {
 
 #[cfg(test)]
 mod tests {
-    use super::RenderCaches;
     use crate::primitives::image::Image;
+    use crate::renderer::assets::RenderAssets;
 
     #[test]
     fn images_and_gpu_views_share_one_texture_id_authority() {
-        let caches = RenderCaches::default();
-        let gpu_view_id = caches.texture_ids.reserve();
+        let assets = RenderAssets::default();
+        let gpu_view_id = assets.texture_ids.reserve();
         let image = Image::from_rgba8(1, 1, vec![0, 0, 0, 0]);
-        let image_id = caches.images.register(image).id();
+        let image_id = assets.images.register(image).id();
 
         assert_ne!(gpu_view_id, image_id);
     }

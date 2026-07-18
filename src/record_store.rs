@@ -1,7 +1,6 @@
-//! Per-window store for retained record payloads. Owned by `WindowRenderer`,
-//! with a cheap `Rc` clone held by its `Ui` for record-time mesh / polyline /
-//! formatting writes. Later CPU and GPU phases borrow that window's payloads
-//! explicitly.
+//! Per-window store for retained record payloads. Owned by `Ui`, which handles
+//! record-time mesh / polyline / formatting writes. Later CPU and GPU phases
+//! borrow that window's payloads through the same `Ui`.
 //! Cleared at record-pass start and retained across `PaintOnly` frames.
 //!
 //! Replaces the previous three-step copy (user `Mesh` →
@@ -41,9 +40,8 @@ pub(crate) struct RecordedGradient {
     pub(crate) interp: Interp,
 }
 
-/// Shared owner of one window's retained record payloads. `WindowRenderer`
-/// constructs one and clones it into its `Ui`; frontend and backend phases
-/// receive a borrow of the same payloads.
+/// Shared owner of one window's retained record payloads. `Ui` owns one;
+/// frontend and backend phases receive a borrow of the same payloads.
 /// Phases run sequentially (record → encode → compose → upload) so the
 /// underlying borrow is never contested; a double-borrow indicates a wiring
 /// bug and panics.

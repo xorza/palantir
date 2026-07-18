@@ -206,7 +206,7 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
 /// before any GPU submit**. No `wgpu::Device` is ever created, so the
 /// `frame/*_cpu` arms profile as pure aperture CPU work.
 ///
-/// Time is advanced from a real `Instant` exactly like `WindowRenderer::cpu_frame`
+/// Time is advanced from a real `Instant` exactly like `WindowDriver::cpu_frame`
 /// (`self.start.elapsed()`) so paint-anim / tooltip wakes fire on the
 /// same cadence as production — otherwise a frozen clock could classify
 /// frames as `PaintOnly` and skip the record closure the arms depend on.

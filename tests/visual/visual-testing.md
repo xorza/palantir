@@ -76,7 +76,7 @@ tests/visual/
   clear, scene)` returns an `RgbaImage`. Helpers: `render_after_settle(N, …)`
   for fixtures that need warmup frames before capture (e.g. scrollbars reading
   populated state), `render_with_overlay(cfg, …)` for the damage-vis tests.
-  `TwoWindowHarness` drives two `WindowRenderer`s through one backend for
+  `TwoWindowHarness` drives two `WindowDriver`s through one backend for
   retained-state interleaving checks. Private `readback()` honors the 256-byte
   row alignment.
 - **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }`, default

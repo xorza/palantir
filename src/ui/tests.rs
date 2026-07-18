@@ -4,13 +4,12 @@ use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
-use crate::host::context::HostContext;
+use crate::host::shared::HostShared;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::record_store::RecordStore;
 use crate::renderer::frontend::Frontend;
 use crate::shape::TextWrap;
 use crate::ui::damage::Damage;
@@ -25,11 +24,11 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
-    ui.ctx.shaper.measure_calls()
+    ui.shared.text.measure_calls()
 }
 
-fn ui_with_context(ctx: &HostContext) -> Ui {
-    let mut ui = Ui::new(ctx, RecordStore::default());
+fn ui_with_shared(shared: &HostShared) -> Ui {
+    let mut ui = Ui::new(shared.ui_shared());
     ui.mark_warm_for_test();
     ui
 }
@@ -95,7 +94,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // quads should be stroked, magenta-ish, and rect-equal to the two
     // colliding buttons' arranged rects.
     // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowRenderer wiring
+    // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(
@@ -168,7 +167,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let main_rect = ui.layout[Layer::Main].rect[pair.first.node.idx()];
     let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.idx()];
     // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowRenderer wiring
+    // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(
@@ -608,9 +607,9 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let ctx = HostContext::new(TextShaper::with_bundled_fonts());
-    let mut a = ui_with_context(&ctx);
-    let mut b = ui_with_context(&ctx);
+    let shared = HostShared::new(TextShaper::with_bundled_fonts());
+    let mut a = ui_with_shared(&shared);
+    let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
 
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 120.0));
@@ -619,15 +618,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let b_key = b.layout[Layer::Main].text_shapes[0].key;
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    assert!(ctx.shaper.has_cosmic_buffer(a_key));
-    assert!(ctx.shaper.has_cosmic_buffer(b_key));
+    assert!(shared.text.has_cosmic_buffer(a_key));
+    assert!(shared.text.has_cosmic_buffer(b_key));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(b.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b = ctx.shaper.measure_calls();
+    let after_b = shared.text.measure_calls();
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 140.0));
     assert_eq!(
-        ctx.shaper.measure_calls(),
+        shared.text.measure_calls(),
         after_b,
         "window B must not overwrite window A's identity reuse row",
     );
@@ -641,25 +640,24 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert!(!b.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b_removal = ctx.shaper.measure_calls();
+    let after_b_removal = shared.text.measure_calls();
     a.run_at_acked(SURFACE, |ui| text_window(ui, "window A", 160.0));
     assert_eq!(
-        ctx.shaper.measure_calls(),
+        shared.text.measure_calls(),
         after_b_removal,
         "window B removal must not evict window A's identity reuse row",
     );
-    assert!(ctx.shaper.has_cosmic_buffer(a_key));
-    assert!(ctx.shaper.has_cosmic_buffer(b_key));
+    assert!(shared.text.has_cosmic_buffer(a_key));
+    assert!(shared.text.has_cosmic_buffer(b_key));
 }
 
 #[test]
 fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     use crate::forest::element::Element;
     use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::host::context::HostContext;
+    use crate::host::shared::HostShared;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
-    use crate::record_store::RecordStore;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
     use crate::text::{FontFamily, FontWeight, TextShaper};
@@ -693,9 +691,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         });
     }
 
-    let ctx = HostContext::new(TextShaper::with_bundled_fonts());
-    let mut idle = Ui::new(&ctx, RecordStore::default());
-    let mut active = Ui::new(&ctx, RecordStore::default());
+    let shared = HostShared::new(TextShaper::with_bundled_fonts());
+    let mut idle = Ui::new(shared.ui_shared());
+    let mut active = Ui::new(shared.ui_shared());
     let display = Display::from_physical(SURFACE, 1.0);
 
     let idle_first = idle.record(FrameStamp::new(display, Duration::ZERO), idle_body);
@@ -709,9 +707,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    ctx.shaper.evict_cosmic_buffers(1);
+    shared.text.evict_cosmic_buffers(1);
     assert!(
-        !ctx.shaper.has_cosmic_buffer(idle_key),
+        !shared.text.has_cosmic_buffer(idle_key),
         "newer active-window churn must evict the idle window's key",
     );
 
@@ -722,7 +720,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     let plan = idle_paint
         .plan
         .expect("the animated text boundary must produce a paint plan");
-    assert!(!ctx.shaper.has_cosmic_buffer(idle_key));
+    assert!(!shared.text.has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
     frontend.build_for_test(&idle, plan);
@@ -732,7 +730,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         "PaintOnly must emit the retained text run",
     );
     assert!(
-        ctx.shaper.has_cosmic_buffer(idle_key),
+        shared.text.has_cosmic_buffer(idle_key),
         "encoder must restore the idle window's evicted interned text",
     );
 }
@@ -1374,11 +1372,11 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // read `close_requested` (and veto via `keep_open`) during record,
     // so an anim-wake frame escalates to Full while `wants_close` is
     // set — and drops back to PaintOnly once it clears.
-    ui.window_mailbox.wants_close = true;
+    ui.window_frame.close_requested = true;
     let r3 = ui.record(FrameStamp::new(display, half * 3), |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
     ui.frame_runtime.frame_submitted = true;
-    ui.window_mailbox.wants_close = false;
+    ui.window_frame.close_requested = false;
     let r4 = ui.record(FrameStamp::new(display, half * 4), |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
@@ -1559,14 +1557,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     }
 
-    let shared = HostContext::new(TextShaper::mono());
-    let mut a = ui_with_context(&shared);
-    let mut b = ui_with_context(&shared);
+    let shared = HostShared::new(TextShaper::mono());
+    let mut a = ui_with_shared(&shared);
+    let mut b = ui_with_shared(&shared);
     let half = Duration::from_millis(500);
 
     a.run_at_acked(SURFACE, |ui| window_a(ui, half));
     let original_row = rows(&a)[0];
-    a.ctx.caches.gradients.flush_with(|_| ());
+    a.shared.assets.gradients.flush_with(|_| ());
 
     b.run_at(SURFACE, |ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
@@ -1591,7 +1589,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let b_rows: HashSet<LutRow> = rows(&b).into_iter().collect();
     assert_eq!(b_rows.len(), (ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
-    b.ctx.caches.gradients.flush_with(|_| ());
+    b.shared.assets.gradients.flush_with(|_| ());
 
     let report = a.record(
         FrameStamp::new(Display::from_physical(SURFACE, 1.0), half),
@@ -2058,41 +2056,41 @@ fn window_requests_queue_and_survive_the_frame() {
 
     // Filed during record, still pending after the frame returned —
     // nothing in the frame pipeline clears them.
-    assert_eq!(ui.window_mailbox.pending_windows.len(), 1);
-    assert_eq!(ui.window_mailbox.pending_windows[0].token, open);
+    assert_eq!(ui.window_requests.commands.opens.len(), 1);
+    assert_eq!(ui.window_requests.commands.opens[0].token, open);
     assert_eq!(
-        ui.window_mailbox.pending_windows[0].config.title,
+        ui.window_requests.commands.opens[0].config.title,
         "inspector"
     );
-    assert_eq!(ui.window_mailbox.pending_closes, vec![close]);
+    assert_eq!(ui.window_requests.commands.closes, vec![close]);
 
     // A quiet frame (no new requests) must not drop the still-undrained
     // queue — the host might not have ticked between these two frames.
     ui.run_at(SURFACE, |_| {});
     assert_eq!(
-        ui.window_mailbox.pending_windows.len(),
+        ui.window_requests.commands.opens.len(),
         1,
         "queue must outlive a quiet frame"
     );
-    assert_eq!(ui.window_mailbox.pending_closes, vec![close]);
+    assert_eq!(ui.window_requests.commands.closes, vec![close]);
 
     // The host drains by `append`/`drain`-ing the vecs; emulate that and
     // confirm a third frame leaves them empty (no re-queue).
-    ui.window_mailbox.pending_windows.clear();
-    ui.window_mailbox.pending_closes.clear();
+    ui.window_requests.commands.opens.clear();
+    ui.window_requests.commands.closes.clear();
     ui.run_at(SURFACE, |_| {});
-    assert!(ui.window_mailbox.pending_windows.is_empty());
-    assert!(ui.window_mailbox.pending_closes.is_empty());
+    assert!(ui.window_requests.commands.opens.is_empty());
+    assert!(ui.window_requests.commands.closes.is_empty());
 
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
     assert!(!ui.window_open(open), "empty live set ⇒ nothing open");
-    ui.ctx.set_open_windows([open]);
+    ui.shared.windows.insert(open);
     assert!(ui.window_open(open));
     assert!(!ui.window_open(close), "only `open` is live");
 
-    ui.window_mailbox.position = Some(IVec2::new(-120, 48));
-    ui.window_mailbox.maximized = true;
+    ui.window_frame.position = Some(IVec2::new(-120, 48));
+    ui.window_frame.maximized = true;
     let geometry = ui.window_geometry();
     assert_eq!(geometry.inner_size, SURFACE);
     assert_eq!(geometry.outer_position, Some(IVec2::new(-120, 48)));
@@ -2116,11 +2114,11 @@ fn close_request_veto_protocol() {
             "no close pending ⇒ close_requested() false"
         );
     });
-    assert!(!ui.window_mailbox.close_vetoed);
+    assert!(!ui.window_requests.close_vetoed);
 
     // Host signals a close; an app that vetoes keeps the window open.
-    ui.window_mailbox.wants_close = true;
-    ui.window_mailbox.close_vetoed = false;
+    ui.window_frame.close_requested = true;
+    ui.window_requests.close_vetoed = false;
     ui.run_at(SURFACE, |ui| {
         assert!(
             ui.close_requested(),
@@ -2129,10 +2127,10 @@ fn close_request_veto_protocol() {
         ui.keep_open();
     });
     assert!(
-        ui.window_mailbox.close_vetoed,
+        ui.window_requests.close_vetoed,
         "keep_open must set the veto the host reads"
     );
-    let should_close = ui.window_mailbox.wants_close && !ui.window_mailbox.close_vetoed;
+    let should_close = ui.window_frame.close_requested && !ui.window_requests.close_vetoed;
     assert!(
         !should_close,
         "a vetoed request must NOT resolve to a close"
@@ -2140,12 +2138,12 @@ fn close_request_veto_protocol() {
 
     // Same signal, app ignores it: resolves to a real close. (The host
     // resets the veto before every draw.)
-    ui.window_mailbox.close_vetoed = false;
+    ui.window_requests.close_vetoed = false;
     ui.run_at(SURFACE, |ui| {
         assert!(ui.close_requested());
     });
-    assert!(!ui.window_mailbox.close_vetoed, "untouched ⇒ no veto");
-    let should_close = ui.window_mailbox.wants_close && !ui.window_mailbox.close_vetoed;
+    assert!(!ui.window_requests.close_vetoed, "untouched ⇒ no veto");
+    let should_close = ui.window_frame.close_requested && !ui.window_requests.close_vetoed;
     assert!(should_close, "an un-vetoed request must resolve to a close");
 }
 
@@ -2278,8 +2276,8 @@ fn open_window_dedups_by_token_within_a_frame() {
     ui.open_window(WindowToken(7), cfg("first"));
     ui.open_window(WindowToken(7), cfg("second"));
     ui.open_window(WindowToken(8), cfg("other"));
-    assert_eq!(ui.window_mailbox.pending_windows.len(), 2);
-    assert_eq!(ui.window_mailbox.pending_windows[0].token, WindowToken(7));
-    assert_eq!(ui.window_mailbox.pending_windows[0].config.title, "second");
-    assert_eq!(ui.window_mailbox.pending_windows[1].token, WindowToken(8));
+    assert_eq!(ui.window_requests.commands.opens.len(), 2);
+    assert_eq!(ui.window_requests.commands.opens[0].token, WindowToken(7));
+    assert_eq!(ui.window_requests.commands.opens[0].config.title, "second");
+    assert_eq!(ui.window_requests.commands.opens[1].token, WindowToken(8));
 }

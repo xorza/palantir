@@ -2,7 +2,8 @@
 //! ([`Ui`](crate::Ui)) and the windowing host
 //! ([`WinitHost`](crate::WinitHost)). Both depend *into* this module and
 //! neither back out, so the recorder never reaches up into the winit
-//! backend — [`WindowMailbox`] and `WindowConfig` deliberately carry no
+//! backend — [`WindowRequests`], [`WindowFrameState`], and `WindowConfig`
+//! deliberately carry no
 //! winit/wgpu types.
 
 use glam::{IVec2, UVec2};
@@ -188,32 +189,41 @@ pub(crate) struct PendingWindow {
     pub(crate) config: WindowConfig,
 }
 
-/// Deferred requests from `Ui` to its host plus per-draw window-manager
-/// facts flowing back into `Ui`. Retained vectors keep a steady window set
-/// allocation-free; the remaining fields are refreshed or consumed at the
-/// host frame boundary.
+/// Deferred window lifecycle commands transferred from recorders to the host.
 #[derive(Debug, Default)]
-pub(crate) struct WindowMailbox {
-    /// Open requests survive the frame boundary until the host can create
-    /// windows on its event-loop thread.
-    pub(crate) pending_windows: Vec<PendingWindow>,
-    /// Close requests drained alongside [`Self::pending_windows`].
-    pub(crate) pending_closes: Vec<WindowToken>,
-    /// Whether the OS requested that this window close for the current draw.
-    pub(crate) wants_close: bool,
+pub(crate) struct WindowCommands {
+    pub(crate) opens: Vec<PendingWindow>,
+    pub(crate) closes: Vec<WindowToken>,
+}
+
+impl WindowCommands {
+    pub(crate) fn append(&mut self, source: &mut Self) {
+        self.opens.append(&mut source.opens);
+        self.closes.append(&mut source.closes);
+    }
+}
+
+/// Deferred recorder output consumed by the window host after a frame.
+#[derive(Debug, Default)]
+pub(crate) struct WindowRequests {
+    pub(crate) commands: WindowCommands,
     /// Whether app code vetoed the current close request.
     pub(crate) close_vetoed: bool,
-    /// Host-reported outer position in physical pixels; unavailable on Wayland.
-    pub(crate) position: Option<IVec2>,
-    /// Host-reported maximized state.
-    pub(crate) maximized: bool,
     /// Last cursor requested during a record pass; retained across PaintOnly.
     pub(crate) cursor: CursorIcon,
 }
 
+/// Host-owned facts copied into `Ui` at the start of a window frame.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct WindowFrameState {
+    pub(crate) close_requested: bool,
+    pub(crate) position: Option<IVec2>,
+    pub(crate) maximized: bool,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::window::{PendingWindow, WindowCommands, WindowConfig, WindowIcon, WindowToken};
 
     #[test]
     fn window_icon_from_rgba_keeps_pixels_and_dims() {
@@ -236,5 +246,50 @@ mod tests {
     fn window_config_default_has_no_icon() {
         assert!(WindowConfig::default().icon.is_none());
         assert!(WindowConfig::new("t").icon.is_none());
+    }
+
+    #[test]
+    fn window_commands_append_preserves_order_and_drains_source() {
+        let mut commands = WindowCommands {
+            opens: vec![PendingWindow {
+                token: WindowToken(1),
+                config: WindowConfig::default(),
+            }],
+            closes: vec![WindowToken(4)],
+        };
+        let mut source = WindowCommands {
+            opens: vec![
+                PendingWindow {
+                    token: WindowToken(2),
+                    config: WindowConfig::default(),
+                },
+                PendingWindow {
+                    token: WindowToken(3),
+                    config: WindowConfig::default(),
+                },
+            ],
+            closes: vec![WindowToken(5), WindowToken(6)],
+        };
+        let source_opens_capacity = source.opens.capacity();
+        let source_closes_capacity = source.closes.capacity();
+
+        commands.append(&mut source);
+
+        assert_eq!(
+            commands
+                .opens
+                .iter()
+                .map(|pending| pending.token)
+                .collect::<Vec<_>>(),
+            [WindowToken(1), WindowToken(2), WindowToken(3)]
+        );
+        assert_eq!(
+            commands.closes,
+            [WindowToken(4), WindowToken(5), WindowToken(6)]
+        );
+        assert!(source.opens.is_empty());
+        assert!(source.closes.is_empty());
+        assert_eq!(source.opens.capacity(), source_opens_capacity);
+        assert_eq!(source.closes.capacity(), source_closes_capacity);
     }
 }

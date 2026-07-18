@@ -1,26 +1,21 @@
-//! [`Gpu`] — the shared wgpu context (instance / adapter / device / queue)
-//! built once at startup and reused by every window. No winit-event or
-//! app-contract concern lives here; it only creates surfaces and
-//! per-window [`WindowRenderer`]s.
+//! Wgpu startup and the retained [`SurfaceFactory`] used for additional
+//! windows. The created device and queue move into the one shared backend.
 
 use std::sync::Arc;
 
 use glam::UVec2;
 use winit::window::Window;
 
-use crate::host::context::HostContext;
+use crate::host::shared::HostShared;
 use crate::host::winit::config::WinitHostConfig;
-use crate::renderer::backend::WgpuBackend;
+use crate::renderer::backend::{BackendConfig, WgpuBackend};
 
-/// Shared GPU context — built once on the first `resumed` and retained
-/// for the host's lifetime so additional windows reuse one device/queue.
-/// wgpu's `Device`/`Queue` are `Arc`-backed; cloning them into each
-/// window's [`WindowRenderer`] shares one GPU context for free.
-pub(crate) struct Gpu {
+/// Surface-creation state retained after startup. Device/queue ownership moves
+/// into `WgpuBackend`; later windows need only the instance and adapter.
+#[derive(Debug)]
+pub(crate) struct SurfaceFactory {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
     /// `max_texture_dimension_2d` granted at device creation — fixed for
     /// the device's lifetime, cached so the host's per-event resize clamp
     /// doesn't re-query `device.limits()`.
@@ -30,26 +25,27 @@ pub(crate) struct Gpu {
     present_mode: wgpu::PresentMode,
 }
 
-/// A window's swapchain pieces, produced by [`Gpu::make_surface`]. The
+/// A window's swapchain pieces, produced by [`SurfaceFactory::make_surface`]. The
 /// swapchain color format lives on `config.format`.
+#[derive(Debug)]
 pub(crate) struct WindowSurface {
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) config: wgpu::SurfaceConfiguration,
 }
 
-/// The shared [`Gpu`] plus the first window's surface, returned together
-/// by [`Gpu::create`] — the probe surface used to select the adapter is
-/// reused as that window's swapchain rather than recreated.
+/// Startup result. The probe surface used for adapter selection is reused as
+/// the first window's swapchain.
+#[derive(Debug)]
 pub(crate) struct GpuInit {
-    pub(crate) gpu: Gpu,
+    pub(crate) surfaces: SurfaceFactory,
+    pub(crate) backend: WgpuBackend,
     pub(crate) first_surface: WindowSurface,
 }
 
-impl Gpu {
-    /// Build the shared context, picking an adapter compatible with the
-    /// first window's `surface`. Returns the context alongside that
-    /// window's configured surface.
-    pub(crate) fn create(window: &Arc<Window>, cfg: &WinitHostConfig) -> GpuInit {
+impl GpuInit {
+    /// Pick the shared adapter/device, move the device and queue into the
+    /// backend, and retain only what later surface creation needs.
+    pub(crate) fn new(window: &Arc<Window>, cfg: &WinitHostConfig, shared: &HostShared) -> Self {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.flags = desc.flags.with_env();
         let instance = wgpu::Instance::new(desc);
@@ -102,21 +98,34 @@ impl Gpu {
         }))
         .expect("request device");
 
-        let gpu = Self {
-            instance,
-            adapter,
-            max_texture_dim: device.limits().max_texture_dimension_2d,
+        let max_texture_dim = device.limits().max_texture_dimension_2d;
+        let backend = WgpuBackend::new(
             device,
             queue,
+            shared.backend_shared(),
+            BackendConfig {
+                collect_gpu_stats: cfg.collect_gpu_stats,
+            },
+        );
+        let surfaces = SurfaceFactory {
+            instance,
+            adapter,
+            max_texture_dim,
             present_mode: cfg.present_mode,
         };
         let size = window.inner_size();
-        let first_surface = gpu.build_window_surface(surface, UVec2::new(size.width, size.height));
-        GpuInit { gpu, first_surface }
+        let first_surface =
+            surfaces.build_window_surface(surface, UVec2::new(size.width, size.height));
+        Self {
+            surfaces,
+            backend,
+            first_surface,
+        }
     }
+}
 
-    /// Create + configure a surface for an additional window against the
-    /// already-built adapter/device.
+impl SurfaceFactory {
+    /// Create a surface for an additional window against the selected adapter.
     pub(crate) fn make_surface(&self, window: &Arc<Window>) -> WindowSurface {
         let surface = self
             .instance
@@ -129,7 +138,7 @@ impl Gpu {
     /// Pick an sRGB swapchain format and bundle `surface` with a fresh
     /// `SurfaceConfiguration` into a [`WindowSurface`] — *without* calling
     /// `surface.configure` (distinct from `WgpuBackend::configure_surface`,
-    /// which applies it). `WindowRenderer::frame` applies it lazily on first
+    /// which applies it). `WindowDriver::frame` applies it lazily on first
     /// paint (it notices `configured == None`), so there's no eager GPU
     /// reconfigure here.
     fn build_window_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {
@@ -166,14 +175,5 @@ impl Gpu {
             desired_maximum_frame_latency: 1,
         };
         WindowSurface { surface, config }
-    }
-
-    /// Build the one shared [`WgpuBackend`] every window renders through,
-    /// cloning the shared resources it needs from `ctx`. Format-agnostic —
-    /// each window attaches via `WindowRenderer::builder` and its
-    /// format's pipelines build lazily on first submit.
-    pub(crate) fn make_backend(&self, ctx: &HostContext) -> WgpuBackend {
-        WgpuBackend::new(self.device.clone(), self.queue.clone(), ctx)
-            .collect_gpu_stats(true, ctx.pass_stats.clone())
     }
 }
