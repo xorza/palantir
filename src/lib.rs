@@ -29,7 +29,9 @@ pub(crate) mod widgets;
 pub(crate) mod window;
 
 #[cfg(feature = "internals")]
-pub use host::offscreen::test_support::TwoWindowOffscreenHost;
+pub use host::offscreen::test_support::{
+    OffscreenWindowScratch, TwoWindowOffscreenHost, offscreen_window_scratch,
+};
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
 /// Consumers (debug overlay, benches) hold a `Clone` of the same

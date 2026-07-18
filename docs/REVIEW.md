@@ -132,23 +132,6 @@ prescribe regressions. The seven-item count above describes the earlier pruned
 pass; the seven findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 
-## Batch 3 — High: Restore frame- and pass-scoped ownership
-
-- [ ] **Drain deferred window commands after every offscreen frame.**
-  `Ui::open_window` and `Ui::close_window` enqueue requests at
-  `src/ui/mod.rs:726-768`, with close appending unconditionally. Windowed frames
-  drain them through `window_frame_output` at
-  `src/host/window_driver.rs:612-624`, called from
-  `src/host/window_driver.rs:386-392`; the offscreen path renders and returns
-  without that completion step at `src/host/window_driver.rs:394-418`, and
-  `OffscreenHost` delegates directly at `src/host/offscreen.rs:131-145`.
-  Repeated headless close requests therefore grow without bound, while distinct
-  opens remain permanently queued, contradicting both APIs' documented
-  headless no-op behavior. Add a capacity-retaining headless completion path
-  that clears opens/closes and resets window-frame/veto state after rendering.
-  Cover cold-start and replay passes, assert empty queues after every frame,
-  verify capacity stabilization, and keep offscreen pixels unchanged.
-
 ## Batch 4 — High: Preserve GPU surface and target contracts
 
 - [ ] **Negotiate explicit present modes against each surface's
