@@ -27,6 +27,16 @@ pub enum TextInput<'a> {
     Interned(InternedStr),
 }
 
+impl TextInput<'_> {
+    pub(crate) fn is_empty(&self) -> bool {
+        match self {
+            Self::Borrowed(text) => text.is_empty(),
+            Self::Owned(text) => text.is_empty(),
+            Self::Interned(text) => text.is_empty(),
+        }
+    }
+}
+
 /// Retained bytes behind frame-authored [`InternedStr`] values. The active
 /// record store reuses its arena while no handle has escaped; an escaped
 /// handle keeps this allocation and its exact bytes alive.
@@ -126,5 +136,28 @@ impl RecordedText {
 impl Hash for RecordedText {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.hash.hash(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::interned_str::{InternedStr, TextArena, TextInput};
+    use crate::primitives::span::Span;
+    use std::rc::Rc;
+
+    #[test]
+    fn text_input_empty_tracks_every_storage_variant() {
+        assert!(TextInput::default().is_empty());
+        assert!(!TextInput::Borrowed("x").is_empty());
+        assert!(TextInput::Owned(String::new()).is_empty());
+        assert!(!TextInput::Owned("x".to_owned()).is_empty());
+
+        let arena = Rc::new(TextArena::default());
+        arena.bytes.borrow_mut().push('x');
+        assert!(
+            TextInput::Interned(InternedStr::arena_backed(Span::new(0, 0), arena.clone()))
+                .is_empty()
+        );
+        assert!(!TextInput::Interned(InternedStr::arena_backed(Span::new(0, 1), arena)).is_empty());
     }
 }

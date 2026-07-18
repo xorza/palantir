@@ -26,7 +26,7 @@ pub struct RadioButton<'a, T: PartialEq> {
     element: Element,
     current: &'a mut T,
     value: T,
-    label: Option<TextInput<'a>>,
+    label: TextInput<'a>,
     style: Option<ToggleTheme>,
 }
 
@@ -39,13 +39,13 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             element,
             current,
             value,
-            label: None,
+            label: TextInput::default(),
             style: None,
         }
     }
 
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = Some(label.into());
+        self.label = label.into();
         self
     }
 
@@ -72,7 +72,6 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             *self.current = self.value;
             selected = true;
         }
-        let label = self.label.map(|label| ui.intern_text(label));
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.radio);
         // `pill: true` forces the box chrome to a circle regardless of
@@ -88,7 +87,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             self.element,
             raw_state,
             chrome,
-            label,
+            self.label,
             |ui, pip_size| {
                 if selected {
                     let dot_size = pip_size - 2.0 * dot_inset;
