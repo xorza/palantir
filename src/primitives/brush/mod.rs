@@ -597,13 +597,6 @@ impl std::hash::Hash for Brush {
 }
 
 impl Animatable for Brush {
-    // Gradients can't meaningfully interpolate, so every op here treats
-    // them as snap-only: `lerp` hands back an endpoint, and the additive
-    // ops (`add`/`sub`/`scale`) return their operand unchanged while
-    // `magnitude_squared` reports 0. So a spring driving a gradient makes
-    // no integrator progress and its zero magnitude settles it on the
-    // first tick — an effective snap, matching `lerp`. (Not a panic:
-    // spring-animating a gradient theme is a user choice, not a logic bug.)
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         // Match on `(&a, &b)` instead of `(a, b)` so the gradient
@@ -626,7 +619,7 @@ impl Animatable for Brush {
     fn sub(self, other: Self) -> Self {
         match (&self, &other) {
             (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.sub(*y)),
-            _ => self,
+            _ => Self::zero(),
         }
     }
     #[inline]
@@ -640,7 +633,7 @@ impl Animatable for Brush {
     fn scale(self, k: f32) -> Self {
         match self {
             Brush::Solid(c) => Brush::Solid(c.scale(k)),
-            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => self,
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => Self::zero(),
         }
     }
     #[inline]
@@ -653,6 +646,15 @@ impl Animatable for Brush {
     #[inline]
     fn zero() -> Self {
         Brush::Solid(Color::zero())
+    }
+    #[inline]
+    fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
+        if !matches!((&*self, target), (Brush::Solid(_), Brush::Solid(_))) {
+            if self != target {
+                *self = target.clone();
+            }
+            *velocity = Self::zero();
+        }
     }
 }
 

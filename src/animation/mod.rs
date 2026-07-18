@@ -383,6 +383,10 @@ impl<T: Animatable> AnimMapTyped<T> {
             };
         }
 
+        if matches!(spec.motion, AnimMotion::Spring { .. }) {
+            row.current.normalize_for_spring(&target, &mut row.velocity);
+        }
+
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity *only when it aids motion toward the
         // new target* — preserves "fling through" continuations but

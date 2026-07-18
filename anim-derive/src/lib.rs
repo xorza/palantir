@@ -2,7 +2,8 @@
 //! struct: animated fields call into the inner `Animatable` impl;
 //! fields marked `#[animate(snap)]` are excluded from arithmetic
 //! (lerp returns target's value, sub/add/scale/zero preserve `self`'s
-//! or pick a default, magnitude_squared contributes 0).
+//! or pick a default, magnitude_squared contributes 0). Dynamic
+//! spring normalization forwards through animated fields only.
 //!
 //! Re-exported as `aperture::Animatable` (the derive shares its name
 //! with the trait, by Rust convention).
@@ -103,6 +104,15 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let zero_snap = snap.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::core::default::Default>::default(), }
     });
+    let normalize_for_spring_anim = anim.iter().map(|(f, ty)| {
+        quote! {
+            <#ty as ::aperture::Animatable>::normalize_for_spring(
+                &mut self.#f,
+                &target.#f,
+                &mut velocity.#f,
+            );
+        }
+    });
 
     // `#[inline]` on each method: Animatable is a tight math trait
     // called per frame per animation, often across crate boundaries
@@ -148,6 +158,11 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
                     #(#zero_anim)*
                     #(#zero_snap)*
                 }
+            }
+            #[inline]
+            fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
+                let _ = (&*self, target, &*velocity);
+                #(#normalize_for_spring_anim)*
             }
         }
     };
