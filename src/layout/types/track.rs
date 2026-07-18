@@ -1,3 +1,4 @@
+use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx;
 use crate::primitives::span::Span;
@@ -39,11 +40,12 @@ impl Track {
     ///
     /// # Panics
     ///
-    /// Panics if `min` is negative, NaN, or greater than the current maximum.
+    /// Panics if `min` is negative, non-finite, or greater than the current
+    /// maximum.
     pub const fn min(mut self, min: f32) -> Self {
         assert!(
-            min >= 0.0 && min <= self.max,
-            "Track minimum must be non-negative and not exceed its maximum",
+            valid_lower_bound(min) && min <= self.max,
+            "Track minimum must be finite, non-negative, and not exceed its maximum",
         );
         self.min = min;
         self
@@ -54,9 +56,10 @@ impl Track {
     /// # Panics
     ///
     /// Panics if `max` is negative, NaN, or less than the current minimum.
+    /// Positive infinity is the unbounded sentinel.
     pub const fn max(mut self, max: f32) -> Self {
         assert!(
-            max >= 0.0 && max >= self.min,
+            valid_upper_bound(max) && max >= self.min,
             "Track maximum must be non-negative and not be less than its minimum",
         );
         self.max = max;
@@ -150,7 +153,11 @@ mod tests {
         let cases: &[Case] = &[
             ("negative minimum", || Track::hug().min(-1.0)),
             ("NaN minimum", || Track::hug().min(f32::NAN)),
+            ("infinite minimum", || Track::hug().min(f32::INFINITY)),
             ("negative maximum", || Track::hug().max(-1.0)),
+            ("negative infinite maximum", || {
+                Track::hug().max(f32::NEG_INFINITY)
+            }),
             ("NaN maximum", || Track::hug().max(f32::NAN)),
             ("minimum above existing maximum", || {
                 Track::hug().max(10.0).min(11.0)
@@ -166,6 +173,8 @@ mod tests {
                 "case `{label}` must panic",
             );
         }
+
+        assert_eq!(Track::hug().max(f32::INFINITY).max, f32::INFINITY);
     }
 
     fn grid_content_hash(def: GridDef, tracks: &[Track]) -> u64 {

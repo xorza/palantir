@@ -1,4 +1,5 @@
 use crate::forest::element::*;
+use crate::layout::types::limits::MAX_PACKED_GAP;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
@@ -196,9 +197,13 @@ fn element_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
         .min_size((10.0, 20.0));
     assert_eq!(max_then_min.min_size, Size::new(10.0, 20.0));
     assert_eq!(max_then_min.max_size, Size::new(30.0, 20.0));
+
+    let unbounded = Element::leaf().max_size(Size::INF);
+    assert_eq!(unbounded.max_size, Size::INF);
 }
 
 #[test]
+#[cfg(debug_assertions)]
 fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
     type Case = (&'static str, fn() -> Element);
 
@@ -222,6 +227,64 @@ fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
             Element::leaf()
                 .min_size((0.0, 11.0))
                 .max_size((f32::INFINITY, 10.0))
+        }),
+        ("infinite x minimum", || {
+            Element::leaf().min_size((f32::INFINITY, 0.0))
+        }),
+        ("infinite y minimum", || {
+            Element::leaf().min_size((0.0, f32::INFINITY))
+        }),
+        ("NaN minimum", || Element::leaf().min_size((f32::NAN, 0.0))),
+        ("negative infinite maximum", || {
+            Element::leaf().max_size((f32::NEG_INFINITY, f32::INFINITY))
+        }),
+        ("NaN maximum", || {
+            Element::leaf().max_size((f32::INFINITY, f32::NAN))
+        }),
+    ];
+
+    for &(label, build) in cases {
+        assert!(
+            std::panic::catch_unwind(build).is_err(),
+            "case `{label}` must panic",
+        );
+    }
+}
+
+#[test]
+#[cfg(debug_assertions)]
+fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
+    let valid = Element::hstack()
+        .gap(MAX_PACKED_GAP)
+        .line_gap(MAX_PACKED_GAP);
+    assert_eq!(valid.gaps.gap(), MAX_PACKED_GAP);
+    assert_eq!(valid.gaps.line_gap(), MAX_PACKED_GAP);
+
+    type Case = (&'static str, fn() -> Element);
+    let cases: &[Case] = &[
+        ("negative gap", || Element::hstack().gap(-1.0)),
+        ("NaN gap", || Element::hstack().gap(f32::NAN)),
+        ("positive infinite gap", || {
+            Element::hstack().gap(f32::INFINITY)
+        }),
+        ("negative infinite gap", || {
+            Element::hstack().gap(f32::NEG_INFINITY)
+        }),
+        ("f16-overflow gap", || {
+            Element::hstack().gap(MAX_PACKED_GAP + 1.0)
+        }),
+        ("negative line gap", || {
+            Element::wrap_hstack().line_gap(-1.0)
+        }),
+        ("NaN line gap", || Element::wrap_hstack().line_gap(f32::NAN)),
+        ("positive infinite line gap", || {
+            Element::wrap_hstack().line_gap(f32::INFINITY)
+        }),
+        ("negative infinite line gap", || {
+            Element::wrap_hstack().line_gap(f32::NEG_INFINITY)
+        }),
+        ("f16-overflow line gap", || {
+            Element::wrap_hstack().line_gap(MAX_PACKED_GAP + 1.0)
         }),
     ];
 

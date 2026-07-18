@@ -3,6 +3,7 @@ pub(crate) mod clip_mode;
 pub(crate) mod grid_cell;
 pub(crate) mod justify;
 pub(crate) mod layout_mode;
+pub(crate) mod limits;
 pub(crate) mod overlay;
 pub(crate) mod sizing;
 pub(crate) mod track;

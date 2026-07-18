@@ -224,7 +224,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "lines no longer lower to polylines"
     );
     assert_eq!(
-        ui.record_store.borrow().polyline_points.len(),
+        ui.record_store.payloads.borrow().polyline_points.len(),
         0,
         "the point payloads stay untouched by lines"
     );

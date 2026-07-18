@@ -316,7 +316,7 @@ mod tests {
         const SENTINEL: f32 = 1234.5;
         ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-        let payloads = ui.record_store.borrow();
+        let payloads = ui.record_store.payloads.borrow();
         let text_bytes = payloads.text_bytes();
         let v = ui.layout_engine.intrinsic(
             &ui.forest.trees[Layer::Main],
@@ -368,7 +368,7 @@ mod tests {
             entry[slot] = f32::NAN;
         }
 
-        let payloads = ui.record_store.borrow();
+        let payloads = ui.record_store.payloads.borrow();
         let text_bytes = payloads.text_bytes();
         let _ = ui.layout_engine.intrinsic(
             &ui.forest.trees[Layer::Main],

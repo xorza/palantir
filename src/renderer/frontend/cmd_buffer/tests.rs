@@ -4,7 +4,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, CmdKind, DrawRectPayload, DrawTrianglePayload,
+    BrushSource, CmdKind, DrawPolylinePayload, DrawRectPayload, DrawTrianglePayload,
 };
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
@@ -40,6 +40,65 @@ fn gpu_view_records_payload_and_paint_atomically() {
             paint: Some(_),
         } => assert_eq!(payload.rect, Rect::new(2.0, 3.0, 7.0, 8.0)),
         other => panic!("expected linked GpuView image command, got {other:?}"),
+    }
+}
+
+#[test]
+fn polyline_payload_gate_uses_the_canonical_scalar_noop_policy() {
+    use crate::primitives::approx::EPS;
+
+    #[derive(Debug)]
+    struct Case {
+        points_len: u32,
+        width: f32,
+        expected_noop: bool,
+    }
+
+    let cases = [
+        Case {
+            points_len: 0,
+            width: 1.0,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 1,
+            width: 1.0,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 2,
+            width: -1.0,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 2,
+            width: 0.0,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 2,
+            width: EPS * 0.5,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 2,
+            width: f32::NAN,
+            expected_noop: true,
+        },
+        Case {
+            points_len: 2,
+            width: EPS * 2.0,
+            expected_noop: false,
+        },
+    ];
+
+    for case in cases {
+        let payload = DrawPolylinePayload {
+            points_len: case.points_len,
+            width: case.width,
+            ..bytemuck::Zeroable::zeroed()
+        };
+        assert_eq!(payload.is_noop(), case.expected_noop, "{case:?}");
     }
 }
 

@@ -172,7 +172,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
     });
     let node = node.unwrap();
-    let payloads = ui.record_store.borrow();
+    let payloads = ui.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
@@ -437,7 +437,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         );
     });
     let label_node = label_node.unwrap();
-    let payloads = ui.record_store.borrow();
+    let payloads = ui.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
@@ -512,7 +512,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label = Some(build(ui).1);
     });
     let probe_label = probe_label.unwrap();
-    let payloads = probe.record_store.borrow();
+    let payloads = probe.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],
@@ -588,7 +588,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
     probe.run_at_acked(UVec2::new(2000, 400), |ui| {
         probe_label = Some(build(ui));
     });
-    let payloads = probe.record_store.borrow();
+    let payloads = probe.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],

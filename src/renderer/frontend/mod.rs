@@ -91,7 +91,7 @@ pub(crate) mod test_support {
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
         pub(crate) fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
-            let payloads = ui.record_store.borrow();
+            let payloads = ui.record_store.payloads.borrow();
             self.build(ui, &payloads, plan);
         }
     }

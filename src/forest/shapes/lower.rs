@@ -1,7 +1,7 @@
 //! Authoring → storage lowering: turns user-facing [`Shape`] inputs
 //! and [`Background`] chrome into the [`ShapeRecord`] / [`ChromeRow`]
 //! forms the tree stores. Bulk payload bytes (polyline points/colors,
-//! gradients) append to the shared [`RecordStore`]; functions that
+//! gradients) append to the window's [`RecordStore`]; functions that
 //! never touch the store (e.g. [`triangle`]) don't take it.
 //!
 //! Entry points: [`super::Shapes::add`] dispatches shapes here;
@@ -62,7 +62,7 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
 }
 
 fn stored_gradient(store: &RecordStore, gradient: RecordedGradient, hash: u64) -> LoweredBrush {
-    let id = store.borrow_mut().record_gradient(gradient);
+    let id = store.payloads.borrow_mut().record_gradient(gradient);
     LoweredBrush {
         brush: ShapeBrush::Gradient(id),
         hash,
@@ -216,7 +216,7 @@ pub(crate) fn polyline(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"
     );
-    let mut payloads = store.borrow_mut();
+    let mut payloads = store.payloads.borrow_mut();
     let p_start = payloads.polyline_points.len() as u32;
     let c_start = payloads.polyline_colors.len() as u32;
     let (&first, rest) = points.split_first().unwrap();

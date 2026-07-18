@@ -10,11 +10,11 @@ design notes, and the current CPU profile. Tests and benchmarks were read only
 where needed to understand an invariant or prescribe validation; they were not
 reviewed as production modules.
 
-Completed findings have been removed after checking the current code. Seven
+Completed findings have been removed after checking the current code. Six
 findings remain:
 
 - prototype narrower cascade invalidation without weakening correctness;
-- consolidate five duplicated or unnecessarily repeated policies;
+- consolidate four duplicated or unnecessarily repeated policies;
 - decide how Grid Fill tracks contribute to the Grid's intrinsic size.
 
 The batches below remain ordered by priority and can be implemented and
@@ -60,17 +60,6 @@ validated independently.
   dimensions and checked length arithmetic; make Image and WindowIcon thin
   semantic wrappers. Validate zero dimensions, arithmetic overflow, wrong
   length, valid image upload, and valid platform-icon conversion.
-
-- [ ] **Route polyline width through the canonical scalar no-op predicate.**
-  `DrawPolylinePayload::is_noop` hand-rolls `width <= 0.0` at
-  `src/renderer/frontend/cmd_buffer/payload.rs:284-296`, while neighboring
-  stroke payloads use `noop_f32` at
-  `src/renderer/frontend/cmd_buffer/payload.rs:490-550` and authoring already
-  uses the same canonical policy at `src/shape.rs:784-799`. The duplicate
-  disagrees for NaN and sub-EPS positive widths, allowing an internally
-  malformed payload into composer and shader math. Replace the comparison with
-  `noop_f32(self.width)` and extend the payload gate table with NaN, sub-EPS,
-  zero, and positive widths.
 
 - [ ] **Build Stack planning data in one child walk without unifying the
   Stack/Grid solvers.** `stack_plan` walks every active child for counts,
@@ -129,7 +118,7 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The seven-item count above describes the earlier pruned
-pass; the five findings below are additional. These supplemental batches are
+pass; the three findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 
 ## Batch 5 — Medium: Reject malformed values at their owning boundary
@@ -169,24 +158,6 @@ ordered by priority and are independently implementable.
   valid boundary, exact append rebasing, and unchanged procedural
   vertices/indices/hashes/bounds.
 
-- [ ] **Close non-finite and f16-overflow holes in layout inputs.**
-  `Track::min` permits positive infinity at
-  `src/layout/types/track.rs:38-49`; the element-bound validator likewise
-  accepts an infinite lower bound at `src/forest/element/mod.rs:292-304`.
-  Stack/WrapStack gap setters accept positive infinity and values above f16's
-  finite ceiling at `src/forest/element/mod.rs:403-420`, which `Gaps` silently
-  packs to infinity at `src/forest/element/columns.rs:39-60`; Grid's f32 gaps
-  have the same finite-value hole at `src/widgets/grid.rs:71-87`. These values
-  reach outer clamps at `src/layout/engine.rs:251-274`, Grid content floors at
-  `src/layout/grid/mod.rs:779-782`, and even `infinity * 0 = NaN` for an empty
-  Stack at `src/layout/stack/mod.rs:153-178`. Require finite lower bounds,
-  reserve positive infinity for upper-bound sentinels, and centralize
-  nonnegative finite/f16-representable gap validation; keep immediate-mode
-  authoring checks debug-only where required by the hot-path policy, but reject
-  serialized/cold invalid input in release. Test NaN, both infinities,
-  f16-overflow values, the largest finite f16 gap, infinite maxima, and finite
-  zero/one/two-child layouts.
-
 ## Batch 6 — Medium: Make snap-only animation explicit
 
 - [ ] **Represent gradient brushes as snap-only spring fields instead of
@@ -216,22 +187,6 @@ single-recorded-representation findings were completed on 2026-07-18:
 text-taking widgets now defer borrowed/owned input into the active arena,
 `InternedStr` is arena-only, every `RecordedText` is one private `(Span, hash)`,
 and Darkroom's per-record scene projection stores arena handles directly.
-
-## Batch 7 — Medium: Remove false shared ownership
-
-- [ ] **Remove the unused shared-ownership layer around `RecordPayloads`.**
-  Each `Ui` constructs exactly one `RecordStore`
-  (`src/ui/mod.rs:78-80,130-139`) and all production consumers receive
-  `&RecordStore` (`src/ui/mod.rs:848-853`,
-  `src/forest/mod.rs:190-200`), yet `RecordStore` derives `Clone` and puts its
-  sole `RefCell<RecordPayloads>` behind an `Rc`
-  (`src/record_store.rs:43-56`). No production clone exists. Store the
-  `RefCell<RecordPayloads>` inline and remove `Clone`; this deletes one
-  allocation, one pointer chase, and a false sharing capability while
-  preserving the existing phase borrows. The payload is currently 176 bytes,
-  so confirm the larger inline `Ui` does not hurt host/window moves; validate
-  multi-window isolation and benchmark `Ui` construction plus full-record
-  throughput.
 
 ## Text changes intentionally excluded
 

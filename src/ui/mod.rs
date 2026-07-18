@@ -518,7 +518,7 @@ impl Ui {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
-        let payloads = self.record_store.borrow();
+        let payloads = self.record_store.payloads.borrow();
         let text_bytes = payloads.text_bytes();
         let tc = TextCtx {
             bytes: &text_bytes,
@@ -1536,7 +1536,7 @@ pub(crate) mod test_support {
             };
             let plan = RenderPlan { clear, kind };
             let mut cmds = RenderCmdBuffer::default();
-            let payloads = self.record_store.borrow();
+            let payloads = self.record_store.payloads.borrow();
             encode(self, &payloads, plan, &mut cmds);
             cmds
         }

@@ -1,4 +1,5 @@
 use crate::forest::element::{Configure, Element};
+use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
@@ -70,7 +71,10 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
     pub fn gap(mut self, g: f32) -> Self {
-        debug_assert!(g >= 0.0, "Grid gap must be non-negative, got {g}");
+        debug_assert!(
+            valid_gap(g),
+            "Grid gap must be finite and non-negative, got {g}",
+        );
         self.row_gap = g;
         self.col_gap = g;
         self
@@ -79,8 +83,8 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
     pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
         debug_assert!(
-            row_gap >= 0.0 && col_gap >= 0.0,
-            "Grid gaps must be non-negative, got row={row_gap}, col={col_gap}",
+            valid_gap(row_gap) && valid_gap(col_gap),
+            "Grid gaps must be finite and non-negative, got row={row_gap}, col={col_gap}",
         );
         self.row_gap = row_gap;
         self.col_gap = col_gap;
@@ -144,6 +148,7 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 #[cfg(all(test, debug_assertions))]
 mod tests {
     use super::Grid;
+    use crate::layout::types::limits::MAX_PACKED_GAP;
 
     #[test]
     fn gaps_validate_and_store_values() {
@@ -155,12 +160,20 @@ mod tests {
         assert_eq!(asymmetric.row_gap, 3.0);
         assert_eq!(asymmetric.col_gap, 5.0);
 
-        let invalid: [fn(Grid) -> Grid; 5] = [
+        let above_f16 = Grid::new().gap(MAX_PACKED_GAP + 1.0);
+        assert_eq!(above_f16.row_gap, MAX_PACKED_GAP + 1.0);
+        assert_eq!(above_f16.col_gap, MAX_PACKED_GAP + 1.0);
+
+        let invalid: [fn(Grid) -> Grid; 9] = [
             |grid| grid.gap(-1.0),
             |grid| grid.gap(f32::NAN),
+            |grid| grid.gap(f32::INFINITY),
+            |grid| grid.gap(f32::NEG_INFINITY),
             |grid| grid.gap_xy(-1.0, 0.0),
             |grid| grid.gap_xy(0.0, -1.0),
             |grid| grid.gap_xy(0.0, f32::NAN),
+            |grid| grid.gap_xy(f32::INFINITY, 0.0),
+            |grid| grid.gap_xy(0.0, f32::NEG_INFINITY),
         ];
 
         for (index, case) in invalid.into_iter().enumerate() {

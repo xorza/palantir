@@ -206,7 +206,7 @@ impl Shapes {
                 local_rect,
                 tint,
             } => {
-                let mut payloads = store.borrow_mut();
+                let mut payloads = store.payloads.borrow_mut();
                 let v_start = payloads.meshes.vertices.len() as u32;
                 payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
                 let i_start = payloads.meshes.indices.len() as u32;

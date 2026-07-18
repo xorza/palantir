@@ -283,7 +283,7 @@ pub(crate) struct DrawPolylinePayload {
 
 impl DrawPolylinePayload {
     /// Canonical noop predicate — fewer than two points (no
-    /// segments) or zero/negative stroke width. **Does not** check
+    /// segments) or a non-paintable stroke width. **Does not** check
     /// color noop-ness: per-point / per-segment colours live in
     /// spans on `RenderCmdBuffer`, and an O(n) read here would
     /// dominate the per-cmd cost. Color noop is filtered at the
@@ -292,7 +292,7 @@ impl DrawPolylinePayload {
     /// line) and still paint stroke pixels, so it's not gated either.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.points_len < 2 || self.width <= 0.0
+        self.points_len < 2 || noop_f32(self.width)
     }
 }
 

@@ -75,7 +75,7 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
                 if !accepted {
                     assert!(shapes.records.is_empty());
                     assert!(shapes.hashes.is_empty());
-                    let payloads = store.borrow();
+                    let payloads = store.payloads.borrow();
                     assert!(payloads.polyline_points.is_empty());
                     assert!(payloads.polyline_colors.is_empty());
                     continue;
@@ -85,7 +85,7 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
                 assert_eq!(result.unwrap(), stored.then_some(0));
                 assert_eq!(shapes.records.len(), usize::from(stored));
                 assert_eq!(shapes.hashes.len(), usize::from(stored));
-                let payloads = store.borrow();
+                let payloads = store.payloads.borrow();
                 assert_eq!(
                     payloads.polyline_points.len(),
                     points_len * usize::from(stored)
