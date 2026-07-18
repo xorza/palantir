@@ -1395,7 +1395,12 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
         Text::new(String::from("owned"))
             .id(WidgetId::from_hash("owned"))
             .show(ui);
+        let owned_interned = ui.intern(String::from("owned interned"));
+        Text::new(owned_interned)
+            .id(WidgetId::from_hash("owned-interned"))
+            .show(ui);
         let interned = ui.intern("interned");
+        let interned = ui.intern(interned);
         Text::new(interned)
             .id(WidgetId::from_hash("interned"))
             .show(ui);
@@ -1407,13 +1412,19 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
 
     let payloads = ui.record_store.borrow();
     let text_bytes = payloads.text_bytes();
-    assert_eq!(&*text_bytes, "borrowedownedinternedformatted 7");
+    assert_eq!(
+        &*text_bytes,
+        "borrowedownedowned internedinternedformatted 7"
+    );
     let records = &ui.forest.trees[Layer::Main].shapes.records;
-    assert_eq!(records.len(), 4);
-    for (record, expected) in records
-        .iter()
-        .zip(["borrowed", "owned", "interned", "formatted 7"])
-    {
+    assert_eq!(records.len(), 5);
+    for (record, expected) in records.iter().zip([
+        "borrowed",
+        "owned",
+        "owned interned",
+        "interned",
+        "formatted 7",
+    ]) {
         match record {
             ShapeRecord::Text { text, .. } => {
                 let resolved = text.resolve(&text_bytes);

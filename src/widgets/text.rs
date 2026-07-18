@@ -98,7 +98,7 @@ impl<'a> Text<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let text = ui.intern_text(self.text);
+        let text = ui.intern(self.text);
         let mut style = self.style.unwrap_or(ui.theme.text);
         if let Some(weight) = self.weight {
             style.weight = weight;
