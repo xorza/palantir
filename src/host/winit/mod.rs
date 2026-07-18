@@ -104,6 +104,22 @@ struct WindowState {
     cursor: CursorIcon,
 }
 
+impl WindowState {
+    fn new(window: Arc<Window>, surface: WindowSurface, driver: WindowDriver) -> Self {
+        let scale_factor = window.scale_factor() as f32;
+        Self {
+            window,
+            surface: surface.surface,
+            config: surface.config,
+            driver,
+            scale_factor,
+            next: FramePresent::Immediate,
+            close_requested: false,
+            cursor: CursorIcon::default(),
+        }
+    }
+}
+
 /// Map the backend-agnostic cursor vocabulary onto winit's.
 fn winit_cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
     use winit::window::CursorIcon as W;
@@ -172,6 +188,77 @@ impl<T> std::fmt::Debug for WinitRuntime<T> {
             .field("backend", &self.backend)
             .field("windows", &self.windows.len())
             .finish_non_exhaustive()
+    }
+}
+
+impl<T> WinitRuntime<T> {
+    fn new(
+        event_loop: &ActiveEventLoop,
+        bootstrap: &mut Bootstrap<T>,
+        handle: HostHandle<T>,
+    ) -> Self {
+        let token = bootstrap.token;
+        let config = bootstrap.config.clone();
+        let create_app = bootstrap
+            .create_app
+            .take()
+            .expect("bootstrap app factory already consumed");
+        let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
+        let window = create_window(event_loop, &config.window);
+        let shared = HostShared::new(TextShaper::with_bundled_fonts());
+        let GpuInit {
+            surfaces,
+            backend,
+            first_surface,
+        } = GpuInit::new(&window, &config, &shared);
+        let mut driver = WindowDriver::builder(token, &shared, surfaces.max_texture_dim).build();
+
+        shared.windows.insert(token);
+        let mut app = create_app(&mut driver.ui, handle);
+        for task in pending_tasks {
+            task(&mut app);
+        }
+
+        let id = window.id();
+        let windows = HashMap::from([(id, WindowState::new(window, first_surface, driver))]);
+        Self {
+            app,
+            surfaces,
+            shared,
+            backend,
+            windows,
+            pending_commands: WindowCommands::default(),
+        }
+    }
+
+    fn spawn_window(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        token: WindowToken,
+        config: WindowConfig,
+    ) {
+        if self
+            .windows
+            .values()
+            .any(|state| state.driver.token == token)
+        {
+            tracing::warn!(?token, "open_window: token already in use, ignoring");
+            return;
+        }
+        let window = create_window(event_loop, &config);
+        let surface = self.surfaces.make_surface(&window);
+        let driver =
+            WindowDriver::builder(token, &self.shared, self.surfaces.max_texture_dim).build();
+        self.insert_window(window, surface, driver);
+    }
+
+    fn insert_window(&mut self, window: Arc<Window>, surface: WindowSurface, driver: WindowDriver) {
+        let id = window.id();
+        self.shared.windows.insert(driver.token);
+        let previous = self
+            .windows
+            .insert(id, WindowState::new(window, surface, driver));
+        assert!(previous.is_none(), "winit returned a duplicate WindowId");
     }
 }
 
@@ -379,64 +466,6 @@ where
         runtime.pending_commands.append(&mut output.commands);
     }
 
-    /// Build a winit window + surface + `WindowDriver` for `token` and
-    /// insert it into the map. No-ops (with a warning) on a duplicate
-    /// token, which the token couldn't then unambiguously address.
-    fn spawn_window(
-        runtime: &mut WinitRuntime<T>,
-        event_loop: &ActiveEventLoop,
-        token: WindowToken,
-        cfg: WindowConfig,
-    ) {
-        if runtime.windows.values().any(|w| w.driver.token == token) {
-            tracing::warn!(?token, "open_window: token already in use, ignoring");
-            return;
-        }
-        let window = create_window(event_loop, &cfg);
-        let ws = runtime.surfaces.make_surface(&window);
-        let driver =
-            WindowDriver::builder(token, &runtime.shared, runtime.surfaces.max_texture_dim).build();
-        Self::insert_window(runtime, window, ws, driver);
-    }
-
-    /// Register a freshly built window in the routing map, scheduled to
-    /// paint its first frame (`next: Immediate` makes the next
-    /// `about_to_wait` request the redraw). Shared tail of `resumed` and
-    /// `spawn_window`.
-    fn insert_window(
-        runtime: &mut WinitRuntime<T>,
-        window: Arc<Window>,
-        ws: WindowSurface,
-        driver: WindowDriver,
-    ) {
-        runtime.shared.windows.insert(driver.token);
-        Self::insert_window_state(&mut runtime.windows, window, ws, driver);
-    }
-
-    fn insert_window_state(
-        windows: &mut HashMap<WindowId, WindowState>,
-        window: Arc<Window>,
-        ws: WindowSurface,
-        driver: WindowDriver,
-    ) {
-        let scale_factor = window.scale_factor() as f32;
-        let id = window.id();
-        let previous = windows.insert(
-            id,
-            WindowState {
-                window,
-                surface: ws.surface,
-                config: ws.config,
-                driver,
-                scale_factor,
-                next: FramePresent::Immediate,
-                close_requested: false,
-                cursor: CursorIcon::default(),
-            },
-        );
-        assert!(previous.is_none(), "winit returned a duplicate WindowId");
-    }
-
     /// Drain every window's [`Ui::open_window`] / [`Ui::close_window`]
     /// queues and apply them. Runs in `about_to_wait`, the one callback
     /// that always holds `&ActiveEventLoop` after event processing.
@@ -463,7 +492,7 @@ where
             }
         }
         for pw in commands.opens {
-            Self::spawn_window(runtime, event_loop, pw.token, pw.config);
+            runtime.spawn_window(event_loop, pw.token, pw.config);
         }
         if runtime.windows.is_empty() {
             // Every window closed (titlebar X or `close_window`) — nothing
@@ -558,43 +587,11 @@ where
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let (token, config, create_app, mut pending_tasks) = match &mut self.phase {
-            HostPhase::Bootstrap(bootstrap) => (
-                bootstrap.token,
-                bootstrap.config.clone(),
-                bootstrap
-                    .create_app
-                    .take()
-                    .expect("bootstrap app factory already consumed"),
-                std::mem::take(&mut bootstrap.pending_tasks),
-            ),
-            HostPhase::Running(_) => return,
+        let handle = self.handle();
+        let HostPhase::Bootstrap(bootstrap) = &mut self.phase else {
+            return;
         };
-
-        let window = create_window(event_loop, &config.window);
-        let shared = HostShared::new(TextShaper::with_bundled_fonts());
-        let GpuInit {
-            surfaces,
-            backend,
-            first_surface: ws,
-        } = GpuInit::new(&window, &config, &shared);
-        let mut driver = WindowDriver::builder(token, &shared, surfaces.max_texture_dim).build();
-
-        shared.windows.insert(token);
-        let mut app = create_app(&mut driver.ui, self.handle());
-        for task in pending_tasks.drain(..) {
-            task(&mut app);
-        }
-
-        let mut runtime = WinitRuntime {
-            app,
-            surfaces,
-            shared,
-            backend,
-            windows: HashMap::new(),
-            pending_commands: WindowCommands::default(),
-        };
-        Self::insert_window_state(&mut runtime.windows, window, ws, driver);
+        let runtime = WinitRuntime::new(event_loop, bootstrap, handle);
         self.phase = HostPhase::Running(Box::new(runtime));
     }
 
