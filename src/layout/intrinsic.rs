@@ -324,7 +324,7 @@ mod tests {
             LenReq::MinContent,
             &TextCtx {
                 bytes: &payloads.fmt_scratch,
-                shaper: &ui.ctx.shaper,
+                shaper: &ui.shared.text,
             },
         );
         drop(payloads);
@@ -374,7 +374,7 @@ mod tests {
             LenReq::MaxContent,
             &TextCtx {
                 bytes: &payloads.fmt_scratch,
-                shaper: &ui.ctx.shaper,
+                shaper: &ui.shared.text,
             },
         );
         drop(payloads);

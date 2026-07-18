@@ -99,7 +99,7 @@ impl<T: 'static> HostHandle<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::UserEvent;
+    use crate::host::winit::handle::UserEvent;
     use crate::window::WindowToken;
 
     #[test]

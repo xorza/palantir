@@ -1,5 +1,5 @@
 //! The per-frame time source, injected when a host builds its
-//! [`WindowRenderer`](crate::host::window_renderer::WindowRenderer).
+//! [`WindowDriver`](crate::host::window_driver::WindowDriver).
 //!
 //! One trait, [`Clock`], resolves the monotonic timestamp fed to every
 //! [`FrameStamp`](crate::ui::frame::FrameStamp) and sampled by paint /

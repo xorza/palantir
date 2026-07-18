@@ -97,7 +97,7 @@ fn escape_blurs_focus() {
 
 #[test]
 fn caret_clamps_after_external_buffer_shrink() {
-    // WindowRenderer can mutate buffer between frames; if new len < cached caret,
+    // WindowDriver can mutate buffer between frames; if new len < cached caret,
     // `show()` must clamp at the top of the next frame instead of OOB.
     let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::from("hello");

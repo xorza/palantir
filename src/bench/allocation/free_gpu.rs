@@ -3,7 +3,7 @@
 //! Sister to `alloc_free.rs`. Where that bench asserts a *strict zero*
 //! on aperture's CPU pipeline (record → measure → arrange → cascade →
 //! encode), this bench measures the additional allocations introduced
-//! by `WindowRenderer::frame_offscreen` against an offscreen target texture, with
+//! by `WindowDriver::frame_offscreen` against an offscreen target texture, with
 //! a GPU poll between frames so submitted work drains before the next
 //! iteration.
 //!
@@ -12,7 +12,7 @@
 //! Arc, the queue's in-flight `Vec` push, plus per-pass scratch from
 //! `wgpu_hal::metal`. Current measured floor on this fixture is
 //! ~27 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
-//! beneath `WindowRenderer::frame_offscreen` (verified via `DHAT_DUMP=1` +
+//! beneath `WindowDriver::frame_offscreen` (verified via `DHAT_DUMP=1` +
 //! dh_view). The bench treats this as a baseline: the gate trips when
 //! the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
 //! indicating either an aperture regression or a wgpu/cosmic-text

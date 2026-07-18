@@ -12,7 +12,7 @@ use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
 use std::time::Duration;
 
-/// WindowRenderer-facing render plan, present only when there's actual render
+/// WindowDriver-facing render plan, present only when there's actual render
 /// work this frame — `FrameReport.plan = None` is the skip signal, so neither
 /// the encoder nor the backend ever sees a no-op plan. Pairs the surface clear
 /// colour (needed for both kinds: `Full` clears the colour attachment,
