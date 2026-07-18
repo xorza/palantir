@@ -471,6 +471,7 @@ fn publish_timestamps(
     // Per-batch attribution when we collected midpoint marks.
     if count >= 3 {
         let mut per_kind_ns = [0u64; <BatchKind as strum::EnumCount>::COUNT];
+        let mut seen = [false; <BatchKind as strum::EnumCount>::COUNT];
         for i in 0..count - 1 {
             let t0_off = i * 8;
             let t1_off = (i + 1) * 8;
@@ -478,13 +479,13 @@ fn publish_timestamps(
             let t1 = u64::from_le_bytes(ts[t1_off..t1_off + 8].try_into().unwrap());
             let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
             let seg_ns = (t1.saturating_sub(t0) as f64 * period_ns as f64) as u64;
+            seen[kind.idx()] = true;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }
-        // Publish every kind explicitly, including zero-ns ones — a
-        // category that ran but rounded to zero is still distinct
-        // from one that didn't run at all (already cleared above).
         for kind in BatchKind::iter() {
-            sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
+            if seen[kind.idx()] {
+                sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
+            }
         }
     }
 }
@@ -516,26 +517,24 @@ mod tests {
     }
 
     #[test]
-    fn blank_measured_frame_clears_stale_per_kind_stats() {
+    fn per_kind_publish_distinguishes_absent_zero_and_blank() {
         let sink = GpuPassStats::default();
 
-        // Frame 1 (per-batch): timestamps [1000, 3000, 6000] ticks at
-        // 1 ns/tick, segments [Quads, Text]:
-        //   pass  = 6000 - 1000 = 5000 ns
-        //   quads = 3000 - 1000 = 2000 ns
-        //   text  = 6000 - 3000 = 3000 ns
+        // Frame 1: timestamps [1000, 1001, 5001] at 0.5 ns/tick:
+        //   pass  = floor((5001 - 1000) * 0.5) = 2000 ns
+        //   quads = floor((1001 - 1000) * 0.5) = 0 ns
+        //   text  = floor((5001 - 1001) * 0.5) = 2000 ns
         publish_timestamps(
-            &ts_bytes(&[1000, 3000, 6000]),
+            &ts_bytes(&[1000, 1001, 5001]),
             3,
             &[BatchKind::Quads, BatchKind::Text],
-            1.0,
+            0.5,
             &sink,
         );
-        assert_eq!(sink.last_pass_ms(), Some(0.005));
-        assert_eq!(sink.last_kind_ms(BatchKind::Quads), Some(0.002));
-        assert_eq!(sink.last_kind_ms(BatchKind::Text), Some(0.003));
-        // Kinds without a segment still publish, as exactly zero.
-        assert_eq!(sink.last_kind_ms(BatchKind::Mesh), Some(0.0));
+        assert_eq!(sink.last_pass_ms(), Some(0.002));
+        assert_eq!(sink.last_kind_ms(BatchKind::Quads), Some(0.0));
+        assert_eq!(sink.last_kind_ms(BatchKind::Text), Some(0.002));
+        assert_eq!(sink.last_kind_ms(BatchKind::Mesh), None);
 
         // Frame 2: begin/end only (count == 2 — a truly blank window
         // in per-batch mode). Pass time refreshes to 14000 - 10000 =
