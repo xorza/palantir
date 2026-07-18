@@ -12,6 +12,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ModePayload, ScrollSpec};
+use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -293,14 +294,14 @@ impl Element {
 fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
     // Builder setters run per widget per frame, so validation compiles out in release.
     debug_assert!(
-        min_size.w >= 0.0
-            && min_size.h >= 0.0
-            && max_size.w >= 0.0
-            && max_size.h >= 0.0
+        valid_lower_bound(min_size.w)
+            && valid_lower_bound(min_size.h)
+            && valid_upper_bound(max_size.w)
+            && valid_upper_bound(max_size.h)
             && min_size.w <= max_size.w
             && min_size.h <= max_size.h,
-        "element bounds must be non-negative and ordered on both axes, got min_size \
-         {min_size:?}, max_size {max_size:?}",
+        "element minimums must be finite, bounds must be non-negative and ordered, and only \
+         maximums may be infinite; got min_size {min_size:?}, max_size {max_size:?}",
     );
 }
 
@@ -404,9 +405,6 @@ pub trait Configure: Sized {
     /// HStack/VStack and the within-line direction of WrapHStack/
     /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
     fn gap(mut self, g: f32) -> Self {
-        // Debug-only, matching `size` / `min_size` — builder setters
-        // run per widget per frame.
-        debug_assert!(g >= 0.0, "gap must be non-negative, got {g}");
         self.element_mut().gaps.set_gap(g);
         self
     }
@@ -416,7 +414,6 @@ pub trait Configure: Sized {
     /// every other layout mode. Pair with `.gap(...)` for the within-
     /// line spacing.
     fn line_gap(mut self, g: f32) -> Self {
-        debug_assert!(g >= 0.0, "line_gap must be non-negative, got {g}");
         self.element_mut().gaps.set_line_gap(g);
         self
     }

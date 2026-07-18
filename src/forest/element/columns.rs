@@ -6,6 +6,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ModePayload, ScrollSpec};
+use crate::layout::types::limits::valid_packed_gap;
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::approx;
 use crate::primitives::size::Size;
@@ -51,11 +52,19 @@ impl Gaps {
 
     #[inline]
     pub(crate) fn set_gap(&mut self, v: f32) {
+        debug_assert!(
+            valid_packed_gap(v),
+            "gap must be finite, non-negative, and no greater than the f16 maximum, got {v}",
+        );
         self.0[0] = f16::from_f32(v).to_bits();
     }
 
     #[inline]
     pub(crate) fn set_line_gap(&mut self, v: f32) {
+        debug_assert!(
+            valid_packed_gap(v),
+            "line gap must be finite, non-negative, and no greater than the f16 maximum, got {v}",
+        );
         self.0[1] = f16::from_f32(v).to_bits();
     }
 }

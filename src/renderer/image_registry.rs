@@ -19,9 +19,7 @@
 //! its source in `renderer::texture_id` — so this module owns only the
 //! stateful lifecycle.
 //!
-//! Single-threaded `Rc<RefCell<…>>` (same pattern as
-//! [`RecordStore`](crate::record_store::RecordStore)). Cheap to
-//! clone; the inner state is shared.
+//! Single-threaded `Rc<RefCell<…>>`; cheap to clone, with shared inner state.
 
 use crate::primitives::image::Image;
 use crate::renderer::texture_id::{TextureId, TextureIdSource};

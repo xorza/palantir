@@ -21,7 +21,7 @@ use crate::primitives::interned_str::{InternedStr, RecordedText, TextArena};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::span::Span;
 use glam::Vec2;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell};
 use std::fmt::Write as _;
 use std::rc::Rc;
 
@@ -40,19 +40,18 @@ pub(crate) struct RecordedGradient {
     pub(crate) interp: Interp,
 }
 
-/// Shared owner of one window's retained record payloads. `Ui` owns one;
+/// Owner of one window's retained record payloads. `Ui` owns one;
 /// frontend and backend phases receive a borrow of the same payloads.
 /// Phases run sequentially (record → encode → compose → upload) so the
 /// underlying borrow is never contested; a double-borrow indicates a wiring
 /// bug and panics.
 ///
 /// User-facing operations (`clear`, `intern_str`, `intern_fmt`) borrow
-/// internally. Pass-orchestration code (encode/compose/intrinsic) uses
-/// [`Self::borrow`] / [`Self::borrow_mut`] once per pass and hands
-/// `&RecordPayloads` down through it.
-#[derive(Clone, Default, Debug)]
+/// internally. Pass-orchestration code (encode/compose/intrinsic) borrows
+/// `payloads` once per pass and hands `&RecordPayloads` down through it.
+#[derive(Default, Debug)]
 pub(crate) struct RecordStore {
-    payloads: Rc<RefCell<RecordPayloads>>,
+    pub(crate) payloads: RefCell<RecordPayloads>,
 }
 
 /// Payloads for one window's retained record. All bulk shape-geometry bytes
@@ -163,14 +162,6 @@ impl TextStore {
 }
 
 impl RecordStore {
-    pub(crate) fn borrow(&self) -> Ref<'_, RecordPayloads> {
-        self.payloads.borrow()
-    }
-
-    pub(crate) fn borrow_mut(&self) -> RefMut<'_, RecordPayloads> {
-        self.payloads.borrow_mut()
-    }
-
     /// Drop all record-pass storage.
     /// PaintOnly skips this so the retained tree and payload storage remain
     /// valid together.
@@ -207,5 +198,34 @@ impl RecordStore {
     pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
         let payloads = self.payloads.borrow();
         payloads.text.record(text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::record_store::{RecordPayloads, RecordStore};
+    use glam::Vec2;
+    use std::cell::RefCell;
+
+    #[test]
+    fn record_store_owns_inline_payloads_and_stores_are_isolated() {
+        assert_eq!(
+            std::mem::size_of::<RecordStore>(),
+            std::mem::size_of::<RefCell<RecordPayloads>>(),
+        );
+
+        let first = RecordStore::default();
+        let second = RecordStore::default();
+        first
+            .payloads
+            .borrow_mut()
+            .polyline_points
+            .push(Vec2::new(3.0, 5.0));
+
+        assert_eq!(
+            first.payloads.borrow().polyline_points.as_slice(),
+            &[Vec2::new(3.0, 5.0)],
+        );
+        assert!(second.payloads.borrow().polyline_points.is_empty());
     }
 }
