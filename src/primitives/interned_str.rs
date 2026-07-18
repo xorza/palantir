@@ -1,107 +1,130 @@
 use crate::primitives::span::Span;
-use smol_str::SmolStr;
 use std::borrow::Cow;
+use std::cell::{Ref, RefCell};
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
-/// Text input to widgets. Its representation is opaque so frame-local
-/// arena handles can only be created by [`crate::Ui::fmt`] and
-/// [`crate::Ui::intern`]. Two carriers are used internally:
+/// Arena-backed text handle. Every value is a span into storage owned by
+/// [`crate::Ui`]; construct one with [`crate::Ui::intern`] or
+/// [`crate::Ui::fmt`].
 ///
-/// - Owned — a [`SmolStr`]. `&'static str` literals
-///   wrap via `SmolStr::new_static` (zero-copy fat pointer); strings
-///   ≤ 23 bytes inline on the stack; longer strings sit behind an
-///   `Arc<str>`. `.clone()` is always allocation-free.
-/// - Interned — bytes already live in the active record pass's
-///   `fmt_scratch` arena. The span, hash, and arena generation are
-///   captured at write time; lowering is zero-copy and reuses the hash
-///   after validating the generation.
-///
-/// Non-static `&str` callers route through `Ui::intern` (or
-/// `Ui::fmt` for formatted output) to land in the `Interned` arm
-/// without per-call allocation.
+/// Retaining a handle keeps its exact source bytes alive. Lowering is zero-copy
+/// when the handle belongs to the active record store and copies into that
+/// store when it came from an earlier pass or another window.
 #[derive(Clone, Debug)]
-pub struct InternedStr(pub(crate) InternedStrRepr);
+pub struct InternedStr {
+    pub(crate) span: Span,
+    pub(crate) arena: Rc<TextArena>,
+}
 
+/// Transient text accepted by widget builders. Borrowed and owned inputs are
+/// copied into the active [`crate::Ui`] text arena when the widget is shown;
+/// an [`InternedStr`] is already there and passes through unchanged.
+#[derive(Debug)]
+pub enum TextInput<'a> {
+    Borrowed(&'a str),
+    Owned(String),
+    Interned(InternedStr),
+}
+
+/// Retained bytes behind frame-authored [`InternedStr`] values. The active
+/// record store reuses its arena while no handle has escaped; an escaped
+/// handle keeps this allocation and its exact bytes alive.
+#[derive(Debug, Default)]
+pub(crate) struct TextArena {
+    pub(crate) bytes: RefCell<String>,
+}
+
+/// Text stored on a [`ShapeRecord`](crate::forest::shapes::record::ShapeRecord).
+/// Its span always addresses the active record store because lowering rebases
+/// handles from any other arena before constructing this value.
 #[derive(Clone, Debug)]
-pub(crate) enum InternedStrRepr {
-    Owned(SmolStr),
-    Interned {
-        span: Span,
-        hash: u64,
-        record_pass_generation: u64,
-    },
+pub(crate) struct RecordedText {
+    span: Span,
+    hash: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ResolvedText<'a> {
+    pub(crate) text: &'a str,
+    pub(crate) hash: u64,
 }
 
 impl InternedStr {
-    pub(crate) fn frame_local(span: Span, hash: u64, record_pass_generation: u64) -> Self {
-        Self(InternedStrRepr::Interned {
-            span,
-            hash,
-            record_pass_generation,
-        })
+    pub(crate) fn arena_backed(span: Span, arena: Rc<TextArena>) -> Self {
+        Self { span, arena }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        match &self.0 {
-            InternedStrRepr::Owned(s) => s.is_empty(),
-            InternedStrRepr::Interned { span, .. } => span.len == 0,
-        }
+        self.span.len == 0
     }
 
-    /// Resolve to `&str`. Owned text carries the bytes inline (via
-    /// `SmolStr::Deref`); frame-local text indexes into the record-pass
-    /// arena passed in. The handle's arena generation was validated
-    /// when its `ShapeRecord` was lowered.
-    ///
-    /// Crate-internal: only the frame pipeline holds the arena an
-    /// `Interned` value indexes into, so this is not a public accessor.
-    /// Consumers that keep their own text should store [`SmolStr`]
-    /// (aperture re-exports it) and convert via `Into<InternedStr>`.
-    #[inline]
-    pub(crate) fn as_str<'a>(&'a self, text_bytes: &'a str) -> &'a str {
-        match &self.0 {
-            InternedStrRepr::Owned(s) => s,
-            InternedStrRepr::Interned { span, .. } => {
-                &text_bytes[span.start as usize..(span.start + span.len) as usize]
-            }
-        }
+    /// Borrow this handle's string slice from its owning arena.
+    pub fn borrow_str(&self) -> Ref<'_, str> {
+        Ref::map(self.arena.bytes.borrow(), |bytes| &bytes[self.span.range()])
     }
 }
 
-impl Default for InternedStr {
-    #[inline]
+impl Default for TextInput<'_> {
     fn default() -> Self {
-        Self(InternedStrRepr::Owned(SmolStr::default()))
+        Self::Borrowed("")
     }
 }
 
-impl From<&'static str> for InternedStr {
-    #[inline]
-    fn from(s: &'static str) -> Self {
-        Self(InternedStrRepr::Owned(SmolStr::new_static(s)))
+impl<'a> From<&'a str> for TextInput<'a> {
+    fn from(text: &'a str) -> Self {
+        Self::Borrowed(text)
     }
 }
 
-impl From<String> for InternedStr {
-    #[inline]
-    fn from(s: String) -> Self {
-        Self(InternedStrRepr::Owned(SmolStr::from(s)))
+impl<'a> From<&'a String> for TextInput<'a> {
+    fn from(text: &'a String) -> Self {
+        Self::Borrowed(text)
     }
 }
 
-impl From<SmolStr> for InternedStr {
-    #[inline]
-    fn from(s: SmolStr) -> Self {
-        Self(InternedStrRepr::Owned(s))
+impl<'a> From<String> for TextInput<'a> {
+    fn from(text: String) -> Self {
+        Self::Owned(text)
     }
 }
 
-impl From<Cow<'static, str>> for InternedStr {
-    #[inline]
-    fn from(c: Cow<'static, str>) -> Self {
-        match c {
-            Cow::Borrowed(s) => Self(InternedStrRepr::Owned(SmolStr::new_static(s))),
-            Cow::Owned(s) => Self(InternedStrRepr::Owned(SmolStr::from(s))),
+impl<'a> From<InternedStr> for TextInput<'a> {
+    fn from(text: InternedStr) -> Self {
+        Self::Interned(text)
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for TextInput<'a> {
+    fn from(text: Cow<'a, str>) -> Self {
+        match text {
+            Cow::Borrowed(text) => Self::Borrowed(text),
+            Cow::Owned(text) => Self::Owned(text),
         }
+    }
+}
+
+impl RecordedText {
+    pub(crate) fn new(span: Span, hash: u64) -> Self {
+        Self { span, hash }
+    }
+
+    /// Resolve the paired recorded bytes and content hash. The span is
+    /// guaranteed to target `text_bytes` by `RecordStore::record_text`.
+    #[inline]
+    pub(crate) fn resolve<'a>(&'a self, text_bytes: &'a str) -> ResolvedText<'a> {
+        let text =
+            &text_bytes[self.span.start as usize..(self.span.start + self.span.len) as usize];
+        ResolvedText {
+            text,
+            hash: self.hash,
+        }
+    }
+}
+
+impl Hash for RecordedText {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash.hash(state);
     }
 }

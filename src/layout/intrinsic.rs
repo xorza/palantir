@@ -317,16 +317,18 @@ mod tests {
         ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
         let payloads = ui.record_store.borrow();
+        let text_bytes = payloads.text_bytes();
         let v = ui.layout_engine.intrinsic(
             &ui.forest.trees[Layer::Main],
             child,
             Axis::X,
             LenReq::MinContent,
             &TextCtx {
-                bytes: &payloads.fmt_scratch,
+                bytes: &text_bytes,
                 shaper: &ui.shared.text,
             },
         );
+        drop(text_bytes);
         drop(payloads);
         assert_eq!(
             v, SENTINEL,
@@ -367,16 +369,18 @@ mod tests {
         }
 
         let payloads = ui.record_store.borrow();
+        let text_bytes = payloads.text_bytes();
         let _ = ui.layout_engine.intrinsic(
             &ui.forest.trees[Layer::Main],
             root,
             Axis::X,
             LenReq::MaxContent,
             &TextCtx {
-                bytes: &payloads.fmt_scratch,
+                bytes: &text_bytes,
                 shaper: &ui.shared.text,
             },
         );
+        drop(text_bytes);
         drop(payloads);
 
         assert!(

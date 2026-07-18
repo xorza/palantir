@@ -129,28 +129,10 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The seven-item count above describes the earlier pruned
-pass; the nine findings below are additional. These supplemental batches are
+pass; the eight findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 
 ## Batch 3 — High: Restore frame- and pass-scoped ownership
-
-- [ ] **Make record-pass-scoped text impossible to misresolve in release.**
-  `Ui::fmt` and `Ui::intern` promise that reuse after the next record pass
-  panics at `src/ui/mod.rs:904-930`, and `RecordStore::clear` advances the
-  generation before reusing its scratch bytes at
-  `src/record_store.rs:114-128`. The only generation check is a
-  `debug_assert_eq!` at `src/record_store.rs:164-172`, however. Release
-  lowering therefore accepts a stale carrier and reuses its obsolete hash at
-  `src/forest/shapes/mod.rs:175-183`, while resolution slices the replacement
-  arena solely through the stale span at
-  `src/primitives/interned_str.rs:51-65`. A same-length replacement can bind
-  new bytes to the old hash and return an unrelated shaped-buffer hit; a
-  shorter replacement can panic later at an unrelated slice. Replace the
-  cloneable stale-capable representation with generation-owned arena storage
-  whose bytes and hash remain paired, recycling arenas once their last handles
-  drop so correct steady state remains allocation-free. Validate release builds
-  with same-length, shorter, and longer replacements plus settling-pass reuse,
-  and benchmark the carrier clone/drop cost.
 
 - [ ] **Attribute accumulated scroll and pinch deltas to their event-time
   targets.** Pointer moves immediately replace `scroll_target` and
@@ -288,3 +270,37 @@ ordered by priority and are independently implementable.
   for all gradient variants, gradient→gradient, nonzero carried velocity,
   derived `Background`/look types, unchanged Solid/Solid trajectories, and no
   surplus repaint ticks after genuine fields settle.
+
+## Targeted text-carrier consolidation review — 2026-07-18
+
+This follow-up traced the production path from `InternedStr` authoring through
+`RecordStore` normalization, `ShapeRecord`, layout, and encoding, then checked
+Aperture's manifest and its primary Darkroom consumer. The transient-label and
+single-recorded-representation findings were completed on 2026-07-18:
+text-taking widgets now defer borrowed/owned input into the active arena,
+`InternedStr` is arena-only, every `RecordedText` is one private `(Span, hash)`,
+and Darkroom's per-record scene projection stores arena handles directly.
+
+## Batch 7 — Medium: Remove false shared ownership
+
+- [ ] **Remove the unused shared-ownership layer around `RecordPayloads`.**
+  Each `Ui` constructs exactly one `RecordStore`
+  (`src/ui/mod.rs:78-80,130-139`) and all production consumers receive
+  `&RecordStore` (`src/ui/mod.rs:848-853`,
+  `src/forest/mod.rs:190-200`), yet `RecordStore` derives `Clone` and puts its
+  sole `RefCell<RecordPayloads>` behind an `Rc`
+  (`src/record_store.rs:43-56`). No production clone exists. Store the
+  `RefCell<RecordPayloads>` inline and remove `Clone`; this deletes one
+  allocation, one pointer chase, and a false sharing capability while
+  preserving the existing phase borrows. The payload is currently 176 bytes,
+  so confirm the larger inline `Ui` does not hurt host/window moves; validate
+  multi-window isolation and benchmark `Ui` construction plus full-record
+  throughput.
+
+## Text changes intentionally excluded
+
+- Do not merge `InternedStr` and `RecordedText` into one `Rc`-owning carrier.
+  Recorded shapes would then keep the active arena's strong count above one,
+  forcing `clear_text` to rotate arenas every record pass
+  (`src/record_store.rs:101-118`). The phase split is what lets recorded spans
+  remain owner-free while escaped authoring handles retain their exact bytes.

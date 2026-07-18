@@ -132,7 +132,7 @@ pub(crate) fn encode(
     let viewport = ui.display.logical_rect();
     let now = ui.frame_runtime.time;
     let gradients = payloads.gradients.as_slice();
-    let text_bytes = payloads.fmt_scratch.as_str();
+    let text_bytes = payloads.text_bytes();
     let gradient_atlas = &ui.shared.assets.gradients;
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in
@@ -146,7 +146,7 @@ pub(crate) fn encode(
             cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
             subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
             gradients,
-            text_bytes,
+            text_bytes: &text_bytes,
             shaper: &ui.shared.text,
             gradient_atlas,
             gpu_views: &ui.gpu_views,
@@ -303,7 +303,7 @@ fn emit_one_shape(
                 return;
             }
             ctx.shaper
-                .ensure_buffer(text.as_str(ctx.text_bytes), shaped.key);
+                .ensure_buffer(text.resolve(ctx.text_bytes).text, shaped.key);
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect

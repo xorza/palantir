@@ -64,7 +64,7 @@ pub(crate) fn toggle_row(
     mut element: Element,
     raw_state: ResponseState,
     chrome: ToggleChrome,
-    label: InternedStr,
+    label: Option<InternedStr>,
     paint_indicator: impl FnOnce(&mut Ui, f32),
 ) -> Response<'_> {
     let box_size = chrome.box_size;
@@ -88,7 +88,7 @@ pub(crate) fn toggle_row(
             paint_indicator(ui, box_size)
         });
 
-        if !label.is_empty() {
+        if let Some(label) = label {
             Text::new(label)
                 .id(id.with("label"))
                 .style(look.text)

@@ -1,6 +1,6 @@
 use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -24,7 +24,7 @@ use glam::Vec2;
 pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
-    label: InternedStr,
+    label: Option<TextInput<'a>>,
     style: Option<ToggleTheme>,
 }
 
@@ -36,13 +36,13 @@ impl<'a> Checkbox<'a> {
         Self {
             element,
             value,
-            label: InternedStr::default(),
+            label: None,
             style: None,
         }
     }
 
-    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
-        self.label = s.into();
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = Some(label.into());
         self
     }
 
@@ -63,6 +63,7 @@ impl<'a> Checkbox<'a> {
             *self.value = !*self.value;
         }
         let checked = *self.value;
+        let label = self.label.map(|label| ui.intern_text(label));
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.checkbox);
         let chrome = ToggleChrome::new(theme, state, checked, false);
@@ -75,7 +76,7 @@ impl<'a> Checkbox<'a> {
             self.element,
             raw_state,
             chrome,
-            self.label,
+            label,
             |ui, box_size| {
                 if checked {
                     let pts = check_pts(box_size);

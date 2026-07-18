@@ -54,7 +54,8 @@ mod tests {
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
-    use crate::primitives::interned_str::InternedStr;
+    use crate::primitives::interned_str::RecordedText;
+    use crate::primitives::span::Span;
     use crate::shape::TextWrap;
     use crate::text::{FontFamily, FontWeight};
 
@@ -65,8 +66,7 @@ mod tests {
     ) -> ShapeRecord {
         ShapeRecord::Text {
             local_origin,
-            text: InternedStr::from("hi"),
-            text_hash: hash_str("hi"),
+            text: RecordedText::new(Span::default(), hash_str("hi")),
             color: Color::WHITE.into(),
             font_size_px: 16.0,
             line_height_px,

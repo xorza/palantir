@@ -51,8 +51,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         ShapeRecord::Polyline { content_hash, .. } => h.write_u64(*content_hash),
         ShapeRecord::Text {
             local_origin,
-            text: _,
-            text_hash,
+            text,
             color,
             font_size_px,
             line_height_px,
@@ -68,7 +67,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     approx::hash_visual_vec2(*origin, &mut h);
                 }
             }
-            h.write_u64(*text_hash);
+            text.hash(&mut h);
             color.hash(&mut h);
             approx::hash_visual_f32(*font_size_px, &mut h);
             approx::hash_visual_f32(*line_height_px, &mut h);

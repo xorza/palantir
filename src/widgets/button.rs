@@ -1,7 +1,7 @@
 use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
@@ -9,15 +9,15 @@ use crate::widgets::theme::resolve_look;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 
 #[derive(Debug)]
-pub struct Button {
+pub struct Button<'a> {
     element: Element,
     style: Option<ButtonTheme>,
-    label: InternedStr,
+    label: Option<TextInput<'a>>,
     label_align: Align,
     label_wrap: TextWrap,
 }
 
-impl Button {
+impl<'a> Button<'a> {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
@@ -26,7 +26,7 @@ impl Button {
         Self {
             element,
             style: None,
-            label: InternedStr::default(),
+            label: None,
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
@@ -43,8 +43,8 @@ impl Button {
         self.style = Some(s);
         self
     }
-    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
-        self.label = s.into();
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = Some(label.into());
         self
     }
 
@@ -86,12 +86,12 @@ impl Button {
             self.style.as_ref(),
             |t| &t.button,
         );
-        let label = self.label;
+        let label = self.label.map(|label| ui.intern_text(label));
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
         ui.node(id, element, Some(&look.background), |ui| {
-            if !label.is_empty() {
+            if let Some(label) = label {
                 ui.add_shape(Shape::Text {
                     local_origin: None,
                     text: label,
@@ -114,7 +114,7 @@ impl Button {
     }
 }
 
-impl Configure for Button {
+impl Configure for Button<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }

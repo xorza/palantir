@@ -4,7 +4,6 @@ pub(crate) mod frame;
 pub(crate) mod frame_report;
 pub(crate) mod state;
 
-use crate::InternedStr;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
@@ -17,6 +16,7 @@ use crate::forest::layer::Layer;
 use crate::forest::shapes::lower::ChromeInput;
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::forest::tree::recording::Placement;
+use crate::host::shared::HostShared;
 use crate::host::shared::UiShared;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
@@ -39,6 +39,7 @@ use crate::primitives::widget_id::WidgetIdMap;
 use crate::record_store::RecordStore;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::ImageHandle;
+use crate::{InternedStr, TextInput};
 
 use crate::debug_overlay::record_frame_stats;
 use crate::primitives::widget_id::WidgetId;
@@ -518,8 +519,9 @@ impl Ui {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
         let payloads = self.record_store.borrow();
+        let text_bytes = payloads.text_bytes();
         let tc = TextCtx {
-            bytes: &payloads.fmt_scratch,
+            bytes: &text_bytes,
             shaper: &self.shared.text,
         };
         self.layout_engine.run(
@@ -528,6 +530,7 @@ impl Ui {
             self.display.logical_rect(),
             &mut self.layout,
         );
+        drop(text_bytes);
         drop(payloads);
         // O5 stage 0: skip the cascade when nothing feeding it changed.
         // The cascade is a pure function of subtree authoring + arranged
@@ -902,32 +905,37 @@ impl Ui {
     }
 
     /// Format `args` directly into the record-pass text storage and return
-    /// a frame-local [`InternedStr`]. Pass the returned value to
-    /// any widget that takes `impl Into<InternedStr>`
-    /// (Text/Button/MenuItem) — the bytes are already in the destination
-    /// buffer, so lowering is zero-copy and steady-state authoring of
-    /// dynamic labels skips per-call `String` allocations.
+    /// an arena-backed [`InternedStr`]. Pass the returned value to
+    /// any text-taking widget. The bytes are already in the destination
+    /// buffer, so same-arena lowering is zero-copy and steady-state authoring
+    /// of dynamic labels skips per-call `String` allocations.
     ///
-    /// **Record-pass-scoped.** The next record pass invalidates the
-    /// handle, including a settling pass inside the same [`Self::frame`]
-    /// call. Reuse then panics during text lowering. PaintOnly starts no
-    /// record pass, so its retained tree and handles remain valid. For
-    /// persistent strings store the original `String` / `&'static str`
-    /// and convert it into `InternedStr` on every pass.
+    /// Retaining this handle keeps its source arena alive; lowering it in a
+    /// later pass or another window copies its exact bytes into that record
+    /// store before recording the span. Persistent application text should
+    /// stay in its source `String` and be passed to widgets by reference.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
         self.record_store.intern_fmt(args)
     }
 
-    /// Copy `s` into the record-pass text storage and return a frame-local
+    /// Copy `s` into the record-pass text storage and return an arena-backed
     /// [`InternedStr`]. Format-less twin of
     /// [`Self::fmt`] for plain `&str` borrows whose lifetime doesn't
     /// reach `'static` — turns a per-frame `String` allocation into a
-    /// memcpy into the retained `fmt_scratch` buffer. Same
-    /// frame-scoped invalidation rules as [`Self::fmt`].
+    /// memcpy into the retained text arena. Same retention rules as
+    /// [`Self::fmt`].
     #[must_use]
     pub fn intern(&mut self, s: &str) -> InternedStr {
         self.record_store.intern_str(s)
+    }
+
+    pub(crate) fn intern_text<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
+        match text.into() {
+            TextInput::Borrowed(text) => self.intern(text),
+            TextInput::Owned(text) => self.intern(&text),
+            TextInput::Interned(text) => text,
+        }
     }
 
     /// Append `shape` to the active node and register `anim` against
@@ -1253,6 +1261,16 @@ impl Ui {
     }
 }
 
+/// Standalone CPU recorder with isolated resources and mono-fallback text.
+///
+/// Use [`crate::OffscreenHost`] when frames must be rendered or share
+/// resources with a GPU backend.
+impl Default for Ui {
+    fn default() -> Self {
+        Self::new(HostShared::default().ui_shared())
+    }
+}
+
 /// Central gated reach-in surface for tests and benches. All test/bench
 /// helpers that operate on `Ui` live here as methods on `Ui` (or as
 /// free constructors), so a single `use crate::ui::test_support::*;`
@@ -1281,15 +1299,6 @@ pub(crate) mod test_support {
     use crate::{FrameReport, WindowToken};
     use glam::{UVec2, Vec2};
     use std::time::Duration;
-
-    /// Standalone `Ui` with a mono-fallback shaper and private record store.
-    /// Shipping code receives its `Ui` from a host and must not construct a
-    /// disconnected one.
-    impl Default for Ui {
-        fn default() -> Self {
-            Self::new(HostShared::default().ui_shared())
-        }
-    }
 
     impl Ui {
         pub(crate) fn record(

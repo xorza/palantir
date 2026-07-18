@@ -2,6 +2,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
+use crate::record_store::RecordStore;
 use crate::text::{
     FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextReuseCache, TextRunIdentity,
     TextShaper,
@@ -58,6 +59,12 @@ fn measure_truncated_width(
 }
 
 pub fn bench(c: &mut Criterion) {
+    let store = RecordStore::default();
+    let arena_text = store.intern_str(TEXT);
+    c.bench_function("text_input/arena_clone_drop", |b| {
+        b.iter(|| black_box(arena_text.clone()));
+    });
+
     let wid = WidgetId::from_hash("text-shape-width-churn");
     c.bench_function("text_shape/ellipsis_width_churn", |b| {
         b.iter_batched(
