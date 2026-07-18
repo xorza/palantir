@@ -10,11 +10,11 @@ design notes, and the current CPU profile. Tests and benchmarks were read only
 where needed to understand an invariant or prescribe validation; they were not
 reviewed as production modules.
 
-Completed findings have been removed after checking the current code. Six
+Completed findings have been removed after checking the current code. Four
 findings remain:
 
 - prototype narrower cascade invalidation without weakening correctness;
-- consolidate four duplicated or unnecessarily repeated policies;
+- consolidate two duplicated or unnecessarily repeated policies;
 - decide how Grid Fill tracks contribute to the Grid's intrinsic size.
 
 The batches below remain ordered by priority and can be implemented and
@@ -37,29 +37,6 @@ validated independently.
   benchmark partial and scrolling arms.
 
 ## Batch 2 — Consolidate duplicated policies
-
-- [ ] **Make direct-text ordinal assignment a single source of truth.**
-  `TextShapeInput` and its shared iterators do not carry an ordinal
-  (`src/layout/support.rs:35-115`), so intrinsic sizing assigns and
-  overflow-checks `(WidgetId, ordinal)` at
-  `src/layout/intrinsic.rs:174-232` while normal shaping independently repeats
-  the counter and overflow policy at `src/layout/engine.rs:758-777`. Both feed
-  the same identity cache and must never drift. Have the shared iterator yield
-  the checked ordinal with `TextShapeInput`, then consume it in both paths.
-  Validate multiple direct text runs interleaved with non-text shapes and the
-  ordinal overflow boundary.
-
-- [ ] **Consolidate raw RGBA8 ownership and validation.** `Image` and
-  `WindowIcon` independently store straight-alpha RGBA8 dimensions and bytes,
-  with separate validators at `src/primitives/image.rs:58-93` and
-  `src/window.rs:60-87`. Both expose fields publicly, so callers can bypass the
-  constructors; both compute `width * height * 4` without checked
-  multiplication. `WindowIcon` also permits zero dimensions, after which winit
-  silently drops the malformed icon at `src/host/winit/mod.rs:530-536`.
-  Introduce a shared invariant-bearing RGBA8 pixel buffer with non-zero
-  dimensions and checked length arithmetic; make Image and WindowIcon thin
-  semantic wrappers. Validate zero dimensions, arithmetic overflow, wrong
-  length, valid image upload, and valid platform-icon conversion.
 
 - [ ] **Build Stack planning data in one child walk without unifying the
   Stack/Grid solvers.** `stack_plan` walks every active child for counts,

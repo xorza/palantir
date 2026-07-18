@@ -150,7 +150,7 @@ pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::{InnerResponse, Response, ResponseSnapshot};
-pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowIcon, WindowToken};
+pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowToken};
 
 #[cfg(test)]
 mod hot_struct_sizes {

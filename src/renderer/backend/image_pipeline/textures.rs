@@ -40,15 +40,11 @@ fn upload(
     id: TextureId,
     image: &Image,
 ) -> wgpu::BindGroup {
-    assert_image_uploadable(
-        image.width,
-        image.height,
-        device.limits().max_texture_dimension_2d,
-    );
+    assert_within_device_limit(image.size, device.limits().max_texture_dimension_2d);
     let raw_id = id.0;
     let size = wgpu::Extent3d {
-        width: image.width,
-        height: image.height,
+        width: image.size.x,
+        height: image.size.y,
         depth_or_array_layers: 1,
     };
     let texture_label = format!("aperture.image.tex.{raw_id:016x}");
@@ -73,8 +69,8 @@ fn upload(
         &image.pixels,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(image.width * 4),
-            rows_per_image: Some(image.height),
+            bytes_per_row: Some(image.size.x * 4),
+            rows_per_image: Some(image.size.y),
         },
         size,
     );
@@ -82,38 +78,31 @@ fn upload(
     texture_bind_group(device, layout, sampler, &view, &bind_group_label)
 }
 
-fn assert_image_uploadable(width: u32, height: u32, max_dim: u32) {
+fn assert_within_device_limit(size: glam::UVec2, max_dim: u32) {
     assert!(
-        width > 0 && height > 0,
-        "registered image has zero dimension ({width}x{height})",
-    );
-    assert!(
-        width <= max_dim && height <= max_dim,
-        "registered image is {width}x{height} px but the device's \
+        size.x <= max_dim && size.y <= max_dim,
+        "registered image is {}x{} px but the device's \
          max_texture_dimension_2d is {max_dim}; downscale or tile it \
          before Ui::register_image",
+        size.x,
+        size.y,
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::assert_image_uploadable;
+    use crate::renderer::backend::image_pipeline::textures::assert_within_device_limit;
+    use glam::UVec2;
 
     #[test]
     fn device_limit_boundaries_are_accepted() {
-        assert_image_uploadable(1, 1, 8192);
-        assert_image_uploadable(8192, 8192, 8192);
+        assert_within_device_limit(UVec2::ONE, 8192);
+        assert_within_device_limit(UVec2::splat(8192), 8192);
     }
 
     #[test]
     #[should_panic(expected = "max_texture_dimension_2d is 8192")]
     fn oversized_image_names_device_limit() {
-        assert_image_uploadable(8193, 4, 8192);
-    }
-
-    #[test]
-    #[should_panic(expected = "zero dimension")]
-    fn zero_dimension_is_rejected() {
-        assert_image_uploadable(0, 4, 8192);
+        assert_within_device_limit(UVec2::new(8193, 4), 8192);
     }
 }
