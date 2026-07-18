@@ -266,6 +266,7 @@ impl TextBackend {
         // `with_render_split` — an all-hit frame never cracks the
         // RefCell or hits cosmic.
         self.misses.clear();
+        let current_frame = self.atlas.current_frame;
         for (i, r) in runs.iter().enumerate() {
             if r.key.is_invalid() {
                 // Mono fallback emits nothing; skip both paths.
@@ -274,7 +275,8 @@ impl TextBackend {
             let run_key = encode_key_for(r, scale);
             if try_emit_cached(
                 &mut self.encoded_cache,
-                &mut self.atlas,
+                &mut self.atlas.slots,
+                current_frame,
                 &run_key,
                 &mut self.instances,
             ) {
@@ -663,8 +665,8 @@ mod gpu_regression {
         // Frame 1: encoded-cache miss → rasterize + cache. Slots get
         // last_use == current_frame.
         run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        let arena_after_warmup = backend.encoded_cache.arena.len();
         backend.post_record();
-        let evictions_after_warmup = backend.atlas.eviction_count;
         assert!(
             !backend.atlas.cache.is_empty(),
             "warmup should have rasterized at least one glyph",
@@ -698,31 +700,90 @@ mod gpu_regression {
                 );
             }
         }
-        // The second frame was a pure hit — nothing should have been
-        // re-rasterized or evicted.
-        assert_eq!(
-            backend.atlas.eviction_count, evictions_after_warmup,
-            "a pure cache-hit frame must not evict",
-        );
-
-        // Frame 3, after a (simulated) eviction: the count mismatch
-        // must reject the entry and force a full re-encode — the old
-        // span goes dead in the arena and the rebuilt entry latches
-        // the new eviction count.
-        let arena_after_hit = backend.encoded_cache.arena.len();
-        backend.post_record();
-        backend.atlas.eviction_count += 1;
-        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
         assert_eq!(
             backend.encoded_cache.arena.len(),
-            2 * arena_after_hit,
-            "eviction must invalidate the entry and re-encode (old span left dead)",
+            arena_after_warmup,
+            "a pure cache-hit frame must not append a replacement span",
         );
-        assert_eq!(backend.encoded_cache.map.len(), 1);
-        let entry = backend.encoded_cache.map.values().next().unwrap();
+    }
+
+    #[test]
+    fn slot_generation_invalidates_only_referencing_run() {
+        let TestGpu { device, queue } = device_queue();
+        let shaper = TextShaper::with_bundled_fonts();
+        let mut backend = TextBackend::new(&device, shaper.clone());
+
+        let runs = [
+            make_inner_run(
+                &shaper,
+                "AAAA",
+                14.0,
+                14.0 * 1.2,
+                Vec2::new(20.0, 20.0),
+                PHYSICAL,
+                1.0,
+                ColorU8::rgba(240, 240, 240, 255),
+            ),
+            make_inner_run(
+                &shaper,
+                "ZZZZ",
+                14.0,
+                14.0 * 1.2,
+                Vec2::new(20.0, 60.0),
+                PHYSICAL,
+                1.0,
+                ColorU8::rgba(240, 240, 240, 255),
+            ),
+        ];
+
+        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        assert_eq!(backend.encoded_cache.map.len(), 2);
+        backend.post_record();
+
+        let entries: Vec<_> = backend
+            .encoded_cache
+            .map
+            .iter()
+            .map(|(&key, entry)| (key, entry.span))
+            .collect();
+        let (invalidated_key, invalidated_span) = entries[0];
+        let invalidated_slot = backend.encoded_cache.arena[invalidated_span.range()][0].atlas_slot;
+        let (stable_key, stable_span) = entries
+            .iter()
+            .copied()
+            .find(|(_, span)| {
+                backend.encoded_cache.arena[span.range()]
+                    .iter()
+                    .all(|glyph| glyph.atlas_slot != invalidated_slot)
+            })
+            .expect("test runs must use disjoint atlas slots");
+        let arena_before = backend.encoded_cache.arena.len();
+
+        let slot = &mut backend.atlas.slots[invalidated_slot as usize];
+        slot.generation = slot
+            .generation
+            .checked_add(1)
+            .expect("test slot generation overflowed");
+        let expected_generation = slot.generation;
+        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+
         assert_eq!(
-            entry.eviction_at, backend.atlas.eviction_count,
-            "rebuilt entry must latch the bumped eviction count",
+            backend.encoded_cache.map[&stable_key].span, stable_span,
+            "a disjoint run must retain its encoded span",
+        );
+        let replacement = backend.encoded_cache.map[&invalidated_key].span;
+        assert_ne!(
+            replacement, invalidated_span,
+            "the run referencing the changed slot must be rebuilt",
+        );
+        assert_eq!(
+            replacement.start, arena_before as u32,
+            "the rebuilt run must append one replacement span",
+        );
+        assert_eq!(
+            backend.encoded_cache.arena[replacement.range()][0].generation,
+            expected_generation,
+            "the replacement must record the slot's new generation",
         );
     }
 

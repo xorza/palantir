@@ -17,11 +17,10 @@
 //!   scroll.
 //!
 //! Atlas eviction reuses slot rectangles for new glyphs; any cached
-//! entry holding the old uv would point at the wrong image. The
-//! atlas's `eviction_count` is latched on insert and re-checked on
-//! lookup — any eviction since the entry was built invalidates it.
-//! Atlas growth preserves rects (`etagere::grow`), so no
-//! invalidation is needed there.
+//! entry holding the old uv would point at the wrong image. Each
+//! encoded glyph therefore records its atlas slot's generation and
+//! re-checks it while emitting. Atlas growth preserves rects
+//! (`etagere::grow`), so no invalidation is needed there.
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::span::Span;
@@ -31,7 +30,7 @@ use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
-use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
+use crate::renderer::backend::text::atlas::{GlyphAtlas, GlyphSlot, PackedGlyphMetadata};
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// One text run resolved to a cosmic buffer + placement.
@@ -87,17 +86,13 @@ pub(crate) struct EncodedEntry {
     /// templates.
     pub(crate) span: Span,
     pub(crate) last_use: u64,
-    /// `GlyphAtlas::eviction_count` at insert. If the atlas has
-    /// evicted any slot since (count differs), this entry's uv coords
-    /// may point at a re-used rectangle holding a different glyph —
-    /// drop and rebuild.
-    pub(crate) eviction_at: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
     pub(crate) instance: GlyphInstance,
     pub(crate) atlas_slot: u32,
+    pub(crate) generation: u32,
 }
 
 /// Flat-arena cache: one contiguous `Vec<EncodedGlyph>` holds every
@@ -117,9 +112,9 @@ pub(crate) struct EncodedCache {
     /// `last_use` bumped — `evict_one` could then reclaim a slot still
     /// referenced this frame and overwrite it with a different glyph.
     /// On hit we store the current frame through each index — an
-    /// indexed write, no map probe per glyph. The entry's `eviction_at`
-    /// latch is what keeps these indices honest: only `evict_one` ever
-    /// reassigns an allocated slot's index, and it bumps the count.
+    /// indexed write, no map probe per glyph. Each encoded glyph's
+    /// generation keeps the index honest when `evict_one` makes a slot
+    /// reusable.
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
     pub(crate) scratch: Vec<EncodedGlyph>,
@@ -180,27 +175,27 @@ pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
 /// through to the slow path on `false`.
 pub(crate) fn try_emit_cached(
     cache: &mut EncodedCache,
-    atlas: &mut GlyphAtlas,
+    slots: &mut [GlyphSlot],
+    current_frame: u64,
     run_key: &EncodedRunKey,
     out: &mut Vec<GlyphInstance>,
 ) -> bool {
-    let current_frame = atlas.current_frame;
     let Some(entry) = cache.map.get_mut(&run_key.key) else {
         return false;
     };
-    if entry.eviction_at != atlas.eviction_count {
-        return false;
-    }
-    entry.last_use = current_frame;
     let span = entry.span;
     let glyphs = &cache.arena[span.range()];
+    let out_start = out.len();
     out.reserve(glyphs.len());
     // One pass emits the instance and refreshes the backing slot's LRU
     // stamp together, so `evict_one` can't reclaim a slot we're still
-    // drawing this frame. The eviction_at check above guarantees no
-    // recorded index was evicted since insert, so every slot still
-    // holds the same glyph.
+    // drawing this frame.
     for glyph in glyphs {
+        let slot = &mut slots[glyph.atlas_slot as usize];
+        if slot.generation != glyph.generation {
+            out.truncate(out_start);
+            return false;
+        }
         let g = glyph.instance;
         out.push(GlyphInstance {
             pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
@@ -208,8 +203,9 @@ pub(crate) fn try_emit_cached(
             uv_and_kind: g.uv_and_kind,
             color: g.color,
         });
-        atlas.slots[glyph.atlas_slot as usize].last_use = current_frame;
+        slot.last_use = current_frame;
     }
+    entry.last_use = current_frame;
     true
 }
 
@@ -251,12 +247,10 @@ pub(crate) fn encode_batch<'a>(
         // newly in view — they'd stay blank forever).
         let mut culled = false;
 
-        // Build a fresh cache entry as a side effect of the slow
-        // walk. We push templates straight onto `cache.arena`; if an
-        // atlas eviction happens mid-walk we truncate back to
-        // `pending_start` so the partial run never becomes an entry
-        // (eviction could have invalidated earlier glyphs' uv coords).
-        let eviction_at_start = ctx.atlas.eviction_count;
+        // Build a fresh cache entry as a side effect of the slow walk.
+        // Slots used earlier this frame cannot be eviction candidates,
+        // so an atlas eviction during the walk cannot invalidate a
+        // template already appended here.
         let pending_start = ctx.cache.arena.len() as u32;
 
         for run in area.buffer.layout_runs() {
@@ -323,28 +317,27 @@ pub(crate) fn encode_batch<'a>(
                         color,
                     },
                     atlas_slot: idx,
+                    generation: slot.generation,
                 });
             }
         }
 
-        // Only cache full encodes with no mid-walk eviction. Pass 1
-        // already filtered invalid keys; valid-key here is a
-        // precondition. Partially visible runs re-encode each frame;
-        // the reverse (a cached full template replayed under narrower
-        // bounds) is safe — the batch scissor is the real clip.
-        if ctx.atlas.eviction_count == eviction_at_start && !culled {
+        // Only cache full encodes. Pass 1 already filtered invalid keys;
+        // valid-key here is a precondition. Partially visible runs
+        // re-encode each frame; the reverse (a cached full template
+        // replayed under narrower bounds) is safe — the batch scissor
+        // is the real clip.
+        if !culled {
             let span = Span::new(pending_start, ctx.cache.arena.len() as u32 - pending_start);
             ctx.cache.map.insert(
                 run_key.key,
                 EncodedEntry {
                     span,
                     last_use: current_frame,
-                    eviction_at: ctx.atlas.eviction_count,
                 },
             );
         } else {
-            // Roll back the partial entry — truncated by the cull, or
-            // its uv coords are stale after an eviction.
+            // Roll back the partial entry truncated by the cull.
             ctx.cache.arena.truncate(pending_start as usize);
         }
     }
@@ -392,7 +385,16 @@ fn rasterize_and_insert(
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::text::encode::{ContentType, pack_uv};
+    use etagere::AllocId;
+
+    use crate::primitives::span::Span;
+    use crate::renderer::backend::text::GlyphInstance;
+    use crate::renderer::backend::text::atlas::GlyphSlot;
+    use crate::renderer::backend::text::encode::{
+        ContentType, EncodedCache, EncodedEntry, EncodedGlyph, EncodedKey, EncodedRunKey, pack_uv,
+        try_emit_cached,
+    };
+    use crate::text::TextCacheKey;
 
     #[test]
     fn pack_uv_round_trip() {
@@ -403,5 +405,114 @@ mod tests {
 
         let p = pack_uv(12345, 54321, ContentType::Mask);
         assert_eq!((p >> 15) & 1, 0);
+    }
+
+    fn run_key(text_hash: u64, origin_x: i32) -> EncodedRunKey {
+        EncodedRunKey {
+            key: EncodedKey {
+                text: TextCacheKey {
+                    text_hash,
+                    ..TextCacheKey::INVALID
+                },
+                scale_q: 65_536,
+                area_color: 0,
+                bins: 0,
+            },
+            origin_x,
+            origin_y: 0,
+        }
+    }
+
+    fn slot(generation: u32) -> GlyphSlot {
+        GlyphSlot {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            left: 0,
+            top: 0,
+            content: ContentType::Mask,
+            alloc: Some(AllocId::deserialize(0)),
+            generation,
+            last_use: 1,
+        }
+    }
+
+    fn encoded_glyph(atlas_slot: u32, generation: u32, x: i32) -> EncodedGlyph {
+        EncodedGlyph {
+            instance: GlyphInstance {
+                pos: [x, 0],
+                dim: 1 | (1 << 16),
+                uv_and_kind: 0,
+                color: 0,
+            },
+            atlas_slot,
+            generation,
+        }
+    }
+
+    #[test]
+    fn slot_generation_invalidates_only_referencing_entry() {
+        let invalidated_key = run_key(1, 10);
+        let stable_key = run_key(2, 20);
+        let mut cache = EncodedCache {
+            arena: vec![
+                encoded_glyph(1, 4, 1),
+                encoded_glyph(0, 2, 2),
+                encoded_glyph(2, 7, 3),
+            ],
+            ..EncodedCache::default()
+        };
+        cache.map.insert(
+            invalidated_key.key,
+            EncodedEntry {
+                span: Span::new(0, 2),
+                last_use: 1,
+            },
+        );
+        cache.map.insert(
+            stable_key.key,
+            EncodedEntry {
+                span: Span::new(2, 1),
+                last_use: 1,
+            },
+        );
+        let mut slots = vec![slot(3), slot(4), slot(7)];
+        let mut out = vec![GlyphInstance {
+            pos: [-1, -1],
+            dim: 0,
+            uv_and_kind: 0,
+            color: 0,
+        }];
+
+        assert!(try_emit_cached(
+            &mut cache,
+            &mut slots,
+            9,
+            &stable_key,
+            &mut out,
+        ));
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].pos, [23, 0]);
+        assert_eq!(slots[2].last_use, 9);
+        assert_eq!(cache.map[&stable_key.key].last_use, 9);
+
+        assert!(!try_emit_cached(
+            &mut cache,
+            &mut slots,
+            9,
+            &invalidated_key,
+            &mut out,
+        ));
+        assert_eq!(
+            out.len(),
+            2,
+            "a late generation mismatch must roll back partial output",
+        );
+        assert_eq!(cache.map[&invalidated_key.key].last_use, 1);
+        assert_eq!(
+            slots[1].last_use, 9,
+            "validated slots stay live for the slow-path rebuild",
+        );
     }
 }

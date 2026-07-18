@@ -21,6 +21,10 @@
 //! - `text_atlas/cache_churn` — cycles through 128 scale rungs in a
 //!   permuted order. That exceeds the encoded-cache retention window,
 //!   so every revisited rung is a real encode/raster/upload miss.
+//! - `text_atlas/mixed_stable_churn` — keeps half the runs at one hot
+//!   scale while the other half cycles through those 128 cold rungs.
+//!   This isolates whether atlas pressure rebuilds unrelated stable
+//!   encoded runs.
 //!
 //! Each iteration:
 //!   1. begin command encoder
@@ -79,6 +83,12 @@ struct BenchText {
     pipelines: StencilVariant,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct BenchBatch<'a> {
+    runs: &'a [TextRun],
+    scale: f32,
+}
+
 impl BenchText {
     fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
         let backend = TextBackend::new(device, shaper);
@@ -87,19 +97,29 @@ impl BenchText {
     }
 
     fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) {
-        self.backend.prepare_batch(ctx, scale, 0, runs);
+        self.prepare_batch(ctx, scale, 0, runs);
+    }
+
+    fn prepare_batch(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        scale: f32,
+        batch_index: usize,
+        runs: &[TextRun],
+    ) {
+        self.backend.prepare_batch(ctx, scale, batch_index, runs);
     }
 
     fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
         self.backend.flush(ctx);
     }
 
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+    fn draw<'a>(&'a self, batch_index: usize, pass: &mut wgpu::RenderPass<'a>) {
         let viewport = ViewportPush {
             size: glam::Vec2::ZERO,
         };
         self.backend
-            .render_batch(0, pass, &self.pipelines, false, &viewport);
+            .render_batch(batch_index, pass, &self.pipelines, false, &viewport);
     }
 
     fn end_frame(&mut self) {
@@ -264,6 +284,22 @@ fn run_frame(
     runs: &[TextRun],
     scale: f32,
 ) {
+    run_batches(
+        g,
+        backend,
+        belt,
+        target_view,
+        std::slice::from_ref(&BenchBatch { runs, scale }),
+    );
+}
+
+fn run_batches(
+    g: &Gpu,
+    backend: &mut BenchText,
+    belt: &mut wgpu::util::StagingBelt,
+    target_view: &wgpu::TextureView,
+    batches: &[BenchBatch<'_>],
+) {
     let mut encoder = g
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -271,7 +307,9 @@ fn run_frame(
         });
     {
         let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
-        backend.prepare(&mut ctx, scale, runs);
+        for (batch_index, batch) in batches.iter().enumerate() {
+            backend.prepare_batch(&mut ctx, batch.scale, batch_index, batch.runs);
+        }
         backend.flush(&mut ctx);
     }
     {
@@ -291,7 +329,9 @@ fn run_frame(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        backend.draw(&mut pass);
+        for batch_index in 0..batches.len() {
+            backend.draw(batch_index, &mut pass);
+        }
     }
     belt.finish();
     g.queue.submit([encoder.finish()]);
@@ -408,6 +448,55 @@ pub fn bench(c: &mut Criterion) {
                 let rung = i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE;
                 let scale = BASE_SCALE + (rung as f32) * TEXT_SCALE_STEP;
                 run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let (stable_runs, churning_runs) = runs.split_at(runs.len() / 2);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        for step in 0..CHURN_SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
+            run_batches(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &[
+                    BenchBatch {
+                        runs: stable_runs,
+                        scale: BASE_SCALE,
+                    },
+                    BenchBatch {
+                        runs: churning_runs,
+                        scale,
+                    },
+                ],
+            );
+        }
+        let mut i: u32 = 0;
+        group.bench_function("mixed_stable_churn", |b| {
+            b.iter(|| {
+                let rung = i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE;
+                let scale = BASE_SCALE + (rung as f32) * TEXT_SCALE_STEP;
+                run_batches(
+                    g,
+                    &mut backend,
+                    &mut belt,
+                    &view,
+                    &[
+                        BenchBatch {
+                            runs: stable_runs,
+                            scale: BASE_SCALE,
+                        },
+                        BenchBatch {
+                            runs: churning_runs,
+                            scale,
+                        },
+                    ],
+                );
                 i = i.wrapping_add(1);
             });
         });

@@ -70,6 +70,7 @@ pub(crate) struct GlyphSlot {
     pub(crate) top: i16,
     pub(crate) content: ContentType,
     pub(crate) alloc: Option<AllocId>,
+    pub(crate) generation: u32,
     pub(crate) last_use: u64,
 }
 
@@ -108,21 +109,14 @@ pub(crate) struct GlyphAtlas {
     /// Dense slot slab; `cache` maps each key to an index into it.
     /// Encoded-run caches record these indices so their hot-path LRU
     /// refresh is an indexed store instead of a map probe per glyph —
-    /// safe because every recorded index is validated against
-    /// `eviction_count` before use, and only `evict_one` (which bumps
-    /// it) ever reassigns an *allocated* slot's index.
+    /// safe because every recorded index carries the slot generation
+    /// that `evict_one` advances before making the index reusable.
     pub(crate) slots: Vec<GlyphSlot>,
     pub(crate) cache: FxHashMap<CacheKey, u32>,
     /// Slab indices freed by `evict_one` / the empty sweep, reused by
     /// the next `store`.
     free: Vec<u32>,
     pub(crate) current_frame: u64,
-    /// Bumped every time `evict_one` reuses a slot. Encoded-glyph
-    /// caches keyed on slot positions latch this on insert and
-    /// re-validate on lookup; any eviction invalidates every entry
-    /// (conservative — slot rectangles are stable across grows because
-    /// `etagere::grow` preserves rects).
-    pub(crate) eviction_count: u64,
     max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(crate) bind_group_dirty: bool,
@@ -170,7 +164,6 @@ impl GlyphAtlas {
             cache: FxHashMap::default(),
             free: Vec::new(),
             current_frame: 1,
-            eviction_count: 0,
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
             pending_staging: Vec::new(),
@@ -232,6 +225,7 @@ impl GlyphAtlas {
             top: metadata.top,
             content,
             alloc: Some(alloc.id),
+            generation: 0,
             last_use: self.current_frame,
         };
         Some(self.store(key, slot))
@@ -239,9 +233,10 @@ impl GlyphAtlas {
 
     /// Park `slot` in the slab (reusing a freed index when available)
     /// and map `key` to it.
-    fn store(&mut self, key: CacheKey, slot: GlyphSlot) -> u32 {
+    fn store(&mut self, key: CacheKey, mut slot: GlyphSlot) -> u32 {
         let idx = match self.free.pop() {
             Some(i) => {
+                slot.generation = self.slots[i as usize].generation;
                 self.slots[i as usize] = slot;
                 i
             }
@@ -405,6 +400,7 @@ impl GlyphAtlas {
             top: metadata.top,
             content,
             alloc: None,
+            generation: 0,
             last_use: self.current_frame,
         };
         self.store(key, slot)
@@ -442,31 +438,34 @@ impl GlyphAtlas {
         }
     }
 
-    /// Evict any glyph of `target` content with `last_use <
-    /// current_frame`. Linear scan over the glyph cache — but the cache
-    /// is keyed on distinct `(glyph, scale, subpixel-bin)` rasterizations
-    /// *in view*, not glyph instances, so for UI text (small alphabets;
-    /// the `TEXT_SCALE_STEP` ladder bounding distinct scales) it stays in
-    /// the tens-to-low-hundreds. Profiling the worst case (`text_atlas/
-    /// zoom_cold` — a fresh scale rung every frame, so eviction fires for
-    /// nearly every glyph) put this below 0.3 % of frame: invisible next
-    /// to the per-glyph LRU refresh and the GPU submit.
+    /// Evict the least-recently-used glyph of `target` content with
+    /// `last_use < current_frame`. Linear scan over the glyph cache —
+    /// but the cache is keyed on distinct `(glyph, scale,
+    /// subpixel-bin)` rasterizations *in view*, not glyph instances, so
+    /// for UI text (small alphabets; the `TEXT_SCALE_STEP` ladder
+    /// bounding distinct scales) it stays in the tens-to-low-hundreds.
+    /// Profiling the worst case (`text_atlas/zoom_cold` — a fresh scale
+    /// rung every frame, so eviction fires for nearly every glyph) put
+    /// this below 0.3 % of frame: invisible next to the per-glyph LRU
+    /// refresh and the GPU submit.
     /// An O(1) intrusive LRU would only pay off for a
     /// many-thousand-unique-glyph workload (zooming a full CJK document,
     /// say); not worth the complexity until such a workload exists.
     fn evict_one(&mut self, target: ContentType) -> bool {
-        let cf = self.current_frame;
-        let Some((key, idx)) = self.cache.iter().find_map(|(k, &i)| {
-            let s = &self.slots[i as usize];
-            (s.content == target && s.last_use < cf && s.alloc.is_some()).then_some((*k, i))
-        }) else {
+        let Some((key, idx)) =
+            eviction_candidate(&self.cache, &self.slots, target, self.current_frame)
+        else {
             return false;
         };
         self.cache.remove(&key);
-        let id = self.slots[idx as usize].alloc.take().unwrap();
+        let slot = &mut self.slots[idx as usize];
+        let id = slot.alloc.take().unwrap();
+        slot.generation = slot
+            .generation
+            .checked_add(1)
+            .expect("glyph slot generation overflowed");
         self.sides[target as usize].packer.deallocate(id);
         self.free.push(idx);
-        self.eviction_count += 1;
         true
     }
 
@@ -533,9 +532,9 @@ impl Side {
 /// `free`. Runs only on interval frames so steady-state `end_frame`
 /// stays O(1). Allocated entries are `evict_one`'s job; a swept empty
 /// or rejected glyph re-inserts via `insert_unallocated` on next use.
-/// No `eviction_count` bump: unallocated slots carry no uv coords and
-/// encoded-run caches never record them, so no encoded-cache entry can
-/// go stale.
+/// Unallocated slots carry no uv coords and encoded-run caches never
+/// record them, so returning one to `free` does not advance its
+/// generation.
 fn sweep_stale_unallocated(
     cache: &mut FxHashMap<CacheKey, u32>,
     slots: &[GlyphSlot],
@@ -554,6 +553,22 @@ fn sweep_stale_unallocated(
         }
         keep
     });
+}
+
+fn eviction_candidate(
+    cache: &FxHashMap<CacheKey, u32>,
+    slots: &[GlyphSlot],
+    target: ContentType,
+    current_frame: u64,
+) -> Option<(CacheKey, u32)> {
+    cache
+        .iter()
+        .filter_map(|(key, &idx)| {
+            let slot = &slots[idx as usize];
+            (slot.content == target && slot.last_use < current_frame && slot.alloc.is_some())
+                .then_some((*key, idx))
+        })
+        .min_by_key(|(_, idx)| (slots[*idx as usize].last_use, *idx))
 }
 
 fn make_texture(
@@ -607,6 +622,7 @@ mod tests {
             top: 0,
             content: ContentType::Mask,
             alloc,
+            generation: 0,
             last_use,
         }
     }
@@ -701,5 +717,37 @@ mod tests {
         );
         // The swept entry's slab slot is handed back for reuse.
         assert_eq!(free, vec![0]);
+    }
+
+    #[test]
+    fn eviction_candidate_is_oldest_eligible_slot() {
+        let slots = vec![
+            slot(Some(AllocId::deserialize(0)), 8),
+            slot(Some(AllocId::deserialize(1)), 2),
+            slot(Some(AllocId::deserialize(2)), 2),
+            slot(None, 1),
+            GlyphSlot {
+                content: ContentType::Color,
+                ..slot(Some(AllocId::deserialize(3)), 0)
+            },
+            slot(Some(AllocId::deserialize(4)), 10),
+        ];
+        let mut cache = FxHashMap::default();
+        for i in 0..slots.len() as u32 {
+            cache.insert(key(i as u16 + 1), i);
+        }
+
+        assert_eq!(
+            eviction_candidate(&cache, &slots, ContentType::Mask, 10),
+            Some((key(2), 1)),
+        );
+        assert_eq!(
+            eviction_candidate(&cache, &slots, ContentType::Color, 10),
+            Some((key(5), 4)),
+        );
+        assert_eq!(
+            eviction_candidate(&cache, &slots, ContentType::Mask, 2),
+            None,
+        );
     }
 }
