@@ -415,6 +415,7 @@ impl WindowDriver {
         self.note_format(target.format());
         let cpu = self.cpu_frame(display, app);
         self.render_to_texture(backend, target, cpu.mode);
+        self.discard_offscreen_window_output();
     }
 
     /// The shared CPU half: app lifecycle → record / measure / arrange /
@@ -623,6 +624,13 @@ impl WindowDriver {
             commands,
         }
     }
+
+    fn discard_offscreen_window_output(&mut self) {
+        self.ui.window_requests.commands.opens.clear();
+        self.ui.window_requests.commands.closes.clear();
+        self.ui.window_requests.close_vetoed = false;
+        self.ui.window_frame = WindowFrameState::default();
+    }
 }
 
 /// Every per-frame input [`WindowDriver::frame`] needs from the windowing
@@ -828,6 +836,22 @@ mod record_store_tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct WindowCommandApp {
+        records: usize,
+    }
+
+    impl App for WindowCommandApp {
+        fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
+            self.records += 1;
+            let target = WindowToken(100 + self.records as u64);
+            ui.open_window(target, WindowConfig::new("ignored"));
+            ui.close_window(target);
+            ui.keep_open();
+            ui.request_relayout();
+        }
+    }
+
     fn snapshot(driver: &WindowDriver) -> RecordPayloadSnapshot {
         let payloads = driver.ui.record_store.borrow();
         RecordPayloadSnapshot {
@@ -915,6 +939,67 @@ mod record_store_tests {
         assert!(
             vetoed.commands.closes.is_empty(),
             "keep_open vetoes the host close input"
+        );
+    }
+
+    #[test]
+    fn offscreen_completion_discards_replayed_window_state_and_reuses_capacity() {
+        let shared = HostShared::new(TextShaper::default());
+        let mut window = WindowDriver::builder(WindowToken(1), &shared, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
+        let display = Display::from_physical(UVec2::new(64, 64), 1.0);
+        let mut app = WindowCommandApp::default();
+        window.ui.window_frame.close_requested = true;
+
+        let _ = window.cpu_frame(display, &mut app);
+        assert_eq!(
+            app.records, 3,
+            "cold-start warmup plus relayout must replay record three times"
+        );
+        assert_eq!(window.ui.window_requests.commands.opens.len(), 3);
+        assert_eq!(window.ui.window_requests.commands.closes.len(), 3);
+        assert!(window.ui.window_requests.close_vetoed);
+        let open_capacity = window.ui.window_requests.commands.opens.capacity();
+        let close_capacity = window.ui.window_requests.commands.closes.capacity();
+
+        window.discard_offscreen_window_output();
+        assert!(window.ui.window_requests.commands.opens.is_empty());
+        assert!(window.ui.window_requests.commands.closes.is_empty());
+        assert_eq!(
+            window.ui.window_requests.commands.opens.capacity(),
+            open_capacity
+        );
+        assert_eq!(
+            window.ui.window_requests.commands.closes.capacity(),
+            close_capacity
+        );
+        assert!(!window.ui.window_requests.close_vetoed);
+        assert!(!window.ui.window_frame.close_requested);
+
+        window.ui.frame_runtime.frame_submitted = true;
+        window.ui.request_repaint();
+        let _ = window.cpu_frame(display, &mut app);
+        assert_eq!(app.records, 5, "relayout must replay the warm frame once");
+        assert_eq!(
+            window.ui.window_requests.commands.opens.capacity(),
+            open_capacity
+        );
+        assert_eq!(
+            window.ui.window_requests.commands.closes.capacity(),
+            close_capacity
+        );
+
+        window.discard_offscreen_window_output();
+        assert!(window.ui.window_requests.commands.opens.is_empty());
+        assert!(window.ui.window_requests.commands.closes.is_empty());
+        assert_eq!(
+            window.ui.window_requests.commands.opens.capacity(),
+            open_capacity
+        );
+        assert_eq!(
+            window.ui.window_requests.commands.closes.capacity(),
+            close_capacity
         );
     }
 

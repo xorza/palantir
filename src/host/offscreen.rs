@@ -133,7 +133,8 @@ impl OffscreenHost {
     /// call. The target may be replaced between calls. The host's
     /// [`WindowToken`] is passed to [`App::update`] and [`App::record`], with
     /// the same once-only update and replayable record semantics as
-    /// [`crate::WinitHost`].
+    /// [`crate::WinitHost`]. Window open/close requests recorded by the app are
+    /// discarded after rendering.
     pub fn frame_offscreen<T: App>(
         &mut self,
         target: &wgpu::Texture,
@@ -174,12 +175,30 @@ impl OffscreenHost {
 pub(crate) mod test_support {
     use crate::app::test_support::RecordApp;
     use crate::host::clock::Clock;
+    use crate::host::offscreen::OffscreenHost;
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::renderer::backend::{BackendConfig, WgpuBackend};
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::window::WindowToken;
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct OffscreenWindowScratch {
+        pub opens: usize,
+        pub closes: usize,
+        pub close_vetoed: bool,
+        pub close_requested: bool,
+    }
+
+    pub fn offscreen_window_scratch(host: &OffscreenHost) -> OffscreenWindowScratch {
+        OffscreenWindowScratch {
+            opens: host.driver.ui.window_requests.commands.opens.len(),
+            closes: host.driver.ui.window_requests.commands.closes.len(),
+            close_vetoed: host.driver.ui.window_requests.close_vetoed,
+            close_requested: host.driver.ui.window_frame.close_requested,
+        }
+    }
 
     /// Two window render streams sharing one backend and render resources. This is
     /// intentionally test-only: production multi-window ownership stays with

@@ -739,7 +739,8 @@ impl Ui {
     /// warmup, double-layout pass B), so repeat calls for one `token`
     /// collapse to a single request with the last `config` winning. A
     /// `token` already in use by a live window is ignored with a
-    /// warning. No-op in headless contexts (no host to drain the queue).
+    /// warning. No-op in headless contexts; the offscreen host discards
+    /// the replayed request after rendering.
     ///
     /// `token` is yours to define — an enum discriminant, an index, a
     /// document-id hash. It must be unique across live windows. `config`

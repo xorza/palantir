@@ -13,22 +13,41 @@ mod fixtures;
 mod golden;
 mod harness;
 
-use aperture::Color;
+use aperture::{
+    Color, OffscreenWindowScratch, WindowConfig, WindowToken, offscreen_window_scratch,
+};
 use glam::UVec2;
 use image::Rgba;
 
 use crate::harness::Harness;
 
-/// Smoke test of the harness itself — no UI, just verify the cleared
-/// backbuffer round-trips through wgpu's sRGB encode at the values
-/// we'd expect.
+/// Smoke test of the harness and headless window-command contract: window-only
+/// requests leave both the offscreen lifecycle scratch and pixels unchanged.
 #[test]
 fn readback_returns_clear_color_for_empty_scene() {
     let mut h = Harness::new();
     let size = UVec2::new(16, 16);
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = Color::rgb(sr, sg, sb);
-    let img = h.render(size, 1.0, clear, |_| {});
+    let scene = |ui: &mut aperture::Ui| {
+        ui.open_window(WindowToken(1), WindowConfig::new("ignored"));
+        ui.close_window(WindowToken(1));
+        ui.keep_open();
+        ui.request_relayout();
+    };
+    let img = h.render(size, 1.0, clear, scene);
+    assert_eq!(
+        offscreen_window_scratch(&h.host),
+        OffscreenWindowScratch::default()
+    );
+
+    h.host.ui().request_repaint();
+    let replayed = h.render(size, 1.0, clear, scene);
+    assert_eq!(
+        offscreen_window_scratch(&h.host),
+        OffscreenWindowScratch::default()
+    );
+    assert_eq!(replayed, img);
     assert_eq!(img.dimensions(), (size.x, size.y));
 
     // sRGB → linear (in `Color::rgb`) → sRGB (wgpu's sRGB target) round-trips
