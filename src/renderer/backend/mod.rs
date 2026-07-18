@@ -514,18 +514,14 @@ impl WgpuBackend {
                 .upload_instances(&mut ctx, buffer.images.instance());
             // Paint every GpuView composited this frame into its off-screen
             // target on this same encoder, before the main pass samples it.
-            // The composer listed them in `buffer.frame_targets` (size + paint
-            // callback); this allocates each + runs its callback, then evicts
-            // this submitter's targets absent from `frame_targets` (eviction
-            // is owner-scoped — the shared backend serves every window).
+            // The composer listed them in `buffer.frame_targets` (size + scales
+            // + paint callback); this allocates each + runs its callback, then
+            // evicts this submitter's targets absent from `frame_targets`
+            // (eviction is owner-scoped — the shared backend serves every
+            // window).
             // `submit` itself carries no render-target logic.
-            self.image.paint_gpu_views(
-                &mut ctx,
-                &buffer.frame_targets,
-                buffer.owner,
-                buffer.scale,
-                buffer.time,
-            );
+            self.image
+                .paint_gpu_views(&mut ctx, &buffer.frame_targets, buffer.owner, buffer.time);
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if is_partial {

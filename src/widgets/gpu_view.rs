@@ -9,10 +9,10 @@ use std::rc::Rc;
 /// A widget that renders raw `wgpu` content into its rect. App code
 /// implements [`GpuPaint`] on its own renderer, wraps it in
 /// `Rc<RefCell<…>>`, and hands a clone to [`GpuView::new`] each frame.
-/// The framework owns an off-screen texture sized to the widget's rect,
-/// runs the callback into it during submit, and composites the result
-/// through the image pipeline — so the view clips, rounds, and z-orders
-/// like any other widget.
+/// The framework owns an off-screen texture sized to the widget's composed
+/// physical rect (uniformly downsampled at the device texture cap), runs the
+/// callback into it during submit, and composites the result through the image
+/// pipeline — so the view clips, rounds, and z-orders like any other widget.
 ///
 /// The renderer callback persists across frames in the widget's per-`WidgetId`
 /// state. The framework-owned off-screen texture has a shorter lifetime: it is
@@ -52,7 +52,7 @@ impl GpuView {
     /// New view backed by `paint` (the app's renderer). The framework calls
     /// [`GpuPaint::init`] once (when the device is first available) and
     /// [`GpuPaint::paint`] each painted frame, into an off-screen target
-    /// sized to this widget's physical rect.
+    /// sized to this widget's effective raster resolution.
     #[track_caller]
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
         let mut element = Element::leaf();

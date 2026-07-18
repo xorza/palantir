@@ -46,7 +46,7 @@ pub(crate) struct Frontend {
 impl Frontend {
     /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
     /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
-    /// the [`Composer`] which ceils each composited view into `frame_targets`.
+    /// the [`Composer`] which uniformly downsamples oversized composited views.
     pub(crate) fn new(max_texture_dim: u32) -> Self {
         let owner = RenderOwnerId::reserve();
         Self {

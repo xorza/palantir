@@ -474,7 +474,7 @@ impl WindowDriver {
             display_phys.y,
         );
         // The CPU phase already composed `GpuView`s into
-        // `self.frontend.buffer.frame_targets` (callback + size — see
+        // `self.frontend.buffer.frame_targets` (callback + raster target — see
         // `cpu_frame`); this is GPU submit only.
         let debug_overlay = self.ui.debug_overlay();
         // Rounded-clip stencil, shared by both paint paths and sized to the
