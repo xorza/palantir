@@ -179,8 +179,8 @@ impl ImageRegistry {
 /// 65 535 px — past 8K). Saturates rather than wrapping.
 fn u16_size(image: &Image) -> glam::U16Vec2 {
     glam::U16Vec2::new(
-        image.width.min(u16::MAX as u32) as u16,
-        image.height.min(u16::MAX as u32) as u16,
+        image.size.x.min(u16::MAX as u32) as u16,
+        image.size.y.min(u16::MAX as u32) as u16,
     )
 }
 
@@ -217,7 +217,7 @@ mod tests {
     /// A 0×0 image is a logic error caught at construction — before it
     /// can reach `register` and blow up a frame later in the GPU upload.
     #[test]
-    #[should_panic(expected = "image dimensions must be non-zero")]
+    #[should_panic(expected = "RGBA8 dimensions must be non-zero")]
     fn zero_sized_image_panics_at_construction() {
         let _ = img(0, 0);
     }

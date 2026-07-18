@@ -766,14 +766,9 @@ impl LayoutEngine {
     ) -> Size {
         let span_start = out[self.active_layer].text_shapes.len() as u32;
         let mut s = Size::ZERO;
-        let mut ordinal: u16 = 0;
         for ts in runs {
-            let m = self.shape_text(tree, node, ordinal, &ts, available_w, text, out);
+            let m = self.shape_text(tree, node, &ts, available_w, text, out);
             s = s.max(m);
-            ordinal = ordinal.checked_add(1).expect(
-                "more than 65535 direct ShapeRecord::Text runs on one node — well past anything sane; \
-                 widen the within-node ordinal width if this trips",
-            );
         }
         let span_len = out[self.active_layer].text_shapes.len() as u32 - span_start;
         out[self.active_layer].text_spans[node.idx()] = Span {
@@ -783,12 +778,10 @@ impl LayoutEngine {
         s
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn shape_text(
         &mut self,
         tree: &Tree,
         node: NodeId,
-        ordinal: u16,
         ts: &TextShapeInput<'_>,
         available_w: f32,
         text: &TextShaper,
@@ -798,7 +791,7 @@ impl LayoutEngine {
         let curr_hash = tree.rollups.node[node.idx()];
         let identity = TextRunIdentity {
             widget_id: wid,
-            ordinal,
+            ordinal: ts.ordinal,
             authoring_hash: curr_hash,
         };
 

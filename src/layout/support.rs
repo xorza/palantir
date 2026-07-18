@@ -36,6 +36,7 @@ pub(crate) struct TextCtx<'a> {
 /// aren't a tuple.
 #[derive(Debug)]
 pub(crate) struct TextShapeInput<'a> {
+    pub(crate) ordinal: u16,
     pub(crate) text: &'a str,
     pub(crate) text_hash: u64,
     pub(crate) font_size_px: f32,
@@ -73,9 +74,7 @@ pub(crate) fn leaf_text_shapes<'a>(
     let span = tree.records.shape_span()[node.idx()];
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
-    tree.shapes.records[lo..hi]
-        .iter()
-        .filter_map(move |s| text_shape_input(s, tc.bytes))
+    text_shape_inputs(tree.shapes.records[lo..hi].iter(), tc.bytes)
 }
 
 /// Iterate the direct text shapes on a container, skipping text belonging to
@@ -85,13 +84,32 @@ pub(crate) fn container_text_shapes<'a>(
     tc: &TextCtx<'a>,
     node: NodeId,
 ) -> impl Iterator<Item = TextShapeInput<'a>> {
-    tree.tree_items(node).filter_map(move |item| match item {
-        TreeItem::ShapeRecord(_, shape) => text_shape_input(shape, tc.bytes),
-        TreeItem::Child(_) => None,
+    text_shape_inputs(
+        tree.tree_items(node).filter_map(|item| match item {
+            TreeItem::ShapeRecord(_, shape) => Some(shape),
+            TreeItem::Child(_) => None,
+        }),
+        tc.bytes,
+    )
+}
+
+fn text_shape_inputs<'a>(
+    shapes: impl Iterator<Item = &'a ShapeRecord> + 'a,
+    bytes: &'a str,
+) -> impl Iterator<Item = TextShapeInput<'a>> + 'a {
+    let mut ordinal = 0;
+    shapes.filter_map(move |shape| {
+        let input = text_shape_input(shape, bytes, ordinal)?;
+        ordinal += 1;
+        Some(input)
     })
 }
 
-fn text_shape_input<'a>(shape: &'a ShapeRecord, bytes: &'a str) -> Option<TextShapeInput<'a>> {
+fn text_shape_input<'a>(
+    shape: &'a ShapeRecord,
+    bytes: &'a str,
+    ordinal: usize,
+) -> Option<TextShapeInput<'a>> {
     match shape {
         ShapeRecord::Text {
             text,
@@ -105,6 +123,7 @@ fn text_shape_input<'a>(shape: &'a ShapeRecord, bytes: &'a str) -> Option<TextSh
         } => {
             let resolved = text.resolve(bytes);
             Some(TextShapeInput {
+                ordinal: checked_text_ordinal(ordinal),
                 text: resolved.text,
                 text_hash: resolved.hash,
                 font_size_px: *font_size_px,
@@ -117,6 +136,13 @@ fn text_shape_input<'a>(shape: &'a ShapeRecord, bytes: &'a str) -> Option<TextSh
         }
         _ => None,
     }
+}
+
+fn checked_text_ordinal(index: usize) -> u16 {
+    u16::try_from(index).expect(
+        "more than 65536 direct ShapeRecord::Text runs on one node; \
+         widen the within-node ordinal width if this trips",
+    )
 }
 
 /// Per-axis inputs for [`resolve_axis_size`]. Bundles the seven
@@ -418,4 +444,19 @@ pub(crate) fn cross_place(
         Axis::Y => Axis::X,
     };
     arrange_axis(cross_axis, cross_align, child, bounds, desired, inner_cross)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::layout::support::checked_text_ordinal;
+
+    #[test]
+    fn text_ordinal_covers_the_u16_domain_and_rejects_the_next_run() {
+        assert_eq!(checked_text_ordinal(0), 0);
+        assert_eq!(checked_text_ordinal(usize::from(u16::MAX)), u16::MAX);
+        assert!(
+            std::panic::catch_unwind(|| checked_text_ordinal(usize::from(u16::MAX) + 1)).is_err(),
+            "the 65537th direct text run must exceed the identity key",
+        );
+    }
 }

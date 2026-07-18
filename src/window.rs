@@ -8,6 +8,8 @@
 
 use glam::{IVec2, UVec2};
 
+use crate::primitives::image::Image;
+
 /// Caller-chosen opaque identity for a window. Supplied at
 /// [`Ui::open_window`](crate::Ui::open_window) (and
 /// [`WinitHost::builder`](crate::WinitHost::builder) or
@@ -52,39 +54,9 @@ pub struct WindowConfig {
     /// Title-bar / taskbar icon. `None` = platform default. Honored on
     /// Windows and Linux (X11/Wayland); **macOS ignores per-window icons**
     /// (its Dock icon comes from the `.app` bundle's `.icns`, set at
-    /// packaging time). Backend-agnostic raw pixels — see [`WindowIcon`].
-    pub(crate) icon: Option<WindowIcon>,
-}
-
-/// A window icon as straight-alpha **RGBA8** pixels: row-major, top row
-/// first, exactly `width * height * 4` bytes. Backend-agnostic (carries no
-/// winit type); [`WinitHost`](crate::WinitHost) converts it to the platform
-/// icon at window creation. Decode a PNG (or any source) to RGBA on the app
-/// side and hand the raw buffer here.
-#[derive(Clone, Debug)]
-pub struct WindowIcon {
-    /// `width * height * 4` bytes, straight-alpha RGBA8, row-major.
-    pub rgba: Vec<u8>,
-    pub width: u32,
-    pub height: u32,
-}
-
-impl WindowIcon {
-    /// Build from raw RGBA8. Panics if `rgba.len() != width * height * 4`
-    /// — a length mismatch means the caller passed the wrong stride or
-    /// dimensions, which is a logic bug, not a runtime condition.
-    pub fn from_rgba(rgba: Vec<u8>, width: u32, height: u32) -> Self {
-        assert_eq!(
-            rgba.len(),
-            width as usize * height as usize * 4,
-            "WindowIcon requires width*height*4 RGBA8 bytes",
-        );
-        Self {
-            rgba,
-            width,
-            height,
-        }
-    }
+    /// packaging time). [`WinitHost`](crate::WinitHost) converts the
+    /// backend-agnostic [`Image`] to the platform icon at window creation.
+    pub(crate) icon: Option<Image>,
 }
 
 /// A window's live geometry, assembled on demand by
@@ -146,8 +118,8 @@ impl WindowConfig {
         self
     }
 
-    /// Title-bar / taskbar icon (ignored on macOS — see [`WindowIcon`]).
-    pub fn icon(mut self, icon: WindowIcon) -> Self {
+    /// Title-bar / taskbar icon (ignored on macOS).
+    pub fn icon(mut self, icon: Image) -> Self {
         self.icon = Some(icon);
         self
     }
@@ -223,24 +195,7 @@ pub(crate) struct WindowFrameState {
 
 #[cfg(test)]
 mod tests {
-    use crate::window::{PendingWindow, WindowCommands, WindowConfig, WindowIcon, WindowToken};
-
-    #[test]
-    fn window_icon_from_rgba_keeps_pixels_and_dims() {
-        // 2×1 image → 2*1*4 = 8 bytes: opaque red then opaque green.
-        let px = vec![255, 0, 0, 255, 0, 255, 0, 255];
-        let icon = WindowIcon::from_rgba(px.clone(), 2, 1);
-        assert_eq!(icon.width, 2);
-        assert_eq!(icon.height, 1);
-        assert_eq!(icon.rgba, px, "pixels pass through unchanged");
-    }
-
-    #[test]
-    #[should_panic(expected = "width*height*4")]
-    fn window_icon_rejects_wrong_length() {
-        // 2×2 needs 16 bytes; 12 is a stride/dimension bug.
-        WindowIcon::from_rgba(vec![0; 12], 2, 2);
-    }
+    use crate::window::{PendingWindow, WindowCommands, WindowConfig, WindowToken};
 
     #[test]
     fn window_config_default_has_no_icon() {

@@ -69,6 +69,7 @@ use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::gpu::{GpuInit, SurfaceFactory, WindowSurface};
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::input::InputEvent;
+use crate::primitives::image::Image;
 use crate::renderer::backend::WgpuBackend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
@@ -528,13 +529,8 @@ fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<Window
     if let Some(s) = cfg.min_inner_size {
         attrs = attrs.with_min_inner_size(LogicalSize::new(s.x, s.y));
     }
-    // Title-bar / taskbar icon (X11/Wayland/Windows; macOS ignores it and
-    // uses the .app bundle icon instead). A malformed buffer just yields no
-    // icon rather than aborting window creation.
-    if let Some(ic) = &cfg.icon
-        && let Ok(icon) = Icon::from_rgba(ic.rgba.clone(), ic.width, ic.height)
-    {
-        attrs = attrs.with_window_icon(Some(icon));
+    if let Some(icon) = &cfg.icon {
+        attrs = attrs.with_window_icon(Some(platform_icon(icon)));
     }
     // Restore a saved position only if it still lands on a connected
     // monitor — winit does no such clamping, so a window saved on a
@@ -546,6 +542,11 @@ fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<Window
         attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));
     }
     Arc::new(event_loop.create_window(attrs).expect("create window"))
+}
+
+fn platform_icon(icon: &Image) -> Icon {
+    Icon::from_rgba(icon.pixels.clone(), icon.size.x, icon.size.y)
+        .expect("validated Image rejected by winit")
 }
 
 /// Whether `pos` (physical, window top-left) falls inside any currently
