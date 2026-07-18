@@ -1683,6 +1683,71 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     }
 }
 
+#[test]
+fn recycled_buffer_matches_fresh_shape_at_new_width() {
+    let text = "recycled cosmic buffers must reshape exactly across a new wrapping width";
+    let base = ShapeParams {
+        font_size_px: 15.0,
+        line_height_px: 18.0,
+        max_width_px: Some(180.0),
+        family: FontFamily::Sans,
+        weight: FontWeight::Bold,
+        halign: HAlign::Right,
+    };
+    let mut recycled = CosmicMeasure::with_bundled_fonts();
+    recycled.measure(text, base);
+    recycled.end_frame_evict(0);
+    assert_eq!(recycled.recycle_pool_stats().len, 1);
+
+    let narrow = ShapeParams {
+        max_width_px: Some(72.0),
+        ..base
+    };
+    let actual = recycled.measure(text, narrow);
+    assert_eq!(
+        recycled.recycle_pool_stats().len,
+        0,
+        "the new miss must consume the evicted buffer",
+    );
+
+    let mut fresh = CosmicMeasure::with_bundled_fonts();
+    let expected = fresh.measure(text, narrow);
+    assert_eq!(actual.size, expected.size);
+    assert_eq!(actual.intrinsic_min, expected.intrinsic_min);
+    assert_eq!(
+        glyph_positions(&recycled, actual.key),
+        glyph_positions(&fresh, expected.key),
+    );
+}
+
+#[test]
+fn recycle_pool_retention_is_bounded() {
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let pool = c.recycle_pool_stats();
+    assert!(pool.capacity >= pool.limit);
+
+    for round in 0..2 {
+        for i in 0..pool.limit + 16 {
+            c.measure(
+                "bounded recycle pool",
+                ShapeParams {
+                    font_size_px: 14.0,
+                    line_height_px: 18.0,
+                    max_width_px: Some(40.0 + (round * (pool.limit + 16) + i) as f32),
+                    family: FontFamily::Sans,
+                    weight: FontWeight::Regular,
+                    halign: HAlign::Left,
+                },
+            );
+        }
+        c.end_frame_evict(0);
+        let after = c.recycle_pool_stats();
+        assert_eq!(after.len, pool.limit);
+        assert_eq!(after.capacity, pool.capacity);
+        assert_eq!(after.limit, pool.limit);
+    }
+}
+
 /// Encoder ensures and layout hits both refresh recency. Touch the oldest
 /// entry through `ensure_buffer`, then retain exactly two entries and verify
 /// that refreshed entry and the newest insertion survive.
