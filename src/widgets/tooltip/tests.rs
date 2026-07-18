@@ -42,9 +42,10 @@ fn tooltip_near_right_edge_keeps_natural_width() {
 
 #[test]
 fn content_growth_and_shrink_reposition_without_input_or_settling() {
-    const SHORT: &str = "tip";
-    const LONG: &str =
-        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron";
+    let short = String::from("tip");
+    let long = String::from(
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron",
+    );
 
     let mut ui = Ui::for_test();
     let trigger_id = WidgetId::from_hash("dynamic-tooltip-trigger");
@@ -58,7 +59,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
         },
     };
     let bubble_id = trigger_id.with("tooltip.bubble");
-    let frame = |ui: &mut Ui, text: &'static str| {
+    let frame = |ui: &mut Ui, text: &str| {
         let mut passes = 0;
         ui.run_at_acked(SURFACE, |ui| {
             passes += 1;
@@ -73,9 +74,9 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
             .expect("tooltip bubble arranged")
     };
 
-    let small = frame(&mut ui, SHORT);
-    let large = frame(&mut ui, LONG);
-    let shrunk = frame(&mut ui, SHORT);
+    let small = frame(&mut ui, &short);
+    let large = frame(&mut ui, &long);
+    let shrunk = frame(&mut ui, &short);
     let above_edge = trigger.min.y - ui.theme.tooltip.gap;
 
     assert_eq!(small.max().y, above_edge);

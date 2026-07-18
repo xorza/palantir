@@ -4,7 +4,7 @@ use crate::input::response::ResponseState;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -58,15 +58,15 @@ impl ToggleChrome {
 /// back to the caller via [`Response::eager`]. `paint_indicator` runs
 /// inside the box leaf — it receives the box side length and is
 /// responsible for its own checked/selected gate.
-pub(crate) fn toggle_row(
-    ui: &mut Ui,
+pub(crate) fn toggle_row<'ui, 'text>(
+    ui: &'ui mut Ui,
     id: WidgetId,
     mut element: Element,
     raw_state: ResponseState,
     chrome: ToggleChrome,
-    label: InternedStr,
+    label: TextInput<'text>,
     paint_indicator: impl FnOnce(&mut Ui, f32),
-) -> Response<'_> {
+) -> Response<'ui> {
     let box_size = chrome.box_size;
     let fallback_text = ui.theme.text;
     let mut look = chrome

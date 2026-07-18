@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -29,7 +29,7 @@ const TRACK_ASPECT: f32 = 1.75;
 pub struct Switch<'a> {
     element: Element,
     value: &'a mut bool,
-    label: InternedStr,
+    label: TextInput<'a>,
     style: Option<ToggleTheme>,
 }
 
@@ -41,13 +41,13 @@ impl<'a> Switch<'a> {
         Self {
             element,
             value,
-            label: InternedStr::default(),
+            label: TextInput::default(),
             style: None,
         }
     }
 
-    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
-        self.label = s.into();
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = label.into();
         self
     }
 
@@ -68,6 +68,7 @@ impl<'a> Switch<'a> {
             *self.value = !*self.value;
         }
         let on = *self.value;
+        let label = self.label;
 
         // Resolve everything off the theme before the `&mut ui` animate
         // reborrow (the borrow may point into `ui.theme`).
@@ -101,8 +102,6 @@ impl<'a> Switch<'a> {
         let mut element = self.element;
         element.gaps.set_gap(row_gap);
         element.child_align = Align::v(VAlign::Center);
-        let label = self.label;
-
         ui.node(id, element, None, |ui| {
             let track_id = id.with("track");
             let mut track = Element::canvas();

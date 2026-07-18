@@ -39,8 +39,8 @@ tests/alloc/
 
 Single test binary (`cargo test --test alloc --features internals`);
 Cargo auto-discovers `tests/alloc/main.rs` per the standard project
-layout. The `internals` feature exposes the `Ui::default` the harness
-builds from.
+layout. The `internals` feature exposes the real-text test constructor
+used by the multiline fixture.
 
 ## How it works
 

@@ -337,7 +337,7 @@ fn id_salt_overrides_auto_id() {
 /// caller recovers per-line distinctness.
 #[test]
 fn auto_id_redirects_to_call_site() {
-    fn helper() -> Button {
+    fn helper() -> Button<'static> {
         Button::new().auto_id()
     }
     // Both `helper()` invocations resolve `.auto_id()` inside the helper

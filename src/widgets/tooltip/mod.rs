@@ -4,6 +4,7 @@ use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;
+use crate::primitives::interned_str::TextInput;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -11,7 +12,6 @@ use crate::shape::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::text::Text;
-use std::borrow::Cow;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -53,16 +53,16 @@ static GLOBAL_STATE_ID: LazyLock<WidgetId> =
 /// triggers by default. Pass `.show_when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
 #[derive(Debug)]
-pub struct Tooltip<'r> {
+pub struct Tooltip<'r, 'a> {
     snapshot: &'r ResponseSnapshot,
-    text: Cow<'static, str>,
+    text: TextInput<'a>,
     delay: Option<Duration>,
     show_when_disabled: bool,
     element: Element,
     chrome: Option<Background>,
 }
 
-impl<'r> Tooltip<'r> {
+impl<'r> Tooltip<'r, 'static> {
     /// Attach a tooltip to the given trigger response snapshot. The
     /// snapshot carries the trigger's `WidgetId` and last-frame rect
     /// — both drive timer keying and anchor computation. Pass via
@@ -75,14 +75,16 @@ impl<'r> Tooltip<'r> {
         element.flags.set_sense(Sense::empty());
         Self {
             snapshot,
-            text: Cow::Borrowed(""),
+            text: TextInput::default(),
             delay: None,
             show_when_disabled: false,
             element,
             chrome: None,
         }
     }
+}
 
+impl<'r, 'a> Tooltip<'r, 'a> {
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme.tooltip.panel` when unset.
@@ -91,9 +93,15 @@ impl<'r> Tooltip<'r> {
         self
     }
 
-    pub fn text(mut self, t: impl Into<Cow<'static, str>>) -> Self {
-        self.text = t.into();
-        self
+    pub fn text<'text>(self, text: impl Into<TextInput<'text>>) -> Tooltip<'r, 'text> {
+        Tooltip {
+            snapshot: self.snapshot,
+            text: text.into(),
+            delay: self.delay,
+            show_when_disabled: self.show_when_disabled,
+            element: self.element,
+            chrome: self.chrome,
+        }
     }
 
     /// Override the per-tooltip delay. Falls back to
@@ -200,7 +208,7 @@ impl<'r> Tooltip<'r> {
     }
 }
 
-impl Configure for Tooltip<'_> {
+impl Configure for Tooltip<'_, '_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }

@@ -157,14 +157,11 @@ pub enum Shape<'a> {
         /// shift the text by scroll + alignment offsets the encoder
         /// can't compute.
         local_origin: Option<Vec2>,
-        /// Moved into `ShapeRecord` at lowering and lives there until
-        /// the next record pass's `Shapes::clear`. Static literals
-        /// (`Button::new().label("foo")`) wrap zero-cost via
-        /// `SmolStr::new_static`; short owned strings inline on the
-        /// stack; long ones sit behind `Arc<str>`. Transient `&str`
-        /// callers materialize via [`crate::Ui::intern`] / [`crate::Ui::fmt`]
-        /// to land in the `Interned` arena. `Shape<'a>`'s `'a`
-        /// parameter doesn't constrain this variant; it's used by
+        /// Direct shape authoring uses [`crate::Ui::intern`] or
+        /// [`crate::Ui::fmt`] to place the bytes in the text arena.
+        /// Widget constructors accept borrowed and owned text directly
+        /// because they defer this step until `show`. `Shape<'a>`'s
+        /// `'a` parameter doesn't constrain this variant; it's used by
         /// `Polyline.points` / `Mesh.mesh` instead.
         text: InternedStr,
         color: Color,

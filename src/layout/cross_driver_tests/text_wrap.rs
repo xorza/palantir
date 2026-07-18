@@ -22,16 +22,18 @@ use glam::UVec2;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
-fn direct_text(
+fn add_direct_text(
+    ui: &mut Ui,
     text: &'static str,
     font_size_px: f32,
     line_height_px: f32,
     wrap: TextWrap,
     local_origin: Option<glam::Vec2>,
-) -> Shape<'static> {
-    Shape::Text {
+) {
+    let text = ui.intern(text);
+    ui.add_shape(Shape::Text {
         local_origin,
-        text: text.into(),
+        text,
         color: Color::WHITE,
         font_size_px,
         line_height_px,
@@ -39,7 +41,7 @@ fn direct_text(
         align: Default::default(),
         family: FontFamily::Sans,
         weight: FontWeight::Regular,
-    }
+    });
 }
 
 #[test]
@@ -170,13 +172,15 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
     });
     let node = node.unwrap();
+    let payloads = ui.record_store.borrow();
+    let text_bytes = payloads.text_bytes();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &ui.shared.text,
         },
     );
@@ -186,7 +190,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MinContent,
         &TextCtx {
-            bytes: &ui.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &ui.shared.text,
         },
     );
@@ -196,7 +200,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::Y,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &ui.shared.text,
         },
     );
@@ -433,13 +437,15 @@ fn nonwrapping_text_minconent_equals_full_width() {
         );
     });
     let label_node = label_node.unwrap();
+    let payloads = ui.record_store.borrow();
+    let text_bytes = payloads.text_bytes();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &ui.shared.text,
         },
     );
@@ -449,7 +455,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MinContent,
         &TextCtx {
-            bytes: &ui.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &ui.shared.text,
         },
     );
@@ -506,13 +512,15 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label = Some(build(ui).1);
     });
     let probe_label = probe_label.unwrap();
+    let payloads = probe.record_store.borrow();
+    let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],
         probe_label,
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &probe.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &probe.shared.text,
         },
     );
@@ -580,13 +588,15 @@ fn two_hug_cols_default_label_hugs_full_width() {
     probe.run_at_acked(UVec2::new(2000, 400), |ui| {
         probe_label = Some(build(ui));
     });
+    let payloads = probe.record_store.borrow();
+    let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],
         probe_label.unwrap(),
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &probe.record_store.borrow().fmt_scratch,
+            bytes: &text_bytes,
             shaper: &probe.shared.text,
         },
     );
@@ -621,9 +631,10 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
         let mut element = Element::leaf();
         element.salt = Salt::Verbatim(leaf_id);
         ui.node(leaf_id, element, None, |ui| {
+            let first = ui.intern("first");
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 0.0)),
-                text: "first".into(),
+                text: first,
                 color: Color::WHITE,
                 font_size_px: 14.0,
                 line_height_px: 16.0,
@@ -632,9 +643,10 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 family: FontFamily::Sans,
                 weight: FontWeight::Regular,
             });
+            let second = ui.intern("second-with-different-text");
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 22.0)),
-                text: "second-with-different-text".into(),
+                text: second,
                 color: Color::WHITE,
                 font_size_px: 14.0,
                 line_height_px: 16.0,
@@ -661,7 +673,7 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
         .size((Sizing::HUG, Sizing::HUG))
         .padding(10.0)
         .show(ui, |ui| {
-            ui.add_shape(direct_text(PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None));
+            add_direct_text(ui, PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None);
             child = Some(
                 Frame::new()
                     .id_salt("container-size-driver")
@@ -683,13 +695,14 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
         .id_salt("interleaved-container-text")
         .size((Sizing::fixed(240.0), Sizing::fixed(100.0)))
         .show(ui, |ui| {
-            ui.add_shape(direct_text(
+            add_direct_text(
+                ui,
                 "parent-before",
                 12.0,
                 14.0,
                 TextWrap::SingleLine,
                 Some(glam::Vec2::new(0.0, 0.0)),
-            ));
+            );
             child = Some(
                 Text::new("child-between")
                     .id_salt("interleaved-child")
@@ -697,13 +710,14 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
                     .show(ui)
                     .node(),
             );
-            ui.add_shape(direct_text(
+            add_direct_text(
+                ui,
                 "parent-after-is-longer",
                 14.0,
                 16.0,
                 TextWrap::SingleLine,
                 Some(glam::Vec2::new(0.0, 60.0)),
-            ));
+            );
         })
         .node();
     ContainerTextScene {
@@ -719,7 +733,7 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
         .padding(10.0)
         .visibility(visibility)
         .show(ui, |ui| {
-            ui.add_shape(direct_text(PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None));
+            add_direct_text(ui, PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None);
         })
         .node()
 }

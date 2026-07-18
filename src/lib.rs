@@ -82,7 +82,7 @@ pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageFilter, ImageFit};
-pub use primitives::interned_str::InternedStr;
+pub use primitives::interned_str::{InternedStr, TextInput};
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
@@ -103,11 +103,6 @@ pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::ImageHandle;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
-// The owned string type behind `InternedStr`. Re-exported as the
-// canonical owned-text carrier for consumers that keep their own strings and
-// hand them to widgets via `Into<InternedStr>` (alloc-free clone), rather than
-// storing the frame-local `InternedStr` themselves.
-pub use smol_str::SmolStr;
 pub use text::cosmic::CosmicMeasure;
 pub use text::{FontFamily, FontWeight, MeasureResult, ShapeParams, TextShaper};
 pub use ui::Ui;
@@ -167,6 +162,7 @@ mod hot_struct_sizes {
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
+    use crate::primitives::interned_str::RecordedText;
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
     use crate::record_store::RecordedGradient;
@@ -248,6 +244,7 @@ mod hot_struct_sizes {
         Element => "forest::Element": 104 / 8,
         // Per-shape / per-chrome paint records + lowered fill forms.
         ShapeRecord => "forest::ShapeRecord": 88 / 8,
+        RecordedText => "shapes::RecordedText": 16 / 8,
         ChromeRow => "forest::ChromeRow": 56 / 8,
         ShapeStroke => "shapes::ShapeStroke": 10 / 2,
         LoweredShadow => "shapes::LoweredShadow": 18 / 2,

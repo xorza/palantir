@@ -665,10 +665,12 @@ mod per_line {
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
         let payloads = ui.record_store.borrow();
-        let bytes = payloads.fmt_scratch.as_str();
+        let bytes = payloads.text_bytes();
         let tree = &ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
-            ShapeRecord::Text { align, text, .. } => Some((*align, text.as_str(bytes).to_owned())),
+            ShapeRecord::Text { align, text, .. } => {
+                Some((*align, text.resolve(&bytes).text.to_owned()))
+            }
             _ => None,
         });
         let (shape_align, shape_text) = shape_align.expect("placeholder paints as Shape::Text");
