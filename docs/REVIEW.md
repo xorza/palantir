@@ -251,7 +251,7 @@ implemented and validated independently.
   an intrusive LRU. Add a deterministic victim test and compare
   rasterization/eviction counts in atlas-pressure benchmarks.
 
-- [ ] **Recycle a bounded pool of evicted Cosmic Text buffers during
+- [x] **Recycle a bounded pool of evicted Cosmic Text buffers during
   continuous resize.** Cache misses construct fresh buffers at
   `src/text/cosmic.rs:321-340,456-480`, while LRU maintenance drops their
   internal vector capacities at `src/text/cosmic.rs:563-579`. The current

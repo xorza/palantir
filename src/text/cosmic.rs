@@ -7,7 +7,9 @@
 //! buffers each frame. Missing buffers are reconstructible from the
 //! retained text shape at the frontend boundary, so a continuous resize
 //! drag — every width unique, a fresh entry per run per frame — stays
-//! bounded without explicit cache ownership.
+//! bounded without explicit cache ownership. Evicted buffers feed a
+//! bounded recycle pool so later misses retain Cosmic Text's internal
+//! line, shaping, and layout allocations.
 //!
 //! The render side reaches the cached `Buffer`s and the `FontSystem`
 //! through [`CosmicMeasure::split_for_render`] (via
@@ -46,9 +48,16 @@ const MAX_W_NONE: u32 = u32::MAX;
 /// this; a miss is one cheap "…" shape, so the occasional reset is
 /// negligible.
 pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
+const RECYCLE_POOL_CAP: usize = 128;
 
 fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
+}
+
+fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
+    if pool.len() < RECYCLE_POOL_CAP {
+        pool.push(buffer);
+    }
 }
 
 fn dequantize(v: u32) -> f32 {
@@ -204,6 +213,9 @@ pub struct CosmicMeasure {
     /// Reusable scratch holding every entry's `last_used` during
     /// [`Self::end_frame_evict`], retained so eviction allocates nothing.
     evict_scratch: Vec<u64>,
+    /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
+    /// line, shaping, and layout allocations when the buffer is reset.
+    recycle_pool: Vec<Buffer>,
     /// Trailing advance of "…" per `(quantized font size, family, weight)`.
     /// The ellipsis width is constant for a given size + face, so this turns
     /// the per-truncation ellipsis reshape into a map lookup (one shape
@@ -237,6 +249,7 @@ impl CosmicMeasure {
             cache: FxHashMap::default(),
             use_gen: 0,
             evict_scratch: Vec::new(),
+            recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis_cache: FxHashMap::default(),
             truncate_scratch: String::new(),
         }
@@ -319,8 +332,7 @@ impl CosmicMeasure {
         } = canonical_params(key);
 
         let metrics = Metrics::new(font_size_px, line_height_px);
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(max_width_px, None);
+        let mut buffer = self.acquire_buffer(metrics, max_width_px);
         // Per-line alignment travels through cosmic's `set_text`
         // `alignment` slot — that's the canonical entry point and
         // applies the align to every parsed buffer line in one
@@ -457,8 +469,7 @@ impl CosmicMeasure {
         // encoder owns single-line placement. Binding to `Some(w)` + align
         // would measure the aligned glyph position, inflating a fits-anyway
         // label toward the box width.
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(None, None);
+        let mut buffer = self.acquire_buffer(metrics, None);
         let shaped_text = if truncated {
             self.truncate_scratch.as_str()
         } else {
@@ -488,7 +499,7 @@ impl CosmicMeasure {
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized per
     /// `(quantized size, family, weight)`. The width is constant for a given
     /// size + face, so this is a map lookup after the first shape. The
-    /// rare miss shapes into a throwaway buffer so the cached unbounded
+    /// rare miss shapes into a temporary buffer so the cached unbounded
     /// probe remains immutable.
     fn ellipsis_advance(
         &mut self,
@@ -500,11 +511,11 @@ impl CosmicMeasure {
         if let Some(&w) = self.ellipsis_cache.get(&key) {
             return w;
         }
-        let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(None, None);
+        let mut buffer = self.acquire_buffer(metrics, None);
         buffer.set_text("…", &attrs_for(family, weight), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
         let w = first_line_right(&buffer);
+        recycle_buffer(&mut self.recycle_pool, buffer);
         // Bounded: the key space is (discrete font sizes × families × weights)
         // and normally tiny, but a continuous font-size zoom over ellipsized
         // text mints a new quantized size each frame. Entries are trivially
@@ -560,6 +571,15 @@ impl CosmicMeasure {
         })
     }
 
+    fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>) -> Buffer {
+        let mut buffer = match self.recycle_pool.pop() {
+            Some(buffer) => buffer,
+            None => Buffer::new(&mut self.font_system, metrics),
+        };
+        buffer.set_metrics_and_size(metrics, width, None);
+        buffer
+    }
+
     /// Retain the `max_keep` most-recently-used buffers. Every entry is
     /// reconstructible at encode, so no owner or layout can pin a key.
     pub(crate) fn end_frame_evict(&mut self, max_keep: usize) {
@@ -567,7 +587,11 @@ impl CosmicMeasure {
             return;
         }
         if max_keep == 0 {
-            self.cache.clear();
+            let cache = &mut self.cache;
+            let recycle_pool = &mut self.recycle_pool;
+            for (_, entry) in cache.drain() {
+                recycle_buffer(recycle_pool, entry.buffer);
+            }
             return;
         }
         self.evict_scratch.clear();
@@ -575,7 +599,11 @@ impl CosmicMeasure {
             .extend(self.cache.values().map(|entry| entry.last_used));
         let cut = self.evict_scratch.len() - max_keep;
         let (_, &mut cutoff, _) = self.evict_scratch.select_nth_unstable(cut);
-        self.cache.retain(|_, entry| entry.last_used >= cutoff);
+        let cache = &mut self.cache;
+        let recycle_pool = &mut self.recycle_pool;
+        for (_, entry) in cache.extract_if(|_, entry| entry.last_used < cutoff) {
+            recycle_buffer(recycle_pool, entry.buffer);
+        }
         debug_assert_eq!(self.cache.len(), max_keep);
     }
 }
@@ -639,6 +667,13 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
 mod test_support {
     use super::*;
 
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) struct RecyclePoolStats {
+        pub(crate) len: usize,
+        pub(crate) capacity: usize,
+        pub(crate) limit: usize,
+    }
+
     impl CosmicMeasure {
         /// Number of shaped buffers currently cached. Reach-in for the
         /// in-tree eviction tests.
@@ -650,6 +685,14 @@ mod test_support {
         /// ellipsis-cache-bound test.
         pub(crate) fn ellipsis_cache_len(&self) -> usize {
             self.ellipsis_cache.len()
+        }
+
+        pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
+            RecyclePoolStats {
+                len: self.recycle_pool.len(),
+                capacity: self.recycle_pool.capacity(),
+                limit: RECYCLE_POOL_CAP,
+            }
         }
 
         /// Family name of the font cosmic-text actually shaped `text`

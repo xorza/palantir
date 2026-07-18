@@ -201,15 +201,15 @@ If few quads are removed, gate pruning on group size or opaque-quad count.
 
 ### 7. Recycle Cosmic Text buffers during continuous resize
 
-Status: allocation optimization; CPU benefit must be remeasured.
+Status: implemented.
 
 Allocation results:
 
-| Workload | Blocks/frame | Bytes/frame |
-|---|---:|---:|
-| Cached steady state | 0 | 0 |
-| Four-size resize rotation | 0.01 | 1,464 |
-| Unique-width continuous drag | 343.38 | 182,981 |
+| Workload | Before blocks/frame | After blocks/frame | Before bytes/frame | After bytes/frame |
+|---|---:|---:|---:|---:|
+| Cached steady state | 0 | 0 | 0 | 0 |
+| Four-size resize rotation | 0.01 | 0.01 | 1,464 | 1,464 |
+| Unique-width continuous drag | 344.66 | 261.90 | 183,426 | 140,541 |
 
 DHAT attributes the continuous-resize growth overwhelmingly to
 `cosmic_text::Buffer` construction and its glyph/layout vectors. Across the
@@ -217,10 +217,15 @@ complete DHAT run, stacks rooted through Aperture's text path accounted for
 43.4 MB and 78,506 blocks. Direct measure-cache stacks accounted for 1.5 MB,
 and damage stacks for 0.18 MB.
 
-Keep a bounded pool of evicted Cosmic Text buffers and reset/reuse their
-internal vector capacity for new wrap widths. This preserves the cache's
-bounded-width policy while avoiding repeated glyph-vector allocation during a
-window-edge drag.
+A 128-buffer LIFO recycle pool now resets evicted buffers for new wrap widths.
+The unique-width arm allocates 24.0% fewer blocks and 23.4% fewer bytes while
+preserving the cache's bounded-width policy.
+
+A repeated post-change Criterion run measured cached at 164.00–165.72 µs,
+partial at 146.83–162.83 µs, resizing at 216.14–216.90 µs, and scrolling at
+194.74–197.33 µs. Criterion detected no change in the partial or resizing arms;
+the other two improved, though neither exercises recycle-pool churn and the
+improvement is not attributed to this change.
 
 ### 8. Precompute stable formatted labels
 
