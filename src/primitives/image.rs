@@ -61,7 +61,7 @@ pub enum ImageFilter {
 /// uses a `Rgba8UnormSrgb` texture so the sampler decodes to linear on read,
 /// and the shader premultiplies. Window icons use the same validated storage.
 /// Dropped right after the backend uploads a registered image to GPU.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub(crate) size: UVec2,
     pub(crate) pixels: Vec<u8>,
