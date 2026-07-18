@@ -126,18 +126,32 @@ impl Mesh {
 
     /// Push a vertex; returns its index for use in [`Self::triangle`].
     /// `color` accepts `Color` or `ColorU8`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new vertex index cannot be represented by `u32`.
     #[inline]
     pub fn vertex(&mut self, pos: Vec2, color: impl Into<ColorU8>) -> u32 {
-        let idx = self.vertices.len();
+        let index = checked_vertex_index(self.vertices.len());
         self.vertices.push(MeshVertex::new(pos, color));
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
-        idx as u32
+        index
     }
 
     /// Push three indices (CCW by convention).
+    ///
+    /// # Panics
+    ///
+    /// Panics if any index does not refer to an existing vertex.
     #[inline]
     pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
+        let max_index = a.max(b).max(c) as usize;
+        assert!(
+            max_index < self.vertices.len(),
+            "mesh triangle indices [{a}, {b}, {c}] exceed vertex count {}",
+            self.vertices.len(),
+        );
         self.indices.push(a);
         self.indices.push(b);
         self.indices.push(c);
@@ -146,12 +160,25 @@ impl Mesh {
 
     /// Append another mesh, offsetting its indices into this mesh's
     /// vertex space.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the combined vertex indices cannot be represented by `u32`.
     pub fn append(&mut self, other: &Mesh) {
-        let base = self.vertices.len() as u32;
+        if other.vertices.is_empty() {
+            return;
+        }
+        let combined_vertex_count = self
+            .vertices
+            .len()
+            .checked_add(other.vertices.len())
+            .expect("combined mesh vertex count overflowed usize");
+        checked_vertex_index(combined_vertex_count - 1);
+        let base = checked_vertex_index(self.vertices.len());
         self.vertices.extend_from_slice(&other.vertices);
         self.indices.reserve(other.indices.len());
-        for &i in &other.indices {
-            self.indices.push(base + i);
+        for &index in &other.indices {
+            self.indices.push(checked_rebased_index(base, index));
         }
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
@@ -223,6 +250,17 @@ impl Mesh {
     }
 }
 
+#[inline]
+fn checked_vertex_index(index: usize) -> u32 {
+    u32::try_from(index).expect("mesh vertex index exceeds u32 range")
+}
+
+#[inline]
+fn checked_rebased_index(base: u32, index: u32) -> u32 {
+    base.checked_add(index)
+        .expect("appended mesh index exceeds u32 range")
+}
+
 // Sister inline loops in `forest/shapes/lower.rs` — `polyline` /
 // `curve_inner` — fuse this AABB-of-points pattern with their copy
 // pass — don't "DRY" them into a shared helper, the fusion is the win.
@@ -244,6 +282,14 @@ mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::mesh::*;
     use crate::primitives::size::Size;
+
+    fn mesh_with_vertices(count: usize) -> Mesh {
+        let mut mesh = Mesh::with_capacity(count, 0);
+        for index in 0..count {
+            mesh.vertex(Vec2::new(index as f32, 0.0), Color::WHITE);
+        }
+        mesh
+    }
 
     #[test]
     fn mesh_vertex_is_12_bytes_no_padding() {
@@ -267,12 +313,80 @@ mod tests {
     }
 
     #[test]
+    fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
+        assert_eq!(checked_vertex_index(u32::MAX as usize), u32::MAX);
+        if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
+            assert!(
+                std::panic::catch_unwind(|| checked_vertex_index(overflow)).is_err(),
+                "vertex indices above u32::MAX must panic",
+            );
+        }
+
+        assert_eq!(checked_rebased_index(u32::MAX - 1, 1), u32::MAX);
+        assert!(
+            std::panic::catch_unwind(|| checked_rebased_index(u32::MAX, 1)).is_err(),
+            "rebased indices above u32::MAX must panic",
+        );
+    }
+
+    #[test]
+    fn triangle_validates_each_index_before_mutating() {
+        #[derive(Debug)]
+        struct Case {
+            label: &'static str,
+            indices: [u32; 3],
+        }
+
+        for case in [
+            Case {
+                label: "first",
+                indices: [3, 1, 2],
+            },
+            Case {
+                label: "second",
+                indices: [0, 3, 2],
+            },
+            Case {
+                label: "third",
+                indices: [0, 1, 3],
+            },
+        ] {
+            let mut mesh = mesh_with_vertices(3);
+            let [a, b, c] = case.indices;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                mesh.triangle(a, b, c);
+            }));
+            assert!(result.is_err(), "{} index must be rejected", case.label);
+            assert!(
+                mesh.indices.is_empty(),
+                "{} failure must not partially append indices",
+                case.label,
+            );
+        }
+
+        let mut mesh = mesh_with_vertices(3);
+        mesh.triangle(2, 1, 0);
+        assert_eq!(mesh.indices, [2, 1, 0]);
+    }
+
+    #[test]
     fn triangle_indices_offset_in_append() {
         let mut a = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, Color::default());
         let b = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, Color::default());
         a.append(&b);
         assert_eq!(a.vertices.len(), 6);
         assert_eq!(a.indices, vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(a.bbox(), Rect::new(0.0, 0.0, 1.0, 1.0));
+
+        let mut expected = Mesh::with_capacity(6, 6);
+        for _ in 0..2 {
+            let i0 = expected.vertex(Vec2::ZERO, Color::default());
+            let i1 = expected.vertex(Vec2::X, Color::default());
+            let i2 = expected.vertex(Vec2::Y, Color::default());
+            expected.triangle(i0, i1, i2);
+        }
+        assert_eq!(a.vertices, expected.vertices);
+        assert_eq!(a.content_hash(), expected.content_hash());
     }
 
     #[test]
