@@ -22,8 +22,7 @@ use glam::Vec2;
 /// Read-only context every layout method threads through the
 /// measure / arrange / intrinsic recursion. Bundles the text shaper
 /// with the record-pass text-byte arena (the byte slice that a
-/// frame-local `ShapeRecord::Text::text` span resolves against — see
-/// [`InternedStr::as_str`](crate::InternedStr::as_str)).
+/// recorded `ShapeRecord::Text::text` span resolves against).
 /// Single parameter slot instead of `(text_bytes: &str, text:
 /// &TextShaper)` everywhere keeps driver signatures readable.
 #[derive(Copy, Clone)]
@@ -96,7 +95,6 @@ fn text_shape_input<'a>(shape: &'a ShapeRecord, bytes: &'a str) -> Option<TextSh
     match shape {
         ShapeRecord::Text {
             text,
-            text_hash,
             font_size_px,
             line_height_px,
             wrap,
@@ -104,16 +102,19 @@ fn text_shape_input<'a>(shape: &'a ShapeRecord, bytes: &'a str) -> Option<TextSh
             weight,
             align,
             ..
-        } => Some(TextShapeInput {
-            text: text.as_str(bytes),
-            text_hash: *text_hash,
-            font_size_px: *font_size_px,
-            line_height_px: *line_height_px,
-            wrap: *wrap,
-            family: *family,
-            weight: *weight,
-            halign: align.halign(),
-        }),
+        } => {
+            let resolved = text.resolve(bytes);
+            Some(TextShapeInput {
+                text: resolved.text,
+                text_hash: resolved.hash,
+                font_size_px: *font_size_px,
+                line_height_px: *line_height_px,
+                wrap: *wrap,
+                family: *family,
+                weight: *weight,
+                halign: align.halign(),
+            })
+        }
         _ => None,
     }
 }

@@ -1,9 +1,9 @@
-use crate::InternedStr;
 use crate::forest::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
 use crate::layout::types::align::Align;
 use crate::primitives::color::ColorF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::interned_str::RecordedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -83,16 +83,10 @@ pub(crate) enum ShapeRecord {
     /// scroll/alignment offsets that depend on shaped-buffer state.
     Text {
         local_origin: Option<Vec2>,
-        /// User-facing [`InternedStr`](crate::InternedStr), moved
-        /// in at lowering. No carrier is normalised away — `Owned`
-        /// moves its `SmolStr` (inline up to 23 B, no realloc, dropped
-        /// at the next record pass's `Shapes::clear`), `Interned`
-        /// carries the validated span+hash from
-        /// [`Ui::fmt`](crate::Ui::fmt) unchanged.
-        /// `text_hash` is the pre-computed FxHash for context-free
-        /// `Hash for ShapeRecord`.
-        text: InternedStr,
-        text_hash: u64,
+        /// Lowered text storage and its pre-computed content hash. Arena-backed
+        /// input is normalized into the active record store before this value
+        /// is built, so its span and hash cannot belong to different passes.
+        text: RecordedText,
         color: ColorF16,
         font_size_px: f32,
         /// Line-height in logical px, fed straight to the shaper's

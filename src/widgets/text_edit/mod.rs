@@ -575,10 +575,10 @@ impl<'a> TextEdit<'a> {
             // origin sits at `leaf.min` and the painted extent is the
             // shaped glyph bbox).
             let (display, color) = if text_ptr.is_empty() {
-                (placeholder.clone().into(), placeholder_color)
+                (ui.intern(&placeholder), placeholder_color)
             } else {
                 // Intern the live buffer into the retained record store
-                // (a memcpy into `fmt_scratch`, not a per-frame `String`
+                // (a memcpy into the text arena, not a per-frame `String`
                 // allocation that scales with buffer length).
                 (ui.intern(text_ptr), look.text.color)
             };

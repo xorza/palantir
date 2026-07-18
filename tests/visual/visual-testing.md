@@ -127,7 +127,7 @@ fixtures loosen it for glyph AA).
   the switch with no re-upload).
 - **`hidpi`** — a complex multi-region dashboard at scale 2.0 (header /
   sidebar / 2×2 cards / footer).
-- **`multi_window`** — records different mesh, polyline, and frame-local text
+- **`multi_window`** — records different mesh, polyline, and arena-backed text
   payload lengths in two windows sharing one backend, then asserts window A's
   spinner-driven `PaintOnly` pixels exactly match its first render after
   window B records in between (assert-only).

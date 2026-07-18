@@ -1,7 +1,7 @@
 use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::primitives::corners::Corners;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -26,7 +26,7 @@ pub struct RadioButton<'a, T: PartialEq> {
     element: Element,
     current: &'a mut T,
     value: T,
-    label: InternedStr,
+    label: TextInput<'a>,
     style: Option<ToggleTheme>,
 }
 
@@ -39,13 +39,13 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             element,
             current,
             value,
-            label: InternedStr::default(),
+            label: TextInput::default(),
             style: None,
         }
     }
 
-    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
-        self.label = s.into();
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = label.into();
         self
     }
 

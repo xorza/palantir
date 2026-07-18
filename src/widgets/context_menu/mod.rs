@@ -14,7 +14,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, WidgetEntry, enter_widget};
 
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use glam::Vec2;
 
 /// Cross-frame state for one context-menu site, keyed off the trigger
@@ -202,15 +202,15 @@ impl Configure for ContextMenu {
 /// close the menu, mirroring native menu behaviour. Disabled rows
 /// don't intercept.
 #[derive(Debug)]
-pub struct MenuItem {
+pub struct MenuItem<'a> {
     element: Element,
-    label: InternedStr,
+    label: TextInput<'a>,
     shortcut: Option<Shortcut>,
 }
 
-impl MenuItem {
+impl<'a> MenuItem<'a> {
     #[track_caller]
-    pub fn new(label: impl Into<InternedStr>) -> Self {
+    pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         let mut element = Element::hstack();
         element.flags.set_sense(Sense::CLICK);
         Self {
@@ -287,7 +287,7 @@ impl MenuItem {
         element.padding = padding;
         element.gaps.set_gap(16.0);
 
-        let label = self.label;
+        let label = ui.intern(self.label);
         let shortcut = self.shortcut;
         // Shortcut intercept: while the menu is open, a matching
         // keypress synthesizes a click and closes the menu. Resolved
@@ -328,7 +328,7 @@ impl MenuItem {
     }
 }
 
-impl Configure for MenuItem {
+impl Configure for MenuItem<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }

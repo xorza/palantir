@@ -1,6 +1,6 @@
 use crate::forest::element::{Configure, Element};
 use crate::layout::types::align::Align;
-use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_str::TextInput;
 use crate::shape::{Shape, TextWrap};
 use crate::text::FontWeight;
 use crate::ui::Ui;
@@ -30,9 +30,9 @@ use crate::widgets::theme::text_style::TextStyle;
 /// Text::new("hi").style(TextStyle { color: red, ..ui.theme.text })
 /// ```
 #[derive(Debug)]
-pub struct Text {
+pub struct Text<'a> {
     element: Element,
-    text: InternedStr,
+    text: TextInput<'a>,
     style: Option<TextStyle>,
     /// Single-axis weight override applied over the resolved `style` in
     /// `show`. Lets `Text::new("x").bold()` request bold without cloning
@@ -42,9 +42,9 @@ pub struct Text {
     align: Align,
 }
 
-impl Text {
+impl<'a> Text<'a> {
     #[track_caller]
-    pub fn new(text: impl Into<InternedStr>) -> Self {
+    pub fn new(text: impl Into<TextInput<'a>>) -> Self {
         Self {
             element: Element::leaf(),
             text: text.into(),
@@ -98,6 +98,7 @@ impl Text {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
+        let text = ui.intern(self.text);
         let mut style = self.style.unwrap_or(ui.theme.text);
         if let Some(weight) = self.weight {
             style.weight = weight;
@@ -107,7 +108,7 @@ impl Text {
         ui.node(id, self.element, None, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
-                text: self.text,
+                text,
                 color: style.color,
                 font_size_px: style.font_size_px,
                 line_height_px,
@@ -123,7 +124,7 @@ impl Text {
     }
 }
 
-impl Configure for Text {
+impl Configure for Text<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }

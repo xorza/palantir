@@ -3062,9 +3062,10 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                 let mut element = Element::leaf();
                 element.salt = Salt::Verbatim(leaf_id);
                 ui.node(leaf_id, element, None, |ui| {
+                    let text = ui.intern(text);
                     ui.add_shape(Shape::Text {
                         local_origin: Some(ORIGIN),
-                        text: text.into(),
+                        text,
                         color: Color::WHITE,
                         font_size_px: FONT,
                         line_height_px: FONT,

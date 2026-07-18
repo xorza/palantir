@@ -835,7 +835,7 @@ mod record_store_tests {
             mesh_indices: payloads.meshes.indices.clone(),
             polyline_points: payloads.polyline_points.clone(),
             polyline_colors: payloads.polyline_colors.clone(),
-            text: payloads.fmt_scratch.clone(),
+            text: payloads.text_bytes().to_owned(),
         }
     }
 

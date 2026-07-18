@@ -80,7 +80,7 @@ impl<'a> Stepper<'a> {
 
         // Intern the formatted number into the record store (no
         // lingering `String` alloc) and reuse the theme's text style.
-        let label = ui.intern(&self.value.to_string());
+        let label = ui.intern(self.value.to_string());
         let label_style = ui.theme.text;
 
         // 2) Open the container and record its three children.

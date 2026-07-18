@@ -1382,68 +1382,158 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 }
 
 #[test]
-fn frame_local_text_lowers_in_its_record_pass() {
+fn widget_text_inputs_lower_exact_bytes_and_hashes() {
     use crate::common::hash::hash_str;
     use crate::forest::shapes::record::ShapeRecord;
 
     let mut ui = Ui::for_test();
     ui.run_at_acked(SURFACE, |ui| {
-        let label = ui.fmt(format_args!("same-pass {}", 7));
-        Text::new(label)
-            .id(WidgetId::from_hash("same-pass"))
+        let borrowed = String::from("borrowed");
+        Text::new(borrowed.as_str())
+            .id(WidgetId::from_hash("borrowed"))
+            .show(ui);
+        Text::new(String::from("owned"))
+            .id(WidgetId::from_hash("owned"))
+            .show(ui);
+        let owned_interned = ui.intern(String::from("owned interned"));
+        Text::new(owned_interned)
+            .id(WidgetId::from_hash("owned-interned"))
+            .show(ui);
+        let interned = ui.intern("interned");
+        let interned = ui.intern(interned);
+        Text::new(interned)
+            .id(WidgetId::from_hash("interned"))
+            .show(ui);
+        let formatted = ui.fmt(format_args!("formatted {}", 7));
+        Text::new(formatted)
+            .id(WidgetId::from_hash("formatted"))
             .show(ui);
     });
 
     let payloads = ui.record_store.borrow();
-    assert_eq!(payloads.fmt_scratch, "same-pass 7");
-    assert_eq!(ui.forest.trees[Layer::Main].shapes.records.len(), 1);
-    match &ui.forest.trees[Layer::Main].shapes.records[0] {
-        ShapeRecord::Text {
-            text, text_hash, ..
-        } => {
-            assert_eq!(text.as_str(&payloads.fmt_scratch), "same-pass 7");
-            assert_eq!(*text_hash, hash_str("same-pass 7"));
+    let text_bytes = payloads.text_bytes();
+    assert_eq!(
+        &*text_bytes,
+        "borrowedownedowned internedinternedformatted 7"
+    );
+    let records = &ui.forest.trees[Layer::Main].shapes.records;
+    assert_eq!(records.len(), 5);
+    for (record, expected) in records.iter().zip([
+        "borrowed",
+        "owned",
+        "owned interned",
+        "interned",
+        "formatted 7",
+    ]) {
+        match record {
+            ShapeRecord::Text { text, .. } => {
+                let resolved = text.resolve(&text_bytes);
+                assert_eq!(resolved.text, expected);
+                assert_eq!(resolved.hash, hash_str(expected));
+            }
+            shape => panic!("expected text shape, got {shape:?}"),
         }
-        shape => panic!("expected text shape, got {shape:?}"),
     }
 }
 
 #[test]
-#[should_panic(expected = "frame-local text reused after record store reset")]
-fn frame_local_text_rejects_reuse_between_record_passes_in_one_frame() {
-    let mut ui = Ui::default();
-    let mut retained = None;
-    let mut pass = 0;
+fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
+    use crate::common::hash::hash_str;
+    use crate::forest::shapes::record::ShapeRecord;
+    use std::rc::Rc;
 
-    ui.run_at(SURFACE, |ui| {
-        pass += 1;
-        if pass == 1 {
-            let label = ui.intern("first");
-            retained = Some(label.clone());
-            Text::new(label)
-                .id(WidgetId::from_hash("frame-local"))
-                .show(ui);
-        } else {
-            assert_eq!(pass, 2, "cold first frame must record exactly twice");
-            let _replacement = ui.intern("other");
-            Text::new(retained.as_ref().unwrap().clone())
-                .id(WidgetId::from_hash("frame-local"))
-                .show(ui);
-        }
+    fn assert_recorded_text(ui: &Ui, expected: &str) {
+        let payloads = ui.record_store.borrow();
+        let text_bytes = payloads.text_bytes();
+        let records = &ui.forest.trees[Layer::Main].shapes.records;
+        let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
+            panic!("expected one text shape, got {records:?}");
+        };
+        let resolved = text.resolve(&text_bytes);
+        assert_eq!(resolved.text, expected);
+        assert_eq!(resolved.hash, hash_str(expected));
+    }
+
+    for (original, replacement) in [
+        ("first", "other"),
+        ("longer retained text", "x"),
+        ("x", "longer replacement text"),
+    ] {
+        let mut ui = Ui::default();
+        let mut retained = None;
+        let mut pass = 0;
+
+        ui.run_at(SURFACE, |ui| {
+            pass += 1;
+            if pass == 1 {
+                let label = ui.intern(original);
+                retained = Some(label.clone());
+                Text::new(label)
+                    .id(WidgetId::from_hash("retained-arena"))
+                    .show(ui);
+            } else {
+                assert_eq!(pass, 2, "cold first frame must record exactly twice");
+                let _replacement = ui.intern(replacement);
+                Text::new(retained.as_ref().unwrap().clone())
+                    .id(WidgetId::from_hash("retained-arena"))
+                    .show(ui);
+            }
+        });
+
+        assert_eq!(pass, 2);
+        assert_recorded_text(&ui, original);
+    }
+
+    let mut source = Ui::for_test();
+    let mut retained = None;
+    source.run_at_acked(SURFACE, |ui| {
+        let label = ui.intern("source window");
+        retained = Some(label.clone());
+        Text::new(label)
+            .id(WidgetId::from_hash("source-window"))
+            .show(ui);
     });
+
+    let mut destination = Ui::for_test();
+    destination.run_at_acked(SURFACE, |ui| {
+        let _replacement = ui.intern("destination");
+        Text::new(retained.as_ref().unwrap().clone())
+            .id(WidgetId::from_hash("cross-window"))
+            .show(ui);
+    });
+    assert_recorded_text(&destination, "source window");
+
+    let mut ui = Ui::for_test();
+    let mut retained = None;
+    let mut arena_ptrs = Vec::new();
+    for content in ["first arena", "second arena", "first arena reused"] {
+        ui.run_at_acked(SURFACE, |ui| {
+            let label = ui.intern(content);
+            arena_ptrs.push(Rc::as_ptr(&label.arena));
+            drop(retained.replace(label.clone()));
+            Text::new(label)
+                .id(WidgetId::from_hash("arena-recycling"))
+                .show(ui);
+        });
+    }
+    assert_ne!(arena_ptrs[0], arena_ptrs[1]);
+    assert_eq!(
+        arena_ptrs[0], arena_ptrs[2],
+        "the spare arena must be recycled after its retained handle drops",
+    );
 }
 
 /// Regression: `Ui::frame` used to clear `record_store` unconditionally
 /// at entry, including on `PaintOnly` frames. But on PaintOnly the
 /// record pass is skipped, so `tree.shapes` retains last frame's
 /// `ShapeRecord`s — which reference record payloads by index
-/// (`ShapeBrush::Gradient(id)`, polyline/mesh spans, `InternedStr`
+/// (`ShapeBrush::Gradient(id)`, polyline/mesh spans, arena-backed text
 /// spans). Clearing left those indices dangling; the encoder then
 /// panicked on the first gradient lookup with
 /// `index out of bounds: the len is 0 but the index is N`.
 /// Fix: clear inside `record_pass` instead (only fires when we're
 /// rebuilding shapes). This test pins it with retained gradient and
-/// frame-local text entries plus an animated shape that forces
+/// recorded text entries plus an animated shape that forces
 /// PaintOnly on frame 1, then re-runs the encoder.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
@@ -1488,7 +1578,10 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     });
     ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
-    assert_eq!(ui.record_store.borrow().fmt_scratch, "retained 7");
+    {
+        let payloads = ui.record_store.borrow();
+        assert_eq!(&*payloads.text_bytes(), "retained 7");
+    }
 
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, the gradient payloads
@@ -1504,11 +1597,14 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
         "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",
     );
-    assert_eq!(
-        ui.record_store.borrow().fmt_scratch,
-        "retained 7",
-        "PaintOnly must preserve bytes referenced by retained frame-local text",
-    );
+    {
+        let payloads = ui.record_store.borrow();
+        assert_eq!(
+            &*payloads.text_bytes(),
+            "retained 7",
+            "PaintOnly must preserve bytes referenced by retained text",
+        );
+    }
 
     // Indirect pin: re-run the encoder against the retained tree
     // + record store. With the bug, this panicked on `gradients[id]`.

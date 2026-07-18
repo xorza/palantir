@@ -7,11 +7,9 @@ pub(crate) mod record;
 mod tests;
 
 use crate::common::content_hash::ContentHash;
-use crate::common::hash::hash_str;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::paint::ShapeStroke;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::primitives::interned_str::InternedStrRepr;
 use crate::primitives::span::Span;
 use crate::record_store::RecordStore;
 use crate::shape::Shape;
@@ -26,12 +24,10 @@ use crate::shape::Shape;
 /// Bulk variable-length payloads (mesh verts/indices, polyline
 /// points/colors, gradients) live on the `RecordStore` passed into
 /// [`Self::add`]; `ShapeRecord` variants reference them via spans /
-/// ids. `ShapeRecord::Text.text` is the asymmetric case — it holds
-/// an [`InternedStr`](crate::InternedStr) inline: `Owned` carries
-/// its bytes on the record itself (`SmolStr`), while `Interned`
-/// references [`RecordPayloads::fmt_scratch`](crate::record_store::RecordPayloads::fmt_scratch)
-/// via a generation-stamped
-/// `Span`. Cleared per record pass, capacity retained.
+/// ids. `ShapeRecord::Text.text` holds a
+/// [`RecordedText`](crate::primitives::interned_str::RecordedText)
+/// span and content hash after normalizing its source into the active
+/// text arena. Cleared per record pass, capacity retained.
 #[derive(Debug, Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
@@ -167,26 +163,10 @@ impl Shapes {
                 family,
                 weight,
             } => {
-                // Each carrier costs only its hash compute:
-                // - `Interned` reuses the hash captured at `Ui::fmt` time.
-                // - `Owned` hashes the bytes once at lowering; the bytes
-                //   stay where they are (no memcpy into the text store,
-                //   no per-shape allocation).
-                let text_hash = match &text.0 {
-                    InternedStrRepr::Interned {
-                        hash,
-                        record_pass_generation,
-                        ..
-                    } => {
-                        store.assert_text_generation(*record_pass_generation);
-                        *hash
-                    }
-                    InternedStrRepr::Owned(s) => hash_str(s),
-                };
+                let text = store.record_text(text);
                 ShapeRecord::Text {
                     local_origin,
                     text,
-                    text_hash,
                     color: color.into(),
                     font_size_px,
                     line_height_px,

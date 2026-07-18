@@ -90,6 +90,7 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
                     .size((Sizing::HUG, Sizing::HUG))
                     .padding(Spacing::xy(4.0, 2.0))
                     .show(ui, |ui| {
+                        let label = ui.intern(&label);
                         Text::new(label).style(style).show(ui);
                     });
             });

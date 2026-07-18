@@ -43,7 +43,6 @@ strum = { version = "0.28", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 # Gradient stop arrays are part of the serialized public theme format.
 tinyvec = { version = "1.12", features = ["serde"] }
-smol_str = "0.3"
 unicode-segmentation = "1.13"
 
 criterion = { version = "0.8", optional = true }

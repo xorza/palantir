@@ -21,11 +21,9 @@
 use rustc_hash::FxHasher;
 use std::hash::Hasher as _;
 
-/// Canonical FxHash of a `str`'s bytes — the text-content hash behind
-/// `ShapeRecord::Text.text_hash` and frame-local `InternedStr` hashes.
-/// Computed at intern time (`Ui::fmt` / `Ui::intern`) or at lowering
-/// time (`Shapes::add`'s `Owned` arm); both sites MUST route through
-/// this one function or the damage / text-cache keys drift apart.
+/// Canonical FxHash of a `str`'s bytes — the content hash stored by
+/// `RecordedText`. Computed while `RecordStore::record_text` lowers a
+/// handle so the hash always describes the bytes addressed by its final span.
 pub(crate) fn hash_str(s: &str) -> u64 {
     use std::hash::Hash;
     let mut h = Hasher::new();
