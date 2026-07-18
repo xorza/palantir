@@ -426,6 +426,8 @@ impl Tree {
         debug_assert_eq!(self.extras_idx.len(), self.records.len());
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
+        let effectively_visible = parent_frame.is_none_or(|f| f.effectively_visible)
+            && cols.layout.visibility().is_visible();
         // This child contributes one marker row to the parent's paint
         // span; the child's own counter starts past its chrome row.
         if let Some(parent) = scratch.open_frames.last_mut() {
@@ -434,6 +436,7 @@ impl Tree {
         scratch.open_frames.push(OpenFrame {
             node: new_id,
             ancestor_or_self_disabled,
+            effectively_visible,
             paint_rows: u32::from(ex.chrome.is_some()),
         });
         new_id

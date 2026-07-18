@@ -216,7 +216,7 @@ implemented and validated independently.
 
 ## Batch 4 — Cache and frame-lifecycle improvements
 
-- [ ] **Stop invisible paint animations from scheduling frames forever.**
+- [x] **Stop invisible paint animations from scheduling frames forever.**
   Animated shapes are registered regardless of their own or an ancestor's
   visibility at `src/forest/mod.rs:233-249`. The wake fold then considers every
   animation and ignores its stored owner node at
