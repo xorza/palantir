@@ -284,7 +284,7 @@ impl GpuPaint for Cube {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // The target is sized exactly to the view; render into all of it.
+        // Render into the actual target resolution supplied for the view.
         // Viewport sets the NDC→pixel transform; scissor is belt-and-braces.
         let (w, h) = (ctx.size_px.x.max(1), ctx.size_px.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);

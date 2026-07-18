@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use aperture::{GpuFrameCtx, GpuPaint, GpuView};
+use aperture::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 use glam::UVec2;
 use image::Rgba;
 
@@ -14,6 +14,7 @@ use crate::harness::Harness;
 
 /// Clears the off-screen target to opaque red via the app's own render
 /// pass on the framework-supplied encoder + target.
+#[derive(Debug)]
 struct RedClear;
 
 impl GpuPaint for RedClear {
@@ -77,10 +78,15 @@ fn gpu_view_clear_red_reaches_screen() {
 /// showcase exercises (pipeline, vertex buffer, depth-stencil state,
 /// `draw`), minus the matrices. Guards against wgpu-validation regressions
 /// in that path, which the clear-only fixture above can't reach.
+#[derive(Debug)]
 struct DepthTriangle {
     pipeline: Option<wgpu::RenderPipeline>,
     depth: Option<wgpu::TextureView>,
     depth_size: glam::UVec2,
+    logical_square: Option<f32>,
+    last_size: UVec2,
+    last_display_scale: f32,
+    last_raster_scale: f32,
 }
 
 const TRI_SHADER: &str = r#"
@@ -146,6 +152,9 @@ impl GpuPaint for DepthTriangle {
     }
 
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+        self.last_size = ctx.size_px;
+        self.last_display_scale = ctx.display_scale;
+        self.last_raster_scale = ctx.raster_scale;
         // Depth matches the target size (`size_px`), like the cube.
         if self.depth.is_none() || self.depth_size != ctx.size_px {
             let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
@@ -190,8 +199,10 @@ impl GpuPaint for DepthTriangle {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // Render the green triangle into the top-left `size_px` sub-rect.
-        let (w, h) = (ctx.size_px.x.max(1), ctx.size_px.y.max(1));
+        let viewport = self.logical_square.map_or(ctx.size_px, |logical_side| {
+            UVec2::splat((logical_side * ctx.raster_scale).round().max(1.0) as u32).min(ctx.size_px)
+        });
+        let (w, h) = (viewport.x.max(1), viewport.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
         pass.set_scissor_rect(0, 0, w, h);
         pass.set_pipeline(self.pipeline.as_ref().unwrap());
@@ -214,6 +225,10 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
         pipeline: None,
         depth: None,
         depth_size: glam::UVec2::ZERO,
+        logical_square: None,
+        last_size: UVec2::ZERO,
+        last_display_scale: 0.0,
+        last_raster_scale: 0.0,
     }));
     let p = paint.clone();
     let img = h.render(size, 1.0, DARK_BG, |ui| {
@@ -229,6 +244,47 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
             assert!(
                 px.0[c].abs_diff(green.0[c]) <= 2,
                 "pixel ({x},{y}) = {px:?} not green — capacity slack leaked into the composite",
+            );
+        }
+    }
+}
+
+#[test]
+fn gpu_view_callback_receives_composed_raster_scale() {
+    let mut h = Harness::new();
+    let size = UVec2::new(96, 96);
+    let paint = Rc::new(RefCell::new(DepthTriangle {
+        pipeline: None,
+        depth: None,
+        depth_size: UVec2::ZERO,
+        logical_square: Some(16.0),
+        last_size: UVec2::ZERO,
+        last_display_scale: 0.0,
+        last_raster_scale: 0.0,
+    }));
+    let p: Rc<RefCell<dyn GpuPaint>> = paint.clone();
+    let img = h.render(size, 2.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
+            .transform(TranslateScale::from_scale(1.5))
+            .show(ui, |ui| {
+                GpuView::new(p.clone()).show(ui);
+            });
+    });
+
+    assert_eq!(paint.borrow().last_size, UVec2::new(96, 96));
+    assert_eq!(paint.borrow().last_display_scale, 2.0);
+    assert_eq!(paint.borrow().last_raster_scale, 3.0);
+
+    let green = Rgba([0u8, 255, 0, 255]);
+    let blue = Rgba([0u8, 0, 255, 255]);
+    for &(x, y, expected) in &[(36, 36, green), (60, 60, blue)] {
+        let px = img.get_pixel(x, y);
+        for c in 0..4 {
+            assert!(
+                px.0[c].abs_diff(expected.0[c]) <= 2,
+                "pixel ({x},{y}) = {px:?}, expected {expected:?}",
             );
         }
     }

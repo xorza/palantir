@@ -69,10 +69,10 @@ pub(crate) struct RenderBuffer {
     pub(crate) images: Soa<ImageDrawRow>,
     /// `GpuView` off-screen targets to paint this frame — one per composited
     /// `GpuView` image row. The composer fills this directly from the
-    /// `DrawImage.target` link (resolving the physical size + the app `paint`
-    /// callback) as it walks image draws; the backend drains it to allocate +
-    /// paint. Carries the callback, so the backend reaches the renderer without
-    /// any `Ui`-side registry.
+    /// `DrawImage.target` link (resolving physical size, effective raster scale,
+    /// and the app `paint` callback) as it walks image draws; the backend drains
+    /// it to allocate + paint. Carries the callback, so the backend reaches the
+    /// renderer without any `Ui`-side registry.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
     /// One entry per *batch* of image draws (currently one
     /// [`GroupBatch`] per group that emitted images). Schedule walks

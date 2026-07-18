@@ -2,10 +2,11 @@
 //! widget. App code implements [`GpuPaint`] on its own renderer (owning
 //! whatever pipelines / buffers / depth+MSAA textures it needs), wraps it
 //! in `Rc<RefCell<…>>`, and hands it to the widget each frame. The
-//! framework owns an off-screen render target sized to the widget's rect,
-//! runs the callback into it during submit, and composites the result
-//! through the existing image pipeline — so clipping, rounded corners,
-//! z-order, and partial-damage recompositing come for free.
+//! framework owns an off-screen render target sized to the widget's composed
+//! physical rect (uniformly downsampled when the device texture cap requires
+//! it), runs the callback into it during submit, and composites the result
+//! through the existing image pipeline — so clipping, rounded corners, z-order,
+//! and partial-damage recompositing come for free.
 //!
 //! The `Ui` keeps one small per-`WidgetId` map of live views (`Ui::gpu_views`,
 //! values are [`GpuViewEntry`]): the app hands its renderer to the widget every
@@ -73,13 +74,19 @@ pub struct GpuFrameCtx<'a> {
     /// The off-screen color target, sized exactly to [`Self::size_px`]. Set
     /// your viewport/scissor to `size_px` and render into the whole target.
     pub target: &'a wgpu::TextureView,
-    /// The target's size, in physical pixels (the widget rect × DPI scale).
-    /// Set your viewport to this, derive your projection from it, and size
+    /// The target's actual size in physical pixels, after the widget's composed
+    /// transform and any uniform downsampling required by the device texture
+    /// cap. Set your viewport to this, derive your projection from it, and size
     /// your own attachments (depth, MSAA) to it — the target is reallocated
     /// whenever this changes (every frame while the view is being resized).
     pub size_px: UVec2,
-    /// Logical→physical scale factor for this frame.
-    pub scale: f32,
+    /// Logical→display scale for this window's current monitor. This is the
+    /// display pixel density only; widget transforms and target downsampling do
+    /// not affect it.
+    pub display_scale: f32,
+    /// Logical→target scale for this view, including the display scale,
+    /// composed transforms, and any uniform device-cap downsampling.
+    pub raster_scale: f32,
     /// Wall-clock time since this view last painted (`Duration::ZERO` on
     /// its first paint). Use it to make animation framerate-independent.
     pub dt: Duration,
@@ -89,7 +96,8 @@ impl std::fmt::Debug for GpuFrameCtx<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GpuFrameCtx")
             .field("size_px", &self.size_px)
-            .field("scale", &self.scale)
+            .field("display_scale", &self.display_scale)
+            .field("raster_scale", &self.raster_scale)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }

@@ -9,15 +9,17 @@ use soa_rs::Soars;
 
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`]): the view's stable texture `id`, its used
-/// physical size (`used` — the composed paint-rect size, ceiled ≥1, clamped
-/// to the device max), and the app `paint` callback (threaded from
-/// `Ui::gpu_views` through the typed image command, so the backend reaches the
-/// renderer without a `Ui`-side registry). The backend allocates the target to
-/// exactly `used` and runs `paint` into it before the main pass samples it.
+/// physical size (`used`), the display and effective raster scales, and the app
+/// `paint` callback (threaded from `Ui::gpu_views` through the typed image
+/// command, so the backend reaches the renderer without a `Ui`-side registry).
+/// The backend allocates the target to exactly `used` and runs `paint` into it
+/// before the main pass samples it.
 #[derive(Clone, Debug)]
 pub(crate) struct RenderTargetDraw {
     pub(crate) id: TextureId,
     pub(crate) used: UVec2,
+    pub(crate) display_scale: f32,
+    pub(crate) raster_scale: f32,
     pub(crate) paint: GpuPaintRef,
 }
 
@@ -59,8 +61,8 @@ pub(crate) struct ImageInstance {
     /// UV crop top-left (0..1 texture coords).
     pub(crate) uv_min: glam::Vec2,
     /// UV crop extent (typically `(1, 1)`; smaller for `Cover` crop,
-    /// `> 1` for `Tile` repeats). A `GpuView` ships `(1, 1)` — its target is
-    /// sized exactly to the paint rect, so it samples the whole texture.
+    /// `> 1` for `Tile` repeats). A `GpuView` ships `(1, 1)` so its entire
+    /// target maps across the composite paint rect.
     pub(crate) uv_size: glam::Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,

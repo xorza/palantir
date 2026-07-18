@@ -161,14 +161,12 @@ impl ImagePipeline {
         ctx: &mut GpuCtx<'_>,
         frame_targets: &[RenderTargetDraw],
         owner: RenderOwnerId,
-        scale: f32,
         now: Duration,
     ) {
         self.gpu_view_targets.paint(
             ctx,
             frame_targets,
             owner,
-            scale,
             now,
             &mut self.textures,
             &self.image_bgl,

@@ -28,7 +28,6 @@ impl GpuViewTargets {
         ctx: &mut GpuCtx<'_>,
         frame_targets: &[RenderTargetDraw],
         owner: RenderOwnerId,
-        scale: f32,
         now: Duration,
         textures: &mut ImageTextures,
         layout: &wgpu::BindGroupLayout,
@@ -72,7 +71,8 @@ impl GpuViewTargets {
                 encoder: ctx.encoder,
                 target: &target.view,
                 size_px: draw.used,
-                scale,
+                display_scale: draw.display_scale,
+                raster_scale: draw.raster_scale,
                 dt,
             });
             ctx.encoder.pop_debug_group();

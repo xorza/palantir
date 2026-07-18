@@ -12,13 +12,16 @@ use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
 };
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_scissor};
+use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
+use std::cell::RefCell;
 use std::f32::consts::FRAC_PI_2;
+use std::rc::Rc;
 
 fn composer() -> Composer {
     Composer::new(16_384)
@@ -64,13 +67,32 @@ fn run(
     build: impl FnOnce(&mut RenderCmdBuffer, &mut RecordPayloads),
     display: &Display,
 ) -> RenderBuffer {
+    run_with_texture_cap(build, display, 16_384)
+}
+
+fn run_with_texture_cap(
+    build: impl FnOnce(&mut RenderCmdBuffer, &mut RecordPayloads),
+    display: &Display,
+    max_texture_dim: u32,
+) -> RenderBuffer {
     let mut buffer = RenderCmdBuffer::default();
     let mut payloads = RecordPayloads::default();
     build(&mut buffer, &mut payloads);
-    let mut composer = composer();
+    let mut composer = Composer::new(max_texture_dim);
     let mut out = render_buffer();
     composer.compose(&buffer, &payloads, *display, &mut out);
     out
+}
+
+#[derive(Debug)]
+struct NoopGpuPaint;
+
+impl GpuPaint for NoopGpuPaint {
+    fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
+}
+
+fn gpu_paint() -> GpuPaintRef {
+    GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)))
 }
 
 #[test]
@@ -1630,6 +1652,106 @@ fn compose_emits_image_batch_for_drawimage() {
     // every image as a uniform color (regression hunt: 2026-05).
     assert_eq!(buf.images.instance()[0].uv_min, glam::Vec2::ZERO);
     assert_eq!(buf.images.instance()[0].uv_size, glam::Vec2::ONE);
+}
+
+#[test]
+fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
+    #[derive(Debug)]
+    struct Case {
+        dpr: f32,
+        expected_size: UVec2,
+        expected_raster_scale: f32,
+    }
+
+    let cases = [
+        Case {
+            dpr: 1.0,
+            expected_size: UVec2::new(60, 30),
+            expected_raster_scale: 3.0,
+        },
+        Case {
+            dpr: 2.0,
+            expected_size: UVec2::new(120, 60),
+            expected_raster_scale: 6.0,
+        },
+    ];
+
+    for case in cases {
+        let buf = run(
+            |b, _arena| {
+                b.push_transform(TranslateScale::from_scale(2.0));
+                b.push_transform(TranslateScale::from_scale(1.5));
+                b.draw_gpu_view(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee), gpu_paint());
+                b.pop_transform();
+                b.pop_transform();
+            },
+            &params(case.dpr, UVec2::new(512, 512)),
+        );
+
+        assert_eq!(buf.frame_targets.len(), 1, "{case:?}");
+        let target = &buf.frame_targets[0];
+        assert_eq!(target.used, case.expected_size, "{case:?}");
+        assert_eq!(target.display_scale, case.dpr, "{case:?}");
+        assert_eq!(target.raster_scale, case.expected_raster_scale, "{case:?}");
+        assert_eq!(
+            buf.images.instance()[0].rect.size,
+            Size::new(case.expected_size.x as f32, case.expected_size.y as f32),
+            "{case:?}"
+        );
+    }
+}
+
+#[test]
+fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
+    #[derive(Debug)]
+    struct Case {
+        logical_size: Size,
+        expected_target: UVec2,
+    }
+
+    let cases = [
+        Case {
+            logical_size: Size::new(200.0, 50.0),
+            expected_target: UVec2::new(100, 25),
+        },
+        Case {
+            logical_size: Size::new(50.0, 200.0),
+            expected_target: UVec2::new(25, 100),
+        },
+    ];
+
+    for case in cases {
+        let buf = run_with_texture_cap(
+            |b, _arena| {
+                b.draw_gpu_view(
+                    Rect {
+                        min: Vec2::ZERO,
+                        size: case.logical_size,
+                    },
+                    TextureId(0xc0ffee),
+                    gpu_paint(),
+                );
+            },
+            &params(1.0, UVec2::new(400, 400)),
+            100,
+        );
+
+        assert_eq!(buf.frame_targets.len(), 1, "{case:?}");
+        let target = &buf.frame_targets[0];
+        assert_eq!(target.used, case.expected_target, "{case:?}");
+        assert_eq!(target.display_scale, 1.0, "{case:?}");
+        assert_eq!(target.raster_scale, 0.5, "{case:?}");
+        assert_eq!(
+            buf.images.instance()[0].rect.size,
+            case.logical_size,
+            "the composite destination stays at monitor resolution: {case:?}"
+        );
+        assert_eq!(
+            target.used.x as f32 * case.logical_size.h,
+            target.used.y as f32 * case.logical_size.w,
+            "the capped target preserves the composite aspect ratio: {case:?}"
+        );
+    }
 }
 
 #[test]

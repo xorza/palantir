@@ -129,27 +129,8 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The seven-item count above describes the earlier pruned
-pass; the six findings below are additional. These supplemental batches are
+pass; the five findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
-
-## Batch 4 — High: Preserve GPU surface and target contracts
-
-- [ ] **Carry each transformed `GpuView`'s effective raster scale and preserve
-  aspect ratio when capped.** The composer applies the ancestor transform
-  before deriving the physical target and then clamps width and height
-  independently at `src/renderer/frontend/composer/mod.rs:782-820`.
-  `RenderTargetDraw` carries only id, used size, and callback at
-  `src/renderer/render_buffer/image.rs:10-22`, so the backend supplies the
-  window's DPR to every callback at `src/renderer/backend/mod.rs:522-528` and
-  `src/renderer/backend/image_pipeline/render_target.rs:26-77`, despite
-  `GpuFrameCtx::scale` promising the logical-to-physical scale at
-  `src/renderer/gpu_view.rs:73-82`. A view under a 2x ancestor gets a 2x target
-  but sees only DPR; independently capping one dimension also stretches its
-  rendered content when composited. Apply one uniform downsample factor when
-  either axis exceeds the device cap, carry the resulting effective scale on
-  `RenderTargetDraw`, and pass that per-view value to the callback. Validate
-  nested transforms at DPR 1 and 2, wide and tall over-cap targets, and
-  callback-rendered circles/squares before compositing.
 
 ## Batch 5 — Medium: Reject malformed values at their owning boundary
 

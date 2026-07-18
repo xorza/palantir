@@ -86,9 +86,9 @@ pub(crate) struct Composer {
     /// quads they fully cover. See [`OcclusionPruner`].
     occlusion: OcclusionPruner,
     /// Device `max_texture_dimension_2d`, the cap on a `GpuView` off-screen
-    /// target's size — the composer ceils each composited `GpuView`'s
-    /// physical rect into `RenderBuffer.frame_targets`, clamped to this. Fixed
-    /// for the device's lifetime, so it rides the ctor, not every compose.
+    /// target's size — the composer uniformly downsamples each composited
+    /// `GpuView` whose physical rect exceeds it. Fixed for the device's
+    /// lifetime, so it rides the ctor, not every compose.
     max_texture_dim: NonZeroU32,
 }
 
@@ -807,17 +807,21 @@ impl Composer {
                         },
                     });
                     // A `GpuView` also needs its off-screen target painted:
-                    // list it with the used physical size (ceiled ≥1, clamped
-                    // to the device max) + the app paint callback from the cmd
-                    // buffer's side channel. The draw above already composites
-                    // the result by `id`.
+                    // list it with the used physical size + display/raster
+                    // scales + app paint callback from the cmd buffer's side
+                    // channel. The draw above already composites the result by
+                    // `id`.
                     if let Some(paint) = paint {
                         let cap = i64::from(self.max_texture_dim.get());
-                        let px = |v: f32| (v.ceil() as i64).clamp(1, cap) as u32;
                         let s = phys_rect.size;
+                        let downsample =
+                            (self.max_texture_dim.get() as f32 / s.w.max(s.h)).min(1.0);
+                        let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
                         out.frame_targets.push(RenderTargetDraw {
                             id: p.handle,
                             used: UVec2::new(px(s.w), px(s.h)),
+                            display_scale: scale,
+                            raster_scale: current_transform.scale * scale * downsample,
                             paint: paint.clone(),
                         });
                     }
