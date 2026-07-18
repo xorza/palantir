@@ -10,11 +10,11 @@ design notes, and the current CPU profile. Tests and benchmarks were read only
 where needed to understand an invariant or prescribe validation; they were not
 reviewed as production modules.
 
-Completed findings have been removed after checking the current code. Four
+Completed findings have been removed after checking the current code. Three
 findings remain:
 
 - prototype narrower cascade invalidation without weakening correctness;
-- consolidate two duplicated or unnecessarily repeated policies;
+- eliminate a repeated Grid intrinsic query;
 - decide how Grid Fill tracks contribute to the Grid's intrinsic size.
 
 The batches below remain ordered by priority and can be implemented and
@@ -36,18 +36,7 @@ validated independently.
   clip, visibility, scroll, side-layer, reorder, and paint-only mutations, then
   benchmark partial and scrolling arms.
 
-## Batch 2 — Consolidate duplicated policies
-
-- [ ] **Build Stack planning data in one child walk without unifying the
-  Stack/Grid solvers.** `stack_plan` walks every active child for counts,
-  weights, and non-Fill sums at `src/layout/stack/mod.rs:141-179`;
-  `push_fill_entries` immediately walks them again at
-  `src/layout/stack/mod.rs:106-138`. Both measure and arrange pay the duplicate
-  traversal at `src/layout/stack/mod.rs:210-270,338-365`. Populate the
-  `StackPlan` and Fill scratch slice together in one pass, leaving
-  `freeze_distribute` and the documented Stack/Grid freeze-cadence divergence
-  at `src/layout/stack/mod.rs:45-57` untouched. Validate every Stack sizing
-  mode and benchmark wide/deep stacks.
+## Batch 2 — Eliminate repeated intrinsic work
 
 - [ ] **Add a paired intrinsic query for Grid Hug cells.** Every span-1
   Hug-column cell requests `MinContent` and `MaxContent` back-to-back at
@@ -94,7 +83,7 @@ validated independently.
 This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
-prescribe regressions. The seven-item count above describes the earlier pruned
+prescribe regressions. The three findings above describe the earlier pruned
 pass; the three findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 

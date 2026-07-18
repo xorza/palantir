@@ -2,7 +2,12 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
-use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
+use crate::layout::axis::Axis;
+use crate::layout::types::{
+    align::Align,
+    align::VAlign,
+    sizing::{Sizes, Sizing},
+};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -395,6 +400,96 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
     assert_eq!((hidden.min.x, hidden.size.w), (20.0, 0.0));
     assert_eq!(hidden.size.h, 0.0);
     assert_eq!((b.min.x, b.size.w), (25.0, 30.0));
+}
+
+#[test]
+fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
+    #[derive(Debug)]
+    struct Case {
+        label: &'static str,
+        axis: Axis,
+        viewport: UVec2,
+    }
+
+    for case in [
+        Case {
+            label: "horizontal",
+            axis: Axis::X,
+            viewport: UVec2::new(200, 40),
+        },
+        Case {
+            label: "vertical",
+            axis: Axis::Y,
+            viewport: UVec2::new(40, 200),
+        },
+    ] {
+        let mut ui = Ui::for_test();
+        let mut root = None;
+        ui.run_at(case.viewport, |ui| {
+            let panel = match case.axis {
+                Axis::X => Panel::hstack(),
+                Axis::Y => Panel::vstack(),
+            };
+            root = Some(
+                panel
+                    .auto_id()
+                    .size(case.axis.compose_size(200.0, 40.0))
+                    .gap(5.0)
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash((case.label, "fixed")))
+                            .size(case.axis.compose_size(20.0, 10.0))
+                            .show(ui);
+
+                        let hug_size = match case.axis {
+                            Axis::X => Sizes::new(Sizing::HUG, Sizing::fixed(10.0)),
+                            Axis::Y => Sizes::new(Sizing::fixed(10.0), Sizing::HUG),
+                        };
+                        let hug = match case.axis {
+                            Axis::X => Panel::hstack(),
+                            Axis::Y => Panel::vstack(),
+                        };
+                        hug.id(WidgetId::from_hash((case.label, "hug")))
+                            .size(hug_size)
+                            .show(ui, |ui| {
+                                Frame::new()
+                                    .id(WidgetId::from_hash((case.label, "hug-content")))
+                                    .size(case.axis.compose_size(30.0, 10.0))
+                                    .show(ui);
+                            });
+
+                        let fill_size = match case.axis {
+                            Axis::X => Sizes::new(Sizing::FILL, Sizing::fixed(10.0)),
+                            Axis::Y => Sizes::new(Sizing::fixed(10.0), Sizing::FILL),
+                        };
+                        Frame::new()
+                            .id(WidgetId::from_hash((case.label, "collapsed-fill")))
+                            .size(fill_size)
+                            .collapsed()
+                            .show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash((case.label, "fill")))
+                            .size(fill_size)
+                            .show(ui);
+                    })
+                    .node(),
+            );
+        });
+
+        let actual = child_rects(&ui, root.unwrap());
+        let expected = [
+            case.axis.compose_rect(0.0, 0.0, 20.0, 10.0),
+            case.axis.compose_rect(25.0, 0.0, 30.0, 10.0),
+            case.axis.compose_rect(55.0, 0.0, 0.0, 0.0),
+            case.axis.compose_rect(60.0, 0.0, 140.0, 10.0),
+        ];
+        assert_eq!(actual, expected, "case: {}", case.label);
+        assert!(
+            ui.layout_engine.scratch.stack_fill.pool.is_empty(),
+            "case: {} must release its planning scratch",
+            case.label,
+        );
+    }
 }
 
 /// Pin: a Fill child's `max_size` caps its arranged width when the
