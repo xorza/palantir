@@ -84,7 +84,7 @@ This follow-up pass re-read every production Rust and WGSL file under `src/`,
 the animation derive crate and manifests, the local architecture/design notes,
 and the current review. Tests were consulted only to verify contracts and
 prescribe regressions. The three findings above describe the earlier pruned
-pass; the three findings below are additional. These supplemental batches are
+pass; the two findings below are additional. These supplemental batches are
 ordered by priority and are independently implementable.
 
 ## Batch 5 — Medium: Reject malformed values at their owning boundary
@@ -110,19 +110,6 @@ ordered by priority and are independently implementable.
   recording; theme input must fail deserialization and runtime shaping must
   return the exact invalid/no-command result without entering cache or renderer
   state.
-
-- [ ] **Enforce the public `Mesh` index invariant while constructing the
-  mesh.** `Mesh::vertex` truncates `usize` to `u32`, `triangle` accepts
-  arbitrary indices, and `append` performs unchecked rebasing at
-  `src/primitives/mesh.rs:125-158`. `is_noop` checks only vertex presence and
-  triangle-count divisibility at `src/primitives/mesh.rs:102-107`, after which
-  lowering copies malformed indices directly into the shared GPU payload at
-  `src/forest/shapes/mod.rs:224-243`. Use checked vertex-index conversion,
-  assert every triangle index is in range, and checked-add rebased indices in
-  `append`, so authoring mistakes fail at their source rather than producing
-  robust-access geometry. Validate each invalid triangle position, the largest
-  valid boundary, exact append rebasing, and unchanged procedural
-  vertices/indices/hashes/bounds.
 
 ## Batch 6 — Medium: Make snap-only animation explicit
 
