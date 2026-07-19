@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn adversarial_workloads_pin_tree_shape_and_overlap_cost() {
+    fn adversarial_workloads_retain_one_row_per_node() {
         let deep = cold_frame(build_deep);
         let deep_nodes = DEEP_DEPTH + 2;
         assert_eq!(
@@ -352,10 +352,10 @@ mod tests {
             deep_nodes,
             "viewport + {DEEP_DEPTH} nested panels + leaf",
         );
-        let expected_deep_snapshots = deep_nodes + (2..deep_nodes).sum::<usize>();
         assert_eq!(
-            deep.layout_engine.cache.nodes.live, expected_deep_snapshots,
-            "overlapping deep snapshots expose quadratic retained rows",
+            deep.layout_engine.cache.previous.nodes.desired.len(),
+            deep_nodes,
+            "deep trees retain one row per node",
         );
 
         let broad = cold_frame(build_broad);
@@ -368,18 +368,11 @@ mod tests {
             1 + panel_count + leaf_count,
             "viewport + balanced panels + one leaf per terminal panel",
         );
-        let terminal_subtree = 1 + 1;
-        let depth_two_subtree = 1 + BROAD_FANOUT * terminal_subtree;
-        let depth_one_subtree = 1 + BROAD_FANOUT * depth_two_subtree;
-        let root_subtree = 1 + BROAD_FANOUT * depth_one_subtree;
-        let expected_broad_snapshots = (1 + root_subtree)
-            + root_subtree
-            + BROAD_FANOUT * depth_one_subtree
-            + BROAD_FANOUT.pow(2) * depth_two_subtree
-            + BROAD_FANOUT.pow(3) * terminal_subtree;
+        let broad_nodes = 1 + panel_count + leaf_count;
         assert_eq!(
-            broad.layout_engine.cache.nodes.live, expected_broad_snapshots,
-            "balanced overlap cost is O(N log N) for this exact fixture",
+            broad.layout_engine.cache.previous.nodes.desired.len(),
+            broad_nodes,
+            "balanced trees retain one row per node",
         );
     }
 

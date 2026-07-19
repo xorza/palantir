@@ -498,17 +498,19 @@ mod test_support {
         scale: f32,
         color: ColorU8,
     ) -> TextRun {
-        let m = shaper.measure(
-            text,
-            ShapeParams {
-                font_size_px,
-                line_height_px,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        );
+        let m = shaper
+            .measure(
+                text,
+                ShapeParams {
+                    font_size_px,
+                    line_height_px,
+                    max_width_px: None,
+                    family: FontFamily::Sans,
+                    weight: FontWeight::Regular,
+                    halign: HAlign::Auto,
+                },
+            )
+            .expect("test text metrics are valid");
         TextRun {
             key: m.key,
             origin,

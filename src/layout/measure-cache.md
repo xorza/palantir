@@ -1,82 +1,71 @@
 # Cross-frame measure cache
 
-WPF-style short-circuit: skip a node's measure when neither its
-authoring inputs nor its incoming `available` size changed since last
-frame. Composes with damage. The only cross-frame cache in the render
-path — encode and compose were both removed after benches showed they
-contributed < 1%.
+The measure cache skips a subtree when its authoring fingerprint and
+integer-pixel-quantized incoming `available` size match the preceding layout
+pass. It is the only cross-frame cache in the render path; encode and compose
+caches were removed after benchmarks showed contributions below 1%.
 
-Code lives in `cache/` (this directory's sibling).
+## Storage
 
-## Mechanism
+`MeasureCache` owns read-only `previous` and writable `current`
+`MeasureSnapshot`s. Each snapshot concatenates layer trees in paint order while
+keeping every tree's pre-order rows contiguous:
 
-- **Subtree-hash rollup.** `Tree.rollups.subtree: Vec<ContentHash>` is
-  populated alongside `rollups.node` in `Tree::post_record` via a fused
-  reverse-pre-order walk. Pinned by `forest::tree::tests::subtree_hash_*`.
-- **Subtree-skip lookup.** `MeasureCache::try_lookup` fires at every
-  non-collapsed node in `LayoutEngine::measure`. A hit blits the whole
-  subtree's `desired` + `text_shapes` from the cache and skips
-  recursion. `available_q` (integer-px-quantized) gates `Hug` / `Fill`
-  variance.
-- **Single-arena storage.** Two flat node-indexed arenas
-  (`desired`, `text_spans`) shared across all
-  snapshots, plus a per-`WidgetId` map of
-  `ArenaSnapshot { subtree_hash, available_q, root_intrinsics, nodes: Span,
-  hugs: Span, text_shapes: Span }`. The dimensional cache key
-  (`available_q`) is inline on the snapshot — the validity check on
-  `try_lookup` doesn't hit a parallel arena. `root_intrinsics`
-  (`[f32; SLOT_COUNT]`, X/Y × Min/Max-content) is the subtree root's
-  cached intrinsic; `MeasureCache::lookup_root_intrinsic` serves it to
-  `LayoutEngine::intrinsic` keyed on `subtree_hash` **alone** (intrinsics
-  are computed at `available = ∞`, so they're valid across `available_q`
-  buckets). This stops an ancestor's `intrinsic_min` query — which runs
-  *before* its children are measured — from cold-recursing through
-  unchanged sibling subtrees on a localized change or a resize. Per-grid hug arrays for `LayoutMode::Grid`
-  descendants live in a separate `hugs` arena; flat shaped-text runs
-  live in `text_shapes_arena`. Liveness bookkeeping rides on the
-  shared [`LiveArena`] primitive (`src/common/live_arena.rs`); the
-  two node-indexed arenas share `nodes.live`; `hugs` and
-  `text_shapes_arena` track their own. In-place rewrite on same-len
-  writes; append + mark-garbage on size changes; lazy compaction when
-  `arena.len() > live × COMPACT_RATIO` (= 2) and `live > COMPACT_FLOOR`
-  (= 64).
-- **Lifecycle hooks.** Eviction via `SeenIds.removed` →
-  `MeasureCache::sweep_removed`, called from `Ui::post_record`.
-  `MeasureCache::clear` exposed via `internals::clear_measure_cache`
-  (gated to `cfg(test)` + `internals` feature).
+- `NodeArenas` stores one desired size, text span, intrinsic-slot row, and
+  available key per recorded node.
+- `text_shapes` stores each measure-owned shaped text run once. Direct
+  container text remains paint-only and is shaped after capture. Stack
+  solvers can shape siblings out of node order, so a reverse tree walk unions
+  the per-node spans into contiguous subtree ranges without assuming text
+  payload order.
+- `hugs` stores each Grid track-hug payload once.
+- Dense `ArenaSnapshot` descriptors hold subtree node, text, and hug ranges.
+  `WidgetIdMap<u32>` maps each cacheable non-leaf identity to its dense
+  descriptor index.
 
-## Tests
+The descriptor `subtree_hash` and `available_q` form the desired-size cache key.
+`lookup_root_intrinsic` uses the same descriptor but checks only
+`subtree_hash`, because intrinsic measurements are independent of the parent's
+available size. Cache hits restore descendant intrinsic and available metadata
+as well as desired/text/Grid state, so a parent hit does not erase arbitrary
+descendant lookup roots from the next snapshot.
 
-`src/layout/cache/tests.rs` and `src/layout/cache/integration_tests.rs`:
-hit/miss paths, eviction, subtree-snapshot coverage, in-place rewrite
-preserves arena position, compaction invariant, post-compaction hit
-validity, plus the rect-stability contract via
-`subtree_skip_preserves_descendant_rects`.
+The writable snapshot retains its descriptor map when the ordered cacheable
+`WidgetId` fingerprint matches that buffer's preceding contents. Only dense
+descriptor values change on paint/layout authoring updates with stable
+structure. A reorder, insertion, removal, or cacheability change rebuilds the
+map from the retained ordered identities. The first captured tree moves its
+completed desired and availability vectors into the snapshot, exchanging them
+for the warmed alternate buffers; additional layer trees append.
 
-## Bench
+When every current root's `(WidgetId, subtree_hash, available_q)` matches the
+previous root signature and the total node count is unchanged, the previous
+snapshot is already an exact materialization of the current output. The engine
+keeps it in place instead of rewriting identical rows.
 
-`src/bench/layout/cache.rs` compares `cached` and `forced_miss` arms for both a
-representative measure workload and a heavier clipped/text-shaped tree. It also
-pins two adversarial shapes: a 194-node unary chain retaining 18,914 overlapping
-node rows (O(N²)), and a 1,098-node balanced tree retaining 5,403 rows
-(O(N log N)). Both add resize arms; the broad tree also toggles one paint-only
-leaf so localized sibling-subtree reuse is measured separately.
+## Lifecycle
 
-A bounded selective-root prototype retained every subtree up to 32 nodes but
-only roots and branch points above that. On a pinned CPU it reduced the deep
-fixture to 721 retained rows and improved forced-miss time from 56.6 to 44.8 µs
-and resize time from 52.3 to 48.2 µs, but cached time stayed flat (23.9 versus
-24.1 µs). The broad fixture kept the same hit coverage and storage yet was
-consistently 0.1–2.1% slower across cached, forced-miss, resize, and localized
-arms. A flat-root lower bound discarded all 21 localized sibling hits and was
-materially slower on that arm. Neither candidate cleared the requirement to
-improve miss behavior and steady-state reuse together, so production keeps the
-overlapping per-branch snapshots. Criterion output remains the source of truth
-for current timings.
+`LayoutEngine::run` validates the root signature, measures and arranges each
+tree, captures changed output, then swaps `current` and `previous`. Empty and
+removed trees disappear as part of that full-frame materialization; the
+`SeenIds.removed` sweep no longer owns cache arena reclamation.
 
-The cross-frame intrinsic-query cache landed as `root_intrinsics` on
-the snapshot (above) — it reuses the subtree root's intrinsic, which
-covers the dominant `children_max_intrinsic` re-walk; a full
-per-descendant intrinsic snapshot is still open. Remaining future-work
-items (real-workload validation, cold-cache mitigations, coarser
-quantization) remain profile-driven.
+`MeasureCache::clear`, exposed through the test/internals
+`Ui::clear_measure_cache`, clears both buffers while retaining their
+allocations.
+
+## Validation
+
+`src/layout/cache/tests.rs` pins linear retained rows, subtree-range contents,
+root and localized hits, descriptor-index rebuilds after reorder/removal,
+available-size misses, reappearance, solver-order text restoration, exact
+desired/rect replay, and stable capacity across oscillating tree sizes.
+
+`src/layout/cache/integration_tests.rs` cross-checks warm output against a cold
+cache across every driver, Grid hug restoration, intrinsic reuse, text command
+stability, and width changes.
+
+`src/bench/layout/cache.rs` covers representative and real-text workloads plus
+a 194-node unary chain and a 1,098-node balanced tree. The adversarial fixtures
+now retain exactly 194 and 1,098 node rows respectively, while preserving all
+21 localized sibling hits in the balanced fixture.

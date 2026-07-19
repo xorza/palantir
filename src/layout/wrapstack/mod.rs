@@ -98,7 +98,7 @@ fn pack_child(
 /// children by index — `NodeId` is `Copy`, so we read each child out
 /// before calling `layout.arrange`, sidestepping the borrow conflict
 /// that a slice would create against `&mut LayoutEngine`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct WrapScratch {
     pool: Vec<NodeId>,
 }

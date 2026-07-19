@@ -4,7 +4,10 @@ use crate::forest::layer::Layer;
 use crate::forest::tree::Tree;
 use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
-use crate::layout::cache::{MeasureCache, SubtreeArenas, quantize_available};
+use crate::layout::cache::{
+    AvailableKey, CachedSubtree, CaptureTreeInput, INVALID_AVAILABLE, MeasureCache,
+    MeasureSnapshot, RootSnapshotKey, quantize_available,
+};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
@@ -41,49 +44,40 @@ use rustc_hash::FxHashSet;
 ///   memoize within a frame. Flat `Vec` indexed by node, four slots
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed".
-/// - `tmp_hugs` — staging buffer for the next [`MeasureCache`]
-///   snapshot's per-grid hug payload. Filled by
-///   `GridHugStore::snapshot_subtree` then handed to
-///   `MeasureCache::write_subtree`.
-///
-/// Module-internal tests (e.g. `stack/tests.rs`) reach in via
-/// `pub(crate)` to pin measure output independently of
-/// arrange's slot-clamping.
-///
 /// ## Cache-hit contract
 ///
 /// Fields split into two lifecycle categories:
 ///
 /// 1. **Drained on measure exit** — `wrap.pool`,
 ///    `stack_fill.pool`, `grid.depth_stack`, `grid.track_aggregator`,
-///    `intrinsics`, `tmp_hugs`. Each driver pushes on enter and
+///    `intrinsics`. Each driver pushes on enter and
 ///    truncates on exit; arrange never reads them. A
 ///    [`MeasureCache`] hit that skips a subtree's measure is
 ///    invisible to these — they were never going to carry state out.
 ///
 /// 2. **Retained measure → arrange** — `desired` and `grid.hugs`.
 ///    `desired` is node-indexed and the cache transparently round-
-///    trips it through [`SubtreeArenas::desired`]. `grid.hugs` is
+///    trips it through [`CachedSubtree::desired`]. `grid.hugs` is
 ///    indexed per-grid (not per-node) so the cache hit path has to
 ///    explicitly call [`Self::restore_after_cache_hit`] to splat
-///    [`SubtreeArenas::hugs`] back into the live pool — without
+///    [`CachedSubtree::hugs`] back into the live pool — without
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
 ///
 /// **Adding a new field to category (2)** requires three coordinated
-/// edits: a snapshot writer into [`Self::tmp_hugs`]-style staging
-/// (or a new arena), a [`SubtreeArenas`] field carrying it through
+/// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
+/// field carrying it through
 /// the cache, and a restore branch inside the free function
 /// [`restore_after_cache_hit`] in this module. Forgetting any one
 /// corrupts arrange silently — pinned per-driver by the fixtures in
 /// `src/layout/cache/integration_tests.rs`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
     pub(crate) grid: GridContext,
     pub(crate) wrap: WrapScratch,
     pub(crate) stack_fill: StackScratch,
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
-    pub(crate) tmp_hugs: Vec<f32>,
+    pub(crate) available_q: Vec<AvailableKey>,
     /// Count of `intrinsic::compute` (cache-miss) calls this frame —
     /// test observability for the intrinsic cache. Reset at the top of
     /// `run`; read by tests to assert a localized change doesn't trigger
@@ -106,6 +100,8 @@ impl LayoutScratch {
         self.desired.resize(n, Size::ZERO);
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
+        self.available_q.clear();
+        self.available_q.resize(n, INVALID_AVAILABLE);
         self.grid.hugs.reset_for(tree);
     }
 }
@@ -129,10 +125,11 @@ impl LayoutScratch {
 /// `out[self.active_layer]`), so the finalized layout is owned by the
 /// caller and read by the encoder, cascade, hit-index, scroll-state
 /// refresh, and tests.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     pub(crate) active_layer: Layer,
+    cache_rebuild: bool,
     /// Cross-frame `WidgetId → ScrollLayoutState` for every scroll
     /// widget. Owned here (not in `StateMap`) because the contents
     /// are layout-derived; the scroll driver writes layout fields
@@ -180,19 +177,37 @@ fn restore_after_cache_hit(
     scratch: &mut LayoutScratch,
     tree: &Tree,
     subtree: std::ops::Range<usize>,
-    arenas: &SubtreeArenas<'_>,
+    cached: &CachedSubtree<'_>,
     layer: &mut LayerLayout,
+    cache_rebuild: bool,
 ) {
     // Append the snapshot's flat text-shape range to the live
     // per-frame buffer, then rebase its subtree-local spans by
     // `dest_start` into the per-node `text_spans` column.
     let dest_start = layer.text_shapes.len() as u32;
-    layer.text_shapes.extend_from_slice(arenas.text_shapes);
-    for (i, snap_span) in arenas.text_spans.iter().enumerate() {
-        layer.text_spans[subtree.start + i] = Span {
-            start: dest_start + snap_span.start,
-            len: snap_span.len,
+    layer.text_shapes.extend_from_slice(cached.text_shapes);
+    for (i, snap_span) in cached.text_spans.iter().copied().enumerate() {
+        layer.text_spans[subtree.start + i] = if snap_span.len == 0 {
+            Span::default()
+        } else {
+            Span {
+                start: dest_start + snap_span.start - cached.text_shapes_base,
+                len: snap_span.len,
+            }
         };
+    }
+    if cache_rebuild {
+        for (dst, src) in scratch.intrinsics[subtree.clone()]
+            .iter_mut()
+            .zip(cached.intrinsics)
+        {
+            for (dst_slot, src_slot) in dst.iter_mut().zip(src) {
+                if dst_slot.is_nan() {
+                    *dst_slot = *src_slot;
+                }
+            }
+        }
+        scratch.available_q[subtree.clone()].copy_from_slice(cached.available_q);
     }
     // `grid.hugs` — gated on `Tree::subtree_has_grid` (one bit-test
     // off the same `subtree_end` word the caller already read) so
@@ -201,7 +216,7 @@ fn restore_after_cache_hit(
         scratch
             .grid
             .hugs
-            .restore_subtree(tree, subtree, arenas.hugs);
+            .restore_subtree(tree, subtree, cached.hugs);
     }
 }
 
@@ -301,20 +316,57 @@ fn resolve_sizing(
 }
 
 impl LayoutEngine {
+    fn cache_snapshot_matches_forest(
+        snapshot: &MeasureSnapshot,
+        forest: &Forest,
+        surface: Rect,
+    ) -> bool {
+        let node_count = Layer::PAINT_ORDER
+            .iter()
+            .map(|layer| forest.trees[*layer].records.len())
+            .sum::<usize>();
+        if snapshot.nodes.desired.len() != node_count {
+            return false;
+        }
+        let root_count = Layer::PAINT_ORDER
+            .iter()
+            .map(|layer| forest.trees[*layer].roots.len())
+            .sum::<usize>();
+        if snapshot.roots.len() != root_count {
+            return false;
+        }
+        let mut root_index = 0;
+        for layer in Layer::PAINT_ORDER {
+            let tree = &forest.trees[layer];
+            for slot in &tree.roots {
+                let root = slot.first_node;
+                let available = if layer == Layer::Main {
+                    surface.size
+                } else {
+                    slot.placement.available(surface)
+                };
+                let current = RootSnapshotKey {
+                    wid: tree.records.widget_id()[root.idx()],
+                    subtree_hash: tree.rollups.subtree[root.idx()],
+                    available_q: quantize_available(available),
+                };
+                if snapshot.roots[root_index] != current {
+                    return false;
+                }
+                root_index += 1;
+            }
+        }
+        true
+    }
+
     /// Drop cross-frame layout and text-reuse rows for `WidgetId`s that
     /// vanished from this window. Called from `Ui::frame` with the same
     /// `removed` set that feeds the other per-widget stores.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         for wid in removed {
-            if let Some(snap) = self.cache.snapshots.remove(wid) {
-                self.cache.nodes.release(snap.nodes.len);
-                self.cache.hugs.release(snap.hugs.len);
-                self.cache.text_shapes_arena.release(snap.text_shapes.len);
-            }
             self.scroll_states.remove(wid);
         }
         self.text_reuse.sweep_removed(removed);
-        self.cache.maybe_compact();
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -387,6 +439,11 @@ impl LayoutEngine {
             self.scratch.intrinsic_computes = 0;
             self.scratch.cache_hits.clear();
         }
+        self.cache_rebuild =
+            !Self::cache_snapshot_matches_forest(&self.cache.previous, forest, surface);
+        if self.cache_rebuild {
+            self.cache.begin_frame();
+        }
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
             self.active_layer = layer;
@@ -438,6 +495,19 @@ impl LayoutEngine {
                 // root with no wrapper ZStack).
                 self.arrange(tree, root, size, Rect { min: origin, size }, out);
             }
+            if self.cache_rebuild {
+                self.cache.capture_tree(
+                    tree,
+                    CaptureTreeInput {
+                        desired: &mut self.scratch.desired,
+                        intrinsics: &self.scratch.intrinsics,
+                        available_q: &mut self.scratch.available_q,
+                        grid_hugs: &self.scratch.grid.hugs,
+                        text_spans: &out[layer].text_spans,
+                        text_shapes: &out[layer].text_shapes,
+                    },
+                );
+            }
             let layouts = tree.records.layout();
             // Container text is paint-only; its wrap width exists only after arrange.
             for index in tree.rollups.container_text.ones() {
@@ -458,6 +528,9 @@ impl LayoutEngine {
                 );
             }
         }
+        if self.cache_rebuild {
+            self.cache.finish_frame();
+        }
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
@@ -476,6 +549,8 @@ impl LayoutEngine {
         out: &mut Layout,
     ) -> Size {
         let style = tree.records.layout()[node.idx()];
+        let available_q = quantize_available(available);
+        self.scratch.available_q[node.idx()] = available_q;
         if style.visibility().is_collapsed() {
             self.scratch.desired[node.idx()] = Size::ZERO;
             return Size::ZERO;
@@ -489,40 +564,29 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        let cache_key = if style.mode == LayoutMode::Leaf {
-            None
-        } else {
+        if style.mode != LayoutMode::Leaf {
             let cache_wid = tree.records.widget_id()[node.idx()];
             let cache_hash = tree.rollups.subtree[node.idx()];
-            let cache_avail = quantize_available(available);
-            if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
+            if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, available_q) {
                 #[cfg(test)]
                 self.scratch.cache_hits.push(cache_wid);
                 let curr_start = node.idx();
-                let curr_end = curr_start + hit.arenas.desired.len();
+                let curr_end = curr_start + hit.desired.len();
                 // Subtree hash includes child count + per-child rollups,
                 // so a length mismatch here would mean the rollup is broken.
                 debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
-                self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
+                self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
                 restore_after_cache_hit(
                     &mut self.scratch,
                     tree,
                     curr_start..curr_end,
-                    &hit.arenas,
+                    &hit,
                     &mut out[self.active_layer],
+                    self.cache_rebuild,
                 );
                 return hit.root;
             }
-            Some((cache_wid, cache_hash, cache_avail))
-        };
-
-        // Mark where this subtree's text shapes start in the flat
-        // per-frame buffer. After dispatch returns, the subtree owns
-        // `[text_shapes_lo..text_shapes.len())` contiguously (pre-order
-        // append + nested cache-hit appends both fall inside this
-        // range). Used to rebase per-node spans to subtree-local form
-        // when snapshotting below.
-        let text_shapes_lo = out[self.active_layer].text_shapes.len() as u32;
+        }
 
         let bounds = tree.bounds(node);
         let (min_size, max_size) = (bounds.min_size, bounds.max_size);
@@ -568,65 +632,6 @@ impl LayoutEngine {
         );
 
         self.scratch.desired[node.idx()] = desired;
-
-        // Snapshot the entire subtree we just (re)measured. Pre-order
-        // arena means the subtree is `[node.idx() .. subtree_end[i]]`
-        // contiguous in both `desired` and `text_shapes`. Capacity
-        // retains across frames via `clear() + extend_from_slice`
-        // inside `MeasureCache::write_subtree`. Per-grid hug arrays
-        // for descendant Grids land in `scratch.tmp_hugs` first;
-        // empty for grid-free subtrees.
-        //
-        // Skip leaves: on a fully-cached frame the root's try_lookup
-        // hits and the whole subtree is restored in one shot —
-        // descendant leaves are never visited, so caching them costs
-        // a `WidgetIdMap` insert + three arena copy/acquire pairs
-        // per leaf per miss frame for work that the lower-level
-        // `TextShaper` cache (`shape_unbounded` keyed on
-        // `(WidgetId, ordinal, node_hash)`) already covers.
-        // Bench: `caches/{measure,heavy/measure,dense/measure}/forced_miss`
-        // improves 4.5–6.6%, `cached` arms neutral (the leaf entries
-        // they used to populate are never read on the hit path).
-        if let Some((cache_wid, cache_hash, cache_avail)) = cache_key {
-            let start = node.idx();
-            let end = tree.subtree_end_of(start) as usize;
-            self.scratch.tmp_hugs.clear();
-            if tree.subtree_has_grid(start) {
-                self.scratch.grid.hugs.snapshot_subtree(
-                    tree,
-                    start..end,
-                    &mut self.scratch.tmp_hugs,
-                );
-            }
-            // Hand the per-frame `text_spans` slice straight to the
-            // cache; `write_subtree` rebases via `text_spans_base` as
-            // it copies, eliminating a scratch buffer + memcpy round
-            // trip. Empty spans (`Span::default()` with start=0)
-            // round-trip through `saturating_sub` correctly: 0 - lo
-            // = 0.
-            let text_shapes_hi = out[self.active_layer].text_shapes.len() as u32;
-            // Snapshot the root's intrinsics (MinContent is always populated
-            // by the `intrinsic_min` query above; MaxContent only if it was
-            // queried). Served back by `lookup_root_intrinsic` from
-            // `intrinsic()` on a later frame — not on the measure-cache hit
-            // path, which would be too late: a parent queries a child's
-            // intrinsic before it measures that child.
-            let root_intrinsics = self.scratch.intrinsics[start];
-            self.cache.write_subtree(
-                cache_wid,
-                cache_hash,
-                cache_avail,
-                root_intrinsics,
-                SubtreeArenas {
-                    desired: &self.scratch.desired[start..end],
-                    text_spans: &out[self.active_layer].text_spans[start..end],
-                    text_spans_base: text_shapes_lo,
-                    hugs: &self.scratch.tmp_hugs,
-                    text_shapes: &out[self.active_layer].text_shapes
-                        [text_shapes_lo as usize..text_shapes_hi as usize],
-                },
-            );
-        }
 
         desired
     }

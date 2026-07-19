@@ -86,7 +86,7 @@ impl AxisScratch {
 /// Per-frame scratch for `Grid` layout. Capacity is retained across frames; a
 /// `Vec<GridScratch>` indexed by nesting depth lets nested grids each have
 /// their own slot. Pushed on first descent to a new depth.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct GridScratch {
     pub(crate) col: AxisScratch,
     pub(crate) row: AxisScratch,
@@ -100,7 +100,7 @@ pub(crate) struct GridScratch {
 /// per-track aggregator: each call extends by `n_tracks`, recurses (which
 /// may extend further but always truncates back), then truncates to its
 /// own base. Capacity retained.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct GridContext {
     pub(crate) depth_stack: GridDepthStack,
     pub(crate) hugs: GridHugStore,
@@ -109,7 +109,7 @@ pub(crate) struct GridContext {
 
 /// Nesting stack of per-depth grid scratch. One `GridScratch` slot per
 /// active `LayoutMode::Grid` ancestor. `depth` is the next free slot.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct GridDepthStack {
     scratch: Vec<GridScratch>,
     pub(crate) depth: usize,

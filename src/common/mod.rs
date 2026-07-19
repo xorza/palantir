@@ -6,6 +6,5 @@ pub(crate) mod clipboard;
 pub(crate) mod content_hash;
 pub(crate) mod hash;
 pub(crate) mod index16;
-pub(crate) mod live_arena;
 pub(crate) mod platform;
 pub(crate) mod time;
