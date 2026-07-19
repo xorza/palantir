@@ -109,14 +109,24 @@ fn mono_measure_cases() {
         ),
     ];
     for (label, text, fs, lh_v, max_w, expected) in cases {
-        let r = mono_measure(text, *fs, *lh_v, *max_w, LineFit::Wrap);
+        let r = mono_measure(
+            text,
+            TextMetrics::new(*fs, *lh_v).unwrap(),
+            *max_w,
+            LineFit::Wrap,
+        );
         assert_eq!(r.size, *expected, "case: {label}");
     }
     // Empty also produces the INVALID sentinel.
     assert!(
-        mono_measure("", 16.0, lh(16.0), None, LineFit::Wrap)
-            .key
-            .is_invalid()
+        mono_measure(
+            "",
+            TextMetrics::new(16.0, lh(16.0)).unwrap(),
+            None,
+            LineFit::Wrap,
+        )
+        .key
+        .is_invalid()
     );
 }
 
@@ -661,7 +671,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
             halign: HAlign::Auto,
         };
         let mut expected = Vec::new();
-        m.with_buffer(case.text, params, |buffer| {
+        m.with_buffer(case.text, params.validated().unwrap(), |buffer| {
             let start = cursor_from_byte(case.text, case.range.start);
             let end = cursor_from_byte(case.text, case.range.end);
             for run in buffer.layout_runs() {
@@ -773,23 +783,161 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
 }
 
 #[test]
-fn cosmic_nonpositive_font_size_returns_invalid() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
-    for fs in [0.0_f32, -1.0, -16.0] {
-        let r = c.measure(
-            "hi",
-            ShapeParams {
-                font_size_px: fs,
-                line_height_px: 16.0,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
+fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
+    use crate::primitives::approx::EPS;
+
+    let cases = [
+        ("zero font", 0.0, 16.0),
+        ("negative font", -1.0, 16.0),
+        ("sub-epsilon font", EPS * 0.5, 16.0),
+        ("epsilon font", EPS, 16.0),
+        ("NaN font", f32::NAN, 16.0),
+        ("infinite font", f32::INFINITY, 16.0),
+        ("zero line height", 16.0, 0.0),
+        ("negative line height", 16.0, -1.0),
+        ("sub-epsilon line height", 16.0, EPS * 0.5),
+        ("epsilon line height", 16.0, EPS),
+        ("NaN line height", 16.0, f32::NAN),
+        ("infinite line height", 16.0, f32::INFINITY),
+    ];
+    let mono = TextShaper::mono();
+    let cosmic = TextShaper::with_bundled_fonts();
+    let mut direct_cosmic = CosmicMeasure::with_bundled_fonts();
+
+    for (label, font_size_px, line_height_px) in cases {
+        let params = ShapeParams {
+            font_size_px,
+            line_height_px,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        };
+        for shaper in [&mono, &cosmic] {
+            let calls = shaper.measure_calls();
+            let result = shaper.measure("hi", params);
+            assert_eq!(result.size, Size::ZERO, "{label}");
+            assert_eq!(result.intrinsic_min, 0.0, "{label}");
+            assert!(result.key.is_invalid(), "{label}");
+            assert_eq!(
+                shaper.measure_calls(),
+                calls,
+                "{label}: invalid metrics reached a shaping dispatch",
+            );
+        }
+
+        let cached = direct_cosmic.cache_len();
+        let result = direct_cosmic.measure("hi", params);
+        assert!(result.key.is_invalid(), "{label}");
+        assert_eq!(
+            direct_cosmic.cache_len(),
+            cached,
+            "{label}: invalid metrics entered the cosmic cache",
         );
-        assert_eq!(r.size, Size::ZERO, "fs={fs}");
-        assert!(r.key.is_invalid(), "fs={fs}");
     }
+}
+
+#[test]
+fn reuse_rejects_invalid_metrics_before_all_width_fit_paths() {
+    use crate::primitives::approx::EPS;
+
+    let shaper = TextShaper::with_bundled_fonts();
+    for (index, fit) in [LineFit::Wrap, LineFit::Clip, LineFit::Ellipsis]
+        .into_iter()
+        .enumerate()
+    {
+        let mut reuse = TextReuseCache::default();
+        let widget_id = WidgetId::from_hash(("invalid metrics", index));
+        let identity = identity(widget_id, ContentHash(index as u64));
+        let params = ShapeParams {
+            font_size_px: EPS * 0.5,
+            line_height_px: 16.0,
+            max_width_px: Some(40.0),
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Center,
+        };
+        let calls = shaper.measure_calls();
+
+        let unbounded = reuse.shape_unbounded(&shaper, identity, "hi", 1, params);
+        let bounded = reuse.shape_wrap(&shaper, identity, "hi", params, 40, fit);
+
+        for result in [unbounded, bounded] {
+            assert_eq!(result.size, Size::ZERO, "fit={fit:?}");
+            assert_eq!(result.intrinsic_min, 0.0, "fit={fit:?}");
+            assert!(result.key.is_invalid(), "fit={fit:?}");
+        }
+        assert!(
+            !reuse.has_entry(widget_id, 0),
+            "fit={fit:?}: invalid metrics entered the reuse cache",
+        );
+        assert_eq!(
+            shaper.measure_calls(),
+            calls,
+            "fit={fit:?}: invalid metrics reached a shaping dispatch",
+        );
+    }
+}
+
+#[test]
+fn bounded_width_requires_a_finite_nonnegative_value() {
+    let base = ShapeParams {
+        font_size_px: 16.0,
+        line_height_px: 19.2,
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+    assert!(base.validated().is_some(), "None is the unbounded form");
+    assert!(
+        ShapeParams {
+            max_width_px: Some(0.0),
+            ..base
+        }
+        .validated()
+        .is_some(),
+        "zero is a valid bounded width",
+    );
+    for (label, width) in [
+        ("negative", -1.0),
+        ("NaN", f32::NAN),
+        ("positive infinity", f32::INFINITY),
+        ("negative infinity", f32::NEG_INFINITY),
+    ] {
+        let params = ShapeParams {
+            max_width_px: Some(width),
+            ..base
+        };
+        assert!(params.validated().is_none(), "{label}");
+        let shaper = TextShaper::with_bundled_fonts();
+        let calls = shaper.measure_calls();
+        let result = shaper.measure("hi", params);
+        assert!(result.key.is_invalid(), "{label}");
+        assert_eq!(shaper.measure_calls(), calls, "{label}");
+    }
+}
+
+#[test]
+fn above_epsilon_metrics_survive_cache_key_canonicalization() {
+    use crate::primitives::approx::EPS;
+
+    let mut cosmic = CosmicMeasure::with_bundled_fonts();
+    let result = cosmic.measure(
+        "x",
+        ShapeParams {
+            font_size_px: EPS * 2.0,
+            line_height_px: EPS * 2.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+    );
+    assert!(!result.key.is_invalid());
+    assert_eq!(result.key.size_q, 1);
+    assert_eq!(result.key.lh_q, 1);
+    assert!(cosmic.buffer_for(result.key).is_some());
 }
 
 #[test]
@@ -1429,11 +1577,12 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     // counterpart instead grows height and keeps the longest-word floor.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
     let w = 40.0;
-    let elided = mono_measure(long, 16.0, lh(16.0), Some(w), LineFit::Ellipsis);
+    let metrics = TextMetrics::new(16.0, lh(16.0)).unwrap();
+    let elided = mono_measure(long, metrics, Some(w), LineFit::Ellipsis);
     assert_eq!(elided.size.w, w, "elided mono caps at the width");
     assert_eq!(elided.size.h, lh(16.0), "elided mono is one line");
     assert_eq!(elided.intrinsic_min, 0.0, "elided mono has zero floor");
-    let wrapped = mono_measure(long, 16.0, lh(16.0), Some(w), LineFit::Wrap);
+    let wrapped = mono_measure(long, metrics, Some(w), LineFit::Wrap);
     assert!(wrapped.size.h > lh(16.0), "wrap grows height across lines");
     assert!(
         wrapped.intrinsic_min > 0.0,

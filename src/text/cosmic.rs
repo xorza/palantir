@@ -24,7 +24,9 @@
 use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use crate::text::{FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextCacheKey};
+use crate::text::{
+    FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextCacheKey, ValidatedShapeParams,
+};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     Weight, fontdb,
@@ -50,8 +52,13 @@ const MAX_W_NONE: u32 = u32::MAX;
 pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
 const RECYCLE_POOL_CAP: usize = 128;
 
-fn quantize(v: f32) -> u32 {
+fn quantize_width(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
+}
+
+fn quantize_metric(v: f32) -> u32 {
+    // Values above EPS can still round to zero on the 1/64 px cache grid.
+    quantize_width(v).max(1)
 }
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
@@ -64,15 +71,9 @@ fn dequantize(v: u32) -> f32 {
     v as f32 / 64.0
 }
 
-fn key_for(text_hash: u64, params: ShapeParams, fit: LineFit) -> TextCacheKey {
-    let ShapeParams {
-        font_size_px,
-        line_height_px,
-        max_width_px,
-        family,
-        weight,
-        halign,
-    } = params;
+fn key_for(text_hash: u64, params: ValidatedShapeParams, fit: LineFit) -> TextCacheKey {
+    let raw = params.raw;
+    let metrics = params.metrics;
     // Avoid colliding with INVALID. Probability astronomically low; map zero
     // to one so the renderer never silently drops a real run.
     let text_hash = text_hash.max(1);
@@ -84,23 +85,27 @@ fn key_for(text_hash: u64, params: ShapeParams, fit: LineFit) -> TextCacheKey {
     // identical buffers for every halign, so fold `halign_q` to
     // `Auto`'s discriminant (0) there — callers don't pay an N-way
     // cache split for identical glyph positions.
-    let halign_q = match (max_width_px, fit) {
-        (Some(_), LineFit::Wrap) => halign as u8,
+    let halign_q = match (raw.max_width_px, fit) {
+        (Some(_), LineFit::Wrap) => raw.halign as u8,
         _ => HAlign::Auto as u8,
     };
     TextCacheKey {
         text_hash,
-        size_q: quantize(font_size_px),
-        max_w_q: max_width_px.map(quantize).unwrap_or(MAX_W_NONE),
-        lh_q: quantize(line_height_px),
-        family_q: family as u8,
-        weight_q: weight as u8,
+        size_q: quantize_metric(metrics.font_size_px),
+        max_w_q: raw
+            .max_width_px
+            // `u32::MAX` is the unbounded sentinel.
+            .map(|width| quantize_width(width).min(MAX_W_NONE - 1))
+            .unwrap_or(MAX_W_NONE),
+        lh_q: quantize_metric(metrics.line_height_px),
+        family_q: raw.family as u8,
+        weight_q: raw.weight as u8,
         halign_q,
         fit_q: fit as u8,
     }
 }
 
-fn canonical_params(key: TextCacheKey) -> ShapeParams {
+fn canonical_params(key: TextCacheKey) -> ValidatedShapeParams {
     let family = match key.family_q {
         0 => FontFamily::Sans,
         1 => FontFamily::Mono,
@@ -127,6 +132,8 @@ fn canonical_params(key: TextCacheKey) -> ShapeParams {
         weight,
         halign,
     }
+    .validated()
+    .expect("valid text cache key must contain valid shaping parameters")
 }
 
 fn line_fit(key: TextCacheKey) -> LineFit {
@@ -305,34 +312,38 @@ impl Default for CosmicMeasure {
 impl CosmicMeasure {
     #[profiling::function]
     pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
-        self.measure_hashed(text, hash_str(text), params)
+        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
+            return MeasureResult::INVALID;
+        };
+        self.measure_validated(text, params)
+    }
+
+    pub(crate) fn measure_validated(
+        &mut self,
+        text: &str,
+        params: ValidatedShapeParams,
+    ) -> MeasureResult {
+        self.measure_hashed_validated(text, hash_str(text), params)
     }
 
     #[profiling::function]
-    pub(crate) fn measure_hashed(
+    pub(crate) fn measure_hashed_validated(
         &mut self,
         text: &str,
         text_hash: u64,
-        params: ShapeParams,
+        params: ValidatedShapeParams,
     ) -> MeasureResult {
-        if text.is_empty() || params.font_size_px <= 0.0 {
+        if text.is_empty() {
             return MeasureResult::INVALID;
         }
         let key = key_for(text_hash, params, LineFit::Wrap);
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
-        let ShapeParams {
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            weight,
-            halign,
-        } = canonical_params(key);
+        let params = canonical_params(key);
 
-        let metrics = Metrics::new(font_size_px, line_height_px);
-        let mut buffer = self.acquire_buffer(metrics, max_width_px);
+        let metrics = Metrics::new(params.metrics.font_size_px, params.metrics.line_height_px);
+        let mut buffer = self.acquire_buffer(metrics, params.raw.max_width_px);
         // Per-line alignment travels through cosmic's `set_text`
         // `alignment` slot — that's the canonical entry point and
         // applies the align to every parsed buffer line in one
@@ -342,10 +353,13 @@ impl CosmicMeasure {
         // meaningful with a finite wrap target (cosmic uses it as the
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
-        let alignment = max_width_px.and_then(|_| cosmic_align(halign));
+        let alignment = params
+            .raw
+            .max_width_px
+            .and_then(|_| cosmic_align(params.raw.halign));
         buffer.set_text(
             text,
-            &attrs_for(family, weight),
+            &attrs_for(params.raw.family, params.raw.weight),
             Shaping::Advanced,
             alignment,
         );
@@ -389,18 +403,32 @@ impl CosmicMeasure {
         fit: LineFit,
         unbounded_key: TextCacheKey,
     ) -> MeasureResult {
+        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
+            return MeasureResult::INVALID;
+        };
+        self.measure_truncated_validated(text, params, fit, unbounded_key)
+    }
+
+    pub(crate) fn measure_truncated_validated(
+        &mut self,
+        text: &str,
+        params: ValidatedShapeParams,
+        fit: LineFit,
+        unbounded_key: TextCacheKey,
+    ) -> MeasureResult {
         let requested_w = params
+            .raw
             .max_width_px
             .expect("measure_truncated requires a finite width");
         debug_assert!(
             matches!(fit, LineFit::Clip | LineFit::Ellipsis),
             "measure_truncated requires Clip or Ellipsis",
         );
-        if text.is_empty() || params.font_size_px <= 0.0 {
+        if text.is_empty() {
             return MeasureResult::INVALID;
         }
         let key = TextCacheKey {
-            max_w_q: quantize(requested_w),
+            max_w_q: quantize_width(requested_w).min(MAX_W_NONE - 1),
             halign_q: HAlign::Auto as u8,
             fit_q: fit as u8,
             ..unbounded_key
@@ -409,19 +437,13 @@ impl CosmicMeasure {
             return hit;
         }
         self.ensure_buffer(text, unbounded_key);
-        let ShapeParams {
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            weight,
-            // A truncated single line is positioned/aligned by the encoder,
-            // not shaped with a per-line align.
-            halign: _,
-        } = canonical_params(key);
-        let w = max_width_px.expect("truncated TextCacheKey requires a finite width");
-        let metrics = Metrics::new(font_size_px, line_height_px);
-        let attrs = attrs_for(family, weight);
+        let params = canonical_params(key);
+        let w = params
+            .raw
+            .max_width_px
+            .expect("truncated TextCacheKey requires a finite width");
+        let metrics = Metrics::new(params.metrics.font_size_px, params.metrics.line_height_px);
+        let attrs = attrs_for(params.raw.family, params.raw.weight);
         let probe = &self
             .cache
             .get(&unbounded_key)
@@ -437,7 +459,8 @@ impl CosmicMeasure {
             // clip cuts flush to the full available width.
             let mut append_ellipsis = false;
             let avail = if matches!(fit, LineFit::Ellipsis) {
-                let ellipsis_w = self.ellipsis_advance(metrics, family, weight);
+                let ellipsis_w =
+                    self.ellipsis_advance(metrics, params.raw.family, params.raw.weight);
                 append_ellipsis = ellipsis_w <= w;
                 (w - ellipsis_w).max(0.0)
             } else {
@@ -507,7 +530,11 @@ impl CosmicMeasure {
         family: FontFamily,
         weight: FontWeight,
     ) -> f32 {
-        let key = (quantize(metrics.font_size), family as u8, weight as u8);
+        let key = (
+            quantize_metric(metrics.font_size),
+            family as u8,
+            weight as u8,
+        );
         if let Some(&w) = self.ellipsis_cache.get(&key) {
             return w;
         }
@@ -536,10 +563,12 @@ impl CosmicMeasure {
             return;
         }
         let result = match line_fit(key) {
-            LineFit::Wrap => self.measure_hashed(text, key.text_hash, canonical_params(key)),
+            LineFit::Wrap => {
+                self.measure_hashed_validated(text, key.text_hash, canonical_params(key))
+            }
             fit @ (LineFit::Clip | LineFit::Ellipsis) => {
                 let unbounded = unbounded_key(key);
-                self.measure_truncated(text, canonical_params(key), fit, unbounded)
+                self.measure_truncated_validated(text, canonical_params(key), fit, unbounded)
             }
         };
         assert_eq!(

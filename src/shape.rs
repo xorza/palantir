@@ -12,7 +12,7 @@ use crate::primitives::{
     stroke::Stroke,
 };
 use crate::renderer::image_registry::ImageHandle;
-use crate::text::{FontFamily, FontWeight};
+use crate::text::{FontFamily, FontWeight, TextMetrics};
 use glam::Vec2;
 use std::f32::consts::TAU;
 
@@ -841,7 +841,17 @@ impl Shape<'_> {
                 brush,
                 ..
             } => noop_f32(*width) || brush.is_noop() || noop_f32(*radius) || noop_f32(sweep.abs()),
-            Shape::Text { text, color, .. } => text.is_empty() || color.is_noop(),
+            Shape::Text {
+                text,
+                color,
+                font_size_px,
+                line_height_px,
+                ..
+            } => {
+                text.is_empty()
+                    || color.is_noop()
+                    || TextMetrics::new(*font_size_px, *line_height_px).is_none()
+            }
             Shape::Mesh {
                 mesh,
                 local_rect,
@@ -859,9 +869,12 @@ impl Shape<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::layout::types::align::Align;
     use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
     use crate::primitives::color::Color;
-    use crate::shape::Shape;
+    use crate::record_store::RecordStore;
+    use crate::shape::{Shape, TextWrap};
+    use crate::text::{FontFamily, FontWeight};
     use glam::Vec2;
 
     #[test]
@@ -946,6 +959,43 @@ mod tests {
                 "case: {}",
                 case.label,
             );
+        }
+    }
+
+    #[test]
+    fn text_noop_rejects_invalid_metrics() {
+        use crate::primitives::approx::EPS;
+
+        let store = RecordStore::default();
+        let cases = [
+            ("valid", 16.0, 19.2, false),
+            ("zero font", 0.0, 19.2, true),
+            ("negative font", -1.0, 19.2, true),
+            ("sub-epsilon font", EPS * 0.5, 19.2, true),
+            ("epsilon font", EPS, 19.2, true),
+            ("NaN font", f32::NAN, 19.2, true),
+            ("infinite font", f32::INFINITY, 19.2, true),
+            ("zero line height", 16.0, 0.0, true),
+            ("negative line height", 16.0, -1.0, true),
+            ("sub-epsilon line height", 16.0, EPS * 0.5, true),
+            ("epsilon line height", 16.0, EPS, true),
+            ("NaN line height", 16.0, f32::NAN, true),
+            ("infinite line height", 16.0, f32::INFINITY, true),
+        ];
+
+        for (label, font_size_px, line_height_px, expected_noop) in cases {
+            let shape = Shape::Text {
+                local_origin: None,
+                text: store.intern_str("visible"),
+                color: Color::WHITE,
+                font_size_px,
+                line_height_px,
+                wrap: TextWrap::SingleLine,
+                align: Align::TOP_LEFT,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+            };
+            assert_eq!(shape.is_noop(), expected_noop, "{label}");
         }
     }
 

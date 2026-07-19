@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT};
+use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT, TEXT_METRICS_ERROR, TextMetrics};
 use crate::widgets::theme::palette::Palette;
 
 /// Default text-rendering inputs grouped together so apps can swap the
@@ -14,6 +14,7 @@ use crate::widgets::theme::palette::Palette;
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, aperture_anim_derive::Animatable,
 )]
+#[serde(try_from = "UncheckedTextStyle")]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
@@ -44,6 +45,31 @@ pub struct TextStyle {
     pub weight: FontWeight,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct UncheckedTextStyle {
+    font_size_px: f32,
+    color: Color,
+    line_height_mult: f32,
+    family: FontFamily,
+    weight: FontWeight,
+}
+
+impl TryFrom<UncheckedTextStyle> for TextStyle {
+    type Error = &'static str;
+
+    fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
+        TextMetrics::from_size_and_multiplier(style.font_size_px, style.line_height_mult)
+            .ok_or(TEXT_METRICS_ERROR)?;
+        Ok(Self {
+            font_size_px: style.font_size_px,
+            color: style.color,
+            line_height_mult: style.line_height_mult,
+            family: style.family,
+            weight: style.weight,
+        })
+    }
+}
+
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
@@ -57,6 +83,10 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
+    pub(crate) fn metrics(&self) -> Option<TextMetrics> {
+        TextMetrics::from_size_and_multiplier(self.font_size_px, self.line_height_mult)
+    }
+
     /// Resolve the absolute line-height-in-px the shaper will use for
     /// text rendered at `font_size_px`. Single call site that owns the
     /// `line_height_mult` formula; widgets call this instead of doing

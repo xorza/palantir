@@ -99,26 +99,29 @@ impl<'a> Text<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let text = ui.intern(self.text);
         let style = self.style.unwrap_or(&ui.theme.text);
         let color = style.color;
-        let font_size_px = style.font_size_px;
-        let line_height_px = style.line_height_for(font_size_px);
         let family = style.family;
         let weight = self.weight.unwrap_or(style.weight);
+        let metrics_valid = style.metrics().is_some();
+        let font_size_px = style.font_size_px;
+        let line_height_px = style.line_height_for(font_size_px);
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
-            ui.add_shape(Shape::Text {
-                local_origin: None,
-                text,
-                color,
-                font_size_px,
-                line_height_px,
-                wrap: self.wrap,
-                align: self.align,
-                family,
-                weight,
-            });
+            if metrics_valid {
+                let text = ui.intern(self.text);
+                ui.add_shape(Shape::Text {
+                    local_origin: None,
+                    text,
+                    color,
+                    font_size_px,
+                    line_height_px,
+                    wrap: self.wrap,
+                    align: self.align,
+                    family,
+                    weight,
+                });
+            }
         });
         // Decorative: skip eager `response_for`. Discarded responses
         // pay zero; a `.left.clicked()` call later does one lazy probe.

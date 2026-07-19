@@ -116,6 +116,87 @@ fn theme_deserialization_rejects_invalid_text_scales() {
 }
 
 #[test]
+fn theme_deserialization_rejects_invalid_text_metrics() {
+    use crate::text::TEXT_METRICS_ERROR;
+
+    let valid = toml::to_string_pretty(&Theme::default()).expect("serialize default theme");
+    let cases = [
+        ("zero font", "font_size_px = 16.0", "font_size_px = 0.0"),
+        (
+            "negative font",
+            "font_size_px = 16.0",
+            "font_size_px = -1.0",
+        ),
+        (
+            "sub-epsilon font",
+            "font_size_px = 16.0",
+            "font_size_px = 0.00005",
+        ),
+        (
+            "epsilon font",
+            "font_size_px = 16.0",
+            "font_size_px = 0.0001",
+        ),
+        ("NaN font", "font_size_px = 16.0", "font_size_px = nan"),
+        ("infinite font", "font_size_px = 16.0", "font_size_px = inf"),
+        (
+            "zero line height",
+            "line_height_mult = 1.2",
+            "line_height_mult = 0.0",
+        ),
+        (
+            "negative line height",
+            "line_height_mult = 1.2",
+            "line_height_mult = -1.0",
+        ),
+        (
+            "sub-epsilon line height",
+            "line_height_mult = 1.2",
+            "line_height_mult = 0.000001",
+        ),
+        (
+            "epsilon line height",
+            "line_height_mult = 1.2",
+            "line_height_mult = 0.00000625",
+        ),
+        (
+            "NaN line height",
+            "line_height_mult = 1.2",
+            "line_height_mult = nan",
+        ),
+        (
+            "infinite line height",
+            "line_height_mult = 1.2",
+            "line_height_mult = inf",
+        ),
+    ];
+
+    for (label, from, to) in cases {
+        let invalid = valid.replacen(from, to, 1);
+        let error = toml::from_str::<Theme>(&invalid).expect_err(label);
+        assert!(
+            error.to_string().contains(TEXT_METRICS_ERROR),
+            "{label}: unexpected serde error: {error}",
+        );
+    }
+}
+
+#[test]
+fn set_text_scale_rejects_invalid_results_without_partial_mutation() {
+    use crate::primitives::approx::EPS;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    for (label, scale) in [("overflow", f32::MAX), ("sub-epsilon result", EPS / 32.0)] {
+        let mut theme = Theme::default();
+        let before = toml::to_string_pretty(&theme).expect("serialize before");
+        let panic = catch_unwind(AssertUnwindSafe(|| theme.set_text_scale(scale)));
+        assert!(panic.is_err(), "{label}: invalid scale result was accepted");
+        let after = toml::to_string_pretty(&theme).expect("serialize after");
+        assert_eq!(after, before, "{label}: theme was partially mutated");
+    }
+}
+
+#[test]
 fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
     let baseline = Theme::default();
     let body_font_size = baseline.text.font_size_px;

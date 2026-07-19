@@ -295,8 +295,26 @@ impl<'a> TextEdit<'a> {
         let caret_width = style.caret_width;
         let selection_color = style.selection;
         let placeholder_color = style.placeholder;
+        if look.text.metrics().is_none() {
+            let was_focused = {
+                let state = ui.state_mut::<TextEditState>(id);
+                let was_focused = state.prev_focused;
+                state.prev_focused = is_focused;
+                was_focused
+            };
+            let chrome = look.background;
+            ui.node(id, self.element, Some(&chrome), |_| {});
+            let state = ui.response_for(id);
+            return TextEditResponse {
+                response: Response::eager(id, ui, state),
+                changed: false,
+                submitted: false,
+                gained_focus: is_focused && !was_focused,
+                lost_focus: was_focused && !is_focused,
+            };
+        }
         let font_size = look.text.font_size_px;
-        let line_height_mult = look.text.line_height_mult;
+        let line_height_px = look.text.line_height_for(font_size);
         // `Tree::open_node` folds chrome stroke width into the stored
         // padding so children sit inside the painted stroke ring (see
         // `forest/tree/mod.rs::open_node`). Encoder's clip mask is
@@ -351,7 +369,7 @@ impl<'a> TextEdit<'a> {
         });
         let mut ctx = ShapeCtx {
             font_size,
-            line_height_px: font_size * line_height_mult,
+            line_height_px,
             padding,
             wrap_target,
             family: look.text.family,
