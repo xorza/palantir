@@ -350,7 +350,7 @@ pub(crate) struct DrawImagePayload {
     /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
     pub(crate) handle: TextureId,
-    /// `IMG_FLAG_*` bits (tile wrap, nearest sampling), forwarded
+    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling), forwarded
     /// verbatim into [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
     /// `0` (the common case, including a `GpuView`) samples the UV
     /// directly with the bilinear sampler.

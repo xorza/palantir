@@ -17,8 +17,9 @@ var<immediate> imm: Immediates;
 @group(0) @binding(1) var tex_smp: sampler;
 
 // Bits of `flags` — must match `IMG_FLAG_*` in `render_buffer.rs`.
-const FLAG_TILED:   u32 = 1u;
-const FLAG_NEAREST: u32 = 2u;
+const FLAG_TILED:       u32 = 1u;
+const FLAG_MIN_NEAREST: u32 = 2u;
+const FLAG_MAG_NEAREST: u32 = 4u;
 
 struct VsIn {
     // Per-instance.
@@ -62,6 +63,16 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
+    let dims = vec2<f32>(textureDimensions(tex));
+    let texel_dx = dpdx(in.uv) * dims;
+    let texel_dy = dpdy(in.uv) * dims;
+    let footprint_squared = max(dot(texel_dx, texel_dx), dot(texel_dy, texel_dy));
+    let filter_flag = select(
+        FLAG_MAG_NEAREST,
+        FLAG_MIN_NEAREST,
+        footprint_squared > 1.0,
+    );
+
     // `ImageFit::Tile` ships UVs spanning [0, repeats]; wrap into the
     // [0,1) tile with `fract` (the ClampToEdge sampler would otherwise
     // clamp). Per-fragment, so each repeat samples the full tile. Other
@@ -71,12 +82,10 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     if ((in.flags & FLAG_TILED) != 0u) {
         uv = fract(in.uv);
     }
-    // `ImageFilter::Nearest`: snap the UV to the texel center, which
-    // lands the bilinear weights exactly on one texel — nearest
-    // sampling without a second sampler / bind group. Single mip, so
-    // the snapped UV's garbage derivatives can't pick a wrong level.
-    if ((in.flags & FLAG_NEAREST) != 0u) {
-        let dims = vec2<f32>(textureDimensions(tex));
+    // Snap the UV to the texel center for the active scale direction.
+    // Single mip, so the snapped UV's derivatives cannot select a
+    // different level.
+    if ((in.flags & filter_flag) != 0u) {
         uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
     }
     // sRGB-format texture decodes to linear on read; tint is linear

@@ -22,7 +22,9 @@ use crate::renderer::frontend::cmd_buffer::payload::{
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
-use crate::renderer::render_buffer::image::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
+use crate::renderer::render_buffer::image::{
+    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
+};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::{TextShaper, text_in_rect};
 use crate::ui::Ui;
@@ -470,7 +472,8 @@ fn emit_one_shape(
             id,
             size,
             fit,
-            filter,
+            min_filter,
+            mag_filter,
         } => {
             let base = resolve_local_rect(owner_rect, *local_rect);
             // Dims baked into the record — no registry borrow.
@@ -485,8 +488,11 @@ fn emit_one_shape(
             if matches!(*fit, ImageFit::Tile { .. }) {
                 flags |= IMG_FLAG_TILED;
             }
-            if *filter == ImageFilter::Nearest {
-                flags |= IMG_FLAG_NEAREST;
+            if *min_filter == ImageFilter::Nearest {
+                flags |= IMG_FLAG_MIN_NEAREST;
+            }
+            if *mag_filter == ImageFilter::Nearest {
+                flags |= IMG_FLAG_MAG_NEAREST;
             }
             out.draw_image(DrawImagePayload::image(
                 rect, uv_min, uv_size, *tint, *id, flags,

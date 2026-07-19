@@ -144,29 +144,43 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         });
         cell_row(ui, "filters (4×4 sprite upscaled)", |ui| {
-            demo_cell(ui, "filter — Linear", |ui| {
-                filtered_image(ui, &sprite, ImageFilter::Linear);
+            demo_cell(ui, "magnification — Linear", |ui| {
+                magnified_image(ui, &sprite, ImageFilter::Linear);
             });
-            demo_cell(ui, "filter — Nearest", |ui| {
-                filtered_image(ui, &sprite, ImageFilter::Nearest);
+            demo_cell(ui, "magnification — Nearest", |ui| {
+                magnified_image(ui, &sprite, ImageFilter::Nearest);
+            });
+        });
+        cell_row(ui, "minification (64×64 checker tiled 32×)", |ui| {
+            demo_cell(ui, "minification — Linear", |ui| {
+                minified_image(ui, &checker, ImageFilter::Linear);
+            });
+            demo_cell(ui, "minification — Nearest", |ui| {
+                minified_image(ui, &checker, ImageFilter::Nearest);
             });
         });
     });
 }
 
 fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
-    ui.add_shape(
-        Shape::image(handle.clone())
-            .fit(fit)
-            .filter(ImageFilter::Linear)
-            .tint(tint),
-    );
+    ui.add_shape(Shape::image(handle.clone()).fit(fit).tint(tint));
 }
 
-fn filtered_image(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
+fn magnified_image(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
     ui.add_shape(
         Shape::image(handle.clone())
             .fit(ImageFit::Fill)
-            .filter(filter),
+            .mag_filter(filter),
+    );
+}
+
+fn minified_image(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(ImageFit::Tile {
+                offset: Vec2::ZERO,
+                scale: Vec2::splat(32.0),
+            })
+            .min_filter(filter),
     );
 }

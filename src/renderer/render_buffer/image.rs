@@ -39,11 +39,10 @@ pub(crate) struct ImageDrawRow {
 /// Bit in [`ImageInstance::flags`]: wrap UVs with `fract` in the shader
 /// (`ImageFit::Tile`).
 pub(crate) const IMG_FLAG_TILED: u32 = 1 << 0;
-/// Bit in [`ImageInstance::flags`]: nearest-neighbour sampling
-/// (`ImageFilter::Nearest`) — the shader snaps the UV to the texel
-/// center before the (linear-sampler) fetch, which lands the bilinear
-/// weights exactly on one texel.
-pub(crate) const IMG_FLAG_NEAREST: u32 = 1 << 1;
+/// Bit in [`ImageInstance::flags`]: nearest-neighbour minification.
+pub(crate) const IMG_FLAG_MIN_NEAREST: u32 = 1 << 1;
+/// Bit in [`ImageInstance::flags`]: nearest-neighbour magnification.
+pub(crate) const IMG_FLAG_MAG_NEAREST: u32 = 1 << 2;
 
 /// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
 /// buffer. Shader interpolates `uv_min + corner * uv_size` per fragment
@@ -66,7 +65,7 @@ pub(crate) struct ImageInstance {
     pub(crate) uv_size: glam::Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,
-    /// `IMG_FLAG_*` bits (tile wrap, nearest sampling). `u32` for a
-    /// clean `Uint32` vertex attr.
+    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling). `u32`
+    /// for a clean `Uint32` vertex attr.
     pub(crate) flags: u32,
 }

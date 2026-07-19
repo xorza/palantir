@@ -66,9 +66,8 @@ impl ImagePipeline {
 
         let image_bgl = texture_sampler_bgl(device, "aperture.image.tex.bgl");
 
-        // The one image sampler — always bilinear. `ImageFilter::Nearest`
-        // is a shader-side UV texel-center snap (see `image.wgsl`), so
-        // filter choice never multiplies samplers or bind groups.
+        // Min/mag nearest filtering is a shader-side UV texel-center snap,
+        // keeping all filter combinations on one sampler and bind group.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("aperture.image.sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
