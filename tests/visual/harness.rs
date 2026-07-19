@@ -1,17 +1,15 @@
 //! Headless wgpu device + one-frame render + texture readback into
 //! an `image::RgbaImage`.
 
-use std::sync::OnceLock;
 use std::sync::mpsc;
+use std::time::Duration;
 
 use aperture::{
-    App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, TwoWindowOffscreenHost,
-    Ui, WindowToken,
+    App, Color, DebugOverlayConfig, FixedClock, HeadlessTestGpuLease, OffscreenHost, TextShaper,
+    TwoWindowOffscreenHost, Ui, WindowToken, headless_test_gpu,
 };
 use glam::UVec2;
 use image::RgbaImage;
-use pollster::FutureExt;
-use std::time::Duration;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -29,47 +27,6 @@ impl<F: FnMut(&mut Ui)> App for RecordApp<F> {
     }
 }
 
-/// One wgpu device + queue per test process. Both are `Send + Sync` and
-/// internally `Arc`-backed, so cloning is cheap. `request_adapter` /
-/// `request_device` dominate per-harness setup — sharing them turns
-/// per-test wgpu init from "tens of ms" into "one clone".
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-}
-
-fn gpu() -> &'static Gpu {
-    static G: OnceLock<Gpu> = OnceLock::new();
-    G.get_or_init(|| {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-            .expect("request adapter (headless)");
-        // Text Params is carried via immediates (push constants),
-        // so the feature + a 16-byte immediate budget are required.
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.visual_test.device"),
-                required_features: wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request device");
-        Gpu { device, queue }
-    })
-}
-
 thread_local! {
     /// `TextShaper` is `Rc<RefCell<CosmicMeasure>>` — not `Send`, so
     /// we keep one per worker thread instead of globally. Fonts load
@@ -79,16 +36,14 @@ thread_local! {
 }
 
 pub(crate) struct Harness {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
     pub host: OffscreenHost,
+    gpu: HeadlessTestGpuLease,
 }
 
 #[derive(Debug)]
 pub(crate) struct TwoWindowHarness {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
     host: TwoWindowOffscreenHost,
+    gpu: HeadlessTestGpuLease,
 }
 
 impl Harness {
@@ -97,7 +52,7 @@ impl Harness {
     }
 
     pub(crate) fn new_with_pixel_snap(pixel_snap: bool) -> Self {
-        let g = gpu();
+        let gpu = headless_test_gpu();
         let shaper = COSMIC.with(|c| c.clone());
         // Fresh target texture per render() → must fill the whole target each
         // frame, so use the public backbuffer+copy path.
@@ -105,16 +60,12 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::builder(WINDOW, g.device.clone(), g.queue.clone(), shaper)
+        let host = OffscreenHost::builder(WINDOW, gpu.device.clone(), gpu.queue.clone(), shaper)
             .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO))
             .build();
 
-        Self {
-            device: g.device.clone(),
-            queue: g.queue.clone(),
-            host,
-        }
+        Self { host, gpu }
     }
 
     pub(crate) fn render(
@@ -141,13 +92,13 @@ impl Harness {
         clear: Color,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        let target = make_target(&self.device, format, physical);
+        let target = make_target(&self.gpu.device, format, physical);
 
         self.host.ui().theme.window_clear = clear;
         self.host
             .frame_offscreen(&target, scale, &mut RecordApp { record: scene });
 
-        let mut img = readback(&self.device, &self.queue, &target, physical);
+        let mut img = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
         // Swap R/B so callers always compare in RGBA space.
         if matches!(
@@ -199,18 +150,15 @@ impl Harness {
 
 impl TwoWindowHarness {
     pub(crate) fn new() -> Self {
-        let g = gpu();
+        let gpu = headless_test_gpu();
         let shaper = COSMIC.with(|c| c.clone());
         let clocks: [Box<dyn aperture::Clock>; 2] = [
             Box::new(FixedClock::new(Duration::ZERO)),
             Box::new(FixedClock::new(Duration::ZERO)),
         ];
-        let host = TwoWindowOffscreenHost::new(g.device.clone(), g.queue.clone(), shaper, clocks);
-        Self {
-            device: g.device.clone(),
-            queue: g.queue.clone(),
-            host,
-        }
+        let host =
+            TwoWindowOffscreenHost::new(gpu.device.clone(), gpu.queue.clone(), shaper, clocks);
+        Self { host, gpu }
     }
 
     pub(crate) fn render(
@@ -221,12 +169,12 @@ impl TwoWindowHarness {
         clear: Color,
         mut scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        let target = make_target(&self.device, FORMAT, physical);
+        let target = make_target(&self.gpu.device, FORMAT, physical);
         self.host.frame_offscreen(window, &target, scale, |ui| {
             ui.theme.window_clear = clear;
             scene(ui);
         });
-        readback(&self.device, &self.queue, &target, physical)
+        readback(&self.gpu.device, &self.gpu.queue, &target, physical)
     }
 }
 

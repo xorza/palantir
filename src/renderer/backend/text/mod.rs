@@ -562,55 +562,30 @@ mod tests {
 mod gpu_regression {
     use wgpu::util::StagingBelt;
 
-    use crate::renderer::backend::gpu_ctx::GpuCtx;
-    use crate::renderer::backend::queue::Queue;
-    use crate::renderer::backend::text::TextBackend;
-    use crate::text::TextShaper;
-    use glam::{UVec2, Vec2};
-    use pollster::FutureExt;
-
+    use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     use crate::primitives::color::ColorU8;
     use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
+    use crate::renderer::backend::gpu_ctx::GpuCtx;
+    use crate::renderer::backend::queue::Queue;
+    use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::test_support::make_inner_run;
     use crate::renderer::render_buffer::text::TextRun;
+    use crate::text::TextShaper;
+    use glam::{UVec2, Vec2};
 
     const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
     #[derive(Debug)]
     struct TestGpu {
-        device: wgpu::Device,
         queue: Queue,
+        lease: HeadlessTestGpuLease,
     }
 
-    fn device_queue() -> TestGpu {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-            .expect("request adapter (headless)");
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.text_regression.device"),
-                required_features: wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request device");
-        TestGpu {
-            device,
-            queue: Queue::new(queue),
-        }
+    fn test_gpu() -> TestGpu {
+        let lease = headless_test_gpu();
+        let queue = Queue::new(lease.queue.clone());
+        TestGpu { queue, lease }
     }
 
     fn run_one_frame(
@@ -647,9 +622,9 @@ mod gpu_regression {
     /// with a different glyph — garbled text.
     #[test]
     fn cached_run_keeps_its_atlas_slots_live() {
-        let TestGpu { device, queue } = device_queue();
+        let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
-        let mut backend = TextBackend::new(&device, shaper.clone());
+        let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let runs = [make_inner_run(
             &shaper,
@@ -664,7 +639,7 @@ mod gpu_regression {
 
         // Frame 1: encoded-cache miss → rasterize + cache. Slots get
         // last_use == current_frame.
-        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
         let arena_after_warmup = backend.encoded_cache.arena.len();
         backend.post_record();
         assert!(
@@ -675,7 +650,7 @@ mod gpu_regression {
         // Frame 2: same run → encoded-cache hit (no cosmic walk, no new
         // rasterization). The hit must still bump every slot's
         // last_use to the now-current frame.
-        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
 
         let cf = backend.atlas.current_frame;
         let stale: Vec<u64> = backend
@@ -709,9 +684,9 @@ mod gpu_regression {
 
     #[test]
     fn slot_generation_invalidates_only_referencing_run() {
-        let TestGpu { device, queue } = device_queue();
+        let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
-        let mut backend = TextBackend::new(&device, shaper.clone());
+        let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let runs = [
             make_inner_run(
@@ -736,7 +711,7 @@ mod gpu_regression {
             ),
         ];
 
-        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
         assert_eq!(backend.encoded_cache.map.len(), 2);
         backend.post_record();
 
@@ -765,7 +740,7 @@ mod gpu_regression {
             .checked_add(1)
             .expect("test slot generation overflowed");
         let expected_generation = slot.generation;
-        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
 
         assert_eq!(
             backend.encoded_cache.map[&stable_key].span, stable_span,
@@ -796,9 +771,9 @@ mod gpu_regression {
     /// delta (40 px, integer so subpixel bins match), colors distinct.
     #[test]
     fn deferred_upload_keeps_batches_distinct() {
-        let TestGpu { device, queue } = device_queue();
+        let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
-        let mut backend = TextBackend::new(&device, shaper.clone());
+        let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let color_a = ColorU8::rgba(240, 240, 240, 255);
         let color_b = ColorU8::rgba(200, 100, 50, 255);
@@ -823,17 +798,19 @@ mod gpu_regression {
             color_b,
         );
 
-        let mut belt = StagingBelt::new(device.clone(), 1 << 16);
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut belt = StagingBelt::new(gpu.lease.device.clone(), 1 << 16);
+        let mut encoder = gpu
+            .lease
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
-            let mut ctx = GpuCtx::new(&device, &queue, &mut belt, &mut encoder);
+            let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, 1.0, 0, std::slice::from_ref(&run_a));
             backend.prepare_batch(&mut ctx, 1.0, 1, std::slice::from_ref(&run_b));
             backend.flush(&mut ctx);
         }
         belt.finish_and_recall_on_submit(&encoder);
-        queue.submit([encoder.finish()]);
+        gpu.queue.submit([encoder.finish()]);
 
         // Same text → same glyph count n per batch; ranges partition
         // the vec as [0..n] + [n..2n].
@@ -864,9 +841,9 @@ mod gpu_regression {
     /// template and newly revealed lines would stay blank forever.
     #[test]
     fn partially_culled_run_is_not_cached() {
-        let TestGpu { device, queue } = device_queue();
+        let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
-        let mut backend = TextBackend::new(&device, shaper.clone());
+        let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         // Three 3-glyph lines at line_height 16 px, origin (0, 0):
         // line tops sit at 0 / 16 / 32.
@@ -888,8 +865,8 @@ mod gpu_regression {
         // Frame 1: clipped encode → 1 line * 3 glyphs = 3 instances,
         // and no cache entry.
         run_one_frame(
-            &device,
-            &queue,
+            &gpu.lease.device,
+            &gpu.queue,
             &mut backend,
             1.0,
             std::slice::from_ref(&run),
@@ -908,8 +885,8 @@ mod gpu_regression {
         // Frame 2, same clipped run: still a miss, re-encodes to the
         // same 3 instances, still nothing cached.
         run_one_frame(
-            &device,
-            &queue,
+            &gpu.lease.device,
+            &gpu.queue,
             &mut backend,
             1.0,
             std::slice::from_ref(&run),
@@ -923,8 +900,8 @@ mod gpu_regression {
         // that's exactly why the clipped ones must not insert).
         run.bounds = URect::new(0, 0, PHYSICAL.x, PHYSICAL.y);
         run_one_frame(
-            &device,
-            &queue,
+            &gpu.lease.device,
+            &gpu.queue,
             &mut backend,
             1.0,
             std::slice::from_ref(&run),
@@ -937,8 +914,8 @@ mod gpu_regression {
         // Frame 4 replays the cached template: same 9 instances with
         // no re-encode (the arena didn't grow).
         run_one_frame(
-            &device,
-            &queue,
+            &gpu.lease.device,
+            &gpu.queue,
             &mut backend,
             1.0,
             std::slice::from_ref(&run),
@@ -957,9 +934,9 @@ mod gpu_regression {
     /// on next use.
     #[test]
     fn swept_empty_glyph_reinserts() {
-        let TestGpu { device, queue } = device_queue();
+        let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
-        let mut backend = TextBackend::new(&device, shaper.clone());
+        let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let runs = [make_inner_run(
             &shaper,
@@ -979,7 +956,7 @@ mod gpu_regression {
                 .count()
         };
 
-        run_one_frame(&device, &queue, &mut backend, 1.0, &runs);
+        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 1.0, &runs);
         assert!(
             backend.instances.is_empty(),
             "whitespace prepares a text batch without drawable glyphs",
@@ -1001,11 +978,13 @@ mod gpu_regression {
         // it (cutoff 512 - 512 = 0 <= 1); the one at frame 1024 drops
         // it (cutoff 512 > 1). Advance prepared text frames that don't
         // touch the space to there.
-        let mut belt = StagingBelt::new(device.clone(), 1 << 16);
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut belt = StagingBelt::new(gpu.lease.device.clone(), 1 << 16);
+        let mut encoder = gpu
+            .lease
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         while backend.atlas.current_frame < 1024 {
-            let mut ctx = GpuCtx::new(&device, &queue, &mut belt, &mut encoder);
+            let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, 1.0, 0, &[]);
             backend.post_record();
         }
@@ -1018,7 +997,7 @@ mod gpu_regression {
         // Re-encoding the same run re-inserts the empty entry (the
         // encoded cache was itself swept after 120 idle frames, so this
         // is a full walk through rasterize_and_insert → insert_unallocated).
-        run_one_frame(&device, &queue, &mut backend, 1.0, &runs);
+        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 1.0, &runs);
         assert_eq!(
             empties(&backend),
             1,

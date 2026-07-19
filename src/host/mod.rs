@@ -14,5 +14,7 @@
 pub(crate) mod clock;
 pub(crate) mod offscreen;
 pub(crate) mod shared;
+#[cfg(feature = "internals")]
+pub(crate) mod test_gpu;
 pub(crate) mod window_driver;
 pub(crate) mod winit;

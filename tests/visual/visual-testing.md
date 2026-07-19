@@ -70,12 +70,15 @@ tests/visual/
 ## How it works
 
 - **Harness** (`harness.rs`) — `LowPower` adapter, no surface, renders to an
-  offscreen `Rgba8UnormSrgb` texture. `Harness::new()` clones a process-global
-  `OnceLock<Gpu>` (device + queue) and a per-thread `COSMIC` `TextShaper`
-  (fonts loaded once per worker thread). `Harness::render(physical, scale,
-  clear, scene)` returns an `RgbaImage`. Helpers: `render_after_settle(N, …)`
-  for fixtures that need warmup frames before capture (e.g. scrollbars reading
-  populated state), `render_with_overlay(cfg, …)` for the damage-vis tests.
+  offscreen `Rgba8UnormSrgb` texture. `Harness::new()` leases the
+  process-static headless device + queue and a per-thread `COSMIC`
+  `TextShaper` (fonts load once per worker thread). An interprocess OS lock
+  allows only one Aperture test binary into its GPU section; lease release
+  waits for submitted work after each harness drops its render resources.
+  `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`.
+  Helpers: `render_after_settle(N, …)` for fixtures that need warmup frames
+  before capture (e.g. scrollbars reading populated state),
+  `render_with_overlay(cfg, …)` for the damage-vis tests.
   `TwoWindowHarness` drives two `WindowDriver`s through one backend for
   retained-state interleaving checks. Private `readback()` honors the 256-byte
   row alignment.
@@ -153,7 +156,8 @@ on it. Override tolerance via the `Tolerance` arg.
 ## Slow startup? `cargo clean`.
 
 Symptom: a single visual test takes 15+ seconds, almost all in
-`Harness::new()` → `gpu()` → `wgpu::Instance::request_adapter`.
+`Harness::new()` → `headless_test_gpu()` →
+`wgpu::Instance::request_adapter`.
 
 Cause: on macOS, Metal's first-device init does
 `MTLCopyAllDevices` → `IOSurfaceClientCopyGPUPolicies` →
