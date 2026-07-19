@@ -1,6 +1,8 @@
 use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
+use crate::forest::seen_ids::Endpoint;
+use crate::forest::tree::node::NodeId;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
@@ -526,4 +528,275 @@ fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
         Frame::new().id(inert).size(Sizing::FILL).show(ui);
     });
     assert!(ui.cascades.hit_entries.is_empty());
+}
+
+fn assert_cascades_match_full(ui: &Ui, label: &str) {
+    use crate::ui::cascade::{Cascades, CascadesEngine};
+
+    let mut engine = CascadesEngine::default();
+    let mut full = Cascades::default();
+    engine.run_full(&ui.forest, &ui.layout, ui.display, &mut full);
+
+    assert_eq!(ui.cascades.entries.len(), full.entries.len(), "{label}");
+    assert_eq!(
+        ui.cascades.entries.widget_id(),
+        full.entries.widget_id(),
+        "{label}"
+    );
+    assert_eq!(ui.cascades.entries.rect(), full.entries.rect(), "{label}");
+    assert_eq!(ui.cascades.entries.sense(), full.entries.sense(), "{label}");
+    assert_eq!(
+        ui.cascades.entries.focusable(),
+        full.entries.focusable(),
+        "{label}"
+    );
+    assert_eq!(
+        ui.cascades.entries.disabled(),
+        full.entries.disabled(),
+        "{label}"
+    );
+    assert_eq!(
+        ui.cascades.entries.layout_rect(),
+        full.entries.layout_rect(),
+        "{label}"
+    );
+    assert_eq!(
+        ui.cascades.entries.transform(),
+        full.entries.transform(),
+        "{label}"
+    );
+    assert_eq!(ui.cascades.hit_entries, full.hit_entries, "{label}");
+
+    let mut id_count = 0;
+    for layer in Layer::PAINT_ORDER {
+        let widget_ids = ui.forest.trees[layer].records.widget_id();
+        id_count += widget_ids.len();
+        for (index, wid) in widget_ids.iter().copied().enumerate() {
+            assert_eq!(
+                ui.cascades.by_id[&wid],
+                Endpoint {
+                    layer,
+                    node: NodeId(index as u32),
+                },
+                "{label}: {layer:?} by-id endpoint"
+            );
+        }
+        let actual = &ui.cascades.layers[layer];
+        let expected = &full.layers[layer];
+        assert_eq!(
+            actual.cascade_inputs, expected.cascade_inputs,
+            "{label}: {layer:?} cascade inputs"
+        );
+        assert_eq!(
+            actual.subtree_paint_rects, expected.subtree_paint_rects,
+            "{label}: {layer:?} subtree paint rects"
+        );
+        assert_eq!(
+            actual.subtree_hashes, expected.subtree_hashes,
+            "{label}: {layer:?} subtree hashes"
+        );
+        assert_eq!(
+            actual.static_hash, expected.static_hash,
+            "{label}: {layer:?} static hash"
+        );
+        assert_eq!(
+            actual.subtree_ends, expected.subtree_ends,
+            "{label}: {layer:?} subtree ends"
+        );
+        assert_eq!(
+            actual.paint_arena.node_spans, expected.paint_arena.node_spans,
+            "{label}: {layer:?} paint spans"
+        );
+        assert_eq!(
+            actual.paint_arena.rows, expected.paint_arena.rows,
+            "{label}: {layer:?} paint rows"
+        );
+        assert_eq!(
+            actual.entries_base, expected.entries_base,
+            "{label}: {layer:?} entry base"
+        );
+    }
+    assert_eq!(ui.cascades.by_id.len(), id_count, "{label}: by-id length");
+}
+
+fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::splat(300), base);
+    ui.run_at_acked(UVec2::splat(300), changed);
+    assert_cascades_match_full(&ui, label);
+}
+
+#[test]
+fn incremental_matches_full_across_cascade_input_classes() {
+    use crate::forest::visibility::Visibility;
+    use crate::primitives::background::Background;
+    use crate::widgets::frame::Frame;
+
+    fn colored_frame(ui: &mut Ui, color: Color) {
+        Frame::new()
+            .id(WidgetId::from_hash("paint"))
+            .size(50.0)
+            .background(Background {
+                fill: color.into(),
+                ..Default::default()
+            })
+            .show(ui);
+    }
+
+    fn reparented(ui: &mut Ui, nested: bool) {
+        Panel::canvas()
+            .id(WidgetId::from_hash("reparent-root"))
+            .size(100.0)
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("reparent-parent"))
+                    .size(100.0)
+                    .show(ui, |ui| {
+                        if nested {
+                            colored_frame(ui, Color::WHITE);
+                        }
+                    });
+                if !nested {
+                    colored_frame(ui, Color::WHITE);
+                }
+            });
+    }
+
+    fn shape_count(ui: &mut Ui, count: usize) {
+        Panel::canvas()
+            .id(WidgetId::from_hash("shape-count"))
+            .size(100.0)
+            .show(ui, |ui| {
+                for index in 0..count {
+                    let offset = index as f32 * 10.0;
+                    ui.add_shape(Shape::Line {
+                        a: Vec2::splat(offset),
+                        b: Vec2::splat(offset + 20.0),
+                        width: 2.0,
+                        brush: Color::WHITE.into(),
+                        cap: LineCap::Round,
+                    });
+                }
+            });
+    }
+
+    fn transformed(ui: &mut Ui, transform: TranslateScale) {
+        Panel::canvas()
+            .id(WidgetId::from_hash("transform"))
+            .size(100.0)
+            .transform(transform)
+            .show(ui, |ui| colored_frame(ui, Color::WHITE));
+    }
+
+    fn clipped(ui: &mut Ui, clip: ClipMode) {
+        Panel::canvas()
+            .id(WidgetId::from_hash("clip"))
+            .size(100.0)
+            .clip(clip)
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("overflow"))
+                    .size(50.0)
+                    .position((80.0, 0.0))
+                    .show(ui);
+            });
+    }
+
+    fn visible(ui: &mut Ui, visibility: Visibility) {
+        Frame::new()
+            .id(WidgetId::from_hash("visible"))
+            .size(50.0)
+            .visibility(visibility)
+            .show(ui);
+    }
+
+    fn layered(ui: &mut Ui, layer: Layer) {
+        ui.layer(layer, Vec2::splat(10.0), None, |ui| {
+            colored_frame(ui, Color::WHITE);
+        });
+    }
+
+    fn ordered(ui: &mut Ui, swap: bool) {
+        Panel::hstack()
+            .id(WidgetId::from_hash("order"))
+            .show(ui, |ui| {
+                let paint = |ui: &mut Ui| colored_frame(ui, Color::rgb(0.2, 0.4, 0.8));
+                let second = |ui: &mut Ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("second"))
+                        .size(50.0)
+                        .show(ui);
+                };
+                if swap {
+                    second(ui);
+                    paint(ui);
+                } else {
+                    paint(ui);
+                    second(ui);
+                }
+            });
+    }
+
+    assert_incremental_case(
+        "paint-only",
+        |ui| colored_frame(ui, Color::rgb(0.2, 0.4, 0.8)),
+        |ui| colored_frame(ui, Color::rgb(0.8, 0.2, 0.4)),
+    );
+    assert_incremental_case(
+        "paint-row cardinality",
+        |ui| shape_count(ui, 1),
+        |ui| shape_count(ui, 2),
+    );
+    assert_incremental_case(
+        "transform",
+        |ui| transformed(ui, TranslateScale::IDENTITY),
+        |ui| transformed(ui, TranslateScale::new(Vec2::new(20.0, 10.0), 1.5)),
+    );
+    assert_incremental_case(
+        "clip",
+        |ui| clipped(ui, ClipMode::None),
+        |ui| clipped(ui, ClipMode::Rect),
+    );
+    assert_incremental_case(
+        "visibility",
+        |ui| visible(ui, Visibility::Visible),
+        |ui| visible(ui, Visibility::Hidden),
+    );
+    assert_incremental_case(
+        "reparent",
+        |ui| reparented(ui, true),
+        |ui| reparented(ui, false),
+    );
+    assert_incremental_case(
+        "side-layer migration",
+        |ui| layered(ui, Layer::Popup),
+        |ui| layered(ui, Layer::Tooltip),
+    );
+    assert_incremental_case("reorder", |ui| ordered(ui, false), |ui| ordered(ui, true));
+}
+
+#[test]
+fn incremental_scroll_matches_full() {
+    use crate::widgets::frame::Frame;
+    use crate::widgets::scroll::Scroll;
+
+    let build = |ui: &mut Ui| {
+        Scroll::vertical()
+            .id(WidgetId::from_hash("scroll"))
+            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("scroll-content"))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(300.0)))
+                    .show(ui);
+            });
+    };
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::splat(300), build);
+    ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
+        .offset
+        .y = 40.0;
+    ui.run_at_acked(UVec2::splat(300), build);
+
+    assert_cascades_match_full(&ui, "scroll");
 }

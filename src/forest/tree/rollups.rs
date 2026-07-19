@@ -16,6 +16,10 @@ use fixedbitset::FixedBitSet;
 ///   across frames means nothing in the subtree changed; the
 ///   cross-frame measure cache keys on this. See
 ///   `src/layout/measure-cache.md`.
+/// - `cascade_static` — tree-wide hash of layout, flags, bounds, and
+///   panel inputs, excluding chrome and direct shapes. The cascade
+///   engine pairs it with exact retained identity, structure, and
+///   layout-rect comparisons to identify paint-only changes.
 /// - `container_text` — non-leaf owners of direct text shapes. Layout
 ///   iterates the set after arrange to shape paint-only text against
 ///   its final padded width.
@@ -28,6 +32,7 @@ use fixedbitset::FixedBitSet;
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<ContentHash>,
     pub(crate) subtree: Vec<ContentHash>,
+    pub(crate) cascade_static: ContentHash,
     pub(crate) container_text: FixedBitSet,
 }
 
