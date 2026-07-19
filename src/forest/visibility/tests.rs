@@ -92,19 +92,17 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     let mut ui = Ui::for_test();
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
-    let visible = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let visible = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
         show_spinner(ui, Visibility::Visible);
     });
-    ui.frame_runtime.frame_submitted = true;
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
     assert_eq!(ui.forest.trees[Layer::Main].paint_anims.entries.len(), 1,);
 
     ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
-    let hidden = ui.record(FrameStamp::new(display, hidden_at), |ui| {
+    let hidden = ui.record_acked(FrameStamp::new(display, hidden_at), |ui| {
         show_spinner(ui, Visibility::Hidden);
     });
-    ui.frame_runtime.frame_submitted = true;
     assert_eq!(hidden.repaint_after, None);
     assert_eq!(
         ui.forest.trees[Layer::Main].shapes.records.len(),
@@ -155,10 +153,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             .node();
     });
 
-    let kids: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| c.id)
-        .collect();
+    let kids: Vec<_> = ui.main_child_ids(root);
     let a = ui.layout[Layer::Main].rect[kids[0].idx()];
     let gone = ui.layout[Layer::Main].rect[kids[1].idx()];
     let b = ui.layout[Layer::Main].rect[kids[2].idx()];
@@ -198,10 +193,7 @@ fn collapsed_does_not_consume_fill_weight() {
             .node();
     });
 
-    let kids: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| c.id)
-        .collect();
+    let kids: Vec<_> = ui.main_child_ids(root);
     let a = ui.layout[Layer::Main].rect[kids[0].idx()];
     let b = ui.layout[Layer::Main].rect[kids[2].idx()];
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
@@ -250,10 +242,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
             .node();
     });
 
-    let kids: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| c.id)
-        .collect();
+    let kids: Vec<_> = ui.main_child_ids(root);
     let hid = ui.layout[Layer::Main].rect[kids[1].idx()];
     let b = ui.layout[Layer::Main].rect[kids[2].idx()];
     // Hidden node still occupies its slot.

@@ -870,11 +870,10 @@ mod bars {
 
         let mut ui = Ui::for_test();
         let mut records = 0;
-        let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let report = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
             records += 1;
             build(ui);
         });
-        ui.mark_frame_submitted();
         assert_eq!(report.processing, FrameProcessing::SingleLayout);
         assert_eq!(
             records, 1,

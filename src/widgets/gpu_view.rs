@@ -132,18 +132,17 @@ mod tests {
     #[test]
     fn records_one_gpu_view_shape_at_committed_size() {
         let mut ui = Ui::for_test();
-        let mut node = None;
-        ui.run_at(UVec2::new(200, 120), |ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                node = Some(
+        let node = ui.run_at_value(UVec2::new(200, 120), |ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
                     GpuView::new(scene())
                         .size((Sizing::fixed(150.0), Sizing::fixed(90.0)))
                         .show(ui)
-                        .node(),
-                );
-            });
+                        .node()
+                })
+                .inner
         });
-        let node = node.unwrap();
         let tree = &ui.forest.trees[Layer::Main];
         let mut shapes = tree.shapes_of(node);
         assert!(
@@ -159,11 +158,10 @@ mod tests {
     #[test]
     fn default_fills_parent() {
         let mut ui = Ui::for_test();
-        let mut node = None;
-        ui.run_at(UVec2::new(160, 100), |ui| {
-            node = Some(GpuView::new(scene()).show(ui).node());
+        let node = ui.run_at_value(UVec2::new(160, 100), |ui| {
+            GpuView::new(scene()).show(ui).node()
         });
-        let r = ui.layout[Layer::Main].rect[node.unwrap().idx()];
+        let r = ui.layout[Layer::Main].rect[node.idx()];
         assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
     }
 
