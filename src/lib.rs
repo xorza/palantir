@@ -32,6 +32,8 @@ pub(crate) mod window;
 pub use host::offscreen::test_support::{
     OffscreenWindowScratch, TwoWindowOffscreenHost, offscreen_window_scratch,
 };
+#[cfg(feature = "internals")]
+pub use host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
 /// Consumers (debug overlay, benches) hold a `Clone` of the same
