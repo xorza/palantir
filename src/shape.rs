@@ -850,7 +850,7 @@ impl Shape<'_> {
             } => {
                 text.is_empty()
                     || color.is_noop()
-                    || TextMetrics::new(*font_size_px, *line_height_px).is_none()
+                    || TextMetrics::new(*font_size_px, *line_height_px).is_err()
             }
             Shape::Mesh {
                 mesh,

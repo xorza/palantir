@@ -108,7 +108,9 @@ pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::ImageHandle;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::cosmic::CosmicMeasure;
-pub use text::{FontFamily, FontWeight, MeasureResult, ShapeParams, TextShaper};
+pub use text::{
+    FontFamily, FontWeight, ShapeParams, ShapeParamsError, TextMeasurement, TextShaper,
+};
 pub use ui::Ui;
 pub use ui::frame::FrameStamp;
 pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};

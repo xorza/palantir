@@ -175,24 +175,27 @@ fn leaf(
     let curr_hash = tree.rollups.node[node.idx()];
     let mut acc = 0.0_f32;
     for ts in leaf_text_shapes(tree, tc, node) {
-        let m = engine.text_reuse.shape_unbounded(
-            tc.shaper,
-            TextRunIdentity {
-                widget_id: wid,
-                ordinal: ts.ordinal,
-                authoring_hash: curr_hash,
-            },
-            ts.text,
-            ts.text_hash,
-            ShapeParams {
-                font_size_px: ts.font_size_px,
-                line_height_px: ts.line_height_px,
-                max_width_px: None,
-                family: ts.family,
-                weight: ts.weight,
-                halign: HAlign::Auto,
-            },
-        );
+        let m = engine
+            .text_reuse
+            .shape_unbounded(
+                tc.shaper,
+                TextRunIdentity {
+                    widget_id: wid,
+                    ordinal: ts.ordinal,
+                    authoring_hash: curr_hash,
+                },
+                ts.text,
+                ts.text_hash,
+                ShapeParams {
+                    font_size_px: ts.font_size_px,
+                    line_height_px: ts.line_height_px,
+                    max_width_px: None,
+                    family: ts.family,
+                    weight: ts.weight,
+                    halign: HAlign::Auto,
+                },
+            )
+            .expect("recorded text metrics were validated");
         let v = match (axis, req) {
             // Non-wrapping text can't break, so its min-content equals its
             // unbroken width. Returning the longest-word width here would

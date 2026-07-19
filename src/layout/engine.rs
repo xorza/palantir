@@ -799,20 +799,23 @@ impl LayoutEngine {
         // has shifted. Crucially, when only the wrap target changed
         // (e.g. animated parent width), the unbounded cache is
         // preserved and only the wrap reshape runs in shape_wrap.
-        let unbounded = self.text_reuse.shape_unbounded(
-            text,
-            identity,
-            ts.text,
-            ts.text_hash,
-            ShapeParams {
-                font_size_px: ts.font_size_px,
-                line_height_px: ts.line_height_px,
-                max_width_px: None,
-                family: ts.family,
-                weight: ts.weight,
-                halign: HAlign::Auto,
-            },
-        );
+        let unbounded = self
+            .text_reuse
+            .shape_unbounded(
+                text,
+                identity,
+                ts.text,
+                ts.text_hash,
+                ShapeParams {
+                    font_size_px: ts.font_size_px,
+                    line_height_px: ts.line_height_px,
+                    max_width_px: None,
+                    family: ts.family,
+                    weight: ts.weight,
+                    halign: HAlign::Auto,
+                },
+            )
+            .expect("recorded text metrics were validated");
 
         // Re-shape through the width-bounded path for `Wrap` and the
         // single-line truncating modes against a finite width. For `Wrap`
@@ -853,21 +856,23 @@ impl LayoutEngine {
             // cache keys on the same 1px grid, so this keeps a cache hit
             // from blitting text shaped for a sub-pixel-different target.
             let target = target_q as f32;
-            self.text_reuse.shape_wrap(
-                text,
-                identity,
-                ts.text,
-                ShapeParams {
-                    font_size_px: ts.font_size_px,
-                    line_height_px: ts.line_height_px,
-                    max_width_px: Some(target),
-                    family: ts.family,
-                    weight: ts.weight,
-                    halign: ts.halign,
-                },
-                target_q,
-                fit,
-            )
+            self.text_reuse
+                .shape_wrap(
+                    text,
+                    identity,
+                    ts.text,
+                    ShapeParams {
+                        font_size_px: ts.font_size_px,
+                        line_height_px: ts.line_height_px,
+                        max_width_px: Some(target),
+                        family: ts.family,
+                        weight: ts.weight,
+                        halign: ts.halign,
+                    },
+                    target_q,
+                    fit,
+                )
+                .expect("recorded text metrics and wrap width were validated")
         } else {
             unbounded
         };

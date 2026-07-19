@@ -25,7 +25,8 @@ use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::text::{
-    FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextCacheKey, ValidatedShapeParams,
+    FontFamily, FontWeight, LineFit, ShapeParams, TextCacheKey, TextMeasurement,
+    ValidatedShapeParams,
 };
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
@@ -310,19 +311,11 @@ impl Default for CosmicMeasure {
 }
 
 impl CosmicMeasure {
-    #[profiling::function]
-    pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
-        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
-            return MeasureResult::INVALID;
-        };
-        self.measure_validated(text, params)
-    }
-
     pub(crate) fn measure_validated(
         &mut self,
         text: &str,
         params: ValidatedShapeParams,
-    ) -> MeasureResult {
+    ) -> TextMeasurement {
         self.measure_hashed_validated(text, hash_str(text), params)
     }
 
@@ -332,9 +325,9 @@ impl CosmicMeasure {
         text: &str,
         text_hash: u64,
         params: ValidatedShapeParams,
-    ) -> MeasureResult {
+    ) -> TextMeasurement {
         if text.is_empty() {
-            return MeasureResult::INVALID;
+            return TextMeasurement::ZERO;
         }
         let key = key_for(text_hash, params, LineFit::Wrap);
         if let Some(hit) = self.cache_hit(key) {
@@ -376,7 +369,7 @@ impl CosmicMeasure {
                 last_used,
             },
         );
-        MeasureResult {
+        TextMeasurement {
             size: extent.size,
             key,
             intrinsic_min: extent.intrinsic_min,
@@ -396,26 +389,13 @@ impl CosmicMeasure {
     /// can't collide with the wrapped buffer — or the other truncation mode —
     /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
     /// to nothing.
-    pub(crate) fn measure_truncated(
-        &mut self,
-        text: &str,
-        params: ShapeParams,
-        fit: LineFit,
-        unbounded_key: TextCacheKey,
-    ) -> MeasureResult {
-        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
-            return MeasureResult::INVALID;
-        };
-        self.measure_truncated_validated(text, params, fit, unbounded_key)
-    }
-
     pub(crate) fn measure_truncated_validated(
         &mut self,
         text: &str,
         params: ValidatedShapeParams,
         fit: LineFit,
         unbounded_key: TextCacheKey,
-    ) -> MeasureResult {
+    ) -> TextMeasurement {
         let requested_w = params
             .raw
             .max_width_px
@@ -425,7 +405,7 @@ impl CosmicMeasure {
             "measure_truncated requires Clip or Ellipsis",
         );
         if text.is_empty() {
-            return MeasureResult::INVALID;
+            return TextMeasurement::ZERO;
         }
         let key = TextCacheKey {
             max_w_q: quantize_width(requested_w).min(MAX_W_NONE - 1),
@@ -512,7 +492,7 @@ impl CosmicMeasure {
                 last_used,
             },
         );
-        MeasureResult {
+        TextMeasurement {
             size: measured,
             key,
             intrinsic_min: 0.0,
@@ -586,13 +566,13 @@ impl CosmicMeasure {
         next
     }
 
-    /// A cached entry's `MeasureResult` for `key`, or `None` on a miss.
+    /// A cached entry's `TextMeasurement` for `key`, or `None` on a miss.
     /// Refreshes `last_used` for both layout-time hits and encoder ensures.
-    fn cache_hit(&mut self, key: TextCacheKey) -> Option<MeasureResult> {
+    fn cache_hit(&mut self, key: TextCacheKey) -> Option<TextMeasurement> {
         let now = self.next_use_gen();
         self.cache.get_mut(&key).map(|entry| {
             entry.last_used = now;
-            MeasureResult {
+            TextMeasurement {
                 size: entry.measured,
                 key,
                 intrinsic_min: entry.intrinsic_min,
@@ -704,6 +684,22 @@ mod test_support {
     }
 
     impl CosmicMeasure {
+        pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> TextMeasurement {
+            let params = params.validated().unwrap();
+            self.measure_validated(text, params)
+        }
+
+        pub(crate) fn measure_truncated(
+            &mut self,
+            text: &str,
+            params: ShapeParams,
+            fit: LineFit,
+            unbounded_key: TextCacheKey,
+        ) -> TextMeasurement {
+            let params = params.validated().unwrap();
+            self.measure_truncated_validated(text, params, fit, unbounded_key)
+        }
+
         /// Number of shaped buffers currently cached. Reach-in for the
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {

@@ -161,7 +161,7 @@ impl Theme {
                 style.font_size_px * ratio,
                 style.line_height_mult,
             )
-            .is_some();
+            .is_ok();
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(|t| t.font_size_px *= ratio);

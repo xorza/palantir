@@ -770,7 +770,7 @@ mod per_line {
         );
     }
 
-    /// Regression: `MeasureResult.size.w` must extend to the right-
+    /// Regression: `TextMeasurement.size.w` must extend to the right-
     /// most rendered pixel under per-line align, not to the content
     /// width of the widest visual line. cosmic-text positions
     /// right-aligned glyphs at `(wrap_target - line_w)`, so the

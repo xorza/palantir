@@ -529,7 +529,7 @@ fn text_reshape_skipped_when_unchanged() {
         assert_eq!(
             after_second,
             after_first,
-            "{label}: second identical frame must reuse cached MeasureResult \
+            "{label}: second identical frame must reuse cached TextMeasurement \
              (extra calls: {})",
             after_second - after_first,
         );

@@ -4,7 +4,7 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::record_store::RecordStore;
 use crate::text::{
-    FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextReuseCache, TextRunIdentity,
+    FontFamily, FontWeight, LineFit, ShapeParams, TextMeasurement, TextReuseCache, TextRunIdentity,
     TextShaper,
 };
 use criterion::{BatchSize, Criterion};
@@ -36,7 +36,7 @@ fn measure_truncated_width(
     wid: WidgetId,
     text: &str,
     params: ShapeParams,
-) -> MeasureResult {
+) -> TextMeasurement {
     let text_hash = hash_str(text);
     let hash = ContentHash(text_hash);
     let identity = TextRunIdentity {
@@ -44,18 +44,22 @@ fn measure_truncated_width(
         ordinal: 0,
         authoring_hash: hash,
     };
-    reuse.shape_unbounded(shaper, identity, text, text_hash, params);
+    reuse
+        .shape_unbounded(shaper, identity, text, text_hash, params)
+        .unwrap();
     let target = params
         .max_width_px
         .expect("truncation benchmark requires a finite width");
-    reuse.shape_wrap(
-        shaper,
-        identity,
-        text,
-        params,
-        (target.max(0.0) * 64.0).round() as u32,
-        LineFit::Ellipsis,
-    )
+    reuse
+        .shape_wrap(
+            shaper,
+            identity,
+            text,
+            params,
+            (target.max(0.0) * 64.0).round() as u32,
+            LineFit::Ellipsis,
+        )
+        .unwrap()
 }
 
 pub fn bench(c: &mut Criterion) {

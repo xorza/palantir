@@ -405,7 +405,12 @@ impl<'a> TextEdit<'a> {
             } else {
                 &self.placeholder
             };
-            let m = ui.shared.text.measure(measure_str, ctx.params()).size;
+            let m = ui
+                .shared
+                .text
+                .measure(measure_str, ctx.params())
+                .expect("TextEdit metrics were validated")
+                .size;
             content_w = m.w;
             let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz() - caret_room).max(0.0);
@@ -537,7 +542,13 @@ impl<'a> TextEdit<'a> {
                 };
                 // `ctx.params()` measures unbounded here — single-line,
                 // so `wrap_target` is `None` by construction.
-                let reserve_w = ui.shared.text.measure(measure_str, ctx.params()).size.w;
+                let reserve_w = ui
+                    .shared
+                    .text
+                    .measure(measure_str, ctx.params())
+                    .expect("TextEdit metrics were validated")
+                    .size
+                    .w;
                 let reserved = reserve_w + ctx.padding.horiz() + 2.0 * caret_room;
                 if element.min_size.w < reserved {
                     element.min_size.w = reserved;
