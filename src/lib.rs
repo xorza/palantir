@@ -188,6 +188,13 @@ mod hot_struct_sizes {
     use crate::ui::cascade::Paint;
     use crate::ui::damage::region::DamageRegion;
     use crate::ui::damage::snapshot::NodeSnapshot;
+    use crate::widgets::button::Button;
+    use crate::widgets::checkbox::Checkbox;
+    use crate::widgets::combo_box::ComboBox;
+    use crate::widgets::drag_value::DragValue;
+    use crate::widgets::radio::RadioButton;
+    use crate::widgets::switch::Switch;
+    use crate::widgets::text_edit::TextEdit;
 
     /// Single source of truth for the per-frame hot-struct inventory.
     /// Each entry is `Type => "name": expected_size / expected_align`.
@@ -259,6 +266,13 @@ mod hot_struct_sizes {
         Background => "primitives::Background": 124 / 4,
         Brush => "primitives::Brush": 60 / 4,
         Span => "layout::Span": 8 / 4,
+        Button<'static> => "widgets::Button": 144 / 8,
+        Checkbox<'static> => "widgets::Checkbox": 144 / 8,
+        Switch<'static> => "widgets::Switch": 144 / 8,
+        ComboBox<'static> => "widgets::ComboBox": 136 / 8,
+        DragValue<'static> => "widgets::DragValue": 184 / 8,
+        RadioButton<'static, u8> => "widgets::RadioButton<u8>": 152 / 8,
+        TextEdit<'static> => "widgets::TextEdit": 168 / 8,
         // Layout / text outputs.
         ShapedText => "layout::ShapedText": 32 / 8,
         TextCacheKey => "text::TextCacheKey": 24 / 8,

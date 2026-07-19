@@ -54,6 +54,8 @@ impl Default for State {
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::controls::state");
     let mut s = std::mem::take(ui.state_mut::<State>(state_id));
+    let outlined = outlined_style();
+    let danger = danger_style();
 
     support::page(ui, |ui| {
         support::header(
@@ -66,15 +68,15 @@ pub(crate) fn build(ui: &mut Ui) {
             .gap(24.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                form(ui, &mut s);
-                side(ui, &s);
+                form(ui, &mut s, &outlined, &danger);
+                side(ui, &s, &outlined, &danger);
             });
     });
 
     *ui.state_mut::<State>(state_id) = s;
 }
 
-fn form(ui: &mut Ui, s: &mut State) {
+fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme) {
     Panel::vstack()
         .id_salt("form")
         .size((Sizing::fixed(340.0), Sizing::HUG))
@@ -173,7 +175,7 @@ fn form(ui: &mut Ui, s: &mut State) {
                 }
                 if Button::new()
                     .id_salt("reset")
-                    .style(outlined_style())
+                    .style(outlined)
                     .label("Reset")
                     .show(ui)
                     .left
@@ -183,7 +185,7 @@ fn form(ui: &mut Ui, s: &mut State) {
                 }
                 let del = Button::new()
                     .id_salt("delete")
-                    .style(danger_style())
+                    .style(danger)
                     .label("Delete profile")
                     .show(ui)
                     .snapshot();
@@ -216,7 +218,7 @@ fn form(ui: &mut Ui, s: &mut State) {
         });
 }
 
-fn side(ui: &mut Ui, s: &State) {
+fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
     Panel::vstack()
         .id_salt("side")
         .size((Sizing::FILL, Sizing::HUG))
@@ -236,18 +238,18 @@ fn side(ui: &mut Ui, s: &State) {
                             .show(ui);
                         Button::new()
                             .id_salt("o-1")
-                            .style(outlined_style())
+                            .style(outlined)
                             .label("outlined")
                             .show(ui);
                         Button::new()
                             .id_salt("o-2")
-                            .style(outlined_style())
+                            .style(outlined)
                             .label("disabled")
                             .disabled(true)
                             .show(ui);
                         Button::new()
                             .id_salt("c-1")
-                            .style(danger_style())
+                            .style(danger)
                             .label("danger")
                             .show(ui);
                     });

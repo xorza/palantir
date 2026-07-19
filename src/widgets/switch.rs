@@ -30,7 +30,7 @@ pub struct Switch<'a> {
     element: Element,
     value: &'a mut bool,
     label: TextInput<'a>,
-    style: Option<ToggleTheme>,
+    style: Option<&'a ToggleTheme>,
 }
 
 impl<'a> Switch<'a> {
@@ -51,9 +51,9 @@ impl<'a> Switch<'a> {
         self
     }
 
-    /// Override the theme for this switch. `None` (default) inherits
+    /// Borrow a theme override for this switch. The default inherits
     /// [`crate::Theme::switch`].
-    pub fn style(mut self, s: ToggleTheme) -> Self {
+    pub fn style(mut self, s: &'a ToggleTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -72,7 +72,7 @@ impl<'a> Switch<'a> {
 
         // Resolve everything off the theme before the `&mut ui` animate
         // reborrow (the borrow may point into `ui.theme`).
-        let theme = self.style.as_ref().unwrap_or(&ui.theme.switch);
+        let theme = self.style.unwrap_or(&ui.theme.switch);
         let look_target = theme.pick(state, on).clone();
         let anim = theme.anim;
         let track_h = theme.box_size;

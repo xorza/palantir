@@ -155,7 +155,7 @@ fn update_scroll(
 pub struct TextEdit<'a> {
     element: Element,
     text: &'a mut String,
-    style: Option<TextEditTheme>,
+    style: Option<&'a TextEditTheme>,
     placeholder: Cow<'static, str>,
     /// When `true`, Enter inserts `\n`, paste/IME preserve newlines,
     /// click hit-test + caret + selection render in 2D, and text
@@ -249,13 +249,13 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Override the whole TextEdit theme — all-or-nothing. To tweak
-    /// one axis, build the bundle from the theme:
-    /// `TextEditTheme { caret: red, ..ui.theme.text_edit }`. Buffer
+    /// Borrow a whole TextEdit theme override — all-or-nothing. To tweak
+    /// one axis, build and share a bundle:
+    /// `TextEditTheme { caret: red, ..ui.theme.text_edit.clone() }`. Buffer
     /// font/leading/color live on the per-state `text` slot (a
     /// [`crate::TextStyle`]) — `None` inherits [`crate::Theme::text`]
     /// like every other text-rendering widget.
-    pub fn style(mut self, s: TextEditTheme) -> Self {
+    pub fn style(mut self, s: &'a TextEditTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -285,17 +285,12 @@ impl<'a> TextEdit<'a> {
         // reads `element.padding` to deflate the buffer layout, and
         // the caret hit-test reads it back below — both see the
         // resolved value.
-        let look = resolve_look(
-            ui,
-            id,
-            &mut self.element,
-            response,
-            self.style.as_ref(),
-            |t| &t.text_edit,
-        );
+        let look = resolve_look(ui, id, &mut self.element, response, self.style, |t| {
+            &t.text_edit
+        });
         // State-independent scalars off the same style source, copied
         // out so no theme borrow (or whole-theme clone) survives.
-        let style = self.style.as_ref().unwrap_or(&ui.theme.text_edit);
+        let style = self.style.unwrap_or(&ui.theme.text_edit);
         let caret_color = style.caret;
         let caret_width = style.caret_width;
         let selection_color = style.selection;

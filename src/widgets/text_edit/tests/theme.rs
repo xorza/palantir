@@ -208,7 +208,7 @@ fn textedit_style_override_replaces_default_theme() {
                 leaf = Some(
                     TextEdit::new(&mut buf)
                         .id(WidgetId::from_hash("ed"))
-                        .style(style.clone())
+                        .style(&style)
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .node(),
@@ -446,7 +446,7 @@ fn line_height_override_changes_caret_rect_height() {
                 let mut e = TextEdit::new(buf)
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)));
-                if let Some(s) = style.clone() {
+                if let Some(s) = style {
                     e = e.style(s);
                 }
                 *leaf = Some(e.show(ui).node());

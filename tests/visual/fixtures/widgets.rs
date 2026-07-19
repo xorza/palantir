@@ -1015,12 +1015,12 @@ fn toggle_switch_states_matches_golden() {
                 Switch::new(&mut on)
                     .id_salt("on")
                     .label("on")
-                    .style(style.clone())
+                    .style(&style)
                     .show(ui);
                 Switch::new(&mut off)
                     .id_salt("off")
                     .label("off")
-                    .style(style.clone())
+                    .style(&style)
                     .show(ui);
             });
     });

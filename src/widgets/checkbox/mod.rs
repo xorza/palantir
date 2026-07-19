@@ -25,7 +25,7 @@ pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
     label: TextInput<'a>,
-    style: Option<ToggleTheme>,
+    style: Option<&'a ToggleTheme>,
 }
 
 impl<'a> Checkbox<'a> {
@@ -46,9 +46,9 @@ impl<'a> Checkbox<'a> {
         self
     }
 
-    /// Override the theme for this checkbox. `None` (default) inherits
+    /// Borrow a theme override for this checkbox. The default inherits
     /// [`crate::Theme::checkbox`].
-    pub fn style(mut self, s: ToggleTheme) -> Self {
+    pub fn style(mut self, s: &'a ToggleTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -64,7 +64,7 @@ impl<'a> Checkbox<'a> {
         }
         let checked = *self.value;
 
-        let theme = self.style.as_ref().unwrap_or(&ui.theme.checkbox);
+        let theme = self.style.unwrap_or(&ui.theme.checkbox);
         let chrome = ToggleChrome::new(theme, state, checked, false);
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;

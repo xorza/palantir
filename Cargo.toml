@@ -120,6 +120,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "widget_styles"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "caches"
 harness = false
 required-features = ["internals"]

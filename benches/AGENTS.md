@@ -15,6 +15,7 @@ APERTURE_BENCH_MODE=cpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame   
 APERTURE_BENCH_MODE=gpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
 cargo bench --bench caches --features internals        # gated benches
 cargo bench --bench curve_pipeline --features internals # curve GPU evidence + frame wall time
+cargo bench --bench widget_styles --features internals  # builder construction + full-record style costs
 ```
 
 `frame` refuses to run without both:
@@ -79,6 +80,11 @@ its source-level workload, not renderer reach-ins.
 the public offscreen host. Its Criterion cases measure complete frame wall time;
 the pre-case report isolates median curve-batch GPU time and vertex invocation
 counts for the static-index keep-or-revert decision.
+
+`widget_styles` compares inherited and borrowed custom themes across the seven
+large public builders. Its construction cases materialize 64 complete builder
+sets per iteration; its `show` cases record 32 sets (224 widgets) through the
+full deviceless UI pipeline.
 
 `caches` includes representative and text-heavy trees plus adversarial
 `deep/measure/{cached,forced_miss,resizing}` and

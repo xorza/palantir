@@ -39,7 +39,7 @@ pub struct ComboBox<'a> {
     element: Element,
     selected: &'a mut usize,
     options: &'a [&'a str],
-    style: Option<ButtonTheme>,
+    style: Option<&'a ButtonTheme>,
 }
 
 impl<'a> ComboBox<'a> {
@@ -55,9 +55,9 @@ impl<'a> ComboBox<'a> {
         }
     }
 
-    /// Override the trigger chrome theme. `None` (default) inherits
+    /// Borrow a trigger chrome theme override. The default inherits
     /// [`crate::Theme::button`].
-    pub fn style(mut self, s: ButtonTheme) -> Self {
+    pub fn style(mut self, s: &'a ButtonTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -71,9 +71,7 @@ impl<'a> ComboBox<'a> {
         } = enter_widget(ui, &element);
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = resolve_look(ui, id, &mut element, state, self.style.as_ref(), |t| {
-            &t.button
-        });
+        let look = resolve_look(ui, id, &mut element, state, self.style, |t| &t.button);
 
         element.justify = Justify::SpaceBetween;
         element.child_align = Align::v(VAlign::Center);

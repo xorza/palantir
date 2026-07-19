@@ -11,6 +11,7 @@ mod layout;
 mod renderer;
 mod text;
 mod ui;
+mod widgets;
 
 pub use crate::bench::allocation::free::bench as alloc_free;
 pub use crate::bench::allocation::free_gpu::bench as alloc_free_gpu;
@@ -27,3 +28,4 @@ pub use crate::bench::renderer::frontend::composer::bench as composer;
 pub use crate::bench::text::bench as text_shape;
 pub use crate::bench::ui::cascade::bench as cascade;
 pub use crate::bench::ui::damage::bench as damage;
+pub use crate::bench::widgets::style_overrides::bench as widget_styles;
