@@ -17,24 +17,7 @@ the real frame workload.
 
 ## Priority 1 — Broad hot-path improvements
 
-### 1. Store widget IDs only for interactive cascade rows
-
-- [ ] `EntryRow.widget_id` stores eight bytes for every node at
-  `src/ui/cascade/mod.rs:137-165`, although its consumers are reverse hit-test
-  scans over the sparse `hit_entries` list. Cascades already retain a
-  `WidgetId -> Endpoint` snapshot for response lookup.
-
-  Add a parallel `hit_widget_ids` vector pushed with `hit_entries` at
-  `src/ui/cascade/mod.rs:722`, remove `widget_id` from `EntryRow`, and
-  reverse-iterate the compact hit vectors together. This saves eight bytes for
-  every inert layout/container node without adding a lookup to the hit-test
-  hot path.
-
-  Pin cross-layer paint order, focusable-only rows, scroll/pinch routing, and
-  duplicate-ID rejection. Compare cascade storage and pointer-move timing on
-  container-heavy and fully interactive trees.
-
-### 2. Keep one response snapshot in `WidgetEntry`
+### 1. Keep one response snapshot in `WidgetEntry`
 
 - [ ] `enter_widget` copies a 136-byte `ResponseState` solely to OR one
   disabled bit, then returns both copies in a 280-byte `WidgetEntry` at
@@ -54,7 +37,7 @@ the real frame workload.
 
 ## Priority 2 — Focused and workload-dependent compaction
 
-### 3. Make the paint-animation reverse index truly sparse
+### 2. Make the paint-animation reverse index truly sparse
 
 - [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
   at shape `k` resizes it to `k + 1` at
@@ -70,7 +53,7 @@ the real frame workload.
   viewport/damage subtree culls. Assert that storage scales with animated
   shape count, not the largest shape index.
 
-### 4. Intern record-local gradients and resolve each unique ID once per encode
+### 3. Intern record-local gradients and resolve each unique ID once per encode
 
 - [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
   `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
@@ -89,7 +72,7 @@ the real frame workload.
   interpolation/spread mode, and forced hash collisions. Benchmark solid-only
   and gradient-heavy frames and require zero steady-state allocations.
 
-### 5. Pack command kind and payload offset into one `u32`
+### 4. Pack command kind and payload offset into one `u32`
 
 - [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
   at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding

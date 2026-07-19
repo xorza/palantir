@@ -186,9 +186,7 @@ mod hot_struct_sizes {
     use crate::renderer::render_buffer::mesh::MeshInstance;
     use crate::renderer::render_buffer::text::TextRun;
     use crate::text::TextCacheKey;
-    use crate::ui::cascade::CascadeInputHash;
-    use crate::ui::cascade::EntryRow;
-    use crate::ui::cascade::Paint;
+    use crate::ui::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
     use crate::ui::damage::region::DamageRegion;
     use crate::ui::damage::snapshot::NodeSnapshot;
     use crate::widgets::button::Button;
@@ -294,7 +292,8 @@ mod hot_struct_sizes {
         ContentHash => "rollups::ContentHash": 8 / 8,
         CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
         // Cascade per-node and input per-target rows.
-        EntryRow => "cascade::EntryRow": 56 / 8,
+        EntryRow => "cascade::EntryRow": 48 / 4,
+        HitRow => "cascade::HitRow": 16 / 8,
         Paint => "cascade::Paint": 24 / 8,
         TargetDeltas => "input::TargetDeltas": 32 / 8,
         // Damage.

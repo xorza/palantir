@@ -307,7 +307,7 @@ fn changing_fill_color_changes_hash() {
 }
 
 #[test]
-fn widget_id_does_not_affect_node_hash() {
+fn widget_id_only_affects_cascade_static_hash() {
     let h1 = record_hash(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("a"))
@@ -321,6 +321,23 @@ fn widget_id_does_not_affect_node_hash() {
             .node()
     });
     assert_eq!(h1, h2);
+
+    let static_1 = record_cascade_static(|ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("a"))
+            .show(ui, |_| {})
+            .node()
+    });
+    let static_2 = record_cascade_static(|ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("b"))
+            .show(ui, |_| {})
+            .node()
+    });
+    assert_ne!(
+        static_1, static_2,
+        "identity changes must rebuild cascade hit IDs and its by-id snapshot",
+    );
 }
 
 #[test]
