@@ -81,12 +81,10 @@ grouped into independently implementable batches.
   Implemented on 2026-07-19. The live 64-bit layouts are now 136–184 B:
   `Button` 776 → 144 B, `Checkbox` / `Switch` 1,400 → 144 B,
   `ComboBox` 768 → 136 B, `DragValue` 1,504 → 184 B, and `TextEdit`
-  848 → 168 B. `RadioButton<u8>` is 152 B. The dedicated style benchmark
-  measures 64 seven-builder construction sets at 31.56 µs inherited /
-  32.07 µs custom and 224-widget full-record frames at 181.75 µs inherited /
-  186.69 µs custom. On the aggregate CPU frame bench, same-machine midpoint
-  comparisons were cached 443.46 → 436.40 µs, partial 390.17 → 382.63 µs,
-  resizing 588.36 → 579.80 µs, and scrolling 509.74 → 502.31 µs.
+  848 → 168 B. `RadioButton<u8>` is 152 B. On the aggregate CPU frame bench,
+  same-machine midpoint comparisons were cached 443.46 → 436.40 µs, partial
+  390.17 → 382.63 µs, resizing 588.36 → 579.80 µs, and scrolling
+  509.74 → 502.31 µs.
 
 ## Batch 2 — Use variant-specific storage for wide sums
 
