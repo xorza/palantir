@@ -200,18 +200,19 @@ fn make_run(
     scale: f32,
     color: ColorU8,
 ) -> TextRun {
-    let measured = shaper.measure(
-        text,
-        ShapeParams {
-            font_size_px,
-            line_height_px,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    )
-    .expect("benchmark text metrics are valid");
+    let measured = shaper
+        .measure(
+            text,
+            ShapeParams {
+                font_size_px,
+                line_height_px,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .expect("benchmark text metrics are valid");
     TextRun {
         key: measured.key,
         origin,

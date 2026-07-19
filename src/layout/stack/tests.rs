@@ -317,8 +317,9 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         });
         [panel.inner, panel.node()]
     });
-    let button_w = ui.layout_engine.scratch.desired[button_node.idx()].w;
-    let root_w = ui.layout_engine.scratch.desired[root.idx()].w;
+    let desired = &ui.layout_engine.cache.previous.nodes.desired;
+    let button_w = desired[button_node.idx()].w;
+    let root_w = desired[root.idx()].w;
     // Hug HStack tracks the button's content width — no inflation from
     // the Fill filler, and no double-count (would be > root_w).
     assert_eq!(root_w, button_w);
