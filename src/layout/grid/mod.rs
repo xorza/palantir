@@ -435,14 +435,14 @@ fn measure_inner(
     //
     // For Fill cols specifically, whether cells should see the resolved
     // Fill width or `INFINITY` depends on the *grid's* sizing on this
-    // axis. If the grid is `Sizing::HUG`, arrange's `inner.w` will be
-    // `grid.desired.w = sum_non_fill` — Fill cols get 0 leftover at
-    // arrange. Cells measured at the measure-time finite Fill width
-    // would commit row heights to a width arrange doesn't honor (the
-    // "rows grow on horizontal resize" surprise). For non-Hug grids
-    // (`Fill` / `Fixed`), measure's `inner_avail.w` matches arrange's
-    // `inner.w`, so Fill cols at measure time give cells the same
-    // width they'll get at arrange — wrap text shapes correctly.
+    // axis. A Hug grid's final slot is still unknown here: its desired
+    // width is resolved later from `sum_non_fill` plus the intrinsic
+    // floor that includes Fill content. Cells therefore stay unbounded
+    // on Fill columns so row heights cannot commit to the unrelated
+    // measure-time available width. For non-Hug grids (`Fill` / `Fixed`),
+    // measure's `inner_avail.w` matches arrange's `inner.w`, so Fill cols
+    // at measure time give cells the same width they'll get at arrange —
+    // wrap text shapes correctly.
     let grid_sizing = tree.records.layout()[node.idx()].size;
     let grid_sizing_w = grid_sizing.w();
     let grid_sizing_h = grid_sizing.h();
@@ -553,8 +553,8 @@ fn measure_inner(
     }
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
-    // tracks "want 0" in measure context — they only claim leftover at
-    // arrange time. Mirrors WPF's "Star contributes 0 to content size."
+    // claims leftover at arrange; `resolve_sizing` separately floors this
+    // raw answer at the Grid intrinsic, which includes Fill content.
     let s = layout.scratch.grid.depth_stack.at(depth);
     let total_w =
         sum_non_fill(col_tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
@@ -825,8 +825,9 @@ fn resolve_axis(
     // their available width via `known_span_size`, preserving the old
     // "Fill is finalized at arrange" behavior. Without this, cells in
     // Fill cols would measure with measure-time Fill leftover (a
-    // finite value), then arrange might collapse Fill to 0 (e.g., Hug
-    // grid) and the cell rect/shape would disagree.
+    // finite value), then arrange might assign a different
+    // intrinsic-floor-driven slot to a Hug grid and the cell
+    // rect/shape would disagree.
     a.resolved.clear();
     let total_gap = gap * n.saturating_sub(1) as f32;
 
@@ -957,8 +958,8 @@ fn resolve_axis(
 /// - `Fixed(v)`: contributes `v` clamped to `[Track.min, Track.max]`.
 /// - `Hug`: starts at `Track.min`, grown by span-1 cells' intrinsic on
 ///   the same axis, clamped to `[Track.min, Track.max]`.
-/// - `Fill(_)`: contributes `Track.min` only — Fill claims leftover at
-///   distribution time, not in intrinsic.
+/// - `Fill(_)`: same content floor as Hug; weight is ignored until
+///   distribution.
 ///
 /// Span > 1 cells are excluded (matches existing `measure` and the
 /// commitment in `src/layout/intrinsic.md`).
@@ -1011,7 +1012,7 @@ pub(crate) fn intrinsic(
         // (`Tree::check_grid_cell`) — same stance as `known_span_size`.
         let track_idx = cell_span.start as usize;
         let t = &tracks[track_idx];
-        if !t.size.is_hug() {
+        if t.size.fixed_value().is_some() {
             continue;
         }
         let child_v = layout.intrinsic(tree, c, axis, req, tc);

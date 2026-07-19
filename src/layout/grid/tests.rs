@@ -590,7 +590,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
 }
 
 #[test]
-fn grid_hug_grid_collapses_fill_tracks() {
+fn grid_hug_grid_collapses_empty_fill_tracks() {
     let mut ui = Ui::for_test();
     let mut grid_node = None;
     ui.run_at(UVec2::new(400, 200), |ui| {
@@ -619,8 +619,89 @@ fn grid_hug_grid_collapses_fill_tracks() {
             });
     });
     let r = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
-    assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
+    assert_eq!(r.size.w, 80.0, "empty Fill col contributes no floor");
     assert_eq!(r.size.h, 40.0);
+}
+
+#[test]
+fn hug_grid_fill_track_contributes_nested_rigid_floor() {
+    let mut ui = Ui::for_test();
+    let mut rigid_node = None;
+    let root = ui.run_at_value(UVec2::new(400, 100), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fill()])
+            .rows([Track::fixed(20.0)])
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("cell"))
+                    .grid_cell((0, 0))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        rigid_node = Some(
+                            Frame::new()
+                                .id(WidgetId::from_hash("rigid"))
+                                .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
+                                .show(ui)
+                                .node(),
+                        );
+                    });
+            })
+            .node()
+    });
+
+    let grid = ui.layout[Layer::Main].rect[root.idx()];
+    let cell = ui.main_child_rects(root)[0];
+    let rigid = ui.layout[Layer::Main].rect[rigid_node.unwrap().idx()];
+    assert_eq!(grid.size, Size::new(120.0, 20.0));
+    assert_eq!(cell.size, Size::new(120.0, 20.0));
+    assert_eq!(rigid.size, Size::new(120.0, 20.0));
+}
+
+#[test]
+fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
+    let mut ui = Ui::for_test();
+    let mut rigid_node = None;
+    let root = ui.run_at_value(UVec2::new(300, 40), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Grid::new()
+                    .id(WidgetId::from_hash("grid"))
+                    .cols([Track::fill()])
+                    .rows([Track::fill()])
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        Panel::hstack()
+                            .id(WidgetId::from_hash("cell"))
+                            .grid_cell((0, 0))
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                rigid_node = Some(
+                                    Frame::new()
+                                        .id(WidgetId::from_hash("rigid"))
+                                        .size((Sizing::fixed(200.0), Sizing::FILL))
+                                        .show(ui)
+                                        .node(),
+                                );
+                            });
+                    });
+                Frame::new()
+                    .id(WidgetId::from_hash("shrinkable"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            })
+            .node()
+    });
+
+    let siblings = ui.main_child_rects(root);
+    let rigid = ui.layout[Layer::Main].rect[rigid_node.unwrap().idx()];
+    assert_eq!(siblings[0].size.w, 200.0);
+    assert_eq!(siblings[1].min.x, 200.0);
+    assert_eq!(siblings[1].size.w, 100.0);
+    assert_eq!(rigid.size.w, 200.0);
 }
 
 #[test]
