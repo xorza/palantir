@@ -210,7 +210,8 @@ fn make_run(
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-    );
+    )
+    .expect("benchmark text metrics are valid");
     TextRun {
         key: measured.key,
         origin,
