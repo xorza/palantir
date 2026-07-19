@@ -202,6 +202,7 @@ impl Tree {
                 // `self_transform_change_flips_node_hash`.
                 panel_tab[s.idx()].hash(&mut h);
             }
+            cascade_static_hasher.write_u64(widget_ids[i].0);
             cascade_static_hasher.write_u64(h.finish());
             // Chrome authoring hash is pre-computed at lowering time
             // (`shapes::lower::background`) and stored inline on

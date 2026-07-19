@@ -5,7 +5,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::ui::cascade::{Cascades, CascadesEngine, EntryRow};
+use crate::ui::cascade::{Cascades, CascadesEngine, EntryRow, HitRow};
 use crate::ui::frame::FrameStamp;
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
@@ -50,10 +50,12 @@ fn fixture(density: Density) -> Cascades {
         // Put inert rows above interactive rows so sparse traversal cost stays visible.
         let interactive = index < interactive_count;
         if interactive {
-            cascades.hit_entries.push(index as u32);
+            cascades.hits.push(HitRow {
+                entry_idx: index as u32,
+                widget_id: WidgetId::from_hash(index),
+            });
         }
         cascades.entries.push(EntryRow {
-            widget_id: WidgetId::from_hash(index),
             rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
             sense: if interactive {
                 Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH

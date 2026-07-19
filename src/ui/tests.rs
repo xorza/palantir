@@ -75,10 +75,11 @@ fn add_blink_shape(ui: &mut Ui, half: Duration) {
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut ui = Ui::for_test();
     let button_node = Cell::new(NodeId(0));
+    let duplicate_id = WidgetId::from_hash("dup");
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            let a_node = Button::new().id(WidgetId::from_hash("dup")).show(ui).node();
-            Button::new().id(WidgetId::from_hash("dup")).show(ui);
+            let a_node = Button::new().id(duplicate_id).show(ui).node();
+            Button::new().id(duplicate_id).show(ui);
             button_node.set(a_node);
         });
     });
@@ -88,6 +89,11 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         ui.forest.collisions.len(),
         1,
         "expected exactly one explicit collision recorded",
+    );
+    assert_eq!(
+        ui.cascades.hits.widget_id(),
+        [duplicate_id, duplicate_id.with(1)],
+        "hit rows must retain both resolved IDs rather than the duplicated raw ID",
     );
     let button_rect = ui.layout[Layer::Main].rect[button_node.get().idx()];
     // Drive the encoder and check the emitted quads. The two overlay

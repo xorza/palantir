@@ -471,7 +471,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
 }
 
 #[test]
-fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
+fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     use crate::input::sense::Sense;
     use crate::widgets::frame::Frame;
 
@@ -479,6 +479,7 @@ fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
     let hover = WidgetId::from_hash("hover");
     let focus = WidgetId::from_hash("focus");
     let disabled = WidgetId::from_hash("disabled");
+    let popup_scroll = WidgetId::from_hash("popup-scroll");
     let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::splat(100), |ui| {
         Panel::zstack()
@@ -504,15 +505,24 @@ fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
                     .disabled(true)
                     .show(ui);
             });
+        ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
+            Frame::new()
+                .id(popup_scroll)
+                .size(Sizing::FILL)
+                .sense(Sense::SCROLL)
+                .show(ui);
+        });
     });
 
     assert_eq!(
-        ui.cascades.hit_entries,
+        ui.cascades.hits.entry_idx(),
         [
             ui.cascades.entry_idx_of(hover).unwrap(),
             ui.cascades.entry_idx_of(focus).unwrap(),
+            ui.cascades.entry_idx_of(popup_scroll).unwrap(),
         ],
     );
+    assert_eq!(ui.cascades.hits.widget_id(), [hover, focus, popup_scroll],);
     let pos = Vec2::splat(50.0);
     assert_eq!(ui.cascades.hit_test(pos, Sense::hovers), Some(hover),);
     assert_eq!(ui.cascades.hit_test(pos, Sense::clicks), None);
@@ -521,13 +531,18 @@ fn hit_entries_track_only_sensing_or_focusable_rows_in_paint_order() {
         .cascades
         .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);
     assert_eq!(targets.hover, Some(hover));
-    assert_eq!(targets.scroll, None);
+    assert_eq!(targets.scroll, Some(popup_scroll));
     assert_eq!(targets.pinch, None);
 
     ui.run_at_acked(UVec2::splat(100), |ui| {
         Frame::new().id(inert).size(Sizing::FILL).show(ui);
     });
-    assert!(ui.cascades.hit_entries.is_empty());
+    assert_eq!(ui.cascades.hits.len(), 0);
+    assert_eq!(
+        ui.response_for(inert).layout_rect,
+        Some(Rect::new(0.0, 0.0, 100.0, 100.0)),
+        "inert widgets remain addressable through the all-widget by-id snapshot",
+    );
 }
 
 fn assert_cascades_match_full(ui: &Ui, label: &str) {
@@ -538,11 +553,6 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     engine.run_full(&ui.forest, &ui.layout, ui.display, &mut full);
 
     assert_eq!(ui.cascades.entries.len(), full.entries.len(), "{label}");
-    assert_eq!(
-        ui.cascades.entries.widget_id(),
-        full.entries.widget_id(),
-        "{label}"
-    );
     assert_eq!(ui.cascades.entries.rect(), full.entries.rect(), "{label}");
     assert_eq!(ui.cascades.entries.sense(), full.entries.sense(), "{label}");
     assert_eq!(
@@ -565,7 +575,16 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
         full.entries.transform(),
         "{label}"
     );
-    assert_eq!(ui.cascades.hit_entries, full.hit_entries, "{label}");
+    assert_eq!(
+        ui.cascades.hits.entry_idx(),
+        full.hits.entry_idx(),
+        "{label}"
+    );
+    assert_eq!(
+        ui.cascades.hits.widget_id(),
+        full.hits.widget_id(),
+        "{label}"
+    );
 
     let mut id_count = 0;
     for layer in Layer::PAINT_ORDER {
