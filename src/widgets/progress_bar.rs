@@ -158,18 +158,16 @@ mod tests {
     fn endpoint_segments_collapse_without_invalid_fill_weights() {
         for (fraction, expected) in [(0.0, [0.0, 100.0]), (1.0, [100.0, 0.0])] {
             let mut ui = Ui::for_test();
-            let mut root = None;
-            ui.run_at(UVec2::new(100, 20), |ui| {
-                root = Some(
-                    ProgressBar::new(fraction)
-                        .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))
-                        .show(ui)
-                        .node(),
-                );
+            let root = ui.run_at_value(UVec2::new(100, 20), |ui| {
+                ProgressBar::new(fraction)
+                    .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))
+                    .show(ui)
+                    .node()
             });
-            let widths: Vec<_> = ui.forest.trees[Layer::Main]
-                .children(root.unwrap())
-                .map(|child| ui.layout[Layer::Main].rect[child.id.idx()].size.w)
+            let widths: Vec<_> = ui
+                .main_child_rects(root)
+                .into_iter()
+                .map(|rect| rect.size.w)
                 .collect();
             assert_eq!(widths, expected, "fraction {fraction}");
         }

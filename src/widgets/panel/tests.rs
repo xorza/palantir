@@ -108,13 +108,11 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn panel_hugs_largest_child_and_layers_them() {
     let mut ui = Ui::for_test();
-    let mut panel_node = None;
-    let mut a_node = None;
-    let mut b_node = None;
-    ui.run_at(UVec2::new(400, 200), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            panel_node = Some(
-                Panel::zstack()
+    let [panel_node, a_node, b_node] = ui.run_at_value(UVec2::new(400, 200), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let panel = Panel::zstack()
                     .id(WidgetId::from_hash("card"))
                     .padding(10.0)
                     .background(Background {
@@ -123,32 +121,30 @@ fn panel_hugs_largest_child_and_layers_them() {
                         ..Default::default()
                     })
                     .show(ui, |ui| {
-                        a_node = Some(
+                        [
                             Button::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
                                 .show(ui)
                                 .node(),
-                        );
-                        b_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size((Sizing::fixed(60.0), Sizing::fixed(50.0)))
                                 .show(ui)
                                 .node(),
-                        );
-                    })
-                    .node(),
-            );
-        });
+                        ]
+                    });
+                [panel.node(), panel.inner[0], panel.inner[1]]
+            })
+            .inner
     });
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = ui.layout[Layer::Main].rect[panel_node.unwrap().idx()];
+    let panel = ui.layout[Layer::Main].rect[panel_node.idx()];
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
-    let a = ui.layout[Layer::Main].rect[a_node.unwrap().idx()];
-    let b = ui.layout[Layer::Main].rect[b_node.unwrap().idx()];
+    let a = ui.layout[Layer::Main].rect[a_node.idx()];
+    let b = ui.layout[Layer::Main].rect[b_node.idx()];
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
@@ -156,15 +152,13 @@ fn panel_hugs_largest_child_and_layers_them() {
 
     assert!(
         ui.forest.trees[Layer::Main]
-            .shapes_of(panel_node.unwrap())
+            .shapes_of(panel_node)
             .next()
             .is_none(),
         "panel chrome doesn't show up in the shape stream"
     );
     assert!(
-        ui.forest.trees[Layer::Main]
-            .chrome(panel_node.unwrap())
-            .is_some(),
+        ui.forest.trees[Layer::Main].chrome(panel_node).is_some(),
         "panel chrome recorded in chrome table",
     );
 }
@@ -172,15 +166,15 @@ fn panel_hugs_largest_child_and_layers_them() {
 #[test]
 fn panel_with_fill_child_grows_to_panel_inner() {
     let mut ui = Ui::for_test();
-    let mut child_node = None;
-    ui.run_at(UVec2::new(400, 400), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Panel::zstack()
-                .id(WidgetId::from_hash("p"))
-                .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
-                .padding(10.0)
-                .show(ui, |ui| {
-                    child_node = Some(
+    let child_node = ui.run_at_value(UVec2::new(400, 400), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("p"))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+                    .padding(10.0)
+                    .show(ui, |ui| {
                         Frame::new()
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
@@ -189,12 +183,13 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node(),
-                    );
-                });
-        });
+                            .node()
+                    })
+                    .inner
+            })
+            .inner
     });
-    let child = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
+    let child = ui.layout[Layer::Main].rect[child_node.idx()];
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);
@@ -214,15 +209,19 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     use crate::primitives::widget_id::WidgetId;
     let mut ui = Ui::for_test();
     let child_id = WidgetId::from_hash("child");
-    let mut observed = None;
-    ui.run_at(UVec2::new(200, 200), |ui| {
-        Panel::vstack().auto_id().disabled(true).show(ui, |ui| {
-            observed = Some(ui.response_for(child_id));
-            Frame::new().id(child_id).size(10.0).show(ui);
-        });
+    let observed = ui.run_at_value(UVec2::new(200, 200), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .disabled(true)
+            .show(ui, |ui| {
+                let observed = ui.response_for(child_id);
+                Frame::new().id(child_id).size(10.0).show(ui);
+                observed
+            })
+            .inner
     });
     assert!(
-        observed.expect("query ran").disabled,
+        observed.disabled,
         "child inside disabled panel must see disabled at record time",
     );
 }
@@ -266,43 +265,37 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 #[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let mut ui = Ui::for_test();
-    let mut canvas_node = None;
-    let mut a_node = None;
-    let mut b_node = None;
-    ui.run_at(UVec2::new(400, 400), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            canvas_node = Some(
-                Panel::canvas()
-                    .id(WidgetId::from_hash("c"))
-                    .show(ui, |ui| {
-                        a_node = Some(
-                            Frame::new()
-                                .id(WidgetId::from_hash("a"))
-                                .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-                                .position(Vec2::new(10.0, 5.0))
-                                .show(ui)
-                                .node(),
-                        );
-                        b_node = Some(
-                            Frame::new()
-                                .id(WidgetId::from_hash("b"))
-                                .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
-                                .position(Vec2::new(80.0, 40.0))
-                                .show(ui)
-                                .node(),
-                        );
-                    })
-                    .node(),
-            );
-        });
+    let [canvas_node, a_node, b_node] = ui.run_at_value(UVec2::new(400, 400), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let canvas = Panel::canvas().id(WidgetId::from_hash("c")).show(ui, |ui| {
+                    [
+                        Frame::new()
+                            .id(WidgetId::from_hash("a"))
+                            .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
+                            .position(Vec2::new(10.0, 5.0))
+                            .show(ui)
+                            .node(),
+                        Frame::new()
+                            .id(WidgetId::from_hash("b"))
+                            .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
+                            .position(Vec2::new(80.0, 40.0))
+                            .show(ui)
+                            .node(),
+                    ]
+                });
+                [canvas.node(), canvas.inner[0], canvas.inner[1]]
+            })
+            .inner
     });
-    let c = ui.layout[Layer::Main].rect[canvas_node.unwrap().idx()];
+    let c = ui.layout[Layer::Main].rect[canvas_node.idx()];
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
     assert_eq!(c.size.h, 100.0);
 
-    let a = ui.layout[Layer::Main].rect[a_node.unwrap().idx()];
-    let b = ui.layout[Layer::Main].rect[b_node.unwrap().idx()];
+    let a = ui.layout[Layer::Main].rect[a_node.idx()];
+    let b = ui.layout[Layer::Main].rect[b_node.idx()];
     assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
     assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
     assert_eq!((b.min.x, b.min.y), (80.0, 40.0));
@@ -314,16 +307,14 @@ fn zstack_layers_children_without_painting_background() {
     // Wrapped in HStack so the ZStack's Hug-to-children size is honored
     // (root would otherwise expand to surface).
     let mut ui = Ui::for_test();
-    let mut zstack_node = None;
-    let mut bg_node = None;
-    let mut fg_node = None;
-    ui.run_at(UVec2::new(400, 200), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            zstack_node = Some(
-                Panel::zstack()
+    let [z, bg_node, fg_node] = ui.run_at_value(UVec2::new(400, 200), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                let zstack = Panel::zstack()
                     .id(WidgetId::from_hash("layered"))
                     .show(ui, |ui| {
-                        bg_node = Some(
+                        [
                             Frame::new()
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
@@ -333,28 +324,25 @@ fn zstack_layers_children_without_painting_background() {
                                 })
                                 .show(ui)
                                 .node(),
-                        );
-                        fg_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("fg"))
                                 .size((Sizing::fixed(60.0), Sizing::fixed(30.0)))
                                 .show(ui)
                                 .node(),
-                        );
-                    })
-                    .node(),
-            );
-        });
+                        ]
+                    });
+                [zstack.node(), zstack.inner[0], zstack.inner[1]]
+            })
+            .inner
     });
-    let z = zstack_node.unwrap();
     assert!(ui.forest.trees[Layer::Main].shapes_of(z).next().is_none());
 
     let zr = ui.layout[Layer::Main].rect[z.idx()];
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
-    let bg = ui.layout[Layer::Main].rect[bg_node.unwrap().idx()];
-    let fg = ui.layout[Layer::Main].rect[fg_node.unwrap().idx()];
+    let bg = ui.layout[Layer::Main].rect[bg_node.idx()];
+    let fg = ui.layout[Layer::Main].rect[fg_node.idx()];
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -376,14 +364,14 @@ fn zstack_aligns_child_per_axis() {
     ];
     for (label, align, expected) in cases {
         let mut ui = Ui::for_test();
-        let mut child_node = None;
-        ui.run_at(UVec2::new(400, 400), |ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Panel::zstack()
-                    .id(WidgetId::from_hash("box"))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
-                    .show(ui, |ui| {
-                        child_node = Some(
+        let child_node = ui.run_at_value(UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id(WidgetId::from_hash("box"))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+                        .show(ui, |ui| {
                             Frame::new()
                                 .id(WidgetId::from_hash("c"))
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
@@ -393,12 +381,13 @@ fn zstack_aligns_child_per_axis() {
                                     ..Default::default()
                                 })
                                 .show(ui)
-                                .node(),
-                        );
-                    });
-            });
+                                .node()
+                        })
+                        .inner
+                })
+                .inner
         });
-        let r = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
+        let r = ui.layout[Layer::Main].rect[child_node.idx()];
         assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
         assert_eq!(
             (r.size.w, r.size.h),

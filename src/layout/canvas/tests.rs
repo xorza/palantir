@@ -24,10 +24,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .node()
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
-    let kids: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(panel)
-        .map(|c| c.id)
-        .collect();
+    let kids: Vec<_> = ui.main_child_ids(panel);
     let a = ui.layout[Layer::Main].rect[kids[0].idx()];
     assert_eq!(a.min.x - panel_rect.min.x, 40.0);
     assert_eq!(a.min.y, 50.0);
@@ -95,10 +92,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
         "FILL canvas width must not grow past available"
     );
     assert_eq!(r.size.h, 200.0);
-    let kids: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(panel)
-        .map(|c| c.id)
-        .collect();
+    let kids: Vec<_> = ui.main_child_ids(panel);
     let child = ui.layout[Layer::Main].rect[kids[0].idx()];
     // Child still arranges at its declared position — it just overflows
     // the canvas (and would be clipped by any ancestor with
@@ -132,10 +126,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     assert_eq!(r.size.w, 15.0);
     assert_eq!(r.size.h, 15.0);
 
-    let kids: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(panel)
-        .map(|c| c.id)
-        .collect();
+    let kids: Vec<_> = ui.main_child_ids(panel);
     let child = ui.layout[Layer::Main].rect[kids[0].idx()];
     assert_eq!(child.min.x - r.min.x, -5.0);
     assert_eq!(child.min.y - r.min.y, -5.0);
@@ -173,10 +164,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
                 })
                 .node()
         });
-        let kids: Vec<_> = ui.forest.trees[Layer::Main]
-            .children(panel)
-            .map(|c| c.id)
-            .collect();
+        let kids: Vec<_> = ui.main_child_ids(panel);
         let f = ui.layout[Layer::Main].rect[kids[0].idx()];
         assert_eq!(f.size.w, *expected, "case: {label} w");
         assert_eq!(f.size.h, *expected, "case: {label} h");

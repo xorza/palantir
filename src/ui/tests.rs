@@ -1067,13 +1067,12 @@ fn frame_stats_overlay_records_partial_damage() {
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
             .show(ui);
     });
-    ui.frame_runtime.frame_submitted = true;
     assert_eq!(ui.frame_runtime.fps_ema, 0.0);
     assert!(
         !ui.forest.trees[Layer::Debug].records.is_empty(),
@@ -1084,13 +1083,12 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report = ui.record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+    let report = ui.record_acked(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
             .show(ui);
     });
-    ui.frame_runtime.frame_submitted = true;
     assert!(
         matches!(
             report.plan,
@@ -1328,10 +1326,9 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record. Full path; schedules anim wake at `half`.
-    let r0 = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let r0 = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
-    ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
 
@@ -1364,18 +1361,16 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // is queued. Without this fold the caret stops blinking until
     // input forces a FullRecord (mouse-move regression).
     assert_eq!(r1.repaint_after, Some(half + half));
-    let r2 = ui.record(FrameStamp::new(display, half + half), |ui| body(ui, half));
+    let r2 = ui.record_acked(FrameStamp::new(display, half + half), |ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
-    ui.frame_runtime.frame_submitted = true;
 
     // A pending OS close request vetoes the fast path: the app can only
     // read `close_requested` (and veto via `keep_open`) during record,
     // so an anim-wake frame escalates to Full while `wants_close` is
     // set — and drops back to PaintOnly once it clears.
     ui.window_frame.close_requested = true;
-    let r3 = ui.record(FrameStamp::new(display, half * 3), |ui| body(ui, half));
+    let r3 = ui.record_acked(FrameStamp::new(display, half * 3), |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    ui.frame_runtime.frame_submitted = true;
     ui.window_frame.close_requested = false;
     let r4 = ui.record(FrameStamp::new(display, half * 4), |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
@@ -1573,10 +1568,9 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     // Frame 0: full record. Populates the gradient payloads and stamps
     // `ShapeBrush::Gradient(GradientId(0))` into the chrome row for the frame.
-    let r0 = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let r0 = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
-    ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let payloads = ui.record_store.payloads.borrow();
@@ -1721,11 +1715,10 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record + `request_repaint`. Next frame must be Full.
-    let r0 = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let r0 = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half);
         ui.request_repaint();
     });
-    ui.frame_runtime.frame_submitted = true;
     assert!(r0.repaint_requested);
 
     let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
@@ -1771,10 +1764,9 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::OnDelta;
-        let r0 = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let r0 = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_runtime.frame_submitted = true;
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
@@ -1802,10 +1794,9 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::Always;
-        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_runtime.frame_submitted = true;
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
@@ -1821,10 +1812,9 @@ fn input_policy_routes_paint_only_gate() {
         use crate::primitives::widget_id::WidgetId;
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::OnDelta;
-        let _ = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_runtime.frame_submitted = true;
         ui.input.focused = Some(WidgetId::from_hash("editor"));
 
         ui.on_input(InputEvent::KeyDown {
@@ -1862,8 +1852,7 @@ fn cold_ui() -> Ui {
 
 fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(COLD, 1.0);
-    let _ = ui.record(FrameStamp::new(display, Duration::ZERO), record);
-    ui.frame_runtime.frame_submitted = true;
+    let _ = ui.record_acked(FrameStamp::new(display, Duration::ZERO), record);
 }
 
 /// On a true first frame the user closure runs **twice** — once for the
@@ -2007,6 +1996,27 @@ fn for_test_constructors_skip_warmup() {
     assert_eq!(
         calls, 1,
         "for_test() ctor pre-marks warm; first user frame is single-pass",
+    );
+}
+
+#[test]
+fn run_at_value_returns_the_final_relayout_pass_and_acknowledges_it() {
+    let mut ui = Ui::for_test();
+    let mut calls = 0_u32;
+
+    let final_call = ui.run_at_value_acked(COLD, |ui| {
+        calls += 1;
+        if calls == 1 {
+            ui.request_relayout();
+        }
+        calls
+    });
+
+    assert_eq!(calls, 2, "relayout runs exactly two record passes");
+    assert_eq!(final_call, 2, "capture returns the final pass's value");
+    assert!(
+        ui.frame_runtime.frame_submitted,
+        "acked helper mirrors a successful host submit"
     );
 }
 
@@ -2344,10 +2354,8 @@ fn fps_ema_reads_unclamped_frame_delta() {
     let mut ui = Ui::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
     let mut noop = |_: &mut Ui| {};
-    ui.record(FrameStamp::new(display, Duration::ZERO), &mut noop);
-    ui.mark_frame_submitted();
-    ui.record(FrameStamp::new(display, Duration::from_secs(1)), &mut noop);
-    ui.mark_frame_submitted();
+    ui.record_acked(FrameStamp::new(display, Duration::ZERO), &mut noop);
+    ui.record_acked(FrameStamp::new(display, Duration::from_secs(1)), &mut noop);
     assert!(
         (ui.frame_runtime.fps_ema - 1.0).abs() < 1e-6,
         "got {}",
