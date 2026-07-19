@@ -109,7 +109,7 @@ fn anim_spec_construction_validates_and_canonicalizes() {
 
 #[test]
 fn anim_spec_serde_validates_and_roundtrips() {
-    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+    #[derive(::serde::Serialize, ::serde::Deserialize, PartialEq, Debug)]
     struct Holder {
         spec: AnimSpec,
     }

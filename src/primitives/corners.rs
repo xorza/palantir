@@ -1,5 +1,4 @@
 use crate::primitives::half_simd::F16x4;
-use crate::primitives::lane_serde::{self, LaneCodec};
 use crate::primitives::num::Num;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -29,46 +28,6 @@ impl std::fmt::Debug for Corners {
             .field("br", &br)
             .field("bl", &bl)
             .finish()
-    }
-}
-
-// Compact serde via the shared `lane_serde` codec:
-// - all four equal → bare scalar `4.0`
-// - tl=tr, br=bl   → 2-element array `[top, bottom]` (CSS-style shorthand)
-// - otherwise      → 4-element array `[tl, tr, br, bl]`
-// Deserialize also accepts the `{ tl, tr, br, bl }` table for
-// hand-written configs.
-impl LaneCodec for Corners {
-    const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
-
-    #[inline]
-    fn from_lane_array(l: [f32; 4]) -> Self {
-        Self::new(l[0], l[1], l[2], l[3])
-    }
-    #[inline]
-    fn to_lane_array(&self) -> [f32; 4] {
-        self.as_array()
-    }
-    #[inline]
-    fn two_form(l: [f32; 4]) -> Option<[f32; 2]> {
-        // tl==tr && br==bl → CSS-style [top, bottom].
-        (l[0] == l[1] && l[2] == l[3]).then_some([l[0], l[2]])
-    }
-    #[inline]
-    fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
-        [top, top, bottom, bottom]
-    }
-}
-
-impl serde::Serialize for Corners {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        lane_serde::serialize(self, s)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Corners {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        lane_serde::deserialize(d)
     }
 }
 

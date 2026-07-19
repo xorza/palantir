@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT, TEXT_METRICS_ERROR, TextMetrics};
+use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT, TextMetrics};
 use crate::widgets::theme::palette::Palette;
 
 /// Default text-rendering inputs grouped together so apps can swap the
@@ -14,7 +14,7 @@ use crate::widgets::theme::palette::Palette;
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, aperture_anim_derive::Animatable,
 )]
-#[serde(try_from = "UncheckedTextStyle")]
+#[serde(try_from = "crate::widgets::theme::serde::UncheckedTextStyle")]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
@@ -43,31 +43,6 @@ pub struct TextStyle {
     /// the family's bold face.
     #[animate(snap)]
     pub weight: FontWeight,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct UncheckedTextStyle {
-    font_size_px: f32,
-    color: Color,
-    line_height_mult: f32,
-    family: FontFamily,
-    weight: FontWeight,
-}
-
-impl TryFrom<UncheckedTextStyle> for TextStyle {
-    type Error = &'static str;
-
-    fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
-        TextMetrics::from_size_and_multiplier(style.font_size_px, style.line_height_mult)
-            .map_err(|_| TEXT_METRICS_ERROR)?;
-        Ok(Self {
-            font_size_px: style.font_size_px,
-            color: style.color,
-            line_height_mult: style.line_height_mult,
-            family: style.family,
-            weight: style.weight,
-        })
-    }
 }
 
 impl Default for TextStyle {

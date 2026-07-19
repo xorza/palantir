@@ -6,6 +6,7 @@ pub(crate) mod palette;
 pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
 pub(crate) mod separator;
+pub(crate) mod serde;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
@@ -44,8 +45,6 @@ use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
 use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
-use serde::de::Error as _;
-
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
@@ -53,7 +52,7 @@ use serde::de::Error as _;
 /// app/theme concern. Widgets that want disabled-state visuals read the
 /// disabled flag themselves and pick their own colors at recording
 /// time.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Theme {
     pub button: ButtonTheme,
     /// Theme slot for `Button`s used as menu-bar triggers — flat,
@@ -104,7 +103,7 @@ pub struct Theme {
     /// write would desync the recorded sizes from the factor.
     #[serde(
         default = "default_text_scale",
-        deserialize_with = "deserialize_text_scale"
+        deserialize_with = "crate::widgets::theme::serde::deserialize_text_scale"
     )]
     text_scale: f32,
 }
@@ -125,17 +124,6 @@ fn default_text_scale() -> f32 {
 #[inline]
 fn text_scale_is_valid(scale: f32) -> bool {
     scale.is_finite() && scale > 0.0
-}
-
-fn deserialize_text_scale<'de, D>(deserializer: D) -> Result<f32, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let scale = <f32 as serde::Deserialize>::deserialize(deserializer)?;
-    if !text_scale_is_valid(scale) {
-        return Err(D::Error::custom(TEXT_SCALE_ERROR));
-    }
-    Ok(scale)
 }
 
 impl Theme {

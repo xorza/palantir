@@ -30,11 +30,11 @@ pub struct TooltipTheme {
     pub max_size: Size,
     /// Seconds the pointer must rest on the trigger before the bubble
     /// shows (cold start).
-    #[serde(with = "duration_seconds")]
+    #[serde(with = "crate::widgets::theme::serde::duration_seconds")]
     pub delay: Duration,
     /// Seconds after a tooltip is dismissed during which the next
     /// tooltip appears instantly (warmup). Set to 0 to disable.
-    #[serde(with = "duration_seconds")]
+    #[serde(with = "crate::widgets::theme::serde::duration_seconds")]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
     pub gap: f32,
@@ -71,27 +71,5 @@ impl TooltipTheme {
 impl Default for TooltipTheme {
     fn default() -> Self {
         Self::from_palette(&Palette::DEFAULT)
-    }
-}
-
-mod duration_seconds {
-    use serde::de::Error as _;
-    use std::time::Duration;
-
-    const ERROR: &str = "tooltip timing must be finite, non-negative, and representable";
-
-    pub(crate) fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_f32(duration.as_secs_f32())
-    }
-
-    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let secs = <f32 as serde::Deserialize>::deserialize(deserializer)?;
-        Duration::try_from_secs_f32(secs).map_err(|_| D::Error::custom(ERROR))
     }
 }

@@ -5,6 +5,8 @@ use crate::primitives::half_simd::F16x4;
 use glam::Vec2;
 use tinyvec::ArrayVec;
 
+mod serde;
+
 /// Hard cap on stops in a single gradient. 8 covers >99% of UI use
 /// (2-3 stops dominate, multi-stop bars rarely exceed 5).
 pub(crate) const MAX_STOPS: usize = 8;
@@ -74,33 +76,6 @@ pub struct Stop {
     pub color: ColorU8,
 }
 
-impl serde::Serialize for Stop {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut st = s.serialize_struct("Stop", 2)?;
-        st.serialize_field("offset", &self.offset())?;
-        st.serialize_field("color", &self.color)?;
-        st.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Stop {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        use serde::de::Error as _;
-
-        #[derive(serde::Deserialize)]
-        struct Raw {
-            offset: f32,
-            color: ColorU8,
-        }
-        let r = Raw::deserialize(d)?;
-        if !r.offset.is_finite() {
-            return Err(D::Error::custom("gradient stop offset must be finite"));
-        }
-        Ok(Stop::new(r.offset, r.color))
-    }
-}
-
 impl Stop {
     /// Construct a stop. Finite offsets are clamped to 0..=1 and
     /// quantized to u8 (round-to-nearest).
@@ -161,31 +136,10 @@ impl std::ops::DerefMut for GradientStops {
     }
 }
 
-impl serde::Serialize for GradientStops {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serde::Serialize::serialize(&self.0, serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for GradientStops {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::Error as _;
-
-        let values: ArrayVec<[Stop; MAX_STOPS]> = serde::Deserialize::deserialize(deserializer)?;
-        if values.len() < 2 {
-            return Err(D::Error::custom(format_args!(
-                "gradient requires at least 2 stops, got {}",
-                values.len(),
-            )));
-        }
-        Ok(Self(values))
-    }
-}
-
 /// How the gradient repeats outside the 0..1 parametric range.
 #[repr(u8)]
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
 pub enum Spread {
     /// Clamp to nearest edge stop. CSS default.
@@ -201,7 +155,7 @@ pub enum Spread {
 /// transition; doesn't change the stop colours themselves.
 #[repr(u8)]
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
 pub enum Interp {
     /// Perceptually uniform; matches CSS Color 4 default. Avoids the
@@ -226,7 +180,7 @@ pub enum Interp {
 /// copies expensive through the recording chain; see `Brush`'s
 /// comment for the auto-`Copy` audit story. `.clone()` is cheap
 /// (one inline memcpy) — just explicit.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct LinearGradient {
     pub angle: f32,
     pub stops: GradientStops,
@@ -306,7 +260,7 @@ impl LinearGradient {
 ///
 /// Per-variant `Interp` default: `Oklab` — radial fills are usually
 /// soft glows where perceptual smoothness matters most.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGradient {
     pub center: Vec2,
     pub radius: Vec2,
@@ -370,7 +324,7 @@ impl RadialGradient {
 /// linear-RGB interpolation gives the most predictable hue sweep;
 /// Oklab can shift the perceived hue at the midpoint. (A future
 /// `Oklch{hue}` interp would be the truly right default.)
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGradient {
     pub center: Vec2,
     pub start_angle: f32,
@@ -489,7 +443,7 @@ gradient_common!(LinearGradient, RadialGradient, ConicGradient);
 // remaining duplication sites keeps the cost auditable. See
 // `Animatable`'s `Clone` (not `Copy`) supertrait for the matching
 // animation-side relaxation.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
     Solid(Color),
     Linear(LinearGradient),

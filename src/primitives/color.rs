@@ -1,5 +1,4 @@
 use crate::primitives::{approx, half_simd::F16x4};
-use serde::de::Error as _;
 
 #[repr(C)]
 #[derive(
@@ -26,56 +25,6 @@ impl std::hash::Hash for Color {
         approx::hash_f32(self.g, state);
         approx::hash_f32(self.b, state);
         approx::hash_f32(self.a, state);
-    }
-}
-
-// Serialize as a CSS-style sRGB hex string: `"#RRGGBB"` when fully
-// opaque, `"#RRGGBBAA"` otherwise. Round-trips through the same `u8`
-// quantization the framework uses everywhere (1/255 is below 8-bit
-// display precision, well below the cubic sRGB approximation error).
-impl serde::Serialize for Color {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let r = (linear_to_srgb(self.r).clamp(0.0, 1.0) * 255.0).round() as u8;
-        let g = (linear_to_srgb(self.g).clamp(0.0, 1.0) * 255.0).round() as u8;
-        let b = (linear_to_srgb(self.b).clamp(0.0, 1.0) * 255.0).round() as u8;
-        let a = (self.a.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let hex = if a == 0xff {
-            format!("#{r:02x}{g:02x}{b:02x}")
-        } else {
-            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
-        };
-        s.serialize_str(&hex)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Color {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = <std::borrow::Cow<'de, str>>::deserialize(d)?;
-        parse_hex(raw.trim()).map_err(D::Error::custom)
-    }
-}
-
-/// Parse `#rrggbb` / `#rrggbbaa` (CSS-style, alpha last).
-fn parse_hex(s: &str) -> Result<Color, &'static str> {
-    let body = s.strip_prefix('#').unwrap_or(s);
-    let parse_byte = |i: usize| -> Result<u8, &'static str> {
-        u8::from_str_radix(&body[i..i + 2], 16).map_err(|_| "invalid hex digit")
-    };
-    match body.len() {
-        6 => {
-            let r = parse_byte(0)?;
-            let g = parse_byte(2)?;
-            let b = parse_byte(4)?;
-            Ok(Color::rgb_u8(r, g, b))
-        }
-        8 => {
-            let r = parse_byte(0)?;
-            let g = parse_byte(2)?;
-            let b = parse_byte(4)?;
-            let a = parse_byte(6)?;
-            Ok(Color::rgba_u8(r, g, b, a))
-        }
-        _ => Err("expected #rrggbb or #rrggbbaa"),
     }
 }
 
@@ -637,35 +586,6 @@ mod tests {
 
         assert_eq!(positive, negative);
         assert_eq!(hash_value(positive), hash_value(negative));
-    }
-
-    /// Pin parse acceptance: with or without `#`, both 6- and 8-digit.
-    #[test]
-    fn parse_accepts_with_and_without_hash() {
-        assert_eq!(
-            parse_hex("#3266cc").unwrap(),
-            Color::rgb_u8(0x32, 0x66, 0xcc)
-        );
-        assert_eq!(
-            parse_hex("3266cc").unwrap(),
-            Color::rgb_u8(0x32, 0x66, 0xcc)
-        );
-        assert_eq!(
-            parse_hex("#3266cc80").unwrap(),
-            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
-        );
-    }
-
-    /// Pin parse rejection: malformed inputs return an error rather
-    /// than silently producing garbage.
-    #[test]
-    fn parse_rejects_malformed_input() {
-        assert!(parse_hex("").is_err());
-        assert!(parse_hex("#").is_err());
-        assert!(parse_hex("#abc").is_err(), "3-digit not supported");
-        assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
-        assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
-        assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
     }
 
     /// The direct `ColorF16 → ColorU8` quantize must stay byte-identical
