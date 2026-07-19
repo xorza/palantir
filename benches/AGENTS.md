@@ -14,6 +14,7 @@ APERTURE_BENCH_MODE=both APERTURE_BENCH_NOTE='baseline' cargo bench --bench fram
 APERTURE_BENCH_MODE=cpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
 APERTURE_BENCH_MODE=gpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
 cargo bench --bench caches --features internals        # gated benches
+cargo bench --bench animation --features internals     # retained duration/spring rows
 cargo bench --bench curve_pipeline --features internals # curve GPU evidence + frame wall time
 ```
 
@@ -92,6 +93,10 @@ experiments and the keep/revert evidence live in `src/layout/measure-cache.md`.
 `transform` alternates a subtree transform and must route to the full path;
 `full_rebuild` is the same workload forced through that path as a control.
 `cascade/hit_test` retains the separate sparse/dense hit-query cases.
+
+`animation/{duration,spring}/animated_look` alternates targets across 4,096
+retained `AnimRow<AnimatedLook>` entries. It exposes row-footprint and
+mode-dispatch changes while exercising the real duration and spring math.
 
 ## Allocation invariants (three benches)
 

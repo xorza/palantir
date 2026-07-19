@@ -82,6 +82,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "animation"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "alloc_free"
 harness = false
 required-features = ["internals"]

@@ -5,6 +5,7 @@
 //! children.
 
 mod allocation;
+mod animation;
 mod frame;
 mod input;
 mod layout;
@@ -15,6 +16,7 @@ mod ui;
 pub use crate::bench::allocation::free::bench as alloc_free;
 pub use crate::bench::allocation::free_gpu::bench as alloc_free_gpu;
 pub use crate::bench::allocation::resize::bench as alloc_resize;
+pub use crate::bench::animation::bench as animation;
 pub use crate::bench::frame::bench as frame;
 pub use crate::bench::frame::config as frame_config;
 pub use crate::bench::frame::fixture::FrameFixture;
