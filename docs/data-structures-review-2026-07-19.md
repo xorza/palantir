@@ -18,10 +18,10 @@ snapshot pair should preserve every subtree lookup while making storage linear.
 
 The next largest size problems are public widget builders that embed complete
 optional theme values, generic animation rows that hold four copies of their
-value type, and the 88-byte `ShapeRecord` enum. A current
-`-Zprint-type-sizes` build reports:
+value type, and the 88-byte `ShapeRecord` enum. At the start of this review,
+`-Zprint-type-sizes` reported:
 
-| Type | Current size |
+| Type | Review baseline |
 |---|---:|
 | `DragValue<'_>` | 1,504 B |
 | `Checkbox<'_>` / `Switch<'_>` | 1,400 B |
@@ -60,7 +60,7 @@ grouped into independently implementable batches.
   regression in the existing cached, forced-miss, resize, localized, unary,
   and balanced cache benchmarks.
 
-- [ ] **Borrow widget style overrides instead of embedding entire theme trees
+- [x] **Borrow widget style overrides instead of embedding entire theme trees
   in every builder.** `Button`, `Checkbox`, and `Switch` store
   `Option<ButtonTheme>` / `Option<ToggleTheme>` directly at
   `src/widgets/button.rs:11-18`, `src/widgets/checkbox/mod.rs:23-29`, and
@@ -77,6 +77,16 @@ grouped into independently implementable batches.
   public builders to the hot-size regression table, compile an external
   consumer to cover the cross-crate by-value ABI, and benchmark construction
   plus `show` for inherited and custom styles.
+
+  Implemented on 2026-07-19. The live 64-bit layouts are now 136–184 B:
+  `Button` 776 → 144 B, `Checkbox` / `Switch` 1,400 → 144 B,
+  `ComboBox` 768 → 136 B, `DragValue` 1,504 → 184 B, and `TextEdit`
+  848 → 168 B. `RadioButton<u8>` is 152 B. The dedicated style benchmark
+  measures 64 seven-builder construction sets at 31.56 µs inherited /
+  32.07 µs custom and 224-widget full-record frames at 181.75 µs inherited /
+  186.69 µs custom. On the aggregate CPU frame bench, same-machine midpoint
+  comparisons were cached 443.46 → 436.40 µs, partial 390.17 → 382.63 µs,
+  resizing 588.36 → 579.80 µs, and scrolling 509.74 → 502.31 µs.
 
 ## Batch 2 — Use variant-specific storage for wide sums
 

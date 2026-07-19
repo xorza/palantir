@@ -269,12 +269,13 @@ fn cell_grid(
 }
 
 fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
+    let style = cell_theme(r, c);
     Button::new()
         .id_salt((salt, "cell", r, c))
         .label(format!("{r},{c}"))
         .size((Sizing::fixed(56.0), Sizing::fixed(40.0)))
         .padding((6.0, 4.0))
-        .style(cell_theme(r, c))
+        .style(&style)
         .show(ui)
         .left
         .clicked()

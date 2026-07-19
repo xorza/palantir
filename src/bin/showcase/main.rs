@@ -168,7 +168,7 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {
                         let mut btn = Button::new().id_salt(*label).label(*label);
                         if i == state.active {
-                            btn = btn.style(active_style.clone());
+                            btn = btn.style(&active_style);
                         }
                         if btn.show(ui).left.clicked() {
                             state.active = i;

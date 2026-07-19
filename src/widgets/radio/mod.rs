@@ -27,7 +27,7 @@ pub struct RadioButton<'a, T: PartialEq> {
     current: &'a mut T,
     value: T,
     label: TextInput<'a>,
-    style: Option<ToggleTheme>,
+    style: Option<&'a ToggleTheme>,
 }
 
 impl<'a, T: PartialEq> RadioButton<'a, T> {
@@ -49,9 +49,9 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         self
     }
 
-    /// Override the theme for this radio button. `None` (default)
+    /// Borrow a theme override for this radio button. The default
     /// inherits [`crate::Theme::radio`].
-    pub fn style(mut self, s: ToggleTheme) -> Self {
+    pub fn style(mut self, s: &'a ToggleTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -73,7 +73,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
-        let theme = self.style.as_ref().unwrap_or(&ui.theme.radio);
+        let theme = self.style.unwrap_or(&ui.theme.radio);
         // `pill: true` forces the box chrome to a circle regardless of
         // any re-themed `radio.checked.normal.background.radius` — the
         // pip must never square-corner. Applied in `toggle_row`.

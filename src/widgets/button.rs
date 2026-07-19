@@ -11,7 +11,7 @@ use crate::widgets::{Response, WidgetEntry, enter_widget};
 #[derive(Debug)]
 pub struct Button<'a> {
     element: Element,
-    style: Option<ButtonTheme>,
+    style: Option<&'a ButtonTheme>,
     label: TextInput<'a>,
     label_align: Align,
     label_wrap: TextWrap,
@@ -39,7 +39,9 @@ impl<'a> Button<'a> {
         }
     }
 
-    pub fn style(mut self, s: ButtonTheme) -> Self {
+    /// Borrow a theme override for this button. The default inherits
+    /// [`crate::Theme::button`].
+    pub fn style(mut self, s: &'a ButtonTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -78,14 +80,9 @@ impl<'a> Button<'a> {
             raw: raw_state,
             merged: picked_state,
         } = enter_widget(ui, &element);
-        let look = resolve_look(
-            ui,
-            id,
-            &mut element,
-            picked_state,
-            self.style.as_ref(),
-            |t| &t.button,
-        );
+        let look = resolve_look(ui, id, &mut element, picked_state, self.style, |t| {
+            &t.button
+        });
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

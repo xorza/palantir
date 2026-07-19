@@ -209,7 +209,7 @@ pub struct DragValue<'a> {
     decimals: usize,
     suffix: &'static str,
     editable: bool,
-    style: Option<DragValueTheme>,
+    style: Option<&'a DragValueTheme>,
 }
 
 impl<'a> DragValue<'a> {
@@ -269,9 +269,9 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Override the theme for both the chip and the inline editor. `None`
-    /// (default) inherits [`crate::Theme::drag_value`].
-    pub fn style(mut self, s: DragValueTheme) -> Self {
+    /// Borrow a theme override for both the chip and the inline editor. The
+    /// default inherits [`crate::Theme::drag_value`].
+    pub fn style(mut self, s: &'a DragValueTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -383,7 +383,7 @@ impl<'a> DragValue<'a> {
         // Default to `theme.drag_value.chip` — the same bundle the edit
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
-        let chip = self.style.as_ref().map(|s| &s.chip);
+        let chip = self.style.map(|s| &s.chip);
         let look = resolve_look(ui, id, &mut element, state, chip, |t| &t.drag_value.chip);
 
         ui.node(id, element, Some(&look.background), |ui| {
@@ -417,11 +417,7 @@ impl<'a> DragValue<'a> {
         id: WidgetId,
         prev_rect: Option<Rect>,
     ) -> DragValueResponse<'_> {
-        let editor = self
-            .style
-            .take()
-            .map(|s| s.editor)
-            .unwrap_or_else(|| ui.theme.drag_value.editor.clone());
+        let editor = self.style.map(|s| &s.editor);
         // Hold the editor at exactly the width the chip occupied last frame.
         // The chip shows `decimals`-rounded text; the editor shows every digit
         // and, as a `Scroll` field, reports zero content width — so nothing
@@ -451,15 +447,19 @@ impl<'a> DragValue<'a> {
             anchor.armed = false;
         }
         let submitted = {
-            let resp = TextEdit::new(&mut buffer)
+            let edit = TextEdit::new(&mut buffer)
                 .id(id)
                 .text_align(Align::CENTER)
-                .style(editor)
                 .select_all_on_focus()
                 .size((width, self.element.size.h()))
                 .min_size(self.element.min_size)
-                .max_size(self.element.max_size)
-                .show(ui);
+                .max_size(self.element.max_size);
+            let edit = if let Some(editor) = editor {
+                edit.style(editor)
+            } else {
+                edit
+            };
+            let resp = edit.show(ui);
             resp.submitted
         };
         let changed = self.value.parse_from(&buffer, self.min, self.max);
