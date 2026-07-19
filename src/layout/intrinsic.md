@@ -32,8 +32,10 @@ pub enum LenReq {
 }
 ```
 
-Each query is **per-axis**. Callers ask for one specific
-`(axis, req)`; the orthogonal axis isn't computed.
+Each query is **per-axis**. The single-slot API asks for one specific
+`(axis, req)`; the orthogonal axis isn't computed. Grid's Hug-column
+solver uses the paired API below because it always needs both requests
+for the same axis.
 
 For a leaf text shape:
 
@@ -56,10 +58,23 @@ impl LayoutEngine {
         req: LenReq,
         tc: &TextCtx<'_>,
     ) -> f32;
+
+    pub(crate) fn intrinsic_range(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        tc: &TextCtx<'_>,
+    ) -> IntrinsicRange;
 }
 ```
 
-Same shape as `measure`, dispatched per-driver. `compute()` in
+Both have the same recursive shape as `measure` and dispatch per-driver.
+`intrinsic_range` visits each node and shapes each text run once while
+populating both ordinary cache slots. Stack keeps using `intrinsic` for
+its min-content-only floor.
+
+`compute()` in
 `intrinsic.rs` is the cache-miss path: it applies the node's `Sizing`
 override, then adds padding/margin and clamps to `min_size`/`max_size`
 before delegating content sizing to the driver.
@@ -99,10 +114,12 @@ slot per `(axis, req)` pair. NaN means "not yet computed". Resized to
 `node_count` at the top of `run` (capacity retained, same pattern as
 `desired`).
 
-`engine.intrinsic()` checks the cache first, recurses on miss, stores
-the result. The answer is a pure function of the subtree — it doesn't
-depend on the parent's available width or the arranged rect — so
-intra-frame caching is sound.
+`engine.intrinsic()` checks one slot first, recurses on miss, and stores
+the result. `engine.intrinsic_range()` checks and fills both slots; if
+only one is missing, it preserves the populated slot and uses the
+single-slot path for the other. The answer is a pure function of the
+subtree — it doesn't depend on the parent's available width or the
+arranged rect — so intra-frame caching is sound.
 
 Cross-frame reuse comes from `MeasureCache::lookup_root_intrinsic`, keyed
 by `WidgetId` plus subtree hash and independent of the incoming available
@@ -113,7 +130,7 @@ the current layout pass. Cosmic's own cache still covers text shaping.
 
 Implemented in `grid::measure`. Two-phase resolution:
 
-1. **Per-track range** — for each `Hug` track, query span-1 cells:
+1. **Per-track range** — for each `Hug` track, query each span-1 cell once:
    - `track.min = max(t.min, max over cells of intrinsic(MinContent))`
    - `track.max = min(t.max, max over cells of intrinsic(MaxContent))`
    - `Fixed(v)` and `Fill(_)` track ranges come from their `Sizing`

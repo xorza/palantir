@@ -11,7 +11,7 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
@@ -236,39 +236,51 @@ pub(crate) fn zero_subtree(
 /// drivers whose own size on an axis is "the largest child wants this
 /// much" (ZStack, Stack cross-axis, WrapStack). Canvas, which also folds
 /// in each child's declared position, uses [`children_max_intrinsic_offset`].
-pub(crate) fn children_max_intrinsic(
+pub(crate) fn children_max_intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-) -> f32 {
-    let mut m = 0.0f32;
+) -> IntrinsicRange {
+    let mut range = IntrinsicRange::ZERO;
     for c in tree.active_children(node) {
-        m = m.max(layout.intrinsic(tree, c, axis, req, tc));
+        let child = query.child(layout, tree, c, axis, tc);
+        if query.includes(LenReq::MinContent) {
+            range.min = range.min.max(child.min);
+        }
+        if query.includes(LenReq::MaxContent) {
+            range.max = range.max.max(child.max);
+        }
     }
-    m
+    range
 }
 
 /// Like [`children_max_intrinsic`] but adds a per-child positional offset
 /// on the same axis before taking the max. Canvas alone needs it — on Hug
 /// axes the child's declared position folds into its contribution.
-pub(crate) fn children_max_intrinsic_offset(
+pub(crate) fn children_max_intrinsic_offset<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
     mut offset: impl FnMut(&Tree, NodeId) -> f32,
-) -> f32 {
-    let mut m = 0.0f32;
+) -> IntrinsicRange {
+    let mut range = IntrinsicRange::ZERO;
     for c in tree.active_children(node) {
-        let v = layout.intrinsic(tree, c, axis, req, tc) + offset(tree, c);
-        m = m.max(v);
+        let child = query.child(layout, tree, c, axis, tc);
+        let child_offset = offset(tree, c);
+        if query.includes(LenReq::MinContent) {
+            range.min = range.min.max(child.min + child_offset);
+        }
+        if query.includes(LenReq::MaxContent) {
+            range.max = range.max.max(child.max + child_offset);
+        }
     }
-    m
+    range
 }
 
 /// Main-axis offset + effective inter-child gap for one row of

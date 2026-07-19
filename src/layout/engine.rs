@@ -9,7 +9,7 @@ use crate::layout::cache::{
     MeasureSnapshot, RootSnapshotKey, quantize_available,
 };
 use crate::layout::grid::GridContext;
-use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
@@ -391,6 +391,48 @@ impl LayoutEngine {
         if !cached.is_nan() {
             return cached;
         }
+        if tree.records.layout()[idx].mode != LayoutMode::Leaf {
+            let wid = tree.records.widget_id()[idx];
+            let hash = tree.rollups.subtree[idx];
+            if let Some(value) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
+                self.scratch.intrinsics[idx][slot] = value;
+                return value;
+            }
+        }
+        #[cfg(test)]
+        {
+            self.scratch.intrinsic_computes += 1;
+        }
+        let computed = intrinsic::compute(self, tree, node, axis, IntrinsicQuery::single(req), tc);
+        let value = match req {
+            LenReq::MinContent => computed.min,
+            LenReq::MaxContent => computed.max,
+        };
+        self.scratch.intrinsics[idx][slot] = value;
+        value
+    }
+
+    /// Paired min/max-content query for Grid Hug tracks. A cold query
+    /// traverses the subtree once and fills both intra-frame cache slots;
+    /// partially populated and cross-frame cache rows compute only the
+    /// missing side.
+    pub(crate) fn intrinsic_range(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        tc: &TextCtx<'_>,
+    ) -> IntrinsicRange {
+        let min_slot = LenReq::MinContent.slot(axis);
+        let max_slot = LenReq::MaxContent.slot(axis);
+        let idx = node.idx();
+        let mut range = IntrinsicRange {
+            min: self.scratch.intrinsics[idx][min_slot],
+            max: self.scratch.intrinsics[idx][max_slot],
+        };
+        if !range.min.is_nan() && !range.max.is_nan() {
+            return range;
+        }
         // Cross-frame reuse: an unchanged subtree's intrinsic is valid from
         // last frame's measure-cache snapshot. Intrinsic is
         // `available`-independent, so this hits even on a resize frame
@@ -403,18 +445,42 @@ impl LayoutEngine {
         if tree.records.layout()[idx].mode != LayoutMode::Leaf {
             let wid = tree.records.widget_id()[idx];
             let hash = tree.rollups.subtree[idx];
-            if let Some(v) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
-                self.scratch.intrinsics[idx][slot] = v;
-                return v;
+            for (slot, value) in [(min_slot, &mut range.min), (max_slot, &mut range.max)] {
+                if value.is_nan()
+                    && let Some(cached) = self.cache.lookup_root_intrinsic(wid, hash, slot)
+                {
+                    *value = cached;
+                    self.scratch.intrinsics[idx][slot] = cached;
+                }
             }
         }
+        let min_missing = range.min.is_nan();
+        let max_missing = range.max.is_nan();
+        if !min_missing && !max_missing {
+            return range;
+        }
+
+        // A range row can be partially populated by an earlier single-slot
+        // query. Preserve that work instead of traversing both sides again.
+        if min_missing != max_missing {
+            if min_missing {
+                range.min = self.intrinsic(tree, node, axis, LenReq::MinContent, tc);
+            } else {
+                range.max = self.intrinsic(tree, node, axis, LenReq::MaxContent, tc);
+            }
+            return range;
+        }
+
         #[cfg(test)]
         {
             self.scratch.intrinsic_computes += 1;
         }
-        let v = intrinsic::compute(self, tree, node, axis, req, tc);
-        self.scratch.intrinsics[idx][slot] = v;
-        v
+        let computed = intrinsic::compute(self, tree, node, axis, IntrinsicQuery::range(), tc);
+        range.min = computed.min;
+        self.scratch.intrinsics[idx][min_slot] = computed.min;
+        range.max = computed.max;
+        self.scratch.intrinsics[idx][max_slot] = computed.max;
+        range
     }
 
     /// Run measure + arrange for every root in every layer's tree

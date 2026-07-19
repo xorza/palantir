@@ -85,8 +85,10 @@ counts for the static-index keep-or-revert decision.
 `deep/measure/{cached,forced_miss,resizing}` and
 `broad/measure/{cached,forced_miss,resizing,localized}` cases. The deep chain
 exposes overlapping-snapshot O(N²) writes; the broad localized arm changes one
-paint-only leaf to measure reuse of unchanged sibling subtrees. Storage-policy
-experiments and the keep/revert evidence live in `src/layout/measure-cache.md`.
+paint-only leaf to measure reuse of unchanged sibling subtrees.
+`grid/intrinsic/{cached,forced_miss,resizing}` isolates paired min/max-content
+recursion in a 128-row real-text property grid. Storage-policy experiments and
+the keep/revert evidence live in `src/layout/measure-cache.md`.
 
 `cascade/run` isolates cascade production on the full frame fixture.
 `paint_only` alternates paint authoring with stable layout and inherited state;
