@@ -706,10 +706,11 @@ fn nested_clips_each_emit_their_own_pair() {
 #[test]
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     let mut ui = Ui::for_test();
-    let mut child_node = None;
-    ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Panel::vstack().auto_id().disabled(true).show(ui, |ui| {
-            child_node = Some(
+    let child = ui.run_at_value_acked(UVec2::new(100, 100), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .disabled(true)
+            .show(ui, |ui| {
                 Frame::new()
                     .auto_id()
                     .size(Sizing::fixed(40.0))
@@ -718,12 +719,11 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     });
     let cascades = &ui.cascades;
-    let child = child_node.unwrap();
     assert_eq!(cascades.entries.sense()[child.idx()], Sense::NONE);
 }
 

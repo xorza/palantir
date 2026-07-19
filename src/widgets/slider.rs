@@ -229,18 +229,16 @@ mod tests {
         for (value, expected) in [(0.0, [0.0, 18.0, 102.0]), (1.0, [102.0, 18.0, 0.0])] {
             let mut ui = Ui::for_test();
             let mut value = value;
-            let mut root = None;
-            ui.run_at(UVec2::new(120, 30), |ui| {
-                root = Some(
-                    Slider::new(&mut value, 0.0..=1.0)
-                        .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
-                        .show(ui)
-                        .node(),
-                );
+            let root = ui.run_at_value(UVec2::new(120, 30), |ui| {
+                Slider::new(&mut value, 0.0..=1.0)
+                    .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
+                    .show(ui)
+                    .node()
             });
-            let widths: Vec<_> = ui.forest.trees[Layer::Main]
-                .children(root.unwrap())
-                .map(|child| ui.layout[Layer::Main].rect[child.id.idx()].size.w)
+            let widths: Vec<_> = ui
+                .main_child_rects(root)
+                .into_iter()
+                .map(|rect| rect.size.w)
                 .collect();
             assert_eq!(widths, expected, "value {value}");
         }

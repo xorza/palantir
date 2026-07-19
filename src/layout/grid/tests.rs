@@ -1,7 +1,6 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
 use crate::layout::grid::{AxisScratch, GridDepthStack, known_span_size, resolve_axis};
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -14,38 +13,28 @@ use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
-fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
-    ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
-        .collect()
-}
-
 fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(surface_width, 100), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([first, Track::fill()])
-                .rows([Track::fill()])
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("rigid"))
-                        .size((Sizing::fixed(200.0), Sizing::FILL))
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("flex"))
-                        .grid_cell((0, 1))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(surface_width, 100), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([first, Track::fill()])
+            .rows([Track::fill()])
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("rigid"))
+                    .size((Sizing::fixed(200.0), Sizing::FILL))
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("flex"))
+                    .grid_cell((0, 1))
+                    .show(ui);
+            })
+            .node()
     });
-    child_rects(&ui, root.unwrap())
+    ui.main_child_rects(root)
 }
 
 #[test]
@@ -57,28 +46,25 @@ fn grid_depth_stack_rejects_exit_without_enter() {
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(400, 200), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::fixed(120.0), Track::fill()])
-                .rows([Track::fill()])
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("left"))
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("right"))
-                        .grid_cell((0, 1))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(400, 200), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fixed(120.0), Track::fill()])
+            .rows([Track::fill()])
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("left"))
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("right"))
+                    .grid_cell((0, 1))
+                    .show(ui);
+            })
+            .node()
     });
-    let kids = child_rects(&ui, root.unwrap());
+    let kids = ui.main_child_rects(root);
     assert_eq!(kids[0].size.w, 120.0);
     assert_eq!(kids[0].min.x, 0.0);
     assert_eq!(kids[1].size.w, 280.0);
@@ -90,37 +76,34 @@ fn grid_fixed_and_fill_columns_split_remainder() {
 #[test]
 fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let mut ui = Ui::for_test();
-    let mut root = None;
     // Hug col 0: max(button widths). Buttons measure label at 8px/char +
     // default padding 24 + 2*1 chrome stroke → label_w + 26.
-    ui.run_at(UVec2::new(400, 200), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::hug(), Track::fill()])
-                .rows([Track::hug(), Track::hug()])
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    Button::new()
-                        .id(WidgetId::from_hash("short"))
-                        .label("ok")
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Button::new()
-                        .id(WidgetId::from_hash("long"))
-                        .label("hello!!")
-                        .grid_cell((1, 0))
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("body"))
-                        .grid_cell((0, 1))
-                        .grid_span((2, 1))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(400, 200), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::hug(), Track::fill()])
+            .rows([Track::hug(), Track::hug()])
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Button::new()
+                    .id(WidgetId::from_hash("short"))
+                    .label("ok")
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Button::new()
+                    .id(WidgetId::from_hash("long"))
+                    .label("hello!!")
+                    .grid_cell((1, 0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("body"))
+                    .grid_cell((0, 1))
+                    .grid_span((2, 1))
+                    .show(ui);
+            })
+            .node()
     });
-    let kids = child_rects(&ui, root.unwrap());
+    let kids = ui.main_child_rects(root);
     let short_btn = kids[0];
     let long_btn = kids[1];
     let body = kids[2];
@@ -137,40 +120,37 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
 #[test]
 fn hug_column_stretches_fill_cells_to_widest_content() {
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(400, 200), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::hug()])
-                .rows([Track::hug(), Track::hug()])
-                .size((Sizing::HUG, Sizing::HUG))
-                .show(ui, |ui| {
-                    Panel::hstack()
-                        .id(WidgetId::from_hash("a"))
-                        .grid_cell((0, 0))
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id(WidgetId::from_hash("fa"))
-                                .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
-                                .show(ui);
-                        });
-                    Panel::hstack()
-                        .id(WidgetId::from_hash("b"))
-                        .grid_cell((1, 0))
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id(WidgetId::from_hash("fb"))
-                                .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
-                                .show(ui);
-                        });
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(400, 200), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::hug()])
+            .rows([Track::hug(), Track::hug()])
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("a"))
+                    .grid_cell((0, 0))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("fa"))
+                            .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
+                            .show(ui);
+                    });
+                Panel::hstack()
+                    .id(WidgetId::from_hash("b"))
+                    .grid_cell((1, 0))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("fb"))
+                            .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
+                            .show(ui);
+                    });
+            })
+            .node()
     });
-    let kids = child_rects(&ui, root.unwrap());
+    let kids = ui.main_child_rects(root);
     assert_eq!(
         kids[0].size.w, 120.0,
         "column hugs to the widest cell's content"
@@ -188,27 +168,24 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     use crate::shape::TextWrap;
 
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(600, 200), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::hug().max(150.0)])
-                .rows([Track::hug()])
-                .size((Sizing::HUG, Sizing::HUG))
-                .show(ui, |ui| {
-                    Button::new()
-                        .id(WidgetId::from_hash("btn"))
-                        .label("a_very_long_value_label_here")
-                        .text_wrap(TextWrap::Ellipsis)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .grid_cell((0, 0))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(600, 200), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::hug().max(150.0)])
+            .rows([Track::hug()])
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                Button::new()
+                    .id(WidgetId::from_hash("btn"))
+                    .label("a_very_long_value_label_here")
+                    .text_wrap(TextWrap::Ellipsis)
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .grid_cell((0, 0))
+                    .show(ui);
+            })
+            .node()
     });
-    let btn = child_rects(&ui, root.unwrap())[0];
+    let btn = ui.main_child_rects(root)[0];
     assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
 
     // The track caps at 150, but the Fixed(200) child remains exact.
@@ -261,28 +238,25 @@ fn grid_fill_weights_and_clamps() {
     ];
     for (label, c0, c1, want0, want1) in cases {
         let mut ui = Ui::for_test();
-        let mut root = None;
-        ui.run_at(UVec2::new(400, 100), |ui| {
-            root = Some(
-                Grid::new()
-                    .auto_id()
-                    .cols([*c0, *c1])
-                    .rows([Track::fill()])
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id(WidgetId::from_hash("a"))
-                            .grid_cell((0, 0))
-                            .show(ui);
-                        Frame::new()
-                            .id(WidgetId::from_hash("b"))
-                            .grid_cell((0, 1))
-                            .show(ui);
-                    })
-                    .node(),
-            );
+        let root = ui.run_at_value(UVec2::new(400, 100), |ui| {
+            Grid::new()
+                .auto_id()
+                .cols([*c0, *c1])
+                .rows([Track::fill()])
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("a"))
+                        .grid_cell((0, 0))
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("b"))
+                        .grid_cell((0, 1))
+                        .show(ui);
+                })
+                .node()
         });
-        let kids = child_rects(&ui, root.unwrap());
+        let kids = ui.main_child_rects(root);
         assert_eq!(kids[0].size.w, *want0, "case: {label} col0");
         assert_eq!(kids[1].size.w, *want1, "case: {label} col1");
     }
@@ -304,29 +278,26 @@ fn grid_fill_col_floors_at_descendant_min_content() {
     // col 0 clamps to 200 and col 1 takes the 100 remainder — matches
     // Stack's freeze-loop floor.
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(300, 100), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::fill(), Track::fill()])
-                .rows([Track::fill()])
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("rigid"))
-                        .size((Sizing::fixed(200.0), Sizing::FILL))
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("flex"))
-                        .grid_cell((0, 1))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(300, 100), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fill(), Track::fill()])
+            .rows([Track::fill()])
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("rigid"))
+                    .size((Sizing::fixed(200.0), Sizing::FILL))
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("flex"))
+                    .grid_cell((0, 1))
+                    .show(ui);
+            })
+            .node()
     });
-    let kids = child_rects(&ui, root.unwrap());
+    let kids = ui.main_child_rects(root);
     assert_eq!(
         kids[0].size.w, 200.0,
         "rigid cell floors at descendant min-content"
@@ -342,29 +313,26 @@ fn grid_fill_row_floors_at_descendant_min_content() {
     // overflows. With floor (Phase 2 records `d.h` into hug_min for
     // Fill rows): row 0 clamps to 60, row 1 takes 40.
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(100, 100), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::fill()])
-                .rows([Track::fill(), Track::fill()])
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("rigid"))
-                        .size((Sizing::FILL, Sizing::fixed(60.0)))
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("flex"))
-                        .grid_cell((1, 0))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(100, 100), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fill()])
+            .rows([Track::fill(), Track::fill()])
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("rigid"))
+                    .size((Sizing::FILL, Sizing::fixed(60.0)))
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("flex"))
+                    .grid_cell((1, 0))
+                    .show(ui);
+            })
+            .node()
     });
-    let kids = child_rects(&ui, root.unwrap());
+    let kids = ui.main_child_rects(root);
     assert_eq!(
         kids[0].size.h, 60.0,
         "rigid row floors at descendant min-content"
@@ -384,8 +352,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             UVec2::new(400, 200)
         };
         let mut ui = Ui::for_test();
-        let mut root = None;
-        ui.run_at(surface, |ui| {
+        let root = ui.run_at_value(surface, |ui| {
             let primary = [
                 Track::fixed(100.0),
                 Track::fixed(100.0),
@@ -398,27 +365,25 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                 (&secondary, &primary)
             };
             let span = if *swap { (3, 1) } else { (1, 3) };
-            root = Some(
-                Grid::new()
-                    .auto_id()
-                    .rows(rows)
-                    .cols(cols)
-                    .gap(10.0)
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id(WidgetId::from_hash("header"))
-                            .grid_cell((0, 0))
-                            .grid_span(span)
-                            .show(ui);
-                        Frame::new()
-                            .id(WidgetId::from_hash("body"))
-                            .grid_cell((1, 1))
-                            .show(ui);
-                    })
-                    .node(),
-            );
+            Grid::new()
+                .auto_id()
+                .rows(rows)
+                .cols(cols)
+                .gap(10.0)
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("header"))
+                        .grid_cell((0, 0))
+                        .grid_span(span)
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("body"))
+                        .grid_cell((1, 1))
+                        .show(ui);
+                })
+                .node()
         });
-        let kids = child_rects(&ui, root.unwrap());
+        let kids = ui.main_child_rects(root);
         let header = kids[0];
         let body = kids[1];
         let (h_pri_min, h_pri_size, h_sec_size) = if *swap {
@@ -663,25 +628,22 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
 
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at(UVec2::new(200, 200), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::fixed(100.0)])
-                .rows([Track::fixed(100.0)])
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("pinned"))
-                        .grid_cell((0, 0))
-                        .size((20.0, 20.0))
-                        .align(Align::new(HAlign::Right, VAlign::Bottom))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(200, 200), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fixed(100.0)])
+            .rows([Track::fixed(100.0)])
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("pinned"))
+                    .grid_cell((0, 0))
+                    .size((20.0, 20.0))
+                    .align(Align::new(HAlign::Right, VAlign::Bottom))
+                    .show(ui);
+            })
+            .node()
     });
-    let r = child_rects(&ui, root.unwrap())[0];
+    let r = ui.main_child_rects(root)[0];
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
     assert_eq!(r.min.x, 80.0);
@@ -719,30 +681,27 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 #[test]
 fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
     let mut ui = Ui::for_test();
-    let mut root = None;
     // 3×3 of fixed-50 cells with gap=10. 2×2 cell at (0,0): w/h = 110.
-    ui.run_at(UVec2::new(400, 400), |ui| {
-        root = Some(
-            Grid::new()
-                .auto_id()
-                .cols([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
-                .rows([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
-                .gap(10.0)
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("big"))
-                        .grid_cell((0, 0))
-                        .grid_span((2, 2))
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("corner"))
-                        .grid_cell((2, 2))
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value(UVec2::new(400, 400), |ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
+            .rows([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
+            .gap(10.0)
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("big"))
+                    .grid_cell((0, 0))
+                    .grid_span((2, 2))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("corner"))
+                    .grid_cell((2, 2))
+                    .show(ui);
+            })
+            .node()
     });
-    let kids = child_rects(&ui, root.unwrap());
+    let kids = ui.main_child_rects(root);
     let big = kids[0];
     let corner = kids[1];
 

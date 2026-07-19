@@ -34,8 +34,7 @@ const DISPLAY: Display = Display {
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
-    let report = ui.record(FrameStamp::new(DISPLAY, Duration::ZERO), f);
-    ui.frame_runtime.frame_submitted = true;
+    let report = ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), f);
     match report.plan {
         None => Damage::Skip,
         Some(RenderPlan {
@@ -814,8 +813,7 @@ fn click_on_empty_bg_does_not_force_full() {
             });
     };
     // Frame 0 (cold): expect Full. Submit.
-    ui.record(FrameStamp::new(DISPLAY, Duration::ZERO), build);
-    ui.frame_runtime.frame_submitted = true;
+    ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build);
     // Frame 1 (warm): nothing changed → Skip.
     let warm = ui
         .record(FrameStamp::new(DISPLAY, Duration::ZERO), build)
@@ -1961,10 +1959,8 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    ui.record(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.frame_runtime.frame_submitted = true;
-    ui.record(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.frame_runtime.frame_submitted = true;
+    ui.record_acked(FrameStamp::new(big, Duration::ZERO), &mut scene);
+    ui.record_acked(FrameStamp::new(big, Duration::ZERO), &mut scene);
     assert!(ui.damage_engine.dirty.is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
@@ -2016,10 +2012,9 @@ fn stable_surface_does_not_short_circuit() {
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    ui.record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+    ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
         build(ui, BLUE)
     });
-    ui.frame_runtime.frame_submitted = true;
     let warm = ui
         .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             build(ui, BLUE)

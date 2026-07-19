@@ -1305,6 +1305,17 @@ pub(crate) mod test_support {
             self.frame(stamp, WindowToken(0), &mut app)
         }
 
+        /// `record` then mark the frame as submitted, mirroring a successful host paint.
+        pub(crate) fn record_acked(
+            &mut self,
+            stamp: FrameStamp,
+            record: impl FnMut(&mut Ui),
+        ) -> FrameReport {
+            let report = self.record(stamp, record);
+            self.mark_frame_submitted();
+            report
+        }
+
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             let tree = &self.forest.trees[Layer::Main];
@@ -1381,15 +1392,45 @@ pub(crate) mod test_support {
         }
 
         /// One frame at `size`, time frozen at zero.
-        pub(crate) fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub(crate) fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) -> FrameReport {
             let display = Display::from_physical(size, 1.0);
-            self.record(FrameStamp::new(display, Duration::ZERO), record);
+            self.record(FrameStamp::new(display, Duration::ZERO), record)
         }
 
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-        pub(crate) fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
-            self.run_at(size, record);
-            self.frame_runtime.frame_submitted = true;
+        pub(crate) fn run_at_acked(
+            &mut self,
+            size: UVec2,
+            record: impl FnMut(&mut Ui),
+        ) -> FrameReport {
+            let display = Display::from_physical(size, 1.0);
+            self.record_acked(FrameStamp::new(display, Duration::ZERO), record)
+        }
+
+        /// Run a recording frame and return the final record pass's value.
+        ///
+        /// Panics if the frame takes the paint-only path. Values that must
+        /// accumulate across replayed record passes should still use a mutable
+        /// capture with [`Self::run_at`].
+        pub(crate) fn run_at_value<R>(
+            &mut self,
+            size: UVec2,
+            mut record: impl FnMut(&mut Ui) -> R,
+        ) -> R {
+            let mut value = None;
+            self.run_at(size, |ui| value = Some(record(ui)));
+            value.expect("test frame did not run a record pass")
+        }
+
+        /// `run_at_value` then mark the frame as submitted.
+        pub(crate) fn run_at_value_acked<R>(
+            &mut self,
+            size: UVec2,
+            record: impl FnMut(&mut Ui) -> R,
+        ) -> R {
+            let value = self.run_at_value(size, record);
+            self.mark_frame_submitted();
+            value
         }
 
         /// Ack the just-run frame as presented — mirrors what the host
@@ -1411,16 +1452,28 @@ pub(crate) mod test_support {
             use crate::forest::element::Configure;
             use crate::layout::types::sizing::Sizing;
             use crate::widgets::panel::Panel;
-            let mut inner = None;
-            self.run_at(surface, |ui| {
+            self.run_at_value(surface, |ui| {
                 Panel::hstack()
                     .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        inner = Some(f(ui));
-                    });
-            });
-            inner.unwrap()
+                    .show(ui, &mut f)
+                    .inner
+            })
+        }
+
+        pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
+            Vec::from_iter(
+                self.forest.trees[Layer::Main]
+                    .children(parent)
+                    .map(|child| child.id),
+            )
+        }
+
+        pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
+            self.forest.trees[Layer::Main]
+                .children(parent)
+                .map(|child| self.layout[Layer::Main].rect[child.id.idx()])
+                .collect()
         }
 
         pub(crate) fn click_at(&mut self, pos: Vec2) {
