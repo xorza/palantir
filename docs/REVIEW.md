@@ -17,23 +17,7 @@ the real frame workload.
 
 ## Priority 1 — Broad hot-path improvements
 
-### 1. Prototype incremental cascade invalidation
-
-- [ ] `cascade_fingerprint` folds each root's complete subtree authoring hash
-  at `src/ui/cascade/mod.rs:511-555`, so any paint-only content change reruns
-  the full cascade from `src/ui/mod.rs:543-558`.
-
-  Separate stable geometry/ancestor-state columns from paint-row refresh, or
-  invalidate subtrees and repair ancestor paint bounds. Do not merely omit
-  paint from the current fingerprint; that would reuse stale paint arenas and
-  cascade hashes.
-
-  First re-establish a current cascade timing baseline. Then validate exact
-  equivalence against a forced-full cascade across transform, clip,
-  visibility, scroll, side-layer, reorder, and paint-only mutations, and
-  benchmark partial and scrolling frames before keeping the added machinery.
-
-### 2. Union mutually exclusive duration and spring animation payloads
+### 1. Union mutually exclusive duration and spring animation payloads
 
 - [ ] `AnimRow<T>` stores `current`, `target`, `velocity`, and
   `segment_start` simultaneously at `src/animation/mod.rs:244-271`, although
@@ -52,7 +36,7 @@ the real frame workload.
   switch, settle, and multi-pass frames; compare animated-widget and broad
   frame benchmarks.
 
-### 3. Query Grid Hug intrinsic ranges in one recursion
+### 2. Query Grid Hug intrinsic ranges in one recursion
 
 - [ ] Every span-1 Hug-column cell requests `MinContent` and `MaxContent`
   back-to-back at `src/layout/grid/mod.rs:416-417`. On a cold subtree these are
@@ -65,7 +49,7 @@ the real frame workload.
   compute counts, and compare forced-miss and resize benchmarks before keeping
   the larger API.
 
-### 4. Store widget IDs only for interactive cascade rows
+### 3. Store widget IDs only for interactive cascade rows
 
 - [ ] `EntryRow.widget_id` stores eight bytes for every node at
   `src/ui/cascade/mod.rs:137-165`, although its consumers are reverse hit-test
@@ -82,7 +66,7 @@ the real frame workload.
   duplicate-ID rejection. Compare cascade storage and pointer-move timing on
   container-heavy and fully interactive trees.
 
-### 5. Keep one response snapshot in `WidgetEntry`
+### 4. Keep one response snapshot in `WidgetEntry`
 
 - [ ] `enter_widget` copies a 136-byte `ResponseState` solely to OR one
   disabled bit, then returns both copies in a 280-byte `WidgetEntry` at
@@ -102,7 +86,7 @@ the real frame workload.
 
 ## Priority 2 — Focused and workload-dependent compaction
 
-### 6. Make the paint-animation reverse index truly sparse
+### 5. Make the paint-animation reverse index truly sparse
 
 - [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
   at shape `k` resizes it to `k + 1` at
@@ -118,7 +102,7 @@ the real frame workload.
   viewport/damage subtree culls. Assert that storage scales with animated
   shape count, not the largest shape index.
 
-### 7. Intern record-local gradients and resolve each unique ID once per encode
+### 6. Intern record-local gradients and resolve each unique ID once per encode
 
 - [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
   `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
@@ -137,7 +121,7 @@ the real frame workload.
   interpolation/spread mode, and forced hash collisions. Benchmark solid-only
   and gradient-heavy frames and require zero steady-state allocations.
 
-### 8. Pack command kind and payload offset into one `u32`
+### 7. Pack command kind and payload offset into one `u32`
 
 - [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
   at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding

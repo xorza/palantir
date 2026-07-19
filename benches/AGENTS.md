@@ -87,6 +87,12 @@ exposes overlapping-snapshot O(N²) writes; the broad localized arm changes one
 paint-only leaf to measure reuse of unchanged sibling subtrees. Storage-policy
 experiments and the keep/revert evidence live in `src/layout/measure-cache.md`.
 
+`cascade/run` isolates cascade production on the full frame fixture.
+`paint_only` alternates paint authoring with stable layout and inherited state;
+`transform` alternates a subtree transform and must route to the full path;
+`full_rebuild` is the same workload forced through that path as a control.
+`cascade/hit_test` retains the separate sparse/dense hit-query cases.
+
 ## Allocation invariants (three benches)
 
 Three benches share the `support/frame_fixture.rs` workload (see

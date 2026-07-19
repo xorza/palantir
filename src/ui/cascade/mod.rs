@@ -1,9 +1,8 @@
 //! Per-frame post-arrange state.
 //!
-//! `CascadesEngine` (the engine) owns the walk scratch + the result. Each
-//! `run()` reads `(&Forest, &Layout)` and produces
-//! a fresh `Cascades` — per-tree per-node cascade rows plus a
-//! global hit index, all populated in a single per-tree pre-order walk.
+//! `CascadesEngine` owns the walk scratch and updates a retained
+//! `Cascades`. Paint-only changes repair dirty subtrees in place;
+//! geometry or inherited-state changes rebuild all per-tree rows.
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&Cascades` as their single frozen-state handle.
 
@@ -98,14 +97,14 @@ pub(crate) struct Paint {
 }
 
 /// Per-layer paint state: the unified [`Paint`] arena plus a per-node
-/// index into it. Written during [`compute_paint_rect`], reset together
-/// each frame in [`Self::reset_for`].
+/// index into it. A full cascade rebuild resets it; an incremental
+/// pass copies changed spans into retained rows.
 #[derive(Debug, Default)]
 pub(crate) struct PaintArena {
     /// One [`Paint`] row per chrome contribution (row 0 of a node's
     /// span when present), direct shape, or immediate-child marker,
     /// in record order per node. Pushed in pre-order paint order;
-    /// cleared each frame.
+    /// cleared by [`Self::reset_for`].
     pub(crate) rows: Vec<Paint>,
     /// Per-node [`Span`] into [`Self::rows`]. Empty span
     /// (`Span::default()`) means the node paints nothing — replaces
@@ -202,10 +201,8 @@ impl std::fmt::Debug for Frame {
 
 /// All per-layer cascade state grouped on one struct. The
 /// `cascade_inputs`, `subtree_paint_rects`, and `paint_arena` columns
-/// are produced together in a single [`run_tree`] pass, reset together
-/// at frame start, and read together by the damage diff and encoder —
-/// keeping them on one struct means there's exactly one indexing point
-/// per layer and no chance of resetting one column but not another.
+/// are produced together by [`run_tree`], retained together between
+/// frames, and read together by the damage diff and encoder.
 ///
 /// ## Columnar split
 ///
@@ -218,6 +215,8 @@ impl std::fmt::Debug for Frame {
 ///   descend arms. At 8 B/node the encoder's per-frame walk and
 ///   damage's scan stay cache-dense.
 /// - [`Self::subtree_paint_rects`] is read only by the encoder cull.
+/// - [`Self::subtree_hashes`] retains the previous walk's paint
+///   invalidation state.
 /// - [`Self::subtree_ends`] is read only by [`Cascades::is_within`]
 ///   ancestry lookups — sparse random access, never a walk, so it
 ///   must not fatten the walked columns.
@@ -225,12 +224,11 @@ impl std::fmt::Debug for Frame {
 ///   [`Paint`]s plus the `node_spans` index). Read only on damage's
 ///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
 ///   so it sits behind a `node_spans[i]` indirection that damage's
-///   subtree-skip fast path skips entirely. A node's **own** paint
-///   extent (the former `Cascade.paint_rect`) is just the union of its
-///   `paint_arena` rows — recomputed on demand on damage's cold paths,
-///   not stored.
+///   subtree-skip fast path skips entirely.
 #[derive(Debug, Default)]
 pub(crate) struct LayerCascades {
+    /// Paint-excluding authoring hash from the last full rebuild.
+    static_hash: ContentHash,
     /// Per-node `cascade_input` fingerprint, indexed the same way as
     /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
     /// ancestor state + own arranged rect hash with the cascade-resolved
@@ -248,6 +246,10 @@ pub(crate) struct LayerCascades {
     /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
     /// hidden subtree doesn't keep the cull from firing at ancestors.
     pub(crate) subtree_paint_rects: Vec<Rect>,
+    /// Previous authoring hashes used to skip unchanged subtrees.
+    /// Dirty ancestors recompute their own paint rows, so no separate
+    /// per-node paint hash or own extent is retained.
+    subtree_hashes: Vec<ContentHash>,
     /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid
     /// flag stripped), snapshotted so ancestry queries
     /// ([`Cascades::is_within`]) can run against the frozen cascade
@@ -259,9 +261,9 @@ pub(crate) struct LayerCascades {
     pub(crate) paint_arena: PaintArena,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascades::entries`] — fixed for the layer's run, set at
-    /// `reset_for` time. Every node in `tree.records` pushes exactly
-    /// one entry in [`run_tree`], so within the layer block the entry
-    /// index is `entries_base + node.0`. Combined with the per-pass
+    /// `reset_for` time. A full rebuild pushes one entry per node;
+    /// paint-only runs retain the block. The entry index is therefore
+    /// always `entries_base + node.0`. Combined with the per-pass
     /// [`Cascades::by_id`] snapshot this gives O(1) `WidgetId → entry`
     /// without a per-widget `WidgetId → u32` hashmap fill.
     pub(crate) entries_base: u32,
@@ -280,6 +282,7 @@ impl LayerCascades {
         self.cascade_inputs
             .resize(n_nodes, CascadeInputHash::default());
         self.subtree_paint_rects.resize(n_nodes, Rect::ZERO);
+        self.subtree_hashes.resize(n_nodes, ContentHash::default());
         self.subtree_ends.resize(n_nodes, 0);
         self.paint_arena.reset_for(n_nodes);
         self.entries_base = entries_base;
@@ -307,9 +310,10 @@ pub(crate) struct Cascades {
     /// `WidgetId → Endpoint` lookup for hit-test consumers
     /// ([`crate::input::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
-    /// the end of the most recent `CascadesEngine::run`** — populated
-    /// by `clone_from(&seen.curr)` in [`CascadesEngine::run`], no
-    /// other writer. The snapshot is required (rather than reading
+    /// the end of the most recent `CascadesEngine::run`** — a full
+    /// rebuild populates it with `clone_from(&seen.curr)`; paint-only
+    /// runs retain it because their preflight includes every widget
+    /// identity. The snapshot is required (rather than reading
     /// `seen.curr` directly) because `response_for` is called during
     /// recording, and `SeenIds::pre_record` clears `curr` at the top
     /// of every record pass — `request_relayout`'s second pass needs
@@ -317,7 +321,8 @@ pub(crate) struct Cascades {
     /// recorded into the freshly-cleared `curr`. `seen.prev` is the
     /// wrong fallback: it carries the previous *frame*'s data, not
     /// the previous *pass*'s. Pays one O(N) memcpy per cascade run
-    /// in exchange for not paying an O(N) hashmap insert per widget.
+    /// on a full rebuild in exchange for not paying an O(N) hashmap
+    /// insert per widget.
     pub(crate) by_id: WidgetIdMap<Endpoint>,
 }
 
@@ -428,16 +433,14 @@ pub(crate) struct HitTargets {
 #[derive(Debug, Default)]
 pub(crate) struct CascadesEngine {
     stack: Vec<Frame>,
+    paint_scratch: PaintArena,
+    display_scale: Option<f32>,
 }
 
 impl CascadesEngine {
-    /// Walk every tree in paint order; produce one `Cascade` row per
-    /// node in each tree's slot, and index the rows that can receive
-    /// pointer or focus input. Reads the layout pass's output, writes
-    /// into `cascades`.
-    /// Root placement (`RootSlot.placement`) is already baked into the
-    /// arranged rects by the layout pass, so no parent-transform
-    /// plumbing is needed here — trees never share NodeId space.
+    /// Update the frozen cascade result. Stable subtrees are retained
+    /// in place; a paint-row cardinality or tree-size change falls
+    /// back to a complete rebuild.
     #[profiling::function]
     pub(crate) fn run(
         &mut self,
@@ -446,47 +449,117 @@ impl CascadesEngine {
         display: Display,
         cascades: &mut Cascades,
     ) {
-        let total: usize = forest.trees.0.iter().map(|t| t.records.len()).sum();
+        if !self.can_update(forest, layout, display, cascades) {
+            self.run_full(forest, layout, display, cascades);
+            return;
+        }
+
+        for (layer, tree) in forest.trees.iter_paint_order() {
+            let n = tree.records.len();
+            self.stack.clear();
+            self.paint_scratch.reset_for(n);
+            let incremental_complete = self.run_tree::<true>(
+                tree,
+                &layout.layers[layer],
+                &mut cascades.layers[layer],
+                &mut cascades.entries,
+                &mut cascades.hit_entries,
+                display.scale_factor,
+            );
+            if !incremental_complete {
+                self.run_full(forest, layout, display, cascades);
+                return;
+            }
+        }
+    }
+
+    /// A match proves every retained non-paint cascade and hit-test
+    /// column remains valid; the incremental walk only repairs paint.
+    fn can_update(
+        &self,
+        forest: &Forest,
+        layout: &Layout,
+        display: Display,
+        cascades: &Cascades,
+    ) -> bool {
+        if self.display_scale != Some(display.scale_factor) {
+            return false;
+        }
+        let total: usize = forest.trees.0.iter().map(|tree| tree.records.len()).sum();
+        if cascades.entries.len() != total {
+            return false;
+        }
+        let mut entries_base = 0u32;
+        for (layer, tree) in forest.trees.iter_paint_order() {
+            let n = tree.records.len();
+            let lc = &cascades.layers[layer];
+            if lc.entries_base != entries_base
+                || lc.static_hash != tree.rollups.cascade_static
+                || lc.subtree_hashes.len() != n
+            {
+                return false;
+            }
+            let base = entries_base as usize;
+            if cascades.entries.layout_rect()[base..base + n] != layout.layers[layer].rect {
+                return false;
+            }
+            if cascades.entries.widget_id()[base..base + n] != tree.records.widget_id()[..] {
+                return false;
+            }
+            if lc
+                .subtree_ends
+                .iter()
+                .zip(tree.records.subtree_end())
+                .any(|(&previous, current)| previous != current.end())
+            {
+                return false;
+            }
+            entries_base += n as u32;
+        }
+        true
+    }
+
+    pub(crate) fn run_full(
+        &mut self,
+        forest: &Forest,
+        layout: &Layout,
+        display: Display,
+        cascades: &mut Cascades,
+    ) {
+        let total: usize = forest.trees.0.iter().map(|tree| tree.records.len()).sum();
         cascades.entries.clear();
         cascades.entries.reserve(total);
         cascades.hit_entries.clear();
 
         for (layer, tree) in forest.trees.iter_paint_order() {
-            let layer_layout = &layout.layers[layer];
             let n = tree.records.len();
             let entries_base = cascades.entries.len() as u32;
             cascades.layers[layer].reset_for(n, entries_base);
             self.stack.clear();
-            run_tree(
+            let full_complete = self.run_tree::<false>(
                 tree,
-                layer_layout,
+                &layout.layers[layer],
                 &mut cascades.layers[layer],
                 &mut cascades.entries,
                 &mut cascades.hit_entries,
-                &mut self.stack,
                 display.scale_factor,
             );
-            // Invariant guarding `Cascades::entry_idx_of`'s
-            // `entries_base + node.0` arithmetic: every node in
-            // `tree.records` must push exactly one `EntryRow`. An
-            // early-continue / skip-invisible optimization inside
-            // `run_tree` that doesn't push would silently shift every
-            // later widget's entry by one.
-            debug_assert_eq!(
+            assert!(full_complete);
+            cascades.layers[layer]
+                .subtree_hashes
+                .copy_from_slice(&tree.rollups.subtree);
+            assert_eq!(
                 cascades.entries.len() as u32 - entries_base,
                 n as u32,
-                "run_tree pushed {} entries for layer with {n} nodes — every record must push exactly one row to keep entries_base + node.0 valid",
-                cascades.entries.len() as u32 - entries_base,
+                "run_tree must emit one entry per recorded node",
             );
+            cascades.layers[layer].static_hash = tree.rollups.cascade_static;
         }
 
-        // Snapshot `seen.curr` for inter-pass `response_for` lookups.
-        // `request_relayout`'s second pass clears `curr` in
-        // `pre_record` *before* the second pass's widgets call
-        // `response_for(id)`, so the data has to live on `Cascades`
-        // instead. `clone_from` reuses storage — one O(N) memcpy
-        // replaces N per-widget hashmap inserts.
+        // `SeenIds::pre_record` clears `curr` before a relayout pass can
+        // query the preceding pass's responses.
         cascades.by_id.clone_from(&forest.ids.curr);
+        self.display_scale = Some(display.scale_factor);
     }
 }
 
@@ -583,188 +656,220 @@ fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped:
     }
 }
 
-fn run_tree(
-    tree: &Tree,
-    layout: &LayerLayout,
-    lc: &mut LayerCascades,
-    entries: &mut Soa<EntryRow>,
-    hit_entries: &mut Vec<u32>,
-    stack: &mut Vec<Frame>,
-    display_scale: f32,
-) {
-    let n = tree.records.len() as u32;
-    let layout_col = tree.records.layout();
-    let attrs_col = tree.records.attrs();
-    let widget_ids = tree.records.widget_id();
-    let ends = tree.records.subtree_end();
-    let root_prefix = build_cascade_prefix(TranslateScale::IDENTITY, None, false, false);
+impl CascadesEngine {
+    // Compile-time specialization keeps the full rebuild free of incremental branches.
+    fn run_tree<const INCREMENTAL: bool>(
+        &mut self,
+        tree: &Tree,
+        layout: &LayerLayout,
+        lc: &mut LayerCascades,
+        entries: &mut Soa<EntryRow>,
+        hit_entries: &mut Vec<u32>,
+        display_scale: f32,
+    ) -> bool {
+        let n = tree.records.len() as u32;
+        let layout_col = tree.records.layout();
+        let attrs_col = tree.records.attrs();
+        let widget_ids = tree.records.widget_id();
+        let ends = tree.records.subtree_end();
+        let subtree_hashes = tree.rollups.subtree.as_slice();
+        let root_prefix = build_cascade_prefix(TranslateScale::IDENTITY, None, false, false);
 
-    let mut i: u32 = 0;
-    while i < n {
-        // Pop completed frames, rolling each up into its parent.
-        while let Some(top) = stack.last() {
-            if i < top.subtree_end {
-                break;
+        let mut i: u32 = 0;
+        while i < n {
+            // Pop completed frames, rolling each up into its parent.
+            while let Some(top) = self.stack.last() {
+                if i < top.subtree_end {
+                    break;
+                }
+                let popped = self.stack.pop().unwrap();
+                finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
             }
-            let popped = stack.pop().unwrap();
-            finalize_frame(stack, &mut lc.subtree_paint_rects, popped);
-        }
-        let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix) =
-            match stack.last() {
-                Some(p) => (
-                    p.transform,
-                    p.clip,
-                    p.disabled,
-                    p.invisible,
-                    &p.cascade_prefix,
-                ),
-                None => (TranslateScale::IDENTITY, None, false, false, &root_prefix),
+            let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix) =
+                match self.stack.last() {
+                    Some(p) => (
+                        p.transform,
+                        p.clip,
+                        p.disabled,
+                        p.invisible,
+                        &p.cascade_prefix,
+                    ),
+                    None => (TranslateScale::IDENTITY, None, false, false, &root_prefix),
+                };
+
+            let iu = i as usize;
+            let id = NodeId(i);
+            let attrs = attrs_col[iu];
+            let layout_core = layout_col[iu];
+
+            let disabled = parent_dis || attrs.is_disabled();
+            let owner_visible = layout_core.visibility().is_visible();
+            let invisible = parent_inv || !owner_visible;
+
+            let layout_rect = layout.rect[iu];
+            // `.end()` strips the packed grid flag — downstream uses (walk
+            // cursor, leaf compare) need the clean pre-order end.
+            let subtree_end = ends[iu].end();
+            let has_children = subtree_end != i + 1;
+            if INCREMENTAL && lc.subtree_hashes[iu] == subtree_hashes[iu] {
+                if let Some(parent) = self.stack.last_mut() {
+                    parent.subtree_paint_rect =
+                        parent.subtree_paint_rect.union(lc.subtree_paint_rects[iu]);
+                }
+                i = subtree_end;
+                continue;
+            }
+
+            let screen_rect = parent_transform.apply_rect(layout_rect);
+            let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.intersect(c));
+            // The transform descendants inherit *and* direct shapes paint
+            // under (the `Panel::transform` contract): `parent ∘
+            // self_anchored`. Computed once here — `transform_of` is a
+            // sparse-column probe and `compose` is 3×mul+3×add, so the
+            // `None` arm (most nodes have no transform) skips the compose
+            // entirely, the steady-state path. `compute_paint_rect` reuses
+            // this as its `shape_transform` rather than recomposing.
+            //
+            // Scale pivots about the node's own `layout_rect.min`, not the
+            // cascade's (0, 0); `anchored_at` cancels the
+            // `panel.min * (1 - scale)` drift a raw compose against
+            // absolute-coord layout rects would introduce (identity-
+            // preserving — no-op at `scale == 1`). See
+            // `TranslateScale::anchored_at`.
+            let node_transform = tree.transform_of(id);
+            let desc_transform = match node_transform {
+                Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
+                None => parent_transform,
             };
-
-        let iu = i as usize;
-        let id = NodeId(i);
-        let attrs = attrs_col[iu];
-        let layout_core = layout_col[iu];
-
-        let disabled = parent_dis || attrs.is_disabled();
-        let owner_visible = layout_core.visibility().is_visible();
-        let invisible = parent_inv || !owner_visible;
-
-        let layout_rect = layout.rect[iu];
-        // `.end()` strips the packed grid flag — downstream uses (walk
-        // cursor, leaf compare) need the clean pre-order end.
-        let subtree_end = ends[iu].end();
-        let has_children = subtree_end != i + 1;
-        let wid = widget_ids[iu];
-
-        let screen_rect = parent_transform.apply_rect(layout_rect);
-        let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.intersect(c));
-        // The transform descendants inherit *and* direct shapes paint
-        // under (the `Panel::transform` contract): `parent ∘
-        // self_anchored`. Computed once here — `transform_of` is a
-        // sparse-column probe and `compose` is 3×mul+3×add, so the
-        // `None` arm (most nodes have no transform) skips the compose
-        // entirely, the steady-state path. `compute_paint_rect` reuses
-        // this as its `shape_transform` rather than recomposing.
-        //
-        // Scale pivots about the node's own `layout_rect.min`, not the
-        // cascade's (0, 0); `anchored_at` cancels the
-        // `panel.min * (1 - scale)` drift a raw compose against
-        // absolute-coord layout rects would introduce (identity-
-        // preserving — no-op at `scale == 1`). See
-        // `TranslateScale::anchored_at`.
-        let node_transform = tree.transform_of(id);
-        let desc_transform = match node_transform {
-            Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
-            None => parent_transform,
-        };
-        let clips = attrs.clip_mode().is_clip();
-        // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
-        // **before** the body. Direct shapes and descendants both
-        // paint inside it. Mirror that here so per-shape damage rects
-        // and inherited child clips reflect what actually paints —
-        // otherwise a TextEdit's tall text shape (extent = full
-        // shaped buffer) reports damage well past the editor's rect
-        // on every scroll tick.
-        let shape_clip = if clips {
-            let mask_local = layout_rect.deflated_by(layout_core.padding);
-            let mask_screen = parent_transform.apply_rect(mask_local);
-            Some(parent_clip.map_or(mask_screen, |c| mask_screen.intersect(c)))
-        } else {
-            parent_clip
-        };
-        let paint_rect = if owner_visible {
-            compute_paint_rect(
-                PaintRectCtx {
-                    tree,
-                    layout,
-                    node: id,
-                    layout_rect,
-                    visible_rect,
-                    padding: layout_core.padding,
-                    parent_transform,
-                    parent_clip,
-                    shape_clip,
-                    shape_transform: desc_transform,
-                    display_scale,
-                    clips,
-                    has_children,
-                },
-                &mut lc.paint_arena,
-            )
-        } else {
-            lc.paint_arena.node_spans[iu] = Span::new(lc.paint_arena.rows.len() as u32, 0);
-            Rect::ZERO
-        };
-        // Invisible nodes never paint, so seeding their subtree
-        // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
-        // from inflating the ancestor's `subtree_paint_rect` (and
-        // killing the encoder's viewport / damage cull at that
-        // ancestor). Visibility is in `cascade_input` regardless, so
-        // damage tracking is unaffected.
-        let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-        lc.cascade_inputs[iu] = finish_cascade_input(parent_prefix, layout_rect, invisible);
-        lc.subtree_paint_rects[iu] = subtree_seed;
-        lc.subtree_ends[iu] = subtree_end;
-
-        // Descendants inherit the deflated-mask clip — same value the
-        // direct shapes were clipped to above and the encoder pushes
-        // before the body.
-        let desc_clip = shape_clip;
-        let cascaded_off = disabled || invisible;
-        let sense = if cascaded_off {
-            Sense::NONE
-        } else {
-            attrs.sense()
-        };
-        let focusable = !cascaded_off && attrs.is_focusable();
-        if sense != Sense::NONE || focusable {
-            hit_entries.push(entries.len() as u32);
-        }
-        entries.push(EntryRow {
-            widget_id: wid,
-            rect: visible_rect,
-            sense,
-            focusable,
-            disabled,
-            layout_rect,
-            transform: parent_transform,
-        });
-
-        if !has_children {
-            // Leaf: no descendants, so no frame — its
-            // `subtree_paint_rects` slot already holds the seed written
-            // above; fold the seed straight into the parent accumulator
-            // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
-            // identity). Skips a per-leaf Frame push/pop and the 32 B
-            // prefix-hash work leaves could never hand to a child.
-            if let Some(parent) = stack.last_mut() {
-                parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
+            let clips = attrs.clip_mode().is_clip();
+            // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
+            // **before** the body. Direct shapes and descendants both
+            // paint inside it. Mirror that here so per-shape damage rects
+            // and inherited child clips reflect what actually paints —
+            // otherwise a TextEdit's tall text shape (extent = full
+            // shaped buffer) reports damage well past the editor's rect
+            // on every scroll tick.
+            let shape_clip = if clips {
+                let mask_local = layout_rect.deflated_by(layout_core.padding);
+                let mask_screen = parent_transform.apply_rect(mask_local);
+                Some(parent_clip.map_or(mask_screen, |c| mask_screen.intersect(c)))
+            } else {
+                parent_clip
+            };
+            let ctx = PaintRectCtx {
+                tree,
+                layout,
+                node: id,
+                layout_rect,
+                visible_rect,
+                padding: layout_core.padding,
+                parent_transform,
+                parent_clip,
+                shape_clip,
+                shape_transform: desc_transform,
+                display_scale,
+                clips,
+                has_children,
+            };
+            let paint_rect = if INCREMENTAL {
+                let old_span = lc.paint_arena.node_spans[iu];
+                let paint_rect = compute_node_paint(ctx, owner_visible, &mut self.paint_scratch);
+                let new_span = self.paint_scratch.node_spans[iu];
+                if old_span.len != new_span.len {
+                    return false;
+                }
+                lc.paint_arena.rows[old_span.range()]
+                    .copy_from_slice(&self.paint_scratch.rows[new_span.range()]);
+                paint_rect
+            } else {
+                compute_node_paint(ctx, owner_visible, &mut lc.paint_arena)
+            };
+            // Invisible nodes never paint, so seeding their subtree
+            // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
+            // from inflating the ancestor's `subtree_paint_rect` (and
+            // killing the encoder's viewport / damage cull at that
+            // ancestor). Visibility is in `cascade_input` regardless, so
+            // damage tracking is unaffected.
+            let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
+            if INCREMENTAL {
+                lc.subtree_hashes[iu] = subtree_hashes[iu];
+            } else {
+                lc.cascade_inputs[iu] = finish_cascade_input(parent_prefix, layout_rect, invisible);
+                lc.subtree_ends[iu] = subtree_end;
             }
-        } else {
-            stack.push(Frame {
-                transform: desc_transform,
-                clip: desc_clip,
-                disabled,
-                invisible,
-                subtree_end,
-                node_idx: iu,
-                subtree_paint_rect: subtree_seed,
-                cascade_prefix: build_cascade_prefix(
-                    desc_transform,
-                    desc_clip,
+            lc.subtree_paint_rects[iu] = subtree_seed;
+
+            // Descendants inherit the deflated-mask clip — same value the
+            // direct shapes were clipped to above and the encoder pushes
+            // before the body.
+            let desc_clip = shape_clip;
+            if !INCREMENTAL {
+                let cascaded_off = disabled || invisible;
+                let sense = if cascaded_off {
+                    Sense::NONE
+                } else {
+                    attrs.sense()
+                };
+                let focusable = !cascaded_off && attrs.is_focusable();
+                if sense != Sense::NONE || focusable {
+                    hit_entries.push(entries.len() as u32);
+                }
+                entries.push(EntryRow {
+                    widget_id: widget_ids[iu],
+                    rect: visible_rect,
+                    sense,
+                    focusable,
+                    disabled,
+                    layout_rect,
+                    transform: parent_transform,
+                });
+            }
+
+            if !has_children {
+                // Leaf: no descendants, so no frame — its
+                // `subtree_paint_rects` slot already holds the seed written
+                // above; fold the seed straight into the parent accumulator
+                // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
+                // identity). Skips a per-leaf Frame push/pop and the 32 B
+                // prefix-hash work leaves could never hand to a child.
+                if let Some(parent) = self.stack.last_mut() {
+                    parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
+                }
+            } else {
+                self.stack.push(Frame {
+                    transform: desc_transform,
+                    clip: desc_clip,
                     disabled,
                     invisible,
-                ),
-            });
+                    subtree_end,
+                    node_idx: iu,
+                    subtree_paint_rect: subtree_seed,
+                    cascade_prefix: build_cascade_prefix(
+                        desc_transform,
+                        shape_clip,
+                        disabled,
+                        invisible,
+                    ),
+                });
+            }
+            i += 1;
         }
-        i += 1;
+        // Drain frames whose subtree extends to the end of the tree —
+        // they never hit the `< top.subtree_end` exit at the loop head.
+        while let Some(popped) = self.stack.pop() {
+            finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
+        }
+        true
     }
-    // Drain frames whose subtree extends to the end of the tree —
-    // they never hit the `< top.subtree_end` exit at the loop head.
-    while let Some(popped) = stack.pop() {
-        finalize_frame(stack, &mut lc.subtree_paint_rects, popped);
+}
+
+#[inline]
+fn compute_node_paint(ctx: PaintRectCtx<'_>, owner_visible: bool, arena: &mut PaintArena) -> Rect {
+    if !owner_visible {
+        arena.node_spans[ctx.node.idx()] = Span::new(arena.rows.len() as u32, 0);
+        return Rect::ZERO;
     }
+    compute_paint_rect(ctx, arena)
 }
 
 /// Ancestor-derived portion of the `cascade_input` hash — folded once

@@ -206,6 +206,12 @@ fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     ui.forest.trees[Layer::Main].rollups.node[target.idx()]
 }
 
+fn record_cascade_static<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
+    let mut ui = Ui::for_test();
+    let _ = ui.run_at_value_acked(SURFACE, |ui| f(ui));
+    ui.forest.trees[Layer::Main].rollups.cascade_static
+}
+
 #[test]
 fn empty_tree_has_no_hashes() {
     let mut ui = Ui::for_test();
@@ -292,10 +298,16 @@ fn changing_fill_color_changes_hash() {
     let h1 = record_hash(|ui| build_child(ui, Color::rgb(0.2, 0.4, 0.8)));
     let h2 = record_hash(|ui| build_child(ui, Color::rgb(0.9, 0.4, 0.8)));
     assert_ne!(h1, h2);
+    let static_1 = record_cascade_static(|ui| build_child(ui, Color::rgb(0.2, 0.4, 0.8)));
+    let static_2 = record_cascade_static(|ui| build_child(ui, Color::rgb(0.9, 0.4, 0.8)));
+    assert_eq!(
+        static_1, static_2,
+        "paint-only changes must remain eligible for incremental cascade"
+    );
 }
 
 #[test]
-fn widget_id_does_not_affect_hash() {
+fn widget_id_does_not_affect_node_hash() {
     let h1 = record_hash(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("a"))
@@ -423,6 +435,12 @@ fn changing_layout_property_changes_hash() {
         let h1 = record_hash(*a);
         let h2 = record_hash(*b);
         assert_ne!(h1, h2, "case: {label}");
+        let static_1 = record_cascade_static(*a);
+        let static_2 = record_cascade_static(*b);
+        assert_ne!(
+            static_1, static_2,
+            "cascade-static hash missed layout case: {label}"
+        );
     }
 }
 
@@ -594,6 +612,11 @@ fn self_transform_change_flips_node_hash() {
     let h_sub_a = record_subtree_hash(|ui| build(ui, t_a));
     let h_sub_b = record_subtree_hash(|ui| build(ui, t_b));
     assert_ne!(h_sub_a, h_sub_b, "self transform MUST change subtree hash");
+    assert_ne!(
+        record_cascade_static(|ui| build(ui, t_a)),
+        record_cascade_static(|ui| build(ui, t_b)),
+        "self transform MUST change cascade-static hash"
+    );
 
     let identity = TranslateScale::IDENTITY;
     let visual_noop = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);

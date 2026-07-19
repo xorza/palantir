@@ -179,10 +179,12 @@ impl Tree {
         let SubtreeRollups {
             node,
             subtree,
+            cascade_static,
             container_text,
         } = &mut self.rollups;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
+        let mut cascade_static_hasher = Hasher::new();
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
@@ -200,6 +202,7 @@ impl Tree {
                 // `self_transform_change_flips_node_hash`.
                 panel_tab[s.idx()].hash(&mut h);
             }
+            cascade_static_hasher.write_u64(h.finish());
             // Chrome authoring hash is pre-computed at lowering time
             // (`shapes::lower::background`) and stored inline on
             // `ChromeRow.hash`. Both arms write a 1-byte discriminant
@@ -276,6 +279,7 @@ impl Tree {
                 ContentHash(node_hash)
             };
         }
+        *cascade_static = ContentHash(cascade_static_hasher.finish());
     }
 
     /// `NodeId` the next [`Self::open_node`] call will assign — i.e.
