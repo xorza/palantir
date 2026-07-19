@@ -1,130 +1,255 @@
-# Aperture remaining design, performance, and consolidation review
+# Aperture prioritized review
 
-Reviewed 2026-07-17; completed findings pruned 2026-07-18.
+Reviewed 2026-07-17 through 2026-07-19; merged and pruned 2026-07-19.
 
-## Scope
+## Scope and ranking
 
-The original review covered every production Rust and WGSL file under `src/`,
-the animation derive crate, `AGENTS.md`, `README.md`, the animation and layout
-design notes, and the current CPU profile. Tests and benchmarks were read only
-where needed to understand an invariant or prescribe validation; they were not
-reviewed as production modules.
+This is the single backlog from the full-module, text, and data-structure
+reviews. Every item below was checked against the current source when the
+reports were merged. Completed work, superseded proposals, historical review
+narrative, and citations to removed profiling documents have been dropped.
 
-Completed findings have been removed after checking the current code. Three
-findings remain:
+Priority is assigned first by correctness and invariant risk, then by measured
+or structural cost and breadth. Within a priority, higher-impact items come
+first. Performance changes remain benchmark-gated because Aperture requires
+steady-state allocation-free frames and several plausible caches have regressed
+the real frame workload.
 
-- prototype narrower cascade invalidation without weakening correctness;
-- eliminate a repeated Grid intrinsic query;
-- decide how Grid Fill tracks contribute to the Grid's intrinsic size.
+## Priority 0 — Correctness and semantic contracts
 
-The batches below remain ordered by priority and can be implemented and
-validated independently.
+### 1. Reject malformed text metrics at their owning boundary
 
-## Batch 1 — Cache and frame-lifecycle improvement
+- [ ] `TextStyle` exposes raw `font_size_px` and `line_height_mult` and derives
+  unrestricted deserialization at `src/widgets/theme/text_style.rs:17-40`;
+  its helpers perform no validation. `Theme::set_text_scale` validates only
+  the requested scale, mutates `text_scale` before multiplying every stored
+  size, and does not preflight overflow at `src/widgets/theme/mod.rs:100-157`.
+  `ShapeParams` remains raw at `src/text/mod.rs:177-184`: mono accepts every
+  non-empty input, while cosmic rejects only an empty string or
+  `font_size_px <= 0.0`. `Shape::is_noop` ignores both metrics.
 
-- [ ] **Prototype incremental cascade invalidation rather than weakening the
-  global fingerprint.** `cascade_fingerprint` folds each root's full subtree
-  authoring hash at `src/ui/cascade/mod.rs:494-534`, so any paint-only content
-  change reruns the complete cascade at `src/ui/mod.rs:532-555`. The current
-  profile measures cascade self-time around 37-39 microseconds in partial,
-  scrolling, and resizing frames
-  (`docs/frame-cpu-profile-2026-07-17.md:98-117`). Separate stable
-  geometry/ancestor-state columns from paint-row refresh, or invalidate
-  subtrees and repair ancestor paint bounds. Do not simply omit paint from the
-  current fingerprint: that would reuse stale paint arenas and cascade hashes.
-  Validate exact equivalence against a forced-full cascade over transform,
-  clip, visibility, scroll, side-layer, reorder, and paint-only mutations, then
-  benchmark partial and scrolling arms.
+  Introduce a named invariant-bearing text-metrics value whose font size and
+  line height are finite and above the UI epsilon. Use it for theme
+  deserialization and every mono/cosmic shaping dispatch. Preflight all scaled
+  styles before atomically changing a theme, and define finite wrap-width
+  semantics separately.
 
-## Batch 2 — Eliminate repeated intrinsic work
+  Table-test zero, negative, sub-epsilon, NaN, and infinity through theme TOML,
+  direct and reuse shaping, wrap/clip/ellipsis, and `Text`/`TextEdit`
+  recording. Invalid theme input must fail deserialization; invalid runtime
+  input must produce the exact invalid/no-command result without entering
+  cache or renderer state.
 
-- [ ] **Add a paired intrinsic query for Grid Hug cells.** Every span-1
-  Hug-column cell requests `MinContent` and `MaxContent` back-to-back at
-  `src/layout/grid/mod.rs:397-420`. On a cold subtree these are separate
-  recursive walks; at a text leaf they reach the same unbounded shaping input
-  and select two metrics from the same result at
-  `src/layout/intrinsic.rs:174-228`. Add a targeted `intrinsic_range` query that
-  fills both per-node cache slots in one recursion while retaining the
-  single-slot API for Stack's min-only case. Validate exact equivalence for all
-  layout drivers, inspect intrinsic compute counts, and compare forced-miss and
-  resize benchmarks before keeping the added API.
+### 2. Decide whether Grid Fill tracks contribute their content floor to Grid intrinsic size
 
-## Open design decision
+- [ ] The design note says Fill contributes content intrinsic while ignoring
+  weight (`src/layout/intrinsic.md:67-74`). Grid measure follows that floor
+  policy at `src/layout/grid/mod.rs:397-429,889-914`, but
+  `grid::intrinsic` contributes only `Track.min` and skips non-Hug cells at
+  `src/layout/grid/mod.rs:965-1019`.
 
-- [ ] **Decide whether Grid Fill tracks contribute their content floor to the
-  Grid's own intrinsic size.** The design note says Fill contributes content
-  intrinsic while ignoring weight (`src/layout/intrinsic.md:67-74`). Grid
-  measure follows that floor policy at `src/layout/grid/mod.rs:397-429,889-914`,
-  but `grid::intrinsic` contributes only `Track.min` and skips non-Hug cells at
-  `src/layout/grid/mod.rs:951-1019`. An ancestor Stack can therefore allocate
-  from a zero Grid floor, after which the Grid discovers a rigid Fill-cell
-  floor and overflows rather than letting a shrinkable sibling surrender
-  space. Choose and document the intended semantics before changing code. Pin
-  the decision with a Fill Grid track containing a Fixed descendant, both as a
-  Hug root and as one of several Stack Fill siblings.
+  An ancestor Stack can therefore allocate from a zero Grid floor, after which
+  the Grid discovers a rigid Fill-cell floor and overflows rather than letting
+  a shrinkable sibling surrender space. Choose and document the intended
+  behavior before changing code. Pin the decision with a Fill Grid track
+  containing a Fixed descendant, both as a Hug root and as one of several
+  Stack Fill siblings.
 
-## Tempting changes intentionally excluded
+## Priority 1 — High-impact structural costs
 
-- Do not fuse widget-ID resolution with endpoint reservation or fuse shape
-  lowering with hashing. Both were implemented and benchmarked as regressions;
-  see `docs/frame-cpu-profile-2026-07-17.md:119-184`.
-- Do not enable a project-wide x86-64-v3 target. It measured faster but violates
-  the supported CPU baseline; see
-  `docs/frame-cpu-profile-2026-07-17.md:86-96`.
-- Do not merge the Stack and Grid Fill solvers without first changing their
-  documented semantics. Their freeze cadence is intentionally different.
-- Do not consolidate the composer's geometry-to-scissor conversion with the
-  backend's damage-to-scissor conversion. They deliberately differ in snapping,
-  outward rounding, and antialias padding.
-- Cargo dependency analysis found no unused Aperture dependencies.
+### 3. Replace overlapping measure-cache snapshots with a double-buffered whole-tree snapshot
 
-## Supplemental full-module review — 2026-07-18
+- [ ] Every non-leaf cache miss recursively measures its children and then
+  copies its complete `[start..subtree_end)` result into an independent
+  snapshot at `src/layout/engine.rs:572-628` and
+  `src/layout/cache/mod.rs:309-372`. Retained storage is therefore
+  proportional to ancestor/descendant pairs: quadratic for a unary chain and
+  `O(N log N)` for a balanced tree. The existing adversarial fixtures retain
+  18,914 rows for a 194-node chain and 5,403 rows for a 1,098-node balanced
+  tree (`src/layout/measure-cache.md:56-63`).
 
-This follow-up pass re-read every production Rust and WGSL file under `src/`,
-the animation derive crate and manifests, the local architecture/design notes,
-and the current review. Tests were consulted only to verify contracts and
-prescribe regressions. The three findings above describe the earlier pruned
-pass; the remaining finding below is additional and independently
-implementable.
+  Keep read-only previous-frame and writable current-frame arenas per tree.
+  Store each node's desired size and text span, each shaped text run, and each
+  Grid hug payload once in pre-order. Per-`WidgetId` descriptors should point
+  into the previous tree's contiguous subtree ranges, preserving arbitrary
+  subtree hits and `root_intrinsics`; the fully materialized current output
+  becomes the next previous snapshot.
 
-## Batch 5 — Medium: Reject malformed values at their owning boundary
+  This is distinct from the rejected selective-root prototype documented at
+  `src/layout/measure-cache.md:65-75`: all lookup roots remain available, so
+  localized sibling hits survive. Require exact output and hit-count
+  equivalence, linear retained-row counts, and no regression in cached,
+  forced-miss, resize, localized, unary, or balanced cache benchmarks.
 
-- [ ] **Establish one text-metric invariant across theme loading, layout, and
-  shaping.** `TextStyle` exposes raw `font_size_px` and `line_height_mult` and
-  derives unrestricted deserialization at
-  `src/widgets/theme/text_style.rs:14-40`; its helpers perform no validation at
-  `src/widgets/theme/text_style.rs:65-97`. `Theme` validates only
-  `text_scale`, mutates it before multiplying every stored size, and does not
-  preflight overflow at `src/widgets/theme/mod.rs:100-157`. At the shaping
-  boundary, `ShapeParams` is also raw at `src/text/mod.rs:170-184`: mono
-  accepts every non-empty input and computes with negative/NaN metrics at
-  `src/text/mod.rs:699-727`, while cosmic checks only
-  `font_size_px <= 0.0` before quantization and `Metrics::new` at
-  `src/text/cosmic.rs:53-55,311-335`; `Shape::is_noop` ignores both metrics at
-  `src/shape.rs:827-834`. Introduce a named, invariant-bearing text-metrics
-  value with font size and line height finite and above the UI epsilon, use it for
-  deserialization and every mono/cosmic dispatch, and preflight all scaled
-  styles before atomically updating a theme. Define finite wrap-width semantics
-  separately. Table-test zero, negative, sub-EPS, NaN, and infinity across
-  theme TOML, direct/reuse shaping, wrap/clip/ellipsis, and Text/TextEdit
-  recording; theme input must fail deserialization and runtime shaping must
-  return the exact invalid/no-command result without entering cache or renderer
-  state.
+## Priority 2 — Broad hot-path improvements
 
-## Targeted text-carrier consolidation review — 2026-07-18
+### 4. Prototype incremental cascade invalidation
 
-This follow-up traced the production path from `InternedStr` authoring through
-`RecordStore` normalization, `ShapeRecord`, layout, and encoding, then checked
-Aperture's manifest and its primary Darkroom consumer. The transient-label and
-single-recorded-representation findings were completed on 2026-07-18:
-text-taking widgets now defer borrowed/owned input into the active arena,
-`InternedStr` is arena-only, every `RecordedText` is one private `(Span, hash)`,
-and Darkroom's per-record scene projection stores arena handles directly.
+- [ ] `cascade_fingerprint` folds each root's complete subtree authoring hash
+  at `src/ui/cascade/mod.rs:511-555`, so any paint-only content change reruns
+  the full cascade from `src/ui/mod.rs:543-558`.
 
-## Text changes intentionally excluded
+  Separate stable geometry/ancestor-state columns from paint-row refresh, or
+  invalidate subtrees and repair ancestor paint bounds. Do not merely omit
+  paint from the current fingerprint; that would reuse stale paint arenas and
+  cascade hashes.
 
-- Do not merge `InternedStr` and `RecordedText` into one `Rc`-owning carrier.
-  Recorded shapes would then keep the active arena's strong count above one,
-  forcing `clear_text` to rotate arenas every record pass
-  (`src/record_store.rs:101-118`). The phase split is what lets recorded spans
-  remain owner-free while escaped authoring handles retain their exact bytes.
+  First re-establish a current cascade timing baseline. Then validate exact
+  equivalence against a forced-full cascade across transform, clip,
+  visibility, scroll, side-layer, reorder, and paint-only mutations, and
+  benchmark partial and scrolling frames before keeping the added machinery.
+
+### 5. Union mutually exclusive duration and spring animation payloads
+
+- [ ] `AnimRow<T>` stores `current`, `target`, `velocity`, and
+  `segment_start` simultaneously at `src/animation/mod.rs:244-271`, although
+  `velocity` is spring-only and `segment_start`/`elapsed` are duration-only.
+
+  Replace the parallel motion fields with
+  `MotionRow<T>::Duration { segment_start, elapsed }` or
+  `MotionRow<T>::Spring { velocity }`. This removes one full `T` from every
+  row and should reduce the current 624-byte `AnimRow<AnimatedLook>` to roughly
+  480 bytes. If settled rows still dominate, separately
+  measure a state-specific layout where a settled row retains only its last
+  value and active duration/spring rows live in dense arenas.
+
+  Preserve same-frame double-tick suppression and untouched-slot eviction.
+  Pin sizes and exact trajectories for appearance, retarget, motion-kind
+  switch, settle, and multi-pass frames; compare animated-widget and broad
+  frame benchmarks.
+
+### 6. Query Grid Hug intrinsic ranges in one recursion
+
+- [ ] Every span-1 Hug-column cell requests `MinContent` and `MaxContent`
+  back-to-back at `src/layout/grid/mod.rs:416-417`. On a cold subtree these are
+  separate recursive walks; a text leaf shapes the same unbounded input and
+  selects two metrics from it.
+
+  Add a targeted `intrinsic_range` query that fills both per-node cache slots
+  in one recursion while retaining the single-slot API for Stack's min-only
+  case. Validate exact equivalence for every layout driver, inspect intrinsic
+  compute counts, and compare forced-miss and resize benchmarks before keeping
+  the larger API.
+
+### 7. Store widget IDs only for interactive cascade rows
+
+- [ ] `EntryRow.widget_id` stores eight bytes for every node at
+  `src/ui/cascade/mod.rs:137-165`, although its consumers are reverse hit-test
+  scans over the sparse `hit_entries` list. Cascades already retain a
+  `WidgetId -> Endpoint` snapshot for response lookup.
+
+  Add a parallel `hit_widget_ids` vector pushed with `hit_entries` at
+  `src/ui/cascade/mod.rs:722`, remove `widget_id` from `EntryRow`, and
+  reverse-iterate the compact hit vectors together. This saves eight bytes for
+  every inert layout/container node without adding a lookup to the hit-test
+  hot path.
+
+  Pin cross-layer paint order, focusable-only rows, scroll/pinch routing, and
+  duplicate-ID rejection. Compare cascade storage and pointer-move timing on
+  container-heavy and fully interactive trees.
+
+### 8. Keep one response snapshot in `WidgetEntry`
+
+- [ ] `enter_widget` copies a 136-byte `ResponseState` solely to OR one
+  disabled bit, then returns both copies in a 280-byte `WidgetEntry` at
+  `src/widgets/mod.rs:65-76`. Theme selection continues to take the full state
+  by value even though it only reads interaction flags
+  (`src/widgets/theme/mod.rs:179-228` and
+  `src/widgets/theme/widget_look.rs:116-126`).
+
+  Retain one mutable state plus the original disabled bit, borrow
+  `ResponseState` throughout `resolve_look` and the theme `pick` chain, then
+  restore the original bit before moving the state into `Response::eager`.
+
+  Validate freshly self-disabled visuals, ancestor-disabled state,
+  interaction suppression, and the eager response's deliberately unmerged
+  value. Pin `ResponseState` and `WidgetEntry` sizes and compare button-heavy
+  frame profiles.
+
+## Priority 3 — Focused and workload-dependent compaction
+
+### 9. Make the paint-animation reverse index truly sparse
+
+- [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
+  at shape `k` resizes it to `k + 1` at
+  `src/forest/tree/paint_anims.rs:232-255`. A caret or spinner recorded after a
+  large static scene therefore retains two bytes for every preceding shape.
+
+  Keep sorted `shape_indices: Vec<u32>` beside the existing sparse entries.
+  The encoder visits shape indices monotonically, so one cursor can advance
+  across skipped or culled ranges and sample matches in amortized `O(1)`.
+  Wake and damage already iterate the sparse entries directly.
+
+  Test animation on the first and last shape, multiple animations, and
+  viewport/damage subtree culls. Assert that storage scales with animated
+  shape count, not the largest shape index.
+
+### 10. Intern record-local gradients and resolve each unique ID once per encode
+
+- [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
+  `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
+  All gradient-lowering arms reach that append through
+  `src/forest/shapes/lower.rs:64-121`, and encoding probes the shared atlas
+  again for every occurrence.
+
+  Add a capacity-retained record-local content interner keyed by the existing
+  canonical gradient hash, with equality confirmation on collisions. Add
+  retained encode scratch mapping each `GradientId` to one
+  `ResolvedGradient`. Include geometry in the interner identity: identical
+  stops with different axes or gradient kinds may share an atlas row but not a
+  complete recorded gradient.
+
+  Test identical gradients, same-stops/different-geometry gradients, every
+  interpolation/spread mode, and forced hash collisions. Benchmark solid-only
+  and gradient-heavy frames and require zero steady-state allocations.
+
+### 11. Pack command kind and payload offset into one `u32`
+
+- [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
+  at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding
+  touch both at `src/renderer/frontend/cmd_buffer/mod.rs:389-417`.
+
+  There are 13 command kinds, so four tag bits and a 28-bit word offset fit in
+  one descriptor. The offset still permits a 1 GiB payload arena. This reduces
+  metadata from five to four bytes per command, removes one retained
+  allocation, and turns iteration into one sequential descriptor load.
+
+  Preserve the typed `u32` payload arena and unaligned `Pod` reads.
+  Exhaustively round-trip every command kind, pin the representable offset
+  boundary, and compare command-buffer bytes plus encode/compose timing.
+
+## Current guardrails
+
+- Keep `Tree.records` as SoA and the six-byte `ExtrasIdx` sparse indirection.
+- Keep `StateMap`'s type-erased registry with dense per-type values and owner
+  columns.
+- Keep the `u32` command payload arena, render-kind output vectors, text grid,
+  and retained composer/backend scratch separate; their consumers and
+  lifetimes differ.
+- Keep the direct `Vec<ShapeRecord>` sequence. Compact tagged handles backed by
+  typed payload arenas were tried and did not improve frame performance.
+- Keep public gradient stops inline for allocation-free authoring. Gradient
+  interning belongs after lowering.
+- Do not weaken damage or cascade fingerprints to save storage.
+- Do not merge Stack and Grid Fill solvers without first choosing shared
+  semantics; their freeze cadence intentionally differs.
+- Do not consolidate composer geometry-to-scissor conversion with backend
+  damage-to-scissor conversion; snapping, outward rounding, and antialias
+  padding differ.
+- Keep `InternedStr` and `RecordedText` separate. Recorded spans must remain
+  owner-free so `RecordStore` can recycle the active text arena.
+
+## Validation baseline
+
+Each implemented item should run its targeted tests and benchmarks, the
+allocation-free CPU and GPU checks, and standard crate verification. Track
+live layouts with the ignored size test and compiler layout output:
+
+```sh
+cargo test --lib print_hot_struct_sizes -- --nocapture --ignored
+RUSTC_BOOTSTRAP=1 cargo rustc --lib -- -Zprint-type-sizes
+cargo test
+cargo fmt --all
+cargo check
+cargo clippy --all-targets -- -D warnings
+```
