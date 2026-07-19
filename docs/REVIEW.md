@@ -15,26 +15,9 @@ first. Performance changes remain benchmark-gated because Aperture requires
 steady-state allocation-free frames and several plausible caches have regressed
 the real frame workload.
 
-## Priority 0 — Correctness and semantic contracts
-
-### 1. Decide whether Grid Fill tracks contribute their content floor to Grid intrinsic size
-
-- [ ] The design note says Fill contributes content intrinsic while ignoring
-  weight (`src/layout/intrinsic.md:67-74`). Grid measure follows that floor
-  policy at `src/layout/grid/mod.rs:397-429,889-914`, but
-  `grid::intrinsic` contributes only `Track.min` and skips non-Hug cells at
-  `src/layout/grid/mod.rs:965-1019`.
-
-  An ancestor Stack can therefore allocate from a zero Grid floor, after which
-  the Grid discovers a rigid Fill-cell floor and overflows rather than letting
-  a shrinkable sibling surrender space. Choose and document the intended
-  behavior before changing code. Pin the decision with a Fill Grid track
-  containing a Fixed descendant, both as a Hug root and as one of several
-  Stack Fill siblings.
-
 ## Priority 1 — High-impact structural costs
 
-### 2. Replace overlapping measure-cache snapshots with a double-buffered whole-tree snapshot
+### 1. Replace overlapping measure-cache snapshots with a double-buffered whole-tree snapshot
 
 - [ ] Every non-leaf cache miss recursively measures its children and then
   copies its complete `[start..subtree_end)` result into an independent
@@ -60,7 +43,7 @@ the real frame workload.
 
 ## Priority 2 — Broad hot-path improvements
 
-### 3. Prototype incremental cascade invalidation
+### 2. Prototype incremental cascade invalidation
 
 - [ ] `cascade_fingerprint` folds each root's complete subtree authoring hash
   at `src/ui/cascade/mod.rs:511-555`, so any paint-only content change reruns
@@ -76,7 +59,7 @@ the real frame workload.
   visibility, scroll, side-layer, reorder, and paint-only mutations, and
   benchmark partial and scrolling frames before keeping the added machinery.
 
-### 4. Union mutually exclusive duration and spring animation payloads
+### 3. Union mutually exclusive duration and spring animation payloads
 
 - [ ] `AnimRow<T>` stores `current`, `target`, `velocity`, and
   `segment_start` simultaneously at `src/animation/mod.rs:244-271`, although
@@ -95,7 +78,7 @@ the real frame workload.
   switch, settle, and multi-pass frames; compare animated-widget and broad
   frame benchmarks.
 
-### 5. Query Grid Hug intrinsic ranges in one recursion
+### 4. Query Grid Hug intrinsic ranges in one recursion
 
 - [ ] Every span-1 Hug-column cell requests `MinContent` and `MaxContent`
   back-to-back at `src/layout/grid/mod.rs:416-417`. On a cold subtree these are
@@ -108,7 +91,7 @@ the real frame workload.
   compute counts, and compare forced-miss and resize benchmarks before keeping
   the larger API.
 
-### 6. Store widget IDs only for interactive cascade rows
+### 5. Store widget IDs only for interactive cascade rows
 
 - [ ] `EntryRow.widget_id` stores eight bytes for every node at
   `src/ui/cascade/mod.rs:137-165`, although its consumers are reverse hit-test
@@ -125,7 +108,7 @@ the real frame workload.
   duplicate-ID rejection. Compare cascade storage and pointer-move timing on
   container-heavy and fully interactive trees.
 
-### 7. Keep one response snapshot in `WidgetEntry`
+### 6. Keep one response snapshot in `WidgetEntry`
 
 - [ ] `enter_widget` copies a 136-byte `ResponseState` solely to OR one
   disabled bit, then returns both copies in a 280-byte `WidgetEntry` at
@@ -145,7 +128,7 @@ the real frame workload.
 
 ## Priority 3 — Focused and workload-dependent compaction
 
-### 8. Make the paint-animation reverse index truly sparse
+### 7. Make the paint-animation reverse index truly sparse
 
 - [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
   at shape `k` resizes it to `k + 1` at
@@ -161,7 +144,7 @@ the real frame workload.
   viewport/damage subtree culls. Assert that storage scales with animated
   shape count, not the largest shape index.
 
-### 9. Intern record-local gradients and resolve each unique ID once per encode
+### 8. Intern record-local gradients and resolve each unique ID once per encode
 
 - [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
   `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
@@ -180,7 +163,7 @@ the real frame workload.
   interpolation/spread mode, and forced hash collisions. Benchmark solid-only
   and gradient-heavy frames and require zero steady-state allocations.
 
-### 10. Pack command kind and payload offset into one `u32`
+### 9. Pack command kind and payload offset into one `u32`
 
 - [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
   at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding
