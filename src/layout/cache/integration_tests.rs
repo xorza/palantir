@@ -81,7 +81,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("Title:")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -89,7 +89,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("value column")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 1))
                                     .show(ui)
@@ -112,7 +112,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("outer-L")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -135,7 +135,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                                             col,
                                                         )))
                                                         .style(
-                                                            TextStyle::default()
+                                                            &TextStyle::default()
                                                                 .with_font_size(14.0),
                                                         )
                                                         .grid_cell((0, col))
@@ -162,7 +162,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("L1:")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -170,7 +170,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("v1")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node(),
@@ -185,7 +185,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("Description:")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -193,7 +193,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             capture.push(
                                 Text::new("end")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 2))
                                     .show(ui)
                                     .node(),
@@ -256,7 +256,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("cell", i)))
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(),
                             );
@@ -287,7 +287,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("fill", i)))
                                     .size((Sizing::fill(1.0), Sizing::HUG))
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(),
                             );
@@ -310,7 +310,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("tag", i)))
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(),
                             );
@@ -328,7 +328,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(*label)
                                     .id(WidgetId::from_hash(("layer", i)))
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(),
                             );
@@ -350,7 +350,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                 Text::new(label)
                                     .id(WidgetId::from_hash(("pin", i)))
                                     .position(pos)
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(),
                             );
@@ -405,7 +405,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             .show(ui, |ui| {
                                 Text::new("Title:")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui);
                                 Text::new(
@@ -413,18 +413,18 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                      Pack my box with five dozen liquor jugs.",
                                 )
                                 .auto_id()
-                                .style(TextStyle::default().with_font_size(14.0))
+                                .style(&TextStyle::default().with_font_size(14.0))
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .grid_cell((0, 1))
                                 .show(ui);
                                 Text::new("Tag:")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .grid_cell((1, 0))
                                     .show(ui);
                                 Text::new("layout, grid, intrinsic, wrapping")
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((1, 1))
                                     .show(ui);
@@ -477,7 +477,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                 capture.push(
                                     Text::new("Title:")
                                         .auto_id()
-                                        .style(TextStyle::default().with_font_size(14.0))
+                                        .style(&TextStyle::default().with_font_size(14.0))
                                         .grid_cell((0, 0))
                                         .show(ui)
                                         .node(),
@@ -488,7 +488,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                          adipiscing elit, sed do eiusmod tempor.",
                                     )
                                     .auto_id()
-                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .style(&TextStyle::default().with_font_size(14.0))
                                     .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 1))
                                     .show(ui)

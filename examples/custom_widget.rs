@@ -79,16 +79,14 @@ impl<'a> Stepper<'a> {
         }
 
         // Intern the formatted number into the record store (no
-        // lingering `String` alloc) and reuse the theme's text style.
+        // lingering `String` alloc).
         let label = ui.intern(self.value.to_string());
-        let label_style = ui.theme.text;
 
         // 2) Open the container and record its three children.
         ui.node(id, self.element, None, |ui| {
             step_button(ui, minus_id, minus, Glyph::Minus);
             Text::new(label)
                 .id(id.with("value"))
-                .style(label_style)
                 .text_align(Align::v(VAlign::Center))
                 .show(ui);
             step_button(ui, plus_id, plus, Glyph::Plus);

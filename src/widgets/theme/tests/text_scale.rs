@@ -10,6 +10,7 @@ fn set_text_scale_is_absolute_and_total() {
         .looks
         .disabled
         .text
+        .as_ref()
         .expect("button disabled has a text override")
         .font_size_px;
 
@@ -17,7 +18,19 @@ fn set_text_scale_is_absolute_and_total() {
     assert_eq!(theme.text_scale(), 2.0);
     assert!((theme.text.font_size_px - body * 2.0).abs() < 1e-3);
     assert!((theme.tooltip.text.font_size_px - tooltip * 2.0).abs() < 1e-3);
-    assert!((theme.button.looks.disabled.text.unwrap().font_size_px - disabled * 2.0).abs() < 1e-3);
+    assert!(
+        (theme
+            .button
+            .looks
+            .disabled
+            .text
+            .as_ref()
+            .unwrap()
+            .font_size_px
+            - disabled * 2.0)
+            .abs()
+            < 1e-3
+    );
 
     theme.set_text_scale(1.5);
     assert_eq!(theme.text_scale(), 1.5);
@@ -26,7 +39,19 @@ fn set_text_scale_is_absolute_and_total() {
     theme.set_text_scale(1.0);
     assert!((theme.text.font_size_px - body).abs() < 1e-3);
     assert!((theme.tooltip.text.font_size_px - tooltip).abs() < 1e-3);
-    assert!((theme.button.looks.disabled.text.unwrap().font_size_px - disabled).abs() < 1e-3);
+    assert!(
+        (theme
+            .button
+            .looks
+            .disabled
+            .text
+            .as_ref()
+            .unwrap()
+            .font_size_px
+            - disabled)
+            .abs()
+            < 1e-3
+    );
 }
 
 #[test]
@@ -100,6 +125,7 @@ fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
         .looks
         .disabled
         .text
+        .as_ref()
         .expect("button disabled has a text override")
         .font_size_px;
     let mut scaled = baseline;
@@ -116,6 +142,7 @@ fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
             .looks
             .disabled
             .text
+            .as_ref()
             .expect("button disabled has a text override")
             .font_size_px,
         disabled_font_size * 2.0,
@@ -131,6 +158,7 @@ fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
             .looks
             .disabled
             .text
+            .as_ref()
             .expect("button disabled has a text override")
             .font_size_px,
         disabled_font_size * 1.5,

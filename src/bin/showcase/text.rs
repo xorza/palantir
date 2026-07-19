@@ -90,7 +90,7 @@ fn wrap_panel(ui: &mut Ui, id: &'static str, width: f32, text: &'static str) {
         .show(ui, |ui| {
             Text::new(text)
                 .auto_id()
-                .style(body_style())
+                .style(&body_style())
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
         });
@@ -110,13 +110,13 @@ fn compositions(ui: &mut Ui) {
                 .show(ui, |ui| {
                     Text::new(PARAGRAPH)
                         .auto_id()
-                        .style(body_style())
+                        .style(&body_style())
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui);
                     Text::new("right column")
                         .auto_id()
-                        .style(body_style())
+                        .style(&body_style())
                         .grid_cell((0, 1))
                         .show(ui);
                 });
@@ -147,12 +147,12 @@ fn compositions(ui: &mut Ui) {
                         let r = i as u16;
                         Text::new(label)
                             .id_salt(("prop-label", i))
-                            .style(body_style())
+                            .style(&body_style())
                             .grid_cell((r, 0))
                             .show(ui);
                         Text::new(value)
                             .id_salt(("prop-value", i))
-                            .style(body_style())
+                            .style(&body_style())
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((r, 1))
                             .show(ui);
@@ -209,7 +209,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
                 .show(ui);
             Text::new(message)
                 .id_salt(("message", key))
-                .style(body_style())
+                .style(&body_style())
                 .size((Sizing::FILL, Sizing::HUG))
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);

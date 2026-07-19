@@ -26,7 +26,7 @@ pub struct Slider<'a> {
     min: f32,
     max: f32,
     step: Option<f32>,
-    style: Option<SliderTheme>,
+    style: Option<&'a SliderTheme>,
 }
 
 impl<'a> Slider<'a> {
@@ -51,9 +51,9 @@ impl<'a> Slider<'a> {
         self
     }
 
-    /// Override the theme for this slider. `None` (default) inherits
+    /// Borrow a theme override for this slider. The default inherits
     /// [`crate::Theme::slider`].
-    pub fn style(mut self, s: SliderTheme) -> Self {
+    pub fn style(mut self, s: &'a SliderTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -65,7 +65,7 @@ impl<'a> Slider<'a> {
             merged: state,
         } = enter_widget(ui, &self.element);
 
-        let theme = self.style.as_ref().unwrap_or(&ui.theme.slider);
+        let theme = self.style.unwrap_or(&ui.theme.slider);
         let knob = theme.knob_size;
         let rail_h = theme.rail_thickness;
         let fill_color = theme.fill;

@@ -8,7 +8,7 @@ use crate::widgets::theme::palette::Palette;
 /// thumb are filled rounded rects. The thumb fill picks between
 /// `thumb` / `thumb_hover` / `thumb_active` based on the bar leaf's
 /// hover + drag state (see `scroll::push_bar_nodes`).
-#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness of the bar in logical px.
     pub width: f32,

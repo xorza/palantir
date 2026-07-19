@@ -89,7 +89,7 @@ pub(crate) fn page(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
 pub(crate) fn header(ui: &mut Ui, text: &'static str) {
     Text::new(text)
         .id_salt(("page-header", text))
-        .style(TextStyle::default().with_font_size(13.0))
+        .style(&TextStyle::default().with_font_size(13.0))
         .text_wrap(TextWrap::WrapWithOverflow)
         .show(ui);
 }
@@ -109,7 +109,7 @@ pub(crate) fn section<H: Hash + Copy>(
         .show(ui, |ui| {
             Text::new(title)
                 .id_salt((id, "section-title"))
-                .style(caption_style())
+                .style(&caption_style())
                 .show(ui);
             body(ui);
         });
@@ -154,7 +154,7 @@ pub(crate) fn captioned_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce
         .show(ui, |ui| {
             Text::new(label)
                 .id_salt((label, "cell-caption"))
-                .style(caption_style())
+                .style(&caption_style())
                 .show(ui);
             body(ui);
         });
@@ -168,7 +168,7 @@ fn demo_cell_on(ui: &mut Ui, label: &'static str, bg: Background, body: impl FnO
         .show(ui, |ui| {
             Text::new(label)
                 .id_salt((label, "cell-caption"))
-                .style(caption_style())
+                .style(&caption_style())
                 .show(ui);
             Panel::zstack()
                 .id_salt((label, "cell-body"))

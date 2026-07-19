@@ -68,10 +68,10 @@ pub(crate) fn toggle_row<'ui, 'text>(
     paint_indicator: impl FnOnce(&mut Ui, f32),
 ) -> Response<'ui> {
     let box_size = chrome.box_size;
-    let fallback_text = ui.theme.text;
+    let fallback_text = ui.theme.text.clone();
     let mut look = chrome
         .look_target
-        .animate(ui, id, fallback_text, chrome.anim);
+        .animate(ui, id, &fallback_text, chrome.anim);
     if chrome.pill {
         look.background.corners = Corners::all(box_size * 0.5);
     }
@@ -91,7 +91,7 @@ pub(crate) fn toggle_row<'ui, 'text>(
         if !label.is_empty() {
             Text::new(label)
                 .id(id.with("label"))
-                .style(look.text)
+                .style(&look.text)
                 .text_align(Align::v(VAlign::Center))
                 .show(ui);
         }

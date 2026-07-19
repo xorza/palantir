@@ -235,7 +235,7 @@ fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .show(ui, |ui| {
             Text::new(label)
                 .id_salt(("chip-label", &key))
-                .style(TextStyle::default().with_font_size(12.0))
+                .style(&TextStyle::default().with_font_size(12.0))
                 .show(ui);
         });
 }
@@ -270,7 +270,7 @@ fn grid_tile(
     tile.show(ui, |ui| {
         Text::new(label)
             .id_salt((label, "tile-label"))
-            .style(on_swatch_text().with_font_size(11.0))
+            .style(&on_swatch_text().with_font_size(11.0))
             .show(ui);
     });
 }

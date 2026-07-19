@@ -189,7 +189,7 @@ struct BarPlan {
     thumb_rect: Rect,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 struct BarResponses {
     theme: ScrollbarTheme,
     thumb_id_v: WidgetId,
@@ -209,7 +209,7 @@ impl BarResponses {
         let track_id_v = scroll_id.with("__vtrack");
         let track_id_h = scroll_id.with("__htrack");
         Self {
-            theme: ui.theme.scrollbar,
+            theme: ui.theme.scrollbar.clone(),
             thumb_id_v,
             thumb_id_h,
             track_id_v,
@@ -228,14 +228,14 @@ struct BarPlans {
     horizontal: Option<BarPlan>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 struct BarFrame {
     responses: BarResponses,
     layout: BarLayout,
     plans: BarPlans,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 struct ScrollFrame {
     scroll: ScrollLayoutState,
     bars: Option<BarFrame>,
@@ -748,6 +748,7 @@ impl Scroll {
         let offset = frame.scroll.offset;
         let (reserve_y, reserve_x) = frame
             .bars
+            .as_ref()
             .map(|bars| (bars.layout.reserve_y, bars.layout.reserve_x))
             .unwrap_or_default();
 

@@ -64,20 +64,19 @@ impl WidgetLook {
     /// everything; call shape stays the same so callers don't fork
     /// on motion.
     ///
-    /// `fallback_text` is used when `self.text == None` — pass
-    /// `ui.theme.text` (TextStyle is `Copy`). The selected look is consumed so
-    /// its background moves into the animation target.
+    /// `fallback_text` is used when `self.text == None`. The selected look is
+    /// consumed so its background moves into the animation target.
     #[inline(always)]
     pub fn animate(
         self,
         ui: &mut Ui,
         id: WidgetId,
-        fallback_text: TextStyle,
+        fallback_text: &TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
         let target = AnimatedLook {
             background: self.background.unwrap_or_default(),
-            text: self.text.unwrap_or(fallback_text),
+            text: self.text.unwrap_or_else(|| fallback_text.clone()),
         };
         ui.animate(id, Self::SLOT_LOOK, target, spec)
     }

@@ -9,7 +9,7 @@ use crate::primitives::color::Color;
 /// Semantic color roster for theme assembly. Fields are the roles the
 /// widget recipes key on; derived tints (the border ladder) live as
 /// methods so a palette swap moves them automatically.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Palette {
     /// Primary foreground / label ink.
     pub text: Color,

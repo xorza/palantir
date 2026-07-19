@@ -194,7 +194,7 @@ fn changing_available_forces_miss_and_remeasure() {
                 )
                 .id(WidgetId::from_hash("fill"))
                 .size((Sizing::FILL, Sizing::HUG))
-                .style(TextStyle::default().with_font_size(16.0))
+                .style(&TextStyle::default().with_font_size(16.0))
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
             });

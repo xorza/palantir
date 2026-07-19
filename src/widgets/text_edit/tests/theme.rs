@@ -102,7 +102,7 @@ fn text_widget_color_override_wins_over_theme() {
             node = Some(
                 Text::new("hi")
                     .auto_id()
-                    .style(TextStyle::default().with_color(Color::rgb(0.0, 1.0, 0.0)))
+                    .style(&TextStyle::default().with_color(Color::rgb(0.0, 1.0, 0.0)))
                     .show(ui)
                     .node(),
             );

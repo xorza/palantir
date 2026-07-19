@@ -77,7 +77,7 @@ pub(crate) fn build(ui: &mut Ui) {
         let readout = ui.fmt(format_args!("split fractions: h = {h:.2}   v = {v:.2}"));
         Text::new(readout)
             .id_salt("readout")
-            .style(caption_style())
+            .style(&caption_style())
             .show(ui);
     });
 
@@ -96,7 +96,7 @@ fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
         .show(ui, |ui| {
             Text::new(label)
                 .id_salt((label, "title"))
-                .style(caption_style())
+                .style(&caption_style())
                 .show(ui);
             body(ui);
         });
@@ -111,7 +111,7 @@ fn row(ui: &mut Ui, i: u32) {
         .show(ui, |ui| {
             Text::new(format!("row {i:02}"))
                 .id_salt(("scroll-row-label", i))
-                .style(on_swatch_text())
+                .style(&on_swatch_text())
                 .show(ui);
         });
 }
@@ -125,7 +125,7 @@ fn col(ui: &mut Ui, i: u32) {
         .show(ui, |ui| {
             Text::new(format!("col {i:02}"))
                 .id_salt(("scroll-col-label", i))
-                .style(on_swatch_text())
+                .style(&on_swatch_text())
                 .show(ui);
         });
 }
@@ -150,7 +150,7 @@ fn grid(ui: &mut Ui) {
                             .show(ui, |ui| {
                                 Text::new(format!("{r},{c}"))
                                     .id_salt(("xy-cell-label", r, c))
-                                    .style(on_swatch_text().with_font_size(11.0))
+                                    .style(&on_swatch_text().with_font_size(11.0))
                                     .show(ui);
                             });
                     }

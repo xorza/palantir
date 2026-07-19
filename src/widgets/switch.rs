@@ -80,8 +80,8 @@ impl<'a> Switch<'a> {
         let knob_color = theme.indicator;
         let row_gap = theme.row_gap;
 
-        let fallback_text = ui.theme.text;
-        let mut look = look_target.animate(ui, id, fallback_text, anim);
+        let fallback_text = ui.theme.text.clone();
+        let mut look = look_target.animate(ui, id, &fallback_text, anim);
         look.background.corners = Corners::all(track_h * 0.5); // pill track
 
         // The track's stroke auto-insets the Canvas content box by its
@@ -118,7 +118,7 @@ impl<'a> Switch<'a> {
             if !label.is_empty() {
                 Text::new(label)
                     .id(id.with("label"))
-                    .style(look.text)
+                    .style(&look.text)
                     .text_align(Align::v(VAlign::Center))
                     .show(ui);
             }

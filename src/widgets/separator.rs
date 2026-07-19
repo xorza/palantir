@@ -60,7 +60,7 @@ impl Separator {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = ui.theme.separator;
+        let theme = &ui.theme.separator;
         let t = self.thickness.unwrap_or(theme.thickness).max(0.0);
         // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
         // the same sentinel convention as theme padding/margin.

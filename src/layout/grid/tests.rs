@@ -461,7 +461,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                             Text::new(case.text)
                                 .auto_id()
                                 .style(
-                                    TextStyle::default()
+                                    &TextStyle::default()
                                         .with_font_size(16.0)
                                         .with_line_height_mult(1.0),
                                 )

@@ -12,13 +12,7 @@ use crate::widgets::theme::palette::Palette;
 /// size invalidates the text-shape cache every frame and animating
 /// leading doesn't read meaningfully.
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    aperture_anim_derive::Animatable,
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, aperture_anim_derive::Animatable,
 )]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
@@ -75,9 +69,9 @@ impl TextStyle {
     }
 
     /// Chainable single-axis tweak. Lets callers write
-    /// `theme.text.with_font_size(14.0)` instead of `TextStyle {
-    /// font_size_px: 14.0, ..theme.text }`. All widget setters take a
-    /// whole `TextStyle` (all-or-nothing), so the common case of
+    /// `theme.text.clone().with_font_size(14.0)` instead of `TextStyle {
+    /// font_size_px: 14.0, ..theme.text.clone() }`. All widget style setters
+    /// borrow a whole `TextStyle` (all-or-nothing), so the common case of
     /// "theme defaults, but smaller" goes through one of these.
     #[inline]
     pub const fn with_font_size(mut self, px: f32) -> Self {
