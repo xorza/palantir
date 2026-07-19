@@ -14,41 +14,6 @@ impl std::hash::Hash for Size {
     }
 }
 
-/// Custom serde so an infinite axis ("unbounded" — e.g. a tooltip's
-/// max height) survives formats with no infinity literal, such as JSON.
-/// Each axis serializes as
-/// `Option<f32>`: a finite value stays a plain number, a non-finite
-/// one becomes `None` (`null`). On the way back `None`
-/// restores `f32::INFINITY`. Finite sizes round-trip byte-identically
-/// to the old `{ w, h }` form. NaN / -INFINITY collapse to
-/// +INFINITY — neither is a meaningful `Size` value, and both read as
-/// "unbounded" anyway.
-impl serde::Serialize for Size {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let finite = |v: f32| v.is_finite().then_some(v);
-        let mut st = s.serialize_struct("Size", 2)?;
-        st.serialize_field("w", &finite(self.w))?;
-        st.serialize_field("h", &finite(self.h))?;
-        st.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Size {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        struct Raw {
-            w: Option<f32>,
-            h: Option<f32>,
-        }
-        let r = Raw::deserialize(d)?;
-        Ok(Size::new(
-            r.w.unwrap_or(f32::INFINITY),
-            r.h.unwrap_or(f32::INFINITY),
-        ))
-    }
-}
-
 impl Size {
     pub const ZERO: Self = Self { w: 0.0, h: 0.0 };
     pub const INF: Self = Self {

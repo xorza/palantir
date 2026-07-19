@@ -17,7 +17,7 @@ fn h(b: Brush) -> u64 {
     s.finish()
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, ::serde::Deserialize)]
 struct StopsDocument {
     stops: GradientStops,
 }
@@ -167,7 +167,7 @@ fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
 
 #[test]
 fn every_gradient_variant_round_trips_validated_stops() {
-    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
     struct BrushDocument {
         brush: Brush,
     }

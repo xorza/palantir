@@ -11,6 +11,7 @@
 
 pub(crate) mod animatable;
 pub(crate) mod easing;
+mod serde;
 pub(crate) mod spring;
 
 use crate::animation::animatable::Animatable;
@@ -85,13 +86,6 @@ enum AnimMotion {
         damping: f32,
         substep_dt: f32,
     },
-}
-
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum AnimSpecWire {
-    Duration { secs: f32, ease: Easing },
-    Spring { stiffness: f32, damping: f32 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,45 +191,6 @@ impl AnimSpec {
         match self.motion {
             AnimMotion::Duration { .. } => AnimKind::Duration,
             AnimMotion::Spring { .. } => AnimKind::Spring,
-        }
-    }
-}
-
-impl serde::Serialize for AnimSpec {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let wire = match self.motion {
-            AnimMotion::Duration { secs, ease } => AnimSpecWire::Duration { secs, ease },
-            AnimMotion::Spring {
-                stiffness, damping, ..
-            } => AnimSpecWire::Spring { stiffness, damping },
-        };
-        serde::Serialize::serialize(&wire, serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for AnimSpec {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let wire = <AnimSpecWire as serde::Deserialize>::deserialize(deserializer)?;
-        match wire {
-            AnimSpecWire::Duration { secs, ease } => {
-                if !duration_is_valid(secs) {
-                    return Err(serde::de::Error::custom(DURATION_ERROR));
-                }
-                Ok(Self::duration_from_validated(secs, ease))
-            }
-            AnimSpecWire::Spring { stiffness, damping } => {
-                let substep_dt = stable_substep_dt(stiffness, damping);
-                if !spring_params_are_valid(stiffness, damping, substep_dt) {
-                    return Err(serde::de::Error::custom(SPRING_ERROR));
-                }
-                Ok(Self::spring_from_validated(stiffness, damping, substep_dt))
-            }
         }
     }
 }
