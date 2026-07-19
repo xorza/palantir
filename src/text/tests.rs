@@ -22,7 +22,7 @@ fn measure_truncated(
     text: &str,
     params: ShapeParams,
     fit: LineFit,
-) -> MeasureResult {
+) -> TextMeasurement {
     let unbounded = cosmic.measure(
         text,
         ShapeParams {
@@ -355,54 +355,60 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
     let wid = WidgetId::from_hash("a");
     let h1 = ContentHash(1);
     let h2 = ContentHash(2);
-    let r1 = reuse.shape_unbounded(
-        &m,
-        identity(wid, h1),
-        "hi",
-        hash_str("hi"),
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
-    let r2 = reuse.shape_unbounded(
-        &m,
-        identity(wid, h2),
-        "hi",
-        hash_str("hi"),
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 24.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
+    let r1 = reuse
+        .shape_unbounded(
+            &m,
+            identity(wid, h1),
+            "hi",
+            hash_str("hi"),
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .unwrap();
+    let r2 = reuse
+        .shape_unbounded(
+            &m,
+            identity(wid, h2),
+            "hi",
+            hash_str("hi"),
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 24.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .unwrap();
     assert_ne!(
         r1.size.h, r2.size.h,
         "different leading via different hash → distinct cache entries",
     );
     // Re-querying the original hash after refreshing the single identity
     // row must recover the original 16 px measurement.
-    let r1_again = reuse.shape_unbounded(
-        &m,
-        identity(wid, h1),
-        "hi",
-        hash_str("hi"),
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
+    let r1_again = reuse
+        .shape_unbounded(
+            &m,
+            identity(wid, h1),
+            "hi",
+            hash_str("hi"),
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .unwrap();
     assert_eq!(r1.size.h, r1_again.size.h);
 }
 
@@ -416,21 +422,23 @@ fn shape_wrap_panics_without_prime() {
     let m = TextShaper::default();
     let mut reuse = TextReuseCache::default();
     let wid = WidgetId::from_hash("a");
-    reuse.shape_wrap(
-        &m,
-        identity(wid, ContentHash(1)),
-        "hi",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: Some(100.0),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-        100,
-        LineFit::Wrap,
-    );
+    reuse
+        .shape_wrap(
+            &m,
+            identity(wid, ContentHash(1)),
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: Some(100.0),
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+            100,
+            LineFit::Wrap,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -780,6 +788,25 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     // `buffer_for(INVALID)` must return None — even after measuring,
     // no buffer was cached for the empty input.
     assert!(c.buffer_for(r.key).is_none());
+
+    let shaper = TextShaper::mono();
+    let calls = shaper.measure_calls();
+    let r = shaper
+        .measure(
+            "",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0 * LINE_HEIGHT_MULT,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .expect("empty text has valid shaping parameters");
+    assert_eq!(r.size, Size::ZERO);
+    assert_eq!(r.intrinsic_min, 0.0);
+    assert_eq!(shaper.measure_calls(), calls);
 }
 
 #[test]
@@ -787,24 +814,72 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
     use crate::primitives::approx::EPS;
 
     let cases = [
-        ("zero font", 0.0, 16.0),
-        ("negative font", -1.0, 16.0),
-        ("sub-epsilon font", EPS * 0.5, 16.0),
-        ("epsilon font", EPS, 16.0),
-        ("NaN font", f32::NAN, 16.0),
-        ("infinite font", f32::INFINITY, 16.0),
-        ("zero line height", 16.0, 0.0),
-        ("negative line height", 16.0, -1.0),
-        ("sub-epsilon line height", 16.0, EPS * 0.5),
-        ("epsilon line height", 16.0, EPS),
-        ("NaN line height", 16.0, f32::NAN),
-        ("infinite line height", 16.0, f32::INFINITY),
+        ("zero font", 0.0, 16.0, ShapeParamsError::InvalidFontSize),
+        (
+            "negative font",
+            -1.0,
+            16.0,
+            ShapeParamsError::InvalidFontSize,
+        ),
+        (
+            "sub-epsilon font",
+            EPS * 0.5,
+            16.0,
+            ShapeParamsError::InvalidFontSize,
+        ),
+        ("epsilon font", EPS, 16.0, ShapeParamsError::InvalidFontSize),
+        (
+            "NaN font",
+            f32::NAN,
+            16.0,
+            ShapeParamsError::InvalidFontSize,
+        ),
+        (
+            "infinite font",
+            f32::INFINITY,
+            16.0,
+            ShapeParamsError::InvalidFontSize,
+        ),
+        (
+            "zero line height",
+            16.0,
+            0.0,
+            ShapeParamsError::InvalidLineHeight,
+        ),
+        (
+            "negative line height",
+            16.0,
+            -1.0,
+            ShapeParamsError::InvalidLineHeight,
+        ),
+        (
+            "sub-epsilon line height",
+            16.0,
+            EPS * 0.5,
+            ShapeParamsError::InvalidLineHeight,
+        ),
+        (
+            "epsilon line height",
+            16.0,
+            EPS,
+            ShapeParamsError::InvalidLineHeight,
+        ),
+        (
+            "NaN line height",
+            16.0,
+            f32::NAN,
+            ShapeParamsError::InvalidLineHeight,
+        ),
+        (
+            "infinite line height",
+            16.0,
+            f32::INFINITY,
+            ShapeParamsError::InvalidLineHeight,
+        ),
     ];
     let mono = TextShaper::mono();
     let cosmic = TextShaper::with_bundled_fonts();
-    let mut direct_cosmic = CosmicMeasure::with_bundled_fonts();
-
-    for (label, font_size_px, line_height_px) in cases {
+    for (label, font_size_px, line_height_px, expected_error) in cases {
         let params = ShapeParams {
             font_size_px,
             line_height_px,
@@ -815,25 +890,14 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
         };
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
-            let result = shaper.measure("hi", params);
-            assert_eq!(result.size, Size::ZERO, "{label}");
-            assert_eq!(result.intrinsic_min, 0.0, "{label}");
-            assert!(result.key.is_invalid(), "{label}");
+            let error = shaper.measure("hi", params).unwrap_err();
+            assert_eq!(error, expected_error, "{label}");
             assert_eq!(
                 shaper.measure_calls(),
                 calls,
                 "{label}: invalid metrics reached a shaping dispatch",
             );
         }
-
-        let cached = direct_cosmic.cache_len();
-        let result = direct_cosmic.measure("hi", params);
-        assert!(result.key.is_invalid(), "{label}");
-        assert_eq!(
-            direct_cosmic.cache_len(),
-            cached,
-            "{label}: invalid metrics entered the cosmic cache",
-        );
     }
 }
 
@@ -859,13 +923,15 @@ fn reuse_rejects_invalid_metrics_before_all_width_fit_paths() {
         };
         let calls = shaper.measure_calls();
 
-        let unbounded = reuse.shape_unbounded(&shaper, identity, "hi", 1, params);
-        let bounded = reuse.shape_wrap(&shaper, identity, "hi", params, 40, fit);
-
-        for result in [unbounded, bounded] {
-            assert_eq!(result.size, Size::ZERO, "fit={fit:?}");
-            assert_eq!(result.intrinsic_min, 0.0, "fit={fit:?}");
-            assert!(result.key.is_invalid(), "fit={fit:?}");
+        for error in [
+            reuse
+                .shape_unbounded(&shaper, identity, "hi", 1, params)
+                .unwrap_err(),
+            reuse
+                .shape_wrap(&shaper, identity, "hi", params, 40, fit)
+                .unwrap_err(),
+        ] {
+            assert_eq!(error, ShapeParamsError::InvalidFontSize, "fit={fit:?}",);
         }
         assert!(
             !reuse.has_entry(widget_id, 0),
@@ -889,14 +955,14 @@ fn bounded_width_requires_a_finite_nonnegative_value() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    assert!(base.validated().is_some(), "None is the unbounded form");
+    assert!(base.validated().is_ok(), "None is the unbounded form");
     assert!(
         ShapeParams {
             max_width_px: Some(0.0),
             ..base
         }
         .validated()
-        .is_some(),
+        .is_ok(),
         "zero is a valid bounded width",
     );
     for (label, width) in [
@@ -909,11 +975,18 @@ fn bounded_width_requires_a_finite_nonnegative_value() {
             max_width_px: Some(width),
             ..base
         };
-        assert!(params.validated().is_none(), "{label}");
+        assert_eq!(
+            params.validated().unwrap_err(),
+            ShapeParamsError::InvalidMaxWidth,
+            "{label}",
+        );
         let shaper = TextShaper::with_bundled_fonts();
         let calls = shaper.measure_calls();
-        let result = shaper.measure("hi", params);
-        assert!(result.key.is_invalid(), "{label}");
+        assert_eq!(
+            shaper.measure("hi", params).unwrap_err(),
+            ShapeParamsError::InvalidMaxWidth,
+            "{label}",
+        );
         assert_eq!(shaper.measure_calls(), calls, "{label}");
     }
 }
@@ -1116,76 +1189,84 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     let mut reuse = TextReuseCache::default();
     let wid = WidgetId::from_hash("w");
     let hash = ContentHash(7);
-    reuse.shape_unbounded(
-        &m,
-        identity(wid, hash),
-        "hi",
-        hash_str("hi"),
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
+    reuse
+        .shape_unbounded(
+            &m,
+            identity(wid, hash),
+            "hi",
+            hash_str("hi"),
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .unwrap();
     let baseline = m.measure_calls();
     // First wrap shape — dispatches once.
-    reuse.shape_wrap(
-        &m,
-        identity(wid, hash),
-        "hi",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: Some(200.0),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Left,
-        },
-        200 * 64,
-        LineFit::Wrap,
-    );
+    reuse
+        .shape_wrap(
+            &m,
+            identity(wid, hash),
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: Some(200.0),
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Left,
+            },
+            200 * 64,
+            LineFit::Wrap,
+        )
+        .unwrap();
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
     // Repeat same call — cache hit, no dispatch.
-    reuse.shape_wrap(
-        &m,
-        identity(wid, hash),
-        "hi",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: Some(200.0),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Left,
-        },
-        200 * 64,
-        LineFit::Wrap,
-    );
+    reuse
+        .shape_wrap(
+            &m,
+            identity(wid, hash),
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: Some(200.0),
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Left,
+            },
+            200 * 64,
+            LineFit::Wrap,
+        )
+        .unwrap();
     assert_eq!(
         m.measure_calls(),
         after_left,
         "identical wrap call must hit cache"
     );
     // Same target, different halign — must dispatch again.
-    reuse.shape_wrap(
-        &m,
-        identity(wid, hash),
-        "hi",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: Some(200.0),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Right,
-        },
-        200 * 64,
-        LineFit::Wrap,
-    );
+    reuse
+        .shape_wrap(
+            &m,
+            identity(wid, hash),
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: Some(200.0),
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Right,
+            },
+            200 * 64,
+            LineFit::Wrap,
+        )
+        .unwrap();
     assert_eq!(
         m.measure_calls(),
         after_left + 1,
@@ -1201,34 +1282,38 @@ fn sweep_removed_evicts_reuse_entries() {
     let mut reuse = TextReuseCache::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    reuse.shape_unbounded(
-        &m,
-        identity(a, ContentHash(1)),
-        "hi",
-        hash_str("hi"),
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
-    reuse.shape_unbounded(
-        &m,
-        identity(b, ContentHash(2)),
-        "yo",
-        hash_str("yo"),
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
+    reuse
+        .shape_unbounded(
+            &m,
+            identity(a, ContentHash(1)),
+            "hi",
+            hash_str("hi"),
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .unwrap();
+    reuse
+        .shape_unbounded(
+            &m,
+            identity(b, ContentHash(2)),
+            "yo",
+            hash_str("yo"),
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Auto,
+            },
+        )
+        .unwrap();
     assert!(reuse.has_entry(a, 0));
     assert!(reuse.has_entry(b, 0));
     let removed: FxHashSet<WidgetId> = FxHashSet::from_iter([a]);

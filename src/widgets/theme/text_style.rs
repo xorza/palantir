@@ -59,7 +59,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
 
     fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
         TextMetrics::from_size_and_multiplier(style.font_size_px, style.line_height_mult)
-            .ok_or(TEXT_METRICS_ERROR)?;
+            .map_err(|_| TEXT_METRICS_ERROR)?;
         Ok(Self {
             font_size_px: style.font_size_px,
             color: style.color,
@@ -84,7 +84,7 @@ impl Default for TextStyle {
 
 impl TextStyle {
     pub(crate) fn metrics(&self) -> Option<TextMetrics> {
-        TextMetrics::from_size_and_multiplier(self.font_size_px, self.line_height_mult)
+        TextMetrics::from_size_and_multiplier(self.font_size_px, self.line_height_mult).ok()
     }
 
     /// Resolve the absolute line-height-in-px the shaper will use for
