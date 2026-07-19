@@ -52,11 +52,10 @@ fn caret_blinks_on_and_off_while_focused() {
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         use crate::display::Display;
         let display = Display::from_physical(NARROW, 1.0);
-        ui.record(
+        ui.record_acked(
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
             |ui| f(ui),
         );
-        ui.frame_runtime.frame_submitted = true;
     }
 
     let mut ui = ui_at_no_cosmic(NARROW);
@@ -156,14 +155,12 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
-        let report = ui.record(
+        ui.record_acked(
             FrameStamp::new(display, Duration::from_secs_f32(t_secs)),
             |ui| {
                 record(ui, buf);
             },
-        );
-        ui.frame_runtime.frame_submitted = true;
-        report
+        )
     };
 
     // Frame 1: warm up so the editor's WidgetId is recorded.
@@ -220,11 +217,9 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t: f32| {
-        let r = ui.record(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
+        ui.record_acked(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
             body(ui, buf)
-        });
-        ui.frame_runtime.frame_submitted = true;
-        r
+        })
     };
 
     // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any

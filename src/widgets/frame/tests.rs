@@ -13,10 +13,10 @@ use glam::UVec2;
 #[test]
 fn frame_paints_a_single_rounded_rect() {
     let mut ui = Ui::for_test();
-    let mut frame_node = None;
-    ui.run_at(UVec2::new(200, 100), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            frame_node = Some(
+    let frame_node = ui.run_at_value(UVec2::new(200, 100), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("decoration"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
@@ -26,11 +26,10 @@ fn frame_paints_a_single_rounded_rect() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node(),
-            );
-        });
+                    .node()
+            })
+            .inner
     });
-    let frame_node = frame_node.unwrap();
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
         ui.forest.trees[Layer::Main]

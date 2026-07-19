@@ -74,44 +74,37 @@ fn interleaved_shapes_record_correct_order() {
         }
     }
     let mut ui = Ui::for_test();
-    let mut p = None;
-    ui.run_at_acked(SURFACE, |ui| {
-        p = Some(
-            Panel::vstack()
-                .auto_id()
-                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-                .show(ui, |ui| {
-                    ui.add_shape(pos_rect(0));
-                    Frame::new()
-                        .id(WidgetId::from_hash("c0"))
-                        .background(Background {
-                            fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                            ..Default::default()
-                        })
-                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                        .show(ui);
-                    ui.add_shape(pos_rect(1));
-                    Frame::new()
-                        .id(WidgetId::from_hash("c1"))
-                        .background(Background {
-                            fill: Color::rgb(0.0, 0.0, 1.0).into(),
-                            ..Default::default()
-                        })
-                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                        .show(ui);
-                    ui.add_shape(pos_rect(2));
-                })
-                .node(),
-        );
+    let p = ui.run_at_value_acked(SURFACE, |ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+            .show(ui, |ui| {
+                ui.add_shape(pos_rect(0));
+                Frame::new()
+                    .id(WidgetId::from_hash("c0"))
+                    .background(Background {
+                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        ..Default::default()
+                    })
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui);
+                ui.add_shape(pos_rect(1));
+                Frame::new()
+                    .id(WidgetId::from_hash("c1"))
+                    .background(Background {
+                        fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                        ..Default::default()
+                    })
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui);
+                ui.add_shape(pos_rect(2));
+            })
+            .node()
     });
-    let p = p.unwrap();
     let pi = p.idx();
     let p_shapes = ui.forest.trees[Layer::Main].records.shape_span()[pi];
     assert_eq!(p_shapes.len, 3);
-    let children: Vec<_> = ui.forest.trees[Layer::Main]
-        .children(p)
-        .map(|c| c.id)
-        .collect();
+    let children: Vec<_> = ui.main_child_ids(p);
     assert_eq!(children.len(), 2);
     let c0_shapes = ui.forest.trees[Layer::Main].records.shape_span()[children[0].idx()];
     let c1_shapes = ui.forest.trees[Layer::Main].records.shape_span()[children[1].idx()];
@@ -209,11 +202,8 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
 
 fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut ui = Ui::for_test();
-    let mut target = None;
-    ui.run_at_acked(SURFACE, |ui| {
-        target = Some(f(ui));
-    });
-    ui.forest.trees[Layer::Main].rollups.node[target.unwrap().idx()]
+    let target = ui.run_at_value_acked(SURFACE, |ui| f(ui));
+    ui.forest.trees[Layer::Main].rollups.node[target.idx()]
 }
 
 #[test]
@@ -480,11 +470,8 @@ fn child_hash_does_not_affect_parent_hash() {
 
 fn record_subtree_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut ui = Ui::for_test();
-    let mut target = None;
-    ui.run_at_acked(SURFACE, |ui| {
-        target = Some(f(ui));
-    });
-    ui.forest.trees[Layer::Main].rollups.subtree[target.unwrap().idx()]
+    let target = ui.run_at_value_acked(SURFACE, |ui| f(ui));
+    ui.forest.trees[Layer::Main].rollups.subtree[target.idx()]
 }
 
 #[test]
@@ -679,41 +666,38 @@ fn grid_per_node_hash_independent_of_arena_slot() {
 #[test]
 fn subtree_end_rolls_up_during_recording() {
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at_acked(SURFACE, |ui| {
-        root = Some(
-            Panel::hstack()
-                .id(WidgetId::from_hash("root"))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("a"))
-                        .size(10.0)
-                        .show(ui);
-                    Panel::hstack()
-                        .id(WidgetId::from_hash("inner"))
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id(WidgetId::from_hash("b"))
-                                .size(10.0)
-                                .show(ui);
-                            Frame::new()
-                                .id(WidgetId::from_hash("c"))
-                                .size(10.0)
-                                .show(ui);
-                        });
-                    Frame::new()
-                        .id(WidgetId::from_hash("d"))
-                        .size(10.0)
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value_acked(SURFACE, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(10.0)
+                    .show(ui);
+                Panel::hstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("b"))
+                            .size(10.0)
+                            .show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("c"))
+                            .size(10.0)
+                            .show(ui);
+                    });
+                Frame::new()
+                    .id(WidgetId::from_hash("d"))
+                    .size(10.0)
+                    .show(ui);
+            })
+            .node()
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
     assert_eq!(ui.forest.trees[Layer::Main].records.len(), 7);
     let ends = ui.forest.trees[Layer::Main].records.subtree_end();
     assert_eq!(ends[0].end(), 7, "synthetic viewport spans everything");
-    assert_eq!(ends[root.unwrap().idx()].end(), 7, "root");
+    assert_eq!(ends[root.idx()].end(), 7, "root");
     assert_eq!(ends[2].end(), 3, "leaf a");
     assert_eq!(ends[3].end(), 6, "inner spans b,c");
     assert_eq!(ends[4].end(), 5, "leaf b");
@@ -1039,54 +1023,50 @@ fn mid_recording_popup_keeps_trees_independent() {
 
     let mut ui = Ui::for_test();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
-    let mut parent = None;
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
-        parent = Some(
-            Panel::vstack()
-                .id(WidgetId::from_hash("main-parent"))
-                .show(ui, |ui| {
-                    ui.add_shape(marker(0));
-                    Frame::new()
-                        .id(WidgetId::from_hash("mc1"))
-                        .size(20.0)
-                        .show(ui);
-                    ui.add_shape(marker(1));
-                    Frame::new()
-                        .id(WidgetId::from_hash("mc2"))
-                        .size(20.0)
-                        .show(ui);
-                    ui.add_shape(marker(2));
-                    ui.layer(Layer::Popup, popup_anchor, None, |ui| {
-                        Panel::vstack()
-                            .id(WidgetId::from_hash("popup-root"))
-                            .show(ui, |ui| {
-                                ui.add_shape(marker(10));
-                                Frame::new()
-                                    .id(WidgetId::from_hash("popup-leaf"))
-                                    .size(10.0)
-                                    .show(ui);
-                                ui.add_shape(marker(11));
-                                Frame::new()
-                                    .id(WidgetId::from_hash("popup-leaf-2"))
-                                    .size(10.0)
-                                    .show(ui);
-                            });
-                    });
-                    ui.add_shape(marker(3));
-                    Frame::new()
-                        .id(WidgetId::from_hash("mc3"))
-                        .size(20.0)
-                        .show(ui);
-                    Frame::new()
-                        .id(WidgetId::from_hash("mc4"))
-                        .size(20.0)
-                        .show(ui);
-                    ui.add_shape(marker(4));
-                })
-                .node(),
-        );
+    let parent = ui.run_at_value_acked(UVec2::new(400, 400), |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-parent"))
+            .show(ui, |ui| {
+                ui.add_shape(marker(0));
+                Frame::new()
+                    .id(WidgetId::from_hash("mc1"))
+                    .size(20.0)
+                    .show(ui);
+                ui.add_shape(marker(1));
+                Frame::new()
+                    .id(WidgetId::from_hash("mc2"))
+                    .size(20.0)
+                    .show(ui);
+                ui.add_shape(marker(2));
+                ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("popup-root"))
+                        .show(ui, |ui| {
+                            ui.add_shape(marker(10));
+                            Frame::new()
+                                .id(WidgetId::from_hash("popup-leaf"))
+                                .size(10.0)
+                                .show(ui);
+                            ui.add_shape(marker(11));
+                            Frame::new()
+                                .id(WidgetId::from_hash("popup-leaf-2"))
+                                .size(10.0)
+                                .show(ui);
+                        });
+                });
+                ui.add_shape(marker(3));
+                Frame::new()
+                    .id(WidgetId::from_hash("mc3"))
+                    .size(20.0)
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("mc4"))
+                    .size(20.0)
+                    .show(ui);
+                ui.add_shape(marker(4));
+            })
+            .node()
     });
-    let parent = parent.unwrap();
     let main_tree = &ui.forest.trees[Layer::Main];
     let popup_tree = &ui.forest.trees[Layer::Popup];
 
@@ -1153,34 +1133,31 @@ fn extras_columns_split_by_field_kind() {
 #[test]
 fn child_iter_traverses_correctly_after_finalize() {
     let mut ui = Ui::for_test();
-    let mut root = None;
-    ui.run_at_acked(SURFACE, |ui| {
-        root = Some(
-            Panel::hstack()
-                .id(WidgetId::from_hash("root"))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id(WidgetId::from_hash("a"))
-                        .size(10.0)
-                        .show(ui);
-                    Panel::hstack()
-                        .id(WidgetId::from_hash("inner"))
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id(WidgetId::from_hash("b"))
-                                .size(10.0)
-                                .show(ui);
-                        });
-                    Frame::new()
-                        .id(WidgetId::from_hash("c"))
-                        .size(10.0)
-                        .show(ui);
-                })
-                .node(),
-        );
+    let root = ui.run_at_value_acked(SURFACE, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(10.0)
+                    .show(ui);
+                Panel::hstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("b"))
+                            .size(10.0)
+                            .show(ui);
+                    });
+                Frame::new()
+                    .id(WidgetId::from_hash("c"))
+                    .size(10.0)
+                    .show(ui);
+            })
+            .node()
     });
     let kids: Vec<u32> = ui.forest.trees[Layer::Main]
-        .children(root.unwrap())
+        .children(root)
         .map(|c| c.id.0)
         .collect();
     // Synthetic viewport at NodeId(0); user "root" at NodeId(1).

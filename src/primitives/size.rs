@@ -15,10 +15,10 @@ impl std::hash::Hash for Size {
 }
 
 /// Custom serde so an infinite axis ("unbounded" — e.g. a tooltip's
-/// max height) survives formats with no infinity literal (Rhai, and
-/// JSON which `serde_rhai` routes through). Each axis serializes as
+/// max height) survives formats with no infinity literal, such as JSON.
+/// Each axis serializes as
 /// `Option<f32>`: a finite value stays a plain number, a non-finite
-/// one becomes `None` (`null` / Rhai `()`). On the way back `None`
+/// one becomes `None` (`null`). On the way back `None`
 /// restores `f32::INFINITY`. Finite sizes round-trip byte-identically
 /// to the old `{ w, h }` form. NaN / -INFINITY collapse to
 /// +INFINITY — neither is a meaningful `Size` value, and both read as

@@ -761,11 +761,8 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
         let mut ui = Ui::for_test();
-        let mut wrap_kids = None;
-        ui.run_at(UVec2::new(surface_w, 600), |ui| {
-            wrap_kids = Some(build(ui));
-        });
-        let (wrap, kids) = wrap_kids.unwrap();
+        let wrap_kids = ui.run_at_value(UVec2::new(surface_w, 600), build);
+        let (wrap, kids) = wrap_kids;
         let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for k in &kids {
@@ -774,7 +771,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
             assert!(
                 right <= wrap_right + 0.5,
                 "button overflows wrapstack at surface_w={surface_w}: \
-                 wrap_right={wrap_right} button_right={right} (rect={r:?})",
+               wrap_right={wrap_right} button_right={right} (rect={r:?})",
             );
         }
     }
