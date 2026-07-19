@@ -88,12 +88,6 @@ enum AnimMotion {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AnimKind {
-    Duration,
-    Spring,
-}
-
 const MAX_DURATION_SECS: f32 = 60.0;
 const DURATION_ERROR: &str = "animation duration must be finite and in 0.0..=60.0 seconds";
 const SPRING_ERROR: &str =
@@ -185,12 +179,26 @@ impl AnimSpec {
             AnimMotion::Spring { .. } => false,
         }
     }
+}
 
-    #[inline]
-    const fn kind(self) -> AnimKind {
-        match self.motion {
-            AnimMotion::Duration { .. } => AnimKind::Duration,
-            AnimMotion::Spring { .. } => AnimKind::Spring,
+/// State carried only by the active motion model. The variant is also
+/// the row's mode tag, so duration and spring state cannot drift apart.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum MotionRow<T: Animatable> {
+    Duration { segment_start: T, elapsed: f32 },
+    Spring { velocity: T },
+}
+
+impl<T: Animatable> MotionRow<T> {
+    fn new(motion: AnimMotion, current: &T) -> Self {
+        match motion {
+            AnimMotion::Duration { .. } => Self::Duration {
+                segment_start: current.clone(),
+                elapsed: 0.0,
+            },
+            AnimMotion::Spring { .. } => Self::Spring {
+                velocity: T::zero(),
+            },
         }
     }
 }
@@ -199,16 +207,13 @@ impl AnimSpec {
 pub(crate) struct AnimRow<T: Animatable> {
     pub(crate) current: T,
     pub(crate) target: T,
-    pub(crate) velocity: T,      // springs only; zero for duration rows
-    pub(crate) elapsed: f32,     // duration only; segment-local seconds
-    pub(crate) segment_start: T, // duration only; `current` at last retarget
+    pub(crate) motion: MotionRow<T>,
     /// Set by every `tick`, cleared by `post_record`. Rows still
     /// `false` at `post_record` are dropped — that's how a slot whose
     /// caller stopped poking it (widget id stuck around but the
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
     pub(crate) touched: bool,
-    kind: AnimKind,
     /// `Ui` frame-runtime id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:
     /// the frame driver re-runs `build` after an input action drains) sees
@@ -290,11 +295,8 @@ impl<T: Animatable> AnimMapTyped<T> {
                 v.insert(AnimRow {
                     current: target.clone(),
                     target: target.clone(),
-                    velocity: T::zero(),
-                    elapsed: 0.0,
-                    segment_start: target.clone(),
+                    motion: MotionRow::new(spec.motion, &target),
                     touched: true,
-                    kind: spec.kind(),
                     advanced_at: frame_id,
                     settled: true,
                 });
@@ -309,12 +311,13 @@ impl<T: Animatable> AnimMapTyped<T> {
         let already_advanced = row.advanced_at == frame_id;
         row.advanced_at = frame_id;
 
-        let kind = spec.kind();
-        if row.kind != kind {
-            row.kind = kind;
-            row.velocity = T::zero();
-            row.elapsed = 0.0;
-            row.segment_start = row.current.clone();
+        let same_motion = matches!(
+            (&row.motion, spec.motion),
+            (MotionRow::Duration { .. }, AnimMotion::Duration { .. })
+                | (MotionRow::Spring { .. }, AnimMotion::Spring { .. })
+        );
+        if !same_motion {
+            row.motion = MotionRow::new(spec.motion, &row.current);
         }
 
         // Steady-state fast path. Once a row settles, every subsequent
@@ -338,8 +341,8 @@ impl<T: Animatable> AnimMapTyped<T> {
             };
         }
 
-        if matches!(spec.motion, AnimMotion::Spring { .. }) {
-            row.current.normalize_for_spring(&target, &mut row.velocity);
+        if let MotionRow::Spring { velocity } = &mut row.motion {
+            row.current.normalize_for_spring(&target, velocity);
         }
 
         // Retarget: duration restarts the segment from `current`;
@@ -351,15 +354,18 @@ impl<T: Animatable> AnimMapTyped<T> {
         // `Animatable: PartialEq` lets us short-circuit with a
         // bytewise compare on the steady-state path.
         if row.target != target {
-            match spec.motion {
-                AnimMotion::Duration { .. } => {
-                    row.segment_start = row.current.clone();
-                    row.elapsed = 0.0;
+            match &mut row.motion {
+                MotionRow::Duration {
+                    segment_start,
+                    elapsed,
+                } => {
+                    *segment_start = row.current.clone();
+                    *elapsed = 0.0;
                 }
-                AnimMotion::Spring { .. } => {
+                MotionRow::Spring { velocity } => {
                     let to_target = target.clone().sub(row.current.clone());
-                    if dot(row.velocity.clone(), to_target) < 0.0 {
-                        row.velocity = T::zero();
+                    if dot(velocity.clone(), to_target) < 0.0 {
+                        *velocity = T::zero();
                     }
                 }
             }
@@ -377,18 +383,20 @@ impl<T: Animatable> AnimMapTyped<T> {
         // residue (and checks velocity), duration uses a far tighter
         // position-only floor so a real target change always runs its
         // designed curve (see `spring.rs` for the rationale).
-        let close_enough = match spec.motion {
-            AnimMotion::Duration { .. } => {
+        let close_enough = match &row.motion {
+            MotionRow::Duration { .. } => {
                 within_duration_snap_eps(row.current.clone().sub(row.target.clone()))
             }
-            AnimMotion::Spring { .. } => within_settle_eps(
+            MotionRow::Spring { velocity } => within_settle_eps(
                 row.current.clone().sub(row.target.clone()),
-                row.velocity.clone(),
+                velocity.clone(),
             ),
         };
         if close_enough {
             row.current = row.target.clone();
-            row.velocity = T::zero();
+            if let MotionRow::Spring { velocity } = &mut row.motion {
+                *velocity = T::zero();
+            }
             row.settled = true;
             return TickResult {
                 current: row.target.clone(),
@@ -410,10 +418,17 @@ impl<T: Animatable> AnimMapTyped<T> {
 
         match spec.motion {
             AnimMotion::Duration { secs, ease } => {
-                row.elapsed += dt;
-                let progress = row.elapsed / secs;
+                let MotionRow::Duration {
+                    segment_start,
+                    elapsed,
+                } = &mut row.motion
+                else {
+                    unreachable!("motion state must match the active specification");
+                };
+                *elapsed += dt;
+                let progress = *elapsed / secs;
                 row.current = T::lerp(
-                    row.segment_start.clone(),
+                    segment_start.clone(),
                     row.target.clone(),
                     ease.apply(progress),
                 );
@@ -432,17 +447,20 @@ impl<T: Animatable> AnimMapTyped<T> {
                 damping,
                 substep_dt,
             } => {
+                let MotionRow::Spring { velocity } = &mut row.motion else {
+                    unreachable!("motion state must match the active specification");
+                };
                 let step = spring_step(
                     stiffness,
                     damping,
                     substep_dt,
                     row.current.clone(),
-                    row.velocity.clone(),
+                    velocity.clone(),
                     row.target.clone(),
                     dt,
                 );
                 row.current = step.current;
-                row.velocity = step.velocity;
+                *velocity = step.velocity;
                 row.settled = step.settled;
                 TickResult {
                     current: row.current.clone(),

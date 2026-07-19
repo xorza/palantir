@@ -158,6 +158,7 @@ pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowToken};
 
 #[cfg(test)]
 mod hot_struct_sizes {
+    use crate::animation::AnimRow;
     use crate::common::content_hash::ContentHash;
     use crate::forest::element::Element;
     use crate::forest::element::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
@@ -201,6 +202,7 @@ mod hot_struct_sizes {
     use crate::widgets::switch::Switch;
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
+    use crate::widgets::theme::widget_look::AnimatedLook;
 
     /// Single source of truth for the per-frame hot-struct inventory.
     /// Each entry is `Type => "name": expected_size / expected_align`.
@@ -286,6 +288,8 @@ mod hot_struct_sizes {
         // Layout / text outputs.
         ShapedText => "layout::ShapedText": 32 / 8,
         TextCacheKey => "text::TextCacheKey": 24 / 8,
+        // Cross-frame animation rows.
+        AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 472 / 8,
         // Cross-frame hash keys.
         ContentHash => "rollups::ContentHash": 8 / 8,
         CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,

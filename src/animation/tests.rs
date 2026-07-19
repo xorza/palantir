@@ -34,6 +34,33 @@ fn wid(s: &'static str) -> WidgetId {
     WidgetId::from_hash(s)
 }
 
+#[derive(Debug)]
+struct DurationMotionState<'a, T> {
+    segment_start: &'a T,
+    elapsed: f32,
+}
+
+fn duration_motion<T: Animatable>(row: &AnimRow<T>) -> DurationMotionState<'_, T> {
+    let MotionRow::Duration {
+        segment_start,
+        elapsed,
+    } = &row.motion
+    else {
+        panic!("expected duration motion state");
+    };
+    DurationMotionState {
+        segment_start,
+        elapsed: *elapsed,
+    }
+}
+
+fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
+    let MotionRow::Spring { velocity } = &row.motion else {
+        panic!("expected spring motion state");
+    };
+    velocity
+}
+
 /// Common prelude for tests that drive an animated widget through
 /// [`Ui::frame`]: spin up a `Ui`, pre-record the widget once so
 /// its state row exists, return the `Ui`, the widget's id, and a
@@ -334,10 +361,27 @@ fn duration_floor_is_tighter_than_spring_floor() {
 
 #[test]
 fn first_touch_returns_target_and_settled() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let r = map.tick(wid("a"), SLOT, 1.0, AnimSpec::FAST, 0.016, next_frame());
-    assert_eq!(r.current, 1.0, "first touch must snap to target");
-    assert!(r.settled, "first touch must report settled (no anim)");
+    for (label, spec) in [("duration", AnimSpec::FAST), ("spring", AnimSpec::SPRING)] {
+        let mut map = AnimMapTyped::<f32>::default();
+        let id = wid(label);
+        let r = map.tick(id, SLOT, 1.0, spec, 0.016, next_frame());
+        assert_eq!(r.current, 1.0, "{label}: first touch must snap");
+        assert!(r.settled, "{label}: first touch must report settled");
+        let row = &map.rows[&(id, SLOT)];
+        match &row.motion {
+            MotionRow::Duration {
+                segment_start,
+                elapsed,
+            } => {
+                assert_eq!((*segment_start, *elapsed), (1.0, 0.0));
+                assert!(matches!(spec.motion, AnimMotion::Duration { .. }));
+            }
+            MotionRow::Spring { velocity } => {
+                assert_eq!(*velocity, 0.0);
+                assert!(matches!(spec.motion, AnimMotion::Spring { .. }));
+            }
+        }
+    }
 }
 
 #[test]
@@ -429,13 +473,14 @@ fn validated_springs_remain_finite_and_settle() {
         for i in 0..4_000 {
             let result = map.tick(id, SLOT, -100.0, spec, dts[i % dts.len()], next_frame());
             let row = &map.rows[&(id, SLOT)];
+            let velocity = *spring_velocity(row);
             assert!(
-                result.current.is_finite() && row.velocity.is_finite(),
+                result.current.is_finite() && velocity.is_finite(),
                 "{label} became non-finite at step {i}: {row:?}",
             );
             if result.settled {
                 assert_eq!(result.current, -100.0, "{label} did not snap to target");
-                assert_eq!(row.velocity, 0.0, "{label} retained settled velocity");
+                assert_eq!(velocity, 0.0, "{label} retained settled velocity");
                 settled_at = Some(i);
                 break;
             }
@@ -521,7 +566,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let pass_a = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame);
     assert!(pass_a.current > 0.0 && pass_a.current < 1.0);
     let pass_a_current = pass_a.current;
-    let pass_a_elapsed = map.rows[&(id, SLOT)].elapsed;
+    let pass_a_elapsed = duration_motion(&map.rows[&(id, SLOT)]).elapsed;
 
     // Pass B: same frame_id, same target. Must NOT advance further;
     // current and elapsed must match pass A exactly.
@@ -531,7 +576,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         "pass B with same frame_id must not advance current",
     );
     assert_eq!(
-        map.rows[&(id, SLOT)].elapsed,
+        duration_motion(&map.rows[&(id, SLOT)]).elapsed,
         pass_a_elapsed,
         "pass B with same frame_id must not advance elapsed",
     );
@@ -545,7 +590,10 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         "retargeting in pass B updates segment but doesn't re-step",
     );
     assert_eq!(map.rows[&(id, SLOT)].target, 5.0);
-    assert_eq!(map.rows[&(id, SLOT)].segment_start, pass_a_current);
+    assert_eq!(
+        *duration_motion(&map.rows[&(id, SLOT)]).segment_start,
+        pass_a_current
+    );
 
     // Next frame: integrator advances from the retargeted segment.
     let next = map.tick(id, SLOT, 5.0, AnimSpec::FAST, 0.016, frame + 1);
@@ -572,10 +620,10 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     for _ in 0..3 {
         let _ = map.tick(id_aligned, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
     }
-    let v_before = map.rows[&(id_aligned, SLOT)].velocity;
+    let v_before = *spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert!(v_before > 0.0, "precondition: moving toward 1.0");
     let _ = map.tick(id_aligned, SLOT, 2.0, AnimSpec::SPRING, 0.0, next_frame());
-    let v_after = map.rows[&(id_aligned, SLOT)].velocity;
+    let v_after = *spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert_eq!(v_after, v_before, "aligned retarget must preserve velocity");
 
     // Opposed: moving toward 1.0, retarget backward to -1.0. Velocity
@@ -586,12 +634,12 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
         let _ = map.tick(id_opposed, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
     }
     assert!(
-        map.rows[&(id_opposed, SLOT)].velocity > 0.0,
+        *spring_velocity(&map.rows[&(id_opposed, SLOT)]) > 0.0,
         "precondition: moving toward 1.0"
     );
     let _ = map.tick(id_opposed, SLOT, -1.0, AnimSpec::SPRING, 0.0, next_frame());
     assert_eq!(
-        map.rows[&(id_opposed, SLOT)].velocity,
+        *spring_velocity(&map.rows[&(id_opposed, SLOT)]),
         0.0,
         "opposing retarget must zero velocity to kill reversal overshoot",
     );
@@ -1117,7 +1165,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
             next_frame(),
         );
     }
-    let stroke_velocity = map.rows[&(id, SLOT)].velocity.stroke.width;
+    let stroke_velocity = spring_velocity(&map.rows[&(id, SLOT)]).stroke.width;
     assert!(
         stroke_velocity > 0.0,
         "test setup must carry positive stroke velocity",
@@ -1132,9 +1180,10 @@ fn gradient_snap_clears_only_its_background_velocity() {
     };
     let result = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.0, next_frame());
     let row = &map.rows[&(id, SLOT)];
+    let velocity = spring_velocity(row);
     assert_eq!(result.current.fill, gradient);
-    assert_eq!(row.velocity.fill, Brush::TRANSPARENT);
-    assert_eq!(row.velocity.stroke.width, stroke_velocity);
+    assert_eq!(velocity.fill, Brush::TRANSPARENT);
+    assert_eq!(velocity.stroke.width, stroke_velocity);
     assert!(
         !result.settled,
         "the independently animated stroke still has real displacement",
@@ -1229,10 +1278,11 @@ fn spring_to_duration_same_target_restarts_from_current() {
     }
     let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
     let segment_start = row.current;
+    let velocity = *spring_velocity(row);
     assert!(
-        row.velocity.abs() > 0.01,
+        velocity.abs() > 0.01,
         "test setup: spring should have built up velocity by now; got {}",
-        row.velocity,
+        velocity,
     );
 
     let dur = AnimSpec::duration(0.1, Easing::Linear);
@@ -1241,9 +1291,9 @@ fn spring_to_duration_same_target_restarts_from_current() {
     let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
     let progress = dt / 0.1;
     let expected = segment_start + (1.0 - segment_start) * progress;
-    assert_eq!(row.segment_start, segment_start);
-    assert_eq!(row.elapsed, dt);
-    assert_eq!(row.velocity, 0.0);
+    let motion = duration_motion(row);
+    assert_eq!(*motion.segment_start, segment_start);
+    assert_eq!(motion.elapsed, dt);
     assert_eq!(result.current, expected);
 }
 
@@ -1258,9 +1308,7 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
 
     let spring_result = map.tick(id, SLOT, 1.0, AnimSpec::SPRING, 0.016, next_frame());
     let spring_row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
-    assert_eq!(spring_row.segment_start, duration_result.current);
-    assert_eq!(spring_row.elapsed, 0.0);
-    assert!(spring_row.velocity > 0.0);
+    assert!(*spring_velocity(spring_row) > 0.0);
 
     let segment_start = spring_result.current;
     let dt = 0.25;
@@ -1270,8 +1318,8 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
         .get(&(id, SLOT))
         .expect("row exists after duration restart");
     let expected = segment_start + (1.0 - segment_start) * dt;
-    assert_eq!(duration_row.segment_start, segment_start);
-    assert_eq!(duration_row.elapsed, dt);
-    assert_eq!(duration_row.velocity, 0.0);
+    let motion = duration_motion(duration_row);
+    assert_eq!(*motion.segment_start, segment_start);
+    assert_eq!(motion.elapsed, dt);
     assert_eq!(duration_result.current, expected);
 }

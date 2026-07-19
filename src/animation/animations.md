@@ -16,7 +16,10 @@ and the one load-bearing architectural split.
   motion; validated damped spring for retargetable motion. Durations
   are finite and at most 60 seconds. Springs must decay by at least
   1/s and fit within the bounded adaptive-integration budget. Caller
-  picks; primitive dispatches.
+  picks; primitive dispatches. Each retained row stores `current` and
+  `target` plus one `MotionRow`: duration carries `segment_start` and
+  `elapsed`, while spring carries only `velocity`. The variant is the
+  mode tag, so inactive motion state cannot consume space or drift.
 - **Frame-driven, not wallclock.** WindowDriver hands `now: Duration` to
   `Ui::frame`; the frame runtime's `dt` is derived. No `Instant::now()` in widget
   code — keeps animation deterministic and host-portable.
