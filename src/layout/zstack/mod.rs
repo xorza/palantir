@@ -3,7 +3,7 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
     AxisAlignPair, TextCtx, arrange_axis, children_max_intrinsic, measure_per_axis_hug,
     resolved_axis_align, zero_subtree,
@@ -15,15 +15,15 @@ use glam::Vec2;
 /// Intrinsic size of a ZStack: max over children on the queried axis.
 /// Children stack at the same origin, so the parent hugs the largest
 /// child.
-pub(crate) fn intrinsic(
+pub(crate) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-) -> f32 {
-    children_max_intrinsic(layout, tree, node, axis, req, tc)
+) -> IntrinsicRange {
+    children_max_intrinsic(layout, tree, node, axis, query, tc)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).

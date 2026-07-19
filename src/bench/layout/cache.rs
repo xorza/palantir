@@ -15,6 +15,8 @@
 //!   at the root while unchanged branches remain eligible for reuse.
 //! - `localized`: broad-tree only; toggles one leaf's paint hash while
 //!   keeping layout stable so unchanged sibling-subtree hits stay visible.
+//! - `grid/intrinsic`: a 128-row real-text property grid that isolates
+//!   paired min/max-content recursion on Hug columns.
 //!
 //! Ratio of `cached / forced_miss` quantifies what MeasureCache buys
 //! on a comparable workload. See `src/layout/measure-cache.md`. The
@@ -32,14 +34,17 @@
 use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
+use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
+use crate::shape::TextWrap;
 use crate::ui::Ui;
 use crate::ui::frame::FrameStamp;
 use crate::widgets::frame::Frame;
+use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
@@ -57,6 +62,7 @@ const HEAVY_ROWS_PER_GROUP: usize = 8;
 const DEEP_DEPTH: usize = 192;
 const BROAD_FANOUT: usize = 8;
 const BROAD_DEPTH: usize = 3;
+const GRID_ROWS: usize = 128;
 
 fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -239,6 +245,28 @@ fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
         });
 }
 
+fn build_grid_intrinsics(ui: &mut Ui) {
+    Grid::new()
+        .id_salt("grid-intrinsic-root")
+        .cols([Track::hug(), Track::hug()])
+        .rows([Track::hug(); GRID_ROWS])
+        .size((Sizing::FILL, Sizing::HUG))
+        .show(ui, |ui| {
+            for row in 0..GRID_ROWS {
+                Text::new("unbreakable_identifier")
+                    .id_salt(("grid-label", row))
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .grid_cell((row as u16, 0))
+                    .show(ui);
+                Text::new("long natural-width grid value")
+                    .id_salt(("grid-value", row))
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .grid_cell((row as u16, 1))
+                    .show(ui);
+            }
+        });
+}
+
 fn bench_cache_pair(
     group: &mut BenchmarkGroup<'_, WallTime>,
     name: &str,
@@ -268,14 +296,15 @@ fn bench_cache_workload(
     group: &mut BenchmarkGroup<'_, WallTime>,
     name: &str,
     display: Display,
+    make_ui: fn() -> Ui,
     build: fn(&mut Ui),
 ) {
-    bench_cache_pair(group, name, display, Ui::for_test, build);
+    bench_cache_pair(group, name, display, make_ui, build);
 
     let resize_displays = [1280, 1248, 1216, 1184]
         .map(|width| Display::from_physical(glam::UVec2::new(width, 800), 2.0));
     group.bench_function(format!("{name}/resizing"), |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = make_ui();
         let _ = ui.record(FrameStamp::new(resize_displays[0], Duration::ZERO), build);
         let mut frame = 0usize;
         b.iter(|| {
@@ -317,9 +346,28 @@ pub fn bench(c: &mut Criterion) {
         build_heavy,
     );
 
-    bench_cache_workload(&mut group, "deep/measure", display, build_deep);
-    bench_cache_workload(&mut group, "broad/measure", display, build_broad);
+    bench_cache_workload(
+        &mut group,
+        "deep/measure",
+        display,
+        Ui::for_test,
+        build_deep,
+    );
+    bench_cache_workload(
+        &mut group,
+        "broad/measure",
+        display,
+        Ui::for_test,
+        build_broad,
+    );
     bench_broad_localized(&mut group, "broad/measure", display);
+    bench_cache_workload(
+        &mut group,
+        "grid/intrinsic",
+        display,
+        Ui::for_test_text,
+        build_grid_intrinsics,
+    );
 
     group.finish();
 }

@@ -3,7 +3,7 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
     TextCtx, arrange_axis, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
 };
@@ -111,19 +111,19 @@ pub(crate) fn arrange(
 /// reach this branch — see `intrinsic.rs`), drops the positional offset
 /// so a `.position(...)` past `available` can't floor `Fill` above what
 /// the parent offered.
-pub(crate) fn intrinsic(
+pub(crate) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-) -> f32 {
+) -> IntrinsicRange {
     let pos_inflates = matches!(
         axis.main_sizing(tree.records.layout()[node.idx()].size),
         Sizing::HUG
     );
-    children_max_intrinsic_offset(layout, tree, node, axis, req, tc, |tree, c| {
+    children_max_intrinsic_offset(layout, tree, node, axis, query, tc, |tree, c| {
         if pos_inflates {
             axis.main_v(tree.bounds(c).position)
         } else {

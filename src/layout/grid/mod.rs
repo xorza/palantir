@@ -3,7 +3,7 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
     AxisAlignPair, TextCtx, arrange_axis, resolved_axis_align, weighted_share, zero_subtree,
 };
@@ -413,11 +413,10 @@ fn measure_inner(
             let t = &col_tracks[cell.col as usize];
             let i = cell.col as usize;
             if t.size.is_hug() {
-                let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
-                let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
+                let range = layout.intrinsic_range(tree, c, Axis::X, tc);
                 let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
-                cols_min[i] = cols_min[i].max(min);
-                cols_max[i] = cols_max[i].max(max);
+                cols_min[i] = cols_min[i].max(range.min);
+                cols_max[i] = cols_max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
                 let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
                 let cols_min = layout
@@ -963,22 +962,22 @@ fn resolve_axis(
 ///
 /// Span > 1 cells are excluded (matches existing `measure` and the
 /// commitment in `src/layout/intrinsic.md`).
-pub(crate) fn intrinsic(
+pub(crate) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     idx: GridDefId,
     axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-) -> f32 {
+) -> IntrinsicRange {
     let def = tree.grid_defs[usize::from(idx)];
     // An empty dimension means no cells, so the grid measures to
     // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
     // *both* axes — a declared `Fixed` track on the non-empty axis
     // contributes nothing when there's nothing to place in it.
     if def.cols.len == 0 || def.rows.len == 0 {
-        return 0.0;
+        return IntrinsicRange::ZERO;
     }
     let (track_span, gap) = match axis {
         Axis::X => (def.cols, def.col_gap),
@@ -987,20 +986,28 @@ pub(crate) fn intrinsic(
     let tracks = &tree.grid_tracks[track_span.range()];
     let n_tracks = tracks.len();
 
-    // Bump-allocate `n_tracks` slots on the shared scratch. Recursive
-    // intrinsic calls extend past `base + n_tracks` and truncate back, so
-    // our slice stays valid across them.
+    let wants_min = query.includes(LenReq::MinContent);
+    let wants_max = query.includes(LenReq::MaxContent);
     let base = layout.scratch.grid.track_aggregator.len();
+    let min_base = base;
+    let max_base = base + usize::from(wants_min) * n_tracks;
+    let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * n_tracks;
     layout
         .scratch
         .grid
         .track_aggregator
-        .resize(base + n_tracks, 0.0);
+        .resize(base + slot_count, 0.0);
     for (i, t) in tracks.iter().enumerate() {
-        layout.scratch.grid.track_aggregator[base + i] = t
+        let initial = t
             .size
             .fixed_value()
             .map_or(t.min, |value| value.clamp(t.min, t.max));
+        if wants_min {
+            layout.scratch.grid.track_aggregator[min_base + i] = initial;
+        }
+        if wants_max {
+            layout.scratch.grid.track_aggregator[max_base + i] = initial;
+        }
     }
 
     for c in tree.active_children(node) {
@@ -1008,23 +1015,38 @@ pub(crate) fn intrinsic(
         if cell_span.len != 1 {
             continue;
         }
-        // In-bounds by the record-time cell range check
-        // (`Tree::check_grid_cell`) — same stance as `known_span_size`.
         let track_idx = cell_span.start as usize;
         let t = &tracks[track_idx];
         if t.size.fixed_value().is_some() {
             continue;
         }
-        let child_v = layout.intrinsic(tree, c, axis, req, tc);
-        let slot = &mut layout.scratch.grid.track_aggregator[base + track_idx];
-        *slot = slot.max(content_floor(t, child_v));
+        let child = query.child(layout, tree, c, axis, tc);
+        if wants_min {
+            let slot = &mut layout.scratch.grid.track_aggregator[min_base + track_idx];
+            *slot = slot.max(content_floor(t, child.min));
+        }
+        if wants_max {
+            let slot = &mut layout.scratch.grid.track_aggregator[max_base + track_idx];
+            *slot = slot.max(content_floor(t, child.max));
+        }
     }
 
-    let total: f32 = layout.scratch.grid.track_aggregator[base..base + n_tracks]
-        .iter()
-        .sum();
+    let gaps = gap * n_tracks.saturating_sub(1) as f32;
+    let mut range = IntrinsicRange::ZERO;
+    if wants_min {
+        range.min = layout.scratch.grid.track_aggregator[min_base..min_base + n_tracks]
+            .iter()
+            .sum::<f32>()
+            + gaps;
+    }
+    if wants_max {
+        range.max = layout.scratch.grid.track_aggregator[max_base..max_base + n_tracks]
+            .iter()
+            .sum::<f32>()
+            + gaps;
+    }
     layout.scratch.grid.track_aggregator.truncate(base);
-    total + gap * n_tracks.saturating_sub(1) as f32
+    range
 }
 
 #[cfg(test)]

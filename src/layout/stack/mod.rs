@@ -3,7 +3,7 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
     JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, weighted_share,
     zero_subtree,
@@ -382,30 +382,41 @@ pub(crate) fn arrange(
     layout.scratch.stack_fill.pool.truncate(fill_start);
 }
 
-/// Intrinsic size of a stack on `query_axis` under `req`. When the query
+/// Intrinsic size of a stack on `query_axis`. When the query
 /// axis matches the stack's `main_axis`, sum children's intrinsic on
 /// that axis plus gaps; otherwise (cross axis), max over children.
-pub(crate) fn intrinsic(
+pub(crate) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     main_axis: Axis,
     query_axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-) -> f32 {
-    let gap = tree.panel(node).gaps.gap();
-    if main_axis == query_axis {
-        let mut total = 0.0_f32;
-        let mut count = 0_usize;
-        for c in tree.active_children(node) {
-            total += layout.intrinsic(tree, c, query_axis, req, tc);
-            count += 1;
-        }
-        total + gap * count.saturating_sub(1) as f32
-    } else {
-        children_max_intrinsic(layout, tree, node, query_axis, req, tc)
+) -> IntrinsicRange {
+    if main_axis != query_axis {
+        return children_max_intrinsic(layout, tree, node, query_axis, query, tc);
     }
+    let mut range = IntrinsicRange::ZERO;
+    let mut count = 0_usize;
+    for c in tree.active_children(node) {
+        let child = query.child(layout, tree, c, query_axis, tc);
+        if query.includes(LenReq::MinContent) {
+            range.min += child.min;
+        }
+        if query.includes(LenReq::MaxContent) {
+            range.max += child.max;
+        }
+        count += 1;
+    }
+    let gaps = tree.panel(node).gaps.gap() * count.saturating_sub(1) as f32;
+    if query.includes(LenReq::MinContent) {
+        range.min += gaps;
+    }
+    if query.includes(LenReq::MaxContent) {
+        range.max += gaps;
+    }
+    range
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@ use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::layout::axis::Axis;
 use crate::layout::grid::{AxisScratch, GridDepthStack, known_span_size, resolve_axis};
+use crate::layout::intrinsic::LenReq;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -103,6 +104,22 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
             })
             .node()
     });
+    let nodes = ui.main_child_ids(root);
+    let min_slot = LenReq::MinContent.slot(Axis::X);
+    let max_slot = LenReq::MaxContent.slot(Axis::X);
+    for node in &nodes[..2] {
+        let cached = ui.layout_engine.scratch.intrinsics[node.idx()];
+        assert!(
+            !cached[min_slot].is_nan() && !cached[max_slot].is_nan(),
+            "a Hug cell must populate both intrinsic slots in one query",
+        );
+    }
+    let fill_cached = ui.layout_engine.scratch.intrinsics[nodes[2].idx()];
+    assert!(!fill_cached[min_slot].is_nan());
+    assert!(
+        fill_cached[max_slot].is_nan(),
+        "a Fill cell keeps Stack's single min-content path",
+    );
     let kids = ui.main_child_rects(root);
     let short_btn = kids[0];
     let long_btn = kids[1];

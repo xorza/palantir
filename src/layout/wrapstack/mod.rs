@@ -18,7 +18,7 @@ use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::LenReq;
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
     JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
@@ -294,7 +294,7 @@ pub(crate) fn arrange(
     }
 }
 
-/// Intrinsic size on `query_axis` under `req`. Approximate for the wrap
+/// Intrinsic size on `query_axis`. Approximate for the wrap
 /// case — we don't run the full packing here, so cross-axis answers
 /// assume single-line layout (the conservative max-content shape). Main
 /// axis answers are exact:
@@ -304,38 +304,38 @@ pub(crate) fn arrange(
 ///   overflows).
 /// - **MaxContent** on main: sum + within-line gaps (single line).
 /// - Cross axis: max child intrinsic (single-line approximation).
-pub(crate) fn intrinsic(
+pub(crate) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     main_axis: Axis,
     query_axis: Axis,
-    req: LenReq,
+    query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-) -> f32 {
-    let gap = tree.panel(node).gaps.gap();
-    if main_axis == query_axis {
-        match req {
-            // Widest single child sets the floor — one row of just that
-            // child still has to fit.
-            LenReq::MinContent => children_max_intrinsic(layout, tree, node, query_axis, req, tc),
-            LenReq::MaxContent => {
-                let mut total = 0.0f32;
-                let mut count = 0usize;
-                for c in tree.active_children(node) {
-                    total += layout.intrinsic(tree, c, query_axis, req, tc);
-                    count += 1;
-                }
-                total + gap * count.saturating_sub(1) as f32
-            }
-        }
-    } else {
+) -> IntrinsicRange {
+    if main_axis != query_axis {
         // Cross-axis approximation: max child intrinsic on cross. Real
         // wrapped cross depends on resolved main width — height-given-
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
-        children_max_intrinsic(layout, tree, node, query_axis, req, tc)
+        return children_max_intrinsic(layout, tree, node, query_axis, query, tc);
     }
+    let mut range = IntrinsicRange::ZERO;
+    let mut count = 0_usize;
+    for c in tree.active_children(node) {
+        let child = query.child(layout, tree, c, query_axis, tc);
+        if query.includes(LenReq::MinContent) {
+            range.min = range.min.max(child.min);
+        }
+        if query.includes(LenReq::MaxContent) {
+            range.max += child.max;
+        }
+        count += 1;
+    }
+    if query.includes(LenReq::MaxContent) {
+        range.max += tree.panel(node).gaps.gap() * count.saturating_sub(1) as f32;
+    }
+    range
 }
 
 #[cfg(test)]
