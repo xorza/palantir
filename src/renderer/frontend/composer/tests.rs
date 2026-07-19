@@ -1779,7 +1779,9 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 #[test]
 fn compose_forwards_flags_and_repeat_uv() {
     use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
-    use crate::renderer::render_buffer::image::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
+    use crate::renderer::render_buffer::image::{
+        IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
+    };
     let buf = run(
         |b, _arena| {
             // Plain draw: flags stay 0.
@@ -1800,14 +1802,14 @@ fn compose_forwards_flags_and_repeat_uv() {
                 TextureId(2),
                 IMG_FLAG_TILED,
             ));
-            // Nearest-filtered draw: the nearest bit rides through alone.
+            // The two nearest-filter bits ride through together.
             b.draw_image(DrawImagePayload::image(
                 rect(0.0, 0.0, 50.0, 50.0),
                 glam::Vec2::ZERO,
                 glam::Vec2::ONE,
                 Color::WHITE.into(),
                 TextureId(3),
-                IMG_FLAG_NEAREST,
+                IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
             ));
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -1815,7 +1817,10 @@ fn compose_forwards_flags_and_repeat_uv() {
     assert_eq!(buf.images.instance()[0].flags, 0);
     assert_eq!(buf.images.instance()[1].flags, IMG_FLAG_TILED);
     assert_eq!(buf.images.instance()[1].uv_size, glam::Vec2::new(3.0, 2.0));
-    assert_eq!(buf.images.instance()[2].flags, IMG_FLAG_NEAREST);
+    assert_eq!(
+        buf.images.instance()[2].flags,
+        IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST
+    );
 }
 
 #[test]

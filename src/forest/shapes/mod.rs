@@ -189,7 +189,8 @@ impl Shapes {
                 handle,
                 local_rect,
                 fit,
-                filter,
+                min_filter,
+                mag_filter,
                 tint,
             } => ShapeRecord::Image {
                 local_rect,
@@ -199,7 +200,8 @@ impl Shapes {
                 id: handle.id(),
                 size: handle.size_u16(),
                 fit,
-                filter,
+                min_filter,
+                mag_filter,
             },
             Shape::Mesh {
                 mesh,

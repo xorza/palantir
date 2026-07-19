@@ -105,18 +105,19 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             id,
             size,
             fit,
-            filter,
+            min_filter,
+            mag_filter,
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
             // Hash the registration `id` + intrinsic `size` (packed
             // `x | y`), then fold in the fit (incl. `Tile`'s UV transform,
             // which changes every pan/zoom frame and must repaint) and
-            // the sampling filter.
+            // both sampling filters.
             h.write_u64(id.0);
             h.write_u64((size.x as u64) | ((size.y as u64) << 16));
             hash_fit(fit, &mut h);
-            h.write_u8(*filter as u8);
+            h.write_u8((*min_filter as u8) | ((*mag_filter as u8) << 1));
         }
         // Geometry + style hashed inline — every input lives on the
         // record, so no lowering-time content hash is needed (unlike

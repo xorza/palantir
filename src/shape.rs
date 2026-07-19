@@ -193,8 +193,10 @@ pub enum Shape<'a> {
     /// `Some(r)` paints `r` at owner-relative coords (`r.min = (0, 0)`
     /// is the owner's top-left). `fit` (default `Fill`) controls how
     /// the image's intrinsic size maps onto that rect — see
-    /// [`ImageFit`]. `filter` picks the sampling between texels —
-    /// bilinear (default) or hard-edged nearest, see [`ImageFilter`].
+    /// [`ImageFit`]. `min_filter` and `mag_filter` independently pick
+    /// the sampling used when the image is painted smaller or larger
+    /// than its intrinsic size — bilinear (default) or hard-edged
+    /// nearest, see [`ImageFilter`].
     /// `tint` multiplies the sampled pixel in linear-RGB
     /// premultiplied space; `Color::WHITE` is "no tint." `handle` is the
     /// RAII [`ImageHandle`] from [`crate::Ui::register_image`]; hold it to
@@ -204,7 +206,8 @@ pub enum Shape<'a> {
         handle: ImageHandle,
         local_rect: Option<Rect>,
         fit: ImageFit,
-        filter: ImageFilter,
+        min_filter: ImageFilter,
+        mag_filter: ImageFilter,
         tint: Color,
     },
     /// Gaussian-blurred rounded rectangle — drop shadow or inner
@@ -350,14 +353,15 @@ impl<'a> Shape<'a> {
     }
 
     /// A textured rect from `handle` painting the owner's full rect at the
-    /// default fit/filter, untinted. Chain [`Self::at`] / [`Self::fit`] /
-    /// [`Self::filter`] / [`Self::tint`].
+    /// default fit/filters, untinted. Chain [`Self::at`] / [`Self::fit`] /
+    /// [`Self::min_filter`] / [`Self::mag_filter`] / [`Self::tint`].
     pub fn image(handle: ImageHandle) -> Self {
         Shape::Image {
             handle,
             local_rect: None,
             fit: ImageFit::default(),
-            filter: ImageFilter::default(),
+            min_filter: ImageFilter::default(),
+            mag_filter: ImageFilter::default(),
             tint: Color::WHITE,
         }
     }
@@ -479,11 +483,20 @@ impl<'a> Shape<'a> {
         self
     }
 
-    /// Set a [`Shape::Image`]'s sampling filter.
-    pub fn filter(mut self, filter: ImageFilter) -> Self {
+    /// Set a [`Shape::Image`]'s minification sampling filter.
+    pub fn min_filter(mut self, filter: ImageFilter) -> Self {
         match &mut self {
-            Shape::Image { filter: f, .. } => *f = filter,
-            _ => panic!("Shape::filter() applies only to Image"),
+            Shape::Image { min_filter, .. } => *min_filter = filter,
+            _ => panic!("Shape::min_filter() applies only to Image"),
+        }
+        self
+    }
+
+    /// Set a [`Shape::Image`]'s magnification sampling filter.
+    pub fn mag_filter(mut self, filter: ImageFilter) -> Self {
+        match &mut self {
+            Shape::Image { mag_filter, .. } => *mag_filter = filter,
+            _ => panic!("Shape::mag_filter() applies only to Image"),
         }
         self
     }
