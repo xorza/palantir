@@ -96,7 +96,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 };
                 Text::new(click)
                     .id_salt("pz-click")
-                    .style(caption_style())
+                    .style(&caption_style())
                     .show(ui);
             });
 
@@ -143,7 +143,7 @@ fn header_band(ui: &mut Ui) {
         .show(ui, |ui| {
             Text::new("Complex showcase")
                 .auto_id()
-                .style(TextStyle::default().with_font_size(18.0))
+                .style(&TextStyle::default().with_font_size(18.0))
                 .show(ui);
             Frame::new()
                 .id_salt("hdr-spacer")
@@ -200,12 +200,12 @@ fn property_grid(ui: &mut Ui) {
                 let r = row as u16;
                 Text::new(labels[row % labels.len()])
                     .id_salt(("plbl", row))
-                    .style(TextStyle::default().with_font_size(14.0))
+                    .style(&TextStyle::default().with_font_size(14.0))
                     .grid_cell((r, 0))
                     .show(ui);
                 Text::new(values[row % values.len()])
                     .id_salt(("pval", row))
-                    .style(TextStyle::default().with_font_size(14.0))
+                    .style(&TextStyle::default().with_font_size(14.0))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((r, 1))
                     .show(ui);
@@ -309,14 +309,14 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                             .show(ui, |ui| {
                                 Text::new(format!("user_{i}"))
                                     .id_salt(("from", i))
-                                    .style(TextStyle::default().with_font_size(12.0))
+                                    .style(&TextStyle::default().with_font_size(12.0))
                                     .show(ui);
                                 Text::new(
                                     "Lorem ipsum dolor sit amet consectetur adipiscing elit sed \
                                      do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
                                 )
                                 .id_salt(("msg", i))
-                                .style(TextStyle::default().with_font_size(13.0))
+                                .style(&TextStyle::default().with_font_size(13.0))
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui);
@@ -387,19 +387,20 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
     let label_text = TextStyle::default()
         .with_font_size(11.0)
         .with_color(Color::hex(0x1a1a1a));
+
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
                 background: Some(bg(base)),
-                text: Some(label_text),
+                text: Some(label_text.clone()),
             },
             hovered: WidgetLook {
                 background: Some(bg(brighten(base, 0.15))),
-                text: Some(label_text),
+                text: Some(label_text.clone()),
             },
             active: WidgetLook {
                 background: Some(pressed_bg),
-                text: Some(label_text),
+                text: Some(label_text.clone()),
             },
             disabled: WidgetLook {
                 background: Some(bg(base)),

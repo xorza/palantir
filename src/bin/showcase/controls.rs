@@ -144,7 +144,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
             let vol = ui.fmt(format_args!("volume {:.0}%", s.volume * 100.0));
             Text::new(vol)
                 .id_salt("volume-pct")
-                .style(caption_style())
+                .style(&caption_style())
                 .show(ui);
             Panel::hstack().id_salt("fps-row").gap(8.0).show(ui, |ui| {
                 DragValue::new(&mut s.fps)
@@ -158,7 +158,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     .show(ui);
                 Text::new("drag to scrub, click to type")
                     .id_salt("fps-cap")
-                    .style(caption_style())
+                    .style(&caption_style())
                     .show(ui);
             });
 
@@ -175,7 +175,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                 }
                 if Button::new()
                     .id_salt("reset")
-                    .style(outlined)
+                    .style(&outlined)
                     .label("Reset")
                     .show(ui)
                     .left
@@ -185,7 +185,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                 }
                 let del = Button::new()
                     .id_salt("delete")
-                    .style(danger)
+                    .style(&danger)
                     .label("Delete profile")
                     .show(ui)
                     .snapshot();
@@ -211,7 +211,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     let pct = ui.fmt(format_args!("syncing {:.0}%", frac * 100.0));
                     Text::new(pct)
                         .id_salt("sync-pct")
-                        .style(caption_style())
+                        .style(&caption_style())
                         .show(ui);
                 });
             }
@@ -238,18 +238,18 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
                             .show(ui);
                         Button::new()
                             .id_salt("o-1")
-                            .style(outlined)
+                            .style(&outlined)
                             .label("outlined")
                             .show(ui);
                         Button::new()
                             .id_salt("o-2")
-                            .style(outlined)
+                            .style(&outlined)
                             .label("disabled")
                             .disabled(true)
                             .show(ui);
                         Button::new()
                             .id_salt("c-1")
-                            .style(danger)
+                            .style(&danger)
                             .label("danger")
                             .show(ui);
                     });
@@ -305,12 +305,12 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
                     "airplane={}  wifi={}  bluetooth={}  metered={}",
                     s.airplane, s.wifi, s.bluetooth, s.metered
                 ));
-                Text::new(net).id_salt("st-net").style(caption_style()).show(ui);
+                Text::new(net).id_salt("st-net").style(&caption_style()).show(ui);
                 let app = ui.fmt(format_args!(
                     "theme={:?}  reduce_motion={}  volume={:.2}  fps={}",
                     s.theme, s.reduce_motion, s.volume, s.fps
                 ));
-                Text::new(app).id_salt("st-app").style(caption_style()).show(ui);
+                Text::new(app).id_salt("st-app").style(&caption_style()).show(ui);
             });
         });
 }
@@ -318,7 +318,7 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
 fn group_caption(ui: &mut Ui, label: &'static str) {
     Text::new(label)
         .id_salt(("group", label))
-        .style(caption_style())
+        .style(&caption_style())
         .show(ui);
 }
 

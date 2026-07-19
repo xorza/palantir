@@ -380,7 +380,7 @@ fn divider_requests_the_resize_cursor() {
                 Splitter::horizontal(ratio)
                     .id(split_id())
                     .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
-                    .style(style)
+                    .style(&style)
                     .show(ui, |_, _| {});
             });
         };

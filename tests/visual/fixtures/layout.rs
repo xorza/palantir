@@ -163,14 +163,14 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                              Pack my box with five dozen liquor jugs.",
                         )
                         .id_salt("paragraph")
-                        .style(TextStyle::default().with_font_size(14.0))
+                        .style(&TextStyle::default().with_font_size(14.0))
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui);
                         // Bare label — exercises the default wrap mode.
                         Text::new("right column")
                             .id_salt("label")
-                            .style(TextStyle::default().with_font_size(14.0))
+                            .style(&TextStyle::default().with_font_size(14.0))
                             .grid_cell((0, 1))
                             .show(ui);
                     });

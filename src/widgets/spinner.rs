@@ -71,7 +71,7 @@ impl Spinner {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = ui.theme.spinner;
+        let theme = &ui.theme.spinner;
         let size = self.size.unwrap_or(theme.size).max(1.0);
         let width = self.thickness.unwrap_or((size * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);

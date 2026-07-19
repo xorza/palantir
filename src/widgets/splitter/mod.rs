@@ -35,7 +35,7 @@ pub struct Splitter<'a> {
     ratio: &'a mut f32,
     axis: Axis,
     min_pane: f32,
-    style: Option<SplitterTheme>,
+    style: Option<&'a SplitterTheme>,
 }
 
 /// Which pane [`Splitter::show`]'s body is currently recording.
@@ -87,9 +87,9 @@ impl<'a> Splitter<'a> {
         self
     }
 
-    /// Override the theme for this splitter. `None` (default) inherits
+    /// Borrow a theme override for this splitter. The default inherits
     /// [`crate::Theme::splitter`].
-    pub fn style(mut self, s: SplitterTheme) -> Self {
+    pub fn style(mut self, s: &'a SplitterTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -105,7 +105,7 @@ impl<'a> Splitter<'a> {
             merged: state,
         } = enter_widget(ui, &self.element);
 
-        let theme = self.style.as_ref().unwrap_or(&ui.theme.splitter);
+        let theme = self.style.unwrap_or(&ui.theme.splitter);
         let thickness = theme.thickness.max(1.0);
         let rule_thickness = theme.rule_thickness.max(0.0);
         let rule_color = theme.rule;

@@ -52,7 +52,7 @@ fn dashboard_matches_golden() {
                         Text::new("Aperture")
                             .id_salt("brand")
                             .style(
-                                TextStyle::default()
+                                &TextStyle::default()
                                     .with_font_size(16.0)
                                     .with_color(Color::rgb(0.92, 0.94, 1.00)),
                             )
@@ -127,7 +127,7 @@ fn dashboard_matches_golden() {
                                     Text::new("Card")
                                         .id_salt(("card-title", i))
                                         .style(
-                                            TextStyle::default()
+                                            &TextStyle::default()
                                                 .with_font_size(14.0)
                                                 .with_color(Color::rgb(0.95, 0.96, 1.00)),
                                         )
@@ -135,7 +135,7 @@ fn dashboard_matches_golden() {
                                     Text::new("Some metric here")
                                         .id_salt(("card-body", i))
                                         .style(
-                                            TextStyle::default()
+                                            &TextStyle::default()
                                                 .with_font_size(11.0)
                                                 .with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)),
                                         )
@@ -160,7 +160,7 @@ fn dashboard_matches_golden() {
                         Text::new("ready · 4 cards · scale 2.0")
                             .id_salt("status")
                             .style(
-                                TextStyle::default()
+                                &TextStyle::default()
                                     .with_font_size(11.0)
                                     .with_color(Color::rgb(0.65, 0.70, 0.80)),
                             )

@@ -5,7 +5,7 @@ use crate::widgets::theme::palette::Palette;
 /// overrides (`.color(...)` / `.size(...)`) win; otherwise these
 /// defaults fill in. Stroke thickness stays size-derived on the widget
 /// (`size * 0.12`, floored) unless overridden per call.
-#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SpinnerTheme {
     /// Arc color — the comet's head; the tail fades to transparent.
     pub color: Color,

@@ -14,13 +14,13 @@ use crate::widgets::theme::progress_bar::ProgressBarTheme;
 /// Visuals come from [`crate::ProgressBarTheme`] (theme slot
 /// `progress_bar`).
 #[derive(Debug)]
-pub struct ProgressBar {
+pub struct ProgressBar<'a> {
     element: Element,
     fraction: f32,
-    style: Option<ProgressBarTheme>,
+    style: Option<&'a ProgressBarTheme>,
 }
 
-impl ProgressBar {
+impl<'a> ProgressBar<'a> {
     #[track_caller]
     pub fn new(fraction: f32) -> Self {
         Self {
@@ -30,15 +30,15 @@ impl ProgressBar {
         }
     }
 
-    /// Override the theme for this bar. `None` (default) inherits
+    /// Borrow a theme override for this bar. The default inherits
     /// [`crate::Theme::progress_bar`].
-    pub fn style(mut self, s: ProgressBarTheme) -> Self {
+    pub fn style(mut self, s: &'a ProgressBarTheme) -> Self {
         self.style = Some(s);
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(ui.theme.progress_bar);
+        let theme = self.style.unwrap_or(&ui.theme.progress_bar);
         let WeightSplit { fill, spacer } = fill_weights(self.fraction);
         let height = theme.height.max(0.0);
         let radius = Corners::all(height * 0.5);
@@ -72,7 +72,7 @@ impl ProgressBar {
     }
 }
 
-impl Configure for ProgressBar {
+impl Configure for ProgressBar<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }

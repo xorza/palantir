@@ -81,7 +81,10 @@ grouped into independently implementable batches.
   Implemented on 2026-07-19. The live 64-bit layouts are now 136–184 B:
   `Button` 776 → 144 B, `Checkbox` / `Switch` 1,400 → 144 B,
   `ComboBox` 768 → 136 B, `DragValue` 1,504 → 184 B, and `TextEdit`
-  848 → 168 B. `RadioButton<u8>` is 152 B. On the aggregate CPU frame bench,
+  848 → 168 B. `RadioButton<u8>` is 152 B. The remaining style-bearing
+  builders now follow the same borrowed-override rule and are pinned too:
+  `Text` 144 B, `Slider` 136 B, `ProgressBar` 120 B, and `Splitter` 128 B.
+  On the aggregate CPU frame bench,
   same-machine midpoint comparisons were cached 443.46 → 436.40 µs, partial
   390.17 → 382.63 µs, resizing 588.36 → 579.80 µs, and scrolling
   509.74 → 502.31 µs.

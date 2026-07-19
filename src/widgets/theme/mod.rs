@@ -213,7 +213,7 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     style: Option<&T>,
     fallback: impl FnOnce(&Theme) -> &T,
 ) -> AnimatedLook {
-    let fallback_text = ui.theme.text;
+    let fallback_text = ui.theme.text.clone();
     let style = style.unwrap_or_else(|| fallback(&ui.theme));
     let padding = style.padding();
     let margin = style.margin();
@@ -225,7 +225,7 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     if element.margin == Spacing::ZERO {
         element.margin = margin;
     }
-    look_target.animate(ui, id, fallback_text, anim)
+    look_target.animate(ui, id, &fallback_text, anim)
 }
 
 impl Theme {

@@ -183,7 +183,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             // chrome mean "inherit from theme.tooltip".
             let mut element = self.element;
             element.salt = Salt::Verbatim(bubble_id);
-            let text_style = ui.theme.tooltip.text;
+            let text_style = ui.theme.tooltip.text.clone();
             let chrome = self
                 .chrome
                 .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
@@ -196,7 +196,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             ui.overlay_layer(Layer::Tooltip, position, |ui| {
                 ui.node(bubble_id, element, Some(&chrome), |ui| {
                     Text::new(text)
-                        .style(text_style)
+                        .style(&text_style)
                         .text_wrap(TextWrap::Wrap)
                         .show(ui);
                 });

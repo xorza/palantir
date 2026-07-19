@@ -268,13 +268,13 @@ impl<'a> MenuItem<'a> {
         let item = &ui.theme.context_menu.item;
         let look = item.pick(picked_state);
         let look_bg = look.background.clone();
-        let text_style = look.text.unwrap_or(ui.theme.text);
+        let text_style = look.text.as_ref().unwrap_or(&ui.theme.text).clone();
         let padding = item.padding;
         // Shortcut hint reads muted — same style as the label but the
         // theme's `shortcut` color.
         let shortcut_style = TextStyle {
             color: item.shortcut,
-            ..text_style
+            ..text_style.clone()
         };
 
         let mut element = self.element;
@@ -303,12 +303,12 @@ impl<'a> MenuItem<'a> {
         let body = |ui: &mut Ui| {
             Text::new(label)
                 .id(id.with("label"))
-                .style(text_style)
+                .style(&text_style)
                 .show(ui);
             if let Some(s) = shortcut_label {
                 Text::new(s)
                     .id(id.with("shortcut"))
-                    .style(shortcut_style)
+                    .style(&shortcut_style)
                     .show(ui);
             }
         };

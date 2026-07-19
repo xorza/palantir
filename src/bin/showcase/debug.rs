@@ -116,7 +116,7 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
                 Text::new("T-shirt")
                     .id_salt((label, "label"))
                     .style(
-                        TextStyle::default()
+                        &TextStyle::default()
                             .with_font_size(28.0)
                             .with_color(Color::hex(0x1a1a1a)),
                     )

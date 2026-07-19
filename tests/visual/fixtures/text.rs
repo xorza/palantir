@@ -24,7 +24,7 @@ fn text_paragraph_matches_golden() {
                 Text::new("Aperture")
                     .id_salt("title")
                     .style(
-                        TextStyle::default()
+                        &TextStyle::default()
                             .with_font_size(20.0)
                             .with_color(Color::rgb(0.92, 0.94, 1.00)),
                     )
@@ -32,7 +32,7 @@ fn text_paragraph_matches_golden() {
                 Text::new("Immediate-mode UI with WPF-style layout.")
                     .id_salt("body")
                     .style(
-                        TextStyle::default()
+                        &TextStyle::default()
                             .with_font_size(13.0)
                             .with_color(Color::rgb(0.72, 0.76, 0.84)),
                     )
@@ -40,7 +40,7 @@ fn text_paragraph_matches_golden() {
                 Text::new("Rendered headlessly through wgpu.")
                     .id_salt("body2")
                     .style(
-                        TextStyle::default()
+                        &TextStyle::default()
                             .with_font_size(13.0)
                             .with_color(Color::rgb(0.72, 0.76, 0.84)),
                     )
@@ -89,7 +89,7 @@ fn text_row_list_batches_into_one_render() {
                             Text::new(label)
                                 .auto_id()
                                 .style(
-                                    TextStyle::default()
+                                    &TextStyle::default()
                                         .with_font_size(14.0)
                                         .with_color(Color::rgb(0.95, 0.95, 1.00)),
                                 )
@@ -147,7 +147,7 @@ fn text_row_list_survives_partial_damage_smoke() {
                                 Text::new(*label)
                                     .id_salt(("row-label", i))
                                     .style(
-                                        TextStyle::default()
+                                        &TextStyle::default()
                                             .with_font_size(14.0)
                                             .with_color(Color::rgb(0.95, 0.95, 1.00)),
                                     )

@@ -192,8 +192,12 @@ mod hot_struct_sizes {
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
     use crate::widgets::drag_value::DragValue;
+    use crate::widgets::progress_bar::ProgressBar;
     use crate::widgets::radio::RadioButton;
+    use crate::widgets::slider::Slider;
+    use crate::widgets::splitter::Splitter;
     use crate::widgets::switch::Switch;
+    use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
 
     /// Single source of truth for the per-frame hot-struct inventory.
@@ -273,6 +277,10 @@ mod hot_struct_sizes {
         DragValue<'static> => "widgets::DragValue": 184 / 8,
         RadioButton<'static, u8> => "widgets::RadioButton<u8>": 152 / 8,
         TextEdit<'static> => "widgets::TextEdit": 168 / 8,
+        Text<'static> => "widgets::Text": 144 / 8,
+        Slider<'static> => "widgets::Slider": 136 / 8,
+        ProgressBar<'static> => "widgets::ProgressBar": 120 / 8,
+        Splitter<'static> => "widgets::Splitter": 128 / 8,
         // Layout / text outputs.
         ShapedText => "layout::ShapedText": 32 / 8,
         TextCacheKey => "text::TextCacheKey": 24 / 8,

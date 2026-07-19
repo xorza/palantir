@@ -77,7 +77,7 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
         weight: FontWeight::Regular,
         color: Color::rgb(1.0, 0.2, 0.2),
         font_size_px: 12.0,
-        ..ui.theme.text
+        ..ui.theme.text.clone()
     };
     let chrome = Background::fill(Color::linear_rgba(0.0, 0.0, 0.0, 0.75));
     ui.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
@@ -91,7 +91,7 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
                     .padding(Spacing::xy(4.0, 2.0))
                     .show(ui, |ui| {
                         let label = ui.intern(&label);
-                        Text::new(label).style(style).show(ui);
+                        Text::new(label).style(&style).show(ui);
                     });
             });
     });

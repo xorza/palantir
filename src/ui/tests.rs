@@ -489,7 +489,7 @@ fn text_reshape_skipped_when_unchanged() {
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("wrapped"))
-                    .style(TextStyle::default().with_font_size(16.0))
+                    .style(&TextStyle::default().with_font_size(16.0))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });
@@ -751,7 +751,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
                 .show(ui, |ui| {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .id(WidgetId::from_hash("p"))
-                        .style(TextStyle::default().with_font_size(16.0))
+                        .style(&TextStyle::default().with_font_size(16.0))
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                 });

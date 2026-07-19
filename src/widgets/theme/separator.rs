@@ -5,7 +5,7 @@ use crate::widgets::theme::palette::Palette;
 /// content. Builder overrides (`.color(...)` / `.thickness(...)`) win;
 /// otherwise these defaults fill in, so a design-system theme restyles
 /// separators the same way it restyles every other widget.
-#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SeparatorTheme {
     /// Rule color.
     pub color: Color,

@@ -135,7 +135,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                 .show(ui, |ui| {
                     Text::new("Aperture — Frame Bench")
                         .id_salt("title")
-                        .style(TextStyle::default().with_font_size(20.0))
+                        .style(&TextStyle::default().with_font_size(20.0))
                         .show(ui);
                     Frame::new()
                         .id_salt("title-spacer")
@@ -275,7 +275,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                         .show(ui, |ui| {
                                             Text::new("Volume")
                                                 .id_salt("vol-label")
-                                                .style(TextStyle::default().with_font_size(13.0))
+                                                .style(&TextStyle::default().with_font_size(13.0))
                                                 .size((Sizing::fixed(56.0), Sizing::HUG))
                                                 .show(ui);
                                             Slider::new(&mut state.volume, 0.0..=1.0)
@@ -354,7 +354,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                                         Text::new(name)
                                                             .id_salt(("from", i))
                                                             .style(
-                                                                TextStyle::default()
+                                                                &TextStyle::default()
                                                                     .with_font_size(12.0),
                                                             )
                                                             .show(ui);
@@ -365,7 +365,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                                         )
                                                         .id_salt(("msg", i))
                                                         .style(
-                                                            TextStyle::default()
+                                                            &TextStyle::default()
                                                                 .with_font_size(13.0),
                                                         )
                                                         .text_wrap(TextWrap::Wrap)
@@ -405,12 +405,12 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                         let r = row as u16;
                                         Text::new(labels[row % labels.len()])
                                             .id_salt(("plbl", row))
-                                            .style(TextStyle::default().with_font_size(14.0))
+                                            .style(&TextStyle::default().with_font_size(14.0))
                                             .grid_cell((r, 0))
                                             .show(ui);
                                         Text::new(values[row % values.len()])
                                             .id_salt(("pval", row))
-                                            .style(TextStyle::default().with_font_size(14.0))
+                                            .style(&TextStyle::default().with_font_size(14.0))
                                             .text_wrap(TextWrap::Wrap)
                                             .grid_cell((r, 1))
                                             .show(ui);
@@ -471,7 +471,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                             // this single Text node's arranged rect.
                             Text::new(ui.fmt(format_args!("Frame {:08}", state.tick)))
                                 .id_salt("footer-status")
-                                .style(TextStyle::default().with_font_size(12.0))
+                                .style(&TextStyle::default().with_font_size(12.0))
                                 .size((Sizing::fixed(120.0), Sizing::HUG))
                                 .show(ui);
                             Frame::new()
@@ -480,7 +480,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                                 .show(ui);
                             Text::new("v1.2.3 · many nodes")
                                 .id_salt("footer-meta")
-                                .style(TextStyle::default().with_font_size(12.0))
+                                .style(&TextStyle::default().with_font_size(12.0))
                                 .show(ui);
                         });
 
@@ -489,7 +489,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                         .show(ui, |ui, _handle| {
                             Text::new("Popup layer")
                                 .id_salt("popup-label")
-                                .style(TextStyle::default().with_font_size(11.0))
+                                .style(&TextStyle::default().with_font_size(11.0))
                                 .show(ui);
                         });
                 });

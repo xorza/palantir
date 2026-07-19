@@ -86,7 +86,7 @@ impl<'a> ComboBox<'a> {
         ui.node(id, element, Some(&look.background), |ui| {
             Text::new(label)
                 .id(id.with("label"))
-                .style(text_style)
+                .style(&text_style)
                 .show(ui);
 
             let arrow_id = id.with("arrow");

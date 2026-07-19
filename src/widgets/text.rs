@@ -27,13 +27,14 @@ use crate::widgets::theme::text_style::TextStyle;
 /// the field you want:
 ///
 /// ```ignore
-/// Text::new("hi").style(TextStyle { color: red, ..ui.theme.text })
+/// let style = TextStyle { color: red, ..ui.theme.text.clone() };
+/// Text::new("hi").style(&style)
 /// ```
 #[derive(Debug)]
 pub struct Text<'a> {
     element: Element,
     text: TextInput<'a>,
-    style: Option<TextStyle>,
+    style: Option<&'a TextStyle>,
     /// Single-axis weight override applied over the resolved `style` in
     /// `show`. Lets `Text::new("x").bold()` request bold without cloning
     /// the whole ambient `TextStyle` at the call site.
@@ -61,8 +62,8 @@ impl<'a> Text<'a> {
     /// Override the whole text style for this run. All-or-nothing —
     /// every axis the bundle covers (font size, color, leading) is
     /// replaced. To tweak one axis, build the bundle from the theme:
-    /// `TextStyle { color: red, ..ui.theme.text }`.
-    pub fn style(mut self, s: TextStyle) -> Self {
+    /// `TextStyle { color: red, ..ui.theme.text.clone() }`.
+    pub fn style(mut self, s: &'a TextStyle) -> Self {
         self.style = Some(s);
         self
     }
@@ -99,23 +100,24 @@ impl<'a> Text<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let text = ui.intern(self.text);
-        let mut style = self.style.unwrap_or(ui.theme.text);
-        if let Some(weight) = self.weight {
-            style.weight = weight;
-        }
-        let line_height_px = style.line_height_for(style.font_size_px);
+        let style = self.style.unwrap_or(&ui.theme.text);
+        let color = style.color;
+        let font_size_px = style.font_size_px;
+        let line_height_px = style.line_height_for(font_size_px);
+        let family = style.family;
+        let weight = self.weight.unwrap_or(style.weight);
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text,
-                color: style.color,
-                font_size_px: style.font_size_px,
+                color,
+                font_size_px,
                 line_height_px,
                 wrap: self.wrap,
                 align: self.align,
-                family: style.family,
-                weight: style.weight,
+                family,
+                weight,
             });
         });
         // Decorative: skip eager `response_for`. Discarded responses
