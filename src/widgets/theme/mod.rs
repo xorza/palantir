@@ -26,6 +26,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::text::TextMetrics;
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
@@ -109,6 +110,7 @@ pub struct Theme {
 }
 
 const TEXT_SCALE_ERROR: &str = "text scale must be finite and positive";
+const SCALED_TEXT_METRICS_ERROR: &str = "text scale would make font size or line height invalid";
 
 #[inline]
 fn is_clip_none(c: &ClipMode) -> bool {
@@ -153,8 +155,17 @@ impl Theme {
     pub fn set_text_scale(&mut self, scale: f32) {
         assert!(text_scale_is_valid(scale), "{TEXT_SCALE_ERROR}");
         let ratio = scale / self.text_scale;
-        self.text_scale = scale;
+        let mut metrics_valid = true;
+        self.for_each_text(|style| {
+            metrics_valid &= TextMetrics::from_size_and_multiplier(
+                style.font_size_px * ratio,
+                style.line_height_mult,
+            )
+            .is_some();
+        });
+        assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(|t| t.font_size_px *= ratio);
+        self.text_scale = scale;
     }
 
     /// Visit every `TextStyle` in the theme. `set_text_scale` drives the

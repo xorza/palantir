@@ -180,6 +180,70 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 }
 
 #[test]
+fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
+    use crate::TextStyle;
+    use crate::forest::shapes::record::ShapeRecord;
+    use crate::primitives::approx::EPS;
+    use crate::widgets::text::Text;
+
+    let cases = [
+        ("zero font", 0.0, 1.2),
+        ("negative font", -1.0, 1.2),
+        ("sub-epsilon font", EPS * 0.5, 1.2),
+        ("epsilon font", EPS, 1.2),
+        ("NaN font", f32::NAN, 1.2),
+        ("infinite font", f32::INFINITY, 1.2),
+        ("zero line height", 16.0, 0.0),
+        ("negative line height", 16.0, -1.0),
+        ("sub-epsilon line height", 16.0, EPS / 32.0),
+        ("epsilon line height", 16.0, EPS / 16.0),
+        ("NaN line height", 16.0, f32::NAN),
+        ("infinite line height", 16.0, f32::INFINITY),
+    ];
+
+    for (label, font_size_px, line_height_mult) in cases {
+        let style = TextStyle {
+            font_size_px,
+            line_height_mult,
+            ..TextStyle::default()
+        };
+        let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
+        ui.theme.text_edit.looks.normal.text = Some(style.clone());
+        let mut buf = String::from("editable");
+        let mut text_node = None;
+        let mut editor_node = None;
+        let calls = ui.shared.text.measure_calls();
+
+        ui.run_at_acked(UVec2::new(600, 200), |ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                text_node = Some(Text::new("label").style(&style).show(ui).node());
+                editor_node = Some(
+                    TextEdit::new(&mut buf)
+                        .id(WidgetId::from_hash("invalid editor"))
+                        .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .node(),
+                );
+            });
+        });
+
+        for node in [text_node.unwrap(), editor_node.unwrap()] {
+            assert!(
+                ui.forest.trees[Layer::Main]
+                    .shapes_of(node)
+                    .all(|shape| !matches!(shape, ShapeRecord::Text { .. })),
+                "{label}: invalid text entered the recorded shape stream",
+            );
+        }
+        assert_eq!(
+            ui.shared.text.measure_calls(),
+            calls,
+            "{label}: invalid text reached the shaper",
+        );
+    }
+}
+
+#[test]
 fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;

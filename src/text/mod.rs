@@ -23,6 +23,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -167,12 +168,60 @@ pub(crate) struct ShaperInner {
 /// separate live-layout allowance.
 const BUFFER_BUDGET: usize = 2048;
 
+pub(crate) const TEXT_METRICS_ERROR: &str =
+    "font size and line height must be finite and above the UI epsilon";
+
+/// Shaper-ready font metrics. Construction is the sole boundary that admits
+/// raw runtime/theme values into text measurement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TextMetrics {
+    font_size_px: f32,
+    line_height_px: f32,
+}
+
+impl TextMetrics {
+    pub(crate) fn new(font_size_px: f32, line_height_px: f32) -> Option<Self> {
+        (font_size_px.is_finite()
+            && font_size_px > EPS
+            && line_height_px.is_finite()
+            && line_height_px > EPS)
+            .then_some(Self {
+                font_size_px,
+                line_height_px,
+            })
+    }
+
+    pub(crate) fn from_size_and_multiplier(
+        font_size_px: f32,
+        line_height_mult: f32,
+    ) -> Option<Self> {
+        Self::new(font_size_px, font_size_px * line_height_mult)
+    }
+}
+
+/// Fully validated parameters passed to the mono and cosmic implementations.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ValidatedShapeParams {
+    raw: ShapeParams,
+    metrics: TextMetrics,
+}
+
+impl ValidatedShapeParams {
+    fn unbounded(mut self) -> Self {
+        self.raw.max_width_px = None;
+        self.raw.halign = HAlign::Auto;
+        self
+    }
+}
+
 /// Bundled text-shaping parameters, threaded through the `TextShaper` /
 /// `CosmicMeasure` query surface so every call carries one value instead
 /// of the same loose args (font metrics + wrap width + family + weight +
-/// per-line alignment). `max_width_px` is the wrap/truncation width
-/// (`None` = unbounded); `halign` aligns each line inside that width
-/// (ignored when unbounded, as in `shape_unbounded`).
+/// per-line alignment). `max_width_px` is a finite, non-negative
+/// wrap/truncation width; `None` is the sole unbounded representation.
+/// Invalid metrics or widths return [`MeasureResult::INVALID`] without
+/// entering shaping or reuse caches. `halign` aligns each line inside a
+/// bounded width (ignored when unbounded, as in `shape_unbounded`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeParams {
     pub font_size_px: f32,
@@ -181,6 +230,21 @@ pub struct ShapeParams {
     pub family: FontFamily,
     pub weight: FontWeight,
     pub halign: HAlign,
+}
+
+impl ShapeParams {
+    pub(crate) fn validated(self) -> Option<ValidatedShapeParams> {
+        if self
+            .max_width_px
+            .is_some_and(|width| !width.is_finite() || width < 0.0)
+        {
+            return None;
+        }
+        Some(ValidatedShapeParams {
+            metrics: TextMetrics::new(self.font_size_px, self.line_height_px)?,
+            raw: self,
+        })
+    }
 }
 
 impl TextShaper {
@@ -211,6 +275,9 @@ impl TextShaper {
     /// reuse cache — direct dispatch to cosmic (if installed) or mono.
     /// Used by shape and probing paths.
     pub fn measure(&self, text: &str, params: ShapeParams) -> MeasureResult {
+        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
+            return MeasureResult::INVALID;
+        };
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
         inner.dispatch_direct(text, params)
@@ -229,6 +296,10 @@ impl TextReuseCache {
         text_hash: u64,
         params: ShapeParams,
     ) -> MeasureResult {
+        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
+            return MeasureResult::INVALID;
+        };
+        let params = params.unbounded();
         let mut inner = shaper.inner.borrow_mut();
         let inner = &mut *inner;
         // Cache hit: same authoring hash, return last frame's result.
@@ -247,11 +318,7 @@ impl TextReuseCache {
             &mut inner.cosmic,
             text,
             text_hash,
-            ShapeParams {
-                max_width_px: None,
-                halign: HAlign::Auto,
-                ..params
-            },
+            params,
             LineFit::Wrap,
             TextCacheKey::INVALID,
         );
@@ -284,7 +351,10 @@ impl TextReuseCache {
         target_q: u32,
         fit: LineFit,
     ) -> MeasureResult {
-        let halign = params.halign;
+        let Some(params) = params.validated().filter(|_| !text.is_empty()) else {
+            return MeasureResult::INVALID;
+        };
+        let halign = params.raw.halign;
         let mut inner = shaper.inner.borrow_mut();
         let ShaperInner {
             cosmic,
@@ -346,7 +416,7 @@ impl TextShaper {
     fn with_buffer<R>(
         &self,
         text: &str,
-        params: ShapeParams,
+        params: ValidatedShapeParams,
         body: impl FnOnce(&cosmic_text::Buffer) -> R,
     ) -> Option<R> {
         let mut inner = self.inner.borrow_mut();
@@ -369,13 +439,13 @@ impl TextShaper {
         byte_offset: usize,
         params: ShapeParams,
     ) -> CursorPos {
-        let ShapeParams {
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            halign,
-            ..
-        } = params;
+        let Some(params) = params.validated() else {
+            return CursorPos::INVALID;
+        };
+        let font_size_px = params.metrics.font_size_px;
+        let line_height_px = params.metrics.line_height_px;
+        let max_width_px = params.raw.max_width_px;
+        let halign = params.raw.halign;
         let target = cursor_from_byte(text, byte_offset);
         self.with_buffer(text, params, |buffer| {
             // Iterate visual lines (buffer lines × soft-wrap
@@ -451,7 +521,10 @@ impl TextShaper {
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
     pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, params: ShapeParams) -> usize {
-        let font_size_px = params.font_size_px;
+        let Some(params) = params.validated() else {
+            return 0;
+        };
+        let font_size_px = params.metrics.font_size_px;
         self.with_buffer(text, params, |buffer| {
             buffer
                 .hit(x, y)
@@ -475,9 +548,12 @@ impl TextShaper {
         params: ShapeParams,
         out: &mut SelectionRects,
     ) {
-        let font_size_px = params.font_size_px;
-        let line_height_px = params.line_height_px;
         out.clear();
+        let Some(params) = params.validated() else {
+            return;
+        };
+        let font_size_px = params.metrics.font_size_px;
+        let line_height_px = params.metrics.line_height_px;
         if range.is_empty() {
             return;
         }
@@ -544,22 +620,10 @@ impl ShaperInner {
         cosmic.end_frame_evict(BUFFER_BUDGET);
     }
 
-    fn dispatch_direct(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
-        let ShapeParams {
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            ..
-        } = params;
+    fn dispatch_direct(&mut self, text: &str, params: ValidatedShapeParams) -> MeasureResult {
         match self.cosmic.as_mut() {
-            Some(c) => c.measure(text, params),
-            None => mono_measure(
-                text,
-                font_size_px,
-                line_height_px,
-                max_width_px,
-                LineFit::Wrap,
-            ),
+            Some(c) => c.measure_validated(text, params),
+            None => mono_measure(text, params.metrics, params.raw.max_width_px, LineFit::Wrap),
         }
     }
 }
@@ -571,29 +635,24 @@ fn dispatch(
     cosmic: &mut Option<CosmicMeasure>,
     text: &str,
     text_hash: u64,
-    params: ShapeParams,
+    params: ValidatedShapeParams,
     fit: LineFit,
     unbounded_key: TextCacheKey,
 ) -> MeasureResult {
-    let ShapeParams {
-        font_size_px,
-        line_height_px,
-        max_width_px,
-        ..
-    } = params;
+    let max_width_px = params.raw.max_width_px;
     match cosmic.as_mut() {
         // Truncation needs a finite width to cut against; without one
         // it's just an unbounded single line, so fall through to the
         // plain measure.
         Some(c) => match (fit, max_width_px) {
             (LineFit::Ellipsis | LineFit::Clip, Some(_)) => {
-                c.measure_truncated(text, params, fit, unbounded_key)
+                c.measure_truncated_validated(text, params, fit, unbounded_key)
             }
-            _ => c.measure_hashed(text, text_hash, params),
+            _ => c.measure_hashed_validated(text, text_hash, params),
         },
         // Mono fallback is single-line; cosmic per-line align
         // can't be applied so `halign` is unused here.
-        None => mono_measure(text, font_size_px, line_height_px, max_width_px, fit),
+        None => mono_measure(text, params.metrics, params.raw.max_width_px, fit),
     }
 }
 
@@ -698,14 +757,17 @@ impl MeasureResult {
 /// look up, so the renderer drops these runs cleanly.
 fn mono_measure(
     text: &str,
-    font_size_px: f32,
-    line_height_px: f32,
+    metrics: TextMetrics,
     max_width_px: Option<f32>,
     fit: LineFit,
 ) -> MeasureResult {
     if text.is_empty() {
         return MeasureResult::INVALID;
     }
+    let TextMetrics {
+        font_size_px,
+        line_height_px,
+    } = metrics;
     let glyph_w = font_size_px * 0.5;
     let line_h = line_height_px;
     // Mono is a deterministic stub — count one "char" per byte. Correct for
@@ -766,6 +828,14 @@ pub(crate) struct CursorPos {
     pub(crate) x: f32,
     pub(crate) y_top: f32,
     pub(crate) line_height: f32,
+}
+
+impl CursorPos {
+    const INVALID: Self = Self {
+        x: 0.0,
+        y_top: 0.0,
+        line_height: 0.0,
+    };
 }
 
 /// Caret-x along a single-line mono layout (0.5×font_size per byte).

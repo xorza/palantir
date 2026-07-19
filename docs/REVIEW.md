@@ -17,30 +17,7 @@ the real frame workload.
 
 ## Priority 0 — Correctness and semantic contracts
 
-### 1. Reject malformed text metrics at their owning boundary
-
-- [ ] `TextStyle` exposes raw `font_size_px` and `line_height_mult` and derives
-  unrestricted deserialization at `src/widgets/theme/text_style.rs:17-40`;
-  its helpers perform no validation. `Theme::set_text_scale` validates only
-  the requested scale, mutates `text_scale` before multiplying every stored
-  size, and does not preflight overflow at `src/widgets/theme/mod.rs:100-157`.
-  `ShapeParams` remains raw at `src/text/mod.rs:177-184`: mono accepts every
-  non-empty input, while cosmic rejects only an empty string or
-  `font_size_px <= 0.0`. `Shape::is_noop` ignores both metrics.
-
-  Introduce a named invariant-bearing text-metrics value whose font size and
-  line height are finite and above the UI epsilon. Use it for theme
-  deserialization and every mono/cosmic shaping dispatch. Preflight all scaled
-  styles before atomically changing a theme, and define finite wrap-width
-  semantics separately.
-
-  Table-test zero, negative, sub-epsilon, NaN, and infinity through theme TOML,
-  direct and reuse shaping, wrap/clip/ellipsis, and `Text`/`TextEdit`
-  recording. Invalid theme input must fail deserialization; invalid runtime
-  input must produce the exact invalid/no-command result without entering
-  cache or renderer state.
-
-### 2. Decide whether Grid Fill tracks contribute their content floor to Grid intrinsic size
+### 1. Decide whether Grid Fill tracks contribute their content floor to Grid intrinsic size
 
 - [ ] The design note says Fill contributes content intrinsic while ignoring
   weight (`src/layout/intrinsic.md:67-74`). Grid measure follows that floor
@@ -57,7 +34,7 @@ the real frame workload.
 
 ## Priority 1 — High-impact structural costs
 
-### 3. Replace overlapping measure-cache snapshots with a double-buffered whole-tree snapshot
+### 2. Replace overlapping measure-cache snapshots with a double-buffered whole-tree snapshot
 
 - [ ] Every non-leaf cache miss recursively measures its children and then
   copies its complete `[start..subtree_end)` result into an independent
@@ -83,7 +60,7 @@ the real frame workload.
 
 ## Priority 2 — Broad hot-path improvements
 
-### 4. Prototype incremental cascade invalidation
+### 3. Prototype incremental cascade invalidation
 
 - [ ] `cascade_fingerprint` folds each root's complete subtree authoring hash
   at `src/ui/cascade/mod.rs:511-555`, so any paint-only content change reruns
@@ -99,7 +76,7 @@ the real frame workload.
   visibility, scroll, side-layer, reorder, and paint-only mutations, and
   benchmark partial and scrolling frames before keeping the added machinery.
 
-### 5. Union mutually exclusive duration and spring animation payloads
+### 4. Union mutually exclusive duration and spring animation payloads
 
 - [ ] `AnimRow<T>` stores `current`, `target`, `velocity`, and
   `segment_start` simultaneously at `src/animation/mod.rs:244-271`, although
@@ -118,7 +95,7 @@ the real frame workload.
   switch, settle, and multi-pass frames; compare animated-widget and broad
   frame benchmarks.
 
-### 6. Query Grid Hug intrinsic ranges in one recursion
+### 5. Query Grid Hug intrinsic ranges in one recursion
 
 - [ ] Every span-1 Hug-column cell requests `MinContent` and `MaxContent`
   back-to-back at `src/layout/grid/mod.rs:416-417`. On a cold subtree these are
@@ -131,7 +108,7 @@ the real frame workload.
   compute counts, and compare forced-miss and resize benchmarks before keeping
   the larger API.
 
-### 7. Store widget IDs only for interactive cascade rows
+### 6. Store widget IDs only for interactive cascade rows
 
 - [ ] `EntryRow.widget_id` stores eight bytes for every node at
   `src/ui/cascade/mod.rs:137-165`, although its consumers are reverse hit-test
@@ -148,7 +125,7 @@ the real frame workload.
   duplicate-ID rejection. Compare cascade storage and pointer-move timing on
   container-heavy and fully interactive trees.
 
-### 8. Keep one response snapshot in `WidgetEntry`
+### 7. Keep one response snapshot in `WidgetEntry`
 
 - [ ] `enter_widget` copies a 136-byte `ResponseState` solely to OR one
   disabled bit, then returns both copies in a 280-byte `WidgetEntry` at
@@ -168,7 +145,7 @@ the real frame workload.
 
 ## Priority 3 — Focused and workload-dependent compaction
 
-### 9. Make the paint-animation reverse index truly sparse
+### 8. Make the paint-animation reverse index truly sparse
 
 - [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
   at shape `k` resizes it to `k + 1` at
@@ -184,7 +161,7 @@ the real frame workload.
   viewport/damage subtree culls. Assert that storage scales with animated
   shape count, not the largest shape index.
 
-### 10. Intern record-local gradients and resolve each unique ID once per encode
+### 9. Intern record-local gradients and resolve each unique ID once per encode
 
 - [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
   `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
@@ -203,7 +180,7 @@ the real frame workload.
   interpolation/spread mode, and forced hash collisions. Benchmark solid-only
   and gradient-heavy frames and require zero steady-state allocations.
 
-### 11. Pack command kind and payload offset into one `u32`
+### 10. Pack command kind and payload offset into one `u32`
 
 - [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
   at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding
