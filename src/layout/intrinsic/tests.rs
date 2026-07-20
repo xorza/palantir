@@ -22,7 +22,7 @@ use glam::UVec2;
 fn intrinsic_cache_populated_after_run() {
     let mut ui = Ui::for_test();
     let mut root = NodeId(0);
-    ui.run_at(UVec2::new(400, 300), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -56,7 +56,7 @@ fn intrinsic_cache_populated_after_run() {
 fn intrinsic_query_short_circuits_on_cache_hit() {
     let mut ui = Ui::for_test();
     let mut root = NodeId(0);
-    ui.run_at(UVec2::new(400, 300), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -139,7 +139,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
     // Then clear *just the queried slot* on every node so we can
     // observe which nodes the parent query repopulates.
-    ui.run_at(UVec2::new(400, 300), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
@@ -153,7 +153,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     // answer the root query from last frame's cached intrinsic — this
     // test pins the *recursive compute* path that populates descendant
     // scratch slots, which the cross-frame lookup would otherwise skip.
-    ui.clear_measure_cache();
+    ui.layout_engine.cache.clear();
     let slot = LenReq::MaxContent.slot(Axis::X);
     for entry in ui.layout_engine.scratch.intrinsics.iter_mut() {
         entry[slot] = f32::NAN;
@@ -194,7 +194,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     }
 
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(1200, 900), |ui| {
+    ui.run_at_without_baseline(UVec2::new(1200, 900), |ui| {
         Panel::vstack().id_salt("range-root").show(ui, |ui| {
             Text::new("leaf alpha-beta")
                 .id_salt("range-leaf")
@@ -249,7 +249,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 });
         });
     });
-    ui.clear_measure_cache();
+    ui.layout_engine.cache.clear();
 
     let expected_modes = [
         LayoutMode::Leaf,

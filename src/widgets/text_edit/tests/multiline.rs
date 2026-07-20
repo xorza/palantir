@@ -12,13 +12,13 @@ fn multiline_enter_inserts_newline() {
         let st = ui.state_mut::<TextEditState>(ed_id);
         st.caret = 3;
     }
-    ui.run_at_acked(UVec2::new(300, 160), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
     ui.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(UVec2::new(300, 160), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.caret, 4);
@@ -29,7 +29,7 @@ fn multiline_enter_inserts_newline() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(UVec2::new(300, 160), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
     assert_eq!(buf, "abc\nd");
 }
 
@@ -54,7 +54,7 @@ fn multiline_paste_keeps_newlines() {
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
     ui.request_focus(Some(ed_id));
-    ui.run_at_acked(UVec2::new(300, 200), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('v'),
         repeat: false,
@@ -70,7 +70,7 @@ fn multiline_paste_keeps_newlines() {
             ..Modifiers::NONE
         };
     }
-    ui.run_at_acked(UVec2::new(300, 200), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.caret, buf.len());
@@ -90,7 +90,7 @@ fn multiline_selection_crosses_newline() {
         let st = ui.state_mut::<TextEditState>(ed_id);
         st.caret = 3;
     }
-    ui.run_at_acked(UVec2::new(300, 200), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowDown,
         repeat: false,
@@ -102,7 +102,7 @@ fn multiline_selection_crosses_newline() {
             ..Modifiers::NONE
         };
     }
-    ui.run_at_acked(UVec2::new(300, 200), multiline_editor(&mut buf));
+    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(
         st.selection.is_some(),

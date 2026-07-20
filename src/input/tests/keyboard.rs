@@ -126,11 +126,11 @@ fn focus_policy_routing() {
     for (label, policy, expect_focus) in cases {
         let mut ui = Ui::for_test();
         ui.set_focus_policy(*policy);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
         ui.click_at(glam::Vec2::new(50.0, 20.0));
         assert_eq!(ui.focused_id(), Some(editable_id), "{label}: initial focus");
 
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
         ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -169,11 +169,11 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
                 .show(ui);
         });
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.click_at(glam::Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editable")));
 
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.click_at(glam::Vec2::new(150.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -190,7 +190,7 @@ fn focus_is_evicted_when_widget_disappears() {
 
     let mut ui = Ui::for_test();
     let surface = glam::UVec2::new(200, 80);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("editable"))
@@ -202,7 +202,7 @@ fn focus_is_evicted_when_widget_disappears() {
     ui.click_at(glam::Vec2::new(50.0, 20.0));
     assert!(ui.focused_id().is_some());
 
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});
     });
     assert_eq!(
@@ -239,7 +239,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
     for (label, mode) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(glam::UVec2::new(200, 80), |ui| {
+        ui.run_at(glam::UVec2::new(200, 80), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()
                     .id(WidgetId::from_hash("editable"))

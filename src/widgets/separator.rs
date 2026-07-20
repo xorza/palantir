@@ -105,7 +105,7 @@ mod tests {
     fn explicit_size_overrides_stretch_default() {
         let mut ui = Ui::for_test();
         let (mut sized, mut default) = (None, None);
-        ui.run_at(UVec2::new(400, 300), |ui| {
+        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(

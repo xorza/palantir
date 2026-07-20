@@ -6,7 +6,7 @@ fn typing_inserts_text_when_focused() {
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id));
 
@@ -21,7 +21,7 @@ fn typing_inserts_text_when_focused() {
         physical: Key::Other,
     });
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert_eq!(buf, "hi");
 }
 
@@ -36,7 +36,7 @@ fn keystrokes_ignored_when_not_focused() {
         physical: Key::Other,
     });
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
     assert!(ui.focused_id().is_none());
 }
@@ -49,7 +49,7 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     let mut buf = String::from("seed");
     let id = WidgetId::from_hash("editor");
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert!(ui.focused_id().is_none());
     assert!(
         !ui.on_input(InputEvent::KeyDown {
@@ -66,7 +66,7 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
 
     ui.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id));
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
 
     assert_eq!(buf, "seed", "unfocused text must be discarded on arrival");
     assert_eq!(
@@ -82,7 +82,7 @@ fn escape_blurs_focus() {
     let mut buf = String::from("text");
     let id = WidgetId::from_hash("editor");
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id));
 
@@ -91,7 +91,7 @@ fn escape_blurs_focus() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert_eq!(ui.focused_id(), None);
 }
 
@@ -102,14 +102,14 @@ fn caret_clamps_after_external_buffer_shrink() {
     let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::from("hello");
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
 
     buf = String::from("hi");
     ui.on_input(InputEvent::KeyDown {
@@ -117,7 +117,7 @@ fn caret_clamps_after_external_buffer_shrink() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert_eq!(
         buf, "hi!",
         "clamping must keep insertion at end of shrunken buffer"
@@ -131,11 +131,11 @@ fn text_event_inserts_at_caret_when_focused() {
     let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::new();
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
 
     ui.on_input(InputEvent::Text(TextChunk::new("héllo").unwrap()));
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert_eq!(buf, "héllo");
 }
 
@@ -146,7 +146,7 @@ fn pointer_state_respects_pointer_left() {
     let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::new();
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerLeft);
     ui.on_input(InputEvent::KeyDown {
@@ -155,7 +155,7 @@ fn pointer_state_respects_pointer_left() {
         physical: Key::Other,
     });
 
-    ui.run_at_acked(SMALL, editor_only(&mut buf));
+    ui.run_at(SMALL, editor_only(&mut buf));
     assert_eq!(buf, "z");
 }
 
@@ -165,11 +165,11 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     let mut ui = Ui::for_test_at_text(WIDE);
     let mut buf = String::new();
 
-    ui.run_at_acked(WIDE, editor_and_button(&mut buf));
+    ui.run_at(WIDE, editor_and_button(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editor")));
 
-    ui.run_at_acked(WIDE, editor_and_button(&mut buf));
+    ui.run_at(WIDE, editor_and_button(&mut buf));
     ui.click_at(Vec2::new(200.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -182,7 +182,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(WIDE, editor_and_button(&mut buf));
+    ui.run_at(WIDE, editor_and_button(&mut buf));
     assert_eq!(buf, "");
 }
 
@@ -192,9 +192,9 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
-    ui.run_at_acked(WIDE, editor_and_button(&mut buf));
+    ui.run_at(WIDE, editor_and_button(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
-    ui.run_at_acked(WIDE, editor_and_button(&mut buf));
+    ui.run_at(WIDE, editor_and_button(&mut buf));
     ui.click_at(Vec2::new(200.0, 20.0));
 
     ui.on_input(InputEvent::KeyDown {
@@ -202,7 +202,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(WIDE, editor_and_button(&mut buf));
+    ui.run_at(WIDE, editor_and_button(&mut buf));
     assert_eq!(buf, "x");
 }
 
@@ -212,14 +212,14 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     let mut ui = Ui::for_test_at_text(WIDE);
     let mut buf = String::from("ab");
 
-    ui.run_at_acked(WIDE, editor_only(&mut buf));
+    ui.run_at(WIDE, editor_only(&mut buf));
     ui.click_at(Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(WIDE, editor_only(&mut buf));
+    ui.run_at(WIDE, editor_only(&mut buf));
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 20.0)));
     ui.on_input(InputEvent::KeyDown {
@@ -228,7 +228,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
         physical: Key::Other,
     });
 
-    ui.run_at_acked(WIDE, editor_only(&mut buf));
+    ui.run_at(WIDE, editor_only(&mut buf));
     assert_eq!(buf, "ab!");
 }
 
@@ -239,17 +239,17 @@ fn click_lands_caret_at_pressed_position() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello world");
 
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
 
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('X'),
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     assert_eq!(buf, "helXlo world");
@@ -263,17 +263,17 @@ fn click_uses_overridden_padding() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello world");
 
-    ui.run_at_acked(NARROW, editor_at(&mut buf, pad));
+    ui.run_at(NARROW, editor_at(&mut buf, pad));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
 
-    ui.run_at_acked(NARROW, editor_at(&mut buf, pad));
+    ui.run_at(NARROW, editor_at(&mut buf, pad));
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('X'),
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(NARROW, editor_at(&mut buf, pad));
+    ui.run_at(NARROW, editor_at(&mut buf, pad));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     assert_eq!(buf, "hXello world");
@@ -303,11 +303,11 @@ fn drag_select_continues_past_editor_bounds() {
     let mut buf = String::from("hello world"); // 11 bytes
 
     // Record once so the editor's rect is known to the next frame's hit-test.
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
 
     // Press inside: caret lands mid-text and the anchor latches there.
     ui.press_at(Vec2::new(22.0, 20.0));
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     let anchor = ui.state_mut::<TextEditState>(ed_id).caret;
     assert!(
         anchor > 0 && anchor < buf.len(),
@@ -322,7 +322,7 @@ fn drag_select_continues_past_editor_bounds() {
     // Drag far RIGHT, way past the editor's right edge. Selection extends
     // to end-of-text; the anchor is preserved.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(4000.0, 20.0)));
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
         assert_eq!(
@@ -345,7 +345,7 @@ fn drag_select_continues_past_editor_bounds() {
     // Drag far LEFT, past the left edge. Caret clamps to 0; the anchor is
     // still latched so the selection just flips direction.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(-2000.0, 20.0)));
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
         assert_eq!(st.caret, 0, "caret clamps to 0 past the left edge");
@@ -359,7 +359,7 @@ fn drag_select_continues_past_editor_bounds() {
     // Pointer leaves the surface entirely mid-drag: no position this frame,
     // but the gesture is still live — anchor and selection must persist.
     ui.on_input(InputEvent::PointerLeft);
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
         assert_eq!(
@@ -376,7 +376,7 @@ fn drag_select_continues_past_editor_bounds() {
 
     // Release ends the gesture: the anchor drops, the selection persists.
     ui.release_left();
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
         assert_eq!(st.selection, Some(anchor), "selection survives release");
@@ -405,7 +405,7 @@ fn two_textedits_only_one_focused_at_a_time() {
         });
     };
 
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut a, &mut b));
+    ui.run_at(WIDE, |ui| body(ui, &mut a, &mut b));
     ui.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id_a));
 
@@ -414,7 +414,7 @@ fn two_textedits_only_one_focused_at_a_time() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut a, &mut b));
+    ui.run_at(WIDE, |ui| body(ui, &mut a, &mut b));
     assert_eq!(a, "1");
     assert_eq!(b, "");
 
@@ -426,7 +426,7 @@ fn two_textedits_only_one_focused_at_a_time() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut a, &mut b));
+    ui.run_at(WIDE, |ui| body(ui, &mut a, &mut b));
     assert_eq!(a, "1", "A's buffer untouched once focus moved to B");
     assert_eq!(b, "2");
 }
@@ -456,9 +456,9 @@ fn select_all_on_focus_gates_on_the_flag() {
         });
     };
 
-    ui.run_at_acked(WIDE, |ui| render(ui, &mut on, &mut off));
+    ui.run_at(WIDE, |ui| render(ui, &mut on, &mut off));
     ui.request_focus(Some(on_id));
-    ui.run_at_acked(WIDE, |ui| render(ui, &mut on, &mut off));
+    ui.run_at(WIDE, |ui| render(ui, &mut on, &mut off));
     {
         let st = ui.state_mut::<TextEditState>(on_id);
         assert_eq!(
@@ -474,7 +474,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     }
 
     ui.request_focus(Some(off_id));
-    ui.run_at_acked(WIDE, |ui| render(ui, &mut on, &mut off));
+    ui.run_at(WIDE, |ui| render(ui, &mut on, &mut off));
     assert_eq!(
         ui.state_mut::<TextEditState>(off_id).selection,
         None,
@@ -505,7 +505,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
                         .show(ui);
                 });
         };
-        ui.run_at_acked(WIDE, |ui| render(ui, &mut buf));
+        ui.run_at(WIDE, |ui| render(ui, &mut buf));
         // 40% into the widget's on-screen width — the same logical point at any
         // zoom, so the resulting caret byte must match.
         let rect = ui.response_for(id).rect.expect("editor laid out");
@@ -514,7 +514,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
             rect.min.y + rect.size.h * 0.5,
         );
         ui.press_at(click);
-        ui.run_at_acked(WIDE, |ui| render(ui, &mut buf));
+        ui.run_at(WIDE, |ui| render(ui, &mut buf));
         ui.state_mut::<TextEditState>(id).caret
     }
 
@@ -557,7 +557,7 @@ fn focus_within_follows_the_focused_widgets_ancestry() {
         });
     };
 
-    ui.run_at_acked(SMALL, &mut record);
+    ui.run_at(SMALL, &mut record);
     assert!(
         !ui.focus_within(holder),
         "nothing focused → no ancestor owns focus"

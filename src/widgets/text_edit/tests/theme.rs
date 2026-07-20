@@ -15,7 +15,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let mut btn_node = None;
     let mut txt_node = None;
     let mut ed_node = None;
-    ui.run_at_acked(UVec2::new(600, 200), |ui| {
+    ui.run_at(UVec2::new(600, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             btn_node = Some(
                 Button::new()
@@ -71,7 +71,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     ui.theme.text.color = Color::rgb(1.0, 0.0, 0.0);
 
     let mut node = None;
-    ui.run_at_acked(NARROW, |ui| {
+    ui.run_at(NARROW, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             node = Some(Text::new("hi").auto_id().show(ui).node());
         });
@@ -97,7 +97,7 @@ fn text_widget_color_override_wins_over_theme() {
     ui.theme.text.color = Color::rgb(1.0, 0.0, 0.0);
 
     let mut node = None;
-    ui.run_at_acked(NARROW, |ui| {
+    ui.run_at(NARROW, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             node = Some(
                 Text::new("hi")
@@ -133,7 +133,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let mut btn_node = None;
     let mut txt_node = None;
     let mut ed_node = None;
-    ui.run_at_acked(UVec2::new(600, 200), |ui| {
+    ui.run_at(UVec2::new(600, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             btn_node = Some(
                 Button::new()
@@ -214,7 +214,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         let mut editor_node = None;
         let calls = ui.shared.text.measure_calls();
 
-        ui.run_at_acked(UVec2::new(600, 200), |ui| {
+        ui.run_at(UVec2::new(600, 200), |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 text_node = Some(Text::new("label").style(&style).show(ui).node());
                 editor_node = Some(
@@ -267,7 +267,7 @@ fn textedit_style_override_replaces_default_theme() {
             ..TextEditTheme::default()
         };
         let mut leaf = None;
-        ui.run_at_acked(NARROW, |ui| {
+        ui.run_at(NARROW, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 leaf = Some(
                     TextEdit::new(&mut buf)
@@ -296,7 +296,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hi");
     let mut leaf_node = None;
-    ui.run_at_acked(NARROW, |ui| {
+    ui.run_at(NARROW, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             leaf_node = Some(
                 TextEdit::new(&mut buf)
@@ -345,9 +345,9 @@ fn no_selection_paints_no_highlight_rect() {
             );
         });
     };
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf));
     ui.click_at(Vec2::new(20.0, 20.0));
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
     let rects: usize = ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
@@ -376,14 +376,14 @@ fn shift_end_paints_selection_highlight() {
             );
         });
     };
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf));
     ui.click_at(Vec2::new(20.0, 20.0));
     ui.on_input(InputEvent::KeyDown {
         key: Key::Home,
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf));
     ui.on_input(InputEvent::ModifiersChanged(Modifiers {
         shift: true,
         ..Modifiers::NONE
@@ -393,7 +393,7 @@ fn shift_end_paints_selection_highlight() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
     let rects: Vec<_> = ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
@@ -423,14 +423,14 @@ fn drag_select_extends_selection() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
 
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     // Mouse-down at offset 1 (x = 16).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(16.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     // Drag to offset 4 (x = 40) — still pressed.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 20.0)));
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     // Type 'X' — replaces the selected range.
@@ -439,7 +439,7 @@ fn drag_select_extends_selection() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     assert_eq!(
         buf, "hXo",
         "drag-selected [1..4] then 'X' typed: 'h' + 'X' + 'o'"
@@ -458,7 +458,7 @@ fn click_without_drag_clears_prior_selection() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
 
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     ui.click_at(Vec2::new(60.0, 20.0));
     ui.on_input(InputEvent::ModifiersChanged(Modifiers {
         ctrl: true,
@@ -470,11 +470,11 @@ fn click_without_drag_clears_prior_selection() {
         physical: Key::Other,
     });
     ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
 
     // Now press at offset 2 (x = 8 + 16 = 24), let a frame run, release.
     ui.press_at(Vec2::new(24.0, 20.0));
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     ui.release_left();
 
     ui.on_input(InputEvent::KeyDown {
@@ -482,7 +482,7 @@ fn click_without_drag_clears_prior_selection() {
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at_acked(NARROW, editor_at(&mut buf, None));
+    ui.run_at(NARROW, editor_at(&mut buf, None));
     assert_eq!(
         buf, "heZllo",
         "click clears selection; 'Z' inserts at caret 2"
@@ -516,9 +516,9 @@ fn line_height_override_changes_caret_rect_height() {
                 *leaf = Some(e.show(ui).node());
             });
         };
-        ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
+        ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
         ui.click_at(Vec2::new(20.0, 20.0));
-        ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
+        ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
         ui.forest.trees[Layer::Main]
             .shapes_of(leaf.unwrap())
             .find_map(|s| match s {

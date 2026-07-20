@@ -121,10 +121,9 @@ pub(crate) struct DamageEngine {
 
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the tier-1 subtree-skip arm jumped `subtree_end - i`
-    /// instead of advancing by 1. Read by tests and benches via
-    /// `support::internals::damage_subtree_skips`; zero on first
-    /// frame and on full-repaint fall-through. Gated alongside
-    /// `dirty` — production builds don't pay the increment.
+    /// instead of advancing by 1. Zero on first frame and on
+    /// full-repaint fall-through. Gated alongside `dirty` so
+    /// production builds don't pay the increment.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) subtree_skips: u32,
     #[cfg(any(test, feature = "internals"))]
@@ -926,25 +925,9 @@ impl DamageEngine {
         let snap = self.prev.get(&wid)?;
         union_screens(&self.arena.snaps[snap.paint_span.range()])
     }
-}
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
-    use crate::forest::Forest;
-    use crate::ui::damage::DamageEngine;
-
-    impl DamageEngine {
-        /// Force a compaction pass. Production frames go through
-        /// `compute`, which calls `arena.maybe_compact` after the
-        /// eviction tail; this is the entry point for tests / benches
-        /// that want to drive the compaction directly. The `internals`
-        /// feature exposes this for downstream consumers even though
-        /// only `cfg(test)` callers exist today — keep `allow(dead_code)`
-        /// so a feature-only build doesn't trip `-D warnings`.
-        #[allow(dead_code)]
-        pub(crate) fn compact_paint_snaps(&mut self, forest: &Forest) {
-            self.arena.compact(forest, &mut self.prev);
-        }
+    pub(crate) fn compact_paint_snaps(&mut self, forest: &Forest) {
+        self.arena.compact(forest, &mut self.prev);
     }
 }
 

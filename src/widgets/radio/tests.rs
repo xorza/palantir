@@ -19,7 +19,7 @@ enum Pick {
 fn frame_with_rects(ui: &mut Ui, surface: UVec2, sel: &mut Pick) -> [Option<Rect>; 3] {
     let mut local = *sel;
     let mut rects = [None; 3];
-    ui.run_at(surface, |ui| {
+    ui.run_at_without_baseline(surface, |ui| {
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
                 let r = RadioButton::new(&mut local, value)
@@ -68,7 +68,7 @@ fn disabled_radio_does_not_select() {
     let mut sel = Pick::A;
 
     let mut local = sel;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             RadioButton::new(&mut local, Pick::B)
                 .id(WidgetId::from_hash(("rb", "B")))
@@ -80,7 +80,7 @@ fn disabled_radio_does_not_select() {
     sel = local;
     ui.click_at(Vec2::new(8.0, 8.0));
     let mut local = sel;
-    ui.run_at(surface, |ui| {
+    ui.run_at_without_baseline(surface, |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             RadioButton::new(&mut local, Pick::B)
                 .id(WidgetId::from_hash(("rb", "B")))

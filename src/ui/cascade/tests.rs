@@ -14,7 +14,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::cascade::{CascadePrefixBits, build_cascade_prefix, finish_cascade_input};
-use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::panel::Panel;
 use crate::{Ui, renderer::frontend::Frontend};
@@ -69,7 +68,7 @@ fn shape_rect_composes_self_transform() {
     let xform = TranslateScale::new(translate, scale);
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
@@ -150,7 +149,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
     for case in cases {
         let mut ui = Ui::for_test();
         let display = Display::from_physical(UVec2::splat(400), case.display_scale);
-        ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
             let mut panel = Panel::canvas()
                 .id(WidgetId::from_hash("stroke"))
                 .size(Sizing::fixed(case.panel_size))
@@ -188,7 +187,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
     let xform = TranslateScale::from_scale(zoom);
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         // Push the transformed panel off the surface origin with a
         // leading sibling — Spacer-style placeholder so the panel
         // sits at (sibling_width, 0) instead of (0, 0).
@@ -247,7 +246,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
     use crate::primitives::background::Background;
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("chrome"))
@@ -322,7 +321,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
 fn per_node_columns_track_tree_size() {
     let mut ui = Ui::for_test();
     for child_count in [3usize, 1, 4] {
-        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+        ui.run_at(UVec2::new(100, 100), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("column-root"))
                 .show(ui, |ui| {
@@ -370,7 +369,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     let xform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
 
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
@@ -445,7 +444,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
     let mut ui = Ui::for_test();
-    ui.run_at(glam::UVec2::new(200, 200), |ui| {
+    ui.run_at_without_baseline(glam::UVec2::new(200, 200), |ui| {
         Panel::hstack().id(row).show(ui, |ui| {
             // Layout-only spacer: occupies 50 px, paints nothing.
             Panel::hstack()
@@ -482,7 +481,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     let disabled = WidgetId::from_hash("disabled");
     let popup_scroll = WidgetId::from_hash("popup-scroll");
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::splat(100), |ui| {
+    ui.run_at(UVec2::splat(100), |ui| {
         Panel::zstack()
             .auto_id()
             .size(Sizing::fixed(100.0))
@@ -535,7 +534,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     assert_eq!(targets.scroll, Some(popup_scroll));
     assert_eq!(targets.pinch, None);
 
-    ui.run_at_acked(UVec2::splat(100), |ui| {
+    ui.run_at(UVec2::splat(100), |ui| {
         Frame::new().id(inert).size(Sizing::FILL).show(ui);
     });
     assert_eq!(ui.cascades.hits.len(), 0);
@@ -641,8 +640,8 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
 
 fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::splat(300), base);
-    ui.run_at_acked(UVec2::splat(300), changed);
+    ui.run_at(UVec2::splat(300), base);
+    ui.run_at(UVec2::splat(300), changed);
     assert_cascades_match_full(&ui, label);
 }
 
@@ -812,11 +811,11 @@ fn incremental_scroll_matches_full() {
             });
     };
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::splat(300), build);
+    ui.run_at(UVec2::splat(300), build);
     ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
         .offset
         .y = 40.0;
-    ui.run_at_acked(UVec2::splat(300), build);
+    ui.run_at(UVec2::splat(300), build);
 
     assert_cascades_match_full(&ui, "scroll");
 }

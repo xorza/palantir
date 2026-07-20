@@ -761,7 +761,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
         let mut ui = Ui::for_test();
-        let wrap_kids = ui.run_at_value(UVec2::new(surface_w, 600), build);
+        let wrap_kids = ui.run_at_value_without_baseline(UVec2::new(surface_w, 600), build);
         let (wrap, kids) = wrap_kids;
         let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
@@ -787,7 +787,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
 fn wrap_vstack_wraps_under_max_size_inside_vstack() {
     let mut ui = Ui::for_test();
     let mut nodes = Vec::new();
-    ui.run_at(UVec2::new(400, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("col"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -843,7 +843,7 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
 fn wrap_vstack_inherits_parent_stack_main_bound() {
     let mut ui = Ui::for_test();
     let mut nodes = Vec::new();
-    ui.run_at(UVec2::new(400, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("col"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -894,7 +894,7 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
 fn capped_hstack_of_columns_wraps_func_lists() {
     let mut ui = Ui::for_test();
     let mut funcs = Vec::new();
-    ui.run_at(UVec2::new(800, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("cols"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -948,7 +948,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
 fn capped_vstack_bounds_wrap_through_hstack() {
     let mut ui = Ui::for_test();
     let mut funcs = Vec::new();
-    ui.run_at(UVec2::new(800, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("popup"))
             .size((Sizing::HUG, Sizing::HUG))

@@ -29,7 +29,7 @@ fn split_id() -> WidgetId {
 /// the divider has arranged geometry for hit-testing.
 fn frame_with(ui: &mut Ui, ratio: &mut f32) -> usize {
     let mut passes = 0;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         passes += 1;
         Splitter::horizontal(ratio)
             .id(split_id())
@@ -99,7 +99,7 @@ fn divider_drag_is_scale_invariant() {
         let mut ui = Ui::for_test();
         let mut ratio = 0.5;
         let frame = |ui: &mut Ui, ratio: &mut f32| {
-            ui.run_at_acked(UVec2::new(1_000, 400), |ui| {
+            ui.run_at(UVec2::new(1_000, 400), |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-split-parent"))
                     .transform(TranslateScale::from_scale(scale))
@@ -170,7 +170,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let mut ratio = 0.5;
         let frame = |ui: &mut Ui, ratio: &mut f32| {
             let mut passes = 0;
-            ui.run_at_acked(SURFACE, |ui| {
+            ui.run_at(SURFACE, |ui| {
                 passes += 1;
                 let splitter = if horizontal {
                     Splitter::horizontal(ratio)
@@ -349,7 +349,7 @@ fn divider_requests_the_resize_cursor() {
     let mut ui = Ui::for_test();
     let mut ratio = 0.5;
     let frame = |ui: &mut Ui, ratio: &mut f32| {
-        ui.run_at_acked(SURFACE, |ui| {
+        ui.run_at(SURFACE, |ui| {
             Splitter::vertical(ratio)
                 .id(split_id())
                 .size((Sizing::fixed(100.0), Sizing::fixed(201.0)))
@@ -371,7 +371,7 @@ fn divider_requests_the_resize_cursor() {
         let mut ui = Ui::for_test();
         let mut ratio = 0.5;
         let frame = |ui: &mut Ui, ratio: &mut f32| {
-            ui.run_at_acked(SURFACE, |ui| {
+            ui.run_at(SURFACE, |ui| {
                 let style = SplitterTheme {
                     thickness,
                     rule_thickness,
@@ -442,7 +442,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
     for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
         let mut ui = Ui::for_test();
         let mut ratio = ratio;
-        ui.run_at_acked(SURFACE, |ui| {
+        ui.run_at(SURFACE, |ui| {
             Splitter::horizontal(&mut ratio)
                 .id(split_id())
                 .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))

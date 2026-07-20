@@ -42,7 +42,7 @@ fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
 fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut node = None;
-    ui.run_at_acked(UVec2::new(200, 400), |ui| {
+    ui.run_at(UVec2::new(200, 400), |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -59,7 +59,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
 fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut node = None;
-    ui.run_at_acked(UVec2::new(200, 400), |ui| {
+    ui.run_at(UVec2::new(200, 400), |ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -77,7 +77,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
     let mut ui = Ui::for_test();
     let mut zstack_node = None;
-    ui.run_at_acked(UVec2::new(800, 600), |ui| {
+    ui.run_at(UVec2::new(800, 600), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             zstack_node = Some(
                 Panel::zstack()
@@ -116,7 +116,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
     fn measure(surface_w: u32) -> f32 {
         let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
         let mut value_node = None;
-        ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
+        ui.run_at(UVec2::new(surface_w, 400), |ui| {
             Grid::new()
                 .auto_id()
                 .cols([Track::hug(), Track::fill()])
@@ -168,7 +168,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
 fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut value_node = None;
-    ui.run_at_acked(UVec2::new(200, 400), |ui| {
+    ui.run_at(UVec2::new(200, 400), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Grid::new()
                 .auto_id()
@@ -213,7 +213,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 600));
     let mut grid_node = None;
-    ui.run_at_acked(UVec2::new(400, 600), |ui| {
+    ui.run_at(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -270,7 +270,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 600));
     let mut grid_node = None;
-    ui.run_at_acked(UVec2::new(400, 600), |ui| {
+    ui.run_at(UVec2::new(400, 600), |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))

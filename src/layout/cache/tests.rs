@@ -17,7 +17,7 @@ fn run_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
 }
 
 fn run_frame_at(ui: &mut Ui, size: UVec2, mut record: impl FnMut(&mut Ui)) {
-    ui.run_at_acked(size, |ui| {
+    ui.run_at(size, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, &mut record);
@@ -401,7 +401,7 @@ fn widget_reappearance_matches_cold_snapshot() {
     run_frame(&mut ui, with_widget);
     let warm = snap_for(&ui, blip).unwrap().desired.to_vec();
 
-    ui.clear_measure_cache();
+    ui.layout_engine.cache.clear();
     run_frame(&mut ui, with_widget);
     let cold = snap_for(&ui, blip).unwrap().desired.to_vec();
 

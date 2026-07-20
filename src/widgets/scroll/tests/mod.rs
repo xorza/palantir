@@ -39,7 +39,7 @@ fn read_state(ui: &mut Ui) -> ScrollState {
 #[test]
 fn scroll_state_records_viewport_and_content_after_arrange() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
     let row = read_state(&mut ui);
     assert_eq!(row.viewport.h, 200.0);
     assert_eq!(row.content.h, 800.0);
@@ -68,13 +68,13 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
                     });
             });
     };
-    ui.run_at_acked(UVec2::new(400, 400), build);
+    ui.run_at(UVec2::new(400, 400), build);
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert_eq!(ui.input.scroll_target, Some(inner_id));
     assert_eq!(ui.input.pinch_target, Some(outer_id));
     assert!(ui.on_input(InputEvent::Zoom(1.5)).requests_repaint);
-    ui.run_at_acked(UVec2::new(400, 400), build);
+    ui.run_at(UVec2::new(400, 400), build);
 
     let outer_zoom = ui.scroll_state(outer_id.with("__viewport")).zoom;
     let inner_zoom = ui.scroll_state(inner_id.with("__viewport")).zoom;
@@ -113,11 +113,11 @@ fn wheel_delta_advances_offset_with_clamp() {
     ];
     for (label, viewport_h, content_h, pushes, expected) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(SURFACE, |ui| build(ui, *viewport_h, *content_h));
+        ui.run_at(SURFACE, |ui| build(ui, *viewport_h, *content_h));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
             ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
-            ui.run_at_acked(SURFACE, |ui| build(ui, *viewport_h, *content_h));
+            ui.run_at(SURFACE, |ui| build(ui, *viewport_h, *content_h));
         }
 
         assert_eq!(read_state(&mut ui).offset.y, *expected, "case: {label}");
@@ -146,17 +146,17 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(SURFACE, build_m);
+    ui.run_at(SURFACE, build_m);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     // Pan left/up: large negative wheel delta should clamp at `-m` on
     // both axes (margin is symmetric and zoom is 1.0).
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
-    ui.run_at_acked(SURFACE, build_m);
+    ui.run_at(SURFACE, build_m);
     assert_eq!(read_state(&mut ui).offset, Vec2::new(-m, -m));
     // Pan back the other way: clamp at `raw_slack + m`. Raw slack =
     // 400 - 200 = 200; total max = 200 + 100 = 300.
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
-    ui.run_at_acked(SURFACE, build_m);
+    ui.run_at(SURFACE, build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
         read_state(&mut ui).offset,
@@ -182,11 +182,11 @@ fn horizontal_scroll_pans_only_x() {
                     });
             });
     };
-    ui.run_at_acked(SURFACE, build_h);
+    ui.run_at(SURFACE, build_h);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(75.0, 200.0)));
 
-    ui.run_at_acked(SURFACE, build_h);
+    ui.run_at(SURFACE, build_h);
     let id = WidgetId::from_hash("hscroll").with("__viewport");
     let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
@@ -210,11 +210,11 @@ fn both_axis_scroll_pans_both_axes() {
                     });
             });
     };
-    ui.run_at_acked(SURFACE, build_xy);
+    ui.run_at(SURFACE, build_xy);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
 
-    ui.run_at_acked(SURFACE, build_xy);
+    ui.run_at(SURFACE, build_xy);
     let id = WidgetId::from_hash("xy").with("__viewport");
     let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
@@ -356,12 +356,12 @@ fn scroll_state_content_survives_measure_cache_hit() {
     };
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
     let after_first = *ui.scroll_state(scroll_id);
     assert_eq!(after_first.content.h, 92.0);
 
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     let after_second = *ui.scroll_state(scroll_id);
     assert_eq!(
         after_second.content, after_first.content,
@@ -451,12 +451,12 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                 });
         };
 
-        ui.run_at_acked(SURFACE, build);
+        ui.run_at(SURFACE, build);
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
         for &(px, py) in pans {
             ui.on_input(InputEvent::ScrollPixels(Vec2::new(px, py)));
-            ui.run_at_acked(SURFACE, build);
+            ui.run_at(SURFACE, build);
         }
 
         let id = WidgetId::from_hash("xy").with("__viewport");
@@ -469,7 +469,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 
         for &pinch in pinches {
             ui.on_input(InputEvent::Zoom(pinch));
-            ui.run_at_acked(SURFACE, build);
+            ui.run_at(SURFACE, build);
         }
 
         let after = *ui.scroll_state(id);
@@ -546,7 +546,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                     });
             });
     };
-    ui.run_at_acked(SURFACE, build);
+    ui.run_at(SURFACE, build);
 
     let id = WidgetId::from_hash("xy").with("__viewport");
     {
@@ -556,7 +556,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
-    ui.run_at_acked(SURFACE, build);
+    ui.run_at(SURFACE, build);
 
     let after = *ui.scroll_state(id);
     assert!(
@@ -566,7 +566,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     );
 
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
-    ui.run_at_acked(SURFACE, build);
+    ui.run_at(SURFACE, build);
     let after2 = *ui.scroll_state(id);
     assert!(
         (after2.offset.y - (-45.0)).abs() < 1e-3,
@@ -591,10 +591,10 @@ fn pivot_zoom_preserves_underflow_pan_range() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(SURFACE, build);
+    ui.run_at(SURFACE, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Zoom(0.5));
-    ui.run_at_acked(SURFACE, build);
+    ui.run_at(SURFACE, build);
 
     let id = WidgetId::from_hash("scroll").with("__viewport");
     let zoomed = *ui.scroll_state(id);
@@ -603,7 +603,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
-    ui.run_at_acked(SURFACE, build);
+    ui.run_at(SURFACE, build);
     let panned = *ui.scroll_state(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset.y, zoomed.offset.y);
@@ -635,14 +635,14 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                         });
                 });
         };
-        ui.run_at_acked(SURFACE, build);
+        ui.run_at(SURFACE, build);
 
         let response = ui.response_for(id);
         let layout = response.layout_rect.expect("scroll arranged");
         let pointer = response.transform.apply_point(layout.min + logical_pointer);
         ui.on_input(InputEvent::PointerMoved(pointer));
         ui.on_input(InputEvent::Zoom(1.5));
-        ui.run_at_acked(SURFACE, build);
+        ui.run_at(SURFACE, build);
 
         let state = *ui.scroll_state(scroll_id);
         assert_eq!(state.zoom, 1.5, "zoom at {scale}×");
@@ -668,7 +668,6 @@ mod bars {
     use crate::primitives::rect::Rect;
     use crate::primitives::size::Size;
     use crate::primitives::widget_id::WidgetId;
-    use crate::ui::frame::FrameStamp;
     use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
@@ -793,8 +792,8 @@ mod bars {
     /// settles `ScrollState` before the bar-emit check.
     fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui.forest.trees[Layer::Main]
             .records
@@ -870,7 +869,7 @@ mod bars {
 
         let mut ui = Ui::for_test();
         let mut records = 0;
-        let report = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let report = ui.record_test_frame(display, Duration::ZERO, |ui| {
             records += 1;
             build(ui);
         });
@@ -895,7 +894,7 @@ mod bars {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
         ui.on_input(InputEvent::Zoom(1.5));
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
         let state = *ui.scroll_state(scroll_id);
         assert_eq!(state.viewport, Size::new(200.0, 200.0));
         assert_eq!(state.zoom, 1.5);
@@ -977,8 +976,8 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
     }
 
     /// Showcase-style nested scroll cards. Pin that the deeper
@@ -1024,9 +1023,9 @@ mod bars {
                     }
                 });
         };
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
     }
 
     /// Reservation: when content overflows on the V axis, the inner
@@ -1051,8 +1050,8 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
         let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
         assert_eq!(
             row.viewport,
@@ -1083,8 +1082,8 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
         let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
         assert_eq!(row.viewport, Size::new(156.0, 168.0));
     }
@@ -1155,16 +1154,16 @@ mod bars {
         };
 
         let mut ui = Ui::for_test();
-        ui.run_at_acked(surface, |ui| build(ui, 800.0));
-        ui.run_at_acked(surface, |ui| build(ui, 800.0));
+        ui.run_at(surface, |ui| build(ui, 800.0));
+        ui.run_at(surface, |ui| build(ui, 800.0));
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(188.0, 200.0),
             "viewport = 200 - (width + gap) when content overflows",
         );
 
-        ui.run_at_acked(surface, |ui| build(ui, 50.0));
-        ui.run_at_acked(surface, |ui| build(ui, 50.0));
+        ui.run_at(surface, |ui| build(ui, 50.0));
+        ui.run_at(surface, |ui| build(ui, 50.0));
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(188.0, 200.0),
@@ -1194,8 +1193,8 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let z1_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
@@ -1207,8 +1206,8 @@ mod bars {
             .h;
 
         ui.scroll_state(scroll_id).zoom = 2.0;
-        ui.run_at_acked(surface, build);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
         let z2_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
         let v2 = z2_thumbs
@@ -1319,7 +1318,7 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, scene);
+        ui.run_at(surface, scene);
         let row = *ui.scroll_state(scroll_id);
         let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
         assert_eq!(
@@ -1369,11 +1368,11 @@ mod bars {
             rects
         };
 
-        ui.run_at_acked(surface, scene);
+        ui.run_at(surface, scene);
         let f1 = bar_rects(&ui);
         assert_eq!(f1.len(), 2, "cold-mount must emit both V + H thumbs");
 
-        ui.run_at_acked(surface, scene);
+        ui.run_at(surface, scene);
         let f2 = bar_rects(&ui);
 
         assert_eq!(
@@ -1413,8 +1412,8 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, scene);
-        ui.run_at_acked(surface, scene);
+        ui.run_at(surface, scene);
+        ui.run_at(surface, scene);
         let row = *ui.scroll_state(scroll_id);
         assert_eq!(
             row.viewport,
@@ -1452,7 +1451,7 @@ mod bars {
                         });
                 });
         };
-        ui.run_at_acked(surface, scene);
+        ui.run_at(surface, scene);
         let row = *ui.scroll_state(scroll_id);
         assert_eq!(
             row.viewport,
@@ -1488,8 +1487,8 @@ fn drag_thumb_pans_proportionally() {
                         });
                 });
         };
-        ui.run_at_acked(SURFACE, build);
-        ui.run_at_acked(SURFACE, build);
+        ui.run_at(SURFACE, build);
+        ui.run_at(SURFACE, build);
 
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let thumb_id = scroll_id.with("__vthumb");
@@ -1501,7 +1500,7 @@ fn drag_thumb_pans_proportionally() {
         ui.on_input(InputEvent::PointerMoved(
             press + Vec2::new(0.0, 30.0 * scale),
         ));
-        ui.run_at_acked(SURFACE, build);
+        ui.run_at(SURFACE, build);
 
         // viewport = 200, content = 800 ⇒ max_offset = 600.
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
@@ -1515,7 +1514,7 @@ fn drag_thumb_pans_proportionally() {
         ui.on_input(InputEvent::PointerMoved(
             press + Vec2::new(0.0, 9_999.0 * scale),
         ));
-        ui.run_at_acked(SURFACE, build);
+        ui.run_at(SURFACE, build);
         assert_eq!(
             ui.scroll_state(scroll_id).offset.y,
             600.0,
@@ -1565,7 +1564,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                         }
                     });
             };
-            ui.run_at_acked(SURFACE, build_axis);
+            ui.run_at(SURFACE, build_axis);
 
             let scroll_id = WidgetId::from_hash(*scroll_key).with("__viewport");
             let track_id = scroll_id.with(*track_suffix);
@@ -1581,7 +1580,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             ui.on_input(InputEvent::PointerMoved(forward_press));
             ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
             ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-            ui.run_at_acked(SURFACE, build_axis);
+            ui.run_at(SURFACE, build_axis);
             let offset = ui.scroll_state(scroll_id).offset;
             let forward = match axis {
                 AxisCase::V => offset.y,
@@ -1595,7 +1594,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             ui.on_input(InputEvent::PointerMoved(back_press));
             ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
             ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-            ui.run_at_acked(SURFACE, build_axis);
+            ui.run_at(SURFACE, build_axis);
             let offset = ui.scroll_state(scroll_id).offset;
             let back = match axis {
                 AxisCase::V => offset.y,
@@ -1633,7 +1632,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                     });
             });
     };
-    ui.run_at_acked(SURFACE, build_zoom);
+    ui.run_at(SURFACE, build_zoom);
 
     let scroll_id = WidgetId::from_hash("zoomy").with("__viewport");
     let before_zoom = ui.scroll_state(scroll_id).zoom;
@@ -1647,7 +1646,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
         ..Modifiers::NONE
     }));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
-    ui.run_at_acked(SURFACE, build_zoom);
+    ui.run_at(SURFACE, build_zoom);
 
     let after_zoom = ui.scroll_state(scroll_id).zoom;
     let expected = before_zoom * 1.03_f32.powf(-2.0);
@@ -1683,7 +1682,7 @@ fn wheel_zoom_step_is_font_independent() {
                         });
                 });
         };
-        ui.run_at_acked(SURFACE, build_zoom);
+        ui.run_at(SURFACE, build_zoom);
 
         use crate::input::keyboard::Modifiers;
         ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
@@ -1692,7 +1691,7 @@ fn wheel_zoom_step_is_font_independent() {
             ..Modifiers::NONE
         }));
         ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
-        ui.run_at_acked(SURFACE, build_zoom);
+        ui.run_at(SURFACE, build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz").with("__viewport");
         let zoom = ui.scroll_state(scroll_id).zoom;
@@ -1723,10 +1722,10 @@ fn line_wheel_step_scales_with_theme_font_size() {
             .with_font_size(*font_size)
             .with_line_height_mult(*line_height_mult);
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
-        ui.run_at_acked(SURFACE, build_v);
+        ui.run_at(SURFACE, build_v);
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
-        ui.run_at_acked(SURFACE, build_v);
+        ui.run_at(SURFACE, build_v);
 
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let offset_y = ui.scroll_state(scroll_id).offset.y;
@@ -1748,10 +1747,10 @@ fn line_wheel_step_scales_with_theme_font_size() {
 fn shrinking_content_unstrands_offset_without_input() {
     let mut ui = Ui::for_test();
     // Scroll an 800px content to the bottom of a 200px viewport.
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10_000.0)));
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
     assert_eq!(
         read_state(&mut ui).offset.y,
         600.0,
@@ -1762,8 +1761,8 @@ fn shrinking_content_unstrands_offset_without_input() {
     // records against the stale 800px content (offset stays 600) and
     // arranges the new 300px content; frame 2 records against the fresh
     // 300px content and clamps the stranded offset down.
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 300.0));
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 300.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 300.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 300.0));
     assert_eq!(
         read_state(&mut ui).offset.y,
         100.0,
@@ -1779,13 +1778,13 @@ fn shrinking_content_unstrands_offset_without_input() {
 #[test]
 fn cascade_skip_busts_on_scroll_offset_change() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
     assert!(
         ui.frame_runtime.dbg_cascade_ran,
         "first frame runs the cascade"
     );
 
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
     assert!(
         !ui.frame_runtime.dbg_cascade_ran,
         "unchanged scroll frame skips the cascade"
@@ -1795,7 +1794,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     // and the cascade must re-run.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
-    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut ui).offset.y, 50.0, "offset advanced");
     assert!(
         ui.frame_runtime.dbg_cascade_ran,

@@ -22,6 +22,7 @@ use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::gradient_atlas::handle::{GradientAtlas, test_support::registration_count};
 use crate::text::text_in_rect;
+use crate::ui::damage::region::DamageRegion;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -137,7 +138,7 @@ fn baseline_draw_rect_count_cases() {
     ];
     for (label, scene, expected) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+        ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| match scene {
                 Scene::Empty => {}
                 Scene::FrameWithFill => {
@@ -192,7 +193,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::shape::style::LineCap;
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 local_rect: None,
@@ -284,7 +285,7 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::shape::Shape;
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::Shadow {
                 local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
@@ -347,7 +348,7 @@ fn text_shape_emits_draw_text() {
     }
 
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 200));
-    ui.run_at_acked(UVec2::new(200, 200), body);
+    ui.run_at(UVec2::new(200, 200), body);
     let key = ui.layout[Layer::Main].text_shapes[0].key;
     ui.shared.text.evict_cosmic_buffers(0);
     assert!(
@@ -369,7 +370,7 @@ fn text_shape_emits_draw_text() {
     ui.shared.text.evict_cosmic_buffers(0);
     let measure_calls = ui.shared.text.measure_calls();
     ui.request_repaint();
-    ui.run_at_acked(UVec2::new(200, 200), body);
+    ui.run_at(UVec2::new(200, 200), body);
     let replayed_key = ui.layout[Layer::Main].text_shapes[0].key;
     assert_eq!(replayed_key, key);
     assert_eq!(
@@ -397,7 +398,7 @@ fn text_shape_emits_draw_text() {
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("clip_only"))
@@ -416,7 +417,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
 #[test]
 fn clip_emits_balanced_push_pop() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("clip"))
@@ -470,7 +471,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
     let mut ui = Ui::for_test();
     let mut panel_node = None;
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             panel_node = Some(
                 Panel::zstack()
@@ -517,7 +518,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_background() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("rounded_no_bg"))
@@ -658,7 +659,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     let mut ui = Ui::for_test();
     let mut sink = (false, false, false);
-    ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+    ui.run_at(surface, |ui| build(ui, &mut sink));
 
     let cmds = ui.encode_cmds();
     let drawn = screen_rects_by_fill(&cmds);
@@ -715,7 +716,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
 
     let mut got = (false, false, false);
-    ui.run_at_acked(surface, |ui| build(ui, &mut got));
+    ui.run_at(surface, |ui| build(ui, &mut got));
     assert!(got.0, "visible widget should click");
     assert!(!got.1, "disabled widget must not click (sense cascade)");
     assert!(!got.2, "hidden widget must not click (visibility cascade)");
@@ -724,7 +725,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("outer"))
@@ -748,7 +749,7 @@ fn nested_clips_each_emit_their_own_pair() {
 #[test]
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     let mut ui = Ui::for_test();
-    let child = ui.run_at_value_acked(UVec2::new(100, 100), |ui| {
+    let child = ui.run_at_value(UVec2::new(100, 100), |ui| {
         Panel::vstack()
             .auto_id()
             .disabled(true)
@@ -799,7 +800,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     use crate::widgets::button::Button;
 
     let mut ui = Ui::for_test_text();
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("padded"))
@@ -843,7 +844,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
     ];
     for (label, filter, expected) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+        ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))
@@ -863,7 +864,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     .show(ui);
             });
         });
-        let cmds = ui.encode_cmds_filtered(Some(*filter));
+        let cmds = ui.encode_cmds_for(DamageRegion::from(*filter));
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -893,7 +894,7 @@ fn damage_filter_culls_subtree_outside_damage() {
     ];
     for (label, wrap, push_kind, pop_kind) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+        ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let inner = |ui: &mut Ui| {
                     Frame::new()
@@ -919,7 +920,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
             });
         });
-        let cmds = ui.encode_cmds_filtered(Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
+        let cmds = ui.encode_cmds_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
         let pushes = cmds
             .iter()
             .filter(|command| command_matches_kind(command, *push_kind))
@@ -937,7 +938,7 @@ fn damage_filter_culls_subtree_outside_damage() {
 #[test]
 fn damage_filter_paints_leaves_in_any_rect() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -959,7 +960,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
         Rect::new(0.0, 0.0, 50.0, 50.0),
         Rect::new(150.0, 0.0, 50.0, 50.0),
     ];
-    let cmds = ui.encode_cmds_with_rects(&rects);
+    let cmds = ui.encode_cmds_for(DamageRegion::from_rects(&rects));
     assert_eq!(
         count_draw_rects(&cmds),
         2,
@@ -973,7 +974,6 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::corners::Corners;
     use crate::shape::Shape;
-    use crate::ui::frame::FrameStamp;
     use std::time::Duration;
 
     const HALF: Duration = Duration::from_millis(500);
@@ -987,7 +987,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     for cull in [Cull::Viewport, Cull::Damage] {
         let mut ui = Ui::for_test();
         let display = Display::from_physical(UVec2::new(100, 100), 1.0);
-        ui.record(FrameStamp::new(display, HALF), |ui| {
+        ui.record_test_frame_without_baseline(display, HALF, |ui| {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -1031,7 +1031,9 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
         );
         let cmds = match cull {
             Cull::Viewport => ui.encode_cmds(),
-            Cull::Damage => ui.encode_cmds_filtered(Some(Rect::new(55.0, 5.0, 35.0, 30.0))),
+            Cull::Damage => {
+                ui.encode_cmds_for(DamageRegion::from(Rect::new(55.0, 5.0, 35.0, 30.0)))
+            }
         };
         assert_eq!(
             count_draw_rects(&cmds),
@@ -1060,7 +1062,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
 #[test]
 fn damage_filter_includes_descendant_overflowing_parent_rect() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("overflow-parent"))
@@ -1079,7 +1081,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
         });
     });
     let damage = Rect::new(60.0, 0.0, 40.0, 40.0);
-    let cmds = ui.encode_cmds_filtered(Some(damage));
+    let cmds = ui.encode_cmds_for(DamageRegion::from(damage));
     assert_eq!(
         count_draw_rects(&cmds),
         1,
@@ -1111,7 +1113,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
     ];
     for (label, damage, expected) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+        ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -1129,7 +1131,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .show(ui);
                 });
         });
-        let cmds = ui.encode_cmds_filtered(Some(*damage));
+        let cmds = ui.encode_cmds_for(DamageRegion::from(*damage));
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -1209,14 +1211,13 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::forest::tree::paint_anims::PaintAnim;
     use crate::shape::style::{LineCap, LineJoin};
     use crate::shape::{PolylineColors, Shape};
-    use crate::ui::frame::FrameStamp;
     use std::time::Duration;
 
     let mut ui = Ui::for_test();
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
     // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0, so the encoder
     // takes the spin branch.
-    ui.record(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
+    ui.record_test_frame_without_baseline(display, Duration::from_secs(1), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("spin_owner"))
@@ -1276,14 +1277,13 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
     use crate::forest::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
-    use crate::ui::frame::FrameStamp;
     use std::f32::consts::PI;
     use std::time::Duration;
 
     let mut ui = Ui::for_test();
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
     // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0.
-    ui.record(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
+    ui.record_test_frame_without_baseline(display, Duration::from_secs(1), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("arc_spin_owner"))
@@ -1345,7 +1345,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     //   shape: min = (10, 20), size = (60, 60)
     //   child: min = (10 + 50*2, 20 + 60*2) = (110, 140), size = (80, 80)
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
@@ -1410,7 +1410,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
     let xform = TranslateScale::new(Vec2::new(50.0, 50.0), 2.0);
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))

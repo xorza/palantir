@@ -23,8 +23,8 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
-use crate::ui::frame::FrameStamp;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use criterion::{BenchmarkId, Criterion};
@@ -125,7 +125,15 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
 fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let _ = ui.record_acked(FrameStamp::new(display, Duration::ZERO), &mut record);
+    let _ = ui.record_test_frame(display, Duration::ZERO, &mut record);
+}
+
+fn damage_kind(ui: &Ui) -> &'static str {
+    match Damage::new(ui.damage_region()) {
+        Damage::Skip => "skip",
+        Damage::Full => "full",
+        Damage::Partial(_) => "partial",
+    }
 }
 
 /// Warm two frames so subsequent iterations land on the steady-state
@@ -144,7 +152,7 @@ fn warm_and_assert(
 ) {
     run_and_ack(ui, display, &frame1);
     run_and_ack(ui, display, &frame2);
-    let kind = ui.damage_paint_kind();
+    let kind = damage_kind(ui);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
@@ -194,7 +202,7 @@ fn bench_workloads(c: &mut Criterion) {
         // Pre-existing master regression: skip count drifted below
         // ROWS; not relevant to the shape-churn measurement below.
         assert!(
-            ui.damage_subtree_skips() > 0,
+            ui.damage_engine.subtree_skips > 0,
             "no subtree skips at all — fixture is broken",
         );
         group.bench_function("skip_painted_rows", |b| {
@@ -240,7 +248,7 @@ fn bench_workloads(c: &mut Criterion) {
             |ui| build_grid(ui, &cells, hot),
             "partial",
         );
-        assert!(ui.damage_rect_count() >= 1);
+        assert!(ui.damage_region().iter_rects().count() >= 1);
         let mut toggle = false;
         group.bench_function("two_corner_change", |b| {
             b.iter(|| {
@@ -294,7 +302,7 @@ fn bench_workloads(c: &mut Criterion) {
         };
         run_and_ack(&mut ui, display, varying(0));
         run_and_ack(&mut ui, display, varying(1));
-        assert_eq!(ui.damage_paint_kind(), "full");
+        assert_eq!(damage_kind(&ui), "full");
         let mut frame_n = 2u32;
         group.bench_function("full_repaint", |b| {
             b.iter(|| {
@@ -320,8 +328,8 @@ fn bench_workloads(c: &mut Criterion) {
     //   few frames. Stress case for the compaction sweep.
     //
     // Both build the same canvas layout, differing only in how
-    // many canvases mutate per frame. The `damage_compactions_run`
-    // counter is asserted non-zero during warmup so a silent
+    // many canvases mutate per frame. The compaction counter is
+    // asserted non-zero during warmup so a silent
     // degeneration (e.g. all-Skip frames) doesn't pass the bench
     // unnoticed.
 
@@ -402,34 +410,35 @@ fn bench_workloads(c: &mut Criterion) {
         // and post-compaction frames.
         let warm_target_compactions = 2u32;
         let mut warm_frame = 2u32;
-        while ui.damage_compactions_run() < warm_target_compactions && warm_frame < 4096 {
+        while ui.damage_engine.arena.compactions_run < warm_target_compactions && warm_frame < 4096
+        {
             run_and_ack(&mut ui, display, build(warm_frame));
             warm_frame += 1;
         }
         assert!(
-            ui.damage_compactions_run() >= warm_target_compactions,
+            ui.damage_engine.arena.compactions_run >= warm_target_compactions,
             "partial churn never compacted in {warm_frame} frames \
              (orphaned={}, total={})",
-            ui.damage_shape_snaps_orphaned(),
-            ui.damage_shape_snaps_len(),
+            ui.damage_engine.arena.orphaned,
+            ui.damage_engine.arena.snaps.len(),
         );
         // Sanity: arena should hold roughly STABLE_COUNT × CANVASES
         // live entries (post-compaction may shrink to exactly that).
         // Catches off-surface regressions where most canvases skip
         // insert and the bench silently measures a much smaller pool.
         assert!(
-            ui.damage_shape_snaps_len() >= CANVASES * (STABLE_COUNT as usize - 1),
+            ui.damage_engine.arena.snaps.len() >= CANVASES * (STABLE_COUNT as usize - 1),
             "partial churn: arena underpopulated (len={}, expected >= {})",
-            ui.damage_shape_snaps_len(),
+            ui.damage_engine.arena.snaps.len(),
             CANVASES * (STABLE_COUNT as usize - 1),
         );
         eprintln!(
             "[shape_churn_partial] warmup: {warm_frame} frames, \
              {} compactions, arena {} entries",
-            ui.damage_compactions_run(),
-            ui.damage_shape_snaps_len(),
+            ui.damage_engine.arena.compactions_run,
+            ui.damage_engine.arena.snaps.len(),
         );
-        let bench_start_compactions = ui.damage_compactions_run();
+        let bench_start_compactions = ui.damage_engine.arena.compactions_run;
         let bench_start_frame = warm_frame;
         let mut frame_n = warm_frame;
         group.bench_function("shape_churn_partial", |b| {
@@ -442,10 +451,10 @@ fn bench_workloads(c: &mut Criterion) {
         eprintln!(
             "[shape_churn_partial] post-bench: {} compactions over {} bench frames \
              (1 per {:.1} frames)",
-            ui.damage_compactions_run() - bench_start_compactions,
+            ui.damage_engine.arena.compactions_run - bench_start_compactions,
             frame_n - bench_start_frame,
             (frame_n - bench_start_frame) as f64
-                / (ui.damage_compactions_run() - bench_start_compactions).max(1) as f64,
+                / (ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1) as f64,
         );
     }
 
@@ -474,26 +483,26 @@ fn bench_workloads(c: &mut Criterion) {
         run_and_ack(&mut ui, display, build(0));
         run_and_ack(&mut ui, display, build(1));
         let mut warm = 2u32;
-        while ui.damage_compactions_run() < 2 && warm < 64 {
+        while ui.damage_engine.arena.compactions_run < 2 && warm < 64 {
             run_and_ack(&mut ui, display, build(warm));
             warm += 1;
         }
         assert!(
-            ui.damage_compactions_run() >= 2,
+            ui.damage_engine.arena.compactions_run >= 2,
             "full churn never compacted in {warm} frames",
         );
         assert!(
-            ui.damage_shape_snaps_len() >= CANVASES * BASE_SHAPES as usize,
+            ui.damage_engine.arena.snaps.len() >= CANVASES * BASE_SHAPES as usize,
             "full churn: arena underpopulated (len={}, expected >= {})",
-            ui.damage_shape_snaps_len(),
+            ui.damage_engine.arena.snaps.len(),
             CANVASES * BASE_SHAPES as usize,
         );
         eprintln!(
             "[shape_churn_full] warmup: {warm} frames, {} compactions, arena {} entries",
-            ui.damage_compactions_run(),
-            ui.damage_shape_snaps_len(),
+            ui.damage_engine.arena.compactions_run,
+            ui.damage_engine.arena.snaps.len(),
         );
-        let bench_start_compactions = ui.damage_compactions_run();
+        let bench_start_compactions = ui.damage_engine.arena.compactions_run;
         let bench_start_frame = warm;
         let mut frame_n = warm;
         group.bench_function("shape_churn_full", |b| {
@@ -506,10 +515,10 @@ fn bench_workloads(c: &mut Criterion) {
         eprintln!(
             "[shape_churn_full] post-bench: {} compactions over {} bench frames \
              (1 per {:.1} frames)",
-            ui.damage_compactions_run() - bench_start_compactions,
+            ui.damage_engine.arena.compactions_run - bench_start_compactions,
             frame_n - bench_start_frame,
             (frame_n - bench_start_frame) as f64
-                / (ui.damage_compactions_run() - bench_start_compactions).max(1) as f64,
+                / (ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1) as f64,
         );
     }
 
