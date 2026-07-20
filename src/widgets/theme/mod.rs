@@ -182,7 +182,7 @@ impl Theme {
 /// [`TextEditTheme`]; each impl defines its own `active` semantics by
 /// delegating to its inherent `pick`.
 pub(crate) trait WidgetTheme {
-    fn pick(&self, state: ResponseState) -> &WidgetLook;
+    fn pick(&self, state: &ResponseState) -> &WidgetLook;
     fn padding(&self) -> Spacing;
     fn margin(&self) -> Spacing;
     fn anim(&self) -> Option<AnimSpec>;
@@ -208,7 +208,7 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     ui: &mut Ui,
     id: WidgetId,
     element: &mut Element,
-    state: ResponseState,
+    state: &ResponseState,
     style: Option<&T>,
     fallback: impl FnOnce(&Theme) -> &T,
 ) -> AnimatedLook {

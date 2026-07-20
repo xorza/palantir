@@ -6,7 +6,7 @@ use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::resolve_look;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 
 #[derive(Debug)]
 pub struct Button<'a> {
@@ -71,16 +71,9 @@ impl<'a> Button<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut element = self.element;
-        // `picked_state` (self-disabled merged) drives theme picking;
-        // `raw_state` feeds the eager `Response` — the button's
-        // `ui.node` body doesn't mutate input, so the pre-`node` probe
-        // stays valid for the caller. See `enter_widget`.
-        let WidgetEntry {
-            id,
-            raw: raw_state,
-            merged: picked_state,
-        } = enter_widget(ui, &element);
-        let look = resolve_look(ui, id, &mut element, picked_state, self.style, |t| {
+        let entry = enter_widget(ui, &element);
+        let id = entry.id;
+        let look = resolve_look(ui, id, &mut element, &entry.state, self.style, |t| {
             &t.button
         });
         let label = self.label;
@@ -108,7 +101,7 @@ impl<'a> Button<'a> {
         });
         // Eager: theme picking already paid for `response_for`, so
         // hand the cached state to the caller.
-        Response::eager(id, ui, raw_state)
+        entry.into_response(ui)
     }
 }
 

@@ -2347,6 +2347,39 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         !disabled.hovered,
         "interactions must mask on the disable frame"
     );
+
+    use crate::forest::shapes::paint::ShapeBrush;
+    use crate::primitives::color::ColorF16;
+
+    let self_id = WidgetId::from_hash("self-disabled");
+    let disabled_fill = Color::rgb(0.8, 0.1, 0.2);
+    let mut style = ui.theme.button.clone();
+    style.looks.disabled.background = Some(Background::fill(disabled_fill));
+    let response = ui.run_at_value_acked(SURFACE, |ui| {
+        Button::new()
+            .id(self_id)
+            .label("disabled")
+            .style(&style)
+            .disabled(true)
+            .show(ui)
+            .snapshot()
+    });
+    assert!(
+        !response.disabled,
+        "eager response must retain the unmerged cascade snapshot",
+    );
+    let endpoint = ui.cascades.by_id[&self_id];
+    let chrome = ui.forest.trees[endpoint.layer]
+        .chrome(endpoint.node)
+        .expect("disabled button chrome");
+    let ShapeBrush::Solid(actual_fill) = chrome.fill else {
+        panic!("disabled button must retain its solid test fill");
+    };
+    assert_eq!(
+        actual_fill,
+        ColorF16::from(disabled_fill),
+        "fresh self-disable must pick disabled visuals before cascade catches up",
+    );
 }
 
 /// The fps EMA reads the TRUE frame delta — the MAX_DT clamp is for

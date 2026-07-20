@@ -15,29 +15,9 @@ first. Performance changes remain benchmark-gated because Aperture requires
 steady-state allocation-free frames and several plausible caches have regressed
 the real frame workload.
 
-## Priority 1 — Broad hot-path improvements
+## Priority 1 — Focused and workload-dependent compaction
 
-### 1. Keep one response snapshot in `WidgetEntry`
-
-- [ ] `enter_widget` copies a 136-byte `ResponseState` solely to OR one
-  disabled bit, then returns both copies in a 280-byte `WidgetEntry` at
-  `src/widgets/mod.rs:65-76`. Theme selection continues to take the full state
-  by value even though it only reads interaction flags
-  (`src/widgets/theme/mod.rs:179-228` and
-  `src/widgets/theme/widget_look.rs:116-126`).
-
-  Retain one mutable state plus the original disabled bit, borrow
-  `ResponseState` throughout `resolve_look` and the theme `pick` chain, then
-  restore the original bit before moving the state into `Response::eager`.
-
-  Validate freshly self-disabled visuals, ancestor-disabled state,
-  interaction suppression, and the eager response's deliberately unmerged
-  value. Pin `ResponseState` and `WidgetEntry` sizes and compare button-heavy
-  frame profiles.
-
-## Priority 2 — Focused and workload-dependent compaction
-
-### 2. Make the paint-animation reverse index truly sparse
+### 1. Make the paint-animation reverse index truly sparse
 
 - [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
   at shape `k` resizes it to `k + 1` at
@@ -53,7 +33,7 @@ the real frame workload.
   viewport/damage subtree culls. Assert that storage scales with animated
   shape count, not the largest shape index.
 
-### 3. Intern record-local gradients and resolve each unique ID once per encode
+### 2. Intern record-local gradients and resolve each unique ID once per encode
 
 - [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
   `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
@@ -72,7 +52,7 @@ the real frame workload.
   interpolation/spread mode, and forced hash collisions. Benchmark solid-only
   and gradient-heavy frames and require zero steady-state allocations.
 
-### 4. Pack command kind and payload offset into one `u32`
+### 3. Pack command kind and payload offset into one `u32`
 
 - [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
   at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding

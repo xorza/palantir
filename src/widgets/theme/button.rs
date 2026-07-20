@@ -126,14 +126,14 @@ impl ButtonTheme {
     /// the caller wants lag-free response to its own self-toggle,
     /// merge `state.disabled |= element.disabled` before calling.
     #[inline(always)]
-    pub fn pick(&self, state: ResponseState) -> &WidgetLook {
+    pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())
     }
 }
 
 impl WidgetTheme for ButtonTheme {
     #[inline(always)]
-    fn pick(&self, state: ResponseState) -> &WidgetLook {
+    fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.pick(state)
     }
     #[inline(always)]

@@ -166,7 +166,7 @@ mod hot_struct_sizes {
     use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::extras::ExtrasIdx;
     use crate::forest::tree::node::NodeRecord;
-    use crate::input::TargetDeltas;
+    use crate::input::{TargetDeltas, response::ResponseState};
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
@@ -189,6 +189,7 @@ mod hot_struct_sizes {
     use crate::ui::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
     use crate::ui::damage::region::DamageRegion;
     use crate::ui::damage::snapshot::NodeSnapshot;
+    use crate::widgets::WidgetEntry;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -295,6 +296,8 @@ mod hot_struct_sizes {
         EntryRow => "cascade::EntryRow": 48 / 4,
         HitRow => "cascade::HitRow": 16 / 8,
         Paint => "cascade::Paint": 24 / 8,
+        ResponseState => "input::ResponseState": 136 / 4,
+        WidgetEntry => "widgets::WidgetEntry": 152 / 8,
         TargetDeltas => "input::TargetDeltas": 32 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,

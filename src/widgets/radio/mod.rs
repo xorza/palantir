@@ -7,7 +7,7 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected
@@ -57,11 +57,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let WidgetEntry {
-            id,
-            raw: raw_state,
-            merged: state,
-        } = enter_widget(ui, &self.element);
+        let entry = enter_widget(ui, &self.element);
+        let state = &entry.state;
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
         // matches platform behavior on every OS. A fresh click selects
@@ -83,9 +80,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 
         toggle_row(
             ui,
-            id,
+            entry,
             self.element,
-            raw_state,
             chrome,
             self.label,
             |ui, pip_size| {

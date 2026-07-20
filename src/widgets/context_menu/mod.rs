@@ -12,7 +12,7 @@ use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::{Response, ResponseSnapshot, WidgetEntry, enter_widget};
+use crate::widgets::{Response, ResponseSnapshot, enter_widget};
 
 use crate::primitives::interned_str::TextInput;
 use glam::Vec2;
@@ -250,23 +250,17 @@ impl<'a> MenuItem<'a> {
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the state
-        // is identical before and after `ui.node`. `merged` ORs the row's
-        // own disabled flag onto the cascaded one (a disabled ancestor
-        // still disables the row); `raw` stays pristine for the returned
-        // `Response`.
-        let WidgetEntry {
-            id,
-            raw: raw_state,
-            merged: picked_state,
-        } = enter_widget(ui, &self.element);
-        let disabled = picked_state.disabled;
+        // is identical before and after `ui.node`.
+        let mut entry = enter_widget(ui, &self.element);
+        let id = entry.id;
+        let disabled = entry.state.disabled;
 
         // Borrow the per-item theme and copy out only what the row paints
         // — avoids cloning the whole `MenuItemTheme` (three looks) per
         // row, per frame. `pick` returns a borrow, so read everything off
         // it before the borrow ends.
         let item = &ui.theme.context_menu.item;
-        let look = item.pick(picked_state);
+        let look = item.pick(&entry.state);
         let look_bg = look.background.clone();
         let text_style = look.text.as_ref().unwrap_or(&ui.theme.text).clone();
         let padding = item.padding;
@@ -314,13 +308,12 @@ impl<'a> MenuItem<'a> {
         };
         ui.node(id, element, look_bg.as_ref(), body);
 
-        let mut state = raw_state;
         if shortcut_fired {
-            state.left.phase = ButtonPhase::Up { click: Some(1) };
+            entry.state.left.phase = ButtonPhase::Up { click: Some(1) };
         }
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
-        let resp = Response::eager(id, ui, state);
+        let resp = entry.into_response(ui);
         if resp.left.clicked() {
             popup.close();
         }

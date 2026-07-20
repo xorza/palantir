@@ -5,12 +5,11 @@ use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::{Response, WidgetEntry};
 
 /// Chrome inputs for [`toggle_row`], built by the caller from its
 /// resolved [`crate::ToggleTheme`]. `look_target` is the picked
@@ -34,7 +33,7 @@ impl ToggleChrome {
     /// differ only in `pill`. `look_target` is the *picked* look (cloned out),
     /// so the borrow on `theme` (which may point into `ui.theme`) is released
     /// before `toggle_row`'s `&mut Ui` animate reborrow.
-    pub(crate) fn new(theme: &ToggleTheme, state: ResponseState, on: bool, pill: bool) -> Self {
+    pub(crate) fn new(theme: &ToggleTheme, state: &ResponseState, on: bool, pill: bool) -> Self {
         Self {
             look_target: theme.pick(state, on).clone(),
             anim: theme.anim,
@@ -53,20 +52,18 @@ impl ToggleChrome {
 /// gap / cross-centering, the `Fixed×Fixed` box leaf with its chrome,
 /// the label leaf — lives here.
 ///
-/// `element` is the row's `HStack` (sense + salt already set), `id` its
-/// resolved [`WidgetId`], and `raw_state` the un-merged response handed
-/// back to the caller via [`Response::eager`]. `paint_indicator` runs
-/// inside the box leaf — it receives the box side length and is
-/// responsible for its own checked/selected gate.
+/// `element` is the row's `HStack` (sense + salt already set).
+/// `paint_indicator` runs inside the box leaf — it receives the box
+/// side length and is responsible for its own checked/selected gate.
 pub(crate) fn toggle_row<'ui, 'text>(
     ui: &'ui mut Ui,
-    id: WidgetId,
+    entry: WidgetEntry,
     mut element: Element,
-    raw_state: ResponseState,
     chrome: ToggleChrome,
     label: TextInput<'text>,
     paint_indicator: impl FnOnce(&mut Ui, f32),
 ) -> Response<'ui> {
+    let id = entry.id;
     let box_size = chrome.box_size;
     let fallback_text = ui.theme.text.clone();
     let mut look = chrome
@@ -97,5 +94,5 @@ pub(crate) fn toggle_row<'ui, 'text>(
         }
     });
 
-    Response::eager(id, ui, raw_state)
+    entry.into_response(ui)
 }

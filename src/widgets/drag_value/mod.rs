@@ -9,7 +9,7 @@ use crate::ui::Ui;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::resolve_look;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 use std::ops::RangeInclusive;
 
 /// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
@@ -277,11 +277,8 @@ impl<'a> DragValue<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
-        let WidgetEntry {
-            id,
-            raw: mut raw_state,
-            merged: state,
-        } = enter_widget(ui, &self.element);
+        let mut entry = enter_widget(ui, &self.element);
+        let id = entry.id;
 
         // Focused + editable + enabled: the inline text editor owns the
         // frame. Pass the chip's last *pre-transform* rect (logical px,
@@ -291,10 +288,10 @@ impl<'a> DragValue<'a> {
         // scaled canvas. Disabled mid-edit falls through to the chip path,
         // which kicks focus out and discards the pending draft below.
         if self.editable && ui.focused_id() == Some(id) {
-            if state.disabled {
+            if entry.state.disabled {
                 ui.request_focus(None);
             } else {
-                return self.show_editing(ui, id, raw_state.layout_rect);
+                return self.show_editing(ui, id, entry.state.layout_rect);
             }
         }
 
@@ -313,7 +310,7 @@ impl<'a> DragValue<'a> {
             && edit.editing
         {
             edit.editing = false;
-            if self.editable && !state.disabled {
+            if self.editable && !entry.state.disabled {
                 changed = self.value.parse_from(&edit.buffer, self.min, self.max);
                 committed = true;
             }
@@ -326,7 +323,7 @@ impl<'a> DragValue<'a> {
         // (snap / round / clamp). The write is gated on `armed`: a drag
         // latched while the editor owned this id (text selection) has no
         // anchor for this gesture.
-        if state.left.drag.started() {
+        if entry.state.left.drag.started() {
             *ui.state_mut::<DragAnchor>(id) = DragAnchor {
                 value: self.value.get(),
                 speed: self.speed,
@@ -334,8 +331,8 @@ impl<'a> DragValue<'a> {
                 armed: true,
             };
         }
-        if !state.disabled
-            && let Some(delta) = state.left.drag.delta()
+        if !entry.state.disabled
+            && let Some(delta) = entry.state.left.drag.delta()
         {
             let anchor = ui.state_mut::<DragAnchor>(id);
             if anchor.armed {
@@ -351,12 +348,12 @@ impl<'a> DragValue<'a> {
         // commit-deferring caller re-seeds the stale pre-drag value every
         // frame, including this one. Released while disabled, the gesture
         // is dropped, not committed; disarming either way ends it.
-        if state.left.drag.stopped() {
+        if entry.state.left.drag.stopped() {
             let anchor = ui.state_mut::<DragAnchor>(id);
             if anchor.armed {
                 anchor.armed = false;
                 let last = anchor.last;
-                if !state.disabled {
+                if !entry.state.disabled {
                     changed |= self
                         .value
                         .commit_drag(last, self.decimals, self.min, self.max);
@@ -368,11 +365,11 @@ impl<'a> DragValue<'a> {
         // A plain enabled click (no drag latched) enters keyboard entry;
         // `show_editing` seeds the buffer on entry, so a click and a
         // programmatic `request_focus` get the same fresh draft.
-        if self.editable && !state.disabled && state.left.clicked() {
+        if self.editable && !entry.state.disabled && entry.state.left.clicked() {
             ui.request_focus(Some(id));
             // Keep the response's documented focused-synchronicity: the raw
             // snapshot predates the request.
-            raw_state.focused = true;
+            entry.state.focused = true;
         }
 
         let text = match &self.value {
@@ -384,7 +381,9 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = resolve_look(ui, id, &mut element, state, chip, |t| &t.drag_value.chip);
+        let look = resolve_look(ui, id, &mut element, &entry.state, chip, |t| {
+            &t.drag_value.chip
+        });
 
         ui.node(id, element, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {
@@ -400,7 +399,7 @@ impl<'a> DragValue<'a> {
             });
         });
         DragValueResponse {
-            response: Response::eager(id, ui, raw_state),
+            response: entry.into_response(ui),
             changed,
             committed,
         }

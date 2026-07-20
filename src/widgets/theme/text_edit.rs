@@ -63,14 +63,14 @@ impl TextEditTheme {
     /// caller can merge `state.disabled |= element.disabled` for
     /// lag-free response to its own self-toggle (mirrors Button).
     #[inline(always)]
-    pub fn pick(&self, state: ResponseState) -> &WidgetLook {
+    pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.focused)
     }
 }
 
 impl WidgetTheme for TextEditTheme {
     #[inline(always)]
-    fn pick(&self, state: ResponseState) -> &WidgetLook {
+    fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.pick(state)
     }
     #[inline(always)]
