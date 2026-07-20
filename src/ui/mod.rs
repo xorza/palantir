@@ -37,6 +37,7 @@ use crate::primitives::image::Image;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::record_store::RecordStore;
+use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::ImageHandle;
 use crate::{InternedStr, TextInput};
@@ -127,6 +128,20 @@ impl Ui {
     /// animation tickers instead of teleporting; the frame runtime's
     /// clock still tracks the host's true time.
     pub(crate) const MAX_DT: f32 = MAX_ANIM_DT;
+
+    pub(crate) fn frame_scene(&self) -> FrameScene<'_> {
+        FrameScene {
+            forest: &self.forest,
+            layout: &self.layout,
+            cascades: &self.cascades,
+            payloads: self.record_store.payloads.borrow(),
+            text: &self.shared.text,
+            gradient_atlas: &self.shared.assets.gradients,
+            gpu_views: &self.gpu_views,
+            display: self.display,
+            time: self.frame_runtime.time,
+        }
+    }
 
     /// Construct a per-window `Ui` from the host's [`UiShared`] capabilities.
     /// The capabilities provide the same text and render assets used by the
@@ -1283,6 +1298,7 @@ pub(crate) mod test_support {
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;
     use crate::primitives::rect::Rect;
+    use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder::Encoder;
     use crate::text::TextShaper;
@@ -1296,6 +1312,10 @@ pub(crate) mod test_support {
     use std::time::Duration;
 
     impl Ui {
+        pub(crate) fn build_frontend_for_test(&self, frontend: &mut Frontend, plan: RenderPlan) {
+            frontend.build(self.frame_scene(), plan);
+        }
+
         pub(crate) fn record(
             &mut self,
             stamp: FrameStamp,
@@ -1437,7 +1457,7 @@ pub(crate) mod test_support {
         /// does after a successful submit, so the next lifecycle run
         /// doesn't auto-escalate to `Full`. For tests and for benches
         /// that drive `record` + a standalone
-        /// [`crate::renderer::frontend::Frontend::build_for_test`]
+        /// [`Self::build_frontend_for_test`]
         /// instead of going through `WindowDriver` (the `frame/*_cpu` arms).
         pub(crate) fn mark_frame_submitted(&mut self) {
             self.frame_runtime.frame_submitted = true;
@@ -1589,7 +1609,7 @@ pub(crate) mod test_support {
             };
             let plan = RenderPlan { clear, kind };
             let mut encoder = Encoder::default();
-            encoder.encode(self, plan);
+            encoder.encode(&self.frame_scene(), plan);
             encoder.cmds
         }
     }

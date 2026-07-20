@@ -438,10 +438,10 @@ impl WindowDriver {
     fn finish_cpu_frame(&mut self, report: FrameReport) -> CpuFrame {
         let mode = present_mode(report.plan, self.strategy, self.backbuffer_fresh);
         // Build the draw list now (CPU) when the frame paints — encode,
-        // compose, and resolve `GpuView` targets, all reading the now-frozen
-        // `Ui` immutably. Skip frames build nothing.
+        // compose, and resolve `GpuView` targets from the frozen scene.
+        // Skip frames build nothing.
         if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
-            self.frontend.build(&self.ui, plan);
+            self.frontend.build(self.ui.frame_scene(), plan);
         }
         CpuFrame { report, mode }
     }
