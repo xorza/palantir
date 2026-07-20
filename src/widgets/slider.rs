@@ -203,7 +203,7 @@ mod tests {
         let mut ui = Ui::for_test();
         let mut v = 0.5_f32;
         let (mut sized, mut default) = (None, None);
-        ui.run_at(UVec2::new(400, 300), |ui| {
+        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(
@@ -227,7 +227,7 @@ mod tests {
         for (value, expected) in [(0.0, [0.0, 18.0, 102.0]), (1.0, [102.0, 18.0, 0.0])] {
             let mut ui = Ui::for_test();
             let mut value = value;
-            let root = ui.run_at_value(UVec2::new(120, 30), |ui| {
+            let root = ui.run_at_value_without_baseline(UVec2::new(120, 30), |ui| {
                 Slider::new(&mut value, 0.0..=1.0)
                     .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
                     .show(ui)
@@ -306,7 +306,7 @@ mod tests {
                                 .show(ui);
                         });
                 };
-                ui.run_at_acked(UVec2::new(300, 100), |ui| build(ui, &mut value));
+                ui.run_at(UVec2::new(300, 100), |ui| build(ui, &mut value));
 
                 let response = ui.response_for(id);
                 let layout = response.layout_rect.expect("slider arranged");
@@ -314,7 +314,7 @@ mod tests {
                     .transform
                     .apply_point(layout.min + Vec2::new(local_x, 9.0));
                 ui.press_at(pointer);
-                ui.run_at_acked(UVec2::new(300, 100), |ui| build(ui, &mut value));
+                ui.run_at(UVec2::new(300, 100), |ui| build(ui, &mut value));
 
                 assert!(
                     (value - expected).abs() < 1e-6,

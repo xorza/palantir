@@ -7,7 +7,6 @@ pub(crate) mod state;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
-use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::display::Display;
 use crate::forest::Forest;
@@ -47,7 +46,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::ui::cascade::{Cascades, CascadesEngine, cascade_fingerprint};
 use crate::ui::damage::{Damage, DamageEngine, DamageInput};
-use crate::ui::frame::{FramePlan, FrameRuntime, FrameStamp, Wake, WakeReasons};
+use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
@@ -124,11 +123,6 @@ impl std::fmt::Debug for Ui {
 /// code never calls these directly — `WindowDriver` drives them. The widget
 /// authoring API lives in the second `impl Ui` block below.
 impl Ui {
-    /// Per-frame `dt` clamp (seconds). Stalled frames freeze
-    /// animation tickers instead of teleporting; the frame runtime's
-    /// clock still tracks the host's true time.
-    pub(crate) const MAX_DT: f32 = MAX_ANIM_DT;
-
     pub(crate) fn frame_scene(&self) -> FrameScene<'_> {
         FrameScene {
             forest: &self.forest,
@@ -175,13 +169,17 @@ impl Ui {
     /// fully recorded frame, then replays [`App::record`] for cold-start
     /// warmup, action input, or `request_relayout`. Paint-only frames skip
     /// both hooks. `stamp.time` is monotonic host time.
-    pub fn frame<T: App>(
+    pub(crate) fn frame<T: App>(
         &mut self,
-        stamp: FrameStamp,
+        input: FrameInput,
         win: WindowToken,
         app: &mut T,
     ) -> FrameReport {
         profiling::scope!("Ui::frame");
+        let FrameInput {
+            stamp,
+            damage_baseline_valid,
+        } = input;
         // Record payloads are cleared inside `record_pass` (the only path
         // that repopulates it). PaintOnly frames must NOT clear: the
         // live `tree.shapes` from last frame still references record payloads
@@ -195,21 +193,22 @@ impl Ui {
         );
 
         let first_frame = self.frame_runtime.prev_stamp.is_none();
-        self.advance_clock(stamp.time);
+        self.frame_runtime.advance_clock(stamp.time);
         // Refresh the input clock so input handlers running before the
         // next frame timestamp double-clicks on this deterministic time.
         self.input.frame_time = self.frame_runtime.time;
-        let plan = self.classify_frame(stamp.display);
+        let plan = self.frame_runtime.classify_frame(FrameClassifyInput {
+            display: stamp.display,
+            damage_baseline_valid,
+            input_policy: self.input_policy,
+            had_input: self.input.had_input_since_last_frame,
+            input_requested_repaint: self.input.repaint_requested_since_last_frame,
+            close_requested: self.window_frame.close_requested,
+        });
 
         self.frame_runtime.repaint_requested = false;
         self.frame_runtime.relayout_requested = false;
         self.display = stamp.display;
-
-        // Pending until the renderer (`WindowDriver::render_to_texture`)
-        // confirms a successful submit. Tests driving the lifecycle directly must
-        // ack via `ui.frame_runtime.frame_submitted = true` or the next
-        // frame's `classify_frame` will force a `Full`.
-        self.frame_runtime.frame_submitted = false;
 
         let processing = match plan {
             FramePlan::PaintOnly => {
@@ -314,13 +313,6 @@ impl Ui {
             "first frame must produce Damage::Full; got {damage:?}",
         );
 
-        // Skip frames have nothing for the host to submit, so ack
-        // here — otherwise `frame_submitted` stays false and the next
-        // paint frame's `classify_frame` escalates to `Full`.
-        if damage.is_skip() {
-            self.frame_runtime.frame_submitted = true;
-        }
-
         // Re-queue the next paint-anim boundary regardless of path.
         // FullRecord rebuilt `paint_anims.entries` during record;
         // PaintOnly retained last frame's. Either way the fold below
@@ -328,7 +320,11 @@ impl Ui {
         // drains the queued ANIM wake without replacing it and the
         // caret freezes until input forces a FullRecord.
         if let Some(min_wake) = self.forest.min_paint_anim_wake(self.frame_runtime.time) {
-            self.schedule_wake(min_wake, WakeReasons::ANIM);
+            self.frame_runtime.schedule_wake(
+                min_wake,
+                WakeReasons::ANIM,
+                self.display.refresh_millihertz,
+            );
         }
 
         self.frame_runtime.prev_stamp = Some(stamp);
@@ -338,100 +334,6 @@ impl Ui {
             repaint_after: self.frame_runtime.repaint_wakes.first().map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, self.theme.window_clear),
             processing,
-        }
-    }
-
-    /// Advance the per-frame clock: clamp raw dt (stalled frames
-    /// freeze tickers instead of teleporting), update the fps EMA,
-    /// step the fixed-step `dt`/`dt_accum` integrator, and bump
-    /// `time` + `frame_id`. The fixed-step accumulator zeroes `dt`
-    /// until it crosses [`ANIM_SUBSTEP_DT`] so spring integrators
-    /// don't churn below f32 ULP between vsync ticks.
-    fn advance_clock(&mut self, now: Duration) {
-        // The fps EMA reads the true delta — clamping would record a
-        // multi-second stall as exactly `1/MAX_DT` fps, hiding the
-        // hitches the readout exists to surface. Only the animation
-        // integrator below wants the clamp.
-        let true_dt = now.saturating_sub(self.frame_runtime.time).as_secs_f32();
-        let raw_dt = true_dt.min(Self::MAX_DT);
-        // EMA over instantaneous fps. First frame: raw_dt is `now`
-        // (vs ZERO), giving an absurd reading; skip the update there.
-        // Coefficient 0.1 ≈ ~10-frame window — smooth enough that
-        // the readout doesn't jitter wildly, fast enough to track
-        // real frame-rate drops.
-        if self.frame_runtime.frame_id > 0 && true_dt > EPS {
-            let inst = 1.0 / true_dt;
-            self.frame_runtime.fps_ema = if self.frame_runtime.fps_ema == 0.0 {
-                inst
-            } else {
-                self.frame_runtime.fps_ema * 0.9 + inst * 0.1
-            };
-        }
-        self.frame_runtime.dt_accum += raw_dt;
-        self.frame_runtime.dt = if self.frame_runtime.dt_accum >= ANIM_SUBSTEP_DT {
-            let spent = self.frame_runtime.dt_accum;
-            self.frame_runtime.dt_accum = 0.0;
-            spent
-        } else {
-            0.0
-        };
-        self.frame_runtime.time = now;
-        self.frame_runtime.frame_id += 1;
-    }
-
-    /// Drain wakes whose deadline has fired and decide whether this
-    /// frame can take the anim-only fast path. Reads `repaint_requested`
-    /// and one of the two input sticky bits (selected by
-    /// [`Self::input_policy`]) from the prior frame's record; all must
-    /// be observed BEFORE the per-frame clear that follows in
-    /// `frame`.
-    fn classify_frame(&mut self, display: Display) -> FramePlan {
-        // `repaint_wakes` is sorted ascending, so fired = prefix slice.
-        let fired_count = self
-            .frame_runtime
-            .repaint_wakes
-            .partition_point(|w| w.deadline <= self.frame_runtime.time);
-        let fired_reasons = self
-            .frame_runtime
-            .repaint_wakes
-            .drain(..fired_count)
-            .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
-
-        let display_changed = self
-            .frame_runtime
-            .prev_stamp
-            .is_some_and(|prev| !prev.display.raster_eq(&display));
-        let frame_skipped = !self.frame_runtime.frame_submitted;
-        let force_full = display_changed || frame_skipped;
-        if force_full {
-            tracing::debug!(
-                display_changed,
-                frame_skipped,
-                first_frame = self.frame_runtime.prev_stamp.is_none(),
-                "damage.invalidate_prev"
-            );
-        }
-
-        let input_forces_record = match self.input_policy {
-            InputPolicy::Always => self.input.had_input_since_last_frame,
-            InputPolicy::OnDelta => self.input.repaint_requested_since_last_frame,
-        };
-        let paint_only = !force_full
-            && self.frame_runtime.prev_stamp.is_some()
-            && !self.frame_runtime.repaint_requested
-            && !input_forces_record
-            // An OS close request is surfaced to the app only during
-            // record (`Ui::close_requested` + the `keep_open` veto), so
-            // a wants_close frame must take the Full path — PaintOnly
-            // would skip the record and the host would close the window
-            // with the veto unconsulted (a spinner's every-frame ANIM
-            // wake makes that deterministic, a caret blink a race).
-            && !self.window_frame.close_requested
-            && fired_reasons.is_anim_only();
-        if paint_only {
-            FramePlan::PaintOnly
-        } else {
-            FramePlan::FullRecord { force_full }
         }
     }
 
@@ -488,38 +390,6 @@ impl Ui {
         self.forest.close_node();
         self.post_record();
         action_flag
-    }
-
-    /// Shared inserter for [`Self::request_repaint_after`] (REAL) and
-    /// paint-anim quantum boundaries (ANIM, filed from
-    /// [`Self::post_record`]). Maintains the sorted-ascending
-    /// invariant on [`FrameRuntime::repaint_wakes`], coalesces requests within
-    /// one display-refresh interval onto the later deadline, and OR-merges
-    /// reasons when two requests land on the same slot. Merging is
-    /// what lets the frame-entry classifier see a wake that *both* an
-    /// anim and a widget asked for as `REAL | ANIM`, which forces the
-    /// Full path (correct — the widget needs record).
-    fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
-        let coalesce = coalesce_dt_for_refresh(self.display.refresh_millihertz);
-        let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;
-        let wakes = &mut self.frame_runtime.repaint_wakes;
-        let pos = wakes.partition_point(|w| w.deadline < deadline);
-        // Coalesce to the later of (existing, requested) — collapse
-        // bursts into a single wake at the back of the window to avoid
-        // unnecessary host wakes. pos is at-or-later than deadline (keep
-        // its deadline, merge our reasons in — `coalesce` is never zero,
-        // so an exact match lands here too); pos-1 is earlier (overwrite
-        // with ours, but keep merged reasons).
-        if pos < wakes.len() && near(wakes[pos].deadline) {
-            wakes[pos].reasons = wakes[pos].reasons.merge(reasons);
-            return;
-        }
-        if pos > 0 && near(wakes[pos - 1].deadline) {
-            wakes[pos - 1].deadline = deadline;
-            wakes[pos - 1].reasons = wakes[pos - 1].reasons.merge(reasons);
-            return;
-        }
-        wakes.insert(pos, Wake { deadline, reasons });
     }
 
     /// Record-half of `frame`: finalize hashes, run measure / arrange,
@@ -723,7 +593,7 @@ impl Ui {
     }
 
     /// Schedule a one-shot wake at `now + after`. The entry persists
-    /// across frames; [`Self::frame`] drains entries whose deadline
+    /// across frames; the frame lifecycle drains entries whose deadline
     /// has fired at the top of each frame. Duplicate deadlines collapse
     /// (sorted + dedup'd), so re-requesting the same wake is a no-op.
     ///
@@ -738,7 +608,11 @@ impl Ui {
             "request_repaint_after",
         );
         let deadline = self.frame_runtime.time.saturating_add(after);
-        self.schedule_wake(deadline, WakeReasons::REAL);
+        self.frame_runtime.schedule_wake(
+            deadline,
+            WakeReasons::REAL,
+            self.display.refresh_millihertz,
+        );
     }
 
     /// Open a new top-level OS window addressed by `token`. The window
@@ -1281,332 +1155,8 @@ impl Default for Ui {
     }
 }
 
-/// Central gated reach-in surface for tests and benches. All test/bench
-/// helpers that operate on `Ui` live here as methods on `Ui` (or as
-/// free constructors), so a single `use crate::ui::test_support::*;`
-/// brings in the entire surface. Items that don't touch `Ui` (e.g.
-/// `TextShaper::*`) stay in their own modules.
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
-    #![allow(dead_code)]
-    use crate::animation::animatable::Animatable;
-    use crate::app::test_support::RecordApp;
-    use crate::forest::layer::Layer;
-    use crate::forest::tree::node::NodeId;
-    use crate::host::shared::HostShared;
-    use crate::input::InputEvent;
-    use crate::input::pointer::PointerButton;
-    use crate::layout::scroll::ScrollLayoutState;
-    use crate::primitives::rect::Rect;
-    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-    use crate::renderer::frontend::encoder;
-    use crate::text::TextShaper;
-    use crate::ui::damage::Damage;
-    use crate::ui::damage::region::DamageRegion;
-    use crate::ui::frame::FrameStamp;
-    use crate::ui::frame_report::{RenderKind, RenderPlan};
-    use crate::ui::*;
-    use crate::{FrameReport, WindowToken};
-    use glam::{UVec2, Vec2};
-    use std::time::Duration;
-
-    impl Ui {
-        pub(crate) fn record(
-            &mut self,
-            stamp: FrameStamp,
-            record: impl FnMut(&mut Ui),
-        ) -> FrameReport {
-            let mut app = RecordApp::new(record);
-            self.frame(stamp, WindowToken(0), &mut app)
-        }
-
-        /// `record` then mark the frame as submitted, mirroring a successful host paint.
-        pub(crate) fn record_acked(
-            &mut self,
-            stamp: FrameStamp,
-            record: impl FnMut(&mut Ui),
-        ) -> FrameReport {
-            let report = self.record(stamp, record);
-            self.mark_frame_submitted();
-            report
-        }
-
-        /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
-        pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-            let tree = &self.forest.trees[Layer::Main];
-            let idx = tree
-                .records
-                .widget_id()
-                .iter()
-                .position(|w| *w == id)
-                .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
-            NodeId(idx as u32)
-        }
-    }
-
-    impl Ui {
-        /// `Ui` with the mono-fallback shaper — predictable 8 px/char
-        /// widths. Pre-marked as warm: see [`Self::mark_warm_for_test`].
-        pub(crate) fn for_test() -> Self {
-            let mut ui = Self::default();
-            ui.mark_warm_for_test();
-            ui
-        }
-
-        /// `Ui` with a thread-shared cosmic shaper (font DB built once
-        /// per thread). Pre-marked as warm: see
-        /// [`Self::mark_warm_for_test`].
-        pub fn for_test_text() -> Self {
-            thread_local! {
-                static SHARED: TextShaper = TextShaper::with_bundled_fonts();
-            }
-            let shared = HostShared::new(SHARED.with(Clone::clone));
-            let mut ui = Self::new(shared.ui_shared());
-            ui.mark_warm_for_test();
-            ui
-        }
-
-        /// `Ui` pre-stamped with display dimensions; no user frame
-        /// driven yet. Pre-marked as warm.
-        pub(crate) fn for_test_at(size: UVec2) -> Self {
-            let mut ui = Self {
-                display: Display::from_physical(size, 1.0),
-                ..Self::default()
-            };
-            ui.mark_warm_for_test();
-            ui
-        }
-
-        /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
-        pub(crate) fn for_test_at_text(size: UVec2) -> Self {
-            let mut ui = Self::for_test_text();
-            ui.display = Display::from_physical(size, 1.0);
-            ui.mark_warm_for_test();
-            ui
-        }
-
-        /// Synthesize a "previous submitted frame" sentinel so the
-        /// cold-start warmup record pass in `Ui::frame` doesn't
-        /// fire on the first user `run_at`. The warmup runs the user
-        /// closure twice (blackout pass + real pass); most tests assert
-        /// against one record pass worth of work, so they want the
-        /// warm-state behavior. Tests that need to exercise true
-        /// cold-start behavior should construct `Ui::default()`
-        /// directly and skip this. No real frame is run here —
-        /// `frame_id`, `time`, the per-`StateMap`, cascades, and damage
-        /// snapshot all stay at fresh-construction defaults. First
-        /// user-frame damage depends on the constructor: `for_test` /
-        /// `for_test_text` keep the default 0×0 display, so the first
-        /// `run_at` is a display change ⇒ `Damage::Full`; `for_test_at`
-        /// / `for_test_at_text` pre-stamp a matching display, so the
-        /// first frame classifies by coverage like any other (small
-        /// content ⇒ `Partial`, from the all-Vacant walk).
-        pub(crate) fn mark_warm_for_test(&mut self) {
-            self.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
-            self.frame_runtime.frame_submitted = true;
-        }
-
-        /// One frame at `size`, time frozen at zero.
-        pub(crate) fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) -> FrameReport {
-            let display = Display::from_physical(size, 1.0);
-            self.record(FrameStamp::new(display, Duration::ZERO), record)
-        }
-
-        /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-        pub(crate) fn run_at_acked(
-            &mut self,
-            size: UVec2,
-            record: impl FnMut(&mut Ui),
-        ) -> FrameReport {
-            let display = Display::from_physical(size, 1.0);
-            self.record_acked(FrameStamp::new(display, Duration::ZERO), record)
-        }
-
-        /// Run a recording frame and return the final record pass's value.
-        ///
-        /// Panics if the frame takes the paint-only path. Values that must
-        /// accumulate across replayed record passes should still use a mutable
-        /// capture with [`Self::run_at`].
-        pub(crate) fn run_at_value<R>(
-            &mut self,
-            size: UVec2,
-            mut record: impl FnMut(&mut Ui) -> R,
-        ) -> R {
-            let mut value = None;
-            self.run_at(size, |ui| value = Some(record(ui)));
-            value.expect("test frame did not run a record pass")
-        }
-
-        /// `run_at_value` then mark the frame as submitted.
-        pub(crate) fn run_at_value_acked<R>(
-            &mut self,
-            size: UVec2,
-            record: impl FnMut(&mut Ui) -> R,
-        ) -> R {
-            let value = self.run_at_value(size, record);
-            self.mark_frame_submitted();
-            value
-        }
-
-        /// Ack the just-run frame as presented — mirrors what the host
-        /// does after a successful submit, so the next lifecycle run
-        /// doesn't auto-escalate to `Full`. For tests and for benches
-        /// that drive `record` + a standalone
-        /// [`crate::renderer::frontend::Frontend::build`]
-        /// instead of going through `WindowDriver` (the `frame/*_cpu` arms).
-        pub(crate) fn mark_frame_submitted(&mut self) {
-            self.frame_runtime.frame_submitted = true;
-        }
-
-        /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
-        pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
-            &mut self,
-            surface: UVec2,
-            mut f: F,
-        ) -> NodeId {
-            use crate::forest::element::Configure;
-            use crate::layout::types::sizing::Sizing;
-            use crate::widgets::panel::Panel;
-            self.run_at_value(surface, |ui| {
-                Panel::hstack()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, &mut f)
-                    .inner
-            })
-        }
-
-        pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
-            Vec::from_iter(
-                self.forest.trees[Layer::Main]
-                    .children(parent)
-                    .map(|child| child.id),
-            )
-        }
-
-        pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
-            self.forest.trees[Layer::Main]
-                .children(parent)
-                .map(|child| self.layout[Layer::Main].rect[child.id.idx()])
-                .collect()
-        }
-
-        pub(crate) fn click_at(&mut self, pos: Vec2) {
-            self.on_input(InputEvent::PointerMoved(pos));
-            self.on_input(InputEvent::PointerPressed(PointerButton::Left));
-            self.on_input(InputEvent::PointerReleased(PointerButton::Left));
-        }
-
-        pub(crate) fn press_at(&mut self, pos: Vec2) {
-            self.on_input(InputEvent::PointerMoved(pos));
-            self.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        }
-
-        pub(crate) fn release_left(&mut self) {
-            self.on_input(InputEvent::PointerReleased(PointerButton::Left));
-        }
-
-        pub(crate) fn secondary_click_at(&mut self, pos: Vec2) {
-            self.on_input(InputEvent::PointerMoved(pos));
-            self.on_input(InputEvent::PointerPressed(PointerButton::Right));
-            self.on_input(InputEvent::PointerReleased(PointerButton::Right));
-        }
-
-        /// Drop every measure-cache entry, forcing full re-measure next frame.
-        pub(crate) fn clear_measure_cache(&mut self) {
-            self.layout_engine.cache.clear();
-        }
-
-        /// Scroll-state row for `id` (inserting default if absent).
-        pub(crate) fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
-            self.layout_engine.scroll_states.entry(id).or_default()
-        }
-
-        /// Run only the cascade pass against the just-finished frame.
-        pub(crate) fn run_cascades(&mut self) {
-            self.cascades_engine
-                .run(&self.forest, &self.layout, self.display, &mut self.cascades);
-        }
-
-        /// Rebuild the post-collapse damage region from `DamageEngine`'s
-        /// last-frame pass-1 buffer. Doesn't mutate state.
-        pub(crate) fn damage_region(&self) -> DamageRegion {
-            DamageRegion::collapse_from(
-                &self.damage_engine.raw_rects,
-                self.damage_engine.budget_px,
-                self.display.logical_rect(),
-            )
-        }
-
-        /// Damage rects produced by the most recent `post_record`.
-        pub(crate) fn damage_rect_count(&self) -> usize {
-            self.damage_region().iter_rects().count()
-        }
-
-        /// Subtree-skip jumps the last damage diff performed.
-        pub(crate) fn damage_subtree_skips(&self) -> u32 {
-            self.damage_engine.subtree_skips
-        }
-
-        /// Live entries in the `paint_snaps` arena (sum of every
-        /// `NodeSnapshot::paint_span.len`, including orphaned tail).
-        pub(crate) fn damage_shape_snaps_len(&self) -> usize {
-            self.damage_engine.arena.len()
-        }
-
-        /// Count of orphaned `Paint` entries in the arena —
-        /// drives the compaction trigger.
-        pub(crate) fn damage_shape_snaps_orphaned(&self) -> u32 {
-            self.damage_engine.arena.orphaned()
-        }
-
-        /// Times `compact_shape_snaps` has run on this engine.
-        /// Used by benches to verify the compaction path was actually
-        /// exercised and to count compactions over a measurement
-        /// window.
-        pub(crate) fn damage_compactions_run(&self) -> u32 {
-            self.damage_engine.arena.compactions_run()
-        }
-
-        /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
-        pub(crate) fn damage_paint_kind(&self) -> &'static str {
-            match Damage::new(self.damage_region()) {
-                Damage::Skip => "skip",
-                Damage::Full => "full",
-                Damage::Partial(_) => "partial",
-            }
-        }
-
-        /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
-        pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
-            self.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
-        }
-
-        pub(crate) fn encode_cmds(&self) -> RenderCmdBuffer {
-            self.encode_cmds_filtered(None)
-        }
-
-        pub(crate) fn encode_cmds_filtered(&self, filter: Option<Rect>) -> RenderCmdBuffer {
-            self.encode_cmds_with_region(filter.map(DamageRegion::from))
-        }
-
-        /// Multi-rect variant; each rect is fed through `DamageRegion::add` so merge policy applies.
-        pub(crate) fn encode_cmds_with_rects(&self, rects: &[Rect]) -> RenderCmdBuffer {
-            let region = (!rects.is_empty()).then(|| DamageRegion::from_rects(rects));
-            self.encode_cmds_with_region(region)
-        }
-
-        fn encode_cmds_with_region(&self, region: Option<DamageRegion>) -> RenderCmdBuffer {
-            let clear = self.theme.window_clear;
-            let kind = match region {
-                Some(region) => RenderKind::Partial { region },
-                None => RenderKind::Full,
-            };
-            let plan = RenderPlan { clear, kind };
-            encoder::test_support::encode(self.frame_scene(), plan)
-        }
-    }
-}
+pub(crate) mod test_support;
 
 #[cfg(test)]
 mod tests;

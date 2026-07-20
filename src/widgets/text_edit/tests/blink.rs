@@ -53,10 +53,7 @@ fn caret_blinks_on_and_off_while_focused() {
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         use crate::display::Display;
         let display = Display::from_physical(NARROW, 1.0);
-        ui.record_acked(
-            FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
-            |ui| f(ui),
-        );
+        ui.record_test_frame(display, Duration::from_secs_f32(now_secs), |ui| f(ui));
     }
 
     let mut ui = ui_at_no_cosmic(NARROW);
@@ -156,12 +153,9 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
-        ui.record_acked(
-            FrameStamp::new(display, Duration::from_secs_f32(t_secs)),
-            |ui| {
-                record(ui, buf);
-            },
-        )
+        ui.record_test_frame(display, Duration::from_secs_f32(t_secs), |ui| {
+            record(ui, buf);
+        })
     };
 
     // Frame 1: warm up so the editor's WidgetId is recorded.
@@ -218,9 +212,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t: f32| {
-        ui.record_acked(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
-            body(ui, buf)
-        })
+        ui.record_test_frame(display, Duration::from_secs_f32(t), |ui| body(ui, buf))
     };
 
     // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any
@@ -254,7 +246,7 @@ fn focused_text_edit_schedules_blink_wake() {
     let display = Display::from_physical(NARROW, 1.0);
 
     // Unfocused: no blink schedule.
-    let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let report = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))
@@ -270,7 +262,7 @@ fn focused_text_edit_schedules_blink_wake() {
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
     ui.click_at(Vec2::new(20.0, 20.0));
-    let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let report = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))

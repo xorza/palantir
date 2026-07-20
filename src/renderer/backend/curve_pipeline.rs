@@ -23,10 +23,10 @@ use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::gradient_atlas::ATLAS_ROWS;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, HALF_FRINGE, MITER_LIMIT,
-    SEGMENTS_PER_INSTANCE,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,
 };
-use crate::shape::LineCap;
+use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT};
+use crate::shape::style::LineCap;
 use wgpu::util::DeviceExt;
 
 const INDICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;

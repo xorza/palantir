@@ -1,23 +1,39 @@
-//! Process-wide clipboard backed by the OS clipboard with an in-memory
-//! fallback for headless environments and transient backend failures.
+//! Cloneable clipboard capability with an in-memory fallback.
 
-use std::sync::{Mutex, OnceLock};
+use std::cell::RefCell;
+use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ClipboardUnavailable;
 
-trait Backend {
+trait Backend: fmt::Debug {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable>;
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable>;
 }
 
-impl Backend for arboard::Clipboard {
+#[cfg(feature = "system-clipboard")]
+struct SystemBackend(arboard::Clipboard);
+
+#[cfg(feature = "system-clipboard")]
+impl fmt::Debug for SystemBackend {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SystemBackend")
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "system-clipboard")]
+impl Backend for SystemBackend {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
-        arboard::Clipboard::get_text(self).map_err(|_| ClipboardUnavailable)
+        self.0.get_text().map_err(|_| ClipboardUnavailable)
     }
 
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-        arboard::Clipboard::set_text(self, text.to_owned()).map_err(|_| ClipboardUnavailable)
+        self.0
+            .set_text(text.to_owned())
+            .map_err(|_| ClipboardUnavailable)
     }
 }
 
@@ -45,15 +61,15 @@ enum Authority {
 }
 
 #[derive(Debug)]
-struct Clipboard<P, F> {
-    primary: Option<P>,
-    fallback: F,
+struct ClipboardState {
+    primary: Option<Box<dyn Backend>>,
+    fallback: Box<dyn Backend>,
     authority: Authority,
     fallback_current: bool,
 }
 
-impl<P: Backend, F: Backend> Clipboard<P, F> {
-    fn new(primary: Option<P>, fallback: F) -> Self {
+impl ClipboardState {
+    fn new(primary: Option<Box<dyn Backend>>, fallback: Box<dyn Backend>) -> Self {
         let authority = if primary.is_some() {
             Authority::Primary
         } else {
@@ -98,7 +114,6 @@ impl<P: Backend, F: Backend> Clipboard<P, F> {
             self.fallback_current = fallback_written;
             Ok(())
         } else if fallback_written {
-            // A failed OS write may still be followed by a successful stale read.
             self.authority = Authority::Fallback;
             self.fallback_current = true;
             Ok(())
@@ -108,160 +123,146 @@ impl<P: Backend, F: Backend> Clipboard<P, F> {
     }
 }
 
-#[cfg(not(test))]
-type ProcessClipboard = Clipboard<arboard::Clipboard, MemoryBackend>;
-
-#[cfg(test)]
-type ProcessClipboard = Clipboard<arboard::Clipboard, TestBackend>;
-
-#[cfg(test)]
-#[derive(Debug, Default)]
-struct TestBackend {
-    text: String,
-    reject_writes: bool,
+#[derive(Clone, Debug)]
+pub(crate) struct Clipboard {
+    state: Rc<RefCell<ClipboardState>>,
 }
 
-#[cfg(test)]
-impl Backend for TestBackend {
-    fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
-        Ok(self.text.clone())
+impl Default for Clipboard {
+    fn default() -> Self {
+        Self::new(None, Box::<MemoryBackend>::default())
     }
+}
 
-    fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-        if self.reject_writes {
-            return Err(ClipboardUnavailable);
+impl Clipboard {
+    fn new(primary: Option<Box<dyn Backend>>, fallback: Box<dyn Backend>) -> Self {
+        Self {
+            state: Rc::new(RefCell::new(ClipboardState::new(primary, fallback))),
         }
-        self.text.clear();
-        self.text.push_str(text);
-        Ok(())
     }
-}
 
-fn instance() -> &'static Mutex<ProcessClipboard> {
-    static INSTANCE: OnceLock<Mutex<ProcessClipboard>> = OnceLock::new();
-    INSTANCE.get_or_init(|| {
-        #[cfg(not(test))]
-        let clipboard = Clipboard::new(arboard::Clipboard::new().ok(), MemoryBackend::default());
-        #[cfg(test)]
-        let clipboard = Clipboard::new(None, TestBackend::default());
-        Mutex::new(clipboard)
-    })
-}
+    #[cfg(feature = "system-clipboard")]
+    pub(crate) fn system_or_memory() -> Self {
+        let primary = arboard::Clipboard::new()
+            .ok()
+            .map(|clipboard| Box::new(SystemBackend(clipboard)) as Box<dyn Backend>);
+        Self::new(primary, Box::<MemoryBackend>::default())
+    }
 
-/// Current clipboard contents, or an empty string when neither backend can read.
-pub(crate) fn get() -> String {
-    instance()
-        .lock()
-        .expect("clipboard mutex poisoned")
-        .get()
-        .unwrap_or_default()
-}
+    pub(crate) fn get(&self) -> String {
+        self.state.borrow_mut().get().unwrap_or_default()
+    }
 
-/// Writes to the OS clipboard when available, otherwise to the authoritative
-/// in-memory fallback. Fails only when neither destination accepts the text.
-pub(crate) fn set(text: &str) -> Result<(), ClipboardUnavailable> {
-    instance()
-        .lock()
-        .expect("clipboard mutex poisoned")
-        .set(text)
+    pub(crate) fn set(&self, text: &str) -> Result<(), ClipboardUnavailable> {
+        self.state.borrow_mut().set(text)
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::common::clipboard::instance;
-    use std::sync::{Mutex, OnceLock};
+    use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable};
 
     #[derive(Debug)]
-    pub(crate) struct RejectWritesGuard {
-        previous: bool,
-    }
+    struct RejectingBackend;
 
-    impl Drop for RejectWritesGuard {
-        fn drop(&mut self) {
-            instance()
-                .lock()
-                .expect("clipboard mutex poisoned")
-                .fallback
-                .reject_writes = self.previous;
+    impl Backend for RejectingBackend {
+        fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
+            Err(ClipboardUnavailable)
+        }
+
+        fn set_text(&mut self, _text: &str) -> Result<(), ClipboardUnavailable> {
+            Err(ClipboardUnavailable)
         }
     }
 
-    /// Clipboard tests share process-global state.
-    pub(crate) fn test_serialize_guard() -> std::sync::MutexGuard<'static, ()> {
-        static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-        GUARD
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("clipboard test guard poisoned")
-    }
-
-    pub(crate) fn reject_writes() -> RejectWritesGuard {
-        let mut clipboard = instance().lock().expect("clipboard mutex poisoned");
-        let previous = clipboard.fallback.reject_writes;
-        clipboard.fallback.reject_writes = true;
-        RejectWritesGuard { previous }
+    pub(crate) fn rejecting() -> Clipboard {
+        Clipboard::new(None, Box::new(RejectingBackend))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::common::clipboard::test_support::test_serialize_guard;
-    use crate::common::clipboard::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
 
     #[derive(Debug)]
-    struct StaleBackend {
+    struct PrimaryState {
         text: String,
         reject_writes: bool,
         reads: usize,
     }
 
+    #[derive(Clone, Debug)]
+    struct StaleBackend {
+        state: Rc<RefCell<PrimaryState>>,
+    }
+
     impl Backend for StaleBackend {
         fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
-            self.reads += 1;
-            Ok(self.text.clone())
+            let mut state = self.state.borrow_mut();
+            state.reads += 1;
+            Ok(state.text.clone())
         }
 
         fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-            if self.reject_writes {
+            let mut state = self.state.borrow_mut();
+            if state.reject_writes {
                 return Err(ClipboardUnavailable);
             }
-            self.text.clear();
-            self.text.push_str(text);
+            state.text.clear();
+            state.text.push_str(text);
             Ok(())
         }
     }
 
     #[test]
-    fn set_get_roundtrip() {
-        let _guard = test_serialize_guard();
-        set("clipboard-test-roundtrip-✓").unwrap();
-        assert_eq!(get(), "clipboard-test-roundtrip-✓");
-        set("").unwrap();
-        assert_eq!(get(), "");
+    fn memory_clipboards_roundtrip_and_are_isolated() {
+        let first = Clipboard::default();
+        let second = Clipboard::default();
+
+        first.set("clipboard-test-roundtrip-✓").unwrap();
+
+        assert_eq!(first.get(), "clipboard-test-roundtrip-✓");
+        assert_eq!(second.get(), "");
+    }
+
+    #[test]
+    fn clones_share_one_clipboard() {
+        let first = Clipboard::default();
+        let second = first.clone();
+
+        first.set("shared").unwrap();
+
+        assert_eq!(second.get(), "shared");
     }
 
     #[test]
     fn failed_primary_write_makes_fallback_authoritative() {
-        let primary = StaleBackend {
+        let primary_state = Rc::new(RefCell::new(PrimaryState {
             text: String::from("stale"),
             reject_writes: true,
             reads: 0,
-        };
-        let mut clipboard = Clipboard::new(Some(primary), MemoryBackend::default());
+        }));
+        let clipboard = Clipboard::new(
+            Some(Box::new(StaleBackend {
+                state: primary_state.clone(),
+            })),
+            Box::<MemoryBackend>::default(),
+        );
 
         clipboard.set("fresh").unwrap();
 
-        assert_eq!(clipboard.get().unwrap(), "fresh");
-        assert_eq!(clipboard.authority, Authority::Fallback);
-        assert_eq!(clipboard.primary.as_ref().unwrap().reads, 0);
+        assert_eq!(clipboard.get(), "fresh");
+        assert_eq!(primary_state.borrow().reads, 0);
 
-        clipboard.primary.as_mut().unwrap().reject_writes = false;
+        primary_state.borrow_mut().reject_writes = false;
         clipboard.set("replacement").unwrap();
-        assert_eq!(clipboard.authority, Authority::Primary);
-        assert_eq!(clipboard.primary.as_ref().unwrap().text, "replacement");
+        assert_eq!(primary_state.borrow().text, "replacement");
 
-        clipboard.primary.as_mut().unwrap().text = String::from("external");
-        assert_eq!(clipboard.get().unwrap(), "external");
-        assert_eq!(clipboard.primary.as_ref().unwrap().reads, 1);
+        primary_state.borrow_mut().text = String::from("external");
+        assert_eq!(clipboard.get(), "external");
+        assert_eq!(primary_state.borrow().reads, 1);
     }
 }

@@ -43,7 +43,7 @@ driver activity.
   measure → arrange → cascade → damage and then, when the frame
   produces a render plan, encode + compose — then acks the present
   (`Ui::mark_frame_submitted`) so `classify_frame` matches a real
-  host. **Driving the CPU arms through `WindowDriver::frame_offscreen` + a poll
+  host. **Driving the CPU arms through the full offscreen host frame + a poll
   was the old shape and was wrong**: a non-blocking `device.poll`
   charges each iter a driver ioctl, and on `RenderPlan::Skip` the host
   does a GPU backbuffer copy — together ~20 % NVIDIA/kernel self-time on

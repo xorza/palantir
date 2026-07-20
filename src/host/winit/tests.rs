@@ -5,7 +5,7 @@ use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::{WinitHost, platform_icon};
 use crate::input::InputEvent;
 use crate::primitives::image::Image;
-use crate::ui::frame::{FrameStamp, Wake, WakeReasons};
+use crate::ui::frame::{FrameInput, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::FrameProcessing;
 use crate::window::{WindowConfig, WindowToken};
 use glam::{UVec2, Vec2};
@@ -81,11 +81,13 @@ fn validated_window_icon_converts_to_the_platform_type() {
 
 fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessing {
     let report = ui.frame(
-        FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
+        FrameInput {
+            stamp: FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
+            damage_baseline_valid: true,
+        },
         WindowToken(7),
         app,
     );
-    ui.frame_runtime.frame_submitted = true;
     report.processing
 }
 

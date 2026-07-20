@@ -123,7 +123,7 @@ pub(crate) struct PaintSnapArena {
     /// runs. Gated behind `internals` so benches can verify the path
     /// was actually exercised.
     #[cfg(any(test, feature = "internals"))]
-    compactions_run: u32,
+    pub(crate) compactions_run: u32,
 }
 
 /// Result of [`PaintSnapArena::diff_changed_leg`].
@@ -453,31 +453,4 @@ pub(crate) fn has_order_inversion(matched_pos: &[u32]) -> bool {
         .iter()
         .filter(|&&pos| pos != ROW_UNMATCHED)
         .is_sorted()
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
-    use crate::ui::damage::snapshot::PaintSnapArena;
-
-    impl PaintSnapArena {
-        /// Live entries in the arena (sum of every live
-        /// `paint_span.len`, plus orphaned tail). Introspection only.
-        #[inline]
-        pub(crate) fn len(&self) -> usize {
-            self.snaps.len()
-        }
-
-        /// Orphan count — drives the compaction trigger.
-        #[inline]
-        pub(crate) fn orphaned(&self) -> u32 {
-            self.orphaned
-        }
-
-        /// How many times [`Self::compact`] has run since
-        /// construction.
-        #[inline]
-        pub(crate) fn compactions_run(&self) -> u32 {
-            self.compactions_run
-        }
-    }
 }

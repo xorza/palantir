@@ -9,7 +9,7 @@
 use crate::allocator::with_audit;
 use crate::harness;
 use crate::harness::{run_audit, user_frames};
-use aperture::{Button, Configure, Display, FrameStamp, Sizing, Ui};
+use aperture::{Button, Configure, Display, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::Duration;
@@ -176,7 +176,7 @@ fn user_frames_keeps_aperture_src_and_excludes_harness_internals() {
     let mut ui = harness::new_ui();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
     for _ in 0..4 {
-        let _ = harness::record(&mut ui, FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = harness::record(&mut ui, display, Duration::ZERO, |ui| {
             Button::new()
                 .auto_id()
                 .label("hello")
@@ -185,7 +185,7 @@ fn user_frames_keeps_aperture_src_and_excludes_harness_internals() {
         });
     }
     let r = with_audit(|| {
-        let _ = harness::record(&mut ui, FrameStamp::new(display, Duration::ZERO), |ui| {
+        let _ = harness::record(&mut ui, display, Duration::ZERO, |ui| {
             Button::new()
                 .auto_id()
                 .label("hello")

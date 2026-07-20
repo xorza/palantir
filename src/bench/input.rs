@@ -28,7 +28,6 @@ use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::ui::Ui;
-use crate::ui::frame::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -132,9 +131,9 @@ fn warmed_ui() -> Ui {
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.
-    ui.record(FrameStamp::new(display, Duration::ZERO), build_ui);
+    ui.record_test_frame_without_baseline(display, Duration::ZERO, build_ui);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
-    ui.record(FrameStamp::new(display, Duration::ZERO), build_ui);
+    ui.record_test_frame_without_baseline(display, Duration::ZERO, build_ui);
     ui
 }
 

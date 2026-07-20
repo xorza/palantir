@@ -11,7 +11,6 @@ use crate::renderer::damage::DAMAGE_AA_PADDING;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderKind;
-use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
 use tinyvec::ArrayVec;
 
@@ -88,23 +87,21 @@ pub(crate) fn build_repaint_scissors(
 
 /// Viewport size as it appears in the shared immediate. 8 bytes;
 /// occupies offset 0 of every pipeline's immediate region (see
-/// `Immediates` in each shader). Encodes through `encase` to follow
-/// WGSL alignment rules.
-#[derive(Copy, Clone, Debug, ShaderType)]
+/// `Immediates` in each shader).
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ViewportPush {
     pub(crate) size: Vec2,
 }
 
 impl ViewportPush {
-    pub(crate) const BYTES: usize = Self::SHADER_SIZE.get() as usize;
+    pub(crate) const BYTES: usize = size_of::<Self>();
     /// Offset inside the per-pipeline immediate region. Locked at 0
     /// because every shader puts `viewport` first.
     pub(crate) const OFFSET: u32 = 0;
 
     pub(crate) fn encode(&self) -> [u8; Self::BYTES] {
-        let mut out = [0u8; Self::BYTES];
-        UniformBuffer::new(&mut out[..]).write(self).unwrap();
-        out
+        bytemuck::cast(*self)
     }
 
     /// Push this viewport into the active pipeline's immediate region.
@@ -115,17 +112,24 @@ impl ViewportPush {
     }
 }
 
+const _: () = assert!(
+    ViewportPush::BYTES == 2 * size_of::<f32>(),
+    "ViewportPush must match the shader's vec2<f32> viewport layout",
+);
+
 #[cfg(test)]
 mod tests {
     use crate::display::Display;
     use crate::primitives::rect::Rect;
     use crate::primitives::urect::URect;
-    use crate::renderer::backend::viewport::{RepaintScissors, build_repaint_scissors};
+    use crate::renderer::backend::viewport::{
+        RepaintScissors, ViewportPush, build_repaint_scissors,
+    };
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_buffer::owner::RenderOwnerId;
     use crate::ui::damage::region::DamageRegion;
     use crate::ui::frame_report::RenderKind;
-    use glam::UVec2;
+    use glam::{UVec2, Vec2};
 
     fn buffer() -> RenderBuffer {
         let mut buffer = RenderBuffer::new(RenderOwnerId::reserve());
@@ -170,5 +174,17 @@ mod tests {
             },
             &buffer(),
         );
+    }
+
+    #[test]
+    fn viewport_immediate_is_two_native_endian_floats() {
+        let encoded = ViewportPush {
+            size: Vec2::new(1.5, -2.25),
+        }
+        .encode();
+        let mut expected = [0; ViewportPush::BYTES];
+        expected[..4].copy_from_slice(&1.5_f32.to_ne_bytes());
+        expected[4..].copy_from_slice(&(-2.25_f32).to_ne_bytes());
+        assert_eq!(encoded, expected);
     }
 }

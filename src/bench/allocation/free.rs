@@ -18,7 +18,7 @@
 //! Run with: `cargo bench --bench alloc_free --features internals`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free --features internals`
 
-use aperture::{Display, FrameStamp, Ui, bench::FrameFixture};
+use aperture::{Display, Ui, bench::FrameFixture};
 use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
@@ -50,15 +50,19 @@ pub fn bench() {
     let mut state = FrameFixture::default();
 
     for _ in 0..WARMUP_FRAMES {
-        black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
-            state.render(NODE_SCALE, ui)
-        }));
+        black_box(
+            ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+                state.render(NODE_SCALE, ui)
+            }),
+        );
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
-            state.render(NODE_SCALE, ui)
-        }));
+        black_box(
+            ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+                state.render(NODE_SCALE, ui)
+            }),
+        );
     }
     let after = dhat::HeapStats::get();
 

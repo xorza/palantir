@@ -11,7 +11,6 @@ use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::frame::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{GLOBAL_STATE_ID, Tooltip, TooltipGlobal, TooltipState};
@@ -61,7 +60,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     let bubble_id = trigger_id.with("tooltip.bubble");
     let frame = |ui: &mut Ui, text: &str| {
         let mut passes = 0;
-        ui.run_at_acked(SURFACE, |ui| {
+        ui.run_at(SURFACE, |ui| {
             passes += 1;
             Tooltip::on(&snapshot)
                 .text(text)
@@ -124,7 +123,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {
         },
     };
     let mut passes = 0;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         passes += 1;
         Tooltip::on(&snapshot)
             .text(text)
@@ -134,7 +133,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {
 
     assert_eq!(passes, 1, "measured placement resolves in the layout pass");
     passes = 0;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         passes += 1;
         Tooltip::on(&snapshot)
             .text(text)
@@ -159,7 +158,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
         },
     };
     let frame_at = |ui: &mut Ui, time: Duration| {
-        ui.record(FrameStamp::new(display, time), |ui| {
+        ui.record_test_frame_without_baseline(display, time, |ui| {
             Tooltip::on(&snapshot)
                 .text("tip")
                 .delay(Duration::from_millis(250))
@@ -190,7 +189,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let trigger_id = WidgetId::from_hash("transient-trigger");
     let root_id = WidgetId::from_hash("root");
 
-    ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
             Tooltip::on(&trigger).text("tip").show(ui);
@@ -208,7 +207,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "the intentional global singleton must exist",
     );
 
-    ui.record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+    ui.record_test_frame_without_baseline(display, Duration::from_millis(16), |ui| {
         Panel::vstack().id(root_id).show(ui, |_ui| {});
     });
 
@@ -226,26 +225,23 @@ fn delay_gates_visibility() {
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.record(
-            FrameStamp::new(display, Duration::from_secs_f32(secs)),
-            |ui| {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("root"))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        let r = Button::new()
-                            .id(WidgetId::from_hash("trig"))
-                            .label("hi")
-                            .show(ui)
-                            .snapshot();
-                        *captured = Some(r.id);
-                        Tooltip::on(&r)
-                            .text("tip")
-                            .delay(Duration::from_millis(300))
-                            .show(ui);
-                    });
-            },
-        );
+        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(secs), |ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let r = Button::new()
+                        .id(WidgetId::from_hash("trig"))
+                        .label("hi")
+                        .show(ui)
+                        .snapshot();
+                    *captured = Some(r.id);
+                    Tooltip::on(&r)
+                        .text("tip")
+                        .delay(Duration::from_millis(300))
+                        .show(ui);
+                });
+        });
     };
 
     // First frame — pointer not yet over the button. State row exists,
@@ -322,26 +318,23 @@ fn hover_clears_after_tooltip_visible() {
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.record(
-            FrameStamp::new(display, Duration::from_secs_f32(secs)),
-            |ui| {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("root"))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        let r = Button::new()
-                            .id(WidgetId::from_hash("trig"))
-                            .label("hi")
-                            .show(ui)
-                            .snapshot();
-                        *captured = Some(r.id);
-                        Tooltip::on(&r)
-                            .text("tip")
-                            .delay(Duration::from_millis(300))
-                            .show(ui);
-                    });
-            },
-        );
+        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(secs), |ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let r = Button::new()
+                        .id(WidgetId::from_hash("trig"))
+                        .label("hi")
+                        .show(ui)
+                        .snapshot();
+                    *captured = Some(r.id);
+                    Tooltip::on(&r)
+                        .text("tip")
+                        .delay(Duration::from_millis(300))
+                        .show(ui);
+                });
+        });
     };
 
     frame_at(&mut ui, 0.0, &mut captured);
@@ -396,32 +389,29 @@ fn tooltip_inside_popup_records_without_panic() {
     let popup_anchor = Vec2::new(40.0, 40.0);
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.record(
-            FrameStamp::new(display, Duration::from_secs_f32(secs)),
-            |ui| {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("root"))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Popup::anchored_to(popup_anchor)
-                            .id(WidgetId::from_hash("popup"))
-                            .click_outside(ClickOutside::Dismiss)
-                            .padding(4.0)
-                            .show(ui, |ui, _popup| {
-                                let r = Button::new()
-                                    .id(WidgetId::from_hash("trig"))
-                                    .label("hi")
-                                    .show(ui)
-                                    .snapshot();
-                                *captured = Some(r.id);
-                                Tooltip::on(&r)
-                                    .text("tip")
-                                    .delay(Duration::from_millis(300))
-                                    .show(ui);
-                            });
-                    });
-            },
-        );
+        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(secs), |ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Popup::anchored_to(popup_anchor)
+                        .id(WidgetId::from_hash("popup"))
+                        .click_outside(ClickOutside::Dismiss)
+                        .padding(4.0)
+                        .show(ui, |ui, _popup| {
+                            let r = Button::new()
+                                .id(WidgetId::from_hash("trig"))
+                                .label("hi")
+                                .show(ui)
+                                .snapshot();
+                            *captured = Some(r.id);
+                            Tooltip::on(&r)
+                                .text("tip")
+                                .delay(Duration::from_millis(300))
+                                .show(ui);
+                        });
+                });
+        });
     };
 
     // Record once so the trigger rect is available to the next frame.
@@ -468,7 +458,7 @@ fn tooltip_inside_popup_records_without_panic() {
 #[should_panic(expected = "must rank above")]
 fn layer_below_current_scope_panics() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         ui.layer(Layer::Modal, Vec2::ZERO, None, |ui| {
             ui.layer(Layer::Popup, Vec2::ZERO, None, |_ui| {});
         });

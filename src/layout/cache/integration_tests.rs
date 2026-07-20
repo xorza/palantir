@@ -4,7 +4,7 @@
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
@@ -31,14 +31,14 @@ fn assert_warm_rects_match_cold(
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     let mut cold_nodes = Vec::new();
-    ui.run_at_acked(size, |ui| record(ui, &mut cold_nodes));
+    ui.run_at(size, |ui| record(ui, &mut cold_nodes));
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.idx()])
         .collect();
 
     let mut warm_nodes = Vec::new();
-    ui.run_at_acked(size, |ui| record(ui, &mut warm_nodes));
+    ui.run_at(size, |ui| record(ui, &mut warm_nodes));
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.idx()])
@@ -442,10 +442,10 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     };
 
     let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
-    ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
+    ui.run_at(UVec2::new(800, 600), |ui| record(ui));
     let cold = ui.encode_cmds();
 
-    ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
+    ui.run_at(UVec2::new(800, 600), |ui| record(ui));
     let warm = ui.encode_cmds();
 
     assert_same_stream(&cold, &warm);
@@ -453,8 +453,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 
 /// Stress test: alternating surface widths force the cache through
 /// repeated hit/replace transitions. At each step, the warm cache's
-/// rects must equal what a cold remeasure produces — a forced miss
-/// via `internals::clear_measure_cache()` is the ground-truth oracle.
+/// rects must equal what a cold remeasure produces — clearing the
+/// measure cache is the ground-truth oracle.
 #[test]
 fn cache_rects_match_cold_oracle_across_width_changes() {
     let record = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
@@ -503,7 +503,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
         let mut warm_nodes = Vec::new();
-        ui.run_at_acked(UVec2::new(w, 600), |ui| {
+        ui.run_at(UVec2::new(w, 600), |ui| {
             record(ui, &mut warm_nodes);
         });
         let warm_rects: Vec<_> = warm_nodes
@@ -511,9 +511,9 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .map(|n| ui.layout[Layer::Main].rect[n.idx()])
             .collect();
 
-        ui.clear_measure_cache();
+        ui.layout_engine.cache.clear();
         let mut cold_nodes = Vec::new();
-        ui.run_at_acked(UVec2::new(w, 600), |ui| {
+        ui.run_at(UVec2::new(w, 600), |ui| {
             record(ui, &mut cold_nodes);
         });
         let cold_rects: Vec<_> = cold_nodes
@@ -564,7 +564,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     let size = UVec2::new(400, 600);
 
     // Cold frame computes intrinsics across the whole tree.
-    ui.run_at_acked(size, |ui| build(ui, 0));
+    ui.run_at(size, |ui| build(ui, 0));
     let cold = ui.layout_engine.scratch.intrinsic_computes as usize;
     assert!(
         cold > HEAVY,
@@ -575,7 +575,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     // restored intrinsics keep the root re-measure from re-walking it, so
     // the count collapses to the changed ancestor chain (~root + tiny),
     // not ~2·HEAVY for a full sibling re-walk.
-    ui.run_at_acked(size, |ui| build(ui, 1));
+    ui.run_at(size, |ui| build(ui, 1));
     let warm = ui.layout_engine.scratch.intrinsic_computes as usize;
     assert!(
         warm < HEAVY / 2,

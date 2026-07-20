@@ -1,5 +1,6 @@
 //! Typed command discriminants and Pod payload records.
 
+use crate::forest::shapes::record::ColorMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
@@ -10,9 +11,51 @@ use crate::primitives::{
     transform::TranslateScale,
 };
 use crate::renderer::texture_id::TextureId;
-use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
+use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TextCacheKey;
 use strum::{EnumCount, EnumIter, FromRepr};
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ColorModeBits(u8);
+
+impl ColorModeBits {
+    pub(crate) const fn new(value: ColorMode) -> Self {
+        Self(value as u8)
+    }
+
+    pub(crate) const fn get(self) -> ColorMode {
+        ColorMode::from_u8(self.0)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LineCapBits(u8);
+
+impl LineCapBits {
+    pub(crate) const fn new(value: LineCap) -> Self {
+        Self(value as u8)
+    }
+
+    pub(crate) const fn get(self) -> LineCap {
+        LineCap::from_u8(self.0)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LineJoinBits(u8);
+
+impl LineJoinBits {
+    pub(crate) const fn new(value: LineJoin) -> Self {
+        Self(value as u8)
+    }
+
+    pub(crate) const fn get(self) -> LineJoin {
+        LineJoin::from_u8(self.0)
+    }
+}
 
 /// Physical gradient identity resolved for this encode pass.
 #[repr(C)]

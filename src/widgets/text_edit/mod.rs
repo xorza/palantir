@@ -1,7 +1,6 @@
 mod input;
 pub(crate) mod model;
 
-use crate::common::clipboard;
 use crate::forest::element::{Configure, Element};
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::sense::Sense;
@@ -12,7 +11,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::{Shape, TextWrap};
+use crate::shape::Shape;
+use crate::text::wrap::TextWrap;
 use crate::text::{
     CursorPos, FontFamily, FontWeight, SELECTION_RECTS_INLINE_CAPACITY, SelectionRects,
     ShapeParams, text_in_rect,
@@ -739,6 +739,7 @@ fn default_context_menu(
     }
     let has_sel = ui.state_mut::<TextEditState>(id).sel_range().is_some();
     let has_text = !text.is_empty();
+    let clipboard = ui.shared.clipboard.clone();
     let mut action = None;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
         if MenuItem::new("Cut")
@@ -759,7 +760,7 @@ fn default_context_menu(
         {
             action = Some(MenuAction::Copy);
         }
-        let cb_has = !clipboard::get().is_empty();
+        let cb_has = !clipboard.get().is_empty();
         if MenuItem::new("Paste")
             .shortcut(PASTE)
             .enabled(cb_has)
@@ -789,9 +790,9 @@ fn default_context_menu(
         max_chars,
     );
     match action {
-        MenuAction::Cut => ed.cut(),
-        MenuAction::Copy => ed.copy(),
-        MenuAction::Paste => ed.paste(&clipboard::get()),
+        MenuAction::Cut => ed.cut(&clipboard),
+        MenuAction::Copy => ed.copy(&clipboard),
+        MenuAction::Paste => ed.paste(&clipboard.get()),
         MenuAction::Clear => ed.clear(),
     }
     ed.edited

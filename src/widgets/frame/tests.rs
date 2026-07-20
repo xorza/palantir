@@ -13,7 +13,7 @@ use glam::UVec2;
 #[test]
 fn frame_paints_a_single_rounded_rect() {
     let mut ui = Ui::for_test();
-    let frame_node = ui.run_at_value(UVec2::new(200, 100), |ui| {
+    let frame_node = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -54,7 +54,7 @@ fn frame_with_sense_click_is_clickable() {
 
     let mut ui = Ui::for_test();
     let surface = UVec2::new(200, 100);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new()
                 .id(WidgetId::from_hash("hitbox"))
@@ -66,7 +66,7 @@ fn frame_with_sense_click_is_clickable() {
     ui.click_at(Vec2::new(50.0, 25.0));
 
     let mut clicked = false;
-    ui.run_at(surface, |ui| {
+    ui.run_at_without_baseline(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked |= Frame::new()
                 .id(WidgetId::from_hash("hitbox"))

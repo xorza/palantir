@@ -94,7 +94,7 @@ on `Ui` as a data container.
   and `rg 'crate::ui::frame_report::Render' src/renderer src/host` return no
   production imports.
 
-- [ ] **Give the renderer a named immutable frame input instead of `&Ui`.**
+- [x] **Give the renderer a named immutable frame input instead of `&Ui`.**
   `Frontend::build` accepts the entire recorder and directly borrows its payloads,
   display, and clock (`src/renderer/frontend/mod.rs:59`), while `Encoder::encode`
   reaches into forest, layout, cascades, text, gradients, GPU views, and collision
@@ -109,19 +109,14 @@ on `Ui` as a data container.
   Validate with encoder/composer tests, the allocation-free benchmarks, and an import
   check showing no production file under `renderer/` imports `crate::ui::Ui`.
 
-- [ ] **Move presented-output validity to `WindowDriver`, the component that can
-  observe presentation.** `Ui::frame` marks `frame_submitted = false` before the host
-  does any GPU work and acknowledges skip frames itself (`src/ui/mod.rs:193`,
-  `src/ui/mod.rs:302`); `WindowDriver` invalidates the field on a format change and
-  sets it after successful submissions (`src/host/window_driver.rs:314`,
-  `src/host/window_driver.rs:491`, `src/host/window_driver.rs:524`). This is a
-  cross-layer temporal protocol hidden in a mutable UI field. Store
-  `output_valid` beside `backbuffer_fresh`/`last_format` on `WindowDriver`, pass its
-  prior value into UI frame classification as a named frame-entry field, mark it
-  pending before acquire, and restore it only for a valid skip/copy or successful
-  submit. Validate exact cases for first frame, format change, failed acquire,
-  successful submit, `SkipNoop`, and `SkipCopy`; the next CPU frame after any failed
-  paint must escalate to full damage.
+- [x] **Move presented-output validity to `WindowDriver`, the component that can
+  observe presentation.** Target-owning adapters detect size/format changes and
+  invalidate `WindowDriver`; the driver stores `output_valid` beside
+  `backbuffer_fresh`, passes its prior value into UI frame classification as a named
+  frame-entry field, marks it pending before acquire, and restores it only for a
+  valid skip/copy or successful submit. The exact cases cover first frame, target
+  change, failed acquire, successful submit, `SkipNoop`, and `SkipCopy`; the next CPU
+  frame after any failed paint escalates to full damage.
 
 - [ ] **Move recorder capabilities below the host composition root and narrow them.**
   The host documentation says recorder vocabulary must not depend on host machinery
@@ -173,7 +168,7 @@ on `Ui` as a data container.
 
 ## Batch 3 — Isolate platform adapters and reduce dependencies (medium priority)
 
-- [ ] **Move all winit event translation to `host/winit/input.rs`.** `InputEvent`
+- [x] **Move all winit event translation to `host/winit/input.rs`.** `InputEvent`
   claims to be toolkit-independent (`src/input/mod.rs:156`) but its inherent impl
   accepts `winit::event::WindowEvent` (`src/input/mod.rs:264`), and core keyboard
   vocabulary contains three winit mapping functions
@@ -184,7 +179,7 @@ on `Ui` as a data container.
   only production caller (`src/host/winit/mod.rs:638`). Move the translation tests
   with the adapter and validate that `rg 'winit::' src/input` is empty.
 
-- [ ] **Replace the process-global clipboard with an injected UI capability.**
+- [x] **Replace the process-global clipboard with an injected UI capability.**
   `common/clipboard.rs` owns a global `OnceLock<Mutex<...>>` and chooses arboard or
   memory fallback process-wide (`src/common/clipboard.rs:1`,
   `src/common/clipboard.rs:111`, `src/common/clipboard.rs:140`). The supposedly
@@ -200,7 +195,7 @@ on `Ui` as a data container.
   isolation between independently constructed hosts, and cut-not-delete-on-write
   failure.
 
-- [ ] **Feature-gate platform integrations after their types are isolated.**
+- [x] **Feature-gate platform integrations after their types are isolated.**
   `winit` and `arboard` are unconditional dependencies
   (`Cargo.toml:25`, `Cargo.toml:39`); on Linux they pull the window-system graph even
   for the supported offscreen entry point (`src/host/offscreen.rs:1`). Add
@@ -212,7 +207,21 @@ on `Ui` as a data container.
   and `cargo check --no-default-features`; inspect `cargo tree -e normal
   --no-default-features` to confirm neither `winit` nor `arboard` remains.
 
-- [ ] **Remove `encase` for the single eight-byte viewport immediate.** The crate
+- [x] **Gate the winit adapter as a module, not core entities item by item.**
+  The feature dependencies are optional, but winit-only fields, methods, imports,
+  and helper variants remain scattered through backend-agnostic modules
+  (`src/host/window_driver.rs`, `src/renderer/backend/mod.rs`, `src/window.rs`,
+  `src/host/shared.rs`, and `src/common/clipboard.rs`). Keep `WindowDriver` as the
+  target-agnostic UI/render core and move swapchain ownership, configure tracking,
+  occlusion timing, acquire/present recovery, cursor/command draining, and
+  `FramePresent` scheduling into `host/winit/window.rs`. Construct the system
+  clipboard at that host boundary, and compile shared vocabulary unconditionally.
+  The `winit-host` condition should remain only on the `host::winit` module edge and
+  its public `lib.rs` export, rather than changing the shape of core structs and
+  impls. Validate default and `--no-default-features` builds, then audit that
+  `rg '#\[cfg(_attr)?\([^\]]*winit-host' src` reports only those module/API edges.
+
+- [x] **Remove `encase` for the single eight-byte viewport immediate.** The crate
   uses `encase` only to serialize `ViewportPush { size: Vec2 }`
   (`src/renderer/backend/viewport.rs:89`, `src/renderer/backend/viewport.rs:104`),
   yet it is a direct dependency and also enables glam's `encase` integration
@@ -224,7 +233,7 @@ on `Ui` as a data container.
 
 ## Batch 4 — Put local types and behavior beside their true owners (medium priority)
 
-- [ ] **Convert `shape.rs` into a directory module and separate authoring types from
+- [x] **Convert `shape.rs` into a directory module and separate authoring types from
   wire types.** The file combines the public `Shape` enum and its builders
   (`src/shape.rs:27`, `src/shape.rs:234`), public stroke styles
   (`src/shape.rs:559`, `src/shape.rs:607`), an internal record-storage tag
@@ -239,7 +248,7 @@ on `Ui` as a data container.
   authoring file. Validate hot-struct size tests, shape hashing, command-buffer
   round trips, and text-wrap layout tests.
 
-- [ ] **Move shared stroke paint bounds out of the render-buffer wire module.**
+- [x] **Move shared stroke paint bounds out of the render-buffer wire module.**
   Forest lowering and cascade currently import `HALF_FRINGE`/`stroked_bbox` upward
   from renderer storage (`src/forest/shapes/lower.rs:27`,
   `src/ui/cascade/mod.rs:31`), while the definitions live beside
@@ -251,7 +260,7 @@ on `Ui` as a data container.
   then all depend on the neutral shape rule. Validate bbox edge cases and keep
   compile/test pins proving CPU constants match specialized shader constants.
 
-- [ ] **Put frame clock/classification/wake behavior on `FrameRuntime`.**
+- [x] **Put frame clock/classification/wake behavior on `FrameRuntime`.**
   `FrameRuntime` owns the clock accumulator, prior stamp, wake queue, and repaint
   flags (`src/ui/frame.rs:71`), but `advance_clock`, `classify_frame`, and
   `schedule_wake` are methods on the much broader `Ui`
@@ -295,17 +304,12 @@ on `Ui` as a data container.
 
 ## Open questions
 
-- [ ] **Is direct custom-host driving a supported public API?** `Ui::frame` and
-  `FrameStamp` are public (`src/ui/mod.rs:163`, `src/lib.rs:115`), but an external
-  caller cannot acknowledge a successful non-skip submission because
-  `frame_submitted` is crate-private. If only `WinitHost` and `OffscreenHost` are
-  supported, narrow both APIs to `pub(crate)` while moving validity to
-  `WindowDriver`. If custom hosts are intended, expose a complete named frame
-  input/output contract that includes prior-output validity and submission
-  acknowledgement rather than the current half-contract.
+- [x] **Direct custom-host driving is not a supported public API.** `Ui::frame` and
+  `FrameStamp` are crate-private; `WinitHost` and `OffscreenHost` own the complete
+  frame-entry/presentation protocol. The allocation harness uses an `internals`-only
+  test-frame entry instead of exposing a partial production host contract.
 
-- [ ] **Should headless-without-window-system be a supported build profile or only
-  an internal optimization?** This decides whether `winit-host` and
-  `system-clipboard` should be default features, and which feature combinations need
-  CI coverage. The structural adapter/resource moves are worthwhile either way; only
-  the public feature policy is unsettled.
+- [x] **Headless-without-window-system is a supported build profile.**
+  `winit-host` and `system-clipboard` remain default features for batteries-included
+  builds, while `--no-default-features` keeps native input, CPU UI, `OffscreenHost`,
+  and the memory clipboard without resolving either platform dependency.

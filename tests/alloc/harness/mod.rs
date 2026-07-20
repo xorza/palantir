@@ -20,7 +20,7 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
-use aperture::{App, Display, FrameReport, FrameStamp, Ui, WindowToken};
+use aperture::{Display, FrameReport, Ui};
 use std::time::Duration;
 
 /// Mono-fallback `Ui` for the alloc audits — `Ui::default` is the
@@ -37,20 +37,13 @@ const DISPLAY: Display = Display {
     refresh_millihertz: None,
 };
 
-#[derive(Debug)]
-struct RecordApp<F> {
-    record: F,
-}
-
-impl<F: FnMut(&mut Ui)> App for RecordApp<F> {
-    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-        (self.record)(ui);
-    }
-}
-
-pub(crate) fn record(ui: &mut Ui, stamp: FrameStamp, record: impl FnMut(&mut Ui)) -> FrameReport {
-    let mut app = RecordApp { record };
-    ui.frame(stamp, WindowToken(0), &mut app)
+pub(crate) fn record(
+    ui: &mut Ui,
+    display: Display,
+    time: Duration,
+    record: impl FnMut(&mut Ui),
+) -> FrameReport {
+    ui.record_test_frame(display, time, record)
 }
 
 /// Run `scene` for `warmup` frames untracked, then audit each of
@@ -139,7 +132,7 @@ where
 
 #[inline]
 fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, scene: &mut S) {
-    let _ = record(ui, FrameStamp::new(DISPLAY, Duration::ZERO), scene);
+    let _ = record(ui, DISPLAY, Duration::ZERO, scene);
 }
 
 fn fail_audit(

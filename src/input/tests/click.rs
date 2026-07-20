@@ -24,11 +24,11 @@ fn input_state_press_release_emits_click() {
                 .show(ui);
         });
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.click_at(Vec2::new(50.0, 20.0));
 
     let mut got_click = false;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
                 .id(WidgetId::from_hash("target"))
@@ -42,7 +42,7 @@ fn input_state_press_release_emits_click() {
     assert!(got_click, "press+release inside button rect should click");
 
     let mut still_clicking = false;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             still_clicking |= Button::new()
                 .id(WidgetId::from_hash("target"))
@@ -102,13 +102,13 @@ fn stack_sense_routing() {
                         .show(ui);
                 });
         };
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
         ui.click_at(*click_pos);
 
         let mut child_clicked = false;
         let mut stack_clicked = false;
         let mut stack_hovered = false;
-        ui.run_at_acked(surface, |ui| {
+        ui.run_at(surface, |ui| {
             let r = Panel::hstack()
                 .id(WidgetId::from_hash("stack"))
                 .padding(20.0)
@@ -143,7 +143,7 @@ fn stack_sense_routing() {
 fn input_state_release_outside_does_not_click() {
     let mut ui = Ui::for_test();
     let surface = UVec2::new(400, 80);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("target"))
@@ -156,7 +156,7 @@ fn input_state_release_outside_does_not_click() {
     ui.release_left();
 
     let mut got_click = false;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
                 .id(WidgetId::from_hash("target"))
@@ -193,11 +193,11 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         });
     };
     let mut sink = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+    ui.run_at(surface, |ui| build(ui, &mut sink));
     ui.click_at(Vec2::new(150.0, 150.0));
 
     let mut clicked = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut clicked));
+    ui.run_at(surface, |ui| build(ui, &mut clicked));
     assert!(
         !clicked,
         "click on overflow outside clip should not register"
@@ -263,11 +263,11 @@ fn transformed_panels_route_clicks_by_composed_world_rect() {
             });
         };
         let mut sink = false;
-        ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+        ui.run_at(surface, |ui| build(ui, &mut sink));
         ui.click_at(click_pos);
 
         let mut clicked = false;
-        ui.run_at_acked(surface, |ui| build(ui, &mut clicked));
+        ui.run_at(surface, |ui| build(ui, &mut clicked));
         assert_eq!(clicked, expect, "case {label}");
     }
 }
@@ -289,16 +289,16 @@ fn secondary_click_press_release_emits_secondary_clicked() {
         });
     };
     let mut sink = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+    ui.run_at(surface, |ui| build(ui, &mut sink));
     ui.secondary_click_at(Vec2::new(50.0, 20.0));
 
     let mut got = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut got));
+    ui.run_at(surface, |ui| build(ui, &mut got));
     assert!(got, "right press+release should set secondary_clicked");
 
     // One-shot.
     let mut still = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut still));
+    ui.run_at(surface, |ui| build(ui, &mut still));
     assert!(!still, "secondary_clicked is one-shot");
 }
 
@@ -320,13 +320,13 @@ fn two_left_clicks_within_window_emit_double_clicked() {
             *double |= r.left.double_clicked();
         });
     };
-    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
+    ui.run_at(surface, |ui| build(ui, &mut false, &mut false));
 
     // First click — must report clicked but not double_clicked.
     ui.click_at(Vec2::new(50.0, 20.0));
     let mut single = false;
     let mut double = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut single, &mut double));
+    ui.run_at(surface, |ui| build(ui, &mut single, &mut double));
     assert!(single, "first click should fire `clicked`");
     assert!(!double, "first click must not fire `double_clicked`");
 
@@ -335,13 +335,13 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     ui.click_at(Vec2::new(50.0, 20.0));
     let mut single = false;
     let mut double = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut single, &mut double));
+    ui.run_at(surface, |ui| build(ui, &mut single, &mut double));
     assert!(single, "second click should still fire `clicked`");
     assert!(double, "second click should fire `double_clicked`");
 
     // One-shot: a follow-up frame with no input clears the flag.
     let mut still = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut still));
+    ui.run_at(surface, |ui| build(ui, &mut false, &mut still));
     assert!(!still, "double_clicked is one-shot");
 
     // Third click within the window must NOT re-fire double_clicked —
@@ -350,7 +350,7 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     ui.click_at(Vec2::new(50.0, 20.0));
     let mut single = false;
     let mut double = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut single, &mut double));
+    ui.run_at(surface, |ui| build(ui, &mut single, &mut double));
     assert!(single, "third click should fire `clicked`");
     assert!(!double, "third click must not chain another double");
 }
@@ -372,15 +372,15 @@ fn two_clicks_outside_radius_do_not_double_click() {
             *double |= r.left.double_clicked();
         });
     };
-    ui.run_at_acked(surface, |ui| build(ui, &mut false));
+    ui.run_at(surface, |ui| build(ui, &mut false));
 
     ui.click_at(Vec2::new(20.0, 20.0));
-    ui.run_at_acked(surface, |ui| build(ui, &mut false));
+    ui.run_at(surface, |ui| build(ui, &mut false));
 
     // Second click on the same Button but ~20px away — must NOT double.
     ui.click_at(Vec2::new(40.0, 20.0));
     let mut double = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut double));
+    ui.run_at(surface, |ui| build(ui, &mut double));
     assert!(
         !double,
         "clicks more than DOUBLE_CLICK_RADIUS apart must not double-click"
@@ -413,15 +413,15 @@ fn click_on_different_widget_resets_double_click() {
                 == 2;
         });
     };
-    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
+    ui.run_at(surface, |ui| build(ui, &mut false, &mut false));
 
     ui.click_at(Vec2::new(50.0, 20.0)); // hits A
-    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
+    ui.run_at(surface, |ui| build(ui, &mut false, &mut false));
     ui.click_at(Vec2::new(150.0, 20.0)); // hits B
 
     let mut got_a = false;
     let mut got_b = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut got_a, &mut got_b));
+    ui.run_at(surface, |ui| build(ui, &mut got_a, &mut got_b));
     assert!(!got_a, "A must not fire double_clicked");
     assert!(!got_b, "B must not fire double_clicked (different target)");
 }
@@ -444,7 +444,7 @@ fn left_and_right_click_are_independent() {
     };
     let mut a = false;
     let mut b = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut a, &mut b));
+    ui.run_at(surface, |ui| build(ui, &mut a, &mut b));
 
     // Left-press, then a right press+release while left is still held —
     // both should latch separately.
@@ -455,7 +455,7 @@ fn left_and_right_click_are_independent() {
 
     let mut lc = false;
     let mut rc = false;
-    ui.run_at_acked(surface, |ui| build(ui, &mut lc, &mut rc));
+    ui.run_at(surface, |ui| build(ui, &mut lc, &mut rc));
     assert!(lc, "left click should still fire");
     assert!(rc, "right click should still fire alongside left");
 }
@@ -488,7 +488,7 @@ fn press_started_counts_multi_press_runs() {
     fn probe(ui: &mut Ui) -> (bool, u8) {
         let id = WidgetId::from_hash("target");
         let mut seen = (false, 0u8);
-        ui.run_at_acked(SURFACE, |ui| {
+        ui.run_at(SURFACE, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Button::new()
                     .id(id)

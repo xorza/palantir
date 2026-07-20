@@ -1,4 +1,5 @@
 use crate::display::Display;
+use crate::forest::shapes::record::ColorMode;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::span::Span;
@@ -9,14 +10,15 @@ use crate::primitives::{
 use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
+    BrushSource, ColorModeBits, DrawMeshPayload, DrawPolylinePayload, LineCapBits, LineJoinBits,
+    ResolvedGradient,
 };
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_scissor};
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
-use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
+use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use std::cell::RefCell;

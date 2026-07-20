@@ -60,14 +60,14 @@ fn main_panel_clicked(ui: &Ui) -> bool {
 fn click_inside_popup_does_not_dismiss() {
     let mut ui = Ui::for_test();
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
     ui.click_at(inside);
 
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(!dismissed, "click inside body must not signal dismissal");
@@ -81,13 +81,13 @@ fn click_inside_popup_does_not_dismiss() {
 fn click_outside_popup_dismisses_and_blocks_main() {
     let mut ui = Ui::for_test();
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     ui.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(
@@ -111,12 +111,12 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     // `Dismiss`: Esc folds into `dismissed`.
     let mut ui = Ui::for_test();
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     ui.on_input(esc());
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(dismissed, "Esc dismisses a `Dismiss` popup");
@@ -125,12 +125,12 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     // host's terms).
     let mut ui = Ui::for_test();
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     ui.on_input(esc());
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "Esc does not dismiss a `Block` popup");
@@ -166,9 +166,9 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                 }
             });
     };
-    ui.run_at_acked(SURFACE, |ui| scene(ui, &mut open));
-    ui.click_at(Vec2::new(300.0, 300.0));
     ui.run_at(SURFACE, |ui| scene(ui, &mut open));
+    ui.click_at(Vec2::new(300.0, 300.0));
+    ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
         ui.forest.trees[Layer::Popup].records.len(),
@@ -206,7 +206,7 @@ fn popup_body_sizing_matches_sizing_mode() {
     ];
     for &(sw, sh, expected_size, expected_min) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at(SURFACE, |ui| {
+        ui.run_at_without_baseline(SURFACE, |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -264,7 +264,7 @@ fn popup_near_bottom_flips_upward() {
                     });
             });
     };
-    ui.run_at(SURF, scene);
+    ui.run_at_without_baseline(SURF, scene);
 
     let popup_tree = &ui.forest.trees[Layer::Popup];
     let body_root = popup_tree.roots[1].first_node.idx();
@@ -309,7 +309,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
                     });
             });
     };
-    ui.run_at_acked(SURF, scene);
+    ui.run_at(SURF, scene);
 
     let flipped_min = Vec2::new(anchor.x, anchor.y - content.h); // (20, 80)
     let body_root = ui.forest.trees[Layer::Popup].roots[1].first_node.idx();
@@ -369,12 +369,12 @@ fn popup_with_scroll_settles_in_one_frame() {
             .rect
             .expect("popup body has a rect")
     };
-    ui.run_at_acked(SURF, scene);
+    ui.run_at(SURF, scene);
     let first = body_rect(&ui);
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-        ui.run_at_acked(SURF, scene);
+        ui.run_at(SURF, scene);
         assert_eq!(
             body_rect(&ui),
             first,
@@ -413,11 +413,11 @@ fn popup_placement_is_stable_across_frames() {
             .rect
             .expect("popup body has an arranged rect after the opening frame")
     };
-    ui.run_at_acked(SURF, scene);
+    ui.run_at(SURF, scene);
     let first = body_rect_of(&ui);
     // Pretend an input arrived (cursor move over the popup).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
-    ui.run_at_acked(SURF, scene);
+    ui.run_at(SURF, scene);
     let second = body_rect_of(&ui);
     assert_eq!(
         first, second,
@@ -469,7 +469,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
         let body_id = WidgetId::from_hash("dynamic-popup");
         let frame = |ui: &mut Ui, size: Size| {
             let mut passes = 0;
-            ui.run_at_acked(EDGE_SURFACE, |ui| {
+            ui.run_at(EDGE_SURFACE, |ui| {
                 passes += 1;
                 let popup = match edge {
                     Edge::Top => Popup::above(anchor),
@@ -543,7 +543,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
                     });
             });
     };
-    ui.run_at_acked(SURFACE, scene);
+    ui.run_at(SURFACE, scene);
 
     // Move pointer well outside the popup body, then send a scroll
     // + zoom + middle-drag burst.
@@ -556,7 +556,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     ui.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Middle));
 
-    ui.run_at(SURFACE, scene);
+    ui.run_at_without_baseline(SURFACE, scene);
     let bg = ui.response_for(bg_id);
     assert_eq!(
         bg.scroll.pixels,
@@ -582,13 +582,13 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
     let mut ui = Ui::for_test();
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     ui.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "`Block` mode must not signal dismissal");
