@@ -34,29 +34,30 @@ pub struct WindowToken(pub u64);
 /// — the same integer-extent vocabulary as [`Display`](crate::Display).
 #[derive(Clone, Debug, Default)]
 pub struct WindowConfig {
-    pub(crate) title: String,
+    /// Native window title.
+    pub title: String,
     /// Initial inner size in logical pixels. `None` lets the platform
     /// pick.
-    pub(crate) inner_size: Option<UVec2>,
+    pub inner_size: Option<UVec2>,
     /// Minimum inner size in logical pixels. `None` = no floor.
-    pub(crate) min_inner_size: Option<UVec2>,
+    pub min_inner_size: Option<UVec2>,
     /// Initial outer position in **physical** pixels (top-left of the
     /// window frame). `None` lets the platform place it. Physical, not
     /// logical, because a saved position is only unambiguous across
     /// mixed-DPI monitors in device pixels. The host drops it at creation
     /// if it no longer lands on any connected monitor, so a window saved
     /// on a since-disconnected display doesn't reopen off-screen.
-    pub(crate) position: Option<IVec2>,
+    pub position: Option<IVec2>,
     /// Start maximized. Restored alongside `inner_size` — winit applies
     /// the maximized state and holds `inner_size` as the size to return to
     /// when the user un-maximizes.
-    pub(crate) maximized: bool,
+    pub maximized: bool,
     /// Title-bar / taskbar icon. `None` = platform default. Honored on
     /// Windows and Linux (X11/Wayland); **macOS ignores per-window icons**
     /// (its Dock icon comes from the `.app` bundle's `.icns`, set at
     /// packaging time). [`WinitHost`](crate::WinitHost) converts the
     /// backend-agnostic [`Image`] to the platform icon at window creation.
-    pub(crate) icon: Option<Image>,
+    pub icon: Option<Image>,
 }
 
 /// A window's live geometry, assembled on demand by
@@ -168,13 +169,6 @@ pub(crate) struct WindowCommands {
     pub(crate) closes: Vec<WindowToken>,
 }
 
-impl WindowCommands {
-    pub(crate) fn append(&mut self, source: &mut Self) {
-        self.opens.append(&mut source.opens);
-        self.closes.append(&mut source.closes);
-    }
-}
-
 /// Deferred recorder output consumed by the window host after a frame.
 #[derive(Debug, Default)]
 pub(crate) struct WindowRequests {
@@ -195,56 +189,24 @@ pub(crate) struct WindowFrameState {
 
 #[cfg(test)]
 mod tests {
-    use crate::window::{PendingWindow, WindowCommands, WindowConfig, WindowToken};
+    use glam::{IVec2, UVec2};
+
+    use crate::window::WindowConfig;
 
     #[test]
-    fn window_config_default_has_no_icon() {
+    fn window_config_builders_populate_public_fields() {
+        let config = WindowConfig::new("inspector")
+            .inner_size(UVec2::new(800, 600))
+            .min_inner_size(UVec2::new(320, 240))
+            .position(IVec2::new(-40, 80))
+            .maximized(true);
+
+        assert_eq!(config.title, "inspector");
+        assert_eq!(config.inner_size, Some(UVec2::new(800, 600)));
+        assert_eq!(config.min_inner_size, Some(UVec2::new(320, 240)));
+        assert_eq!(config.position, Some(IVec2::new(-40, 80)));
+        assert!(config.maximized);
+        assert!(config.icon.is_none());
         assert!(WindowConfig::default().icon.is_none());
-        assert!(WindowConfig::new("t").icon.is_none());
-    }
-
-    #[test]
-    fn window_commands_append_preserves_order_and_drains_source() {
-        let mut commands = WindowCommands {
-            opens: vec![PendingWindow {
-                token: WindowToken(1),
-                config: WindowConfig::default(),
-            }],
-            closes: vec![WindowToken(4)],
-        };
-        let mut source = WindowCommands {
-            opens: vec![
-                PendingWindow {
-                    token: WindowToken(2),
-                    config: WindowConfig::default(),
-                },
-                PendingWindow {
-                    token: WindowToken(3),
-                    config: WindowConfig::default(),
-                },
-            ],
-            closes: vec![WindowToken(5), WindowToken(6)],
-        };
-        let source_opens_capacity = source.opens.capacity();
-        let source_closes_capacity = source.closes.capacity();
-
-        commands.append(&mut source);
-
-        assert_eq!(
-            commands
-                .opens
-                .iter()
-                .map(|pending| pending.token)
-                .collect::<Vec<_>>(),
-            [WindowToken(1), WindowToken(2), WindowToken(3)]
-        );
-        assert_eq!(
-            commands.closes,
-            [WindowToken(4), WindowToken(5), WindowToken(6)]
-        );
-        assert!(source.opens.is_empty());
-        assert!(source.closes.is_empty());
-        assert_eq!(source.opens.capacity(), source_opens_capacity);
-        assert_eq!(source.closes.capacity(), source_closes_capacity);
     }
 }
