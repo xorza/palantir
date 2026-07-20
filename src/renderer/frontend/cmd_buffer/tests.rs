@@ -3,15 +3,17 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
-use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, CmdKind, DrawPolylinePayload, DrawRectPayload, DrawTrianglePayload,
+use crate::renderer::frontend::cmd_buffer::payload::{BrushSource, CmdKind, DrawPolylinePayload};
+use crate::renderer::frontend::cmd_buffer::{
+    COMMAND_KIND_BITS, COMMAND_KIND_MASK, Command, MAX_DATA_WORD_OFFSET, RenderCmdBuffer,
+    pack_command_descriptor,
 };
-use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::texture_id::TextureId;
 use glam::Vec2;
 use std::cell::RefCell;
 use std::rc::Rc;
+use strum::{EnumCount as _, IntoEnumIterator};
 
 #[derive(Debug)]
 struct NoopPaint;
@@ -22,6 +24,47 @@ impl GpuPaint for NoopPaint {
 
 fn paint() -> GpuPaintRef {
     GpuPaintRef(Rc::new(RefCell::new(NoopPaint)))
+}
+
+#[test]
+fn descriptor_round_trips_every_kind_and_offset_boundary() {
+    let mut buffer = RenderCmdBuffer::default();
+    for (expected_tag, kind) in CmdKind::iter().enumerate() {
+        let descriptor = pack_command_descriptor(kind, MAX_DATA_WORD_OFFSET);
+        assert_eq!(
+            descriptor & COMMAND_KIND_MASK,
+            expected_tag as u32,
+            "{kind:?} tag",
+        );
+        assert_eq!(
+            descriptor >> COMMAND_KIND_BITS,
+            MAX_DATA_WORD_OFFSET as u32,
+            "{kind:?} maximum offset",
+        );
+        assert_eq!(
+            CmdKind::from_repr((descriptor & COMMAND_KIND_MASK) as u8),
+            Some(kind),
+            "{kind:?} round trip",
+        );
+        buffer.record_start(kind);
+    }
+    assert_eq!(
+        buffer.descriptors.len() * size_of::<u32>(),
+        CmdKind::COUNT * 4,
+        "command metadata must use four bytes per command",
+    );
+    assert_eq!(
+        MAX_DATA_WORD_OFFSET * size_of::<u32>(),
+        (1 << 30) - 4,
+        "the maximum word offset must address the final aligned word below 1 GiB",
+    );
+    assert!(
+        std::panic::catch_unwind(|| {
+            pack_command_descriptor(CmdKind::PushClip, MAX_DATA_WORD_OFFSET + 1);
+        })
+        .is_err(),
+        "the first unrepresentable word offset must be rejected",
+    );
 }
 
 #[test]
@@ -134,8 +177,9 @@ fn triangle_stroke_normalization_matches_draw_rect() {
             BrushSource::Solid(fill.into()),
             stroke,
         );
-        assert_eq!(rb.kinds, vec![CmdKind::DrawRect], "case {label}");
-        let rp: DrawRectPayload = rb.read(rb.starts[0]);
+        let Some(Command::DrawRect(rp)) = rb.iter().next() else {
+            panic!("case {label}: expected DrawRect");
+        };
 
         let mut tb = RenderCmdBuffer::default();
         tb.draw_triangle(
@@ -149,8 +193,9 @@ fn triangle_stroke_normalization_matches_draw_rect() {
             0.0,
             stroke,
         );
-        assert_eq!(tb.kinds, vec![CmdKind::DrawTriangle], "case {label}");
-        let tp: DrawTrianglePayload = tb.read(tb.starts[0]);
+        let Some(Command::DrawTriangle(tp)) = tb.iter().next() else {
+            panic!("case {label}: expected DrawTriangle");
+        };
 
         assert_eq!(tp.stroke_color, rp.stroke_color, "case {label}");
         assert_eq!(

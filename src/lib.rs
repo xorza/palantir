@@ -175,6 +175,7 @@ mod hot_struct_sizes {
     use crate::primitives::span::Span;
     use crate::record_store::RecordedGradient;
     use crate::renderer::backend::text::GlyphInstance;
+    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::cmd_buffer::payload::{
         DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
         DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
@@ -303,6 +304,7 @@ mod hot_struct_sizes {
         DamageRegion => "damage::DamageRegion": 140 / 4,
         NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
+        RenderCmdBuffer => "cmd::RenderCmdBuffer": 72 / 8,
         PushClipPayload => "cmd::PushClipPayload": 24 / 4,
         DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
         DrawShadowPayload => "cmd::DrawShadowPayload": 44 / 4,

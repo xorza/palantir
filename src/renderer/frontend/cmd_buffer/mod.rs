@@ -1,16 +1,17 @@
-//! `RenderCmdBuffer` — SoA command stream.
+//! `RenderCmdBuffer` — packed command stream.
 //!
-//! Three columns: a 1-byte kind discriminant per command, a `u32`
-//! start offset into a payload arena, and the arena itself. Consumers
-//! walk [`Command`] values through [`RenderCmdBuffer::iter`]; raw column
-//! alignment and payload decoding stay private to this module.
+//! A `u32` descriptor per command packs the kind into its low four bits
+//! and the word offset into the payload arena into the upper 28. Consumers
+//! walk [`Command`] values through [`RenderCmdBuffer::iter`]; descriptor
+//! packing, arena alignment, and payload decoding stay private to this module.
 //! All variants are paint ops the composer scales, snaps, and groups
 //! into the `RenderBuffer`.
 //!
 //! Memory: a tagged-enum representation would size to its largest
 //! variant (~80 B with padding), so a sequence of
 //! `PopClip`/`PopTransform` would pay full-variant storage. Here Pops
-//! are 1 + 4 = 5 bytes (kind byte + start offset, no payload).
+//! are one four-byte descriptor with no payload. The 28-bit word offset
+//! permits a payload arena just under 1 GiB.
 //!
 //! Soundness: payload structs are `#[repr(C)]` aggregates of
 //! `f32`/`u32` (and one `u64` in `TextCacheKey`) tagged
@@ -55,11 +56,15 @@ use crate::renderer::frontend::cmd_buffer::payload::{
     GpuFillFields, PushClipPayload, PushTransformPayload,
 };
 
+const COMMAND_KIND_BITS: u32 = 4;
+const COMMAND_KIND_MASK: u32 = (1 << COMMAND_KIND_BITS) - 1;
+const MAX_DATA_WORD_OFFSET: usize = (u32::MAX >> COMMAND_KIND_BITS) as usize;
+const _: () = assert!(<CmdKind as strum::EnumCount>::COUNT <= 1 << COMMAND_KIND_BITS);
+
 /// Append-only command buffer. See module docs.
 #[derive(Debug, Default)]
 pub(crate) struct RenderCmdBuffer {
-    kinds: Vec<CmdKind>,
-    starts: Vec<u32>,
+    descriptors: Vec<u32>,
     data: Vec<u32>,
     /// Side channel the Pod `data` stream can't hold: one `GpuPaintRef` per
     /// `GpuView` draw, in emission order. A `DrawImage` with `target = n`
@@ -104,7 +109,7 @@ impl<'a> Iterator for Commands<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.buffer.kinds.len() - self.index;
+        let remaining = self.buffer.descriptors.len() - self.index;
         (remaining, Some(remaining))
     }
 }
@@ -113,7 +118,6 @@ impl ExactSizeIterator for Commands<'_> {}
 
 impl RenderCmdBuffer {
     pub(crate) fn iter(&self) -> Commands<'_> {
-        debug_assert_eq!(self.kinds.len(), self.starts.len());
         Commands {
             buffer: self,
             index: 0,
@@ -121,8 +125,7 @@ impl RenderCmdBuffer {
     }
 
     pub(crate) fn clear(&mut self) {
-        self.kinds.clear();
-        self.starts.clear();
+        self.descriptors.clear();
         self.data.clear();
         self.gpu_view_paints.clear();
     }
@@ -387,13 +390,13 @@ impl RenderCmdBuffer {
 
     #[inline]
     fn record_start(&mut self, kind: CmdKind) {
-        self.starts.push(self.data.len() as u32);
-        self.kinds.push(kind);
+        self.descriptors
+            .push(pack_command_descriptor(kind, self.data.len()));
     }
 
     /// Read the payload at `start` (in u32 words) as `T`. Caller picks
-    /// `T` based on `kinds[i]` — the symmetric `write_pod` at push time
-    /// guarantees the bytes are valid for the kind's expected payload.
+    /// `T` based on the descriptor's kind — the symmetric `write_pod` at
+    /// push time guarantees the bytes are valid for the expected payload.
     #[inline]
     fn read<T: bytemuck::Pod>(&self, start: u32) -> T {
         // Arena is `Vec<u32>` (4-byte aligned). `pod_read_unaligned`
@@ -413,8 +416,10 @@ impl RenderCmdBuffer {
     }
 
     fn command(&self, index: usize) -> Option<Command<'_>> {
-        let &kind = self.kinds.get(index)?;
-        let start = self.starts[index];
+        let &descriptor = self.descriptors.get(index)?;
+        let kind = CmdKind::from_repr((descriptor & COMMAND_KIND_MASK) as u8)
+            .expect("command descriptor contains an unknown kind tag");
+        let start = descriptor >> COMMAND_KIND_BITS;
         Some(match kind {
             CmdKind::PushClip => Command::PushClip(self.read(start)),
             CmdKind::PopClip => Command::PopClip,
@@ -444,6 +449,15 @@ impl RenderCmdBuffer {
     }
 }
 
+#[inline]
+fn pack_command_descriptor(kind: CmdKind, start: usize) -> u32 {
+    assert!(
+        start <= MAX_DATA_WORD_OFFSET,
+        "command payload arena exceeds the 28-bit word-offset limit"
+    );
+    ((start as u32) << COMMAND_KIND_BITS) | kind as u32
+}
+
 /// Append a `T` to the arena as `size_of::<T>() / 4` u32 words. `Pod`
 /// guarantees no padding bytes — the reinterpretation as `&[u32]` is
 /// sound because `align_of::<T>() % 4 == 0` for every payload we use
@@ -461,8 +475,10 @@ pub(crate) mod test_support {
     use super::RenderCmdBuffer;
 
     pub(crate) fn assert_same_stream(left: &RenderCmdBuffer, right: &RenderCmdBuffer) {
-        assert_eq!(left.kinds, right.kinds, "cmd kind sequence must match");
-        assert_eq!(left.starts, right.starts, "cmd payload offsets must match");
+        assert_eq!(
+            left.descriptors, right.descriptors,
+            "cmd descriptors must match"
+        );
         assert_eq!(left.data, right.data, "cmd payload bytes must match");
         assert_eq!(
             left.gpu_view_paints.len(),
