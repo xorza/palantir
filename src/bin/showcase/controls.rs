@@ -175,7 +175,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                 }
                 if Button::new()
                     .id_salt("reset")
-                    .style(&outlined)
+                    .style(outlined)
                     .label("Reset")
                     .show(ui)
                     .left
@@ -185,7 +185,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                 }
                 let del = Button::new()
                     .id_salt("delete")
-                    .style(&danger)
+                    .style(danger)
                     .label("Delete profile")
                     .show(ui)
                     .snapshot();
@@ -238,18 +238,18 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
                             .show(ui);
                         Button::new()
                             .id_salt("o-1")
-                            .style(&outlined)
+                            .style(outlined)
                             .label("outlined")
                             .show(ui);
                         Button::new()
                             .id_salt("o-2")
-                            .style(&outlined)
+                            .style(outlined)
                             .label("disabled")
                             .disabled(true)
                             .show(ui);
                         Button::new()
                             .id_salt("c-1")
-                            .style(&danger)
+                            .style(danger)
                             .label("danger")
                             .show(ui);
                     });

@@ -1,11 +1,12 @@
+use crate::forest::Forest;
 use crate::forest::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush};
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
 use crate::forest::tree::Tree;
 use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::node::NodeId;
 use crate::forest::tree::paint_anims::PaintAnimCursor;
-use crate::layout::LayerLayout;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
@@ -16,6 +17,7 @@ use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::record_store::RecordedGradient;
 use crate::renderer::damage::damage_cull_margin;
+use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
@@ -28,7 +30,6 @@ use crate::renderer::render_buffer::image::{
 };
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::{TextShaper, text_in_rect};
-use crate::ui::Ui;
 use crate::ui::cascade::CascadeInputHash;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
@@ -125,10 +126,10 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
     }
 }
 
-/// Walk every tree in `ui.forest` in paint order, emitting logical-px
+/// Walk every tree in the scene forest in paint order, emitting logical-px
 /// paint commands into `out`. No GPU work, no scale/snap math — that
 /// lives in the composer + backend. Per-tree layout rows come off
-/// `ui.layout`, cascade rows off `ui.cascades`, keyed by layer.
+/// the scene layout, cascade rows off the scene cascades, keyed by layer.
 ///
 /// `plan` is the paint plan for this frame:
 /// - `RenderKind::Full` paints everything (first frame, surface change,
@@ -142,7 +143,7 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 /// The command buffer is cleared at entry; capacity is retained across frames.
 impl Encoder {
     #[profiling::function]
-    pub(crate) fn encode(&mut self, ui: &Ui, plan: RenderPlan) {
+    pub(crate) fn encode(&mut self, scene: &FrameScene<'_>, plan: RenderPlan) {
         let Self {
             cmds: out,
             gradients: gradient_resolver,
@@ -154,31 +155,29 @@ impl Encoder {
             RenderKind::Full => None,
         };
 
-        let viewport = ui.display.logical_rect();
-        let now = ui.frame_runtime.time;
-        let payloads = ui.record_store.payloads.borrow();
-        let gradients = payloads.gradients.records.as_slice();
+        let viewport = scene.display.logical_rect();
+        let now = scene.time;
+        let gradients = scene.payloads.gradients.records.as_slice();
         gradient_resolver.begin(gradients.len());
-        let text_bytes = payloads.text_bytes();
-        let gradient_atlas = &ui.shared.assets.gradients;
+        let text_bytes = scene.payloads.text_bytes();
         // Matches the *padded* region the backend actually PreClears — the
         // pad + rounding-slack derivation lives next to the scissor math in
         // `renderer::damage::damage_cull_margin` so the two can't drift.
-        let damage_cull_margin = damage_cull_margin(ui.display.scale_factor);
-        for (layer, tree) in ui.forest.trees.iter_paint_order() {
-            let layer_cascades = &ui.cascades.layers[layer];
+        let damage_cull_margin = damage_cull_margin(scene.display.scale_factor);
+        for (layer, tree) in scene.forest.trees.iter_paint_order() {
+            let layer_cascades = &scene.cascades.layers[layer];
             let mut ctx = LayerCtx {
                 tree,
-                layout: &ui.layout[layer],
+                layout: &scene.layout[layer],
                 cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
                 subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
                 gradients,
                 text_bytes: &text_bytes,
-                shaper: &ui.shared.text,
-                gradient_atlas,
+                shaper: scene.text,
+                gradient_atlas: scene.gradient_atlas,
                 gradient_resolver,
                 paint_anim_cursor: tree.paint_anims.cursor(),
-                gpu_views: &ui.gpu_views,
+                gpu_views: scene.gpu_views,
                 damage_filter,
                 damage_cull_margin,
                 viewport,
@@ -189,7 +188,7 @@ impl Encoder {
             }
         }
 
-        emit_collision_overlays(ui, out);
+        emit_collision_overlays(scene.forest, scene.layout, out);
     }
 }
 
@@ -244,13 +243,13 @@ impl std::fmt::Debug for LayerCtx<'_> {
 /// ignores any clip context the colliding widgets sit under (scroll
 /// viewports, clipped popups). Both `NodeId`s are precomputed at
 /// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
-fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
-    if ui.forest.collisions.is_empty() {
+fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut RenderCmdBuffer) {
+    if forest.collisions.is_empty() {
         return;
     }
-    for record in &ui.forest.collisions {
+    for record in &forest.collisions {
         for ep in [record.first, record.second] {
-            let rects = &ui.layout[ep.layer].rect;
+            let rects = &layout[ep.layer].rect;
             // Both endpoints come from `Forest::open_node`'s
             // `peek_next_id` and are always opened, so arrange produced
             // a rect for each — the index can't actually exceed `rects`.

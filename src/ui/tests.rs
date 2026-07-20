@@ -103,8 +103,8 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
-    frontend.build_for_test(
-        &ui,
+    ui.build_frontend_for_test(
+        &mut frontend,
         RenderPlan {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
@@ -176,8 +176,8 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
-    frontend.build_for_test(
-        &ui,
+    ui.build_frontend_for_test(
+        &mut frontend,
         RenderPlan {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
@@ -311,8 +311,8 @@ fn empty_ui_drives_a_frame_safely() {
     // to exercise encode/compose and assert the buffers come out empty.
     // No mesh/polyline bytes were recorded, so the Ui record store is empty.
     let mut frontend = Frontend::for_test();
-    frontend.build_for_test(
-        &ui,
+    ui.build_frontend_for_test(
+        &mut frontend,
         RenderPlan {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
@@ -729,7 +729,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     assert!(!shared.text.has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
-    frontend.build_for_test(&idle, plan);
+    idle.build_frontend_for_test(&mut frontend, plan);
     idle.frame_runtime.frame_submitted = true;
     assert!(
         frontend.buffer.texts.iter().any(|run| run.key == idle_key),

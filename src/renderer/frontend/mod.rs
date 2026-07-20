@@ -19,12 +19,47 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
+use std::cell::Ref;
+use std::time::Duration;
+
+use crate::display::Display;
+use crate::forest::Forest;
+use crate::layout::Layout;
+use crate::primitives::widget_id::WidgetIdMap;
+use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
+use crate::renderer::gpu_view::GpuViewEntry;
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
-use crate::ui::Ui;
+use crate::text::TextShaper;
+use crate::ui::cascade::Cascades;
 use crate::ui::frame_report::RenderPlan;
+
+/// Frozen inputs consumed by the CPU renderer for one frame.
+pub(crate) struct FrameScene<'a> {
+    pub(crate) forest: &'a Forest,
+    pub(crate) layout: &'a Layout,
+    pub(crate) cascades: &'a Cascades,
+    /// Keeps the record-store read lease alive through encode and compose.
+    pub(crate) payloads: Ref<'a, RecordPayloads>,
+    pub(crate) text: &'a TextShaper,
+    pub(crate) gradient_atlas: &'a GradientAtlas,
+    pub(crate) gpu_views: &'a WidgetIdMap<GpuViewEntry>,
+    pub(crate) display: Display,
+    /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.
+    pub(crate) time: Duration,
+}
+
+impl std::fmt::Debug for FrameScene<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrameScene")
+            .field("display", &self.display)
+            .field("time", &self.time)
+            .finish_non_exhaustive()
+    }
+}
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
 /// every persistent allocation (the [`Encoder`], output `RenderBuffer`,
@@ -56,21 +91,22 @@ impl Frontend {
 
     /// Encode → compose into the staged output buffer.
     #[profiling::function]
-    pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) {
-        self.encoder.encode(ui, plan);
-        let payloads = ui.record_store.payloads.borrow();
-        self.composer
-            .compose(&self.encoder.cmds, &payloads, ui.display, &mut self.buffer);
-        // Stamp the frame clock for the backend's per-GpuView `dt` (not
-        // derivable from `Display`, so it doesn't ride `start_frame`).
-        self.buffer.time = ui.frame_runtime.time;
+    pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
+        self.encoder.encode(&scene, plan);
+        self.composer.compose(
+            &self.encoder.cmds,
+            &scene.payloads,
+            scene.display,
+            &mut self.buffer,
+        );
+        self.buffer.time = scene.time;
     }
 }
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     #![allow(dead_code)]
-    use crate::{renderer::frontend::*, ui::Ui};
+    use crate::renderer::frontend::Frontend;
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench
     /// frontends — they have no `wgpu::Device` to query, and 8192 is the
@@ -81,16 +117,6 @@ pub(crate) mod test_support {
         /// Deviceless frontend for tests and benchmarks.
         pub(crate) fn for_test() -> Self {
             Self::new(TEST_MAX_TEXTURE_DIM)
-        }
-
-        /// Drive the full CPU-side frontend (encode + compose) against a
-        /// just-recorded `Ui`. Bench / test reach-in for the otherwise
-        /// `pub(crate)` `Frontend::build`. The output `RenderBuffer` is
-        /// crate-private; the side effect (mutating `self.encoder`,
-        /// `self.composer`, `self.buffer`) is what bench callers want
-        /// timed, so the helper returns nothing.
-        pub(crate) fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
-            self.build(ui, plan);
         }
     }
 }
