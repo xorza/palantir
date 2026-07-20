@@ -44,7 +44,7 @@ const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0)
 /// Retained encoder state and its command output.
 #[derive(Debug, Default)]
 pub(crate) struct Encoder {
-    pub(crate) cmds: RenderCmdBuffer,
+    cmds: RenderCmdBuffer,
     gradients: GradientResolver,
 }
 
@@ -143,7 +143,7 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 /// The command buffer is cleared at entry; capacity is retained across frames.
 impl Encoder {
     #[profiling::function]
-    pub(crate) fn encode(&mut self, scene: &FrameScene<'_>, plan: RenderPlan) {
+    pub(crate) fn encode(&mut self, scene: &FrameScene<'_>, plan: RenderPlan) -> &RenderCmdBuffer {
         let Self {
             cmds: out,
             gradients: gradient_resolver,
@@ -189,6 +189,7 @@ impl Encoder {
         }
 
         emit_collision_overlays(scene.forest, scene.layout, out);
+        out
     }
 }
 
@@ -850,6 +851,20 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
             uv_min: offset,
             uv_size: scale,
         },
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    use crate::renderer::frontend::FrameScene;
+    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
+    use crate::renderer::frontend::encoder::Encoder;
+    use crate::ui::frame_report::RenderPlan;
+
+    pub(crate) fn encode(scene: FrameScene<'_>, plan: RenderPlan) -> RenderCmdBuffer {
+        let mut encoder = Encoder::default();
+        encoder.encode(&scene, plan);
+        encoder.cmds
     }
 }
 
