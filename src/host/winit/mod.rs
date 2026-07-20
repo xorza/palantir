@@ -1,7 +1,7 @@
 //! `WinitHost` — wraps one-or-more [`WindowDriver`]s with winit
 //! windows, their surfaces, and the [`ApplicationHandler`] event-loop
 //! glue. Its lifecycle is encoded by [`HostPhase`]: bootstrap inputs become one
-//! [`WinitRuntime`] containing the app, shared-resource root, surface factory,
+//! [`WinitRuntime`] containing the app, shared-resource root, surface manager,
 //! backend, and complete live-window set. Per-window swapchain config, resize /
 //! scale / occlusion handling, and `FramePresent` schedules fold across that
 //! runtime into one `ControlFlow`.
@@ -18,8 +18,9 @@
 //! own `Ui` (input / focus / layout / `Display`) and [`WindowDriver`] —
 //! all rendering through one shared
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The backend solely
-//! owns the device and queue; [`SurfaceFactory`] retains only the instance,
-//! adapter, presentation policy, and texture limit needed by later windows.
+//! owns renderer resources; [`SurfaceManager`] retains the native-surface
+//! instance, adapter, and cloned device/queue handles used to configure and
+//! present swapchains.
 //! Windows are addressed by a caller-chosen [`WindowToken`]; winit's
 //! opaque `WindowId` stays internal for event routing. The app opens /
 //! closes windows from inside `record` via [`Ui::open_window`] /
@@ -49,6 +50,8 @@
 pub(crate) mod config;
 pub(crate) mod gpu;
 pub(crate) mod handle;
+mod input;
+mod window;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -63,63 +66,21 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Icon, Window, WindowId};
 
 use crate::app::App;
+use crate::common::clipboard::Clipboard;
+use crate::debug_overlay::DebugOverlayConfig;
 use crate::host::shared::HostShared;
-use crate::host::window_driver::{FramePresent, WindowDriver, WindowFrameInput};
+use crate::host::window_driver::WindowDriver;
 use crate::host::winit::config::WinitHostConfig;
-use crate::host::winit::gpu::{GpuInit, SurfaceFactory, WindowSurface};
+use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
-use crate::input::InputEvent;
+use crate::host::winit::window::{FramePresent, WindowState};
 use crate::primitives::image::Image;
 use crate::renderer::backend::WgpuBackend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::window::{CursorIcon, WindowCommands, WindowConfig, WindowFrameState, WindowToken};
+use crate::window::{CursorIcon, WindowCommands, WindowConfig, WindowToken};
 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
-
-/// Everything one window owns: its winit handle, swapchain surface +
-/// config, the per-window [`WindowDriver`] (its `Ui` recorder +
-/// per-window encode/compose scratch + backbuffer), DPR scale, and the
-/// host-side scheduling state. The shared GPU renderer (device/queue,
-/// pipelines, atlases) lives on `WinitRuntime`, not here.
-#[derive(Debug)]
-struct WindowState {
-    window: Arc<Window>,
-    surface: wgpu::Surface<'static>,
-    config: wgpu::SurfaceConfiguration,
-    driver: WindowDriver,
-    scale_factor: f32,
-    /// Per-window scheduling state. Reset at the top of `draw` from the
-    /// `FramePresent` the frame returned; re-armed to `Immediate` by
-    /// input, resize, surface loss, occlusion, and animation tickers.
-    next: FramePresent,
-    /// Set when the OS delivers `WindowEvent::CloseRequested` (titlebar X),
-    /// cleared once the next `draw` resolves it. `draw` mirrors it into the
-    /// window's `Ui` (`Ui::close_requested`) for that frame and, unless the
-    /// app vetoed via `Ui::keep_open`, closes the window afterward. This
-    /// deferral is what lets an app show a "save changes?" prompt instead
-    /// of the window vanishing on the click.
-    close_requested: bool,
-    /// The cursor last applied to the OS window, so `draw` only calls
-    /// `Window::set_cursor` when the frame's request actually changed.
-    cursor: CursorIcon,
-}
-
-impl WindowState {
-    fn new(window: Arc<Window>, surface: WindowSurface, driver: WindowDriver) -> Self {
-        let scale_factor = window.scale_factor() as f32;
-        Self {
-            window,
-            surface: surface.surface,
-            config: surface.config,
-            driver,
-            scale_factor,
-            next: FramePresent::Immediate,
-            close_requested: false,
-            cursor: CursorIcon::default(),
-        }
-    }
-}
 
 /// Map the backend-agnostic cursor vocabulary onto winit's.
 fn winit_cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
@@ -138,6 +99,22 @@ fn winit_cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
     }
 }
 
+fn append_commands(target: &mut WindowCommands, source: &mut WindowCommands) {
+    target.opens.append(&mut source.opens);
+    target.closes.append(&mut source.closes);
+}
+
+fn window_clipboard() -> Clipboard {
+    #[cfg(feature = "system-clipboard")]
+    {
+        Clipboard::system_or_memory()
+    }
+    #[cfg(not(feature = "system-clipboard"))]
+    {
+        Clipboard::default()
+    }
+}
+
 /// What [`WinitHostBuilder::build`] stashes for the first `resumed`: the
 /// bootstrap window's token + config and the caller's app factory. Consumed —
 /// winit hands out `&ActiveEventLoop` only inside callbacks, so window +
@@ -152,15 +129,16 @@ struct Bootstrap<T: 'static> {
 struct WinitRuntime<T> {
     /// The caller's app, created once the first window's `Ui` existed.
     app: T,
-    /// Retained surface-creation state; device and queue live on the backend.
-    surfaces: SurfaceFactory,
+    /// Retained native-surface creation and presentation state.
+    surfaces: SurfaceManager,
     /// Shared, app-global state (render handles + live-window set + debug
     /// overlay) every window's `Ui` clones; each `WindowDriver` and the
     /// backend (render handles only) derive from it.
     shared: HostShared,
     /// The one shared GPU renderer every window draws through (pipelines,
-    /// atlases); passed into each window's `WindowDriver::frame`.
+    /// atlases); passed into each window's native frame adapter.
     backend: WgpuBackend,
+    observed_overlay: DebugOverlayConfig,
     windows: HashMap<WindowId, WindowState>,
     pending_commands: WindowCommands,
 }
@@ -206,7 +184,11 @@ impl<T> WinitRuntime<T> {
             .expect("bootstrap app factory already consumed");
         let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
         let window = create_window(event_loop, &config.window);
-        let shared = HostShared::new(TextShaper::with_bundled_fonts());
+        let shared = HostShared {
+            text: TextShaper::with_bundled_fonts(),
+            clipboard: window_clipboard(),
+            ..HostShared::default()
+        };
         let GpuInit {
             surfaces,
             backend,
@@ -214,7 +196,7 @@ impl<T> WinitRuntime<T> {
         } = GpuInit::new(&window, &config, &shared);
         let mut driver = WindowDriver::builder(token, &shared, surfaces.max_texture_dim).build();
 
-        shared.windows.insert(token);
+        shared.windows.set_live(token, true);
         let mut app = create_app(&mut driver.ui, handle);
         for task in pending_tasks {
             task(&mut app);
@@ -222,11 +204,13 @@ impl<T> WinitRuntime<T> {
 
         let id = window.id();
         let windows = HashMap::from([(id, WindowState::new(window, first_surface, driver))]);
+        let observed_overlay = shared.diagnostics.debug_overlay();
         Self {
             app,
             surfaces,
             shared,
             backend,
+            observed_overlay,
             windows,
             pending_commands: WindowCommands::default(),
         }
@@ -250,12 +234,17 @@ impl<T> WinitRuntime<T> {
         let surface = self.surfaces.make_surface(&window);
         let driver =
             WindowDriver::builder(token, &self.shared, self.surfaces.max_texture_dim).build();
-        self.insert_window(window, surface, driver);
+        self.register_window(window, surface, driver);
     }
 
-    fn insert_window(&mut self, window: Arc<Window>, surface: WindowSurface, driver: WindowDriver) {
+    fn register_window(
+        &mut self,
+        window: Arc<Window>,
+        surface: WindowSurface,
+        driver: WindowDriver,
+    ) {
         let id = window.id();
-        self.shared.windows.insert(driver.token);
+        self.shared.windows.set_live(driver.token, true);
         let previous = self
             .windows
             .insert(id, WindowState::new(window, surface, driver));
@@ -418,11 +407,7 @@ where
             .find(|w| w.driver.token == token)
     }
 
-    /// Paint one window. Bundles its surface, config, scale, monitor refresh,
-    /// and window state into a [`WindowFrameInput`], runs the per-window
-    /// `WindowDriver::frame`, and stores the returned schedule back on the
-    /// window. The live-window set + debug overlay reach the `Ui` through the
-    /// shared host state, not this call.
+    /// Paint one window and store the returned schedule back on it.
     fn draw(&mut self, id: WindowId) {
         let HostPhase::Running(runtime) = &mut self.phase else {
             return;
@@ -430,42 +415,14 @@ where
         let Some(win) = runtime.windows.get_mut(&id) else {
             return;
         };
-        let window = win.window.clone();
-        // `refresh_millihertz` is queried each frame so a window dragged
-        // onto a different-refresh monitor re-paces immediately — winit
-        // fires no reliable "refresh changed" event to cache against.
-        let refresh_millihertz = win
-            .window
-            .current_monitor()
-            .and_then(|m| m.refresh_rate_millihertz());
-        let position = win
-            .window
-            .outer_position()
-            .ok()
-            .map(|p| IVec2::new(p.x, p.y));
-        let mut output = win.driver.frame(
-            &mut runtime.backend,
-            WindowFrameInput {
-                surface: &win.surface,
-                config: &win.config,
-                scale_factor: win.scale_factor,
-                refresh_millihertz,
-                state: WindowFrameState {
-                    close_requested: win.close_requested,
-                    position,
-                    maximized: win.window.is_maximized(),
-                },
-            },
-            &mut runtime.app,
-            || window.pre_present_notify(),
-        );
+        let mut output = win.frame(&runtime.surfaces, &mut runtime.backend, &mut runtime.app);
         win.next = output.present;
         if output.cursor != win.cursor {
             win.window.set_cursor(winit_cursor(output.cursor));
             win.cursor = output.cursor;
         }
         win.close_requested = false;
-        runtime.pending_commands.append(&mut output.commands);
+        append_commands(&mut runtime.pending_commands, &mut output.commands);
     }
 
     /// Drain every window's [`Ui::open_window`] / [`Ui::close_window`]
@@ -479,7 +436,7 @@ where
             return;
         };
         let mut commands = WindowCommands::default();
-        commands.append(&mut runtime.pending_commands);
+        append_commands(&mut commands, &mut runtime.pending_commands);
         // Closes first, so a same-frame close + open of one token
         // recreates the window instead of tripping `spawn_window`'s
         // duplicate-token guard and losing it.
@@ -490,7 +447,7 @@ where
                 .any(|win| win.driver.token == token)
             {
                 runtime.windows.retain(|_, win| win.driver.token != token);
-                runtime.shared.windows.remove(token);
+                runtime.shared.windows.set_live(token, false);
             }
         }
         for pw in commands.opens {
@@ -507,7 +464,9 @@ where
         let HostPhase::Running(runtime) = &mut self.phase else {
             return;
         };
-        if runtime.shared.diagnostics.take_overlay_dirty() {
+        let overlay = runtime.shared.diagnostics.debug_overlay();
+        if overlay != runtime.observed_overlay {
+            runtime.observed_overlay = overlay;
             for win in runtime.windows.values_mut() {
                 win.next = FramePresent::Immediate;
             }
@@ -648,8 +607,8 @@ where
                 return;
             };
             let mut wants_repaint = false;
-            InputEvent::from_winit(&event, win.scale_factor, |ev| {
-                wants_repaint |= win.driver.on_input(ev).requests_repaint;
+            input::translate(&event, win.scale_factor, |ev| {
+                wants_repaint |= win.on_input(ev).requests_repaint;
             });
             if wants_repaint {
                 win.next = FramePresent::Immediate;
@@ -689,7 +648,7 @@ where
                     let max = runtime.surfaces.max_texture_dim;
                     let w = new.width.clamp(1, max);
                     let h = new.height.clamp(1, max);
-                    // Stash the new size only — `WindowDriver::frame`
+                    // Stash the new size only — `WindowState::frame`
                     // notices the mismatch against its `configured`
                     // baseline and runs
                     // `surface.configure` once before acquiring the next
@@ -719,7 +678,7 @@ where
                 if let HostPhase::Running(runtime) = &mut self.phase
                     && let Some(win) = runtime.windows.get_mut(&id)
                 {
-                    win.driver.set_occluded(occluded);
+                    win.set_occluded(occluded);
                     if !occluded {
                         win.next = FramePresent::Immediate;
                     }

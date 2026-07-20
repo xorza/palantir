@@ -83,7 +83,7 @@ fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessi
     let report = ui.frame(
         FrameInput {
             stamp: FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
-            output_valid: true,
+            damage_baseline_valid: true,
         },
         WindowToken(7),
         app,
