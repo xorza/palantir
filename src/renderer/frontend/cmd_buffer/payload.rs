@@ -12,6 +12,7 @@ use crate::primitives::{
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
+use strum::{EnumCount, EnumIter, FromRepr};
 
 /// Physical gradient identity resolved for this encode pass.
 #[repr(C)]
@@ -79,7 +80,7 @@ pub(crate) struct GpuFillFields {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumCount, EnumIter, FromRepr)]
 pub(crate) enum CmdKind {
     /// Scissor clip with optional rounded-corner stencil mask. Carries
     /// [`PushClipPayload`] (rect + corners). When `corners` is all-zero

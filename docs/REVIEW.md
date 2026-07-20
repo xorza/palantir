@@ -52,21 +52,6 @@ the real frame workload.
   interpolation/spread mode, and forced hash collisions. Benchmark solid-only
   and gradient-heavy frames and require zero steady-state allocations.
 
-### 3. Pack command kind and payload offset into one `u32`
-
-- [ ] `RenderCmdBuffer` keeps one-byte `kinds` and four-byte `starts` columns
-  at `src/renderer/frontend/cmd_buffer/mod.rs:60-63`; recording and decoding
-  touch both at `src/renderer/frontend/cmd_buffer/mod.rs:389-417`.
-
-  There are 13 command kinds, so four tag bits and a 28-bit word offset fit in
-  one descriptor. The offset still permits a 1 GiB payload arena. This reduces
-  metadata from five to four bytes per command, removes one retained
-  allocation, and turns iteration into one sequential descriptor load.
-
-  Preserve the typed `u32` payload arena and unaligned `Pod` reads.
-  Exhaustively round-trip every command kind, pin the representable offset
-  boundary, and compare command-buffer bytes plus encode/compose timing.
-
 ## Current guardrails
 
 - Keep `Tree.records` as SoA and the six-byte `ExtrasIdx` sparse indirection.
