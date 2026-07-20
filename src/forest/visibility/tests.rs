@@ -70,7 +70,7 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
             "{case:?}: an invisible spinner must have no active animation row",
         );
         assert!(
-            tree.paint_anims.by_shape.is_empty(),
+            tree.paint_anims.shape_indices.is_empty(),
             "{case:?}: an invisible spinner must have no shape animation lookup",
         );
         assert_eq!(

@@ -4,9 +4,9 @@ Reviewed 2026-07-17 through 2026-07-20; merged and pruned 2026-07-20.
 
 ## Scope and ranking
 
-This is the single backlog from the full-module, text, and data-structure
-reviews. Every item below was checked against the current source when the
-reports were merged. Completed work, superseded proposals, historical review
+This was the single backlog from the full-module, text, and data-structure
+reviews. Every merged item was checked against the current source. Completed
+work, superseded proposals, historical review
 narrative, and citations to removed profiling documents have been dropped.
 
 Priority is assigned first by correctness and invariant risk, then by measured
@@ -15,23 +15,7 @@ first. Performance changes remain benchmark-gated because Aperture requires
 steady-state allocation-free frames and several plausible caches have regressed
 the real frame workload.
 
-## Priority 1 — Focused and workload-dependent compaction
-
-### 1. Make the paint-animation reverse index truly sparse
-
-- [ ] `PaintAnims::by_shape` is a `Vec<Option<Index16>>`; the first animation
-  at shape `k` resizes it to `k + 1` at
-  `src/forest/tree/paint_anims.rs:232-255`. A caret or spinner recorded after a
-  large static scene therefore retains two bytes for every preceding shape.
-
-  Keep sorted `shape_indices: Vec<u32>` beside the existing sparse entries.
-  The encoder visits shape indices monotonically, so one cursor can advance
-  across skipped or culled ranges and sample matches in amortized `O(1)`.
-  Wake and damage already iterate the sparse entries directly.
-
-  Test animation on the first and last shape, multiple animations, and
-  viewport/damage subtree culls. Assert that storage scales with animated
-  shape count, not the largest shape index.
+No outstanding implementation items remain from this review.
 
 ## Current guardrails
 

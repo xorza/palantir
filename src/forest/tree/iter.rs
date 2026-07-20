@@ -23,9 +23,8 @@ pub(crate) struct ChildIter<'a> {
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum TreeItem<'a> {
     /// `u32` is the shape's index into `Tree::shapes.records` — used
-    /// by the encoder to look up paint-anim registrations via
-    /// `Tree::paint_anims.by_shape[idx]`. Cascade / testing call sites
-    /// that only care about the record itself can ignore it.
+    /// by the encoder's sparse paint-animation cursor. Cascade / testing
+    /// call sites that only care about the record itself can ignore it.
     ShapeRecord(u32, &'a ShapeRecord),
     Child(Child),
 }

@@ -32,6 +32,7 @@ fn caret_blinks_on_and_off_while_focused() {
         // its anim (if any) samples to visible at the current time".
         let tree = &ui.forest.trees[Layer::Main];
         let now = ui.frame_runtime.time;
+        let mut paint_anims = tree.paint_anims.cursor();
         TreeItems::new(&tree.records, &tree.shapes.records, leaf)
             .filter_map(|item| match item {
                 TreeItem::ShapeRecord(idx, s) => Some((idx, s)),
@@ -45,7 +46,7 @@ fn caret_blinks_on_and_off_while_focused() {
                         ..
                     }
                 );
-                is_caret && tree.paint_anims.sample(idx, now).alpha > 0.0
+                is_caret && paint_anims.sample(idx, now).alpha > 0.0
             })
     }
 

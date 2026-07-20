@@ -146,6 +146,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "paint_anims"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "cascade"
 harness = false
 required-features = ["internals"]

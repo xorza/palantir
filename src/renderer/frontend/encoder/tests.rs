@@ -966,42 +966,78 @@ fn damage_filter_paints_leaves_in_any_rect() {
     );
 }
 
-/// Viewport cull is per-subtree: an off-screen sibling drops while an
-/// on-screen sibling paints.
 #[test]
-fn viewport_cull_skips_offscreen_subtree() {
-    let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Panel::canvas()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Frame::new()
-                    .id(WidgetId::from_hash("on"))
-                    .position((10.0, 10.0))
-                    .size(20.0)
-                    .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .id(WidgetId::from_hash("off"))
-                    .position((500.0, 500.0))
-                    .size(20.0)
-                    .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            });
-    });
-    let cmds = ui.encode_cmds();
-    assert_eq!(
-        count_draw_rects(&cmds),
-        1,
-        "only the on-screen sibling should emit a DrawRect"
-    );
+fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
+    use crate::display::Display;
+    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::primitives::corners::Corners;
+    use crate::shape::Shape;
+    use crate::ui::frame::FrameStamp;
+    use std::time::Duration;
+
+    const HALF: Duration = Duration::from_millis(500);
+
+    #[derive(Clone, Copy, Debug)]
+    enum Cull {
+        Viewport,
+        Damage,
+    }
+
+    for cull in [Cull::Viewport, Cull::Damage] {
+        let mut ui = Ui::for_test();
+        let display = Display::from_physical(UVec2::new(100, 100), 1.0);
+        ui.record(FrameStamp::new(display, HALF), |ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for (key, position, started_at) in [
+                        (
+                            "culled-visible",
+                            match cull {
+                                Cull::Viewport => Vec2::new(500.0, 500.0),
+                                Cull::Damage => Vec2::new(10.0, 10.0),
+                            },
+                            HALF,
+                        ),
+                        ("kept-hidden", Vec2::new(60.0, 10.0), Duration::ZERO),
+                    ] {
+                        Panel::zstack()
+                            .id(WidgetId::from_hash(key))
+                            .position(position)
+                            .size(20.0)
+                            .show(ui, |ui| {
+                                ui.add_shape_animated(
+                                    Shape::RoundedRect {
+                                        local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                                        corners: Corners::ZERO,
+                                        fill: Color::WHITE.into(),
+                                        stroke: Stroke::ZERO,
+                                    },
+                                    PaintAnim::BlinkOpacity {
+                                        half_period: HALF,
+                                        started_at,
+                                    },
+                                );
+                            });
+                    }
+                });
+        });
+
+        assert_eq!(
+            ui.forest.trees[Layer::Main].paint_anims.shape_indices,
+            [0, 1],
+        );
+        let cmds = match cull {
+            Cull::Viewport => ui.encode_cmds(),
+            Cull::Damage => ui.encode_cmds_filtered(Some(Rect::new(55.0, 5.0, 35.0, 30.0))),
+        };
+        assert_eq!(
+            count_draw_rects(&cmds),
+            0,
+            "{cull:?}: the first visible animation must be culled and the later hidden animation must still be sampled",
+        );
+    }
 }
 
 /// Soundness repro: `Cascade.paint_rect` is the node's own paint

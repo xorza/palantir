@@ -694,7 +694,7 @@ impl DamageEngine {
         // flips — bumping `node_hash` / `subtree_hash` would
         // invalidate MeasureCache for the owner's ancestor chain on
         // every flip even though layout didn't change. The encoder's
-        // `PaintAnims::sample` decides per-rect whether to emit a
+        // `PaintAnimCursor::sample` decides per-rect whether to emit a
         // quad (visible half) or skip (hidden half).
         extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
 

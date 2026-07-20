@@ -3,6 +3,7 @@ use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
 use crate::forest::tree::Tree;
 use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::node::NodeId;
+use crate::forest::tree::paint_anims::PaintAnimCursor;
 use crate::layout::LayerLayout;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
@@ -176,6 +177,7 @@ impl Encoder {
                 shaper: &ui.shared.text,
                 gradient_atlas,
                 gradient_resolver,
+                paint_anim_cursor: tree.paint_anims.cursor(),
                 gpu_views: &ui.gpu_views,
                 damage_filter,
                 damage_cull_margin,
@@ -203,6 +205,7 @@ struct LayerCtx<'a> {
     shaper: &'a TextShaper,
     gradient_atlas: &'a GradientAtlas,
     gradient_resolver: &'a mut GradientResolver,
+    paint_anim_cursor: PaintAnimCursor<'a>,
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
     /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
     /// stable `TextureId` + paint callback up here by the owner node's id.
@@ -292,7 +295,7 @@ fn emit_one_shape(
     // fractional-alpha multiplication arrives with a future `Pulse`
     // variant. `Spin` rides `paint_mod.rotation`, consumed by the
     // stroke arms below.
-    let paint_mod = ctx.tree.paint_anims.sample(shape_idx, ctx.now);
+    let paint_mod = ctx.paint_anim_cursor.sample(shape_idx, ctx.now);
     if noop_f32(paint_mod.alpha) {
         return;
     }
