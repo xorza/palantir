@@ -23,3 +23,12 @@ impl GradientAtlas {
         atlas.flush().map(upload)
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+
+    pub(crate) fn registration_count(atlas: &GradientAtlas) -> u64 {
+        atlas.inner.borrow().clock
+    }
+}

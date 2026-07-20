@@ -141,6 +141,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "gradient"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "cascade"
 harness = false
 required-features = ["internals"]

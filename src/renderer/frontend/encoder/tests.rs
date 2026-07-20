@@ -1,12 +1,14 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
+use crate::forest::shapes::paint::ShapeBrush;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
-use crate::primitives::color::ColorF16;
+use crate::primitives::brush::{FillAxis, GradientStops, Interp, Spread, Stop};
+use crate::primitives::color::{ColorF16, ColorU8};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
@@ -14,8 +16,11 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::frontend::cmd_buffer::payload::{CmdKind, PushClipPayload};
+use crate::record_store::{GradientId, RecordedGradient};
+use crate::renderer::frontend::cmd_buffer::payload::{BrushSource, CmdKind, PushClipPayload};
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
+use crate::renderer::frontend::encoder::GradientResolver;
+use crate::renderer::gradient_atlas::handle::{GradientAtlas, test_support::registration_count};
 use crate::text::text_in_rect;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -61,6 +66,42 @@ fn command_matches_kind(command: &Command<'_>, kind: CmdKind) -> bool {
             | (Command::DrawArc(_), CmdKind::DrawArc)
             | (Command::DrawTriangle(_), CmdKind::DrawTriangle)
     )
+}
+
+#[test]
+fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
+    let gradient = RecordedGradient {
+        axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
+        kind: FillKind::linear(Spread::Pad),
+        stops: GradientStops::new([
+            Stop::new(0.0, ColorU8::BLACK),
+            Stop::new(1.0, ColorU8::WHITE),
+        ]),
+        interp: Interp::Oklab,
+    };
+    let gradients = [gradient];
+    let atlas = GradientAtlas::default();
+    let mut resolver = GradientResolver::default();
+    let brush = ShapeBrush::Gradient(GradientId(0));
+
+    resolver.begin(gradients.len());
+    let first = resolver.source(&gradients, &atlas, brush);
+    let registered = registration_count(&atlas);
+    let repeated = resolver.source(&gradients, &atlas, brush);
+    assert_eq!(registration_count(&atlas), registered);
+    match (first, repeated) {
+        (BrushSource::Gradient(first), BrushSource::Gradient(repeated)) => {
+            assert_eq!(first.axis, repeated.axis);
+            assert_eq!(first.kind, repeated.kind);
+            assert_eq!(first.row, repeated.row);
+        }
+        _ => panic!("gradient brush resolved to a solid source"),
+    }
+
+    resolver.begin(gradients.len());
+    assert!(resolver.resolved[0].is_none());
+    let _ = resolver.source(&gradients, &atlas, brush);
+    assert_eq!(registration_count(&atlas), registered + 1);
 }
 
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a

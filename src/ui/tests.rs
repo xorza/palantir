@@ -1545,8 +1545,8 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            // Gradient-filled chrome: `lower::background` pushes a
-            // `RecordedGradient` into `RecordPayloads::gradients` every record
+            // Gradient-filled chrome: `lower::background` interns a
+            // `RecordedGradient` into `RecordPayloads::gradients` each record
             // pass, and the resulting `ChromeRow` stores the index.
             Frame::new()
                 .id(WidgetId::from_hash("grad_bg"))
@@ -1589,10 +1589,10 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
-    // Direct pin: the gradient pushed during frame 0's record must
+    // Direct pin: the gradient interned during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        ui.record_store.payloads.borrow().gradients.len(),
+        ui.record_store.payloads.borrow().gradients.records.len(),
         1,
         "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",

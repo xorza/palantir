@@ -62,7 +62,7 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
 }
 
 fn stored_gradient(store: &RecordStore, gradient: RecordedGradient, hash: u64) -> LoweredBrush {
-    let id = store.payloads.borrow_mut().record_gradient(gradient);
+    let id = store.payloads.borrow_mut().gradients.intern(hash, gradient);
     LoweredBrush {
         brush: ShapeBrush::Gradient(id),
         hash,
@@ -398,5 +398,67 @@ fn curve_inner(ctrl: [Vec2; 4], width: f32, fill: LoweredBrush, cap: LineCap) ->
         fill_grad_hash: fill.hash,
         cap,
         bbox,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::brush;
+    use crate::forest::shapes::paint::ShapeBrush;
+    use crate::primitives::brush::{
+        Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread,
+    };
+    use crate::primitives::color::ColorU8;
+    use crate::record_store::{GradientId, RecordStore};
+    use std::collections::HashSet;
+
+    fn gradient_id(store: &RecordStore, value: &Brush) -> GradientId {
+        match brush(store, value).brush {
+            ShapeBrush::Gradient(id) => id,
+            ShapeBrush::Solid(_) => panic!("test gradient lowered to a solid brush"),
+        }
+    }
+
+    #[test]
+    fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
+        let store = RecordStore::default();
+        let colors = [ColorU8::hex(0x1a1a2e), ColorU8::hex(0x4c5cdb)];
+        let base = LinearGradient::two_stop(0.25, colors[0], colors[1]);
+        let first = gradient_id(&store, &Brush::Linear(base.clone()));
+        assert_eq!(gradient_id(&store, &Brush::Linear(base.clone())), first);
+
+        let changed_geometry = gradient_id(
+            &store,
+            &Brush::Linear(LinearGradient::two_stop(0.75, colors[0], colors[1])),
+        );
+        assert_ne!(changed_geometry, first);
+
+        let mut mode_ids = HashSet::new();
+        for spread in [Spread::Pad, Spread::Repeat, Spread::Reflect] {
+            for interp in [Interp::Oklab, Interp::Linear] {
+                let id = gradient_id(
+                    &store,
+                    &Brush::Linear(base.clone().with_spread(spread).with_interp(interp)),
+                );
+                assert!(
+                    mode_ids.insert(id),
+                    "spread/interpolation pair reused another pair's gradient id",
+                );
+            }
+        }
+        assert_eq!(mode_ids.len(), 6);
+
+        let radial = gradient_id(
+            &store,
+            &Brush::Radial(RadialGradient::two_stop_centered(colors[0], colors[1])),
+        );
+        let conic = gradient_id(
+            &store,
+            &Brush::Conic(ConicGradient::two_stop_centered(colors[0], colors[1])),
+        );
+        assert!(!mode_ids.contains(&radial));
+        assert!(!mode_ids.contains(&conic));
+        assert_ne!(radial, conic);
+        assert_eq!(store.payloads.borrow().gradients.records.len(), 9);
     }
 }

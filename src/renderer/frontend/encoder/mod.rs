@@ -13,7 +13,7 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
-use crate::record_store::{RecordPayloads, RecordedGradient};
+use crate::record_store::RecordedGradient;
 use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
@@ -39,6 +39,50 @@ use std::time::Duration;
 /// after every layer's regular paint.
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
+/// Retained encoder state and its command output.
+#[derive(Debug, Default)]
+pub(crate) struct Encoder {
+    pub(crate) cmds: RenderCmdBuffer,
+    gradients: GradientResolver,
+}
+
+/// Entries reset each encode because another window may have evicted their atlas rows.
+#[derive(Debug, Default)]
+struct GradientResolver {
+    resolved: Vec<Option<ResolvedGradient>>,
+}
+
+impl GradientResolver {
+    fn begin(&mut self, gradient_count: usize) {
+        self.resolved.clear();
+        self.resolved.resize(gradient_count, None);
+    }
+
+    fn source(
+        &mut self,
+        gradients: &[RecordedGradient],
+        atlas: &GradientAtlas,
+        brush: ShapeBrush,
+    ) -> BrushSource {
+        let id = match brush {
+            ShapeBrush::Solid(color) => return BrushSource::Solid(color),
+            ShapeBrush::Gradient(id) => id,
+        };
+        let idx = id.0 as usize;
+        if let Some(resolved) = self.resolved[idx] {
+            return BrushSource::Gradient(resolved);
+        }
+        let gradient = &gradients[idx];
+        let resolved = ResolvedGradient {
+            axis: gradient.axis,
+            row: atlas.register_stops(&gradient.stops, gradient.interp),
+            kind: gradient.kind,
+        };
+        self.resolved[idx] = Some(resolved);
+        BrushSource::Gradient(resolved)
+    }
+}
+
 /// Resolve a shape's owner-relative `local_rect` against the owner's
 /// arranged rect. `None` means "paint the owner's full rect"; `Some(lr)`
 /// offsets `lr` by the owner's origin. Shared by the `RoundedRect` /
@@ -51,28 +95,6 @@ fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
             min: owner_rect.min + lr.min,
             size: lr.size,
         },
-    }
-}
-
-/// Build a `BrushSource` from a lowered `ShapeBrush` + retained gradient
-/// content. `Solid` stays inline; `Gradient(id)` registers its stops on
-/// every encode so a row evicted by another window is restored before use.
-#[inline]
-fn shape_brush_source(
-    gradients: &[RecordedGradient],
-    atlas: &GradientAtlas,
-    brush: ShapeBrush,
-) -> BrushSource {
-    match brush {
-        ShapeBrush::Solid(c) => BrushSource::Solid(c),
-        ShapeBrush::Gradient(id) => {
-            let gradient = &gradients[id.0 as usize];
-            BrushSource::Gradient(ResolvedGradient {
-                axis: gradient.axis,
-                row: atlas.register_stops(&gradient.stops, gradient.interp),
-                kind: gradient.kind,
-            })
-        }
     }
 }
 
@@ -116,59 +138,61 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 ///   Push/Pop emission. Caller's responsibility to skip the call
 ///   entirely when there's no damage to paint.
 ///
-/// `out` is cleared at entry; capacity is retained across frames.
-#[profiling::function]
-pub(crate) fn encode(
-    ui: &Ui,
-    payloads: &RecordPayloads,
-    plan: RenderPlan,
-    out: &mut RenderCmdBuffer,
-) {
-    out.clear();
+/// The command buffer is cleared at entry; capacity is retained across frames.
+impl Encoder {
+    #[profiling::function]
+    pub(crate) fn encode(&mut self, ui: &Ui, plan: RenderPlan) {
+        let Self {
+            cmds: out,
+            gradients: gradient_resolver,
+        } = self;
+        out.clear();
 
-    let damage_filter = match &plan.kind {
-        RenderKind::Partial { region } => Some(region),
-        RenderKind::Full => None,
-    };
-
-    let viewport = ui.display.logical_rect();
-    let now = ui.frame_runtime.time;
-    let gradients = payloads.gradients.as_slice();
-    let text_bytes = payloads.text_bytes();
-    let gradient_atlas = &ui.shared.assets.gradients;
-    // Matches the *padded* region the backend actually PreClears — the
-    // pad + rounding-slack derivation lives next to the scissor math in
-    // `renderer::damage::damage_cull_margin` so the two can't drift.
-    let damage_cull_margin = damage_cull_margin(ui.display.scale_factor);
-    for (layer, tree) in ui.forest.trees.iter_paint_order() {
-        let layer_cascades = &ui.cascades.layers[layer];
-        let ctx = LayerCtx {
-            tree,
-            layout: &ui.layout[layer],
-            cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
-            subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
-            gradients,
-            text_bytes: &text_bytes,
-            shaper: &ui.shared.text,
-            gradient_atlas,
-            gpu_views: &ui.gpu_views,
-            damage_filter,
-            damage_cull_margin,
-            viewport,
-            now,
+        let damage_filter = match &plan.kind {
+            RenderKind::Partial { region } => Some(region),
+            RenderKind::Full => None,
         };
-        for root in &tree.roots {
-            encode_node(&ctx, root.first_node, out);
-        }
-    }
 
-    emit_collision_overlays(ui, out);
+        let viewport = ui.display.logical_rect();
+        let now = ui.frame_runtime.time;
+        let payloads = ui.record_store.payloads.borrow();
+        let gradients = payloads.gradients.records.as_slice();
+        gradient_resolver.begin(gradients.len());
+        let text_bytes = payloads.text_bytes();
+        let gradient_atlas = &ui.shared.assets.gradients;
+        // Matches the *padded* region the backend actually PreClears — the
+        // pad + rounding-slack derivation lives next to the scissor math in
+        // `renderer::damage::damage_cull_margin` so the two can't drift.
+        let damage_cull_margin = damage_cull_margin(ui.display.scale_factor);
+        for (layer, tree) in ui.forest.trees.iter_paint_order() {
+            let layer_cascades = &ui.cascades.layers[layer];
+            let mut ctx = LayerCtx {
+                tree,
+                layout: &ui.layout[layer],
+                cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
+                subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
+                gradients,
+                text_bytes: &text_bytes,
+                shaper: &ui.shared.text,
+                gradient_atlas,
+                gradient_resolver,
+                gpu_views: &ui.gpu_views,
+                damage_filter,
+                damage_cull_margin,
+                viewport,
+                now,
+            };
+            for root in &tree.roots {
+                encode_node(&mut ctx, root.first_node, out);
+            }
+        }
+
+        emit_collision_overlays(ui, out);
+    }
 }
 
-/// Immutable per-layer encode context. Bundles the inputs that stay fixed
-/// across a layer's whole recursion so `encode_node` and `emit_one_shape`
-/// thread one `&ctx` instead of a long argument list. Built once per layer
-/// in [`encode`].
+/// Per-layer encode context. Bundles fixed inputs so recursion threads one
+/// `&mut ctx` instead of a long argument list.
 struct LayerCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
@@ -178,6 +202,7 @@ struct LayerCtx<'a> {
     text_bytes: &'a str,
     shaper: &'a TextShaper,
     gradient_atlas: &'a GradientAtlas,
+    gradient_resolver: &'a mut GradientResolver,
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
     /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
     /// stable `TextureId` + paint callback up here by the owner node's id.
@@ -185,10 +210,18 @@ struct LayerCtx<'a> {
     damage_filter: Option<&'a DamageRegion>,
     /// Logical-px inflation applied to each node's `subtree_paint_rect`
     /// before the damage-cull intersection test, so the cull covers the
-    /// AA-padded region the backend PreClears (see [`encode`]).
+    /// AA-padded region the backend PreClears (see [`Encoder::encode`]).
     damage_cull_margin: f32,
     viewport: Rect,
     now: Duration,
+}
+
+impl LayerCtx<'_> {
+    #[inline]
+    fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
+        self.gradient_resolver
+            .source(self.gradients, self.gradient_atlas, brush)
+    }
 }
 
 // Manual: `Tree` / `LayerLayout` don't implement `Debug`.
@@ -246,7 +279,7 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
 fn emit_one_shape(
-    ctx: &LayerCtx,
+    ctx: &mut LayerCtx,
     id: NodeId,
     owner_rect: Rect,
     shape_idx: u32,
@@ -272,7 +305,7 @@ fn emit_one_shape(
             ..
         } => {
             let r = resolve_local_rect(owner_rect, *local_rect);
-            let src = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill);
+            let src = ctx.brush_source(*fill);
             out.draw_rect(r, *corners, src, *stroke);
         }
         ShapeRecord::WindowedRect {
@@ -283,7 +316,7 @@ fn emit_one_shape(
             ..
         } => {
             let r = resolve_local_rect(owner_rect, *local_rect);
-            let src = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill);
+            let src = ctx.brush_source(*fill);
             out.draw_rect_window(r, *corners, src, *stroke);
         }
         ShapeRecord::Text {
@@ -401,7 +434,7 @@ fn emit_one_shape(
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px. Curves carry no
             // gradient axis, so `fill.axis` goes unread.
-            let fill = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill).to_gpu_fields();
+            let fill = ctx.brush_source(*fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
             out.draw_curve(DrawCurvePayload {
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
@@ -432,7 +465,7 @@ fn emit_one_shape(
         } => {
             // Same owner-local convention as `Curve`; the composer
             // resolves center/radius to physical px.
-            let fill = shape_brush_source(ctx.gradients, ctx.gradient_atlas, *fill).to_gpu_fields();
+            let fill = ctx.brush_source(*fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
             out.draw_arc(DrawArcPayload {
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
@@ -514,7 +547,7 @@ fn emit_one_shape(
     }
 }
 
-fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
+fn encode_node(ctx: &mut LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
     if ctx.cascade_inputs[id.idx()].invisible() {
         return;
     }
@@ -570,7 +603,7 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
     // emits exactly one command.
     let mode = ctx.tree.records.attrs()[id.idx()].clip_mode();
     let clip = mode.is_clip();
-    let chrome = ctx.tree.chrome(id);
+    let chrome = ctx.tree.chrome(id).copied();
 
     if let Some(bg) = chrome {
         // Shadow paints UNDER the rect fill (CSS box-shadow order).
@@ -578,7 +611,7 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.corners, &bg.shadow);
-        let src = shape_brush_source(ctx.gradients, ctx.gradient_atlas, bg.fill);
+        let src = ctx.brush_source(bg.fill);
         out.draw_rect(rect, bg.corners, src, bg.stroke);
     }
 
@@ -648,7 +681,8 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
         out.push_transform(t);
     }
     let mut text_ordinal: u32 = 0;
-    for item in ctx.tree.tree_items(id) {
+    let tree = ctx.tree;
+    for item in tree.tree_items(id) {
         match item {
             TreeItem::ShapeRecord(shape_idx, shape) => {
                 emit_one_shape(ctx, id, rect, shape_idx, shape, text_ordinal, out);

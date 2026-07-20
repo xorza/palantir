@@ -1,6 +1,6 @@
 # Aperture prioritized review
 
-Reviewed 2026-07-17 through 2026-07-19; merged and pruned 2026-07-19.
+Reviewed 2026-07-17 through 2026-07-20; merged and pruned 2026-07-20.
 
 ## Scope and ranking
 
@@ -32,25 +32,6 @@ the real frame workload.
   Test animation on the first and last shape, multiple animations, and
   viewport/damage subtree culls. Assert that storage scales with animated
   shape count, not the largest shape index.
-
-### 2. Intern record-local gradients and resolve each unique ID once per encode
-
-- [ ] Every gradient occurrence appends a 56-byte `RecordedGradient` through
-  `RecordPayloads::record_gradient` at `src/record_store.rs:36-41,94-100`.
-  All gradient-lowering arms reach that append through
-  `src/forest/shapes/lower.rs:64-121`, and encoding probes the shared atlas
-  again for every occurrence.
-
-  Add a capacity-retained record-local content interner keyed by the existing
-  canonical gradient hash, with equality confirmation on collisions. Add
-  retained encode scratch mapping each `GradientId` to one
-  `ResolvedGradient`. Include geometry in the interner identity: identical
-  stops with different axes or gradient kinds may share an atlas row but not a
-  complete recorded gradient.
-
-  Test identical gradients, same-stops/different-geometry gradients, every
-  interpolation/spread mode, and forced hash collisions. Benchmark solid-only
-  and gradient-heavy frames and require zero steady-state allocations.
 
 ## Current guardrails
 
