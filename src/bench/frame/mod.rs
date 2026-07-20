@@ -251,7 +251,7 @@ impl CpuHarness {
         });
         // The deviceless CPU harness's `Frontend` carries the baseline
         // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
-        self.ui.build_frontend_for_test(&mut self.frontend, plan);
+        self.frontend.build(self.ui.frame_scene(), plan);
         self.ui.mark_frame_submitted();
     }
 }

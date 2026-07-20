@@ -84,7 +84,7 @@ impl GradientBench {
             clear: Color::BLACK,
             kind: RenderKind::Full,
         });
-        self.ui.build_frontend_for_test(&mut self.frontend, plan);
+        self.frontend.build(self.ui.frame_scene(), plan);
         self.ui.mark_frame_submitted();
         self.frontend.buffer.quads.len()
     }
