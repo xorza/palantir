@@ -1,5 +1,5 @@
-//! Wgpu startup and the retained [`SurfaceFactory`] used for additional
-//! windows. The created device and queue move into the one shared backend.
+//! Wgpu startup and the retained [`SurfaceManager`] used to create, configure,
+//! and present native-window surfaces.
 
 use std::sync::Arc;
 
@@ -10,12 +10,14 @@ use crate::host::shared::HostShared;
 use crate::host::winit::config::WinitHostConfig;
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
 
-/// Surface-creation state retained after startup. Device/queue ownership moves
-/// into `WgpuBackend`; later windows need only the instance and adapter.
+/// Native-surface authority retained after startup. The cloned device/queue
+/// handles refer to the same GPU objects owned by `WgpuBackend`.
 #[derive(Debug)]
-pub(crate) struct SurfaceFactory {
+pub(crate) struct SurfaceManager {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     /// `max_texture_dimension_2d` granted at device creation — fixed for
     /// the device's lifetime, cached so the host's per-event resize clamp
     /// doesn't re-query `device.limits()`.
@@ -25,7 +27,7 @@ pub(crate) struct SurfaceFactory {
     requested_present_mode: wgpu::PresentMode,
 }
 
-/// A window's swapchain pieces, produced by [`SurfaceFactory::make_surface`]. The
+/// A window's swapchain pieces, produced by [`SurfaceManager::make_surface`]. The
 /// swapchain color format lives on `config.format`.
 #[derive(Debug)]
 pub(crate) struct WindowSurface {
@@ -37,14 +39,14 @@ pub(crate) struct WindowSurface {
 /// the first window's swapchain.
 #[derive(Debug)]
 pub(crate) struct GpuInit {
-    pub(crate) surfaces: SurfaceFactory,
+    pub(crate) surfaces: SurfaceManager,
     pub(crate) backend: WgpuBackend,
     pub(crate) first_surface: WindowSurface,
 }
 
 impl GpuInit {
-    /// Pick the shared adapter/device, move the device and queue into the
-    /// backend, and retain only what later surface creation needs.
+    /// Pick the shared adapter/device and give the renderer and native-surface
+    /// manager handles to the same device and queue.
     pub(crate) fn new(window: &Arc<Window>, cfg: &WinitHostConfig, shared: &HostShared) -> Self {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.flags = desc.flags.with_env();
@@ -99,6 +101,14 @@ impl GpuInit {
         .expect("request device");
 
         let max_texture_dim = device.limits().max_texture_dimension_2d;
+        let surfaces = SurfaceManager {
+            instance,
+            adapter,
+            device: device.clone(),
+            queue: queue.clone(),
+            max_texture_dim,
+            requested_present_mode: cfg.present_mode,
+        };
         let backend = WgpuBackend::new(
             device,
             queue,
@@ -107,12 +117,6 @@ impl GpuInit {
                 collect_gpu_stats: cfg.collect_gpu_stats,
             },
         );
-        let surfaces = SurfaceFactory {
-            instance,
-            adapter,
-            max_texture_dim,
-            requested_present_mode: cfg.present_mode,
-        };
         let size = window.inner_size();
         let first_surface = surfaces.build_window_surface(
             surface,
@@ -127,7 +131,7 @@ impl GpuInit {
     }
 }
 
-impl SurfaceFactory {
+impl SurfaceManager {
     /// Create a surface for an additional window against the selected adapter.
     pub(crate) fn make_surface(&self, window: &Arc<Window>) -> WindowSurface {
         let surface = self
@@ -138,12 +142,19 @@ impl SurfaceFactory {
         self.build_window_surface(surface, UVec2::new(size.width, size.height), window.id())
     }
 
+    pub(crate) fn configure(&self, surface: &wgpu::Surface, config: &wgpu::SurfaceConfiguration) {
+        surface.configure(&self.device, config);
+    }
+
+    pub(crate) fn present(&self, frame: wgpu::SurfaceTexture) {
+        self.queue.present(frame);
+    }
+
     /// Pick an sRGB swapchain format and bundle `surface` with a fresh
     /// `SurfaceConfiguration` into a [`WindowSurface`] — *without* calling
-    /// `surface.configure` (distinct from `WgpuBackend::configure_surface`,
-    /// which applies it). `WindowDriver::frame` applies it lazily on first
-    /// paint (it notices `configured == None`), so there's no eager GPU
-    /// reconfigure here.
+    /// `surface.configure`.
+    /// [`WindowState`](crate::host::winit::window::WindowState) applies it
+    /// lazily on first paint, so there's no eager GPU reconfigure here.
     fn build_window_surface(
         &self,
         surface: wgpu::Surface<'static>,
