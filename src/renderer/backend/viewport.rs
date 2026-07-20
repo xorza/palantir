@@ -7,9 +7,8 @@
 
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
-use crate::renderer::plan::RenderKind;
+use crate::renderer::plan::{DAMAGE_AA_PADDING, RenderKind};
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::repaint::DAMAGE_AA_PADDING;
 use crate::scene::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
 use tinyvec::ArrayVec;

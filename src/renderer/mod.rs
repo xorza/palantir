@@ -23,5 +23,4 @@ pub(crate) mod image_registry;
 pub(crate) mod plan;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
-pub(crate) mod repaint;
 pub(crate) mod texture_id;
