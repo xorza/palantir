@@ -28,7 +28,7 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
-use crate::renderer::render_buffer::curve::{HALF_FRINGE, stroked_bbox};
+use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 use soa_rs::{Soa, Soars};

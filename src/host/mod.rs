@@ -17,4 +17,5 @@ pub(crate) mod shared;
 #[cfg(feature = "internals")]
 pub(crate) mod test_gpu;
 pub(crate) mod window_driver;
+#[cfg(feature = "winit-host")]
 pub(crate) mod winit;

@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, size::Size};
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::widgets::{frame::Frame, panel::Panel, text::Text};
 use glam::UVec2;
 

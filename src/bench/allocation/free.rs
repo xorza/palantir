@@ -18,10 +18,12 @@
 //! Run with: `cargo bench --bench alloc_free --features internals`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free --features internals`
 
-use aperture::{Display, FrameStamp, Ui, bench::FrameFixture};
+use aperture::{Display, Ui, bench::FrameFixture};
 use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
+
+use crate::ui::frame::FrameStamp;
 
 // Uses `Ui::default()` (mono-fallback shaper, self-contained) and warms
 // manually below via `WARMUP_FRAMES` before measuring.

@@ -61,7 +61,7 @@ mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::interned_str::RecordedText;
     use crate::primitives::span::Span;
-    use crate::shape::TextWrap;
+    use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
 
     fn text_shape(

@@ -11,9 +11,9 @@ use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::ui::damage::Damage;
-use crate::ui::frame::FrameStamp;
+use crate::ui::frame::{FrameRuntime, FrameStamp};
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
@@ -702,8 +702,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     let mut active = Ui::new(shared.ui_shared());
     let display = Display::from_physical(SURFACE, 1.0);
 
-    let idle_first = idle.record(FrameStamp::new(display, Duration::ZERO), idle_body);
-    idle.frame_runtime.frame_submitted = true;
+    let idle_first = idle.record_acked(FrameStamp::new(display, Duration::ZERO), idle_body);
     assert_eq!(idle_first.repaint_after, Some(HALF));
     let idle_key = idle.layout[Layer::Main].text_shapes[0].key;
 
@@ -719,7 +718,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         "newer active-window churn must evict the idle window's key",
     );
 
-    let idle_paint = idle.record(FrameStamp::new(display, HALF), |_| {
+    let idle_paint = idle.record_acked(FrameStamp::new(display, HALF), |_| {
         panic!("PaintOnly must retain the idle window's prior tree")
     });
     assert_eq!(idle_paint.processing, FrameProcessing::PaintOnly);
@@ -730,7 +729,6 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
 
     let mut frontend = Frontend::for_test();
     frontend.build(idle.frame_scene(), plan);
-    idle.frame_runtime.frame_submitted = true;
     assert!(
         frontend.buffer.texts.iter().any(|run| run.key == idle_key),
         "PaintOnly must emit the retained text run",
@@ -976,7 +974,7 @@ fn action_effect_runs_once_across_record_replay() {
 /// call, and a flag set during recording surfaces on `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
-    const MAX_DT: f32 = Ui::MAX_DT;
+    const MAX_DT: f32 = FrameRuntime::MAX_DT;
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
     let mut ui = Ui::for_test();
@@ -1339,7 +1337,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r0.repaint_after, Some(half));
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
-    let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
+    let r1 = ui.record_acked(FrameStamp::new(display, half), |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // PaintOnly must emit a Partial damage plan covering the anim's
@@ -1360,8 +1358,6 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         }
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
     }
-    ui.frame_runtime.frame_submitted = true;
-
     // Bug regression: PaintOnly skips post_record, but must still
     // re-fold the retained paint_anims so the *next* blink boundary
     // is queued. Without this fold the caret stops blinking until
@@ -1378,7 +1374,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r3 = ui.record_acked(FrameStamp::new(display, half * 3), |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
     ui.window_frame.close_requested = false;
-    let r4 = ui.record(FrameStamp::new(display, half * 4), |ui| body(ui, half));
+    let r4 = ui.record_acked(FrameStamp::new(display, half * 4), |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
 
@@ -1586,7 +1582,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, the gradient payloads
     // would be empty here and the encoder below would panic.
-    let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
+    let r1 = ui.record_acked(FrameStamp::new(display, half), |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // Direct pin: the gradient interned during frame 0's record must
@@ -1687,7 +1683,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     assert!(b_rows.contains(&original_row));
     b.shared.assets.gradients.flush_with(|_| ());
 
-    let report = a.record(
+    let report = a.record_acked(
         FrameStamp::new(Display::from_physical(SURFACE, 1.0), half),
         |ui| window_a(ui, half),
     );
@@ -1785,7 +1781,7 @@ fn input_policy_routes_paint_only_gate() {
             "inert pointer move must not flip repaint_requested",
         );
 
-        let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
+        let r1 = ui.record_acked(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -1805,7 +1801,7 @@ fn input_policy_routes_paint_only_gate() {
         });
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-        let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
+        let r1 = ui.record_acked(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::SingleLayout,
@@ -1832,7 +1828,7 @@ fn input_policy_routes_paint_only_gate() {
             ui.input.repaint_requested_since_last_frame,
             "KeyDown with focus held must flip repaint_requested",
         );
-        let r1 = ui.record(FrameStamp::new(display, half), |ui| body(ui, half));
+        let r1 = ui.record_acked(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_ne!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -2006,7 +2002,7 @@ fn for_test_constructors_skip_warmup() {
 }
 
 #[test]
-fn run_at_value_returns_the_final_relayout_pass_and_acknowledges_it() {
+fn run_at_value_returns_the_final_relayout_pass() {
     let mut ui = Ui::for_test();
     let mut calls = 0_u32;
 
@@ -2020,10 +2016,6 @@ fn run_at_value_returns_the_final_relayout_pass_and_acknowledges_it() {
 
     assert_eq!(calls, 2, "relayout runs exactly two record passes");
     assert_eq!(final_call, 2, "capture returns the final pass's value");
-    assert!(
-        ui.frame_runtime.frame_submitted,
-        "acked helper mirrors a successful host submit"
-    );
 }
 
 /// O5 stage 0: an unchanged frame skips the cascade (its output is
@@ -2197,7 +2189,7 @@ fn window_requests_queue_and_survive_the_frame() {
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
     assert!(!ui.window_open(open), "empty live set ⇒ nothing open");
-    ui.shared.windows.insert(open);
+    ui.shared.windows.set_live(open, true);
     assert!(ui.window_open(open));
     assert!(!ui.window_open(close), "only `open` is live");
 

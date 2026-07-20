@@ -75,7 +75,7 @@ impl Mods {
     /// Project event-state [`Modifiers`] into shortcut vocabulary. A
     /// 1:1 copy — `Modifiers::ctrl` is already the platform-normalized
     /// primary command bit (Cmd on macOS, Ctrl elsewhere), folded in at
-    /// the input boundary by `modifiers_from_winit`, so there's nothing
+    /// the platform input boundary, so there's nothing
     /// to disambiguate here.
     pub fn from_event(m: Modifiers) -> Self {
         Self {

@@ -6,10 +6,7 @@ pub(crate) mod sense;
 pub(crate) mod shortcut;
 pub(crate) mod subscriptions;
 
-use crate::input::keyboard::{
-    Key, KeyPress, KeyboardEvent, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
-    physical_key_from_winit,
-};
+use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::FocusPolicy;
 use crate::input::response::{
@@ -154,9 +151,6 @@ pub(crate) struct PressRun {
 }
 
 /// Aperture-native input event. Independent of any windowing toolkit.
-/// Convert from winit via [`InputEvent::from_winit`], then dispatch
-/// through [`crate::Ui::on_input`].
-///
 /// All coordinates are in **logical pixels** (DIPs). Backends are responsible
 /// for any physical→logical conversion before dispatching.
 #[derive(Clone, Copy, Debug)]
@@ -258,107 +252,6 @@ impl TargetDeltas {
             lines: Vec2::ZERO,
             zoom: 1.0,
         }
-    }
-}
-
-impl InputEvent {
-    /// Translate a winit `WindowEvent` into one or more aperture input
-    /// events, invoking `emit` for each. Most events fan out 1:1; IME
-    /// commits over [`TextChunk`]'s inline capacity split into multiple
-    /// `Text` events at char boundaries so long CJK compositions don't
-    /// silently drop. `scale_factor` divides physical pointer coordinates
-    /// so that emitted `PointerMoved` is in logical pixels.
-    pub fn from_winit(
-        event: &winit::event::WindowEvent,
-        scale_factor: f32,
-        mut emit: impl FnMut(InputEvent),
-    ) {
-        use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
-        let s = scale_factor.max(f32::EPSILON);
-        match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                emit(InputEvent::PointerMoved(Vec2::new(
-                    position.x as f32 / s,
-                    position.y as f32 / s,
-                )));
-            }
-            WindowEvent::CursorLeft { .. } => emit(InputEvent::PointerLeft),
-            WindowEvent::MouseInput { state, button, .. } => {
-                let pb = match button {
-                    MouseButton::Left => PointerButton::Left,
-                    MouseButton::Right => PointerButton::Right,
-                    MouseButton::Middle => PointerButton::Middle,
-                    _ => return,
-                };
-                emit(match state {
-                    ElementState::Pressed => InputEvent::PointerPressed(pb),
-                    ElementState::Released => InputEvent::PointerReleased(pb),
-                });
-            }
-            WindowEvent::PinchGesture { delta, .. } => {
-                let factor = 1.0 + *delta as f32;
-                if zoom_factor_is_valid(factor) {
-                    emit(InputEvent::Zoom(factor));
-                }
-            }
-            // Convert to "positive delta = pan offset forward" so widgets can
-            // do `offset += delta` directly. winit reports +y when the wheel
-            // rotates *away* from the user (scroll up) and +x when it rotates
-            // / swipes right (reveal content to the right means panning
-            // *into* it, i.e. content shifts left); flip both so positive
-            // means "advance the scroll offset."
-            WindowEvent::MouseWheel { delta, .. } => emit(match *delta {
-                MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),
-                MouseScrollDelta::PixelDelta(p) => {
-                    InputEvent::ScrollPixels(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
-                }
-            }),
-            // Releases are dropped — no consumer needs them yet.
-            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                emit(InputEvent::KeyDown {
-                    key: key_from_winit(&event.logical_key),
-                    repeat: event.repeat,
-                    physical: physical_key_from_winit(&event.physical_key),
-                });
-            }
-            // IME commit: what the user *meant* to insert after composition
-            // (dead keys, multi-keystroke CJK input). Long commits (CJK
-            // phrase input, emoji ZWJ sequences) routinely exceed the
-            // 15-byte inline `TextChunk`; split at char boundaries so each
-            // chunk fits without losing the typed text. Char (not grapheme)
-            // boundaries are sufficient for byte safety; consumers
-            // re-assemble at append time.
-            WindowEvent::Ime(Ime::Commit(s)) => {
-                emit_text_chunks(s, &mut emit);
-            }
-            WindowEvent::ModifiersChanged(m) => emit(InputEvent::ModifiersChanged(
-                modifiers_from_winit(&m.state()),
-            )),
-            _ => {}
-        }
-    }
-}
-
-/// Split `s` into `Text` events at char boundaries such that each
-/// chunk fits the [`TextChunk`] inline buffer. Char boundaries (not
-/// grapheme cluster boundaries) are safe for UTF-8; splitting inside a
-/// grapheme cluster is visually ugly but doesn't corrupt the buffer —
-/// downstream text consumers re-assemble at append time.
-fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
-    let mut rest = s;
-    while !rest.is_empty() {
-        // Greedy max prefix ≤ INLINE_CAP, backed off to a char
-        // boundary — at most 3 steps, and never to 0 since
-        // INLINE_CAP ≥ 4 (the longest UTF-8 char).
-        let mut end = rest.len().min(TextChunk::INLINE_CAP);
-        while !rest.is_char_boundary(end) {
-            end -= 1;
-        }
-        let (head, tail) = rest.split_at(end);
-        emit(InputEvent::Text(
-            TextChunk::new(head).expect("chunk fits by construction"),
-        ));
-        rest = tail;
     }
 }
 

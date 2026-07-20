@@ -1,4 +1,5 @@
 use crate::display::Display;
+use crate::forest::shapes::record::ColorMode;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};
@@ -14,14 +15,14 @@ use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, HALF_FRINGE, MITER_LIMIT,
-    SEGMENTS_PER_INSTANCE, cap_lanes, stroked_bbox,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE, cap_lanes,
 };
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::text::TextRun;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
-use crate::shape::{ColorMode, LineCap, LineJoin};
+use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT, stroked_bbox};
+use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 

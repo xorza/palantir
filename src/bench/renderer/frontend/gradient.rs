@@ -71,7 +71,7 @@ impl GradientBench {
         let display = Display::from_physical(PHYSICAL, 1.0);
         let report = self
             .ui
-            .record(FrameStamp::new(display, self.start.elapsed()), |ui| {
+            .record_acked(FrameStamp::new(display, self.start.elapsed()), |ui| {
                 for row in 0..ROWS {
                     Frame::new()
                         .id_salt(row)
@@ -85,7 +85,6 @@ impl GradientBench {
             kind: RenderKind::Full,
         });
         self.frontend.build(self.ui.frame_scene(), plan);
-        self.ui.mark_frame_submitted();
         self.frontend.buffer.quads.len()
     }
 }

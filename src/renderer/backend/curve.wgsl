@@ -71,7 +71,7 @@ const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/;
 const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
 const HALF_FRINGE: f32 = /*{HALF_FRINGE}*/;
 
-// Pinned against `render_buffer::MITER_LIMIT` (the composer
+// Pinned against `shape::stroke_bounds::MITER_LIMIT` (the composer
 // downgrades sharper miters to bevel, so this only bounds the miter
 // billboard extent).
 const MITER_LIMIT: f32 = /*{MITER_LIMIT}*/;

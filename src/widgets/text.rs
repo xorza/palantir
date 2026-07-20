@@ -1,8 +1,9 @@
 use crate::forest::element::{Configure, Element};
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::TextInput;
-use crate::shape::{Shape, TextWrap};
+use crate::shape::Shape;
 use crate::text::FontWeight;
+use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::text_style::TextStyle;

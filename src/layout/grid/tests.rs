@@ -9,7 +9,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -182,7 +182,7 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
 /// follows that slot; Fixed content keeps its exact extent and overflows.
 #[test]
 fn hug_column_max_caps_shrinkable_and_rigid_content() {
-    use crate::shape::TextWrap;
+    use crate::text::wrap::TextWrap;
 
     let mut ui = Ui::for_test();
     let root = ui.run_at_value(UVec2::new(600, 200), |ui| {

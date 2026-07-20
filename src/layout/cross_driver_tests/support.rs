@@ -3,7 +3,7 @@
 //! wrapping text. Local helpers — keep narrow, only generalize when a
 //! third caller appears.
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;

@@ -25,7 +25,7 @@ use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::text::{ShapeParams, TextMeasurement, TextRunIdentity};
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.

@@ -1,15 +1,6 @@
 use crate::input::{InputEvent, InputState, wheel_zoom_factor, zoom_factor_is_valid};
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
-use winit::event::{DeviceId, TouchPhase, WindowEvent};
-
-fn pinch(delta: f64) -> WindowEvent {
-    WindowEvent::PinchGesture {
-        device_id: DeviceId::dummy(),
-        delta,
-        phase: TouchPhase::Moved,
-    }
-}
 
 fn pinch_state() -> InputState {
     InputState {
@@ -20,19 +11,6 @@ fn pinch_state() -> InputState {
 
 fn pinch_id() -> WidgetId {
     WidgetId::from_hash("pinch")
-}
-
-#[test]
-fn from_winit_emits_only_positive_finite_zoom_factors() {
-    let mut emitted = None;
-    InputEvent::from_winit(&pinch(0.5), 1.0, |event| emitted = Some(event));
-    assert!(matches!(emitted, Some(InputEvent::Zoom(1.5))));
-
-    for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        let mut count = 0;
-        InputEvent::from_winit(&pinch(delta), 1.0, |_| count += 1);
-        assert_eq!(count, 0, "invalid pinch delta {delta:?} emitted an event");
-    }
 }
 
 #[test]
