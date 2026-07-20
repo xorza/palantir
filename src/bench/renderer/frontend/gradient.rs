@@ -107,6 +107,7 @@ pub fn bench(c: &mut Criterion) {
         assert_eq!(
             fixture
                 .ui
+                .forest
                 .record_store
                 .payloads
                 .borrow()
