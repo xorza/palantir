@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use glam::UVec2;
-use winit::window::{Window, WindowId};
+use winit::window::{Window as WinitWindow, WindowId};
 
 use crate::host::shared::HostShared;
 use crate::host::winit::config::WinitHostConfig;
@@ -47,7 +47,11 @@ pub(crate) struct GpuInit {
 impl GpuInit {
     /// Pick the shared adapter/device and give the renderer and native-surface
     /// manager handles to the same device and queue.
-    pub(crate) fn new(window: &Arc<Window>, cfg: &WinitHostConfig, shared: &HostShared) -> Self {
+    pub(crate) fn new(
+        window: &Arc<WinitWindow>,
+        cfg: &WinitHostConfig,
+        shared: &HostShared,
+    ) -> Self {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.flags = desc.flags.with_env();
         let instance = wgpu::Instance::new(desc);
@@ -133,7 +137,7 @@ impl GpuInit {
 
 impl SurfaceManager {
     /// Create a surface for an additional window against the selected adapter.
-    pub(crate) fn make_surface(&self, window: &Arc<Window>) -> WindowSurface {
+    pub(crate) fn make_surface(&self, window: &Arc<WinitWindow>) -> WindowSurface {
         let surface = self
             .instance
             .create_surface(window.clone())
@@ -153,7 +157,7 @@ impl SurfaceManager {
     /// Pick an sRGB swapchain format and bundle `surface` with a fresh
     /// `SurfaceConfiguration` into a [`WindowSurface`] — *without* calling
     /// `surface.configure`.
-    /// [`WindowState`](crate::host::winit::window::WindowState) applies it
+    /// [`Window`](crate::host::winit::window::Window) applies it
     /// lazily on first paint, so there's no eager GPU reconfigure here.
     fn build_window_surface(
         &self,

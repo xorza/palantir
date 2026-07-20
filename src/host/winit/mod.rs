@@ -63,7 +63,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::window::{Icon, Window, WindowId};
+use winit::window::{Icon, Window as WinitWindow, WindowId};
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
@@ -73,7 +73,7 @@ use crate::host::window_driver::WindowDriver;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
-use crate::host::winit::window::{FramePresent, WindowState};
+use crate::host::winit::window::{FramePresent, Window};
 use crate::primitives::image::Image;
 use crate::renderer::backend::WgpuBackend;
 use crate::text::TextShaper;
@@ -139,7 +139,7 @@ struct WinitRuntime<T> {
     /// atlases); passed into each window's native frame adapter.
     backend: WgpuBackend,
     observed_overlay: DebugOverlayConfig,
-    windows: HashMap<WindowId, WindowState>,
+    windows: HashMap<WindowId, Window>,
     pending_commands: WindowCommands,
 }
 
@@ -203,7 +203,7 @@ impl<T> WinitRuntime<T> {
         }
 
         let id = window.id();
-        let windows = HashMap::from([(id, WindowState::new(window, first_surface, driver))]);
+        let windows = HashMap::from([(id, Window::new(window, first_surface, driver))]);
         let observed_overlay = shared.diagnostics.debug_overlay();
         Self {
             app,
@@ -239,7 +239,7 @@ impl<T> WinitRuntime<T> {
 
     fn register_window(
         &mut self,
-        window: Arc<Window>,
+        window: Arc<WinitWindow>,
         surface: WindowSurface,
         driver: WindowDriver,
     ) {
@@ -247,7 +247,7 @@ impl<T> WinitRuntime<T> {
         self.shared.windows.set_live(driver.token, true);
         let previous = self
             .windows
-            .insert(id, WindowState::new(window, surface, driver));
+            .insert(id, Window::new(window, surface, driver));
         assert!(previous.is_none(), "winit returned a duplicate WindowId");
     }
 }
@@ -397,7 +397,7 @@ where
 
     /// Find the window addressed by a caller token (linear scan — window
     /// counts are tiny). `None` if no live window carries it.
-    fn window_by_token(&mut self, token: WindowToken) -> Option<&mut WindowState> {
+    fn window_by_token(&mut self, token: WindowToken) -> Option<&mut Window> {
         let HostPhase::Running(runtime) = &mut self.phase else {
             return None;
         };
@@ -478,8 +478,8 @@ where
 /// method) so it borrows neither `self` nor the shared `Gpu`. Converts
 /// the backend-agnostic logical `UVec2` sizes into winit `LogicalSize`
 /// here so the winit type stays internal.
-fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<Window> {
-    let mut attrs = Window::default_attributes()
+fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<WinitWindow> {
+    let mut attrs = WinitWindow::default_attributes()
         .with_title(cfg.title.clone())
         .with_maximized(cfg.maximized);
     if let Some(s) = cfg.inner_size {
@@ -596,7 +596,7 @@ where
 
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         // Drain input into the target window's `Ui` first, in its own
-        // scope so the `&mut WindowState` borrow ends before the match
+        // scope so the `&mut Window` borrow ends before the match
         // arms re-borrow (`RedrawRequested` needs `&mut self` for
         // `draw`).
         {
@@ -648,7 +648,7 @@ where
                     let max = runtime.surfaces.max_texture_dim;
                     let w = new.width.clamp(1, max);
                     let h = new.height.clamp(1, max);
-                    // Stash the new size only — `WindowState::frame`
+                    // Stash the new size only — `Window::frame`
                     // notices the mismatch against its `configured`
                     // baseline and runs
                     // `surface.configure` once before acquiring the next
