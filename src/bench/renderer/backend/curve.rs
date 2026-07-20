@@ -12,9 +12,9 @@
 //! curve timestamp and pipeline statistics printed before each case.
 
 use crate::app::test_support::RecordApp;
+use crate::diagnostics::gpu_stats::BatchKind;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
-use crate::renderer::backend::gpu_pass_stats::BatchKind;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::{PolylineColors, Shape};
 use crate::text::TextShaper;

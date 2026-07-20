@@ -67,7 +67,7 @@ use winit::window::{Icon, Window as WinitWindow, WindowId};
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
-use crate::debug_overlay::DebugOverlayConfig;
+use crate::diagnostics::DebugOverlayConfig;
 use crate::host::shared::HostShared;
 use crate::host::window_driver::WindowDriver;
 use crate::host::winit::config::WinitHostConfig;
@@ -184,11 +184,8 @@ impl<T> WinitRuntime<T> {
             .expect("bootstrap app factory already consumed");
         let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
         let window = create_window(event_loop, &config.window);
-        let shared = HostShared {
-            text: TextShaper::with_bundled_fonts(),
-            clipboard: window_clipboard(),
-            ..HostShared::default()
-        };
+        let shared =
+            HostShared::with_clipboard(TextShaper::with_bundled_fonts(), window_clipboard());
         let GpuInit {
             surfaces,
             backend,
@@ -196,7 +193,7 @@ impl<T> WinitRuntime<T> {
         } = GpuInit::new(&window, &config, &shared);
         let mut driver = WindowDriver::builder(token, &shared, surfaces.max_texture_dim).build();
 
-        shared.windows.set_live(token, true);
+        shared.resources.windows.set_live(token, true);
         let mut app = create_app(&mut driver.ui, handle);
         for task in pending_tasks {
             task(&mut app);
@@ -204,7 +201,7 @@ impl<T> WinitRuntime<T> {
 
         let id = window.id();
         let windows = HashMap::from([(id, Window::new(window, first_surface, driver))]);
-        let observed_overlay = shared.diagnostics.debug_overlay();
+        let observed_overlay = *shared.resources.diagnostics.overlay.borrow();
         Self {
             app,
             surfaces,
@@ -244,7 +241,7 @@ impl<T> WinitRuntime<T> {
         driver: WindowDriver,
     ) {
         let id = window.id();
-        self.shared.windows.set_live(driver.token, true);
+        self.shared.resources.windows.set_live(driver.token, true);
         let previous = self
             .windows
             .insert(id, Window::new(window, surface, driver));
@@ -447,7 +444,7 @@ where
                 .any(|win| win.driver.token == token)
             {
                 runtime.windows.retain(|_, win| win.driver.token != token);
-                runtime.shared.windows.set_live(token, false);
+                runtime.shared.resources.windows.set_live(token, false);
             }
         }
         for pw in commands.opens {
@@ -464,7 +461,7 @@ where
         let HostPhase::Running(runtime) = &mut self.phase else {
             return;
         };
-        let overlay = runtime.shared.diagnostics.debug_overlay();
+        let overlay = *runtime.shared.resources.diagnostics.overlay.borrow();
         if overlay != runtime.observed_overlay {
             runtime.observed_overlay = overlay;
             for win in runtime.windows.values_mut() {

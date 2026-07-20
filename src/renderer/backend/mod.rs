@@ -2,7 +2,6 @@ mod curve_pipeline;
 mod dynamic_buffer;
 mod format_pipelines;
 pub(crate) mod gpu_ctx;
-pub(crate) mod gpu_pass_stats;
 mod gpu_timings;
 mod gradient_resources;
 pub(crate) mod image_pipeline;
@@ -22,7 +21,6 @@ pub(crate) mod write_stats;
 use self::curve_pipeline::CurvePipeline;
 use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
-use self::gpu_pass_stats::{BatchKind, GpuPassStats};
 use self::gpu_timings::GpuTimings;
 use self::gradient_resources::GradientResources;
 use self::image_pipeline::ImagePipeline;
@@ -33,10 +31,12 @@ use self::queue::Queue;
 use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
 use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
-use crate::debug_overlay::DebugOverlayConfig;
+use crate::diagnostics::DebugOverlayConfig;
+use crate::diagnostics::gpu_stats::{BatchKind, GpuPassStats};
 use crate::primitives::urect::URect;
-use crate::renderer::assets::RenderAssets;
 use crate::renderer::backend::text::TextBackend;
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordPayloads;
@@ -117,10 +117,11 @@ pub(crate) struct BackendConfig {
 }
 
 #[derive(Debug)]
-pub(crate) struct BackendShared {
+pub(crate) struct BackendResources {
     pub(crate) text: TextShaper,
-    pub(crate) assets: RenderAssets,
-    pub(crate) pass_stats: GpuPassStats,
+    pub(crate) images: ImageRegistry,
+    pub(crate) gradient_atlas: GradientAtlas,
+    pub(crate) gpu_pass_stats: GpuPassStats,
 }
 
 /// Wgpu renderer owning its device/queue handles, pipelines, and text backend.
@@ -162,10 +163,10 @@ pub(crate) struct WgpuBackend {
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
-    /// Shared cross-frame render assets (image registry +
-    /// gradient atlas). Drained / flushed each frame to push newly
-    /// registered images and dirty gradient rows to GPU.
-    assets: RenderAssets,
+    /// Shared image lifecycle drained each frame for uploads and releases.
+    images: ImageRegistry,
+    /// Shared CPU gradient rows flushed into the GPU atlas each frame.
+    gradient_atlas: GradientAtlas,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation and the device was created with `TIMESTAMP_QUERY`
     /// enabled. Publishes into the host's shared `GpuPassStats` handle;
@@ -184,7 +185,7 @@ impl WgpuBackend {
     pub(crate) fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
-        shared: BackendShared,
+        resources: BackendResources,
         config: BackendConfig,
     ) -> Self {
         // Gradient LUT atlas resources, shared by the quad and curve
@@ -196,7 +197,7 @@ impl WgpuBackend {
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device);
         let curve = CurvePipeline::new(&device);
-        let text = TextBackend::new(&device, shared.text);
+        let text = TextBackend::new(&device, resources.text);
         let debug = DebugOverlay::new(&device);
         // Per-format pipeline sets build lazily on the first submit that
         // targets each format (`ensure_format`); none at construction.
@@ -218,7 +219,7 @@ impl WgpuBackend {
                     timestamp_period,
                     features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
                     features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                    shared.pass_stats,
+                    resources.gpu_pass_stats,
                 )
             });
         Self {
@@ -233,7 +234,8 @@ impl WgpuBackend {
             text,
             debug,
             pipelines,
-            assets: shared.assets,
+            images: resources.images,
+            gradient_atlas: resources.gradient_atlas,
             gpu_timings,
         }
     }
@@ -464,8 +466,8 @@ impl WgpuBackend {
             //   magenta fallback plus any baked rows composer queued.
             // - image registry: first-frame images need a bind group
             //   ready when the schedule's draw call lands.
-            self.gradient.upload(&ctx, &self.assets.gradients);
-            self.image.drain_registry(&mut ctx, &self.assets.images);
+            self.gradient.upload(&ctx, &self.gradient_atlas);
+            self.image.drain_registry(&mut ctx, &self.images);
 
             if dim_undamaged {
                 self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);

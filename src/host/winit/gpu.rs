@@ -116,7 +116,7 @@ impl GpuInit {
         let backend = WgpuBackend::new(
             device,
             queue,
-            shared.backend_shared(),
+            shared.backend_resources(),
             BackendConfig {
                 collect_gpu_stats: cfg.collect_gpu_stats,
             },

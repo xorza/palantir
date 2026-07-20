@@ -406,7 +406,7 @@ impl<'a> TextEdit<'a> {
                 &self.placeholder
             };
             let m = ui
-                .shared
+                .resources
                 .text
                 .measure(measure_str, ctx.params())
                 .expect("TextEdit metrics were validated")
@@ -463,7 +463,7 @@ impl<'a> TextEdit<'a> {
         // below. `caret_pos` is computed via the shaper (disjoint
         // field) first so the state borrow is contiguous.
         let caret_pos = ui
-            .shared
+            .resources
             .text
             .cursor_xy(self.text, caret_byte, ctx.params());
         let now = ui.frame_runtime.time;
@@ -503,7 +503,7 @@ impl<'a> TextEdit<'a> {
         // Phase 3: open the node and push shapes. `cursor_xy` +
         // `selection_rects` handle both single- and multi-line via
         // cosmic's shaped-buffer APIs; the single-line case is just
-        // an unwrapped layout with one visual run. Touch `ui.shared.text`
+        // an unwrapped layout with one visual run. Touch `ui.resources.text`
         // (disjoint from `ui.forest`, so `add_shape` sequences fine).
         // Chrome paints via `Tree::chrome_for` — encoder emits it
         // before any clip. Every shape's local_rect is shifted by
@@ -543,7 +543,7 @@ impl<'a> TextEdit<'a> {
                 // `ctx.params()` measures unbounded here — single-line,
                 // so `wrap_target` is `None` by construction.
                 let reserve_w = ui
-                    .shared
+                    .resources
                     .text
                     .measure(measure_str, ctx.params())
                     .expect("TextEdit metrics were validated")
@@ -565,7 +565,7 @@ impl<'a> TextEdit<'a> {
             .unwrap_or(&mut inline_selection_rects);
         selection_rects.clear();
         if is_focused && let Some(range) = selection {
-            ui.shared
+            ui.resources
                 .text
                 .selection_rects(text_ptr, range, ctx.params(), selection_rects);
         }
@@ -739,7 +739,7 @@ fn default_context_menu(
     }
     let has_sel = ui.state_mut::<TextEditState>(id).sel_range().is_some();
     let has_text = !text.is_empty();
-    let clipboard = ui.shared.clipboard.clone();
+    let clipboard = ui.resources.clipboard.clone();
     let mut action = None;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
         if MenuItem::new("Cut")

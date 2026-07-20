@@ -42,7 +42,7 @@ fn context_menu_cut_copy_paste_clear() {
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
     let mut ui = ui_at_no_cosmic(SMALL);
-    ui.shared.clipboard.set("").unwrap();
+    ui.resources.clipboard.set("").unwrap();
     let mut buf = String::from("hello");
     ui.run_at(SMALL, |ui| body(ui, &mut buf));
     {
@@ -56,7 +56,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 1); // row 1 == Copy
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
-    assert_eq!(ui.shared.clipboard.get(), "ell");
+    assert_eq!(ui.resources.clipboard.get(), "ell");
     assert!(
         !ContextMenu::is_open(&ui, editor_id()),
         "item click auto-closes menu",
@@ -71,7 +71,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
-    assert_eq!(ui.shared.clipboard.get(), "ell");
+    assert_eq!(ui.resources.clipboard.get(), "ell");
     let st = ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(st.caret, 1);
     assert_eq!(st.selection, None);
@@ -95,7 +95,7 @@ fn context_menu_cut_copy_paste_clear() {
     // sanitize the same way the Cmd+V keypress does — otherwise the
     // single-line buffer ends up with literal line breaks it can't
     // render or hit-test. Earlier menu code lacked the sanitize call.
-    ui.shared.clipboard.set("foo\nbar").unwrap();
+    ui.resources.clipboard.set("foo\nbar").unwrap();
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 2); // Paste
     assert_eq!(

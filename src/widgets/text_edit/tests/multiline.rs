@@ -50,7 +50,7 @@ fn single_line_enter_does_not_insert_newline() {
 #[test]
 fn multiline_paste_keeps_newlines() {
     let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
-    ui.shared.clipboard.set("line1\nline2\nline3").unwrap();
+    ui.resources.clipboard.set("line1\nline2\nline3").unwrap();
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
     ui.request_focus(Some(ed_id));

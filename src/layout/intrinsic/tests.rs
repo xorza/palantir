@@ -84,7 +84,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     let text_bytes = payloads.text_bytes();
     let tc = TextCtx {
         bytes: &text_bytes,
-        shaper: &ui.shared.text,
+        shaper: &ui.resources.text,
     };
     let v = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
@@ -168,7 +168,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &ui.shared.text,
+            shaper: &ui.resources.text,
         },
     );
     drop(text_bytes);
@@ -277,7 +277,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     let text_bytes = payloads.text_bytes();
     let tc = TextCtx {
         bytes: &text_bytes,
-        shaper: &ui.shared.text,
+        shaper: &ui.resources.text,
     };
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);

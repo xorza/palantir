@@ -18,11 +18,11 @@
 use glam::UVec2;
 
 use crate::app::App;
-use crate::debug_overlay::DebugOverlayConfig;
+use crate::diagnostics::DebugOverlayConfig;
+use crate::diagnostics::gpu_stats::GpuPassStats;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, WindowDriver};
-use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
 use crate::text::TextShaper;
 use crate::ui::Ui;
@@ -82,11 +82,11 @@ impl OffscreenHostBuilder {
     /// Allocate the backend and window driver from the sealed settings.
     pub fn build(self) -> OffscreenHost {
         let shared = HostShared::new(self.shaper);
-        shared.windows.set_live(self.token, true);
+        shared.resources.windows.set_live(self.token, true);
         let backend = WgpuBackend::new(
             self.device,
             self.queue,
-            shared.backend_shared(),
+            shared.backend_resources(),
             BackendConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
@@ -136,7 +136,7 @@ impl OffscreenHost {
     /// `Ui::debug_overlay_mut` — it writes the same shared diagnostics state
     /// the window's `Ui` reads.
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        *self.shared.diagnostics.debug_overlay_mut() = overlay;
+        *self.shared.resources.diagnostics.overlay.borrow_mut() = overlay;
     }
 
     /// Run one offscreen application frame against `target`, filling the
@@ -165,7 +165,7 @@ impl OffscreenHost {
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
     pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.shared.diagnostics.pass_stats
+        &self.shared.resources.diagnostics.gpu_pass_stats
     }
 }
 
@@ -277,12 +277,12 @@ pub(crate) mod test_support {
             clocks: [Box<dyn Clock>; 2],
         ) -> Self {
             let shared = HostShared::new(shaper);
-            shared.windows.set_live(WindowToken(0), true);
-            shared.windows.set_live(WindowToken(1), true);
+            shared.resources.windows.set_live(WindowToken(0), true);
+            shared.resources.windows.set_live(WindowToken(1), true);
             let backend = WgpuBackend::new(
                 device,
                 queue,
-                shared.backend_shared(),
+                shared.backend_resources(),
                 BackendConfig::default(),
             );
             let max_texture_dim = backend.max_texture_dim();

@@ -10,7 +10,7 @@ pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub mod bench;
 pub(crate) mod common;
-pub(crate) mod debug_overlay;
+pub(crate) mod diagnostics;
 /// Per-output display state (physical size, DPR, pixel-snap, refresh) —
 /// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
 /// the host layer; not owned by any one subsystem.
@@ -27,18 +27,18 @@ pub(crate) mod ui;
 pub(crate) mod widgets;
 pub(crate) mod window;
 
+/// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
+/// the backend (timestamp-query + pipeline-statistics readback).
+/// Consumers (debug overlay, benches) hold a `Clone` of the same
+/// `GpuPassStats` the backend writes into — no global state;
+/// `OffscreenHost::gpu_pass_stats` is the canonical handle.
+pub use diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
 #[cfg(feature = "internals")]
 pub use host::offscreen::test_support::{
     OffscreenWindowScratch, TwoWindowOffscreenHost, offscreen_window_scratch,
 };
 #[cfg(feature = "internals")]
 pub use host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
-/// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
-/// the backend (timestamp-query + pipeline-statistics readback).
-/// Consumers (debug overlay, benches) hold a `Clone` of the same
-/// `GpuPassStats` the backend writes into — no global state;
-/// `OffscreenHost::gpu_pass_stats` is the canonical handle.
-pub use renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
@@ -48,7 +48,7 @@ pub use app::App;
 // the trait in the type namespace — `use aperture::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use aperture_anim_derive::Animatable;
-pub use debug_overlay::DebugOverlayConfig;
+pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host — the offscreen peer of

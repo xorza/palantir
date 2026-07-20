@@ -1,7 +1,5 @@
 //! Cross-frame registry of user images and their GPU textures — the
-//! image counterpart of
-//! [`GradientAtlas`](crate::renderer::gradient_atlas::handle::GradientAtlas),
-//! bundled alongside it in [`RenderAssets`](crate::renderer::assets::RenderAssets).
+//! image counterpart of the renderer's gradient atlas.
 //!
 //! [`ImageRegistry::register`] takes an [`Image`], queues it for GPU
 //! upload, and returns an [`ImageHandle`] — an **RAII owner** of the
@@ -98,8 +96,8 @@ impl std::fmt::Debug for ImageHandle {
 /// Shared image lifecycle: hands the backend the bytes of newly
 /// registered images (once) and the ids of dropped handles (to free
 /// their GPU textures). Clone is cheap — the inner state is `Rc`-shared.
-/// `HostShared` retains it in `RenderAssets`; the host derives capability
-/// clones for `Ui` registration and backend upload/release.
+/// `HostShared` retains it through `UiResources`; the host derives capability
+/// clones for recorder registration and backend upload/release.
 #[derive(Clone, Debug)]
 pub(crate) struct ImageRegistry {
     inner: Rc<RefCell<Inner>>,

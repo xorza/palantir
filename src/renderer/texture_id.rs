@@ -27,8 +27,8 @@ pub(crate) struct TextureId(pub(crate) u64);
 /// Shared monotonic source of [`TextureId`]s. The [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry)
 /// (CPU images) and each `GpuView` render target (minted via `Ui::gpu_view`)
 /// draw from **one** of these so their ids never collide in the backend's
-/// single texture cache. `RenderAssets` creates one and shares it with the
-/// registry, every window's `Ui`, and the GPU backend.
+/// single texture cache. `UiResources` creates one and shares it with the
+/// registry and every window's `Ui`.
 /// Never hands out `TextureId(0)` (the render path's "no texture" value).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TextureIdSource(Rc<Cell<u64>>);

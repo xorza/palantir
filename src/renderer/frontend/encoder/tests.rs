@@ -355,9 +355,9 @@ fn text_shape_emits_draw_text() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 200));
     ui.run_at(UVec2::new(200, 200), body);
     let key = ui.layout[Layer::Main].text_shapes[0].key;
-    ui.shared.text.evict_cosmic_buffers(0);
+    ui.resources.text.evict_cosmic_buffers(0);
     assert!(
-        !ui.shared.text.has_cosmic_buffer(key),
+        !ui.resources.text.has_cosmic_buffer(key),
         "fixture must evict the retained layout's key",
     );
 
@@ -368,23 +368,23 @@ fn text_shape_emits_draw_text() {
         "Text widget must emit a DrawText command"
     );
     assert!(
-        ui.shared.text.has_cosmic_buffer(key),
+        ui.resources.text.has_cosmic_buffer(key),
         "encoder must restore an evicted key from ShapeRecord::Text",
     );
 
-    ui.shared.text.evict_cosmic_buffers(0);
-    let measure_calls = ui.shared.text.measure_calls();
+    ui.resources.text.evict_cosmic_buffers(0);
+    let measure_calls = ui.resources.text.measure_calls();
     ui.request_repaint();
     ui.run_at(UVec2::new(200, 200), body);
     let replayed_key = ui.layout[Layer::Main].text_shapes[0].key;
     assert_eq!(replayed_key, key);
     assert_eq!(
-        ui.shared.text.measure_calls(),
+        ui.resources.text.measure_calls(),
         measure_calls,
         "unchanged full record must replay text layout without reshaping",
     );
     assert!(
-        !ui.shared.text.has_cosmic_buffer(replayed_key),
+        !ui.resources.text.has_cosmic_buffer(replayed_key),
         "layout replay must be allowed to retain an evicted cache key",
     );
     let replayed = ui.encode_cmds();
@@ -394,7 +394,7 @@ fn text_shape_emits_draw_text() {
             .any(|command| matches!(command, Command::DrawText(_))),
         "replayed text must still emit after reconstruction",
     );
-    assert!(ui.shared.text.has_cosmic_buffer(replayed_key));
+    assert!(ui.resources.text.has_cosmic_buffer(replayed_key));
 }
 
 /// Pin: a clip-only Surface (no painted background) still emits a

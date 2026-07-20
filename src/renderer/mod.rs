@@ -14,7 +14,6 @@
 //! Both halves are owned and driven from the private
 //! [`WindowDriver`](crate::host::window_driver::WindowDriver) behind the
 //! public host facades.
-pub(crate) mod assets;
 pub(crate) mod backend;
 pub(crate) mod frontend;
 pub(crate) mod gpu_view;
