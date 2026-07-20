@@ -56,24 +56,34 @@ pub(crate) fn resolve_container_chrome(
 
 /// Per-frame entry probe shared by interactive widgets
 /// (`Button`/`Checkbox`/`RadioButton`): resolve the element's stable
-/// [`WidgetId`] and probe its response exactly once. `raw` is the
-/// un-merged state for the returned [`Response::eager`]; `merged` has
-/// `Element::disabled` OR-ed in so a freshly toggled `.disabled(true)`
-/// paints disabled visuals on the same frame — the cascade lags by one.
-/// Centralizes the disabled-merge that the three widgets previously
-/// hand-mirrored.
+/// [`WidgetId`] and probe its response exactly once. `state` has
+/// `Element::disabled` OR-ed in for same-frame visuals and interaction;
+/// [`Self::into_response`] restores the cascade snapshot's original
+/// disabled bit for the returned [`Response::eager`].
+#[derive(Debug)]
 pub(crate) struct WidgetEntry {
-    pub(crate) id: WidgetId,
-    pub(crate) raw: ResponseState,
-    pub(crate) merged: ResponseState,
+    id: WidgetId,
+    state: ResponseState,
+    raw_disabled: bool,
+}
+
+impl WidgetEntry {
+    fn into_response(mut self, ui: &Ui) -> Response<'_> {
+        self.state.disabled = self.raw_disabled;
+        Response::eager(self.id, ui, self.state)
+    }
 }
 
 pub(crate) fn enter_widget(ui: &mut Ui, element: &Element) -> WidgetEntry {
     let id = ui.widget_id(element);
-    let raw = ui.response_for(id);
-    let mut merged = raw;
-    merged.disabled |= element.flags.is_disabled();
-    WidgetEntry { id, raw, merged }
+    let mut state = ui.response_for(id);
+    let raw_disabled = state.disabled;
+    state.disabled |= element.flags.is_disabled();
+    WidgetEntry {
+        id,
+        state,
+        raw_disabled,
+    }
 }
 
 /// Lazy handle to a widget's per-frame interaction state. Holds a

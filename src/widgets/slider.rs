@@ -7,7 +7,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a `f32` range. Takes a `&mut f32`;
@@ -59,11 +59,9 @@ impl<'a> Slider<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let WidgetEntry {
-            id,
-            raw: raw_state,
-            merged: state,
-        } = enter_widget(ui, &self.element);
+        let entry = enter_widget(ui, &self.element);
+        let id = entry.id;
+        let state = &entry.state;
 
         let theme = self.style.unwrap_or(&ui.theme.slider);
         let knob = theme.knob_size;
@@ -118,7 +116,7 @@ impl<'a> Slider<'a> {
                 &rail_bg,
             );
         });
-        Response::eager(id, ui, raw_state)
+        entry.into_response(ui)
     }
 }
 

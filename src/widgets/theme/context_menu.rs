@@ -58,7 +58,7 @@ impl MenuItemTheme {
     }
 
     /// Pick the visual state: `active` = pressed.
-    pub fn pick(&self, state: ResponseState) -> &WidgetLook {
+    pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())
     }
 }

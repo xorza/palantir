@@ -9,7 +9,7 @@ use crate::primitives::interned_str::TextInput;
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 use glam::Vec2;
 
 /// Track width as a multiple of its height. A switch reads as a switch
@@ -59,11 +59,9 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let WidgetEntry {
-            id,
-            raw: raw_state,
-            merged: state,
-        } = enter_widget(ui, &self.element);
+        let entry = enter_widget(ui, &self.element);
+        let id = entry.id;
+        let state = &entry.state;
         if state.left.clicked() && !state.disabled {
             *self.value = !*self.value;
         }
@@ -124,7 +122,7 @@ impl<'a> Switch<'a> {
             }
         });
 
-        Response::eager(id, ui, raw_state)
+        entry.into_response(ui)
     }
 }
 

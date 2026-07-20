@@ -50,7 +50,7 @@ impl ToggleTheme {
 
     /// Pick the chrome+label look for this `(state, checked)` pair
     /// (`active` = pressed).
-    pub fn pick(&self, state: ResponseState, checked: bool) -> &WidgetLook {
+    pub fn pick(&self, state: &ResponseState, checked: bool) -> &WidgetLook {
         if checked {
             self.checked.pick(state, state.pressed())
         } else {

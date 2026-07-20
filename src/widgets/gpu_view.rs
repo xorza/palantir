@@ -94,7 +94,7 @@ impl GpuView {
         ui.node(id, element, None, |ui| {
             ui.gpu_view(id, paint, repaint);
         });
-        Response::eager(id, ui, entry.raw)
+        entry.into_response(ui)
     }
 }
 

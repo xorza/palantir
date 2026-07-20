@@ -113,7 +113,7 @@ impl StatefulLook {
     /// press-driven widgets, `state.focused` for focus-driven ones);
     /// `disabled` / `hovered` read straight from `state`.
     #[inline(always)]
-    pub fn pick(&self, state: ResponseState, active: bool) -> &WidgetLook {
+    pub fn pick(&self, state: &ResponseState, active: bool) -> &WidgetLook {
         if state.disabled {
             &self.disabled
         } else if active {

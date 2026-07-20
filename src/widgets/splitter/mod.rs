@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 use crate::window::CursorIcon;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
@@ -99,11 +99,9 @@ impl<'a> Splitter<'a> {
         ui: &'u mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> Response<'u> {
-        let WidgetEntry {
-            id,
-            raw,
-            merged: state,
-        } = enter_widget(ui, &self.element);
+        let entry = enter_widget(ui, &self.element);
+        let id = entry.id;
+        let state = &entry.state;
 
         let theme = self.style.unwrap_or(&ui.theme.splitter);
         let thickness = theme.thickness.max(1.0);
@@ -217,7 +215,7 @@ impl<'a> Splitter<'a> {
             ui.node(divider_id, bar, Some(&bar_bg), |_| {});
         });
 
-        Response::eager(id, ui, raw)
+        entry.into_response(ui)
     }
 }
 

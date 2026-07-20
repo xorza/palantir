@@ -10,7 +10,7 @@ use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::resolve_look;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, enter_widget};
 use glam::Vec2;
 
 /// Down-chevron arrow box (logical px). Drawn as a polyline so it's
@@ -64,14 +64,13 @@ impl<'a> ComboBox<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut element = self.element;
-        let WidgetEntry {
-            id,
-            raw: raw_state,
-            merged: state,
-        } = enter_widget(ui, &element);
+        let entry = enter_widget(ui, &element);
+        let id = entry.id;
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = resolve_look(ui, id, &mut element, state, self.style, |t| &t.button);
+        let look = resolve_look(ui, id, &mut element, &entry.state, self.style, |t| {
+            &t.button
+        });
 
         element.justify = Justify::SpaceBetween;
         element.child_align = Align::v(VAlign::Center);
@@ -103,9 +102,9 @@ impl<'a> ComboBox<'a> {
             });
         });
 
-        let trigger_rect = state.rect;
+        let trigger_rect = entry.state.rect;
         let mut open = ui.state_mut::<ComboState>(id).open;
-        if !state.disabled && raw_state.left.clicked() {
+        if !entry.state.disabled && entry.state.left.clicked() {
             open = !open;
         }
         // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
@@ -134,7 +133,7 @@ impl<'a> ComboBox<'a> {
         }
         ui.state_mut::<ComboState>(id).open = open;
 
-        Response::eager(id, ui, raw_state)
+        entry.into_response(ui)
     }
 }
 

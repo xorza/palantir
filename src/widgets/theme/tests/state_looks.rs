@@ -44,7 +44,7 @@ fn button_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            std::ptr::eq(theme.pick(*state), *expected),
+            std::ptr::eq(theme.pick(state), *expected),
             "{label}: pick should return the matching slot",
         );
     }
@@ -81,7 +81,7 @@ fn text_edit_theme_pick_precedence() {
     ];
     for (state, expected, label) in cases {
         assert!(
-            std::ptr::eq(theme.pick(*state), *expected),
+            std::ptr::eq(theme.pick(state), *expected),
             "{label}: pick should return the matching slot",
         );
     }
