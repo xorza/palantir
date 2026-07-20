@@ -194,9 +194,7 @@ impl Forest {
     pub(crate) fn add_shape(&mut self, shape: Shape<'_>, store: &RecordStore) {
         let layer = self.current_layer();
         self.assert_node_open(layer, "add_shape");
-        // No `paint_anims.by_shape` bookkeeping on the unanimated path —
-        // `PaintAnims` lazily grows the column only when a real anim
-        // shows up. Saves one `Vec::push` per shape every frame.
+        // Static shapes must not pay a sentinel push into the sparse registry.
         if self.trees[layer].shapes.add(shape, store).is_some() {
             self.scratch[layer]
                 .open_frames

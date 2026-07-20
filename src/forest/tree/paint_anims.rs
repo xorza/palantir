@@ -16,23 +16,20 @@
 //! with that system — sampling is a pure function of `now`, with no
 //! accumulator state, so dropped frames / irregular `dt` don't drift.
 //!
-//! The registry pairs the list of live entries with a shape-indexed
-//! lookup table so the encoder can map `(shape_idx) → PaintMod` in one
-//! indexed load + branch on the hot path. `by_shape` is **lazy**: empty
-//! when no shape this frame is animated, and only grown out to
-//! `shape_idx + 1` on the first `push_entry` call. Encoder treats
-//! `shape_idx >= by_shape.len()` as "no anim" so the no-anim path costs
-//! one length compare, and `Forest::add_shape` doesn't push a sentinel
-//! per shape in the common (no-anim) frame.
+//! The registry stores only live entries and their sorted shape indices.
+//! Encoder traversal is monotonic in shape index, so a cursor advances
+//! across both visited shapes and ranges skipped by subtree culling without
+//! retaining a reverse-index slot for every preceding static shape.
 //!
 //! [`PaintAnim::BlinkOpacity`] (alpha) and [`PaintAnim::Spin`] (rotation)
 //! ship today; pulse or marquee variants would need further encoder
 //! transform-mod plumbing.
 
-use crate::common::index16::Index16;
 use crate::primitives::approx::approx_zero;
 use std::f32::consts::TAU;
 use std::time::Duration;
+
+const CURSOR_END: u64 = u64::MAX;
 
 /// A paint-time animation contract. Encoded as a small enum so the
 /// per-shape registry stays a flat `Vec`; sampling is branch-on-tag
@@ -73,7 +70,7 @@ pub(crate) struct PaintMod {
 }
 
 impl PaintMod {
-    /// Pass-through sample. Returned by [`PaintAnims::sample`] when a
+    /// Pass-through sample. Returned by [`PaintAnimCursor::sample`] when a
     /// shape has no anim attached, so callers can fold the result
     /// unconditionally.
     pub(crate) const IDENTITY: Self = Self {
@@ -191,9 +188,7 @@ fn duration_div_floor(a: Duration, b: Duration) -> u64 {
     (a.as_nanos() / bn) as u64
 }
 
-/// One row per registered paint animation. Lives in
-/// [`PaintAnims::entries`], indexed by `by_shape[shape_idx]` (which
-/// is `None` when the shape isn't animated).
+/// One row per registered paint animation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
@@ -212,24 +207,16 @@ pub(crate) struct PaintAnimEntry {
     pub(crate) node_idx: u32,
 }
 
-/// Per-tree paint-animation registry. Pushed in lockstep with the
-/// shape buffer; cleared per frame.
+/// Per-tree sparse paint-animation registry, cleared per frame.
 #[derive(Debug, Default)]
 pub(crate) struct PaintAnims {
     /// Live anim entries, in registration order. Iterated by
     /// `Forest::min_paint_anim_wake` (next-wake fold) and
     /// `DamageEngine::compute` (anim-damage union).
     pub(crate) entries: Vec<PaintAnimEntry>,
-    /// Sparse `shape_idx → entries[idx]` lookup. Empty when no shape
-    /// this frame is animated (the common case). Grown only when the
-    /// first animated shape arrives — padded out to `shape_idx + 1`
-    /// with `None` and the animated slot stamped. Encoder
-    /// treats `shape_idx >= by_shape.len()` as "no anim", so unanimated
-    /// shapes pay zero `Vec::push` per frame.
-    ///
-    /// The last valid entry index is 65,534, which is well past anything
-    /// realistic (caret, spinner, pulse — order of dozens, not thousands).
-    pub(crate) by_shape: Vec<Option<Index16>>,
+    /// Shape indices parallel to `entries`, strictly increasing because
+    /// registration follows append-only shape recording.
+    pub(crate) shape_indices: Vec<u32>,
 }
 
 impl PaintAnims {
@@ -238,34 +225,71 @@ impl PaintAnims {
     /// column.
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
-        self.by_shape.clear();
+        self.shape_indices.clear();
     }
 
     /// Register `entry` against the just-pushed shape at `shape_idx`
-    /// (its index into `Tree::shapes.records`). Lazily grows
-    /// `by_shape` to `shape_idx + 1`, padding any preceding
-    /// (unanimated) shapes with `None`. Checks the
-    /// `entries` cap before mutating either column.
+    /// (its index into `Tree::shapes.records`).
     pub(crate) fn push_entry(&mut self, shape_idx: u32, entry: PaintAnimEntry) {
-        let idx = Index16::new(self.entries.len());
-        let shape_idx = shape_idx as usize;
-        if self.by_shape.len() <= shape_idx {
-            self.by_shape.resize(shape_idx + 1, None);
-        }
-        self.by_shape[shape_idx] = Some(idx);
+        assert!(
+            self.shape_indices
+                .last()
+                .is_none_or(|&last| last < shape_idx),
+            "paint animation shape indices must be strictly increasing",
+        );
+        self.shape_indices.push(shape_idx);
         self.entries.push(entry);
     }
 
-    /// Sample the anim attached to shape `shape_idx`, if any. Returns
-    /// [`PaintMod::IDENTITY`] on the hot path (no anim — the vast
-    /// majority of shapes), so callers can fold the result
-    /// unconditionally once we ship variants beyond binary blink.
+    pub(crate) fn cursor(&self) -> PaintAnimCursor<'_> {
+        PaintAnimCursor {
+            shape_indices: &self.shape_indices,
+            entries: &self.entries,
+            next: 0,
+            next_shape: self
+                .shape_indices
+                .first()
+                .map_or(CURSOR_END, |&shape_idx| shape_idx as u64),
+        }
+    }
+}
+
+/// Monotonic encoder lookup over the sparse animation rows.
+#[derive(Debug)]
+pub(crate) struct PaintAnimCursor<'a> {
+    shape_indices: &'a [u32],
+    entries: &'a [PaintAnimEntry],
+    next: usize,
+    next_shape: u64,
+}
+
+impl PaintAnimCursor<'_> {
+    /// `shape_idx` must increase between calls. Jumps are allowed because
+    /// viewport and damage culling can skip whole shape ranges.
     #[inline]
-    pub(crate) fn sample(&self, shape_idx: u32, now: Duration) -> PaintMod {
-        let Some(&Some(slot)) = self.by_shape.get(shape_idx as usize) else {
+    pub(crate) fn sample(&mut self, shape_idx: u32, now: Duration) -> PaintMod {
+        let shape_idx = shape_idx as u64;
+        if shape_idx < self.next_shape {
             return PaintMod::IDENTITY;
-        };
-        self.entries[slot.idx()].anim.sample(now)
+        }
+        while shape_idx > self.next_shape {
+            self.advance();
+        }
+        if self.next_shape == CURSOR_END {
+            return PaintMod::IDENTITY;
+        }
+        let entry = self.entries[self.next];
+        self.advance();
+        entry.anim.sample(now)
+    }
+
+    #[inline]
+    fn advance(&mut self) {
+        self.next += 1;
+        self.next_shape = self
+            .shape_indices
+            .get(self.next)
+            .map_or(CURSOR_END, |&shape_idx| shape_idx as u64);
     }
 }
 
@@ -276,29 +300,51 @@ mod tests {
     const HP: Duration = Duration::from_millis(500);
     const START: Duration = Duration::from_secs(1);
 
-    #[test]
-    fn registry_keeps_sparse_shapes_unanimated_and_samples_registered_shape() {
-        let mut anims = PaintAnims::default();
-        anims.push_entry(
-            2,
-            PaintAnimEntry {
-                anim: PaintAnim::BlinkOpacity {
-                    half_period: HP,
-                    started_at: START,
-                },
-                row: 4,
-                node_idx: 7,
+    fn spinning(speed: f32) -> PaintAnimEntry {
+        PaintAnimEntry {
+            anim: PaintAnim::Spin {
+                speed,
+                started_at: START,
             },
+            row: 0,
+            node_idx: 0,
+        }
+    }
+
+    #[test]
+    fn sparse_cursor_samples_boundaries_and_advances_across_skipped_animations() {
+        const LAST_SHAPE: u32 = 1_000_000;
+        let mut anims = PaintAnims::default();
+        anims.push_entry(0, spinning(1.0));
+        anims.push_entry(5, spinning(2.0));
+        anims.push_entry(10, spinning(3.0));
+        anims.push_entry(LAST_SHAPE, spinning(4.0));
+
+        assert_eq!(anims.shape_indices, [0, 5, 10, LAST_SHAPE]);
+        assert_eq!(anims.entries.len(), 4);
+        assert_eq!(
+            std::mem::size_of_val(anims.shape_indices.as_slice()),
+            4 * std::mem::size_of::<u32>(),
         );
 
-        assert_eq!(anims.by_shape.len(), 3);
-        assert_eq!(anims.by_shape[0], None);
-        assert_eq!(anims.by_shape[1], None);
-        assert_eq!(anims.by_shape[2].map(Index16::idx), Some(0));
-        assert_eq!(anims.sample(0, START), PaintMod::IDENTITY);
-        assert_eq!(anims.sample(1, START), PaintMod::IDENTITY);
-        assert_eq!(anims.sample(2, START).alpha, 1.0);
-        assert_eq!(anims.sample(2, START + HP).alpha, 0.0);
+        let now = START + Duration::from_secs(1);
+        let mut cursor = anims.cursor();
+        assert_eq!(cursor.sample(0, now).rotation, 1.0);
+        assert_eq!(cursor.sample(1, now), PaintMod::IDENTITY);
+        assert_eq!(cursor.sample(5, now).rotation, 2.0);
+        assert_eq!(
+            cursor.sample(LAST_SHAPE, now).rotation,
+            4.0,
+            "jumping over culled shape 10 must not strand the cursor",
+        );
+
+        let shape_capacity = anims.shape_indices.capacity();
+        let entry_capacity = anims.entries.capacity();
+        anims.clear();
+        assert!(anims.shape_indices.is_empty());
+        assert!(anims.entries.is_empty());
+        assert_eq!(anims.shape_indices.capacity(), shape_capacity);
+        assert_eq!(anims.entries.capacity(), entry_capacity);
     }
 
     #[test]

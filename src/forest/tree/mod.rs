@@ -100,11 +100,10 @@ pub(crate) struct Tree {
     /// frame.
     pub(crate) roots: Vec<RootSlot>,
 
-    /// Shape-keyed paint animation registrations. Pushed in lockstep
-    /// with `shapes.records` via `Forest::add_shape{,_animated}`,
-    /// cleared in `pre_record`. Stateless: sampling is a pure function
-    /// of `Duration now` at encode time, so no per-entry timestamp is
-    /// stored. See [`PaintAnims`].
+    /// Sparse shape-keyed paint animation registrations, cleared in
+    /// `pre_record`. Stateless: sampling is a pure function of
+    /// `Duration now` at encode time, so no per-entry timestamp is stored.
+    /// See [`PaintAnims`].
     pub(crate) paint_anims: PaintAnims,
 
     pub(crate) rollups: SubtreeRollups,
@@ -143,14 +142,17 @@ impl Tree {
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
-        // `by_shape` is lazy — empty in frames with no animated
-        // shapes, otherwise sized to `last_animated_shape_idx + 1`.
-        // Encoder treats `idx >= by_shape.len()` as "no anim". Sanity
-        // check: the table can never legitimately exceed the shape
-        // buffer.
-        debug_assert!(
-            self.paint_anims.by_shape.len() <= self.shapes.records.len(),
-            "paint_anims.by_shape exceeds shapes.records",
+        assert_eq!(
+            self.paint_anims.shape_indices.len(),
+            self.paint_anims.entries.len(),
+            "paint animation columns differ in length",
+        );
+        assert!(
+            self.paint_anims
+                .shape_indices
+                .last()
+                .is_none_or(|&idx| idx < self.shapes.records.len() as u32),
+            "paint animation shape index exceeds shapes.records",
         );
         self.rollups.reset_for(self.records.len());
         self.compute_rollups();
