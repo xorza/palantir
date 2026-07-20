@@ -1300,7 +1300,7 @@ pub(crate) mod test_support {
     use crate::primitives::rect::Rect;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-    use crate::renderer::frontend::encoder::Encoder;
+    use crate::renderer::frontend::encoder;
     use crate::text::TextShaper;
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
@@ -1608,9 +1608,7 @@ pub(crate) mod test_support {
                 None => RenderKind::Full,
             };
             let plan = RenderPlan { clear, kind };
-            let mut encoder = Encoder::default();
-            encoder.encode(&self.frame_scene(), plan);
-            encoder.cmds
+            encoder::test_support::encode(self.frame_scene(), plan)
         }
     }
 }

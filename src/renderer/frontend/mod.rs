@@ -92,13 +92,9 @@ impl Frontend {
     /// Encode → compose into the staged output buffer.
     #[profiling::function]
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
-        self.encoder.encode(&scene, plan);
-        self.composer.compose(
-            &self.encoder.cmds,
-            &scene.payloads,
-            scene.display,
-            &mut self.buffer,
-        );
+        let cmds = self.encoder.encode(&scene, plan);
+        self.composer
+            .compose(cmds, &scene.payloads, scene.display, &mut self.buffer);
         self.buffer.time = scene.time;
     }
 }
