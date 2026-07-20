@@ -28,7 +28,7 @@
 //! explicit `device.poll(Wait)` and then read the `GpuPassStats`
 //! handle (e.g. via `OffscreenHost::gpu_pass_stats`).
 
-use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
+use crate::diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering::Acquire, Ordering::Release};
@@ -354,7 +354,7 @@ impl GpuTimings {
     /// Call after `queue.submit`. Kicks an async map on the just-
     /// written slot, polls the device so prior `map_async` callbacks
     /// fire, and publishes any slot whose readback has landed into
-    /// [`gpu_pass_stats`].
+    /// [`GpuPassStats`].
     pub(crate) fn after_submit(&mut self, device: &wgpu::Device) {
         if let Some(slot_idx) = self.pending_slot.take() {
             let map_state = self.slots[slot_idx].map_state.clone();

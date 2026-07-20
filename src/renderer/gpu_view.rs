@@ -11,8 +11,8 @@
 //! The `Ui` keeps one small per-`WidgetId` map of live views (`Ui::gpu_views`,
 //! values are [`GpuViewEntry`]): the app hands its renderer to the widget every
 //! frame, so [`Ui::gpu_view`] upserts the entry — minting the stable backend
-//! [`TextureId`] once from [`RenderAssets`](crate::renderer::assets::RenderAssets)'
-//! shared authority, so it cannot collide with registered images or other
+//! [`TextureId`] once from `UiResources`' shared authority, so it cannot
+//! collide with registered images or other
 //! windows, and refreshing the [`GpuPaintRef`]. The shape records only the
 //! redraw `epoch`; the encoder looks the view up by the node's `WidgetId`,
 //! forwards the callback down the command buffer, and the composer lists it in

@@ -111,8 +111,8 @@ pub enum FontWeight {
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
 /// re-entry. Cloning is cheap (refcount bump).
-/// `HostShared` retains the canonical handle; its `UiShared` and
-/// `BackendShared` capability views give every consumer access to the same
+/// `HostShared` retains the canonical handle; its UI and backend capability
+/// views give every consumer access to the same
 /// content cache.
 ///
 /// Two paths, picked at construction:

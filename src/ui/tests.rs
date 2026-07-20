@@ -24,11 +24,11 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
-    ui.shared.text.measure_calls()
+    ui.resources.text.measure_calls()
 }
 
 fn ui_with_shared(shared: &HostShared) -> Ui {
-    let mut ui = Ui::new(shared.ui_shared());
+    let mut ui = Ui::new(shared.resources.clone());
     ui.frame_runtime.prev_stamp = Some(FrameStamp::new(ui.display, Duration::ZERO));
     ui
 }
@@ -207,7 +207,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 fn collisions_do_not_record_into_debug_layer() {
     let mut ui = Ui::for_test();
     assert!(
-        !ui.debug_overlay().frame_stats,
+        !ui.resources.diagnostics.overlay.borrow().frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
     );
     ui.run_at_without_baseline(UVec2::new(100, 100), |ui| {
@@ -622,15 +622,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let b_key = b.layout[Layer::Main].text_shapes[0].key;
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    assert!(shared.text.has_cosmic_buffer(a_key));
-    assert!(shared.text.has_cosmic_buffer(b_key));
+    assert!(a.resources.text.has_cosmic_buffer(a_key));
+    assert!(a.resources.text.has_cosmic_buffer(b_key));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(b.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b = shared.text.measure_calls();
+    let after_b = a.resources.text.measure_calls();
     a.run_at(SURFACE, |ui| text_window(ui, "window A", 140.0));
     assert_eq!(
-        shared.text.measure_calls(),
+        a.resources.text.measure_calls(),
         after_b,
         "window B must not overwrite window A's identity reuse row",
     );
@@ -644,15 +644,15 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert!(!b.layout_engine.text_reuse.has_entry(text_id, 0));
     assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
 
-    let after_b_removal = shared.text.measure_calls();
+    let after_b_removal = a.resources.text.measure_calls();
     a.run_at(SURFACE, |ui| text_window(ui, "window A", 160.0));
     assert_eq!(
-        shared.text.measure_calls(),
+        a.resources.text.measure_calls(),
         after_b_removal,
         "window B removal must not evict window A's identity reuse row",
     );
-    assert!(shared.text.has_cosmic_buffer(a_key));
-    assert!(shared.text.has_cosmic_buffer(b_key));
+    assert!(a.resources.text.has_cosmic_buffer(a_key));
+    assert!(a.resources.text.has_cosmic_buffer(b_key));
 }
 
 #[test]
@@ -696,8 +696,8 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     }
 
     let shared = HostShared::new(TextShaper::with_bundled_fonts());
-    let mut idle = Ui::new(shared.ui_shared());
-    let mut active = Ui::new(shared.ui_shared());
+    let mut idle = Ui::new(shared.resources.clone());
+    let mut active = Ui::new(shared.resources.clone());
     let display = Display::from_physical(SURFACE, 1.0);
 
     let idle_first = idle.record_test_frame(display, Duration::ZERO, idle_body);
@@ -710,9 +710,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    shared.text.evict_cosmic_buffers(1);
+    idle.resources.text.evict_cosmic_buffers(1);
     assert!(
-        !shared.text.has_cosmic_buffer(idle_key),
+        !idle.resources.text.has_cosmic_buffer(idle_key),
         "newer active-window churn must evict the idle window's key",
     );
 
@@ -723,7 +723,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     let plan = idle_paint
         .plan
         .expect("the animated text boundary must produce a paint plan");
-    assert!(!shared.text.has_cosmic_buffer(idle_key));
+    assert!(!idle.resources.text.has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
     frontend.build(idle.frame_scene(), plan);
@@ -732,7 +732,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
         "PaintOnly must emit the retained text run",
     );
     assert!(
-        shared.text.has_cosmic_buffer(idle_key),
+        idle.resources.text.has_cosmic_buffer(idle_key),
         "encoder must restore the idle window's evicted interned text",
     );
 }
@@ -1592,14 +1592,20 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::primitives::fill_wire::LutRow;
     use crate::primitives::stroke::Stroke;
     use crate::renderer::frontend::cmd_buffer::Command;
+    use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::ATLAS_ROWS;
+    use crate::renderer::gradient_atlas::handle::GradientAtlas;
     use crate::shape::Shape;
     use crate::text::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
     use std::collections::HashSet;
 
-    fn rows(ui: &Ui) -> Vec<LutRow> {
-        ui.encode_cmds()
+    fn rows(ui: &Ui, atlas: &GradientAtlas) -> Vec<LutRow> {
+        let plan = RenderPlan {
+            clear: ui.theme.window_clear,
+            kind: RenderKind::Full,
+        };
+        encoder::test_support::encode(ui.frame_scene(), atlas, plan)
             .iter()
             .filter_map(|command| match command {
                 Command::DrawRect(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
@@ -1627,13 +1633,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     }
 
     let shared = HostShared::new(TextShaper::mono());
+    let atlas = shared.frontend.gradient_atlas.clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let half = Duration::from_millis(500);
 
     a.run_at(SURFACE, |ui| window_a(ui, half));
-    let original_row = rows(&a)[0];
-    a.shared.assets.gradients.flush_with(|_| ());
+    let original_row = rows(&a, &atlas)[0];
+    atlas.flush_with(|_| ());
 
     b.run_at_without_baseline(SURFACE, |ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
@@ -1655,16 +1662,16 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             }
         });
     });
-    let b_rows: HashSet<LutRow> = rows(&b).into_iter().collect();
+    let b_rows: HashSet<LutRow> = rows(&b, &atlas).into_iter().collect();
     assert_eq!(b_rows.len(), (ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
-    b.shared.assets.gradients.flush_with(|_| ());
+    atlas.flush_with(|_| ());
 
     let report = a.record_test_frame(Display::from_physical(SURFACE, 1.0), half, |ui| {
         window_a(ui, half)
     });
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
-    let resolved_row = rows(&a)[0];
+    let resolved_row = rows(&a, &atlas)[0];
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
@@ -2159,7 +2166,7 @@ fn window_requests_queue_and_survive_the_frame() {
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
     assert!(!ui.window_open(open), "empty live set ⇒ nothing open");
-    ui.shared.windows.set_live(open, true);
+    ui.resources.windows.set_live(open, true);
     assert!(ui.window_open(open));
     assert!(!ui.window_open(close), "only `open` is live");
 

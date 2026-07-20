@@ -371,7 +371,7 @@ mod per_line {
         let text = "hi";
 
         let left = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 text,
@@ -387,7 +387,7 @@ mod per_line {
             )
             .x;
         let center = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 text,
@@ -403,7 +403,7 @@ mod per_line {
             )
             .x;
         let right = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 text,
@@ -611,16 +611,16 @@ mod per_line {
         // is primed.
         ui.run_at(UVec2::new(800, 200), &mut record);
         ui.run_at(UVec2::new(800, 200), &mut record);
-        let a = ui.shared.text.measure_calls();
+        let a = ui.resources.text.measure_calls();
         ui.run_at(UVec2::new(800, 200), &mut record);
-        let b = ui.shared.text.measure_calls();
+        let b = ui.resources.text.measure_calls();
         let per_frame = b - a;
         // Drive several more frames with identical inputs and verify
         // each one costs exactly the same number of `measure_calls`.
         for i in 0..5 {
-            let before = ui.shared.text.measure_calls();
+            let before = ui.resources.text.measure_calls();
             ui.run_at(UVec2::new(800, 200), &mut record);
-            let after = ui.shared.text.measure_calls();
+            let after = ui.resources.text.measure_calls();
             assert_eq!(
                 after - before,
                 per_frame,
@@ -709,7 +709,7 @@ mod per_line {
         let lh = fs * 1.2;
         let wrap = 290.0_f32;
         let right = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 "",
@@ -725,7 +725,7 @@ mod per_line {
             )
             .x;
         let center = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 "",
@@ -741,7 +741,7 @@ mod per_line {
             )
             .x;
         let left = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 "",
@@ -838,7 +838,7 @@ mod per_line {
         let fs = 16.0_f32;
         let lh = fs * 1.2;
         let caret_short = ui
-            .shared
+            .resources
             .text
             .cursor_xy(
                 &buf,

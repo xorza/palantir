@@ -1,14 +1,14 @@
 pub(crate) mod frame;
 pub(crate) mod frame_report;
+mod frame_stats;
+pub(crate) mod resources;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
-use crate::debug_overlay::DebugOverlayConfig;
+use crate::diagnostics::DebugOverlayConfig;
 use crate::display::Display;
-use crate::host::shared::HostShared;
-use crate::host::shared::UiShared;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -38,13 +38,13 @@ use crate::scene::tree::paint_anims::PaintAnim;
 use crate::scene::tree::recording::Placement;
 use crate::{InternedStr, TextInput};
 
-use crate::debug_overlay::record_frame_stats;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::{Cascades, CascadesEngine, cascade_fingerprint};
 use crate::scene::damage::{Damage, DamageEngine, DamageInput};
 use crate::shape::Shape;
 use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
+use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::{
@@ -73,9 +73,8 @@ pub struct Ui {
     /// the redraw epoch and the encoder looks the view up here by the node's
     /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
     pub(crate) gpu_views: WidgetIdMap<GpuViewEntry>,
-    /// App-global capabilities selected for the recorder: text shaping,
-    /// render assets, diagnostics, and the live-window directory.
-    pub(crate) shared: UiShared,
+    /// App-global capabilities available to the recorder.
+    pub(crate) resources: UiResources,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node + global
@@ -123,22 +122,19 @@ impl Ui {
             layout: &self.layout,
             cascades: &self.cascades,
             payloads: self.forest.record_store.payloads.borrow(),
-            text: &self.shared.text,
-            gradient_atlas: &self.shared.assets.gradients,
+            text: &self.resources.text,
             gpu_views: &self.gpu_views,
             display: self.display,
             time: self.frame_runtime.time,
         }
     }
 
-    /// Construct a per-window `Ui` from the host's [`UiShared`] capabilities.
-    /// The capabilities provide the same text and render assets used by the
-    /// backend, plus shared diagnostics and the live window directory. Each
-    /// Each `Ui` creates its own [`Forest`], whose retained record payloads
+    /// Construct a per-window `Ui` from its app-global capabilities. Each `Ui`
+    /// creates its own [`Forest`], whose retained record payloads
     /// remain isolated from other windows' record passes.
-    pub(crate) fn new(shared: UiShared) -> Self {
+    pub(crate) fn new(resources: UiResources) -> Self {
         Self {
-            shared,
+            resources,
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
@@ -374,8 +370,8 @@ impl Ui {
             app.record(win, self);
         }
         let action_flag = self.input.take_action_flag();
-        if self.debug_overlay().frame_stats {
-            record_frame_stats(self);
+        if self.resources.diagnostics.overlay.borrow().frame_stats {
+            frame_stats::record(self);
         }
         self.forest.close_node();
         self.post_record();
@@ -397,7 +393,7 @@ impl Ui {
         let text_bytes = payloads.text_bytes();
         let tc = TextCtx {
             bytes: &text_bytes,
-            shaper: &self.shared.text,
+            shaper: &self.resources.text,
         };
         self.layout_engine.run(
             &self.forest,
@@ -442,7 +438,7 @@ impl Ui {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
-        self.shared.text.end_frame();
+        self.resources.text.end_frame();
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
@@ -706,13 +702,7 @@ impl Ui {
     /// window that handled the key. Drop the guard before other `Ui`
     /// calls; the `&mut self` borrow enforces that.
     pub fn debug_overlay_mut(&mut self) -> RefMut<'_, DebugOverlayConfig> {
-        self.shared.diagnostics.debug_overlay_mut()
-    }
-
-    /// This app's current debug overlay. Read by the backend at submit
-    /// time and by `Ui::frame` to drive the FPS readout.
-    pub(crate) fn debug_overlay(&self) -> DebugOverlayConfig {
-        self.shared.diagnostics.debug_overlay()
+        self.resources.diagnostics.overlay.borrow_mut()
     }
 
     /// Whether a window addressed by `token` is currently live. Reflects
@@ -723,7 +713,7 @@ impl Ui {
     /// instead of mirroring the state in app code — a window the user
     /// closed via its titlebar drops out of this set automatically.
     pub fn window_open(&self, token: WindowToken) -> bool {
-        self.shared.windows.contains(token)
+        self.resources.windows.contains(token)
     }
 
     /// Attach a paint primitive to the active node. Direct text contributes to
@@ -739,7 +729,7 @@ impl Ui {
     /// [`Shape::Image`] every frame (`clone` it where it needs to live).
     /// The CPU bytes are dropped right after the upload.
     pub fn register_image(&self, image: Image) -> ImageHandle {
-        self.shared.assets.images.register(image)
+        self.resources.images.register(image)
     }
 
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
@@ -776,7 +766,7 @@ impl Ui {
             // First sight always paints — the texture doesn't exist yet.
             // The shared id source is disjoint from `self.gpu_views`.
             Entry::Vacant(e) => e.insert(GpuViewEntry {
-                texture_id: self.shared.assets.texture_ids.reserve(),
+                texture_id: self.resources.texture_ids.reserve(),
                 paint: GpuPaintRef(paint),
                 epoch: frame_id,
             }),
@@ -1136,7 +1126,7 @@ impl Ui {
 /// resources with a GPU backend.
 impl Default for Ui {
     fn default() -> Self {
-        Self::new(HostShared::default().ui_shared())
+        Self::new(UiResources::default())
     }
 }
 

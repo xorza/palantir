@@ -139,7 +139,7 @@ fn ns_to_ms(ns: u64) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::gpu_pass_stats::*;
+    use crate::diagnostics::gpu_stats::*;
 
     #[test]
     fn starts_uninit() {

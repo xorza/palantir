@@ -6,6 +6,9 @@
 //! deliberately carry no
 //! winit/wgpu types.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use glam::{IVec2, UVec2};
 
 use crate::primitives::image::Image;
@@ -24,6 +27,33 @@ use crate::primitives::image::Image;
 /// winit's `WindowId` never reaches the app.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct WindowToken(pub u64);
+
+/// App-global set of live application window identities shared between the
+/// host lifecycle and every recorder.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WindowDirectory {
+    tokens: Rc<RefCell<Vec<WindowToken>>>,
+}
+
+impl WindowDirectory {
+    pub(crate) fn contains(&self, token: WindowToken) -> bool {
+        self.tokens.borrow().contains(&token)
+    }
+
+    pub(crate) fn set_live(&self, token: WindowToken, live: bool) {
+        let mut tokens = self.tokens.borrow_mut();
+        let index = tokens.iter().position(|candidate| *candidate == token);
+        if live {
+            assert!(
+                index.is_none(),
+                "window directory already contains {token:?}"
+            );
+            tokens.push(token);
+        } else {
+            tokens.swap_remove(index.expect("removed window must exist in the window directory"));
+        }
+    }
+}
 
 /// Per-window options — what [`Ui::open_window`](crate::Ui::open_window)
 /// takes (and what the first window's options live in inside
@@ -191,7 +221,22 @@ pub(crate) struct WindowFrameState {
 mod tests {
     use glam::{IVec2, UVec2};
 
-    use crate::window::WindowConfig;
+    use crate::window::{WindowConfig, WindowDirectory, WindowToken};
+
+    #[test]
+    fn directory_clones_observe_the_same_live_windows() {
+        let host = WindowDirectory::default();
+        let recorder = host.clone();
+
+        host.set_live(WindowToken(1), true);
+        host.set_live(WindowToken(2), true);
+        assert!(recorder.contains(WindowToken(1)));
+        assert!(recorder.contains(WindowToken(2)));
+
+        host.set_live(WindowToken(1), false);
+        assert!(!recorder.contains(WindowToken(1)));
+        assert!(recorder.contains(WindowToken(2)));
+    }
 
     #[test]
     fn window_config_builders_populate_public_fields() {

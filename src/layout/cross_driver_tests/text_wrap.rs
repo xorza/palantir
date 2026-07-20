@@ -178,7 +178,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &ui.shared.text,
+            shaper: &ui.resources.text,
         },
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -188,7 +188,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         LenReq::MinContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &ui.shared.text,
+            shaper: &ui.resources.text,
         },
     );
     let max_h = ui.layout_engine.intrinsic(
@@ -198,7 +198,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &ui.shared.text,
+            shaper: &ui.resources.text,
         },
     );
 
@@ -431,7 +431,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &ui.shared.text,
+            shaper: &ui.resources.text,
         },
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -441,7 +441,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         LenReq::MinContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &ui.shared.text,
+            shaper: &ui.resources.text,
         },
     );
     assert!(
@@ -502,7 +502,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &probe.shared.text,
+            shaper: &probe.resources.text,
         },
     );
     assert!(label_full > 0.0);
@@ -569,7 +569,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
         LenReq::MaxContent,
         &TextCtx {
             bytes: &text_bytes,
-            shaper: &probe.shared.text,
+            shaper: &probe.resources.text,
         },
     );
     assert!(label_full > 0.0);

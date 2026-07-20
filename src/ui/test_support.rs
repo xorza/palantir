@@ -58,7 +58,7 @@ impl Ui {
             static SHARED: TextShaper = TextShaper::with_bundled_fonts();
         }
         let shared = HostShared::new(SHARED.with(Clone::clone));
-        let mut ui = Self::new(shared.ui_shared());
+        let mut ui = Self::new(shared.resources.clone());
         mark_warm(&mut ui);
         ui
     }
@@ -85,6 +85,7 @@ mod unit {
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder;
+    use crate::renderer::gradient_atlas::handle::GradientAtlas;
     use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::element::Configure;
@@ -227,7 +228,7 @@ mod unit {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Full,
             };
-            encoder::test_support::encode(self.frame_scene(), plan)
+            encoder::test_support::encode(self.frame_scene(), &GradientAtlas::default(), plan)
         }
 
         pub(crate) fn encode_cmds_for(&self, region: DamageRegion) -> RenderCmdBuffer {
@@ -235,7 +236,7 @@ mod unit {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Partial { region },
             };
-            encoder::test_support::encode(self.frame_scene(), plan)
+            encoder::test_support::encode(self.frame_scene(), &GradientAtlas::default(), plan)
         }
     }
 }

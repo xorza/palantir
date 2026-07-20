@@ -7,8 +7,8 @@
 //! What every window shares splits two ways: the GPU resources — render
 //! pipelines, glyph + gradient atlases, the image texture cache, and renderer
 //! device/queue handles — live on the **one** shared `WgpuBackend` the host
-//! passes into every method; render assets, text shaping, diagnostics, and the
-//! window directory derive from [`HostShared`] capability views. Each `Ui` owns
+//! passes into every method; renderer and recorder capabilities derive from
+//! [`HostShared`]. Each `Ui` owns
 //! its per-window record store alongside its tree. So N windows render through
 //! one GPU renderer without sharing frame-local geometry.
 //!
@@ -218,8 +218,8 @@ impl WindowDriverBuilder<'_> {
     pub(crate) fn build(self) -> WindowDriver {
         WindowDriver {
             token: self.token,
-            ui: Ui::new(self.shared.ui_shared()),
-            frontend: Frontend::new(self.max_texture_dim),
+            ui: Ui::new(self.shared.resources.clone()),
+            frontend: Frontend::new(self.max_texture_dim, self.shared.frontend.clone()),
             backbuffer: None,
             backbuffer_fresh: false,
             output_valid: false,
@@ -233,8 +233,8 @@ impl WindowDriverBuilder<'_> {
 
 impl WindowDriver {
     /// Start building a driver for `token` from the shared [`HostShared`].
-    /// Its `Ui` receives the render, diagnostics, and window-directory
-    /// capabilities plus a fresh per-window record store.
+    /// Its `Ui` receives recorder capabilities plus a fresh per-window record
+    /// store; its frontend receives the shared gradient atlas.
     /// `max_texture_dim` is the device's fixed texture limit used to cap
     /// `GpuView` targets. Defaults suit a swapchain window: direct adaptive
     /// presentation, realtime clock, and physical-pixel snapping.
@@ -325,7 +325,7 @@ impl WindowDriver {
         // The CPU phase already composed `GpuView`s into
         // `self.frontend.buffer.frame_targets` (callback + raster target — see
         // `cpu_frame`); this is GPU submit only.
-        let debug_overlay = self.ui.debug_overlay();
+        let debug_overlay = *self.ui.resources.diagnostics.overlay.borrow();
         // Rounded-clip stencil, shared by both paint paths and sized to the
         // target. Gated to them: on a skip frame the frontend didn't build,
         // so `buffer.rounded_clips` is stale and no pass reads the stencil.

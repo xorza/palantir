@@ -40,10 +40,11 @@ use std::time::Duration;
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
 /// Retained encoder state and its command output.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Encoder {
     cmds: RenderCmdBuffer,
     gradients: GradientResolver,
+    gradient_atlas: GradientAtlas,
 }
 
 /// Entries reset each encode because another window may have evicted their atlas rows.
@@ -140,11 +141,20 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 ///
 /// The command buffer is cleared at entry; capacity is retained across frames.
 impl Encoder {
+    pub(crate) fn new(gradient_atlas: GradientAtlas) -> Self {
+        Self {
+            cmds: RenderCmdBuffer::default(),
+            gradients: GradientResolver::default(),
+            gradient_atlas,
+        }
+    }
+
     #[profiling::function]
     pub(crate) fn encode(&mut self, scene: &FrameScene<'_>, plan: RenderPlan) -> &RenderCmdBuffer {
         let Self {
             cmds: out,
             gradients: gradient_resolver,
+            gradient_atlas,
         } = self;
         out.clear();
 
@@ -171,7 +181,7 @@ impl Encoder {
                 gradients,
                 text_bytes: &text_bytes,
                 shaper: scene.text,
-                gradient_atlas: scene.gradient_atlas,
+                gradient_atlas,
                 gradient_resolver,
                 paint_anim_cursor: tree.paint_anims.cursor(),
                 gpu_views: scene.gpu_views,
@@ -856,10 +866,15 @@ pub(crate) mod test_support {
     use crate::renderer::frontend::FrameScene;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder::Encoder;
+    use crate::renderer::gradient_atlas::handle::GradientAtlas;
     use crate::renderer::plan::RenderPlan;
 
-    pub(crate) fn encode(scene: FrameScene<'_>, plan: RenderPlan) -> RenderCmdBuffer {
-        let mut encoder = Encoder::default();
+    pub(crate) fn encode(
+        scene: FrameScene<'_>,
+        gradient_atlas: &GradientAtlas,
+        plan: RenderPlan,
+    ) -> RenderCmdBuffer {
+        let mut encoder = Encoder::new(gradient_atlas.clone());
         encoder.encode(&scene, plan);
         encoder.cmds
     }

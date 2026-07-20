@@ -52,10 +52,10 @@ pub(crate) mod fixture;
 
 use crate::app::test_support::RecordApp;
 use crate::bench::frame::fixture::{BENCH_SCALE, FrameFixture, build_ui};
+use crate::diagnostics::gpu_stats::BatchKind;
 use crate::display::Display;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
-use crate::renderer::backend::gpu_pass_stats::BatchKind;
 use crate::renderer::backend::write_stats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};

@@ -212,7 +212,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         let mut buf = String::from("editable");
         let mut text_node = None;
         let mut editor_node = None;
-        let calls = ui.shared.text.measure_calls();
+        let calls = ui.resources.text.measure_calls();
 
         ui.run_at(UVec2::new(600, 200), |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
@@ -236,7 +236,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             );
         }
         assert_eq!(
-            ui.shared.text.measure_calls(),
+            ui.resources.text.measure_calls(),
             calls,
             "{label}: invalid text reached the shaper",
         );
