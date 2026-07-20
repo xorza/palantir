@@ -8,7 +8,6 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::frame::FrameStamp;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, spinner::Spinner};
 use glam::UVec2;
 use std::time::Duration;
@@ -55,7 +54,7 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
         InvisibleSpinnerCase::HiddenAncestor,
     ] {
         let mut ui = Ui::for_test();
-        let report = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        let report = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
             show_spinner_case(ui, case);
         });
         let tree = &ui.forest.trees[Layer::Main];
@@ -92,7 +91,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     let mut ui = Ui::for_test();
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
-    let visible = ui.record_acked(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let visible = ui.record_test_frame(display, Duration::ZERO, |ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
@@ -100,7 +99,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 
     ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
-    let hidden = ui.record_acked(FrameStamp::new(display, hidden_at), |ui| {
+    let hidden = ui.record_test_frame(display, hidden_at, |ui| {
         show_spinner(ui, Visibility::Hidden);
     });
     assert_eq!(hidden.repaint_after, None);
@@ -116,7 +115,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 
     ui.request_repaint();
     let shown_at = Duration::from_millis(32);
-    let shown = ui.record(FrameStamp::new(display, shown_at), |ui| {
+    let shown = ui.record_test_frame_without_baseline(display, shown_at, |ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(shown.repaint_after, Some(shown_at));
@@ -131,7 +130,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut ui = Ui::for_test();
     let mut root = NodeId(0);
-    ui.run_at(UVec2::new(400, 100), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -171,7 +170,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 fn collapsed_does_not_consume_fill_weight() {
     let mut ui = Ui::for_test();
     let mut root = NodeId(0);
-    ui.run_at(UVec2::new(400, 100), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -208,7 +207,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
     let mut ui = Ui::for_test();
     let mut root = NodeId(0);
-    ui.run_at(UVec2::new(400, 100), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -265,7 +264,7 @@ fn hidden_button_does_not_click() {
 
     let mut ui = Ui::for_test();
     let surface = UVec2::new(400, 200);
-    ui.run_at(surface, |ui| {
+    ui.run_at_without_baseline(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("invisible"))
@@ -278,7 +277,7 @@ fn hidden_button_does_not_click() {
     ui.click_at(Vec2::new(50.0, 20.0));
 
     let mut clicked = false;
-    ui.run_at(surface, |ui| {
+    ui.run_at_without_baseline(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked = Button::new()
                 .id(WidgetId::from_hash("invisible"))

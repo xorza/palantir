@@ -71,7 +71,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
     let child = WidgetId::from_hash("arrange-axis-child");
     let parent_size = case.axis.compose_size(case.slot, 100.0);
     let surface = UVec2::new(parent_size.w as u32, parent_size.h as u32);
-    ui.run_at(surface, |ui| match driver {
+    ui.run_at_without_baseline(surface, |ui| match driver {
         Driver::Root => add_child(ui, child, case),
         Driver::Canvas => {
             Panel::canvas()

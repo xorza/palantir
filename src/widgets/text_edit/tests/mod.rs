@@ -8,14 +8,25 @@ use crate::widgets::text_edit::model::{
 /// `apply_key`. Menu-intercept gating is exercised end-to-end via the
 /// integration tests instead. Returns whether the key asked to blur.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
+    let clipboard = Clipboard::default();
+    apply_key_with_clipboard(text, state, kp, &clipboard)
+}
+
+fn apply_key_with_clipboard(
+    text: &mut String,
+    state: &mut TextEditState,
+    kp: KeyPress,
+    clipboard: &Clipboard,
+) -> bool {
     let mut ed = Editor::new(text, state, false, None);
-    if ed.dispatch_shortcut(kp, false) {
+    if ed.dispatch_shortcut(kp, false, clipboard) {
         return false;
     }
     ed.apply_key(kp) == KeyOutcome::Blur
 }
 use crate::Spacing;
 use crate::Ui;
+use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
@@ -24,7 +35,6 @@ use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::frame::FrameStamp;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};

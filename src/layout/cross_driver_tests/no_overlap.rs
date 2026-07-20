@@ -4,7 +4,7 @@
 //! check on emitted `DrawText` x positions.
 use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::forest::element::Configure;
@@ -69,7 +69,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
         let mut ui = Ui::for_test();
         let mut left = None;
         let mut right = None;
-        ui.run_at(UVec2::new(800, 600), |ui| {
+        ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -123,7 +123,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let mut prop_label = None;
     let mut prop_value = None;
 
-    ui.run_at(UVec2::new(1500, 900), |ui| {
+    ui.run_at_without_baseline(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -211,7 +211,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
     let mut ui = Ui::for_test_text();
-    ui.run_at(UVec2::new(1500, 900), |ui| {
+    ui.run_at_without_baseline(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -266,7 +266,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(1620, 980), |ui| {
+    ui.run_at_without_baseline(UVec2::new(1620, 980), |ui| {
         Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)

@@ -25,7 +25,7 @@ fn build_two_gesture_targets(ui: &mut Ui) {
 fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
     let mut ui = Ui::for_test();
     let surface = UVec2::new(200, 100);
-    ui.run_at_acked(surface, build_two_gesture_targets);
+    ui.run_at(surface, build_two_gesture_targets);
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(2.0, 3.0)));
@@ -35,7 +35,7 @@ fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
     }
 
     let mut observed = None;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build_two_gesture_targets(ui);
         if observed.is_none() {
             observed = Some([
@@ -83,13 +83,13 @@ fn scroll_deltas_stay_with_their_event_time_targets() {
 fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
     let mut ui = Ui::for_test();
     let surface = UVec2::new(200, 100);
-    ui.run_at_acked(surface, build_two_gesture_targets);
+    ui.run_at(surface, build_two_gesture_targets);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(7.0, 11.0)));
     ui.on_input(InputEvent::PointerLeft);
 
     let mut observed = None;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build_two_gesture_targets(ui);
         if observed.is_none() {
             observed = Some(ui.response_for(WidgetId::from_hash("a")).scroll);
@@ -108,7 +108,7 @@ fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
 fn pinch_products_accumulate_independently_per_event_time_target() {
     let mut ui = Ui::for_test();
     let surface = UVec2::new(200, 100);
-    ui.run_at_acked(surface, build_two_gesture_targets);
+    ui.run_at(surface, build_two_gesture_targets);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Zoom(1.1));
     ui.on_input(InputEvent::Zoom(1.05));
@@ -116,7 +116,7 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
     ui.on_input(InputEvent::Zoom(0.5));
 
     let mut observed = None;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build_two_gesture_targets(ui);
         if observed.is_none() {
             observed = Some([
@@ -147,14 +147,14 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
                     .show(ui, |_| {});
             });
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     let inner_id = WidgetId::from_hash("inner");
     let outer_id = WidgetId::from_hash("outer");
     let mut inner_d = Vec2::ZERO;
     let mut outer_d = Vec2::ZERO;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         if inner_d == Vec2::ZERO {
             inner_d = ui.input.scroll_delta_for(inner_id).pixels;
@@ -176,12 +176,12 @@ fn scroll_delta_zero_for_non_target() {
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
     let unrelated = WidgetId::from_hash("nope");
     let mut d = Vec2::new(1.0, 1.0);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         d = ui.input.scroll_delta_for(unrelated).pixels;
     });
@@ -200,13 +200,13 @@ fn pointer_left_clears_scroll_target() {
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerLeft);
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     let id = WidgetId::from_hash("scroller");
     let mut d = Vec2::new(1.0, 1.0);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         d = ui.input.scroll_delta_for(id).pixels;
     });
@@ -229,7 +229,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
     let scroll = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 12.0)));
@@ -240,7 +240,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
 
     let mut delivered = Vec2::new(f32::NAN, f32::NAN);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         delivered = ui.input.scroll_delta_for(id).pixels;
     });
@@ -269,13 +269,13 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
     ui.on_input(InputEvent::Zoom(1.5));
     let mut scroll_pixels = Vec2::ZERO;
     let mut zoom_factor = f32::NAN;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         let resp = ui.response_for(id);
         scroll_pixels = resp.scroll.pixels;
@@ -308,13 +308,13 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
             .sense(Sense::PINCH)
             .show(ui, |_| {});
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
     ui.on_input(InputEvent::Zoom(1.5));
     let mut scroll_pixels = Vec2::new(1.0, 1.0);
     let mut zoom_factor = f32::NAN;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         let resp = ui.response_for(id);
         scroll_pixels = resp.scroll.pixels;

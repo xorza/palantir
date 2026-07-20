@@ -20,7 +20,7 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     let mut ui = Ui::for_test();
     let node_id = WidgetId::from_hash("hug-parent");
     let button_id = WidgetId::from_hash("button");
-    ui.run_at(UVec2::new(800, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
         Panel::vstack()
             .id(node_id)
             .size((Sizing::HUG, Sizing::HUG))
@@ -57,7 +57,7 @@ fn hug_parent_with_fill_children_hugs_to_content() {
 fn fill_child_stretches_to_fixed_parent() {
     let mut ui = Ui::for_test();
     let child_id = WidgetId::from_hash("child");
-    ui.run_at(UVec2::new(800, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
@@ -79,7 +79,7 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
     let mut ui = Ui::for_test();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    ui.run_at(UVec2::new(800, 600), |ui| {
+    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
@@ -112,7 +112,7 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let mut ui = Ui::for_test_at_text(surface);
     let node_id = WidgetId::from_hash("node");
     let row_id = WidgetId::from_hash("row");
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -159,7 +159,7 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
     let root = WidgetId::from_hash("root");
     let button = WidgetId::from_hash("button");
     let spacer = WidgetId::from_hash("spacer");
-    ui.run_at(UVec2::new(400, 100), |ui| {
+    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
         Panel::hstack().id(root).show(ui, |ui| {
             Button::new().id(button).label("Hi").show(ui);
             Frame::new()

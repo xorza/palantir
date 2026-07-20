@@ -1,3 +1,6 @@
+pub(crate) mod stroke_bounds;
+pub(crate) mod style;
+
 use crate::layout::types::align::Align;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::mesh::Mesh;
@@ -12,6 +15,8 @@ use crate::primitives::{
     stroke::Stroke,
 };
 use crate::renderer::image_registry::ImageHandle;
+use crate::shape::style::{LineCap, LineJoin};
+use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight, TextMetrics};
 use glam::Vec2;
 use std::f32::consts::TAU;
@@ -556,188 +561,6 @@ impl PolylineColors<'_> {
     }
 }
 
-/// Endpoint cap style for stroked shapes (Line / Polyline / béziers /
-/// Arc). `#[repr(u8)]` with stable discriminants so cache keys don't
-/// shift across reorderings; `pub` because it's user-facing.
-///
-/// - `Butt` — no extension. The stroke ends exactly at the
-///   endpoint. Default.
-/// - `Square` — extend by `width / 2` along the local tangent.
-///   The end face is flat and perpendicular to the stroke.
-/// - `Round` — a `width / 2` half-disc past the endpoint.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum LineCap {
-    #[default]
-    Butt = 0,
-    Square = 1,
-    Round = 2,
-}
-
-/// Pod wire form for [`LineCap`]. See [`ColorModeBits`].
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LineCapBits(u8);
-
-impl LineCapBits {
-    #[inline]
-    pub(crate) const fn new(v: LineCap) -> Self {
-        Self(v as u8)
-    }
-    #[inline]
-    pub(crate) const fn get(self) -> LineCap {
-        LineCap::from_u8(self.0)
-    }
-}
-
-impl LineCap {
-    /// Decode the discriminant carried by a draw payload.
-    /// Caller invariant: encoder only ever writes valid `as u8`
-    /// values; an out-of-range byte means a corrupted command buffer.
-    pub(crate) const fn from_u8(v: u8) -> Self {
-        match v {
-            0 => LineCap::Butt,
-            1 => LineCap::Square,
-            2 => LineCap::Round,
-            _ => panic!("invalid LineCap discriminant in cmd buffer"),
-        }
-    }
-}
-
-/// Interior-join style for [`Shape::Polyline`]. Default is `Miter`
-/// — matches the SVG convention: try a sharp miter corner, fall
-/// back to a bevel when the miter factor would exceed
-/// `MITER_LIMIT` (4.0). `Bevel` forces a flat corner at every
-/// join regardless of angle; `Round` fills the corner with an arc
-/// fan.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum LineJoin {
-    #[default]
-    Miter = 0,
-    Bevel = 1,
-    Round = 2,
-}
-
-/// Pod wire form for [`LineJoin`]. See [`ColorModeBits`].
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LineJoinBits(u8);
-
-impl LineJoinBits {
-    #[inline]
-    pub(crate) const fn new(v: LineJoin) -> Self {
-        Self(v as u8)
-    }
-    #[inline]
-    pub(crate) const fn get(self) -> LineJoin {
-        LineJoin::from_u8(self.0)
-    }
-}
-
-impl LineJoin {
-    pub(crate) const fn from_u8(v: u8) -> Self {
-        match v {
-            0 => LineJoin::Miter,
-            1 => LineJoin::Bevel,
-            2 => LineJoin::Round,
-            _ => panic!("invalid LineJoin discriminant in cmd buffer"),
-        }
-    }
-}
-
-/// Storage tag for [`ShapeRecord::Polyline`]. `u8` for compactness
-/// on the record; promoted to `u32` in `DrawPolylinePayload` to
-/// keep that struct Pod-aligned. Discriminants are stable
-/// (`Single=0`, `PerPoint=1`, `PerSegment=2`) so cache keys don't
-/// shift across reorderings.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ColorMode {
-    Single = 0,
-    PerPoint = 1,
-    PerSegment = 2,
-}
-
-/// Pod-safe wire form for [`ColorMode`] inside payload structs.
-/// A `#[repr(u8)]` enum with N variants isn't `bytemuck::Pod` —
-/// only N out of 256 bit patterns are valid — so payloads can't
-/// store the enum directly. This `#[repr(transparent)]` wrapper
-/// is bit-identical to `u8`, fully Pod, and gives compile-time
-/// distinction from raw bytes so the encoder can't write a
-/// `cap` byte into a `color_mode` slot.
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ColorModeBits(u8);
-
-impl ColorModeBits {
-    #[inline]
-    pub(crate) const fn new(v: ColorMode) -> Self {
-        Self(v as u8)
-    }
-    #[inline]
-    pub(crate) const fn get(self) -> ColorMode {
-        ColorMode::from_u8(self.0)
-    }
-}
-
-impl ColorMode {
-    pub(crate) const fn from_u8(v: u8) -> Self {
-        match v {
-            0 => ColorMode::Single,
-            1 => ColorMode::PerPoint,
-            2 => ColorMode::PerSegment,
-            _ => panic!("invalid ColorMode discriminant in cmd buffer"),
-        }
-    }
-}
-
-/// Wrap mode for [`Shape::Text`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum TextWrap {
-    /// **Default.** Single line shaped once at unbounded width and never
-    /// reshaped, so it overflows a too-narrow slot rather than truncating.
-    /// Min-content equals the full line width, so a Hug track won't shrink
-    /// below it — keeps labels at their natural width, *meant* to run past
-    /// the viewport. For a field that clips + scrolls its own overflow use
-    /// [`TextWrap::Scroll`], whose min-content is zero.
-    #[default]
-    SingleLine,
-    /// Single line shaped once at unbounded width and never reshaped, exactly
-    /// like [`TextWrap::SingleLine`], but with **zero** min-content: the owner
-    /// is expected to clip the overflow (`ClipMode::Rect`) and scroll it into
-    /// view, so a Hug/Fill box may shrink below the text rather than reserving
-    /// its full width. For editable single-line fields and any widget that
-    /// manages its own horizontal scroll. Unlike [`TextWrap::Truncate`] the run
-    /// is never cut at shape time, so the owner can scroll to any offset over
-    /// the full buffer.
-    Scroll,
-    /// Single line, hard-truncated to the committed width with
-    /// no trailing marker — glyphs past the box edge are simply dropped.
-    /// Min-content is zero (the run can shrink to nothing), so a bounded
-    /// parent clips it to its slot instead of overflowing — single-line text
-    /// is limited to its available width like any other widget. In an
-    /// unbounded / Hug-width parent the full line shows; truncation only
-    /// bites once a parent commits a narrower width.
-    Truncate,
-    /// Single line, truncated to the committed width with a trailing `…`.
-    /// Identical to [`TextWrap::Truncate`] (min-content zero, clipped to the
-    /// slot) except the cut is marked with an ellipsis. For labels where the
-    /// elision should be visible — paths, names in fixed-width chrome.
-    Ellipsis,
-    /// Reshape during measure if the parent commits a width narrower than
-    /// the natural unbroken line. Breaks on word boundaries first; when a
-    /// single word still doesn't fit it falls back to a character-level
-    /// break. Min-content is effectively zero — the run can always reflow
-    /// to fit the committed slot, like WPF's `TextWrapping="Wrap"`.
-    Wrap,
-    /// Reshape during measure on word boundaries only. The widest unbreakable
-    /// run (longest word) is the floor — words that exceed the committed
-    /// width overflow rather than breaking mid-word. Matches WPF's
-    /// `TextWrapping="WrapWithOverflow"`.
-    WrapWithOverflow,
-}
-
 /// True iff `local_rect` is set with a degenerate or negative extent
 /// — paints no pixels regardless of fill/stroke/text. Broader than
 /// `Size::approx_zero` (which is strict both-axes-near-zero); this
@@ -873,7 +696,8 @@ mod tests {
     use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
     use crate::primitives::color::Color;
     use crate::record_store::RecordStore;
-    use crate::shape::{Shape, TextWrap};
+    use crate::shape::Shape;
+    use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
     use glam::Vec2;
 

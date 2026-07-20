@@ -8,7 +8,7 @@ use crate::primitives::interned_str::TextInput;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::text::Text;

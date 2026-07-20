@@ -35,6 +35,7 @@ use std::rc::Rc;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) mod cosmic;
+pub(crate) mod wrap;
 
 /// Leading the shaper hands to cosmic-text's `Metrics::new`, also used
 /// as the default for [`crate::TextEditTheme::line_height_mult`] so
@@ -1053,7 +1054,7 @@ struct WrapReuse {
 }
 
 /// How a width-bounded text run handles overflow. Maps from the public
-/// [`crate::shape::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
+/// [`crate::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
 /// the unbounded path). Threaded through `shape_wrap` → `dispatch` and
 /// folded into the shape cache key.
 #[repr(u8)]

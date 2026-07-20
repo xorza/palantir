@@ -30,7 +30,7 @@ fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
 #[test]
 fn vertical_scroll_records_content_extent() {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Scroll::vertical()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
@@ -50,7 +50,7 @@ fn vertical_scroll_records_content_extent() {
 #[test]
 fn horizontal_scroll_records_content_extent() {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -80,7 +80,7 @@ fn horizontal_scroll_records_content_extent() {
 #[test]
 fn both_axis_scroll_records_content_extent() {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -119,9 +119,9 @@ fn state_survives_across_frames() {
                     });
             });
     };
-    ui.run_at(SURFACE, build);
+    ui.run_at_without_baseline(SURFACE, build);
     let f1 = state_for(&mut ui, "scroll");
-    ui.run_at(SURFACE, build);
+    ui.run_at_without_baseline(SURFACE, build);
     let f2 = state_for(&mut ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
@@ -138,7 +138,7 @@ fn state_survives_across_frames() {
 #[test]
 fn content_margin_leaves_content_size_unchanged() {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -167,7 +167,7 @@ fn scroll_height(ui: &Ui, id_salt: &'static str) -> f32 {
 /// assertion from how the root itself is arranged.
 fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -218,7 +218,7 @@ fn hug_scroll_clamps_viewport_to_content() {
 #[test]
 fn hug_scroll_caps_at_max_and_scrolls() {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -243,7 +243,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
     assert!(st.overflow.1, "content past the cap overflows on Y");
 
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
@@ -275,7 +275,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
 #[test]
 fn fill_scroll_does_not_grow_hug_parent() {
     let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -324,9 +324,9 @@ fn toggling_scroll_sizing_busts_measure_cache() {
                     });
             });
     };
-    ui.run_at(SURFACE, |ui| build(ui, Sizing::HUG));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, Sizing::HUG));
     assert_eq!(scroll_height(&ui, "scroll"), 150.0, "Hug fits its content");
-    ui.run_at(SURFACE, |ui| build(ui, Sizing::fill(1.0)));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, Sizing::fill(1.0)));
     assert_eq!(
         scroll_height(&ui, "scroll"),
         0.0,

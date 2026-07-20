@@ -38,7 +38,7 @@ fn deferred_frame(
         committed: false,
         commits: 0,
     };
-    ui.run_at_acked(UVec2::new(300, 100), |ui| {
+    ui.run_at(UVec2::new(300, 100), |ui| {
         let mut draft = *canonical;
         let r = DragValue::new(&mut draft)
             .editable(editable)
@@ -129,7 +129,7 @@ fn scrub_distance_is_scale_invariant() {
                         .show(ui);
                 });
         };
-        ui.run_at_acked(UVec2::new(300, 120), |ui| build(ui, &mut value));
+        ui.run_at(UVec2::new(300, 120), |ui| build(ui, &mut value));
 
         let response = ui.response_for(id);
         let layout = response.layout_rect.expect("drag value arranged");
@@ -142,7 +142,7 @@ fn scrub_distance_is_scale_invariant() {
         ui.on_input(InputEvent::PointerMoved(press));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerMoved(drag));
-        ui.run_at_acked(UVec2::new(300, 120), |ui| build(ui, &mut value));
+        ui.run_at(UVec2::new(300, 120), |ui| build(ui, &mut value));
 
         assert_eq!(value, 30.0, "20 logical px at {scale}× must add exactly 20",);
     }
@@ -610,12 +610,12 @@ fn editing_a_long_value_holds_the_field_width() {
 
     let mut ui = Ui::for_test();
     let mut node = None;
-    ui.run_at_acked(surface, |ui| node = Some(render(ui, &mut v)));
+    ui.run_at(surface, |ui| node = Some(render(ui, &mut v)));
     let display_w = ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
 
     // Enter edit mode; entry seeds the full-precision text.
     ui.request_focus(Some(id));
-    ui.run_at_acked(surface, |ui| node = Some(render(ui, &mut v)));
+    ui.run_at(surface, |ui| node = Some(render(ui, &mut v)));
     let edit_w = ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
 
     assert!(display_w >= 40.0, "min_size floor honored ({display_w})");
@@ -662,7 +662,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(surface, |ui| draw(ui, &mut v));
+    ui.run_at(surface, |ui| draw(ui, &mut v));
     ui.request_focus(Some(id));
-    ui.run_at_acked(surface, |ui| draw(ui, &mut v));
+    ui.run_at(surface, |ui| draw(ui, &mut v));
 }

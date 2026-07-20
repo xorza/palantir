@@ -15,7 +15,7 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight, TextShaper};
 use glam::Vec2;
 

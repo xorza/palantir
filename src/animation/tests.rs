@@ -11,7 +11,6 @@ use crate::forest::element::Configure;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::frame::FrameStamp;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -76,7 +75,7 @@ struct AnimUi {
 fn setup_anim_ui(salt: &'static str) -> AnimUi {
     let mut ui = Ui::for_test();
     let id = wid(salt);
-    ui.run_at(SURFACE, |ui| {
+    ui.run_at_without_baseline(SURFACE, |ui| {
         Frame::new().id(WidgetId::from_hash(salt)).show(ui);
     });
     let display = Display::from_physical(SURFACE, 1.0);
@@ -250,7 +249,7 @@ fn instant_duration_is_noop_and_drops_row() {
 
     // Instant on a fresh slot: snaps, no row, no repaint.
     let repaint = ui
-        .record(FrameStamp::new(display, Duration::from_millis(0)), |ui| {
+        .record_test_frame_without_baseline(display, Duration::from_millis(0), |ui| {
             let v = ui.animate(id, SLOT, 1.0_f32, instant);
             assert_eq!(v, 1.0);
             Frame::new()
@@ -262,13 +261,13 @@ fn instant_duration_is_noop_and_drops_row() {
     assert_eq!(ui.anim_row_count::<f32>(), 0);
 
     // Mid-flight on FAST: row gets allocated.
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(0)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(0), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
         Frame::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(50)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(50), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
         Frame::new()
             .id(WidgetId::from_hash("anim-instant"))
@@ -277,7 +276,7 @@ fn instant_duration_is_noop_and_drops_row() {
     assert!(ui.anim_row_count::<f32>() > 0);
 
     // Switching to instant mid-flight: snap and drop.
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(60)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(60), |ui| {
         let v = ui.animate(id, SLOT, 1.0_f32, instant);
         assert_eq!(v, 1.0);
         Frame::new()
@@ -291,7 +290,7 @@ fn instant_duration_is_noop_and_drops_row() {
     );
 
     // Switching back to FAST with a new target: first-touch snaps.
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(70)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(70), |ui| {
         let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimSpec::FAST));
         assert_eq!(v, 5.0, "post-instant first-touch snaps to new target");
         Frame::new()
@@ -523,7 +522,7 @@ fn spring_parameters_change_trajectory() {
     assert_ne!(default, custom);
 }
 
-/// Worst-case wall-clock `dt` (= `Ui::MAX_DT` after a stalled frame
+/// Worst-case wall-clock `dt` (= `FrameRuntime::MAX_DT` after a stalled frame
 /// or a tab-switch redraw gap) must not blow up the integrator: a
 /// single-step semi-implicit Euler at `dt = 0.1` with default spring
 /// `(170, 26)` produces a `current` far past the target (negative for
@@ -749,7 +748,7 @@ fn animate_drives_repaint_until_settle() {
     } = setup_anim_ui("anim-test");
 
     let repaint = ui
-        .record(FrameStamp::new(display, Duration::ZERO), |ui| {
+        .record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
             Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
@@ -760,7 +759,7 @@ fn animate_drives_repaint_until_settle() {
     );
 
     let repaint = ui
-        .record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+        .record_test_frame_without_baseline(display, Duration::from_millis(16), |ui| {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
             Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
@@ -772,7 +771,7 @@ fn animate_drives_repaint_until_settle() {
     for i in 0..100 {
         now += Duration::from_millis(16);
         let repaint = ui
-            .record(FrameStamp::new(display, now), |ui| {
+            .record_test_frame_without_baseline(display, now, |ui| {
                 let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
                 Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
             })
@@ -803,7 +802,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
 
     // First touch at target=80 → snap, no repaint.
     let mut now = Duration::ZERO;
-    let _ = ui.record(FrameStamp::new(display, now), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, now, |ui| {
         let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
         Frame::new()
             .id(WidgetId::from_hash("anim-novsync"))
@@ -815,7 +814,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
     for i in 0..200_000 {
         now += Duration::from_micros(10);
         let repaint = ui
-            .record(FrameStamp::new(display, now), |ui| {
+            .record_test_frame_without_baseline(display, now, |ui| {
                 let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
                 Frame::new()
                     .id(WidgetId::from_hash("anim-novsync"))
@@ -947,7 +946,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
         display,
     } = setup_anim_ui("anim-none");
     let repaint = ui
-        .record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+        .record_test_frame_without_baseline(display, Duration::from_millis(16), |ui| {
             let v1 = ui.animate(id, SLOT, 7.0_f32, None);
             let v2 = ui.animate(id, SLOT, 9.0_f32, None);
             assert_eq!(v1, 7.0);
@@ -973,11 +972,11 @@ fn animate_some_then_none_drops_stale_row() {
         display,
     } = setup_anim_ui("anim-toggle");
     // Frame A: animate to 1.0 with FAST (in flight).
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(0)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(0), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
         Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(50)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(50), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
         Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
@@ -987,7 +986,7 @@ fn animate_some_then_none_drops_stale_row() {
     );
 
     // Frame B: switch to None — the stale row should drop.
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(60)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(60), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
         Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
@@ -1032,7 +1031,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // None spec: snaps to target, no rows allocated. Use Cell to
     // capture out of the FnMut closure.
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(16), |ui| {
         captured.set(Some(look.clone().animate(ui, id, &fallback, None)));
         Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
@@ -1067,7 +1066,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         }),
         text: None,
     };
-    let _ = ui.record(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(32), |ui| {
         let _ = look2
             .clone()
             .animate(ui, id, &fallback, Some(AnimSpec::FAST));
@@ -1215,7 +1214,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         text: TextStyle::default().with_color(Color::WHITE),
     };
 
-    let first = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let first = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
         let current = ui.animate(id, SLOT, start.clone(), Some(AnimSpec::SPRING));
         assert_eq!(current, start);
         Frame::new()
@@ -1225,7 +1224,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     assert!(!first.repaint_requested);
 
     let mut now = Duration::from_millis(16);
-    let retarget = ui.record(FrameStamp::new(display, now), |ui| {
+    let retarget = ui.record_test_frame_without_baseline(display, now, |ui| {
         let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
         assert_eq!(current.background.fill, gradient);
         assert_ne!(current.text.color, target.text.color);
@@ -1239,7 +1238,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     for frame in 0..600 {
         now += Duration::from_millis(16);
         let mut current = target.clone();
-        let output = ui.record(FrameStamp::new(display, now), |ui| {
+        let output = ui.record_test_frame_without_baseline(display, now, |ui| {
             current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
             assert_eq!(current.background.fill, gradient);
             Frame::new()
@@ -1255,7 +1254,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     assert!(settled_at.is_some(), "the look's color spring must settle");
 
     now += Duration::from_millis(16);
-    let after_settle = ui.record(FrameStamp::new(display, now), |ui| {
+    let after_settle = ui.record_test_frame_without_baseline(display, now, |ui| {
         let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
         assert_eq!(current, target);
         Frame::new()

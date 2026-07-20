@@ -9,10 +9,30 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::renderer::texture_id::TextureId;
-use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
+use crate::shape::style::{LineCap, LineJoin};
 use crate::text::text_in_rect;
+use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum ColorMode {
+    Single = 0,
+    PerPoint = 1,
+    PerSegment = 2,
+}
+
+impl ColorMode {
+    pub(crate) const fn from_u8(value: u8) -> Self {
+        match value {
+            0 => ColorMode::Single,
+            1 => ColorMode::PerPoint,
+            2 => ColorMode::PerSegment,
+            _ => panic!("invalid ColorMode discriminant in cmd buffer"),
+        }
+    }
+}
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
 /// keys (which write the discriminant into the hash) stay stable

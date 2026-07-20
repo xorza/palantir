@@ -27,7 +27,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 use crate::text::{LineFit, ShapeParams, TextReuseCache, TextRunIdentity, TextShaper};
 use rustc_hash::FxHashSet;
 

@@ -24,9 +24,9 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 
     // Short text: caret at end (5) → x = 40 px ≤ inner_w. No scroll.
     let mut buf = String::from("hello");
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     ui.state_mut::<TextEditState>(ed_id).caret = 5;
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     let scroll = ui.state_mut::<TextEditState>(ed_id).scroll;
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
 
@@ -35,9 +35,9 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // scroll.x = caret_right (800 + 1.5) − (inner_w − caret_width) =
     // 801.5 − (267 − 1.5) = 536.
     let mut long = "a".repeat(100);
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut long));
+    ui.run_at(NARROW, |ui| body(ui, &mut long));
     ui.state_mut::<TextEditState>(ed_id).caret = 100;
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut long));
+    ui.run_at(NARROW, |ui| body(ui, &mut long));
     let scroll = ui.state_mut::<TextEditState>(ed_id).scroll;
     assert!((scroll.x - 536.0).abs() < 0.5, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
@@ -45,7 +45,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // Caret home: scroll.x snaps back so the start of the text is
     // visible again.
     ui.state_mut::<TextEditState>(ed_id).caret = 0;
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut long));
+    ui.run_at(NARROW, |ui| body(ui, &mut long));
     let scroll = ui.state_mut::<TextEditState>(ed_id).scroll;
     assert_eq!(scroll.x, 0.0, "scroll snaps to 0 when caret moves home");
 }
@@ -75,18 +75,18 @@ fn hug_width_editor_shows_full_text_after_growth() {
 
     // Start narrow so the Hug width settles small (rect ≈ one glyph).
     let mut buf = String::from("1");
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut buf));
+    ui.run_at(WIDE, |ui| body(ui, &mut buf));
     ui.state_mut::<TextEditState>(ed_id).caret = 1;
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut buf));
+    ui.run_at(WIDE, |ui| body(ui, &mut buf));
 
     // Grow the buffer with the caret pinned at the end. The first frame
     // still sees last frame's narrower rect and scrolls left to chase the
     // caret — exactly the transient that used to stick.
     buf.push_str("2345");
     ui.state_mut::<TextEditState>(ed_id).caret = buf.len();
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut buf));
+    ui.run_at(WIDE, |ui| body(ui, &mut buf));
     // Settle: the widened rect is now visible to update_scroll.
-    ui.run_at_acked(WIDE, |ui| body(ui, &mut buf));
+    ui.run_at(WIDE, |ui| body(ui, &mut buf));
 
     let scroll = ui.state_mut::<TextEditState>(ed_id).scroll;
     assert_eq!(
@@ -116,9 +116,9 @@ fn click_hit_test_compensates_for_scroll() {
     let mut buf = "a".repeat(100);
 
     // Drive caret to end so the editor scrolls all the way right.
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     ui.state_mut::<TextEditState>(ed_id).caret = 100;
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     let scroll_x = ui.state_mut::<TextEditState>(ed_id).scroll.x;
     assert!(scroll_x > 100.0, "precondition: editor is scrolled");
 
@@ -128,9 +128,9 @@ fn click_hit_test_compensates_for_scroll() {
     // Without compensation it'd land on byte 0.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(8.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    ui.run_at(NARROW, |ui| body(ui, &mut buf));
 
     let caret = ui.state_mut::<TextEditState>(ed_id).caret;
     let expected = (scroll_x / 8.0).round() as usize;

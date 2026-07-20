@@ -1,117 +1,8 @@
-use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
+use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use crate::{FocusPolicy, Ui};
-use winit::event::{Ime, WindowEvent};
-use winit::keyboard::{Key as WK, NamedKey};
-
-#[test]
-fn key_from_winit_named_keys() {
-    use NamedKey::*;
-    let cases: &[(NamedKey, Key)] = &[
-        (ArrowLeft, Key::ArrowLeft),
-        (ArrowRight, Key::ArrowRight),
-        (ArrowUp, Key::ArrowUp),
-        (ArrowDown, Key::ArrowDown),
-        (Backspace, Key::Backspace),
-        (Delete, Key::Delete),
-        (Home, Key::Home),
-        (End, Key::End),
-        (Enter, Key::Enter),
-        (Escape, Key::Escape),
-        (PageUp, Key::PageUp),
-        (PageDown, Key::PageDown),
-        (Tab, Key::Tab),
-        // Space collapses to Char(' ') so the editor treats it as text input.
-        (Space, Key::Char(' ')),
-        // Unenumerated NamedKeys land in the catch-all rather than dropping.
-        (F24, Key::Other),
-    ];
-    for (named, expected) in cases {
-        assert_eq!(key_from_winit(&WK::Named(*named)), *expected);
-    }
-}
-
-#[test]
-fn key_from_winit_character_carries_first_char() {
-    assert_eq!(key_from_winit(&WK::Character("A".into())), Key::Char('A'));
-    assert_eq!(key_from_winit(&WK::Character("é".into())), Key::Char('é'));
-}
-
-#[test]
-fn modifiers_from_winit_translates_each_bit() {
-    use crate::common::platform::{PLATFORM, Platform};
-    use crate::input::keyboard::modifiers_from_winit;
-    use winit::keyboard::ModifiersState;
-
-    let mac = matches!(PLATFORM, Platform::Mac);
-
-    assert_eq!(
-        modifiers_from_winit(&ModifiersState::empty()),
-        Modifiers::NONE
-    );
-
-    let m = modifiers_from_winit(&ModifiersState::SHIFT);
-    assert!(m.shift && !m.ctrl && !m.alt && !m.mac_ctrl);
-    let m = modifiers_from_winit(&ModifiersState::ALT);
-    assert!(m.alt && !m.shift && !m.ctrl && !m.mac_ctrl);
-
-    // The primary command bit (`ctrl`) is normalized from the platform
-    // key: Cmd (super) on macOS, physical Ctrl elsewhere.
-    let primary = if mac {
-        ModifiersState::SUPER
-    } else {
-        ModifiersState::CONTROL
-    };
-    let m = modifiers_from_winit(&primary);
-    assert!(m.ctrl && !m.shift && !m.alt && !m.mac_ctrl);
-
-    // Physical Control: on macOS it's the raw `mac_ctrl` (NOT the
-    // primary `ctrl`); on Win/Linux it *is* the primary.
-    let m = modifiers_from_winit(&ModifiersState::CONTROL);
-    if mac {
-        assert!(m.mac_ctrl && !m.ctrl);
-    } else {
-        assert!(m.ctrl && !m.mac_ctrl);
-    }
-
-    // Super on macOS is the primary and never sets `mac_ctrl`.
-    let m = modifiers_from_winit(&ModifiersState::SUPER);
-    if mac {
-        assert!(m.ctrl && !m.mac_ctrl);
-    } else {
-        assert!(!m.ctrl && !m.mac_ctrl);
-    }
-
-    let m = modifiers_from_winit(&(ModifiersState::SHIFT | primary));
-    assert!(m.shift && m.ctrl && !m.alt);
-}
-
-#[test]
-fn from_winit_ime_commit_routing() {
-    // (label, payload, expect_text). None expect = dropped cleanly.
-    // (label, payload). Long commits split at char boundaries — the
-    // concatenated chunks must roundtrip back to the original.
-    let cases: &[(&str, &str)] = &[
-        ("short_grapheme_emits_text", "é"),
-        ("over_inline_cap_splits", "0123456789abcdef"),
-        ("cjk_long_commit_splits", "日本語入力テスト文字列"),
-    ];
-    for (label, s) in cases {
-        let mut got = String::new();
-        InputEvent::from_winit(
-            &WindowEvent::Ime(Ime::Commit((*s).into())),
-            1.0,
-            |ev| match ev {
-                InputEvent::Text(chunk) => got.push_str(chunk.as_str()),
-                other => panic!("case {label}: unexpected {other:?}"),
-            },
-        );
-        assert_eq!(got, *s, "case {label}: roundtrip");
-    }
-}
-
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
@@ -235,11 +126,11 @@ fn focus_policy_routing() {
     for (label, policy, expect_focus) in cases {
         let mut ui = Ui::for_test();
         ui.set_focus_policy(*policy);
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
         ui.click_at(glam::Vec2::new(50.0, 20.0));
         assert_eq!(ui.focused_id(), Some(editable_id), "{label}: initial focus");
 
-        ui.run_at_acked(surface, build);
+        ui.run_at(surface, build);
         ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -278,11 +169,11 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
                 .show(ui);
         });
     };
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.click_at(glam::Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editable")));
 
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.click_at(glam::Vec2::new(150.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -299,7 +190,7 @@ fn focus_is_evicted_when_widget_disappears() {
 
     let mut ui = Ui::for_test();
     let surface = glam::UVec2::new(200, 80);
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("editable"))
@@ -311,7 +202,7 @@ fn focus_is_evicted_when_widget_disappears() {
     ui.click_at(glam::Vec2::new(50.0, 20.0));
     assert!(ui.focused_id().is_some());
 
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});
     });
     assert_eq!(
@@ -348,7 +239,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
     for (label, mode) in cases {
         let mut ui = Ui::for_test();
-        ui.run_at_acked(glam::UVec2::new(200, 80), |ui| {
+        ui.run_at(glam::UVec2::new(200, 80), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()
                     .id(WidgetId::from_hash("editable"))

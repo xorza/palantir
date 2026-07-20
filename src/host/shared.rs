@@ -5,6 +5,7 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
+use crate::common::clipboard::Clipboard;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::renderer::assets::RenderAssets;
 use crate::renderer::backend::BackendShared;
@@ -16,6 +17,7 @@ use crate::window::WindowToken;
 pub(crate) struct HostShared {
     pub(crate) text: TextShaper,
     pub(crate) assets: RenderAssets,
+    pub(crate) clipboard: Clipboard,
     pub(crate) diagnostics: DiagnosticsShared,
     pub(crate) windows: WindowDirectory,
 }
@@ -24,6 +26,7 @@ pub(crate) struct HostShared {
 pub(crate) struct UiShared {
     pub(crate) text: TextShaper,
     pub(crate) assets: RenderAssets,
+    pub(crate) clipboard: Clipboard,
     pub(crate) diagnostics: DiagnosticsShared,
     pub(crate) windows: WindowDirectory,
 }
@@ -37,7 +40,6 @@ pub(crate) struct DiagnosticsShared {
 #[derive(Debug, Default)]
 struct DiagnosticsState {
     overlay: DebugOverlayConfig,
-    overlay_dirty: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -57,6 +59,7 @@ impl HostShared {
         UiShared {
             text: self.text.clone(),
             assets: self.assets.clone(),
+            clipboard: self.clipboard.clone(),
             diagnostics: self.diagnostics.clone(),
             windows: self.windows.clone(),
         }
@@ -77,13 +80,7 @@ impl DiagnosticsShared {
     }
 
     pub(crate) fn debug_overlay_mut(&self) -> RefMut<'_, DebugOverlayConfig> {
-        let mut state = self.state.borrow_mut();
-        state.overlay_dirty = true;
-        RefMut::map(state, |state| &mut state.overlay)
-    }
-
-    pub(crate) fn take_overlay_dirty(&self) -> bool {
-        std::mem::take(&mut self.state.borrow_mut().overlay_dirty)
+        RefMut::map(self.state.borrow_mut(), |state| &mut state.overlay)
     }
 }
 
@@ -92,22 +89,18 @@ impl WindowDirectory {
         self.tokens.borrow().contains(&token)
     }
 
-    pub(crate) fn insert(&self, token: WindowToken) {
+    pub(crate) fn set_live(&self, token: WindowToken, live: bool) {
         let mut tokens = self.tokens.borrow_mut();
-        assert!(
-            !tokens.contains(&token),
-            "window directory already contains {token:?}"
-        );
-        tokens.push(token);
-    }
-
-    pub(crate) fn remove(&self, token: WindowToken) {
-        let mut tokens = self.tokens.borrow_mut();
-        let index = tokens
-            .iter()
-            .position(|candidate| *candidate == token)
-            .expect("removed window must exist in the window directory");
-        tokens.swap_remove(index);
+        let index = tokens.iter().position(|candidate| *candidate == token);
+        if live {
+            assert!(
+                index.is_none(),
+                "window directory already contains {token:?}"
+            );
+            tokens.push(token);
+        } else {
+            tokens.swap_remove(index.expect("removed window must exist in the window directory"));
+        }
     }
 }
 
@@ -115,6 +108,7 @@ impl WindowDirectory {
 mod tests {
     use std::rc::Rc;
 
+    use crate::debug_overlay::DebugOverlayConfig;
     use crate::host::shared::HostShared;
     use crate::renderer::texture_id::TextureId;
     use crate::window::WindowToken;
@@ -124,12 +118,12 @@ mod tests {
         let shared = HostShared::default();
         let ui = shared.ui_shared();
 
-        shared.windows.insert(WindowToken(1));
-        shared.windows.insert(WindowToken(2));
+        shared.windows.set_live(WindowToken(1), true);
+        shared.windows.set_live(WindowToken(2), true);
         assert!(ui.windows.contains(WindowToken(1)));
         assert!(ui.windows.contains(WindowToken(2)));
 
-        shared.windows.remove(WindowToken(1));
+        shared.windows.set_live(WindowToken(1), false);
         assert!(!ui.windows.contains(WindowToken(1)));
         assert!(ui.windows.contains(WindowToken(2)));
     }
@@ -138,13 +132,15 @@ mod tests {
     fn diagnostics_are_shared_across_capability_bundles() {
         let shared = HostShared::default();
         let ui = shared.ui_shared();
-        assert!(!shared.diagnostics.take_overlay_dirty());
+        assert_eq!(
+            shared.diagnostics.debug_overlay(),
+            DebugOverlayConfig::default()
+        );
 
         ui.diagnostics.debug_overlay_mut().damage_rect = true;
 
-        assert!(shared.diagnostics.take_overlay_dirty());
-        assert!(!ui.diagnostics.take_overlay_dirty());
         assert!(shared.diagnostics.debug_overlay().damage_rect);
+        assert!(ui.diagnostics.debug_overlay().damage_rect);
     }
 
     #[test]
@@ -158,5 +154,18 @@ mod tests {
         assert_eq!(backend.assets.texture_ids.reserve(), TextureId(2));
         backend.pass_stats.record_pass_ns(2_500_000);
         assert_eq!(ui.diagnostics.pass_stats.last_pass_ms(), Some(2.5));
+    }
+
+    #[test]
+    fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
+        let first = HostShared::default();
+        let first_window = first.ui_shared();
+        let second_window = first.ui_shared();
+        let second = HostShared::default().ui_shared();
+
+        first_window.clipboard.set("shared").unwrap();
+
+        assert_eq!(second_window.clipboard.get(), "shared");
+        assert_eq!(second.clipboard.get(), "");
     }
 }

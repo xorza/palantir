@@ -1,37 +1,34 @@
-//! `WindowDriver` — everything one window owns *above* the shared
-//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend): its [`Ui`]
-//! recorder, a per-window [`Frontend`] (CPU encode/compose scratch), the
-//! persistent [`Backbuffer`] (this surface's last-frame pixels), and the
-//! per-window frame-scheduling clock + occlusion state.
+//! `WindowDriver` — the target-agnostic render core one host target owns above
+//! the shared [`WgpuBackend`](crate::renderer::backend::WgpuBackend): its [`Ui`]
+//! recorder, a per-target [`Frontend`] (CPU encode/compose scratch), the
+//! persistent [`Backbuffer`] (the target's last-frame pixels), and the
+//! per-target frame clock.
 //!
 //! What every window shares splits two ways: the GPU resources — render
-//! pipelines, glyph + gradient atlases, the image texture cache, the
-//! device/queue — live on the **one** shared `WgpuBackend` the host passes
-//! into every method; render assets, text shaping, diagnostics, and the window
-//! directory derive from [`HostShared`] capability views. Each `Ui` owns its
-//! per-window record store alongside its tree. So N windows render through one
-//! GPU renderer without sharing frame-local geometry.
+//! pipelines, glyph + gradient atlases, the image texture cache, and renderer
+//! device/queue handles — live on the **one** shared `WgpuBackend` the host
+//! passes into every method; render assets, text shaping, diagnostics, and the
+//! window directory derive from [`HostShared`] capability views. Each `Ui` owns
+//! its per-window record store alongside its tree. So N windows render through
+//! one GPU renderer without sharing frame-local geometry.
 //!
-//! Two internal target paths share one CPU + GPU pipeline:
-//! [`WindowDriver::frame`] (to a swapchain surface — acquires, submits,
-//! presents, returns a [`FramePresent`] schedule) and
-//! [`WindowDriver::frame_offscreen`] (to a caller-supplied
-//! `wgpu::Texture` — no acquire/present, used by [`crate::OffscreenHost`]).
-
-use std::time::Instant;
+//! [`WindowDriver::cpu_frame`] freezes the frame and builds the draw list;
+//! [`WindowDriver::render_to_texture`] submits it to any caller-owned texture.
+//! [`crate::OffscreenHost`] drives those operations directly, while the winit
+//! adapter owns swapchain acquisition, presentation, occlusion, and wake
+//! scheduling.
 
 use crate::app::App;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
-use crate::input::InputEvent;
-use crate::input::response::InputDelta;
 use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::ui::damage::FULL_REPAINT_THRESHOLD;
+use crate::ui::frame::{FrameInput, FrameStamp};
 use crate::ui::frame_report::{RenderKind, RenderPlan};
-use crate::window::{CursorIcon, WindowCommands, WindowFrameState, WindowToken};
-use crate::{Display, FrameReport, FrameStamp};
+use crate::window::WindowToken;
+use crate::{Display, FrameReport};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
 /// [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU
@@ -60,6 +57,10 @@ pub(crate) struct WindowDriver {
     /// resume. Irrelevant to `BackbufferCopy` (every frame touches the
     /// backbuffer, so it always stays fresh).
     backbuffer_fresh: bool,
+    /// Whether the last frame completed the presentation action selected by
+    /// this driver. Invalid while a paint/copy is pending or after target
+    /// invalidation, so the next UI frame discards its prior damage baseline.
+    output_valid: bool,
     /// This window's rounded-clip stencil attachment — allocated lazily,
     /// resized to the target. Separate from `backbuffer` so the direct-present
     /// path can have a stencil without a backbuffer color texture.
@@ -70,37 +71,9 @@ pub(crate) struct WindowDriver {
     /// Injected at construction ([`RealtimeClock`](crate::host::clock::RealtimeClock)
     /// for on-screen windows, [`FixedClock`](crate::host::clock::FixedClock) for a
     /// reproducible offscreen render) so the pipeline doesn't branch on it.
-    clock: Box<dyn Clock>,
+    pub(crate) clock: Box<dyn Clock>,
     /// Whether axis-aligned paint edges snap to physical pixels.
-    pixel_snap: bool,
-    /// `Some(instant the window went occluded)` while occluded — `frame()`
-    /// short-circuits to `Idle` without running `cpu_frame`. Every
-    /// per-frame Ui flag (damage, repaint_requested, animation driver
-    /// state) is naturally preserved because nothing consumes it; input
-    /// still flows through `Ui::on_input` and accumulates for the first
-    /// un-occluded frame. On resume the clock is shifted forward by the
-    /// elapsed hidden duration so anim drivers don't see a giant `dt`
-    /// for the gap.
-    occluded_at: Option<Instant>,
-    /// Last physical size we actually called `surface.configure` for.
-    /// Resize handlers mutate `SurfaceConfiguration` directly; the
-    /// next `frame()` notices the mismatch and reconfigures once.
-    /// Coalesces compositor configure bursts (Wayland repeats the
-    /// configure on focus/output changes, and identical events
-    /// otherwise back-to-back) into a single GPU reallocation — see
-    /// wgpu #7447 for the 100ms+ stalls `surface.configure` triggers.
-    /// `None` until the first paint forces a baseline.
-    configured: Option<glam::UVec2>,
-    /// Color format of the last target this window rendered to. A format
-    /// flip changes nothing the `Ui` tracks — same size, same scene — so
-    /// without noticing it here an unchanged scene would damage-`Skip`
-    /// and copy the stale-format backbuffer. In practice only the
-    /// offscreen path can flip (each `frame_offscreen` call brings its
-    /// own `target.format()`); a swapchain's format is chosen once at
-    /// surface creation and never rewritten. `frame` / `frame_offscreen`
-    /// compare against it and force a full repaint on change (see
-    /// [`Self::note_format`]). `None` until the first paint.
-    last_format: Option<wgpu::TextureFormat>,
+    pub(crate) pixel_snap: bool,
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
@@ -126,7 +99,7 @@ pub(crate) enum PresentStrategy {
 /// draw list for it — and threaded through to the GPU half, so the
 /// submitted plan is by construction the one the draw list was built for.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum PresentMode {
+pub(crate) enum PresentMode {
     /// Skip frame on a backbuffer-copy window: copy the backbuffer onto the
     /// target so it's filled regardless of its prior contents.
     SkipCopy,
@@ -210,9 +183,9 @@ fn present_mode(
 /// recomputing it in the GPU half) is what guarantees the submitted plan
 /// is the one the draw list was built for.
 #[derive(Debug)]
-struct CpuFrame {
-    report: FrameReport,
-    mode: PresentMode,
+pub(crate) struct CpuFrame {
+    pub(crate) report: FrameReport,
+    pub(crate) mode: PresentMode,
 }
 
 /// Seals per-window policy before allocating the recorder and frontend.
@@ -249,13 +222,11 @@ impl WindowDriverBuilder<'_> {
             frontend: Frontend::new(self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
+            output_valid: false,
             stencil: None,
             strategy: self.strategy,
             clock: self.clock,
             pixel_snap: self.pixel_snap,
-            occluded_at: None,
-            configured: None,
-            last_format: None,
         }
     }
 }
@@ -282,140 +253,12 @@ impl WindowDriver {
         }
     }
 
-    pub(crate) fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.ui.on_input(event)
-    }
-
-    /// Drive from the host's window-event handler. While occluded,
-    /// `frame()` returns `Idle` without running CPU passes; pending
-    /// Ui state (damage, repaint requests, animation deadlines)
-    /// survives untouched until the window becomes visible again.
-    pub(crate) fn set_occluded(&mut self, occluded: bool) {
-        match (occluded, self.occluded_at) {
-            (true, None) => self.occluded_at = Some(Instant::now()),
-            (false, Some(t)) => {
-                self.occluded_at = None;
-                self.clock.skip(t.elapsed());
-            }
-            _ => {}
-        }
-    }
-
-    /// Detect a color-format change against the last frame's target and,
-    /// on change, force this frame to repaint fully. A format flip changes
-    /// nothing the `Ui` tracks (same size, same scene), so an unchanged
-    /// scene would otherwise damage-`Skip` and copy the stale-format
-    /// backbuffer. Clearing `frame_submitted` forces a full record +
-    /// clear (so submit, not the copy path, runs); the shared backend
-    /// builds the new format's pipelines lazily and the backbuffer
-    /// self-heals. Resetting `configured` forces a windowed surface
-    /// reconfigure at the new format. Runs every frame — a no-op once
-    /// the format is steady.
-    fn note_format(&mut self, format: wgpu::TextureFormat) {
-        if self.last_format != Some(format) {
-            self.last_format = Some(format);
-            self.ui.frame_runtime.frame_submitted = false;
-            self.configured = None;
-        }
-    }
-
-    /// Swapchain one-shot: run CPU + GPU + present through the shared
-    /// `backend`. Folds the acquire dance (Suboptimal / Outdated / Lost /
-    /// Timeout / Validation / Occluded) into the returned schedule.
-    /// Reconfigure-required variants call `surface.configure` before
-    /// returning. Skip frames bypass surface acquisition entirely.
-    ///
-    /// All per-frame swapchain and window-state inputs ride in on
-    /// [`WindowFrameInput`]. `Display` is built from the surface config here,
-    /// so its size can never disagree with the surface's. (The live-window
-    /// set + debug overlay reach the `Ui` through the shared [`HostShared`],
-    /// not here.)
-    pub(crate) fn frame<T: App>(
-        &mut self,
-        backend: &mut WgpuBackend,
-        input: WindowFrameInput<'_>,
-        app: &mut T,
-        pre_present: impl FnOnce(),
-    ) -> WindowFrameOutput {
-        // Bracket the body with a Tracy *discontinuous* frame so the
-        // frame strip shows actual work duration, not the gap between
-        // back-to-back `finish_frame!()` ticks (which counts idle time
-        // between user input as one giant "lagging" frame).
-        #[cfg(feature = "profile-with-tracy")]
-        let _tracy_frame = tracy_client::non_continuous_frame!("frame");
-        profiling::scope!("WindowDriver::frame");
-
-        let WindowFrameInput {
-            surface,
-            config,
-            scale_factor,
-            refresh_millihertz,
-            state,
-        } = input;
-        self.ui.window_frame = state;
-        self.ui.window_requests.close_vetoed = false;
-
-        if self.occluded_at.is_some() {
-            return self.window_frame_output(FramePresent::Idle);
-        }
-
-        // The surface config is the single source of truth for the
-        // physical size; `Display` is derived from it so the two can't
-        // drift apart.
-        let display = Display {
-            physical: glam::UVec2::new(config.width, config.height),
-            scale_factor,
-            pixel_snap: self.pixel_snap,
-            refresh_millihertz,
-        };
-
-        // Force a full repaint + surface reconfigure if the swapchain
-        // format changed (must run before the reconfigure block + cpu_frame).
-        self.note_format(config.format);
-
-        // Reconfigure-on-demand: callers update `config.width/height`
-        // freely (resize events) without paying for a `surface.configure`
-        // per event. We notice the mismatch here, reallocate once, and
-        // record the new size. First-paint takes the same path because
-        // `configured` starts `None`.
-        if self.configured != Some(display.physical) {
-            backend.configure_surface(surface, config);
-            self.configured = Some(display.physical);
-        }
-
-        let cpu = self.cpu_frame(display, app);
-        let present = self.present(backend, surface, config, cpu, pre_present);
-
-        profiling::finish_frame!();
-
-        self.window_frame_output(present)
-    }
-
-    /// Render one frame to a caller-supplied `wgpu::Texture` instead of a
-    /// swapchain surface — the texture sibling of [`Self::frame`]. No
-    /// acquire/present dance and no [`FramePresent`] schedule; `Display`'s
-    /// physical size is derived from `target.size()`. Runs the same CPU +
-    /// GPU path (`cpu_frame` → `render_to_texture`) as `frame`.
-    /// [`crate::OffscreenHost`] uses this path for screenshots, thumbnails,
-    /// offscreen compositing, the visual harness, and GPU benchmarks.
-    pub(crate) fn frame_offscreen<T: App>(
-        &mut self,
-        backend: &mut WgpuBackend,
-        target: &wgpu::Texture,
-        scale_factor: f32,
-        app: &mut T,
-    ) {
-        let size = target.size();
-        let display = Display {
-            pixel_snap: self.pixel_snap,
-            ..Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor)
-        };
-        // Force a full repaint when the target's format changes (offscreen
-        // has no surface to reconfigure).
-        self.note_format(target.format());
-        let cpu = self.cpu_frame(display, app);
-        self.render_to_texture(backend, target, cpu.mode);
-        self.discard_offscreen_window_output();
+    /// Invalidate all state whose correctness depends on the current render
+    /// target. Target-owning adapters call this when their size or format key
+    /// changes, before running the next CPU frame.
+    pub(crate) fn invalidate_target(&mut self) {
+        self.output_valid = false;
+        self.backbuffer_fresh = false;
     }
 
     /// The shared CPU half: app lifecycle → record / measure / arrange /
@@ -425,18 +268,26 @@ impl WindowDriver {
     /// is computed — so the GPU half submits exactly the plan the draw list
     /// was built for (a promoted or resync'd Partial builds its escalated Full
     /// list). No GPU input — the `GpuView` size cap was captured on the
-    /// `Frontend` at construction. Shared by [`Self::frame`] (surface) and
-    /// [`Self::frame_offscreen`] (texture).
+    /// `Frontend` at construction. Shared by the offscreen and surface
+    /// adapters.
     #[profiling::function]
-    fn cpu_frame<T: App>(&mut self, display: Display, app: &mut T) -> CpuFrame {
-        let report = self
-            .ui
-            .frame(FrameStamp::new(display, self.clock.now()), self.token, app);
+    pub(crate) fn cpu_frame<T: App>(&mut self, display: Display, app: &mut T) -> CpuFrame {
+        let report = self.ui.frame(
+            FrameInput {
+                stamp: FrameStamp::new(display, self.clock.now()),
+                damage_baseline_valid: self.output_valid,
+            },
+            self.token,
+            app,
+        );
         self.finish_cpu_frame(report)
     }
 
     fn finish_cpu_frame(&mut self, report: FrameReport) -> CpuFrame {
         let mode = present_mode(report.plan, self.strategy, self.backbuffer_fresh);
+        if !matches!(mode, PresentMode::SkipNoop) {
+            self.output_valid = false;
+        }
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets from the frozen scene.
         // Skip frames build nothing.
@@ -450,10 +301,9 @@ impl WindowDriver {
     /// `backend`, dispatching on the [`PresentMode`] `cpu_frame` sealed. On
     /// [`PresentMode::SkipCopy`], copies the persistent backbuffer onto
     /// `target` so callers that always present still see valid pixels.
-    /// Shared by [`Self::frame`]'s present path (the acquired swapchain
-    /// texture) and [`Self::frame_offscreen`] (an offscreen texture).
+    /// Shared by the offscreen and surface adapters.
     #[profiling::function]
-    fn render_to_texture(
+    pub(crate) fn render_to_texture(
         &mut self,
         backend: &mut WgpuBackend,
         target: &wgpu::Texture,
@@ -488,13 +338,10 @@ impl WindowDriver {
             }
             _ => None,
         };
-        // Skip arms leave `ui.frame_runtime.frame_submitted` alone —
-        // `Ui::frame` acks a skip itself; the paint arms ack here after a
-        // successful submit.
         match mode {
             // Nothing changed and the target already holds the last render —
             // leave it untouched.
-            PresentMode::SkipNoop => {}
+            PresentMode::SkipNoop => self.output_valid = true,
             PresentMode::SkipCopy => {
                 // A `Skip` implies the previous frame painted at this size +
                 // format, so the backbuffer must exist (and match — the
@@ -504,6 +351,7 @@ impl WindowDriver {
                     .as_ref()
                     .expect("SkipCopy implies a prior submitted paint frame");
                 backend.copy_backbuffer_to_surface(bb, target);
+                self.output_valid = true;
             }
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
@@ -521,7 +369,7 @@ impl WindowDriver {
                     debug_overlay,
                 });
                 self.backbuffer_fresh = false;
-                self.ui.frame_runtime.frame_submitted = true;
+                self.output_valid = true;
             }
             // Render into the backbuffer and copy it out; the backbuffer now
             // mirrors the target.
@@ -551,128 +399,10 @@ impl WindowDriver {
                     debug_overlay,
                 });
                 self.backbuffer_fresh = true;
-                self.ui.frame_runtime.frame_submitted = true;
+                self.output_valid = true;
             }
         }
     }
-
-    #[profiling::function]
-    fn present(
-        &mut self,
-        backend: &mut WgpuBackend,
-        surface: &wgpu::Surface<'_>,
-        config: &wgpu::SurfaceConfiguration,
-        cpu: CpuFrame,
-        pre_present: impl FnOnce(),
-    ) -> FramePresent {
-        let CpuFrame { report, mode } = cpu;
-        let repaint = if report.plan.is_none() {
-            report.repaint_requested
-        } else {
-            use wgpu::CurrentSurfaceTexture::*;
-            match surface.get_current_texture() {
-                Success(frame) => {
-                    self.render_to_texture(backend, &frame.texture, mode);
-                    // Compositor hook (winit's `Window::pre_present_notify`)
-                    // — required on Wayland to schedule the next frame
-                    // callback. Without it, `RedrawRequested` throttling
-                    // breaks and interactive resize / animation lag
-                    // behind the compositor's configure cadence. See
-                    // winit #2609, slint #4200.
-                    pre_present();
-                    backend.present(frame);
-                    report.repaint_requested
-                }
-                Suboptimal(_) | Outdated | Lost => {
-                    tracing::warn!("surface acquire: suboptimal / outdated / lost");
-                    backend.configure_surface(surface, config);
-                    true
-                }
-                Timeout | Validation => {
-                    tracing::warn!("surface acquire: timeout / validation");
-                    true
-                }
-                // Occlusion is normally handled by the early-out in
-                // `frame()` driven by `set_occluded`; if the surface
-                // reports it anyway (race with the window event),
-                // treat as "nothing to do".
-                Occluded => false,
-            }
-        };
-
-        if repaint {
-            FramePresent::Immediate
-        } else if let Some(at) = report.repaint_after.and_then(|d| self.clock.deadline(d)) {
-            FramePresent::At(at)
-        } else {
-            FramePresent::Idle
-        }
-    }
-
-    fn window_frame_output(&mut self, present: FramePresent) -> WindowFrameOutput {
-        let close_vetoed = self.ui.window_requests.close_vetoed;
-        if self.ui.window_frame.close_requested && !close_vetoed {
-            self.ui.window_requests.commands.closes.push(self.token);
-        }
-        let mut commands = WindowCommands::default();
-        commands.append(&mut self.ui.window_requests.commands);
-        self.ui.window_frame = WindowFrameState::default();
-        WindowFrameOutput {
-            present,
-            cursor: self.ui.window_requests.cursor,
-            commands,
-        }
-    }
-
-    fn discard_offscreen_window_output(&mut self) {
-        self.ui.window_requests.commands.opens.clear();
-        self.ui.window_requests.commands.closes.clear();
-        self.ui.window_requests.close_vetoed = false;
-        self.ui.window_frame = WindowFrameState::default();
-    }
-}
-
-/// Every per-frame input [`WindowDriver::frame`] needs from the windowing
-/// host. The surface `config` is the single source of truth for the physical
-/// pixel size, so the size is never passed or asserted twice.
-#[derive(Debug)]
-pub(crate) struct WindowFrameInput<'a> {
-    /// Swapchain surface to acquire + present this frame.
-    pub(crate) surface: &'a wgpu::Surface<'static>,
-    /// Its configuration; `width`/`height` define the physical size.
-    pub(crate) config: &'a wgpu::SurfaceConfiguration,
-    /// Logical→physical DPR scale for this window's current monitor.
-    pub(crate) scale_factor: f32,
-    /// Monitor refresh in millihertz (sets the repaint-wake coalesce
-    /// floor so timed wakes never out-pace the panel), or `None` when the
-    /// host can't determine it.
-    pub(crate) refresh_millihertz: Option<u32>,
-    pub(crate) state: WindowFrameState,
-}
-
-#[derive(Debug)]
-pub(crate) struct WindowFrameOutput {
-    pub(crate) present: FramePresent,
-    pub(crate) cursor: CursorIcon,
-    /// Drained recorder commands ready for the host's event-loop boundary.
-    pub(crate) commands: WindowCommands,
-}
-
-/// WindowDriver scheduling hint returned by [`WindowDriver::frame`]. Three
-/// mutually-exclusive states the event loop must service:
-///
-/// - [`Self::Immediate`] — call `request_redraw` right away
-///   (animation in flight, surface lost, occlusion change).
-/// - [`Self::At`] — schedule a wake at this `Instant` via
-///   `ControlFlow::WaitUntil`. Used for time-driven UI like tooltip
-///   delays where idle pixels don't change but a frame is still
-///   needed at a known moment.
-/// - [`Self::Idle`] — nothing pending; sleep until the next input.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum FramePresent {
-    Immediate,
-    At(Instant),
-    Idle,
 }
 
 #[cfg(test)]
@@ -788,6 +518,72 @@ mod present_mode_tests {
 }
 
 #[cfg(test)]
+mod output_validity_tests {
+    use crate::host::shared::HostShared;
+    use crate::host::window_driver::{PresentMode, PresentStrategy, WindowDriver};
+    use crate::primitives::color::Color;
+    use crate::text::TextShaper;
+    use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderKind, RenderPlan};
+    use crate::window::WindowToken;
+
+    fn report(plan: Option<RenderPlan>) -> FrameReport {
+        FrameReport {
+            repaint_requested: false,
+            repaint_after: None,
+            plan,
+            processing: FrameProcessing::SingleLayout,
+        }
+    }
+
+    #[test]
+    fn output_validity_tracks_invalidation_pending_and_completion() {
+        let shared = HostShared::new(TextShaper::default());
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared, 8192).build();
+        assert!(!driver.output_valid, "first frame has no presented output");
+
+        driver.output_valid = true;
+        driver.backbuffer_fresh = true;
+        driver.invalidate_target();
+        assert!(!driver.output_valid, "target change invalidates output");
+        assert!(
+            !driver.backbuffer_fresh,
+            "target change invalidates retained target pixels"
+        );
+
+        driver.output_valid = true;
+        let paint = driver.finish_cpu_frame(report(Some(RenderPlan {
+            clear: Color::BLACK,
+            kind: RenderKind::Full,
+        })));
+        assert!(matches!(paint.mode, PresentMode::Direct(_)));
+        assert!(
+            !driver.output_valid,
+            "paint stays pending until acquire and submit complete"
+        );
+
+        driver.output_valid = true;
+        assert!(driver.output_valid, "successful submit restores validity");
+
+        let skip = driver.finish_cpu_frame(report(None));
+        assert!(matches!(skip.mode, PresentMode::SkipNoop));
+        assert!(
+            driver.output_valid,
+            "SkipNoop preserves valid target pixels"
+        );
+
+        driver.strategy = PresentStrategy::BackbufferCopy;
+        let skip_copy = driver.finish_cpu_frame(report(None));
+        assert!(matches!(skip_copy.mode, PresentMode::SkipCopy));
+        assert!(
+            !driver.output_valid,
+            "SkipCopy stays pending until the copy is submitted"
+        );
+        driver.output_valid = true;
+        assert!(driver.output_valid, "successful copy restores validity");
+    }
+}
+
+#[cfg(test)]
 mod record_store_tests {
     use std::time::Duration;
 
@@ -797,7 +593,7 @@ mod record_store_tests {
     use crate::app::test_support::RecordApp;
     use crate::host::clock::FixedClock;
     use crate::host::shared::HostShared;
-    use crate::host::window_driver::{FramePresent, PresentStrategy, WindowDriver};
+    use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::color::{Color, ColorU8};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
@@ -808,7 +604,7 @@ mod record_store_tests {
     use crate::widgets::panel::Panel;
     use crate::widgets::spinner::Spinner;
     use crate::widgets::text::Text;
-    use crate::{Configure, CursorIcon, Display, WindowConfig, WindowToken};
+    use crate::{Configure, Display, WindowToken};
 
     #[derive(Debug, PartialEq)]
     struct RecordPayloadSnapshot {
@@ -832,22 +628,6 @@ mod record_store_tests {
 
         fn record(&mut self, win: WindowToken, _ui: &mut Ui) {
             self.records.push(win);
-        }
-    }
-
-    #[derive(Debug, Default)]
-    struct WindowCommandApp {
-        records: usize,
-    }
-
-    impl App for WindowCommandApp {
-        fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-            self.records += 1;
-            let target = WindowToken(100 + self.records as u64);
-            ui.open_window(target, WindowConfig::new("ignored"));
-            ui.close_window(target);
-            ui.keep_open();
-            ui.request_relayout();
         }
     }
 
@@ -911,94 +691,6 @@ mod record_store_tests {
             app.records,
             [token, token],
             "cold-start warmup and visible pass share the token",
-        );
-
-        let opened = WindowToken(18);
-        window
-            .ui
-            .open_window(opened, WindowConfig::new("inspector"));
-        window.ui.set_cursor(CursorIcon::Pointer);
-        window.ui.window_frame.close_requested = true;
-        let output = window.window_frame_output(FramePresent::Idle);
-        assert!(matches!(output.present, FramePresent::Idle));
-        assert_eq!(output.cursor, CursorIcon::Pointer);
-        assert_eq!(output.commands.opens.len(), 1);
-        assert_eq!(output.commands.opens[0].token, opened);
-        assert_eq!(
-            output.commands.closes,
-            [token],
-            "unvetoed OS close is accepted"
-        );
-        assert!(window.ui.window_requests.commands.opens.is_empty());
-        assert!(window.ui.window_requests.commands.closes.is_empty());
-
-        window.ui.window_frame.close_requested = true;
-        window.ui.keep_open();
-        let vetoed = window.window_frame_output(FramePresent::Idle);
-        assert!(
-            vetoed.commands.closes.is_empty(),
-            "keep_open vetoes the host close input"
-        );
-    }
-
-    #[test]
-    fn offscreen_completion_discards_replayed_window_state_and_reuses_capacity() {
-        let shared = HostShared::new(TextShaper::default());
-        let mut window = WindowDriver::builder(WindowToken(1), &shared, 8192)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
-        let display = Display::from_physical(UVec2::new(64, 64), 1.0);
-        let mut app = WindowCommandApp::default();
-        window.ui.window_frame.close_requested = true;
-
-        let _ = window.cpu_frame(display, &mut app);
-        assert_eq!(
-            app.records, 3,
-            "cold-start warmup plus relayout must replay record three times"
-        );
-        assert_eq!(window.ui.window_requests.commands.opens.len(), 3);
-        assert_eq!(window.ui.window_requests.commands.closes.len(), 3);
-        assert!(window.ui.window_requests.close_vetoed);
-        let open_capacity = window.ui.window_requests.commands.opens.capacity();
-        let close_capacity = window.ui.window_requests.commands.closes.capacity();
-
-        window.discard_offscreen_window_output();
-        assert!(window.ui.window_requests.commands.opens.is_empty());
-        assert!(window.ui.window_requests.commands.closes.is_empty());
-        assert_eq!(
-            window.ui.window_requests.commands.opens.capacity(),
-            open_capacity
-        );
-        assert_eq!(
-            window.ui.window_requests.commands.closes.capacity(),
-            close_capacity
-        );
-        assert!(!window.ui.window_requests.close_vetoed);
-        assert!(!window.ui.window_frame.close_requested);
-
-        window.ui.frame_runtime.frame_submitted = true;
-        window.ui.request_repaint();
-        let _ = window.cpu_frame(display, &mut app);
-        assert_eq!(app.records, 5, "relayout must replay the warm frame once");
-        assert_eq!(
-            window.ui.window_requests.commands.opens.capacity(),
-            open_capacity
-        );
-        assert_eq!(
-            window.ui.window_requests.commands.closes.capacity(),
-            close_capacity
-        );
-
-        window.discard_offscreen_window_output();
-        assert!(window.ui.window_requests.commands.opens.is_empty());
-        assert!(window.ui.window_requests.commands.closes.is_empty());
-        assert_eq!(
-            window.ui.window_requests.commands.opens.capacity(),
-            open_capacity
-        );
-        assert_eq!(
-            window.ui.window_requests.commands.closes.capacity(),
-            close_capacity
         );
     }
 
@@ -1065,7 +757,7 @@ mod record_store_tests {
             record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
         });
         let _ = window_a.cpu_frame(display, &mut app_a);
-        window_a.ui.frame_runtime.frame_submitted = true;
+        window_a.output_valid = true;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
         assert_eq!(retained.polyline_points.len(), 4);
@@ -1082,7 +774,7 @@ mod record_store_tests {
             );
         });
         let _ = window_b.cpu_frame(display, &mut app_b);
-        window_b.ui.frame_runtime.frame_submitted = true;
+        window_b.output_valid = true;
         assert_eq!(snapshot(&window_a), retained);
 
         let paint_only = window_a.cpu_frame(display, &mut app_a);

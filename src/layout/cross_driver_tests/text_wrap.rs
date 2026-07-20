@@ -15,7 +15,8 @@ use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
 use crate::renderer::frontend::cmd_buffer::Command;
-use crate::shape::{Shape, TextWrap};
+use crate::shape::Shape;
+use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -48,7 +49,7 @@ fn add_direct_text(
 fn wrapping_text_grows_height_in_narrow_frame() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut text_node = None;
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(60.0), Sizing::HUG))
@@ -93,7 +94,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut node = None;
-    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(80.0), Sizing::HUG))
@@ -142,7 +143,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
 #[test]
 fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let node = ui.run_at_value_acked(UVec2::new(200, 400), |ui| {
+    let node = ui.run_at_value(UVec2::new(200, 400), |ui| {
         two_hug_cols_with_wrap(ui, PARAGRAPH)
     });
     let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
@@ -165,7 +166,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let node = ui.run_at_value_acked(UVec2::new(200, 400), |ui| {
+    let node = ui.run_at_value(UVec2::new(200, 400), |ui| {
         two_hug_cols_with_wrap(ui, PARAGRAPH)
     });
     let payloads = ui.record_store.payloads.borrow();
@@ -226,7 +227,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
 #[test]
 fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let msg = ui.run_at_value_acked(UVec2::new(200, 400), |ui| {
+    let msg = ui.run_at_value(UVec2::new(200, 400), |ui| {
         chat_message(ui, 40.0, PARAGRAPH, 14.0)
     });
     let shaped = support::shaped_text(&ui.layout[Layer::Main], msg);
@@ -249,7 +250,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
 #[test]
 fn hstack_fill_wrap_text_floors_at_min_content() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let msg = ui.run_at_value_acked(UVec2::new(200, 400), |ui| {
+    let msg = ui.run_at_value(UVec2::new(200, 400), |ui| {
         chat_message(ui, 180.0, "supercalifragilistic", 14.0)
     });
     let shaped = support::shaped_text(&ui.layout[Layer::Main], msg);
@@ -268,7 +269,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
 #[test]
 fn hstack_fill_grows_to_content_when_slot_smaller_than_content() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let msg = ui.run_at_value_acked(UVec2::new(200, 400), |ui| {
+    let msg = ui.run_at_value(UVec2::new(200, 400), |ui| {
         chat_message(ui, 180.0, "supercalifragilistic", 14.0)
     });
     let shaped_w = support::shaped_text(&ui.layout[Layer::Main], msg)
@@ -355,7 +356,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
 
     fn measure_at(surface_w: u32) -> (f32, f32) {
         let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
-        let nodes = ui.run_at_value_acked(UVec2::new(surface_w, 400), build);
+        let nodes = ui.run_at_value(UVec2::new(surface_w, 400), build);
         let (grid, section) = nodes;
         let grid_w = ui.layout[Layer::Main].rect[grid.idx()].size.w;
         let section_w = ui.layout[Layer::Main].rect[section.idx()].size.w;
@@ -413,7 +414,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
 #[test]
 fn nonwrapping_text_minconent_equals_full_width() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 200));
-    let label_node = ui.run_at_value_acked(UVec2::new(400, 200), |ui| {
+    let label_node = ui.run_at_value(UVec2::new(400, 200), |ui| {
         Text::new("right column")
             .auto_id()
             .style(&TextStyle::default().with_font_size(14.0))
@@ -491,7 +492,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
 
     // Probe label's natural unbroken width at an unconstrained surface.
     let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
-    let probe_label = probe.run_at_value_acked(UVec2::new(2000, 400), |ui| build(ui).1);
+    let probe_label = probe.run_at_value(UVec2::new(2000, 400), |ui| build(ui).1);
     let payloads = probe.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
@@ -511,7 +512,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // The label cell must still get at least its full natural width.
     for surface_w in [400u32, 300, 250, 200] {
         let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
-        let label = ui.run_at_value_acked(UVec2::new(surface_w, 400), |ui| build(ui).1);
+        let label = ui.run_at_value(UVec2::new(surface_w, 400), |ui| build(ui).1);
         let label_rect_w = ui.layout[Layer::Main].rect[label.idx()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
@@ -558,7 +559,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
 
     // Label's natural unbroken width, probed unconstrained.
     let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
-    let probe_label = probe.run_at_value_acked(UVec2::new(2000, 400), build);
+    let probe_label = probe.run_at_value(UVec2::new(2000, 400), build);
     let payloads = probe.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
@@ -578,7 +579,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
     // label must still occupy its full width at each.
     for surface_w in [600u32, 500, 400, 300] {
         let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
-        let label = ui.run_at_value_acked(UVec2::new(surface_w, 400), build);
+        let label = ui.run_at_value(UVec2::new(surface_w, 400), build);
         let label_rect_w = ui.layout[Layer::Main].rect[label.idx()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
@@ -715,7 +716,7 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
 #[test]
 fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let scene = ui.run_at_value_acked(UVec2::new(400, 400), build_wrapping_container_text);
+    let scene = ui.run_at_value(UVec2::new(400, 400), build_wrapping_container_text);
     let layout = &ui.layout[Layer::Main];
     assert_eq!(layout.text_shapes.len(), 1);
     let container_rect = layout.rect[scene.container.idx()];
@@ -738,7 +739,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         })
         .collect();
     assert_eq!(draw_keys, [shaped.key]);
-    let leaf = ui.run_at_value_acked(UVec2::new(400, 400), |ui| {
+    let leaf = ui.run_at_value(UVec2::new(400, 400), |ui| {
         Text::new("leaf-only").show(ui).node()
     });
     let layout = &ui.layout[Layer::Main];
@@ -750,7 +751,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
 fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     let surface = UVec2::new(400, 400);
     let mut ui = Ui::for_test_at_text(surface);
-    let hidden_node = ui.run_at_value_acked(surface, |ui| {
+    let hidden_node = ui.run_at_value(surface, |ui| {
         build_container_text_with_visibility(ui, Visibility::Hidden)
     });
     let hidden_layout = &ui.layout[Layer::Main];
@@ -761,7 +762,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     assert_eq!(hidden_layout.text_spans[hidden_node.idx()].len, 0);
     assert!(hidden_layout.text_shapes.is_empty());
 
-    let collapsed_node = ui.run_at_value_acked(surface, |ui| {
+    let collapsed_node = ui.run_at_value(surface, |ui| {
         build_container_text_with_visibility(ui, Visibility::Collapsed)
     });
     let collapsed_layout = &ui.layout[Layer::Main];
@@ -769,7 +770,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     assert_eq!(collapsed_layout.text_spans[collapsed_node.idx()].len, 0);
     assert!(collapsed_layout.text_shapes.is_empty());
 
-    let visible_node = ui.run_at_value_acked(surface, |ui| {
+    let visible_node = ui.run_at_value(surface, |ui| {
         build_container_text_with_visibility(ui, Visibility::Visible)
     });
     let visible_layout = &ui.layout[Layer::Main];
@@ -788,7 +789,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
 #[test]
 fn container_and_child_text_keep_independent_order_across_cache_hit() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let first_scene = ui.run_at_value_acked(UVec2::new(400, 400), |ui| {
+    let first_scene = ui.run_at_value(UVec2::new(400, 400), |ui| {
         build_interleaved_container_text(ui)
     });
     let first_layout = &ui.layout[Layer::Main];
@@ -816,7 +817,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         first_draw_keys,
         [first_parent_keys[0], first_child_key, first_parent_keys[1]],
     );
-    let second_scene = ui.run_at_value_acked(UVec2::new(400, 400), |ui| {
+    let second_scene = ui.run_at_value(UVec2::new(400, 400), |ui| {
         build_interleaved_container_text(ui)
     });
     assert!(
@@ -861,7 +862,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let leaf = ui.run_at_value_acked(UVec2::new(400, 400), build_multi_text_leaf);
+    let leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
     let span = ui.layout[Layer::Main].text_spans[leaf.idx()];
     assert_eq!(
         span.len, 2,
@@ -896,7 +897,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
 #[test]
 fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let leaf = ui.run_at_value_acked(UVec2::new(400, 400), build_multi_text_leaf);
+    let leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
     let owner_min = ui.layout[Layer::Main].rect[leaf.idx()].min;
     let cmds = ui.encode_cmds();
     let mut drawn: Vec<glam::Vec2> = cmds
@@ -942,11 +943,11 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
 #[test]
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let f1_leaf = ui.run_at_value_acked(UVec2::new(400, 400), build_multi_text_leaf);
+    let f1_leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
     let f1_span = ui.layout[Layer::Main].text_spans[f1_leaf.idx()];
     let f1_first = ui.layout[Layer::Main].text_shapes[f1_span.start as usize];
     let f1_second = ui.layout[Layer::Main].text_shapes[(f1_span.start + 1) as usize];
-    let f2_leaf = ui.run_at_value_acked(UVec2::new(400, 400), build_multi_text_leaf);
+    let f2_leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
     let f2_span = ui.layout[Layer::Main].text_spans[f2_leaf.idx()];
     assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
     let f2_first = ui.layout[Layer::Main].text_shapes[f2_span.start as usize];
@@ -1015,7 +1016,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
     for h in [800u32, 400, 300, 200, 150, 100, 50] {
         let mut ui = Ui::for_test_at_text(UVec2::new(800, h));
         let mut nodes = (NodeId(0), NodeId(0));
-        ui.run_at_acked(UVec2::new(800, h), |ui| {
+        ui.run_at(UVec2::new(800, h), |ui| {
             nodes = build(ui);
         });
         let (chrome, inner) = nodes;
