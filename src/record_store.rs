@@ -21,11 +21,14 @@ use crate::primitives::interned_str::{InternedStr, RecordedText, TextArena};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::span::Span;
 use glam::Vec2;
+use rustc_hash::FxHashMap;
 use std::cell::{Ref, RefCell};
 use std::fmt::Write as _;
 use std::rc::Rc;
 
-/// Record-local handle into [`RecordPayloads::gradients`].
+const GRADIENT_CHAIN_END: u32 = u32::MAX;
+
+/// Record-local handle into [`RecordedGradients::records`].
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct GradientId(pub(crate) u32);
@@ -38,6 +41,59 @@ pub(crate) struct RecordedGradient {
     pub(crate) kind: FillKind,
     pub(crate) stops: GradientStops,
     pub(crate) interp: Interp,
+}
+
+impl PartialEq for RecordedGradient {
+    fn eq(&self, other: &Self) -> bool {
+        // Raw equality is the hot path; unpacking also collapses canonical ±0.
+        (self.axis == other.axis || self.axis.lanes() == other.axis.lanes())
+            && self.kind == other.kind
+            && self.stops == other.stops
+            && self.interp == other.interp
+    }
+}
+
+/// Record-local gradient content and interning metadata under one reset boundary.
+#[derive(Default, Debug)]
+pub(crate) struct RecordedGradients {
+    pub(crate) records: Vec<RecordedGradient>,
+    heads: FxHashMap<u64, GradientId>,
+    next: Vec<u32>,
+}
+
+impl RecordedGradients {
+    pub(crate) fn intern(&mut self, content_hash: u64, gradient: RecordedGradient) -> GradientId {
+        let head = self
+            .heads
+            .get(&content_hash)
+            .copied()
+            .map_or(GRADIENT_CHAIN_END, |id| id.0);
+        let mut current = head;
+        while current != GRADIENT_CHAIN_END {
+            let idx = current as usize;
+            // Equality confirmation keeps true hash collisions correct.
+            if self.records[idx] == gradient {
+                return GradientId(current);
+            }
+            current = self.next[idx];
+        }
+
+        assert!(
+            self.records.len() < GRADIENT_CHAIN_END as usize,
+            "recorded gradient count exceeds the u32 handle range",
+        );
+        let id = GradientId(self.records.len() as u32);
+        self.records.push(gradient);
+        self.next.push(head);
+        self.heads.insert(content_hash, id);
+        id
+    }
+
+    fn clear(&mut self) {
+        self.records.clear();
+        self.heads.clear();
+        self.next.clear();
+    }
 }
 
 /// Owner of one window's retained record payloads. `Ui` owns one;
@@ -71,13 +127,13 @@ pub(crate) struct RecordPayloads {
     /// the `CurveInstance` color lanes carry) — quantization happens
     /// once at lowering, not per-emitted-instance.
     pub(crate) polyline_colors: Vec<ColorU8>,
-    /// Record-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
-    /// by `shapes::lower::brush`) indexes into this vec. Cross-tree — storing
-    /// it here means chrome lowering on one tree and
+    /// Interned record-scoped gradient payloads. `ShapeBrush::Gradient(id)`
+    /// (set by `shapes::lower::brush`) indexes into its records. Cross-tree —
+    /// storing it here means chrome lowering on one tree and
     /// shape lowering on another share one pool, and the encoder only
     /// needs the record payloads (not the originating tree) to resolve a
     /// gradient id.
-    pub(crate) gradients: Vec<RecordedGradient>,
+    pub(crate) gradients: RecordedGradients,
     text: TextStore,
 }
 
@@ -91,14 +147,6 @@ struct TextStore {
 }
 
 impl RecordPayloads {
-    pub(crate) fn record_gradient(&mut self, gradient: RecordedGradient) -> GradientId {
-        let id = GradientId(
-            u32::try_from(self.gradients.len()).expect("recorded gradient count exceeds u32"),
-        );
-        self.gradients.push(gradient);
-        id
-    }
-
     pub(crate) fn text_bytes(&self) -> Ref<'_, str> {
         self.text.bytes()
     }
@@ -203,7 +251,10 @@ impl RecordStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::record_store::{RecordPayloads, RecordStore};
+    use crate::primitives::brush::{FillAxis, GradientStops, Interp, Spread, Stop};
+    use crate::primitives::color::ColorU8;
+    use crate::primitives::fill_wire::FillKind;
+    use crate::record_store::{RecordPayloads, RecordStore, RecordedGradient, RecordedGradients};
     use glam::Vec2;
     use std::cell::RefCell;
 
@@ -227,5 +278,44 @@ mod tests {
             &[Vec2::new(3.0, 5.0)],
         );
         assert!(second.payloads.borrow().polyline_points.is_empty());
+    }
+
+    #[test]
+    fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
+        let stops = GradientStops::new([
+            Stop::new(0.0, ColorU8::BLACK),
+            Stop::new(1.0, ColorU8::WHITE),
+        ]);
+        let first = RecordedGradient {
+            axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
+            kind: FillKind::linear(Spread::Pad),
+            stops,
+            interp: Interp::Oklab,
+        };
+        let colliding = RecordedGradient {
+            axis: FillAxis::from_lanes(0.0, 1.0, 0.0, 1.0),
+            ..first.clone()
+        };
+        let mut gradients = RecordedGradients::default();
+        let first_id = gradients.intern(7, first.clone());
+        let colliding_id = gradients.intern(7, colliding.clone());
+        let repeated_first_id = gradients.intern(7, first);
+        let repeated_colliding_id = gradients.intern(7, colliding);
+
+        assert_ne!(first_id, colliding_id);
+        assert_eq!(repeated_first_id, first_id);
+        assert_eq!(repeated_colliding_id, colliding_id);
+        assert_eq!(gradients.records.len(), 2);
+
+        gradients.clear();
+        let after_clear = RecordedGradient {
+            axis: FillAxis::ZERO,
+            kind: FillKind::linear(Spread::Reflect),
+            stops,
+            interp: Interp::Linear,
+        };
+        let after_clear_id = gradients.intern(7, after_clear);
+        assert_eq!(after_clear_id.0, 0);
+        assert_eq!(gradients.records.len(), 1);
     }
 }

@@ -1284,7 +1284,7 @@ pub(crate) mod test_support {
     use crate::layout::scroll::ScrollLayoutState;
     use crate::primitives::rect::Rect;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-    use crate::renderer::frontend::encoder::encode;
+    use crate::renderer::frontend::encoder::Encoder;
     use crate::text::TextShaper;
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
@@ -1588,10 +1588,9 @@ pub(crate) mod test_support {
                 None => RenderKind::Full,
             };
             let plan = RenderPlan { clear, kind };
-            let mut cmds = RenderCmdBuffer::default();
-            let payloads = self.record_store.payloads.borrow();
-            encode(self, &payloads, plan, &mut cmds);
-            cmds
+            let mut encoder = Encoder::default();
+            encoder.encode(self, plan);
+            encoder.cmds
         }
     }
 }

@@ -441,8 +441,7 @@ impl WindowDriver {
         // compose, and resolve `GpuView` targets, all reading the now-frozen
         // `Ui` immutably. Skip frames build nothing.
         if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
-            let payloads = self.ui.record_store.payloads.borrow();
-            self.frontend.build(&self.ui, &payloads, plan);
+            self.frontend.build(&self.ui, plan);
         }
         CpuFrame { report, mode }
     }

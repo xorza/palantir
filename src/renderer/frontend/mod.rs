@@ -1,7 +1,7 @@
 //! Frontend (CPU) rendering pipeline.
 //!
-//! 1. [`encode`] — `&Tree` → [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer)
-//!    (logical-px). Pure free fn.
+//! 1. [`Encoder`] — `&Tree` → [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer)
+//!    (logical-px). Owns the command output and encode scratch.
 //! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
@@ -19,18 +19,16 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
-use crate::record_store::RecordPayloads;
-use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::frontend::encoder::encode;
+use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::ui::Ui;
 use crate::ui::frame_report::RenderPlan;
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
-/// every persistent allocation (the encoder's [`RenderCmdBuffer`],
-/// the output `RenderBuffer`, and the [`Composer`] with its scratch).
+/// every persistent allocation (the [`Encoder`], output `RenderBuffer`,
+/// and the [`Composer`] with its scratch).
 /// No GPU handles; gradient atlas state lives on `RenderAssets`,
 /// shared with the backend.
 ///
@@ -38,7 +36,7 @@ use crate::ui::frame_report::RenderPlan;
 /// the host builds into the staged [`Self::buffer`] before GPU submission.
 #[derive(Debug)]
 pub(crate) struct Frontend {
-    cmds: RenderCmdBuffer,
+    encoder: Encoder,
     composer: Composer,
     pub(crate) buffer: RenderBuffer,
 }
@@ -50,7 +48,7 @@ impl Frontend {
     pub(crate) fn new(max_texture_dim: u32) -> Self {
         let owner = RenderOwnerId::reserve();
         Self {
-            cmds: RenderCmdBuffer::default(),
+            encoder: Encoder::default(),
             composer: Composer::new(max_texture_dim),
             buffer: RenderBuffer::new(owner),
         }
@@ -58,10 +56,11 @@ impl Frontend {
 
     /// Encode → compose into the staged output buffer.
     #[profiling::function]
-    pub(crate) fn build(&mut self, ui: &Ui, payloads: &RecordPayloads, plan: RenderPlan) {
-        encode(ui, payloads, plan, &mut self.cmds);
+    pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) {
+        self.encoder.encode(ui, plan);
+        let payloads = ui.record_store.payloads.borrow();
         self.composer
-            .compose(&self.cmds, payloads, ui.display, &mut self.buffer);
+            .compose(&self.encoder.cmds, &payloads, ui.display, &mut self.buffer);
         // Stamp the frame clock for the backend's per-GpuView `dt` (not
         // derivable from `Display`, so it doesn't ride `start_frame`).
         self.buffer.time = ui.frame_runtime.time;
@@ -87,12 +86,11 @@ pub(crate) mod test_support {
         /// Drive the full CPU-side frontend (encode + compose) against a
         /// just-recorded `Ui`. Bench / test reach-in for the otherwise
         /// `pub(crate)` `Frontend::build`. The output `RenderBuffer` is
-        /// crate-private; the side effect (mutating `self.cmds`,
+        /// crate-private; the side effect (mutating `self.encoder`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
         pub(crate) fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
-            let payloads = ui.record_store.payloads.borrow();
-            self.build(ui, &payloads, plan);
+            self.build(ui, plan);
         }
     }
 }
