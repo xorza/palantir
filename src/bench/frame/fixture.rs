@@ -11,7 +11,6 @@
 use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 
-use crate::forest::element::Configure;
 use crate::layout::types::align::Align;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
@@ -25,6 +24,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
+use crate::scene::element::Configure;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::{PolylineColors, Shape};
 use crate::text::wrap::TextWrap;

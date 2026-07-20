@@ -1,10 +1,10 @@
-use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::{Configure, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::{Response, enter_widget};
@@ -181,11 +181,11 @@ fn clamp_range(value: f32, min: f32, max: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
-    use crate::forest::element::Configure;
-    use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::transform::TranslateScale;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
     use crate::widgets::panel::Panel;
     use crate::widgets::slider::{
         Slider, clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step,

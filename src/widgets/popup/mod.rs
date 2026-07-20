@@ -1,10 +1,10 @@
-use crate::forest::element::{Configure, Element};
-use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
+use crate::scene::element::{Configure, Element};
+use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::resolve_container_chrome;

@@ -15,13 +15,12 @@ pub(crate) mod debug_overlay;
 /// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
 /// the host layer; not owned by any one subsystem.
 pub(crate) mod display;
-pub(crate) mod forest;
 pub(crate) mod host;
 pub(crate) mod input;
 pub(crate) mod layout;
 pub(crate) mod primitives;
-pub(crate) mod record_store;
 pub(crate) mod renderer;
+pub(crate) mod scene;
 pub(crate) mod shape;
 pub(crate) mod text;
 pub(crate) mod ui;
@@ -51,9 +50,6 @@ pub use app::App;
 pub use aperture_anim_derive::Animatable;
 pub use debug_overlay::DebugOverlayConfig;
 pub use display::Display;
-pub use forest::element::{Configure, Element};
-pub use forest::layer::Layer;
-pub use forest::visibility::Visibility;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
@@ -95,6 +91,9 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
+pub use scene::element::{Configure, Element};
+pub use scene::layer::Layer;
+pub use scene::visibility::Visibility;
 // Re-exported (not an aperture type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
@@ -164,12 +163,6 @@ pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowToken};
 mod hot_struct_sizes {
     use crate::animation::AnimRow;
     use crate::common::content_hash::ContentHash;
-    use crate::forest::element::Element;
-    use crate::forest::element::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
-    use crate::forest::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
-    use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::extras::ExtrasIdx;
-    use crate::forest::tree::node::NodeRecord;
     use crate::input::{TargetDeltas, response::ResponseState};
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
@@ -177,7 +170,6 @@ mod hot_struct_sizes {
     use crate::primitives::interned_str::RecordedText;
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
-    use crate::record_store::RecordedGradient;
     use crate::renderer::backend::text::GlyphInstance;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::cmd_buffer::payload::{
@@ -190,10 +182,17 @@ mod hot_struct_sizes {
     use crate::renderer::render_buffer::image::ImageInstance;
     use crate::renderer::render_buffer::mesh::MeshInstance;
     use crate::renderer::render_buffer::text::TextRun;
+    use crate::scene::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
+    use crate::scene::damage::region::DamageRegion;
+    use crate::scene::damage::snapshot::NodeSnapshot;
+    use crate::scene::element::Element;
+    use crate::scene::element::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
+    use crate::scene::record_store::RecordedGradient;
+    use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
+    use crate::scene::shapes::record::ShapeRecord;
+    use crate::scene::tree::extras::ExtrasIdx;
+    use crate::scene::tree::node::NodeRecord;
     use crate::text::TextCacheKey;
-    use crate::ui::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
-    use crate::ui::damage::region::DamageRegion;
-    use crate::ui::damage::snapshot::NodeSnapshot;
     use crate::widgets::WidgetEntry;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
@@ -259,17 +258,17 @@ mod hot_struct_sizes {
 
     hot_structs! {
         // Per-node SoA columns (touched every node, every frame).
-        NodeRecord => "forest::NodeRecord": 56 / 8,
-        LayoutCore => "forest::LayoutCore": 28 / 4,
-        NodeFlags => "forest::NodeFlags": 2 / 2,
-        ExtrasIdx => "forest::ExtrasIdx": 6 / 2,
-        BoundsExtras => "forest::BoundsExtras": 32 / 4,
-        PanelExtras => "forest::PanelExtras": 20 / 4,
-        Element => "forest::Element": 104 / 8,
+        NodeRecord => "scene::NodeRecord": 56 / 8,
+        LayoutCore => "scene::LayoutCore": 28 / 4,
+        NodeFlags => "scene::NodeFlags": 2 / 2,
+        ExtrasIdx => "scene::ExtrasIdx": 6 / 2,
+        BoundsExtras => "scene::BoundsExtras": 32 / 4,
+        PanelExtras => "scene::PanelExtras": 20 / 4,
+        Element => "scene::Element": 104 / 8,
         // Per-shape / per-chrome paint records + lowered fill forms.
-        ShapeRecord => "forest::ShapeRecord": 88 / 8,
+        ShapeRecord => "scene::ShapeRecord": 88 / 8,
         RecordedText => "shapes::RecordedText": 16 / 8,
-        ChromeRow => "forest::ChromeRow": 56 / 8,
+        ChromeRow => "scene::ChromeRow": 56 / 8,
         ShapeStroke => "shapes::ShapeStroke": 10 / 2,
         LoweredShadow => "shapes::LoweredShadow": 18 / 2,
         RecordedGradient => "shapes::RecordedGradient": 56 / 4,

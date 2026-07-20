@@ -21,6 +21,7 @@ pub(crate) mod frontend;
 pub(crate) mod gpu_view;
 pub(crate) mod gradient_atlas;
 pub(crate) mod image_registry;
+pub(crate) mod plan;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
 pub(crate) mod texture_id;

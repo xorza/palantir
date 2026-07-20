@@ -7,10 +7,10 @@ use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::tree::node::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::layout::{LayerLayout, ShapedText};
+use crate::scene::element::Configure;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 
 /// Test helper: the leaf's single shaped-text result. Asserts the

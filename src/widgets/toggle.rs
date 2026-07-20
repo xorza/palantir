@@ -1,10 +1,10 @@
 use crate::animation::AnimSpec;
-use crate::forest::element::{Configure, Element, Salt};
 use crate::input::response::ResponseState;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
+use crate::scene::element::{Configure, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;

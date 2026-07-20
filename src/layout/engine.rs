@@ -1,8 +1,3 @@
-use crate::forest::Forest;
-use crate::forest::element::columns::LayoutCore;
-use crate::forest::layer::Layer;
-use crate::forest::tree::Tree;
-use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
 use crate::layout::cache::{
     AvailableKey, CachedSubtree, CaptureTreeInput, INVALID_AVAILABLE, MeasureCache,
@@ -27,6 +22,11 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::Forest;
+use crate::scene::element::columns::LayoutCore;
+use crate::scene::layer::Layer;
+use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::text::{LineFit, ShapeParams, TextReuseCache, TextRunIdentity, TextShaper};
 use rustc_hash::FxHashSet;

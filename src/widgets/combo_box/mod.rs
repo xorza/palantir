@@ -1,8 +1,8 @@
-use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
+use crate::scene::element::{Configure, Element, Salt};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::{PolylineColors, Shape};
 use crate::ui::Ui;

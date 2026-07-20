@@ -13,9 +13,6 @@
 //! per-driver-file convention as the rest of layout.
 
 use crate::common::content_hash::ContentHash;
-use crate::forest::element::columns::LayoutCore;
-use crate::forest::tree::Tree;
-use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{
@@ -25,6 +22,9 @@ use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::columns::LayoutCore;
+use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::text::{ShapeParams, TextMeasurement, TextRunIdentity};
 

@@ -35,12 +35,12 @@ use self::stencil::STENCIL_FORMAT;
 use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::urect::URect;
-use crate::record_store::RecordPayloads;
 use crate::renderer::assets::RenderAssets;
 use crate::renderer::backend::text::TextBackend;
+use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::scene::record_store::RecordPayloads;
 use crate::text::TextShaper;
-use crate::ui::frame_report::RenderPlan;
 use rustc_hash::FxHashMap;
 use wgpu::util::StagingBelt;
 

@@ -1,8 +1,8 @@
-use crate::forest::element::{Configure, Element};
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::scene::element::{Configure, Element};
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -90,9 +90,9 @@ impl Configure for Separator {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
-    use crate::forest::element::Configure;
-    use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
     use crate::widgets::panel::Panel;
     use crate::widgets::separator::Separator;
     use glam::UVec2;

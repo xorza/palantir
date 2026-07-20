@@ -8,9 +8,9 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::damage::DAMAGE_AA_PADDING;
+use crate::renderer::plan::RenderKind;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::RenderKind;
+use crate::scene::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
 use tinyvec::ArrayVec;
 
@@ -125,10 +125,10 @@ mod tests {
     use crate::renderer::backend::viewport::{
         RepaintScissors, ViewportPush, build_repaint_scissors,
     };
+    use crate::renderer::plan::RenderKind;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_buffer::owner::RenderOwnerId;
-    use crate::ui::damage::region::DamageRegion;
-    use crate::ui::frame_report::RenderKind;
+    use crate::scene::damage::region::DamageRegion;
     use glam::{UVec2, Vec2};
 
     fn buffer() -> RenderBuffer {

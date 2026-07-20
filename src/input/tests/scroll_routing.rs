@@ -1,10 +1,10 @@
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::response::ScrollDelta;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 

@@ -1,6 +1,6 @@
-use crate::forest::element::{Configure, Element};
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
+use crate::scene::element::{Configure, Element};
 use crate::ui::Ui;
 use crate::widgets::{InnerResponse, Response, resolve_container_chrome};
 

@@ -13,8 +13,6 @@
 //! shared arrange-axis resolution makes Fill children grow to that
 //! height without shrinking below their measured content.
 
-use crate::forest::tree::Tree;
-use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
@@ -23,6 +21,8 @@ use crate::layout::support::{
     JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
 use crate::primitives::{rect::Rect, size::Size};
+use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 
 /// One child's measured contribution to the current line.
 #[derive(Clone, Copy, Debug)]

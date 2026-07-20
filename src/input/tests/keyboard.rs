@@ -1,7 +1,7 @@
 use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::cascade::Cascades;
+use crate::scene::cascade::Cascades;
 use crate::{FocusPolicy, Ui};
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
@@ -101,10 +101,10 @@ fn text_events_arrive_in_order_in_keyboard_buffer() {
 fn focus_policy_routing() {
     use crate::FocusPolicy;
     use crate::Ui;
-    use crate::forest::element::Configure;
     use crate::input::pointer::PointerButton;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     // (label, policy, expect_focus_after_outside_press).
@@ -148,9 +148,9 @@ fn focus_policy_routing() {
 #[test]
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::Ui;
-    use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = Ui::for_test();
@@ -184,8 +184,8 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
-    use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
+    use crate::scene::element::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = Ui::for_test();
@@ -227,9 +227,9 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     // Cascade combines `disabled || invisible`; pin both axes so a
     // future split doesn't keep one alive.
 
-    use crate::forest::element::Configure;
-    use crate::forest::visibility::Visibility;
     use crate::layout::types::sizing::Sizing;
+    use crate::scene::element::Configure;
+    use crate::scene::visibility::Visibility;
     use crate::widgets::{button::Button, panel::Panel};
 
     enum Mode {

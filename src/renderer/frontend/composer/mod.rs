@@ -1,5 +1,4 @@
 use crate::display::Display;
-use crate::forest::shapes::record::ColorMode;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};
@@ -9,7 +8,6 @@ use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
-use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
@@ -21,6 +19,8 @@ use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderT
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::text::TextRun;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
+use crate::scene::record_store::RecordPayloads;
+use crate::scene::shapes::record::ColorMode;
 use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT, stroked_bbox};
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
@@ -1362,7 +1362,7 @@ fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
 /// extra width is clipped at `TextRun.bounds`, and the cascade
 /// inflates text damage rects by the same fraction so a rung-jump
 /// between consecutive frames repaints all affected pixels (see
-/// `forest::shapes::record::text_paint_bbox_local`).
+/// `scene::shapes::record::text_paint_bbox_local`).
 ///
 /// Sourced from [`crate::text::TEXT_SCALE_STEP`] so the cascade's
 /// inflation and the composer's snap stay locked in step.

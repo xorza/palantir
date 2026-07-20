@@ -23,7 +23,7 @@ pub(crate) mod theme;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
-use crate::forest::element::Element;
+use crate::scene::element::Element;
 
 use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
@@ -227,7 +227,7 @@ impl<'a, R> std::ops::Deref for InnerResponse<'a, R> {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::forest::tree::node::NodeId;
+    use crate::scene::tree::node::NodeId;
     use crate::widgets::*;
 
     impl Response<'_> {

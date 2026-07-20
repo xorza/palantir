@@ -1,6 +1,4 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::layout::axis::Axis;
 use crate::layout::grid::{AxisScratch, GridDepthStack, known_span_size, resolve_axis};
 use crate::layout::intrinsic::LenReq;
@@ -9,6 +7,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};

@@ -1,7 +1,7 @@
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
 use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

@@ -2,7 +2,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
-use crate::record_store::RecordStore;
+use crate::scene::record_store::RecordStore;
 use crate::text::{
     FontFamily, FontWeight, LineFit, ShapeParams, TextMeasurement, TextReuseCache, TextRunIdentity,
     TextShaper,

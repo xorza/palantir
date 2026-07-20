@@ -1,6 +1,6 @@
 use crate::input::{InputEvent, InputState, wheel_zoom_factor, zoom_factor_is_valid};
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::cascade::Cascades;
+use crate::scene::cascade::Cascades;
 
 fn pinch_state() -> InputState {
     InputState {

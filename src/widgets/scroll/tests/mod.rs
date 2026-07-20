@@ -1,14 +1,14 @@
 mod zoom_config;
 
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -657,10 +657,6 @@ fn pointer_zoom_pivot_is_scale_invariant() {
 mod bars {
     use crate::Ui;
     use crate::display::Display;
-    use crate::forest::element::Configure;
-    use crate::forest::layer::Layer;
-    use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::node::NodeId;
     use crate::input::InputEvent;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
@@ -668,6 +664,10 @@ mod bars {
     use crate::primitives::rect::Rect;
     use crate::primitives::size::Size;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
+    use crate::scene::shapes::record::ShapeRecord;
+    use crate::scene::tree::node::NodeId;
     use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;

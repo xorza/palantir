@@ -1,5 +1,5 @@
-use crate::forest::element::{Configure, Element};
 use crate::primitives::background::Background;
+use crate::scene::element::{Configure, Element};
 use crate::ui::Ui;
 use crate::widgets::Response;
 

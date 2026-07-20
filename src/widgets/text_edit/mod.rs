@@ -1,8 +1,6 @@
 mod input;
 pub(crate) mod model;
 
-use crate::forest::element::{Configure, Element};
-use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::clip_mode::ClipMode;
@@ -11,6 +9,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::{Configure, Element};
+use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::text::{

@@ -1,10 +1,3 @@
-use crate::forest::Forest;
-use crate::forest::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush};
-use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
-use crate::forest::tree::Tree;
-use crate::forest::tree::iter::TreeItem;
-use crate::forest::tree::node::NodeId;
-use crate::forest::tree::paint_anims::PaintAnimCursor;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx::noop_f32;
@@ -15,7 +8,6 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
-use crate::record_store::RecordedGradient;
 use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
@@ -25,13 +17,21 @@ use crate::renderer::frontend::cmd_buffer::payload::{
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
 };
+use crate::scene::Forest;
+use crate::scene::cascade::CascadeInputHash;
+use crate::scene::damage::region::DamageRegion;
+use crate::scene::record_store::RecordedGradient;
+use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush};
+use crate::scene::shapes::record::{ShapeRecord, shadow_paint_rect_local};
+use crate::scene::tree::Tree;
+use crate::scene::tree::iter::TreeItem;
+use crate::scene::tree::node::NodeId;
+use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::text::{TextShaper, text_in_rect};
-use crate::ui::cascade::CascadeInputHash;
-use crate::ui::damage::region::DamageRegion;
-use crate::ui::frame_report::{RenderKind, RenderPlan};
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -858,7 +858,7 @@ pub(crate) mod test_support {
     use crate::renderer::frontend::FrameScene;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder::Encoder;
-    use crate::ui::frame_report::RenderPlan;
+    use crate::renderer::plan::RenderPlan;
 
     pub(crate) fn encode(scene: FrameScene<'_>, plan: RenderPlan) -> RenderCmdBuffer {
         let mut encoder = Encoder::default();

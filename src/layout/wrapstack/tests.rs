@@ -1,7 +1,4 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::axis::Axis;
 use crate::layout::types::{
     justify::Justify,
@@ -11,6 +8,9 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

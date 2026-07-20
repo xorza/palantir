@@ -1,6 +1,6 @@
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::cascade::Cascades;
+use crate::scene::cascade::Cascades;
 use glam::Vec2;
 
 #[test]

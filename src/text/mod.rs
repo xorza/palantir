@@ -49,7 +49,7 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 /// unscaled cascade scale; the composer paints glyphs at the snapped
 /// scale — between rungs the painted block can be up to
 /// `TEXT_SCALE_STEP / 2` wider than the damage rect on each axis.
-/// [`crate::forest::shapes::record::text_paint_bbox_local`] inflates
+/// [`crate::scene::shapes::record::text_paint_bbox_local`] inflates
 /// by this fraction to keep damage covering the worst-case painted
 /// extent.
 ///

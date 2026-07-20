@@ -1,11 +1,11 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::tree::node::NodeId;
 use crate::input::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::drag_value::{DragEdit, DragNum, DragValue, round_to_decimals};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -573,10 +573,10 @@ fn drag_num_edit_string_and_parse_round_trip() {
 fn editing_a_long_value_holds_the_field_width() {
     use super::DragValue;
     use crate::Ui;
-    use crate::forest::element::Configure;
-    use crate::forest::layer::Layer;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
 
@@ -630,10 +630,10 @@ fn editing_a_long_value_holds_the_field_width() {
 fn editing_under_a_scaled_canvas_does_not_panic() {
     use super::DragValue;
     use crate::Ui;
-    use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::transform::TranslateScale;
     use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
 

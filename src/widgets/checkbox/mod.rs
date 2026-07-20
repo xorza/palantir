@@ -1,6 +1,6 @@
-use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::primitives::interned_str::TextInput;
+use crate::scene::element::{Configure, Element};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::{PolylineColors, Shape};
 use crate::ui::Ui;

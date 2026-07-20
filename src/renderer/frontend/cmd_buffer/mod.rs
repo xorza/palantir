@@ -40,12 +40,12 @@
 //! authoring boundary instead; the payload's own `is_noop` still
 //! gates degenerate geometry (point count / width).
 
-use crate::forest::shapes::paint::ShapeStroke;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::texture_id::TextureId;
+use crate::scene::shapes::paint::ShapeStroke;
 use crate::text::TextCacheKey;
 
 pub(crate) mod payload;

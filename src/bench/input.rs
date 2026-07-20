@@ -22,11 +22,11 @@
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
 use crate::display::Display;
-use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
+use crate::scene::element::Configure;
 use crate::ui::Ui;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;

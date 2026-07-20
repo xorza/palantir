@@ -1,8 +1,8 @@
 use crate::app::test_support::RecordApp;
 use crate::host::shared::HostShared;
+use crate::scene::damage::region::DamageRegion;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame::{FrameInput, FrameStamp};
 use crate::{Display, FrameReport, WindowToken};
 use std::time::Duration;
@@ -78,9 +78,6 @@ mod unit {
     use crate::Ui;
     use crate::animation::animatable::Animatable;
     use crate::display::Display;
-    use crate::forest::element::Configure;
-    use crate::forest::layer::Layer;
-    use crate::forest::tree::node::NodeId;
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;
@@ -88,9 +85,12 @@ mod unit {
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder;
-    use crate::ui::damage::region::DamageRegion;
+    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::scene::damage::region::DamageRegion;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
+    use crate::scene::tree::node::NodeId;
     use crate::ui::frame::FrameStamp;
-    use crate::ui::frame_report::{RenderKind, RenderPlan};
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
     use std::time::Duration;

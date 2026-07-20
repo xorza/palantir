@@ -1,4 +1,3 @@
-use crate::forest::element::{Configure, Element, Salt};
 use crate::input::response::ButtonPhase;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
@@ -7,6 +6,7 @@ use crate::layout::types::justify::Justify;
 use crate::primitives::background::Background;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::{Configure, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;

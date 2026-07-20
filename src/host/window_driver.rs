@@ -23,10 +23,10 @@ use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
 use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
 use crate::renderer::frontend::Frontend;
+use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
-use crate::ui::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::frame::{FrameInput, FrameStamp};
-use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::window::WindowToken;
 use crate::{Display, FrameReport};
 
@@ -412,8 +412,8 @@ mod present_mode_tests {
     use crate::host::window_driver::{PresentMode, present_mode};
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
-    use crate::ui::frame_report::{RenderKind, RenderPlan};
+    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
     /// 100×100 logical surface (10_000 px²) the partial fixtures collapse
     /// against, so a `w×h` damage rect carries `coverage = w·h / 10_000`.
@@ -522,8 +522,9 @@ mod output_validity_tests {
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentMode, PresentStrategy, WindowDriver};
     use crate::primitives::color::Color;
+    use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::text::TextShaper;
-    use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderKind, RenderPlan};
+    use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::window::WindowToken;
 
     fn report(plan: Option<RenderPlan>) -> FrameReport {

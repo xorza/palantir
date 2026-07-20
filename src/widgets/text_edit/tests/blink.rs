@@ -5,9 +5,9 @@ use crate::widgets::text_edit::tests::*;
 /// text change. Off entirely when the editor isn't focused.
 #[test]
 fn caret_blinks_on_and_off_while_focused() {
-    use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::iter::{TreeItem, TreeItems};
-    use crate::forest::tree::node::NodeId;
+    use crate::scene::shapes::record::ShapeRecord;
+    use crate::scene::tree::iter::{TreeItem, TreeItems};
+    use crate::scene::tree::node::NodeId;
     use std::time::Duration;
 
     fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {

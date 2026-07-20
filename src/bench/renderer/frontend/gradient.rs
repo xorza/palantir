@@ -1,13 +1,13 @@
 //! Record-to-compose comparison for repeated solid and gradient chrome.
 
 use crate::display::Display;
-use crate::forest::element::Configure;
 use crate::primitives::background::Background;
 use crate::primitives::brush::{Brush, LinearGradient};
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
+use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::scene::element::Configure;
 use crate::ui::Ui;
-use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::frame::Frame;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;

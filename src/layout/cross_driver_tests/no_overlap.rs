@@ -7,13 +7,13 @@ use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::Command;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 

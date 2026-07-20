@@ -7,8 +7,8 @@
 //! See `text_edit::mod.rs::show` ("Text or placeholder…" block) and
 //! `support::arrange_axis` for the two invariants this test guards.
 
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::text_edit::tests::*;
 
 const SIZE: UVec2 = UVec2::new(400, 80);

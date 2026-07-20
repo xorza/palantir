@@ -1,9 +1,6 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::display::Display;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::host::shared::HostShared;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
@@ -11,10 +8,13 @@ use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
+use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::scene::damage::Damage;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::ui::damage::Damage;
 use crate::ui::frame::{FrameRuntime, FrameStamp};
-use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
 use glam::{IVec2, UVec2, Vec2};
@@ -46,9 +46,9 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 }
 
 fn add_blink_shape(ui: &mut Ui, half: Duration) {
-    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
+    use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
 
     ui.add_shape_animated(
@@ -657,12 +657,12 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 
 #[test]
 fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
-    use crate::forest::element::Element;
-    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::host::shared::HostShared;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::renderer::frontend::Frontend;
+    use crate::scene::element::Element;
+    use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use crate::text::{FontFamily, FontWeight, TextShaper};
     use crate::ui::frame_report::FrameProcessing;
@@ -1354,7 +1354,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 #[test]
 fn widget_text_inputs_lower_exact_bytes_and_hashes() {
     use crate::common::hash::hash_str;
-    use crate::forest::shapes::record::ShapeRecord;
+    use crate::scene::shapes::record::ShapeRecord;
 
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
@@ -1409,7 +1409,7 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
 #[test]
 fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
     use crate::common::hash::hash_str;
-    use crate::forest::shapes::record::ShapeRecord;
+    use crate::scene::shapes::record::ShapeRecord;
     use std::rc::Rc;
 
     fn assert_recorded_text(ui: &Ui, expected: &str) {
@@ -2040,8 +2040,8 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
 /// `widgets::tests::scroll::cascade_skip_busts_on_scroll_offset_change`.
 #[test]
 fn cascade_fingerprint_covers_authoring_input_classes() {
-    use crate::forest::visibility::Visibility;
     use crate::layout::types::clip_mode::ClipMode;
+    use crate::scene::visibility::Visibility;
 
     fn probe(ui: &mut Ui, cfg: impl FnOnce(Frame) -> Frame) {
         cfg(Frame::new().id(WidgetId::from_hash("probe")).size(50.0)).show(ui);
@@ -2304,8 +2304,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "interactions must mask on the disable frame"
     );
 
-    use crate::forest::shapes::paint::ShapeBrush;
     use crate::primitives::color::ColorF16;
+    use crate::scene::shapes::paint::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = Color::rgb(0.8, 0.1, 0.2);

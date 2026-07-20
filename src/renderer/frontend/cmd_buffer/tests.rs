@@ -1,4 +1,3 @@
-use crate::forest::shapes::paint::ShapeStroke;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -10,6 +9,7 @@ use crate::renderer::frontend::cmd_buffer::{
 };
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::texture_id::TextureId;
+use crate::scene::shapes::paint::ShapeStroke;
 use glam::Vec2;
 use std::cell::RefCell;
 use std::rc::Rc;

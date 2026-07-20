@@ -1,6 +1,3 @@
-use crate::forest::element::Salt;
-use crate::forest::element::{Configure, Element};
-use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;
@@ -8,6 +5,9 @@ use crate::primitives::interned_str::TextInput;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Salt;
+use crate::scene::element::{Configure, Element};
+use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
@@ -36,7 +36,7 @@ static GLOBAL_STATE_ID: LazyLock<WidgetId> =
     LazyLock::new(|| WidgetId::from_hash("aperture.tooltip.global"));
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
-/// [`crate::forest::layer::Layer::Tooltip`] after the pointer has rested
+/// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested
 /// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
 /// seconds. A short warmup window (configured on the theme) keeps
 /// subsequent tooltips instant after one was dismissed, so scanning a

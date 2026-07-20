@@ -30,7 +30,6 @@
 //! use `Ui::for_test_text()` so text-shaping cost is in the measurement.
 
 use crate::display::Display;
-use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -38,6 +37,7 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
+use crate::scene::element::Configure;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
@@ -375,7 +375,7 @@ pub fn bench(c: &mut Criterion) {
 #[cfg(test)]
 mod tests {
     use crate::display::Display;
-    use crate::forest::layer::Layer;
+    use crate::scene::layer::Layer;
     use crate::ui::Ui;
     use std::time::Duration;
 

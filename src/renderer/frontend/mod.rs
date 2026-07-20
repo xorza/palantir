@@ -23,19 +23,19 @@ use std::cell::Ref;
 use std::time::Duration;
 
 use crate::display::Display;
-use crate::forest::Forest;
 use crate::layout::Layout;
 use crate::primitives::widget_id::WidgetIdMap;
-use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
+use crate::scene::Forest;
+use crate::scene::cascade::Cascades;
+use crate::scene::record_store::RecordPayloads;
 use crate::text::TextShaper;
-use crate::ui::cascade::Cascades;
-use crate::ui::frame_report::RenderPlan;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
 pub(crate) struct FrameScene<'a> {
