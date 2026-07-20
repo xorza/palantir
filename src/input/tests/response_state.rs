@@ -25,7 +25,7 @@ fn build_focusable_leaf(ui: &mut Ui) {
 #[test]
 fn focused_reflects_focused_id_synchronously() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), build_focusable_leaf);
+    ui.run_at(UVec2::new(200, 200), build_focusable_leaf);
     assert!(!ui.response_for(focusable_id()).focused);
 
     ui.request_focus(Some(focusable_id()));
@@ -52,8 +52,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(UVec2::new(200, 200), build);
-    ui.run_at_acked(UVec2::new(200, 200), build);
+    ui.run_at(UVec2::new(200, 200), build);
+    ui.run_at(UVec2::new(200, 200), build);
 
     let parent_state = ui.response_for(WidgetId::from_hash("parent"));
     let child_state = ui.response_for(WidgetId::from_hash("child"));
@@ -77,8 +77,8 @@ fn disabled_false_when_chain_clean() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(UVec2::new(200, 200), build);
-    ui.run_at_acked(UVec2::new(200, 200), build);
+    ui.run_at(UVec2::new(200, 200), build);
+    ui.run_at(UVec2::new(200, 200), build);
     assert!(!ui.response_for(WidgetId::from_hash("child")).disabled);
 }
 
@@ -167,7 +167,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     let id = WidgetId::from_hash("btn");
     // No pointer is ever fed → the frame is quiescent, so the snapshot
     // taken at record-pass start stays valid for this post-frame read.
-    ui.run_at_acked(button_surface(), build_button(id));
+    ui.run_at(button_surface(), build_button(id));
 
     let r = ui.response_for(id);
     let rect = r
@@ -197,13 +197,13 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 fn non_quiescent_frame_computes_interaction() {
     let mut ui = Ui::for_test();
     let id = WidgetId::from_hash("btn");
-    ui.run_at_acked(button_surface(), build_button(id));
+    ui.run_at(button_surface(), build_button(id));
 
     let pointer = Vec2::new(50.0, 20.0);
     ui.on_input(InputEvent::PointerMoved(pointer));
     // Run a frame *after* the pointer event so the snapshot reflects it,
     // then read — the pointer makes the frame non-quiescent (full path).
-    ui.run_at_acked(button_surface(), build_button(id));
+    ui.run_at(button_surface(), build_button(id));
 
     let r = ui.response_for(id);
     let layout_rect = r.layout_rect.expect("arranged layout rect present");
@@ -238,7 +238,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
                         .show(ui);
                 });
         };
-        ui.run_at_acked(UVec2::new(300, 200), build);
+        ui.run_at(UVec2::new(300, 200), build);
 
         let arranged = ui.response_for(id);
         let layout = arranged.layout_rect.expect("button arranged");
@@ -249,7 +249,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
         ui.on_input(InputEvent::PointerMoved(press));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerMoved(pointer));
-        ui.run_at_acked(UVec2::new(300, 200), build);
+        ui.run_at(UVec2::new(300, 200), build);
 
         let response = ui.response_for(id);
         assert_eq!(
@@ -282,7 +282,7 @@ fn pointer_local_uses_unclipped_widget_origin() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(button_surface(), build);
+    ui.run_at(button_surface(), build);
 
     let arranged = ui.response_for(id);
     let visible = arranged.rect.expect("child visible through clip");
@@ -295,7 +295,7 @@ fn pointer_local_uses_unclipped_widget_origin() {
 
     let pointer = visible.min + Vec2::new(10.0, 10.0);
     ui.on_input(InputEvent::PointerMoved(pointer));
-    ui.run_at_acked(button_surface(), build);
+    ui.run_at(button_surface(), build);
     let response = ui.response_for(id);
     assert_eq!(
         response.pointer_local,

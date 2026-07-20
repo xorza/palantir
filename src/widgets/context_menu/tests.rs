@@ -61,13 +61,13 @@ fn secondary_click_opens_menu_at_pointer() {
     let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(!menu_open(&ui), "menu starts closed");
 
     ui.secondary_click_at(Vec2::new(60.0, 20.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui), "secondary click on trigger opens menu");
 }
 
@@ -76,18 +76,18 @@ fn outside_click_dismisses_menu() {
     let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     ui.secondary_click_at(Vec2::new(60.0, 20.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui));
 
     // Click far from both trigger and any plausible menu body location.
     ui.click_at(Vec2::new(380.0, 380.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(!menu_open(&ui), "outside click closes the menu");
 }
 
@@ -96,12 +96,12 @@ fn item_click_dismisses_and_reports_clicked() {
     let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     // Open the menu at a known anchor.
     ContextMenu::open(&mut ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui));
 
     // The menu's container starts at anchor (60, 60). With theme
@@ -111,7 +111,7 @@ fn item_click_dismisses_and_reports_clicked() {
     ui.click_at(Vec2::new(90.0, 80.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(copied, "clicking the Copy row reports clicked()");
     assert!(!menu_open(&ui), "item click auto-closes the menu");
 }
@@ -124,11 +124,11 @@ fn shortcut_press_fires_item_and_dismisses() {
     let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     ContextMenu::open(&mut ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui));
 
     // Inject the primary command modifier + 'C' — matches
@@ -146,7 +146,7 @@ fn shortcut_press_fires_item_and_dismisses() {
     });
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(copied, "shortcut press synthesizes a click on the Copy row");
     assert!(!menu_open(&ui), "shortcut press auto-closes the menu");
 }
@@ -156,11 +156,11 @@ fn escape_dismisses_menu() {
     let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     ContextMenu::open(&mut ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui));
 
     // Inject an Escape press.
@@ -171,7 +171,7 @@ fn escape_dismisses_menu() {
     });
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(!menu_open(&ui), "Esc closes the menu");
 }
 
@@ -184,11 +184,11 @@ fn menu_body_width_does_not_span_surface() {
     let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     ContextMenu::open(&mut ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
+    ui.run_at_without_baseline(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
 
     let body_id = trigger_id().with("ctx_menu_body");
     let rect = ui

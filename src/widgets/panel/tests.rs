@@ -23,7 +23,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
     let mut ui = Ui::for_test();
     let mut cases: Vec<(&str, NodeId, ClipMode, bool)> = Vec::new();
-    ui.run_at(UVec2::new(200, 200), |ui| {
+    ui.run_at_without_baseline(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("none"))
@@ -108,36 +108,37 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn panel_hugs_largest_child_and_layers_them() {
     let mut ui = Ui::for_test();
-    let [panel_node, a_node, b_node] = ui.run_at_value(UVec2::new(400, 200), |ui| {
-        Panel::hstack()
-            .auto_id()
-            .show(ui, |ui| {
-                let panel = Panel::zstack()
-                    .id(WidgetId::from_hash("card"))
-                    .padding(10.0)
-                    .background(Background {
-                        fill: Color::rgb(0.1, 0.1, 0.15).into(),
-                        corners: Corners::all(8.0),
-                        ..Default::default()
-                    })
-                    .show(ui, |ui| {
-                        [
-                            Button::new()
-                                .id(WidgetId::from_hash("a"))
-                                .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
-                                .show(ui)
-                                .node(),
-                            Button::new()
-                                .id(WidgetId::from_hash("b"))
-                                .size((Sizing::fixed(60.0), Sizing::fixed(50.0)))
-                                .show(ui)
-                                .node(),
-                        ]
-                    });
-                [panel.node(), panel.inner[0], panel.inner[1]]
-            })
-            .inner
-    });
+    let [panel_node, a_node, b_node] =
+        ui.run_at_value_without_baseline(UVec2::new(400, 200), |ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    let panel = Panel::zstack()
+                        .id(WidgetId::from_hash("card"))
+                        .padding(10.0)
+                        .background(Background {
+                            fill: Color::rgb(0.1, 0.1, 0.15).into(),
+                            corners: Corners::all(8.0),
+                            ..Default::default()
+                        })
+                        .show(ui, |ui| {
+                            [
+                                Button::new()
+                                    .id(WidgetId::from_hash("a"))
+                                    .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
+                                    .show(ui)
+                                    .node(),
+                                Button::new()
+                                    .id(WidgetId::from_hash("b"))
+                                    .size((Sizing::fixed(60.0), Sizing::fixed(50.0)))
+                                    .show(ui)
+                                    .node(),
+                            ]
+                        });
+                    [panel.node(), panel.inner[0], panel.inner[1]]
+                })
+                .inner
+        });
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
     let panel = ui.layout[Layer::Main].rect[panel_node.idx()];
     assert_eq!(panel.size.w, 100.0);
@@ -166,7 +167,7 @@ fn panel_hugs_largest_child_and_layers_them() {
 #[test]
 fn panel_with_fill_child_grows_to_panel_inner() {
     let mut ui = Ui::for_test();
-    let child_node = ui.run_at_value(UVec2::new(400, 400), |ui| {
+    let child_node = ui.run_at_value_without_baseline(UVec2::new(400, 400), |ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -209,7 +210,7 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     use crate::primitives::widget_id::WidgetId;
     let mut ui = Ui::for_test();
     let child_id = WidgetId::from_hash("child");
-    let observed = ui.run_at_value(UVec2::new(200, 200), |ui| {
+    let observed = ui.run_at_value_without_baseline(UVec2::new(200, 200), |ui| {
         Panel::vstack()
             .auto_id()
             .disabled(true)
@@ -254,41 +255,42 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                 });
         });
     };
-    ui.run_at_acked(surface, |ui| body(ui, None));
+    ui.run_at(surface, |ui| body(ui, None));
     ui.click_at(Vec2::new(40.0, 40.0));
 
     let mut clicked = false;
-    ui.run_at(surface, |ui| body(ui, Some(&mut clicked)));
+    ui.run_at_without_baseline(surface, |ui| body(ui, Some(&mut clicked)));
     assert!(!clicked, "button inside disabled panel should not click");
 }
 
 #[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let mut ui = Ui::for_test();
-    let [canvas_node, a_node, b_node] = ui.run_at_value(UVec2::new(400, 400), |ui| {
-        Panel::hstack()
-            .auto_id()
-            .show(ui, |ui| {
-                let canvas = Panel::canvas().id(WidgetId::from_hash("c")).show(ui, |ui| {
-                    [
-                        Frame::new()
-                            .id(WidgetId::from_hash("a"))
-                            .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-                            .position(Vec2::new(10.0, 5.0))
-                            .show(ui)
-                            .node(),
-                        Frame::new()
-                            .id(WidgetId::from_hash("b"))
-                            .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
-                            .position(Vec2::new(80.0, 40.0))
-                            .show(ui)
-                            .node(),
-                    ]
-                });
-                [canvas.node(), canvas.inner[0], canvas.inner[1]]
-            })
-            .inner
-    });
+    let [canvas_node, a_node, b_node] =
+        ui.run_at_value_without_baseline(UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .auto_id()
+                .show(ui, |ui| {
+                    let canvas = Panel::canvas().id(WidgetId::from_hash("c")).show(ui, |ui| {
+                        [
+                            Frame::new()
+                                .id(WidgetId::from_hash("a"))
+                                .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
+                                .position(Vec2::new(10.0, 5.0))
+                                .show(ui)
+                                .node(),
+                            Frame::new()
+                                .id(WidgetId::from_hash("b"))
+                                .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
+                                .position(Vec2::new(80.0, 40.0))
+                                .show(ui)
+                                .node(),
+                        ]
+                    });
+                    [canvas.node(), canvas.inner[0], canvas.inner[1]]
+                })
+                .inner
+        });
     let c = ui.layout[Layer::Main].rect[canvas_node.idx()];
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
@@ -307,7 +309,7 @@ fn zstack_layers_children_without_painting_background() {
     // Wrapped in HStack so the ZStack's Hug-to-children size is honored
     // (root would otherwise expand to surface).
     let mut ui = Ui::for_test();
-    let [z, bg_node, fg_node] = ui.run_at_value(UVec2::new(400, 200), |ui| {
+    let [z, bg_node, fg_node] = ui.run_at_value_without_baseline(UVec2::new(400, 200), |ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -364,7 +366,7 @@ fn zstack_aligns_child_per_axis() {
     ];
     for (label, align, expected) in cases {
         let mut ui = Ui::for_test();
-        let child_node = ui.run_at_value(UVec2::new(400, 400), |ui| {
+        let child_node = ui.run_at_value_without_baseline(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {

@@ -50,7 +50,7 @@ fn resp(
     id: WidgetId,
 ) -> ResponseState {
     let mut out = None;
-    ui.run_at_acked(surface, |ui| {
+    ui.run_at(surface, |ui| {
         build(ui);
         out.get_or_insert_with(|| ui.response_for(id));
     });
@@ -61,7 +61,7 @@ fn resp(
 fn drag_delta_none_before_press() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert_eq!(
         resp(&mut ui, s, build_clickable, id()).left.drag.delta(),
@@ -74,7 +74,7 @@ fn drag_delta_none_before_press() {
 fn drag_delta_tracks_pointer_minus_press() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
@@ -90,7 +90,7 @@ fn drag_delta_tracks_pointer_minus_press() {
 fn drag_delta_persists_when_pointer_leaves_widget_rect() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(400, 400);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 200.0)));
@@ -109,7 +109,7 @@ fn held_is_rect_independent_unlike_pressed() {
     // rides so it keeps tracking after the pointer leaves the editor.
     let mut ui = Ui::for_test();
     let s = UVec2::new(400, 400);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
 
     // Idle over the widget: neither pressed nor held.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -147,7 +147,7 @@ fn held_is_rect_independent_unlike_pressed() {
 fn drag_delta_clears_on_release() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 70.0)));
@@ -171,7 +171,7 @@ fn drag_delta_clears_on_release() {
 fn drag_delta_none_when_pointer_left_surface() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(90.0, 40.0)));
@@ -204,7 +204,7 @@ fn drag_delta_none_when_pointer_left_surface() {
 fn drag_stopped_edge_fires_once_on_release() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 30.0)));
@@ -232,7 +232,7 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
     // drag ever latched, so no stop edge may fire.
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(51.0, 50.0)));
@@ -247,7 +247,7 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
 fn drag_delta_only_for_active_widget() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_clickable);
+    ui.run_at(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
@@ -267,7 +267,7 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
     // (4 px) so the drag latches.
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
@@ -289,7 +289,7 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
     // `delta` is `None`, mirroring left-button semantics.
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(52.0, 51.0)));
@@ -309,7 +309,7 @@ fn drag_started_is_one_frame_edge_then_clears_on_post_record() {
     // gone.
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 50.0))); // latches
@@ -339,7 +339,7 @@ fn right_button_drag_also_latches() {
     // drag works the same as left/middle.
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Right));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 40.0)));
@@ -357,7 +357,7 @@ fn left_wins_over_simultaneously_latched_middle() {
     // press is still captured.
     let mut ui = Ui::for_test();
     let s = UVec2::new(300, 300);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 20.0))); // latches left
@@ -386,7 +386,7 @@ fn releasing_priority_button_promotes_lower_priority() {
     // anything else.
     let mut ui = Ui::for_test();
     let s = UVec2::new(300, 300);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
@@ -412,7 +412,7 @@ fn drag_zero_state_for_uncaptured_widget() {
     // regardless of which button is being dragged elsewhere.
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);
-    ui.run_at_acked(s, build_draggable);
+    ui.run_at(s, build_draggable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
@@ -439,7 +439,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
         });
     };
     let mut ui = Ui::for_test();
-    ui.run_at_acked(surface, build);
+    ui.run_at(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
@@ -502,7 +502,7 @@ impl Card {
 }
 
 fn frame_with(ui: &mut Ui, mut body: impl FnMut(&mut Ui)) {
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("canvas"))
@@ -607,7 +607,7 @@ fn drag_started_fires_only_on_latch_frame() {
 
     let mut step = |ui: &mut Ui, a: &mut Card| {
         let mut latched = false;
-        ui.run_at_acked(SURFACE, |ui| {
+        ui.run_at(SURFACE, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::canvas()
                     .id(WidgetId::from_hash("canvas"))
@@ -651,7 +651,7 @@ fn canvas_rearranges_with_dragged_child_position() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 60.0)));
 
     let mut card_node = None;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("canvas"))

@@ -18,7 +18,7 @@ const EDITOR: &str = "response-editor";
 /// per-frame edge signal would read `false` on the second pass, so combine them.
 fn frame(ui: &mut Ui, buf: &mut String) -> Signals {
     let mut out = Signals::default();
-    ui.run_at_acked(SMALL, |ui| {
+    ui.run_at(SMALL, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = TextEdit::new(buf)
                 .id(WidgetId::from_hash(EDITOR))
@@ -138,7 +138,7 @@ fn reports_changed_on_same_length_overwrite() {
 fn disabling_a_focused_editor_blurs_and_drops_input() {
     fn disabled_frame(ui: &mut Ui, buf: &mut String) -> Signals {
         let mut out = Signals::default();
-        ui.run_at_acked(SMALL, |ui| {
+        ui.run_at(SMALL, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let r = TextEdit::new(buf)
                     .id(WidgetId::from_hash(EDITOR))

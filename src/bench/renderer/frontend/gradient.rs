@@ -7,7 +7,6 @@ use crate::primitives::brush::{Brush, LinearGradient};
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
-use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::frame::Frame;
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -71,7 +70,7 @@ impl GradientBench {
         let display = Display::from_physical(PHYSICAL, 1.0);
         let report = self
             .ui
-            .record_acked(FrameStamp::new(display, self.start.elapsed()), |ui| {
+            .record_test_frame(display, self.start.elapsed(), |ui| {
                 for row in 0..ROWS {
                     Frame::new()
                         .id_salt(row)

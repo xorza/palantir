@@ -853,7 +853,7 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod test_support {
     use crate::renderer::frontend::FrameScene;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;

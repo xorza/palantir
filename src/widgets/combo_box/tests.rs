@@ -26,11 +26,11 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
                     .show(ui);
             });
     };
-    ui.run_at_acked(SURFACE, |ui| build(ui, &mut selected));
+    ui.run_at(SURFACE, |ui| build(ui, &mut selected));
     ui.state_mut::<ComboState>(id).open = true;
 
     let mut passes = 0;
-    ui.run_at_acked(SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         passes += 1;
         build(ui, &mut selected);
     });

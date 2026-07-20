@@ -47,7 +47,7 @@ fn empty_sub_escape(ui: &mut Ui) {
 #[test]
 fn buttons_subscriber_wakes_press_on_inert() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -67,7 +67,7 @@ fn buttons_subscriber_wakes_press_on_inert() {
 #[test]
 fn press_on_inert_with_no_subscriber_does_not_wake() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty);
+    ui.run_at(UVec2::new(200, 200), empty);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert!(!delta.requests_repaint);
@@ -77,8 +77,8 @@ fn press_on_inert_with_no_subscriber_does_not_wake() {
 #[test]
 fn record_without_resubscribe_drops_wake() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
-    ui.run_at_acked(UVec2::new(200, 200), empty);
+    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -88,7 +88,7 @@ fn record_without_resubscribe_drops_wake() {
 #[test]
 fn press_and_release_both_captured() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -105,7 +105,7 @@ fn press_and_release_both_captured() {
 #[test]
 fn move_subscriber_wakes_on_inert_move() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_move);
+    ui.run_at(UVec2::new(200, 200), empty_sub_move);
 
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert!(delta.requests_repaint);
@@ -124,7 +124,7 @@ fn move_subscriber_wakes_on_inert_move() {
 #[test]
 fn move_without_subscriber_does_not_log() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty);
+    ui.run_at(UVec2::new(200, 200), empty);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert!(ui.pointer_events().is_empty());
 }
@@ -137,7 +137,7 @@ fn scroll_subscriber_receives_an_event_without_creating_a_widget_delta() {
     }
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_scroll);
+    ui.run_at(UVec2::new(200, 200), empty_sub_scroll);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
 
@@ -169,7 +169,7 @@ fn pointer_pos_read_asserts_move_subscription() {
     }
 
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_reads_pointer);
+    ui.run_at(UVec2::new(200, 200), empty_reads_pointer);
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert!(
         delta.requests_repaint,
@@ -178,7 +178,7 @@ fn pointer_pos_read_asserts_move_subscription() {
 
     // Next pass doesn't read → subscription lapses with the rest of
     // the per-pass set.
-    ui.run_at_acked(UVec2::new(200, 200), empty);
+    ui.run_at(UVec2::new(200, 200), empty);
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
     assert!(
         !delta.requests_repaint,
@@ -206,7 +206,7 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
     let mut ui = Ui::for_test();
     ui.input_policy = InputPolicy::OnDelta;
     let mut painted_at = None;
-    ui.run_at_acked(surface, |ui| indicator(ui, id, &mut painted_at));
+    ui.run_at(surface, |ui| indicator(ui, id, &mut painted_at));
 
     let response = ui.response_for(id);
     let layout_rect = response.layout_rect.expect("indicator arranged");
@@ -219,7 +219,7 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
             delta.requests_repaint,
             "pointer-local paint must wake on movement within one inert surface",
         );
-        ui.run_at_acked(surface, |ui| indicator(ui, id, &mut painted_at));
+        ui.run_at(surface, |ui| indicator(ui, id, &mut painted_at));
         assert_eq!(painted_at, Some(expected));
     }
 }
@@ -249,7 +249,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
     let mut ui = Ui::for_test();
     ui.input_policy = InputPolicy::OnDelta;
     let mut painted = Color::TRANSPARENT;
-    ui.run_at_acked(surface, |ui| visual(ui, &mut painted));
+    ui.run_at(surface, |ui| visual(ui, &mut painted));
     assert_eq!(painted, Color::BLACK);
 
     let states = [
@@ -283,7 +283,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
             delta.requests_repaint,
             "modifier-dependent paint must wake on every press and release",
         );
-        ui.run_at_acked(surface, |ui| visual(ui, &mut painted));
+        ui.run_at(surface, |ui| visual(ui, &mut painted));
         assert_eq!(painted, expected);
     }
 }
@@ -291,7 +291,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 #[test]
 fn key_chord_subscriber_wakes_only_exact_chord() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_escape);
+    ui.run_at(UVec2::new(200, 200), empty_sub_escape);
     assert!(ui.input.focused.is_none());
 
     let delta = ui.on_input(InputEvent::KeyDown {
@@ -329,12 +329,12 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
 #[test]
 fn pointer_events_drain_between_frames() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert_eq!(ui.pointer_events().len(), 1);
 
-    ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
     assert!(ui.pointer_events().is_empty());
 }

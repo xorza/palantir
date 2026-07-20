@@ -21,7 +21,7 @@ fn context_menu_cut_copy_paste_clear() {
     }
     fn open_menu_and_record(ui: &mut Ui, buf: &mut String) {
         ContextMenu::open(ui, editor_id(), Vec2::new(20.0, 10.0));
-        ui.run_at(SMALL, |ui| body(ui, buf));
+        ui.run_at_without_baseline(SMALL, |ui| body(ui, buf));
     }
     /// Click into the body element of the open menu at row-offset
     /// `(rel_x, rel_y)` from the body's top-left, then run a frame
@@ -37,14 +37,14 @@ fn context_menu_cut_copy_paste_clear() {
         // padding. Click well inside the chosen row.
         let row_y = body_rect.min.y + 8.0 + (row_idx as f32) * 32.0;
         ui.click_at(Vec2::new(body_rect.min.x + 20.0, row_y));
-        ui.run_at(SMALL, |ui| body(ui, buf));
+        ui.run_at_without_baseline(SMALL, |ui| body(ui, buf));
     }
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
     let mut ui = ui_at_no_cosmic(SMALL);
     ui.shared.clipboard.set("").unwrap();
     let mut buf = String::from("hello");
-    ui.run_at_acked(SMALL, |ui| body(ui, &mut buf));
+    ui.run_at(SMALL, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(editor_id());
         st.caret = 4;
@@ -286,11 +286,11 @@ fn secondary_click_opens_text_edit_menu() {
 
     let mut ui = ui_at_no_cosmic(SMALL);
     let mut buf = String::from("hi");
-    ui.run_at_acked(SMALL, |ui| body(ui, &mut buf));
+    ui.run_at(SMALL, |ui| body(ui, &mut buf));
     assert!(!ContextMenu::is_open(&ui, editor_id));
 
     ui.secondary_click_at(Vec2::new(40.0, 20.0));
-    ui.run_at(SMALL, |ui| body(ui, &mut buf));
+    ui.run_at_without_baseline(SMALL, |ui| body(ui, &mut buf));
     assert!(
         ContextMenu::is_open(&ui, editor_id),
         "secondary click on TextEdit opens its default menu",

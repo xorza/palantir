@@ -31,7 +31,7 @@ fn frame(ui: &mut Ui, buf: &mut String) -> NodeId {
                 );
             });
     };
-    ui.run_at_acked(SIZE, &mut record);
+    ui.run_at(SIZE, &mut record);
     node.unwrap()
 }
 
@@ -89,8 +89,8 @@ fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizin
                 );
             });
     };
-    ui.run_at_acked(UVec2::new(2100, 200), &mut record);
-    ui.run_at_acked(UVec2::new(2100, 200), &mut record);
+    ui.run_at(UVec2::new(2100, 200), &mut record);
+    ui.run_at(UVec2::new(2100, 200), &mut record);
     node.unwrap()
 }
 

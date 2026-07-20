@@ -225,24 +225,14 @@ impl<'a, R> std::ops::Deref for InnerResponse<'a, R> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod test_support {
-    #![allow(dead_code, private_interfaces)]
     use crate::forest::tree::node::NodeId;
     use crate::widgets::*;
 
     impl Response<'_> {
-        /// Old `Response.node` field as an inherent test-only method.
-        pub fn node(&self) -> NodeId {
+        pub(crate) fn node(&self) -> NodeId {
             self.ui.node_for_widget_id(self.id)
-        }
-    }
-
-    impl ResponseSnapshot {
-        /// Look up the node id given the widget id, for tests that
-        /// hold a snapshot but still need to navigate the tree.
-        pub fn node(&self, ui: &Ui) -> NodeId {
-            ui.node_for_widget_id(self.id)
         }
     }
 }

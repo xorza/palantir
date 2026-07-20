@@ -60,7 +60,6 @@ use crate::renderer::backend::write_stats;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{FramePaint, RenderKind, RenderPlan};
 use crate::window::WindowToken;
 use criterion::Criterion;
@@ -243,8 +242,9 @@ impl CpuHarness {
     /// (the partial-encode path is its real workload); the substitution
     /// only kicks in when there's nothing to paint at all.
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
-        let stamp = FrameStamp::new(display, self.start.elapsed());
-        let report = self.ui.record_acked(stamp, record);
+        let report = self
+            .ui
+            .record_test_frame(display, self.start.elapsed(), record);
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
             kind: RenderKind::Full,
@@ -329,7 +329,7 @@ fn assert_partial_invariant() {
         state.tick = state.tick.wrapping_add(1);
     }
     let report =
-        h.ui.record(FrameStamp::new(display, h.start.elapsed()), |ui| {
+        h.ui.record_test_frame_without_baseline(display, h.start.elapsed(), |ui| {
             build_ui(&mut state, BENCH_SCALE, ui)
         });
     assert_eq!(

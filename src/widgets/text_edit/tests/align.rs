@@ -62,7 +62,7 @@ fn frame(
             node = Some(e.show(ui).node());
         });
     };
-    ui.run_at_acked(NARROW, &mut record);
+    ui.run_at(NARROW, &mut record);
     node.unwrap()
 }
 
@@ -550,8 +550,8 @@ mod per_line {
         };
         // Two frames — first warms up `response.rect`, second is the
         // one we inspect.
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
         // Read the layout's `ShapedText.key` for the rendered text.
         // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
         // on the leaf; multi-line TextEdit emits a single text shape.
@@ -609,17 +609,17 @@ mod per_line {
         };
         // Warmup: two frames so `response.rect` lands and every cache
         // is primed.
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
         let a = ui.shared.text.measure_calls();
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
         let b = ui.shared.text.measure_calls();
         let per_frame = b - a;
         // Drive several more frames with identical inputs and verify
         // each one costs exactly the same number of `measure_calls`.
         for i in 0..5 {
             let before = ui.shared.text.measure_calls();
-            ui.run_at_acked(UVec2::new(800, 200), &mut record);
+            ui.run_at(UVec2::new(800, 200), &mut record);
             let after = ui.shared.text.measure_calls();
             assert_eq!(
                 after - before,
@@ -660,8 +660,8 @@ mod per_line {
                 );
             });
         };
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
         let payloads = ui.record_store.payloads.borrow();
@@ -827,11 +827,11 @@ mod per_line {
                     .show(ui);
             });
         };
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
         // Caret at end of "short" (byte 5): under right-align the
         // caret should sit far from the left edge.
         ui.state_mut::<TextEditState>(id).caret = 5;
-        ui.run_at_acked(UVec2::new(800, 200), &mut record);
+        ui.run_at(UVec2::new(800, 200), &mut record);
         // Ask the shaper directly for the caret position the widget
         // would have seen this frame. wrap target = inner width =
         // 300 - 2*5 = 290.
@@ -884,8 +884,8 @@ fn multiline_default_is_top_left() {
         });
     };
     // Two frames: first to warm up the cascade.
-    ui.run_at_acked(NARROW, &mut record);
-    ui.run_at_acked(NARROW, &mut record);
+    ui.run_at(NARROW, &mut record);
+    ui.run_at(NARROW, &mut record);
     let (origin, _) = shape_origins(&ui, node.unwrap());
     let o = origin.expect("text shape");
     assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
@@ -924,8 +924,8 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
         };
         // Two frames: cascade lags one frame, so the second frame is
         // the one whose `response.layout_rect` drives the offset math.
-        ui.run_at_acked(NARROW, &mut record);
-        ui.run_at_acked(NARROW, &mut record);
+        ui.run_at(NARROW, &mut record);
+        ui.run_at(NARROW, &mut record);
         let (origin, _) = shape_origins(&ui, node.unwrap());
         origin.expect("text shape emitted for non-empty buffer")
     }

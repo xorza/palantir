@@ -6,7 +6,6 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::cascade::{Cascades, CascadesEngine, EntryRow, HitRow};
-use crate::ui::frame::FrameStamp;
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
@@ -145,7 +144,7 @@ impl CascadeRunFixture {
 
 fn record_fixture(mut state: FrameFixture, display: Display) -> Ui {
     let mut ui = Ui::for_test_text();
-    let _ = ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
+    let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
         build_ui(&mut state, BENCH_SCALE, ui);
     });
     ui

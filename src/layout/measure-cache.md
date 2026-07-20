@@ -50,9 +50,8 @@ tree, captures changed output, then swaps `current` and `previous`. Empty and
 removed trees disappear as part of that full-frame materialization; the
 `SeenIds.removed` sweep no longer owns cache arena reclamation.
 
-`MeasureCache::clear`, exposed through the test/internals
-`Ui::clear_measure_cache`, clears both buffers while retaining their
-allocations.
+`MeasureCache::clear` clears both buffers while retaining their allocations.
+Tests and benches reach it through `Ui.layout_engine.cache`.
 
 ## Validation
 

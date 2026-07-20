@@ -12,7 +12,6 @@ use crate::text::TEXT_SCALE_STEP;
 use crate::ui::cascade::{CascadeInputHash, Paint};
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::damage::{Damage, DamageEngine, paints_on_surface};
-use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -20,8 +19,6 @@ use crate::{display::Display, layout::types::sizing::Sizing};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
-#[allow(dead_code)]
-const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 200.0);
 const DISPLAY: Display = Display {
     physical: UVec2::new(200, 200),
     scale_factor: 1.0,
@@ -35,7 +32,7 @@ const DISPLAY: Display = Display {
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
-    let report = ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), f);
+    let report = ui.record_test_frame(DISPLAY, Duration::ZERO, f);
     match report.plan {
         None => Damage::Skip,
         Some(RenderPlan {
@@ -672,16 +669,15 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut ui, build);
     assert_eq!(
-        ui.damage_subtree_skips(),
-        0,
+        ui.damage_engine.subtree_skips, 0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut ui, build);
     assert!(
-        ui.damage_subtree_skips() >= 1,
+        ui.damage_engine.subtree_skips >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        ui.damage_subtree_skips(),
+        ui.damage_engine.subtree_skips,
     );
     assert!(ui.damage_engine.dirty.is_empty());
 }
@@ -767,7 +763,7 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    let out = ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+    let out = ui.record_test_frame(DISPLAY, Duration::ZERO, |ui| {
         Frame::new()
             .id(WidgetId::from_hash("placeholder"))
             .size(10.0)
@@ -814,20 +810,16 @@ fn click_on_empty_bg_does_not_force_full() {
             });
     };
     // Frame 0 (cold): expect Full. Submit.
-    ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build);
+    ui.record_test_frame(DISPLAY, Duration::ZERO, build);
     // Frame 1 (warm): nothing changed → Skip.
-    let warm = ui
-        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build)
-        .plan;
+    let warm = ui.record_test_frame(DISPLAY, Duration::ZERO, build).plan;
     assert!(warm.is_none(), "warm frame must Skip");
 
     // Click on empty background (far from the 50×50 frame at origin).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let click_plan = ui
-        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build)
-        .plan;
+    let click_plan = ui.record_test_frame(DISPLAY, Duration::ZERO, build).plan;
     assert!(
         !matches!(
             click_plan,
@@ -844,9 +836,7 @@ fn click_on_empty_bg_does_not_force_full() {
 fn valid_skip_preserves_incremental_damage_baseline() {
     let mut ui = Ui::for_test();
     let first = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, BLUE)
-        })
+        .record_test_frame_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
         .plan;
     assert!(matches!(
         first,
@@ -856,16 +846,12 @@ fn valid_skip_preserves_incremental_damage_baseline() {
         })
     ));
     let skip = ui
-        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, BLUE)
-        })
+        .record_test_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
         .plan;
     assert!(skip.is_none(), "identical content must Skip");
 
     let next = ui
-        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, RED)
-        })
+        .record_test_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
         .plan;
     assert!(
         matches!(
@@ -882,14 +868,10 @@ fn valid_skip_preserves_incremental_damage_baseline() {
 #[test]
 fn invalid_prior_output_forces_full_damage() {
     let mut ui = Ui::for_test();
-    ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-        one_frame(ui, BLUE)
-    });
+    ui.record_test_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
 
     let next = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, RED)
-        })
+        .record_test_frame_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
         .plan;
     assert!(
         matches!(
@@ -1078,7 +1060,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let mut ui = Ui::for_test();
     let mut child_node = None;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(translate))
@@ -1132,7 +1114,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let mut ui = Ui::for_test();
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1202,7 +1184,7 @@ fn transform_animation_keeps_far_positions_split() {
     ui.damage_engine.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1256,7 +1238,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
     use crate::primitives::stroke::Stroke;
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+        ui.run_at(UVec2::new(100, 100), |ui| {
             // Outermost clip pins descendants to the surface viewport
             // — without it, `parent_clip = None` and inner's paint
             // rect translates freely (the bug then doesn't manifest;
@@ -1321,7 +1303,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
     use crate::primitives::stroke::Stroke;
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+        ui.run_at(UVec2::new(100, 100), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("clip"))
                 .clip_rect()
@@ -1380,7 +1362,7 @@ fn self_transform_shift_damages_direct_shapes() {
     use crate::primitives::stroke::Stroke;
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+        ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -1436,7 +1418,7 @@ fn self_transform_shift_damages_direct_shapes() {
 fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1509,7 +1491,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
 fn content_change_under_constant_transform_stays_row_tight() {
     let mut ui = Ui::for_test();
     let build = |fill: Color, ui: &mut Ui| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(30.0, 0.0)))
@@ -1818,7 +1800,7 @@ fn display_change_forces_full_repaint() {
 
         // Steady-state: Full first frame, then Skip on identical re-record.
         let f1 = ui
-            .record(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
+            .record_test_frame_without_baseline(DISPLAY, Duration::ZERO, &mut build)
             .plan;
         assert!(
             matches!(
@@ -1831,13 +1813,13 @@ fn display_change_forces_full_repaint() {
             "case: {label} f1"
         );
         let f2 = ui
-            .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
+            .record_test_frame(DISPLAY, Duration::ZERO, &mut build)
             .plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
         // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_plan = ui
-            .record_acked(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
+            .record_test_frame(*mutated, Duration::ZERO, &mut build)
             .plan;
         assert!(
             matches!(
@@ -1856,7 +1838,7 @@ fn display_change_forces_full_repaint() {
 
         // Stable surface at the new size, identical authoring → back to Skip.
         let stable = ui
-            .record_acked(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
+            .record_test_frame(*mutated, Duration::ZERO, &mut build)
             .plan;
         assert!(
             stable.is_none(),
@@ -1921,8 +1903,8 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    ui.record_acked(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.record_acked(FrameStamp::new(big, Duration::ZERO), &mut scene);
+    ui.record_test_frame(big, Duration::ZERO, &mut scene);
+    ui.record_test_frame(big, Duration::ZERO, &mut scene);
     assert!(ui.damage_engine.dirty.is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
@@ -1942,7 +1924,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         ..big
     };
     let resize_plan = ui
-        .record(FrameStamp::new(smaller, Duration::ZERO), &mut scene)
+        .record_test_frame_without_baseline(smaller, Duration::ZERO, &mut scene)
         .plan;
 
     assert!(
@@ -1974,13 +1956,9 @@ fn stable_surface_does_not_short_circuit() {
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-        build(ui, BLUE)
-    });
+    ui.record_test_frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
     let warm = ui
-        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            build(ui, BLUE)
-        })
+        .record_test_frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
         .plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(ui.damage_engine.dirty.is_empty());
@@ -1988,9 +1966,7 @@ fn stable_surface_does_not_short_circuit() {
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
     let changed = ui
-        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            build(ui, RED)
-        })
+        .record_test_frame(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
         .plan;
     let Some(RenderPlan {
         kind: RenderKind::Partial { region },
@@ -2023,7 +1999,7 @@ fn button_hover_damage_covers_only_the_button() {
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
@@ -2100,7 +2076,7 @@ fn button_unhover_damage_covers_only_the_button() {
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
@@ -2160,7 +2136,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let viewport_size = 100.0;
     let child_size = 200.0;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             // Root hstack so the inner zstack honors its `Fixed` size
             // (root nodes get stretched to the surface anchor by the
             // layout engine, which would defeat the clip).
@@ -2318,7 +2294,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 
     let mut ui = Ui::for_test();
     let build = |fill: Color, ui: &mut Ui| {
-        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+        ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("host"))
                 .show(ui, |ui| {

@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn records_one_gpu_view_shape_at_committed_size() {
         let mut ui = Ui::for_test();
-        let node = ui.run_at_value(UVec2::new(200, 120), |ui| {
+        let node = ui.run_at_value_without_baseline(UVec2::new(200, 120), |ui| {
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn default_fills_parent() {
         let mut ui = Ui::for_test();
-        let node = ui.run_at_value(UVec2::new(160, 100), |ui| {
+        let node = ui.run_at_value_without_baseline(UVec2::new(160, 100), |ui| {
             GpuView::new(scene()).show(ui).node()
         });
         let r = ui.layout[Layer::Main].rect[node.idx()];
@@ -172,7 +172,7 @@ mod tests {
         let id = WidgetId::from_hash("gpu_view_hitbox");
         let surface = UVec2::new(200, 100);
         let mut ui = Ui::for_test();
-        ui.run_at_acked(surface, |ui| {
+        ui.run_at(surface, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 GpuView::new(scene())
                     .id(id)
@@ -183,7 +183,7 @@ mod tests {
         });
         ui.click_at(Vec2::new(50.0, 25.0));
         let mut clicked = false;
-        ui.run_at(surface, |ui| {
+        ui.run_at_without_baseline(surface, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 clicked |= GpuView::new(scene())
                     .id(id)

@@ -23,8 +23,6 @@ use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
 
-use crate::ui::frame::FrameStamp;
-
 // Uses `Ui::default()` (mono-fallback shaper, self-contained) and warms
 // manually below via `WARMUP_FRAMES` before measuring.
 
@@ -52,15 +50,19 @@ pub fn bench() {
     let mut state = FrameFixture::default();
 
     for _ in 0..WARMUP_FRAMES {
-        black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
-            state.render(NODE_SCALE, ui)
-        }));
+        black_box(
+            ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+                state.render(NODE_SCALE, ui)
+            }),
+        );
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        black_box(ui.record(FrameStamp::new(display, Duration::ZERO), |ui| {
-            state.render(NODE_SCALE, ui)
-        }));
+        black_box(
+            ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+                state.render(NODE_SCALE, ui)
+            }),
+        );
     }
     let after = dhat::HeapStats::get();
 
