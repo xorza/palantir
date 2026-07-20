@@ -25,7 +25,6 @@
 //! ship today; pulse or marquee variants would need further encoder
 //! transform-mod plumbing.
 
-use crate::primitives::approx::approx_zero;
 use std::f32::consts::TAU;
 use std::time::Duration;
 
@@ -77,17 +76,6 @@ impl PaintMod {
         alpha: 1.0,
         rotation: 0.0,
     };
-
-    #[allow(dead_code)] // consumed once Pulse/Marquee land
-    #[inline]
-    pub(crate) fn is_identity(&self) -> bool {
-        // Within `approx::EPS` of 1.0, not `>= 1.0`: a sampled alpha of
-        // 0.9999 is a visually exact pass-through, while over-bright
-        // (`alpha > 1 + EPS`) is correctly *not* identity. Today's only
-        // sampler emits {0.0, 1.0}, but the predicate must stay honest
-        // for the non-binary variants it's reserved for.
-        approx_zero(self.alpha - 1.0) && approx_zero(self.rotation)
-    }
 }
 
 impl PaintAnim {
@@ -411,33 +399,6 @@ mod tests {
         // Degenerate, but must not panic. `next_wake` returns MAX so
         // the wake folder treats it as "idle".
         assert_eq!(a.next_wake(START + Duration::from_secs(1)), Duration::MAX);
-    }
-
-    #[test]
-    fn paint_mod_identity_is_pass_through() {
-        assert!(PaintMod::IDENTITY.is_identity());
-        assert!(
-            PaintMod {
-                alpha: 1.0,
-                rotation: 0.0
-            }
-            .is_identity()
-        );
-        assert!(
-            !PaintMod {
-                alpha: 0.5,
-                rotation: 0.0
-            }
-            .is_identity()
-        );
-        // A non-zero rotation is not a pass-through even at full alpha.
-        assert!(
-            !PaintMod {
-                alpha: 1.0,
-                rotation: 0.5
-            }
-            .is_identity()
-        );
     }
 
     #[test]
