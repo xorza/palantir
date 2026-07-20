@@ -7,57 +7,8 @@
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
-use crate::primitives::color::Color;
-use crate::ui::damage::Damage;
-use crate::ui::damage::region::DamageRegion;
+use crate::renderer::plan::{RenderKind, RenderPlan};
 use std::time::Duration;
-
-/// WindowDriver-facing render plan, present only when there's actual render
-/// work this frame — `FrameReport.plan = None` is the skip signal, so neither
-/// the encoder nor the backend ever sees a no-op plan. Pairs the surface clear
-/// colour (needed for both kinds: `Full` clears the colour attachment,
-/// `Partial` pre-fills each scissor with it) with the [`RenderKind`].
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct RenderPlan {
-    /// Surface clear colour for this frame.
-    pub(crate) clear: Color,
-    /// Whole surface, or just a damage region.
-    pub(crate) kind: RenderKind,
-}
-
-/// What a [`RenderPlan`] repaints.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum RenderKind {
-    /// Clear + repaint the whole surface.
-    Full,
-    /// Load the backbuffer, then paint inside `region` after a
-    /// `clear`-coloured pre-fill quad per scissor.
-    Partial { region: DamageRegion },
-}
-
-impl RenderPlan {
-    /// Build a render plan from `DamageEngine`'s output plus the
-    /// surface clear colour. `Damage::Skip` ⇒ `None` (skip frame);
-    /// `Full` / `Partial` ⇒ `Some(plan)`.
-    pub(crate) fn from_damage(damage: Damage, clear: Color) -> Option<Self> {
-        let kind = match damage {
-            Damage::Skip => return None,
-            Damage::Full => RenderKind::Full,
-            Damage::Partial(region) => RenderKind::Partial { region },
-        };
-        Some(RenderPlan { clear, kind })
-    }
-
-    /// This plan escalated to a full repaint, keeping its clear colour — used
-    /// when partial damage can't be honoured (direct present, or a freshly
-    /// (re)created backbuffer with undefined contents).
-    pub(crate) fn to_full(self) -> RenderPlan {
-        RenderPlan {
-            clear: self.clear,
-            kind: RenderKind::Full,
-        }
-    }
-}
 
 /// How `Ui::frame` resolved this frame — informational, useful to
 /// tests / benches / profilers asking "did the short-circuit fire?"
@@ -130,10 +81,9 @@ impl FrameReport {
 mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::ui::damage::region::DamageRegion;
-    use crate::ui::frame_report::{
-        FramePaint, FrameProcessing, FrameReport, RenderKind, RenderPlan,
-    };
+    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::scene::damage::region::DamageRegion;
+    use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 
     #[test]
     fn paint_classifies_every_render_plan_shape() {

@@ -1,13 +1,13 @@
-use crate::forest::tree::node::NodeId;
 use crate::layout::intrinsic::*;
+use crate::scene::tree::node::NodeId;
 
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::layout::support::TextCtx;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;
 

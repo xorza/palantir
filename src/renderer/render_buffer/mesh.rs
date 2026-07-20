@@ -6,7 +6,7 @@ use glam::Vec2;
 use soa_rs::Soars;
 
 /// One mesh draw within a group. Vertex/index slices live in the
-/// recording's [`RecordPayloads::meshes`](crate::record_store::RecordPayloads::meshes);
+/// recording's [`RecordPayloads::meshes`](crate::scene::record_store::RecordPayloads::meshes);
 /// the per-instance transform + tint live alongside as
 /// [`MeshDrawRow::instance`] (same row in the SoA, separate column).
 #[derive(Clone, Copy, Debug, PartialEq)]

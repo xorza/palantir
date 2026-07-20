@@ -1,7 +1,7 @@
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
 use glam::{UVec2, Vec2};

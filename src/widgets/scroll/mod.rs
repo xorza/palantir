@@ -1,4 +1,3 @@
-use crate::forest::element::{Configure, Element, Salt};
 use crate::input;
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
@@ -14,6 +13,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::{Configure, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::{InnerResponse, Response};

@@ -1,11 +1,11 @@
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
 use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;

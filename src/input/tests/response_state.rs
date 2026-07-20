@@ -1,10 +1,10 @@
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::input::pointer::PointerButton;
 use crate::input::{InputEvent, InputState, Press, PressDrag, Release, ReleaseKind, TargetDeltas};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

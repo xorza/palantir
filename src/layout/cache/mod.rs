@@ -4,7 +4,6 @@
 //! hug value, and shaped text run is therefore retained exactly once.
 
 use crate::common::content_hash::ContentHash;
-use crate::forest::tree::Tree;
 use crate::layout::ShapedText;
 use crate::layout::grid::GridHugStore;
 use crate::layout::intrinsic::SLOT_COUNT;
@@ -12,6 +11,7 @@ use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::scene::tree::Tree;
 use glam::IVec2;
 
 #[derive(Clone, Copy, Debug)]

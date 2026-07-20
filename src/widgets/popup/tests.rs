@@ -9,8 +9,6 @@
 //! - `Dismiss` surfaces the outside-click via `PopupResponse.dismissed`
 //!   while `Block` swallows it silently.
 
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
@@ -18,6 +16,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::{Sense, Ui};
@@ -187,7 +187,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
 ///   can't sit at the anchor without overflowing.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
-    use crate::forest::layer::Layer;
+    use crate::scene::layer::Layer;
     let anchor = Vec2::new(20.0, 30.0);
     let cases: &[(Sizing, Sizing, Size, Vec2)] = &[
         (Sizing::HUG, Sizing::HUG, Size::new(100.0, 60.0), anchor),
@@ -242,7 +242,7 @@ fn popup_body_sizing_matches_sizing_mode() {
 /// A popup keeps its natural size and flips above a near-bottom anchor.
 #[test]
 fn popup_near_bottom_flips_upward() {
-    use crate::forest::layer::Layer;
+    use crate::scene::layer::Layer;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // 20 px of room below.
     let content = Size::new(120.0, 200.0); // Body wants ~200 tall.
@@ -286,7 +286,7 @@ fn popup_near_bottom_flips_upward() {
 /// painted position stays synchronized with layout.
 #[test]
 fn popup_flip_reaches_cascade_not_just_layout() {
-    use crate::forest::layer::Layer;
+    use crate::scene::layer::Layer;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // near the bottom → must flip.
     let content = Size::new(120.0, 200.0);

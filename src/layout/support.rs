@@ -3,11 +3,6 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use crate::forest::element::columns::{BoundsExtras, LayoutCore};
-use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::Tree;
-use crate::forest::tree::iter::TreeItem;
-use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
@@ -15,6 +10,11 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
+use crate::scene::element::columns::{BoundsExtras, LayoutCore};
+use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::Tree;
+use crate::scene::tree::iter::TreeItem;
+use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight, TextShaper};
 use glam::Vec2;

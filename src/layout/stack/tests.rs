@@ -1,6 +1,4 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::layout::axis::Axis;
 use crate::layout::types::{
     align::Align,
@@ -9,6 +7,8 @@ use crate::layout::types::{
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

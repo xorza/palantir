@@ -45,7 +45,7 @@ pub(crate) struct TextArena {
     pub(crate) bytes: RefCell<String>,
 }
 
-/// Text stored on a [`ShapeRecord`](crate::forest::shapes::record::ShapeRecord).
+/// Text stored on a [`ShapeRecord`](crate::scene::shapes::record::ShapeRecord).
 /// Its span always addresses the active record store because lowering rebases
 /// handles from any other arena before constructing this value.
 #[derive(Clone, Debug)]

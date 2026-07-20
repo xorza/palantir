@@ -8,7 +8,6 @@
 use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
@@ -18,6 +17,7 @@ use crate::input::subscriptions::PointerSense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::scene::element::Configure;
 use crate::shape::Shape;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

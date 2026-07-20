@@ -8,9 +8,6 @@ use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
@@ -18,6 +15,9 @@ use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::frontend::cmd_buffer::test_support::assert_same_stream;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 

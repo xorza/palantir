@@ -695,7 +695,7 @@ mod tests {
     use crate::layout::types::align::Align;
     use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
     use crate::primitives::color::Color;
-    use crate::record_store::RecordStore;
+    use crate::scene::record_store::RecordStore;
     use crate::shape::Shape;
     use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};

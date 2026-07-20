@@ -1,13 +1,13 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, size::Size};
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::widgets::{frame::Frame, panel::Panel, text::Text};
 use glam::UVec2;

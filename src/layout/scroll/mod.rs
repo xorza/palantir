@@ -16,14 +16,14 @@
 //! unaware of scrollbars and of the outer ZStack the widget wraps it
 //! in.
 
-use crate::forest::tree::Tree;
-use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 

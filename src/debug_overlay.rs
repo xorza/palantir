@@ -8,13 +8,13 @@
 //! (dirties its own small rect every frame, Main scene damage is
 //! untouched).
 
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;

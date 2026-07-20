@@ -1,11 +1,11 @@
-use crate::forest::element::{Configure, Element, Salt};
-use crate::forest::layer::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
+use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
 

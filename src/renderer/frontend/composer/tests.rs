@@ -1,5 +1,4 @@
 use crate::display::Display;
-use crate::forest::shapes::record::ColorMode;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::span::Span;
@@ -7,7 +6,6 @@ use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
-use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, ColorModeBits, DrawMeshPayload, DrawPolylinePayload, LineCapBits, LineJoinBits,
@@ -18,6 +16,8 @@ use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
+use crate::scene::record_store::RecordPayloads;
+use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};

@@ -21,10 +21,10 @@ use crate::primitives::{
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::viewport::ViewportPush;
+use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::{RenderKind, RenderPlan};
+use crate::scene::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
 use tinyvec::ArrayVec;
 

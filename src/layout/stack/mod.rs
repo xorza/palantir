@@ -1,5 +1,3 @@
-use crate::forest::tree::Tree;
-use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
@@ -9,6 +7,8 @@ use crate::layout::support::{
     zero_subtree,
 };
 use crate::primitives::{rect::Rect, size::Size};
+use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 
 /// One Fill child as the freeze loop sees it. Pushed onto
 /// `LayoutScratch::stack_fill` during measure; popped at the end of

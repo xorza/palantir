@@ -7,14 +7,14 @@ use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 

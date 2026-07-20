@@ -1,0 +1,289 @@
+use crate::primitives::rect::Rect;
+use crate::scene::damage::region::{DAMAGE_RECT_CAP, DEFAULT_PASS_BUDGET_PX, DamageRegion};
+
+fn collect(region: &DamageRegion) -> Vec<Rect> {
+    region.iter_rects().collect()
+}
+
+/// `add` ignores zero-area input — empty rects contribute nothing.
+#[test]
+fn add_empty_is_noop() {
+    let mut region = DamageRegion::default();
+    region.add(Rect::new(10.0, 10.0, 0.0, 0.0));
+    assert!(region.rects.is_empty());
+}
+
+/// A rect already covered by an existing slot adds nothing (the
+/// `contains` early-return short-circuits before the cluster-grow
+/// loop runs).
+#[test]
+fn add_already_covered_is_noop() {
+    let mut region = DamageRegion::default();
+    region.add(Rect::new(0.0, 0.0, 100.0, 100.0));
+    region.add(Rect::new(10.0, 10.0, 5.0, 5.0));
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
+}
+
+/// A rect that contains an existing slot replaces it — caught by
+/// the cluster-grow loop (cost = `−existing.area()` < 0 < budget).
+#[test]
+fn add_swallows_contained_existing() {
+    let mut region = DamageRegion::default();
+    region.add(Rect::new(10.0, 10.0, 5.0, 5.0));
+    region.add(Rect::new(0.0, 0.0, 100.0, 100.0));
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
+}
+
+/// Pairs that the SAH cost predicate accepts under the default
+/// budget all collapse to one merged rect.
+#[test]
+fn add_merges_pair_under_budget() {
+    let a = Rect::new(0.0, 0.0, 10.0, 10.0);
+    let cases: &[(&str, Rect, Rect, Rect)] = &[
+        // axis-aligned overlap: bbox 150, sum 200, cost −50.
+        (
+            "axis_aligned_overlap",
+            a,
+            Rect::new(5.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 15.0, 10.0),
+        ),
+        // edge-touching: bbox 200, sum 200, cost 0.
+        (
+            "edge_touching",
+            a,
+            Rect::new(10.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 20.0, 10.0),
+        ),
+        // near-disjoint (gap 2): bbox 220, sum 200, cost 20 < default.
+        (
+            "near_disjoint_gap2",
+            a,
+            Rect::new(12.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 22.0, 10.0),
+        ),
+        // diagonal overlap: bbox 225, union 175, cost −25.
+        (
+            "diagonal_overlap",
+            a,
+            Rect::new(5.0, 5.0, 10.0, 10.0),
+            a.union(Rect::new(5.0, 5.0, 10.0, 10.0)),
+        ),
+    ];
+    for (label, p, q, want) in cases {
+        let mut region = DamageRegion::default();
+        region.add(*p);
+        region.add(*q);
+        assert_eq!(collect(&region), vec![*want], "case: {label}");
+    }
+}
+
+/// Pair whose merge cost exceeds a tight budget stays split.
+/// 10×10 rects, gap 15 → bbox 350, sum 200, cost 150 > 100 budget.
+#[test]
+fn add_keeps_pair_above_budget_split() {
+    let mut region = DamageRegion::with_budget(100.0);
+    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
+    region.add(Rect::new(25.0, 0.0, 10.0, 10.0));
+    assert_eq!(collect(&region).len(), 2);
+}
+
+/// Intersecting pair always merges, even with the tightest
+/// possible budget — overlapping scissor passes would paint the
+/// overlap region twice (`LoadOp::Load` on each), so a single
+/// merged pass is strictly cheaper per overlap pixel regardless of
+/// how big the bbox grows. Pins the LVGL strict-overlap rule
+/// layered under the SAH proximity merge.
+#[test]
+fn intersecting_pair_merges_at_zero_budget() {
+    let mut region = DamageRegion::with_budget(0.0);
+    // Tall vertical rect on the left, wide horizontal rect at the
+    // top — a geometry like the popup-tab debug-overlay screenshot.
+    // bbox is much larger than `A.area + B.area`, so the SAH cost
+    // is huge; the intersect override forces the merge anyway.
+    let a = Rect::new(40.0, 40.0, 250.0, 600.0);
+    let b = Rect::new(40.0, 140.0, 1450.0, 100.0);
+    region.add(a);
+    region.add(b);
+    assert_eq!(collect(&region), vec![a.union(b)]);
+}
+
+/// Distant disjoint rects (the corner-pair pathology) stay split
+/// at any reasonable budget. Cost ≈ 1 000 000, way above any
+/// per-pass budget we'd ship.
+#[test]
+fn add_keeps_far_corners_split() {
+    let mut region = DamageRegion::default();
+    let a = Rect::new(0.0, 0.0, 5.0, 5.0);
+    let b = Rect::new(995.0, 995.0, 5.0, 5.0);
+    region.add(a);
+    region.add(b);
+    let rects = collect(&region);
+    assert_eq!(rects.len(), 2);
+    assert!(rects.contains(&a) && rects.contains(&b));
+}
+
+/// Cluster-grow: a "bridge" rect that contains two previously-
+/// disjoint slots collapses the region. Tight budget keeps the
+/// initial pair split (cost 900 > 50); adding the bridge then
+/// swallows both (each contained → cost = −existing.area()).
+#[test]
+fn add_cascade_absorbs_through_bridge() {
+    let mut region = DamageRegion::with_budget(50.0);
+    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
+    region.add(Rect::new(100.0, 0.0, 10.0, 10.0));
+    assert_eq!(collect(&region).len(), 2);
+    region.add(Rect::new(0.0, 0.0, 110.0, 10.0));
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 110.0, 10.0)]);
+}
+
+/// At the cap, the ninth rect triggers the min-growth fallback. The
+/// forced merge must respect the cap and re-absorb any slot that its
+/// grown bbox newly overlaps.
+#[test]
+fn min_growth_at_cap_reabsorbs_new_overlaps() {
+    let mut region = DamageRegion::with_budget(0.0);
+    let corners = [
+        Rect::new(0.0, 0.0, 5.0, 5.0),
+        Rect::new(995.0, 0.0, 5.0, 5.0),
+        Rect::new(0.0, 995.0, 5.0, 5.0),
+        Rect::new(995.0, 995.0, 5.0, 5.0),
+        Rect::new(495.0, 0.0, 5.0, 5.0),
+        Rect::new(495.0, 995.0, 5.0, 5.0),
+        Rect::new(0.0, 495.0, 5.0, 5.0),
+        Rect::new(995.0, 495.0, 5.0, 5.0),
+    ];
+    for c in corners {
+        region.add(c);
+    }
+    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+
+    let extra = Rect::new(490.0, 5.0, 10.0, 5.0);
+    region.add(extra);
+    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+    let merged = Rect::new(495.0, 0.0, 5.0, 5.0).union(extra);
+    let rects = collect(&region);
+    assert!(
+        rects.contains(&merged),
+        "expected the bbox of the colliding pair as one slot: {rects:?}",
+    );
+
+    let target = Rect::new(0.0, 0.0, 10.0, 1000.0);
+    let newly_overlapped = Rect::new(11.0, 900.0, 1.0, 1100.0);
+    let fillers = [
+        Rect::new(10_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(20_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(30_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(40_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(50_000.0, 10_000.0, 1.0, 1.0),
+        Rect::new(60_000.0, 10_000.0, 1.0, 1.0),
+    ];
+    let mut region = DamageRegion::with_budget(0.0);
+    region.add(target);
+    region.add(newly_overlapped);
+    for filler in fillers {
+        region.add(filler);
+    }
+    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+
+    let extra = Rect::new(20.0, 0.0, 10.0, 10.0);
+    region.add(extra);
+    let absorbed = target.union(extra).union(newly_overlapped);
+    let rects = collect(&region);
+    assert_eq!(rects.len(), DAMAGE_RECT_CAP - 1);
+    assert!(
+        rects.contains(&absorbed),
+        "missing absorbed bbox: {rects:?}"
+    );
+    for filler in fillers {
+        assert!(
+            rects.contains(&filler),
+            "missing filler {filler:?}: {rects:?}"
+        );
+    }
+    for (i, rect) in rects.iter().enumerate() {
+        for other in &rects[i + 1..] {
+            assert!(
+                !rect.intersects(*other),
+                "retained rects overlap: {rect:?}, {other:?}"
+            );
+        }
+    }
+}
+
+/// Compact cluster of four small rects: pairwise / cluster-grow
+/// costs all sit well below the default budget, so the
+/// agglomerative loop collapses them gradually to one bbox.
+/// Sanity-check that the cluster path actually fires.
+#[test]
+fn compact_cluster_of_four_collapses_at_default_budget() {
+    let mut region = DamageRegion::default();
+    assert_eq!(region.budget_px, DEFAULT_PASS_BUDGET_PX);
+    for r in [
+        Rect::new(100.0, 100.0, 50.0, 50.0),
+        Rect::new(200.0, 100.0, 50.0, 50.0),
+        Rect::new(100.0, 200.0, 50.0, 50.0),
+        Rect::new(200.0, 200.0, 50.0, 50.0),
+    ] {
+        region.add(r);
+    }
+    assert_eq!(
+        collect(&region),
+        vec![Rect::new(100.0, 100.0, 150.0, 150.0)],
+    );
+}
+
+/// Screenshot regression fixture (four rects approximating the
+/// "popup tab" damage overlay, `docs/screens/Screenshot 2026-05-10
+/// at 21.27.14.png`) swept across the per-region budget knob. At
+/// the default and a 7 000 px² tight budget every pairwise cost
+/// (≥ ~45 K px²) sits above the budget so all four rects stay
+/// split; cranking the budget to 60 000 collapses the cluster to
+/// the bbox. Pins both knob positions and the documented
+/// default-budget limitation.
+#[test]
+fn screenshot_cluster_budget_sweep() {
+    let rs = [
+        Rect::new(80.0, 300.0, 80.0, 230.0),
+        Rect::new(260.0, 360.0, 140.0, 70.0),
+        Rect::new(260.0, 510.0, 230.0, 20.0),
+        Rect::new(80.0, 580.0, 170.0, 20.0),
+    ];
+    let bbox = rs.iter().copied().reduce(|a, b| a.union(b)).unwrap();
+    let cases: &[(&str, DamageRegion, Vec<Rect>)] = &[
+        (
+            "default_budget_stays_split",
+            DamageRegion::default(),
+            rs.to_vec(),
+        ),
+        (
+            "tight_budget_stays_split",
+            DamageRegion::with_budget(7_000.0),
+            rs.to_vec(),
+        ),
+        (
+            "high_budget_collapses",
+            DamageRegion::with_budget(60_000.0),
+            vec![bbox],
+        ),
+    ];
+    for (label, base, want) in cases {
+        let mut region = *base;
+        for r in rs {
+            region.add(r);
+        }
+        assert_eq!(collect(&region), *want, "case: {label}");
+    }
+}
+
+/// `total_area` sums per-rect areas without subtracting overlap.
+/// With the merge policy, overlapping pairs collapse before they
+/// reach the sum; this disjoint case is the contract the
+/// full-repaint heuristic relies on. Strict-overlap budget keeps
+/// the pair from merging.
+#[test]
+fn total_area_sums_disjoint_rects() {
+    let mut region = DamageRegion::with_budget(0.0);
+    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
+    region.add(Rect::new(100.0, 100.0, 20.0, 20.0));
+    assert_eq!(region.total_area(), 100.0 + 400.0);
+}

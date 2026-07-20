@@ -1,5 +1,3 @@
-use crate::forest::tree::Tree;
-use crate::forest::tree::node::NodeId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
@@ -10,6 +8,8 @@ use crate::layout::support::{
 };
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::{rect::Rect, size::Size};
+use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 use glam::Vec2;
 
 /// Intrinsic size of a ZStack: max over children on the queried axis.

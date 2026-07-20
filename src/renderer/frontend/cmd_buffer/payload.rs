@@ -1,6 +1,5 @@
 //! Typed command discriminants and Pod payload records.
 
-use crate::forest::shapes::record::ColorMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
@@ -11,6 +10,7 @@ use crate::primitives::{
     transform::TranslateScale,
 };
 use crate::renderer::texture_id::TextureId;
+use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TextCacheKey;
 use strum::{EnumCount, EnumIter, FromRepr};
@@ -299,7 +299,7 @@ impl DrawTextPayload {
 /// `bbox` is their owner-local centerline AABB; the composer applies
 /// stroke/cap/join/AA inflation once in physical space.
 ///
-/// [`RecordPayloads`]: crate::record_store::RecordPayloads
+/// [`RecordPayloads`]: crate::scene::record_store::RecordPayloads
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -314,7 +314,7 @@ pub(crate) struct DrawPolylinePayload {
     /// owner box so the scissor cull stays correct and its centre is
     /// the spin pivot.
     ///
-    /// [`PaintAnim::Spin`]: crate::forest::tree::paint_anims::PaintAnim::Spin
+    /// [`PaintAnim::Spin`]: crate::scene::tree::paint_anims::PaintAnim::Spin
     pub(crate) rotation: f32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,
@@ -346,7 +346,7 @@ impl DrawPolylinePayload {
 /// into the per-instance translate so the vertex stream stays
 /// content-stable across frames.
 ///
-/// [`RecordPayloads`]: crate::record_store::RecordPayloads
+/// [`RecordPayloads`]: crate::scene::record_store::RecordPayloads
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]

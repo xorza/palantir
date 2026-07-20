@@ -5,12 +5,12 @@
 
 use crate::Ui;
 use crate::display::Display;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{GLOBAL_STATE_ID, Tooltip, TooltipGlobal, TooltipState};

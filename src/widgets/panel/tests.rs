@@ -1,13 +1,13 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

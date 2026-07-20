@@ -1,7 +1,6 @@
 use crate::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::record_store::RecordPayloads;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
     DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
@@ -10,6 +9,7 @@ use crate::renderer::frontend::composer::Composer;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
+use crate::scene::record_store::RecordPayloads;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;

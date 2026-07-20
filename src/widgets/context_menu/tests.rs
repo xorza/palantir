@@ -1,11 +1,11 @@
 //! End-to-end tests for `ContextMenu` + `MenuItem`.
 
-use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
 use crate::widgets::panel::Panel;

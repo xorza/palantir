@@ -35,9 +35,8 @@ contracts and validation coverage; they were not reviewed as production structur
 
 | Area | Current responsibility | Assessment |
 | --- | --- | --- |
-| `forest/`, `record_store.rs` | Per-layer recorded tree, compact element columns, shape records, and retained bulk payloads | Strong ownership and storage boundaries |
+| `scene/` | Per-layer recorded tree, retained bulk payloads, derived cascade state, hit index, paint bounds, and cross-frame damage | Cohesive recorded and derived scene ownership |
 | `layout/` | Measure/arrange drivers, intrinsic queries, cache, text reuse, and scroll rows | Strong except for mixed scroll interaction state |
-| `ui/cascade/`, `ui/damage/` | Derived scene state, hit index, paint bounds, and cross-frame damage | Cohesive passes, but placed under the wrong owner |
 | `input/` | Native events, routing, capture/focus, subscriptions, and responses | Cohesive state machine; `winit` translation is misplaced |
 | `renderer/frontend/` | Scene encoding and CPU composition into `RenderBuffer` | Good CPU/GPU split; input contract is too broad |
 | `renderer/backend/` | wgpu resources, scheduling, uploads, passes, and presentation support | Cohesive despite its size |
@@ -50,22 +49,22 @@ The current frame flow is:
    `InputState` (`src/host/winit/mod.rs:638`, `src/host/winit/mod.rs:651`).
 2. `WindowDriver` builds `Display` and calls `Ui::frame`
    (`src/host/window_driver.rs:333`, `src/host/window_driver.rs:431`).
-3. A full UI frame records `Forest` plus `RecordStore`, runs layout and cascade, settles
+3. A full UI frame records `scene::Forest` plus its `RecordStore`, runs layout and cascade, settles
    input/state, and computes damage (`src/ui/mod.rs:159`, `src/ui/mod.rs:518`,
    `src/ui/mod.rs:561`).
-4. `FrameReport` carries a private `RenderPlan`; `WindowDriver` selects a presentation
-   mode (`src/ui/frame_report.rs:15`, `src/host/window_driver.rs:438`).
-5. `Frontend` reads the frozen `Ui`, encodes commands, and composes `RenderBuffer`
+4. `FrameReport` carries a private renderer-owned `RenderPlan`; `WindowDriver` selects
+   a presentation mode (`src/renderer/plan.rs`, `src/host/window_driver.rs:438`).
+5. `Frontend` reads an immutable `FrameScene`, encodes commands, and composes `RenderBuffer`
    (`src/renderer/frontend/mod.rs:57`, `src/renderer/frontend/encoder/mod.rs:143`).
-6. `WgpuBackend` submits the buffer, after which `WindowDriver` mutates UI-owned
-   submission validity (`src/host/window_driver.rs:510`, `src/host/window_driver.rs:524`).
+6. `WgpuBackend` submits the buffer, after which `WindowDriver` updates its owned
+   output-validity state (`src/host/window_driver.rs:510`, `src/host/window_driver.rs:524`).
 
 The target dependency direction should be:
 
 ```text
 authoring vocabulary + primitives
               ↓
-      Forest + RecordPayloads
+     scene::{Forest, RecordPayloads}
               ↓
      layout → scene cascade → damage
               ↓
@@ -79,20 +78,16 @@ on `Ui` as a data container.
 
 ## Batch 1 — Restore explicit frame and pass boundaries (high priority)
 
-- [ ] **Move frozen scene artifacts out of `ui`.** `Cascades` is explicitly consumed
-  by damage, input, and the renderer (`src/ui/cascade/mod.rs:1`), yet input imports it
-  through `crate::ui` (`src/input/mod.rs:22`). Renderer code likewise imports cascade,
-  damage-region, and render-plan types from `ui`
-  (`src/renderer/frontend/encoder/mod.rs:31`, `src/renderer/backend/viewport.rs:12`,
-  `src/renderer/backend/mod.rs:43`). Create `src/scene/` and move `cascade/` and
-  `damage/` there; move `RenderPlan`/`RenderKind` from `ui/frame_report.rs` to
-  `renderer/plan.rs`. Keep the public `FrameReport`, `FramePaint`, and
-  `FrameProcessing` in `ui/frame_report.rs`. This makes the module tree match the
-  actual pass graph and removes input/renderer dependencies on the orchestrator.
-  Validate by moving the existing colocated tests, running the full suite, and
-  confirming `rg 'crate::ui::(cascade|damage)' src/input src/renderer src/host`
-  and `rg 'crate::ui::frame_report::Render' src/renderer src/host` return no
-  production imports.
+- [x] **Consolidate recorded and derived scene ownership.** `scene` replaces the old
+  top-level `forest` module and owns `Forest`, its element/tree/shape vocabulary,
+  retained `RecordStore`, frozen cascades, and cross-frame damage state. This avoids
+  introducing overlapping `forest` and `scene` domains while removing input and
+  renderer dependencies on the `ui` orchestrator. `RenderPlan`/`RenderKind` live in
+  `renderer/plan.rs`; public `FrameReport`, `FramePaint`, and `FrameProcessing` remain
+  in `ui/frame_report.rs`. The colocated tests and internals benchmarks mirror the new
+  hierarchy. `rg 'crate::ui::(cascade|damage)' src/input src/renderer src/host` and
+  `rg 'crate::ui::frame_report::Render' src/renderer src/host` return no production
+  imports.
 
 - [x] **Give the renderer a named immutable frame input instead of `&Ui`.**
   `Frontend::build` accepts the entire recorder and directly borrows its payloads,
@@ -156,11 +151,11 @@ on `Ui` as a data container.
 
 - [ ] **Remove the global scroll-map fold from the cascade fingerprint after the
   split.** `cascade_fingerprint` scans every retained scroll row and hashes
-  offset/zoom separately (`src/ui/cascade/mod.rs:574`,
-  `src/ui/cascade/mod.rs:637`), but `Scroll::show` records those values into the
+  offset/zoom separately (`src/scene/cascade/mod.rs:574`,
+  `src/scene/cascade/mod.rs:637`), but `Scroll::show` records those values into the
   viewport element's transform (`src/widgets/scroll/mod.rs:794`) and
   `PanelExtras::hash` already includes that transform in the node/subtree hash
-  (`src/forest/element/columns.rs:98`, `src/forest/tree/mod.rs:199`). The extra fold
+  (`src/scene/element/columns.rs:98`, `src/scene/tree/mod.rs:199`). The extra fold
   is redundant, makes cascade reuse depend on stale/unrelated map rows, and is the
   only reason cascade knows about layout-engine scroll storage. Remove the
   `ScrollStates` argument and add pin tests showing offset/zoom changes alter the
@@ -250,8 +245,8 @@ on `Ui` as a data container.
 
 - [x] **Move shared stroke paint bounds out of the render-buffer wire module.**
   Forest lowering and cascade currently import `HALF_FRINGE`/`stroked_bbox` upward
-  from renderer storage (`src/forest/shapes/lower.rs:27`,
-  `src/ui/cascade/mod.rs:31`), while the definitions live beside
+  from renderer storage (`src/scene/shapes/lower.rs:27`,
+  `src/scene/cascade/mod.rs:31`), while the definitions live beside
   `CurveInstance` (`src/renderer/render_buffer/curve.rs:19`,
   `src/renderer/render_buffer/curve.rs:39`). Put CPU/shared semantics
   (`HALF_FRINGE`, `MITER_LIMIT`, `stroked_bbox`) in `shape/stroke_bounds.rs` beside

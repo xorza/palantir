@@ -1,12 +1,12 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::response::ResponseState;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::{Response, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

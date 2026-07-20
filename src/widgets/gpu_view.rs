@@ -1,6 +1,6 @@
-use crate::forest::element::{Configure, Element};
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
+use crate::scene::element::{Configure, Element};
 use crate::ui::Ui;
 use crate::widgets::{Response, enter_widget};
 use std::cell::RefCell;
@@ -108,13 +108,13 @@ impl Configure for GpuView {
 mod tests {
     use super::*;
     use crate::Ui;
-    use crate::forest::element::Configure;
-    use crate::forest::layer::Layer;
-    use crate::forest::shapes::record::ShapeRecord;
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::gpu_view::GpuFrameCtx;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
+    use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
 

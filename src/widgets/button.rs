@@ -1,7 +1,7 @@
-use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::TextInput;
+use crate::scene::element::{Configure, Element};
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;

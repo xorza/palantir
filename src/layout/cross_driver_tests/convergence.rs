@@ -13,10 +13,10 @@
 use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::tree::node::NodeId;
 use crate::layout::types::sizing::Sizing;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

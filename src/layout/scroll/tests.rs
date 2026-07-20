@@ -4,12 +4,12 @@
 //! (driver doesn't fire; row keeps last frame's `content`).
 
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;

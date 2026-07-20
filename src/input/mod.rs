@@ -16,7 +16,7 @@ use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHO
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::cascade::Cascades;
+use crate::scene::cascade::Cascades;
 use glam::Vec2;
 use std::time::Duration;
 use strum::EnumCount as _;
@@ -257,7 +257,7 @@ impl TargetDeltas {
 
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
-/// (last-frame rects, cascade scratch) lives in [`crate::ui::cascade::Cascade`].
+/// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,

@@ -1,4 +1,3 @@
-use crate::forest::element::{Configure, Element, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
@@ -6,6 +5,7 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
+use crate::scene::element::{Configure, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -167,7 +167,7 @@ fn switch_geom(track_h: f32, inset: f32, stroke: f32) -> SwitchGeom {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
-    use crate::forest::layer::Layer;
+    use crate::scene::layer::Layer;
     use crate::widgets::switch::{Switch, switch_geom};
     use glam::UVec2;
 

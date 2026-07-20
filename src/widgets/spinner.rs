@@ -1,8 +1,8 @@
-use crate::forest::element::{Configure, Element};
-use crate::forest::tree::paint_anims::PaintAnim;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::LinearGradient;
 use crate::primitives::color::Color;
+use crate::scene::element::{Configure, Element};
+use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;

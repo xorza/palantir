@@ -20,13 +20,13 @@ pub(crate) mod widget_look;
 mod tests;
 
 use crate::animation::AnimSpec;
-use crate::forest::element::Element;
 use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::element::Element;
 use crate::text::TextMetrics;
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;

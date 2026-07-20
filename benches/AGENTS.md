@@ -514,7 +514,7 @@ perf report -i tmp/perf-stfwd.data --stdio --no-children -g none \
     --percent-limit 1.0 | head -40
 
 # Drill to the exact instruction in the worst symbol:
-perf annotate -i tmp/perf-stfwd.data -M intel aperture::forest::Forest::open_node
+perf annotate -i tmp/perf-stfwd.data -M intel aperture::scene::Forest::open_node
 ```
 
 **Reading the L1-bound sub-leaves** (Raptor Cove):

@@ -1,7 +1,4 @@
 use crate::Ui;
-use crate::forest::element::Configure;
-use crate::forest::layer::Layer;
-use crate::forest::shapes::paint::ShapeBrush;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
@@ -16,13 +13,16 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
-use crate::record_store::{GradientId, RecordedGradient};
 use crate::renderer::frontend::cmd_buffer::payload::{BrushSource, CmdKind, PushClipPayload};
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::gradient_atlas::handle::{GradientAtlas, test_support::registration_count};
+use crate::scene::damage::region::DamageRegion;
+use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::record_store::{GradientId, RecordedGradient};
+use crate::scene::shapes::paint::ShapeBrush;
 use crate::text::text_in_rect;
-use crate::ui::damage::region::DamageRegion;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -971,8 +971,8 @@ fn damage_filter_paints_leaves_in_any_rect() {
 #[test]
 fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::display::Display;
-    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::corners::Corners;
+    use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use std::time::Duration;
 
@@ -1208,7 +1208,7 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
 #[test]
 fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
-    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::style::{LineCap, LineJoin};
     use crate::shape::{PolylineColors, Shape};
     use std::time::Duration;
@@ -1275,7 +1275,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
 #[test]
 fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
-    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use std::f32::consts::PI;
     use std::time::Duration;

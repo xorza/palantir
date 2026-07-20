@@ -1,8 +1,8 @@
-use crate::forest::element::{Configure, Element};
 use crate::input::sense::Sense;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
+use crate::scene::element::{Configure, Element};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
