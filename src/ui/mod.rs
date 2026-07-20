@@ -1298,7 +1298,6 @@ pub(crate) mod test_support {
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;
     use crate::primitives::rect::Rect;
-    use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder;
     use crate::text::TextShaper;
@@ -1312,10 +1311,6 @@ pub(crate) mod test_support {
     use std::time::Duration;
 
     impl Ui {
-        pub(crate) fn build_frontend_for_test(&self, frontend: &mut Frontend, plan: RenderPlan) {
-            frontend.build(self.frame_scene(), plan);
-        }
-
         pub(crate) fn record(
             &mut self,
             stamp: FrameStamp,
@@ -1457,7 +1452,7 @@ pub(crate) mod test_support {
         /// does after a successful submit, so the next lifecycle run
         /// doesn't auto-escalate to `Full`. For tests and for benches
         /// that drive `record` + a standalone
-        /// [`Self::build_frontend_for_test`]
+        /// [`crate::renderer::frontend::Frontend::build`]
         /// instead of going through `WindowDriver` (the `frame/*_cpu` arms).
         pub(crate) fn mark_frame_submitted(&mut self) {
             self.frame_runtime.frame_submitted = true;
