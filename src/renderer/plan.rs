@@ -4,6 +4,15 @@ use crate::primitives::color::Color;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 
+/// Physical-pixel padding around every partial-repaint scissor for
+/// antialiasing fringes and glyph overhang.
+pub(crate) const DAMAGE_AA_PADDING: u32 = 2;
+
+/// Logical-pixel culling slack matching the backend's padded physical scissor.
+pub(crate) fn damage_cull_margin(scale: f32) -> f32 {
+    (DAMAGE_AA_PADDING as f32 + 1.0) / scale
+}
+
 /// WindowDriver-facing render plan, present only when there's actual render
 /// work this frame — `FrameReport.plan = None` is the skip signal, so neither
 /// the encoder nor the backend ever sees a no-op plan. Pairs the surface clear
@@ -48,5 +57,16 @@ impl RenderPlan {
             clear: self.clear,
             kind: RenderKind::Full,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::plan::damage_cull_margin;
+
+    #[test]
+    fn damage_cull_margin_scales_inversely() {
+        assert_eq!(damage_cull_margin(1.0), 3.0);
+        assert_eq!(damage_cull_margin(2.0), 1.5);
     }
 }
