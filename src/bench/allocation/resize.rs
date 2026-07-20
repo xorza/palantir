@@ -16,10 +16,12 @@
 //! Run with: `cargo bench --bench alloc_resize --features internals`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals`
 
-use aperture::{Display, FrameStamp, bench, bench::FrameFixture};
+use aperture::{Display, bench, bench::FrameFixture};
 use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
+
+use crate::ui::frame::FrameStamp;
 
 const WARMUP_FRAMES: usize = 32;
 const MEASURE_FRAMES: usize = 256;

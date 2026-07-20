@@ -188,7 +188,8 @@ fn baseline_draw_rect_count_cases() {
 #[test]
 fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::primitives::corners::Corners;
-    use crate::shape::{LineCap, Shape};
+    use crate::shape::Shape;
+    use crate::shape::style::LineCap;
 
     let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
@@ -1206,7 +1207,8 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
 fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
     use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
+    use crate::shape::style::{LineCap, LineJoin};
+    use crate::shape::{PolylineColors, Shape};
     use crate::ui::frame::FrameStamp;
     use std::time::Duration;
 

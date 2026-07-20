@@ -123,7 +123,9 @@ pub(crate) struct BackendShared {
     pub(crate) pass_stats: GpuPassStats,
 }
 
-/// wgpu backend: solely owns the device/queue, pipelines, and text renderer.
+/// Wgpu renderer owning its device/queue handles, pipelines, and text backend.
+/// The winit adapter retains cloned handles solely for surface configuration
+/// and presentation.
 /// The text side holds a
 /// shared handle to the same `CosmicMeasure` the Ui side measures
 /// against (passed in at [`Self::new`]) so layout-time measurement
@@ -173,18 +175,6 @@ pub(crate) struct WgpuBackend {
 }
 
 impl WgpuBackend {
-    /// Reconfigure a `wgpu::Surface` against this backend's device.
-    /// Encapsulates the device handle so callers don't need to read
-    /// it directly — used by the host on suboptimal/outdated/lost
-    /// surface acquisitions.
-    pub(crate) fn configure_surface(
-        &self,
-        surface: &wgpu::Surface,
-        config: &wgpu::SurfaceConfiguration,
-    ) {
-        surface.configure(&self.device, config);
-    }
-
     /// Build the one shared GPU renderer from its app-global render handles.
     /// Owns the device/queue and every
     /// format-independent GPU resource (pipelines' shaders + buffers, the
@@ -349,13 +339,6 @@ impl WgpuBackend {
     /// paint rect). The only backend-owned input the composer needs.
     pub(crate) fn max_texture_dim(&self) -> u32 {
         self.device.limits().max_texture_dimension_2d
-    }
-
-    /// Present an acquired swapchain frame. wgpu 30 moved `present` off
-    /// `SurfaceTexture` onto the queue, so the window renderer routes it
-    /// through the backend's owned queue here.
-    pub(crate) fn present(&self, frame: wgpu::SurfaceTexture) {
-        self.queue.present(frame);
     }
 
     /// Render one frame to the persistent backbuffer, then copy the

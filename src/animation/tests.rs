@@ -523,7 +523,7 @@ fn spring_parameters_change_trajectory() {
     assert_ne!(default, custom);
 }
 
-/// Worst-case wall-clock `dt` (= `Ui::MAX_DT` after a stalled frame
+/// Worst-case wall-clock `dt` (= `FrameRuntime::MAX_DT` after a stalled frame
 /// or a tab-switch redraw gap) must not blow up the integrator: a
 /// single-step semi-implicit Euler at `dt = 0.1` with default spring
 /// `(170, 26)` produces a `current` far past the target (negative for

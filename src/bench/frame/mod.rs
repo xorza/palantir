@@ -244,7 +244,7 @@ impl CpuHarness {
     /// only kicks in when there's nothing to paint at all.
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
         let stamp = FrameStamp::new(display, self.start.elapsed());
-        let report = self.ui.record(stamp, record);
+        let report = self.ui.record_acked(stamp, record);
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
             kind: RenderKind::Full,
@@ -252,7 +252,6 @@ impl CpuHarness {
         // The deviceless CPU harness's `Frontend` carries the baseline
         // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
         self.frontend.build(self.ui.frame_scene(), plan);
-        self.ui.mark_frame_submitted();
     }
 }
 

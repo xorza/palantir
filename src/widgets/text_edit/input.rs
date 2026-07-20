@@ -58,6 +58,7 @@ pub(crate) fn handle_input(
     // different TypeIds; the borrow checker can't see the disjoint
     // rows so we read the menu row first.
     let menu_open = ContextMenu::is_open(ui, id);
+    let clipboard = ui.shared.clipboard.clone();
 
     // Hold the state row once for the whole function (inside the
     // `Editor`). `ui.state`, `ui.input`, and `ui.shared.text` are
@@ -204,7 +205,7 @@ pub(crate) fn handle_input(
                     submitted = true;
                     continue;
                 }
-                if ed.dispatch_shortcut(kp, menu_open) {
+                if ed.dispatch_shortcut(kp, menu_open, &clipboard) {
                     continue;
                 }
                 match ed.apply_key(kp) {

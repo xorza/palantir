@@ -6,7 +6,8 @@ use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
-use crate::shape::{LineCap, Shape};
+use crate::shape::Shape;
+use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use crate::ui::cascade::{CascadeInputHash, Paint};
 use crate::ui::damage::region::DamageRegion;
@@ -766,7 +767,7 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    let out = ui.record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+    let out = ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
         Frame::new()
             .id(WidgetId::from_hash("placeholder"))
             .size(10.0)
@@ -816,17 +817,16 @@ fn click_on_empty_bg_does_not_force_full() {
     ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build);
     // Frame 1 (warm): nothing changed → Skip.
     let warm = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), build)
+        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build)
         .plan;
     assert!(warm.is_none(), "warm frame must Skip");
-    ui.frame_runtime.frame_submitted = true;
 
     // Click on empty background (far from the 50×50 frame at origin).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let click_plan = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), build)
+        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), build)
         .plan;
     assert!(
         !matches!(
@@ -840,12 +840,8 @@ fn click_on_empty_bg_does_not_force_full() {
     );
 }
 
-/// Regression: a `Skip` frame that the host bypasses (no
-/// `backend.submit` → `frame_submitted` never set) must not force the
-/// next frame to `Full`. `post_record` marks `Skip` as submitted
-/// directly so the next `pre_record`'s auto-rewind doesn't kick in.
 #[test]
-fn skip_frame_does_not_force_next_to_full() {
+fn valid_skip_preserves_incremental_damage_baseline() {
     let mut ui = Ui::for_test();
     let first = ui
         .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
@@ -859,69 +855,15 @@ fn skip_frame_does_not_force_next_to_full() {
             ..
         })
     ));
-    ui.frame_runtime.frame_submitted = true;
-
-    // Identical content → Skip. WindowDriver::render confirms submitted on
-    // the skip path too (copies the backbuffer onto the swapchain);
-    // the test mirrors that ack.
     let skip = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             one_frame(ui, BLUE)
         })
         .plan;
     assert!(skip.is_none(), "identical content must Skip");
-    ui.frame_runtime.frame_submitted = true;
 
-    // Next frame: still no diff. Pre-fix this could regress to Full if
-    // the skip wasn't acked — WindowDriver::render owns that ack now.
     let next = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, BLUE)
-        })
-        .plan;
-    assert!(
-        next.is_none(),
-        "Skip frames must not poison the next frame into Full",
-    );
-}
-
-/// Regression: a host that early-returns on `skip_render` (the natural
-/// pattern — no swapchain acquire when there's nothing to paint, see
-/// `examples/showcase/main.rs`) never sets `frame_submitted`. Without
-/// `Ui::frame` self-acking skip frames, the next paint frame's
-/// `classify_frame` saw `frame_skipped = true` and escalated
-/// to `Full` — visible as a full-window red flash in the damage debug
-/// overlay on every idle→input transition (e.g. mouse move).
-#[test]
-fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
-    let mut ui = Ui::for_test();
-    let first = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, BLUE)
-        })
-        .plan;
-    assert!(matches!(
-        first,
-        Some(RenderPlan {
-            kind: RenderKind::Full,
-            ..
-        })
-    ));
-    ui.frame_runtime.frame_submitted = true;
-
-    // Identical content → Skip. WindowDriver bypasses `render()` entirely and
-    // never acks; `Ui::frame` must self-ack the skip.
-    let skip = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-            one_frame(ui, BLUE)
-        })
-        .plan;
-    assert!(skip.is_none(), "identical content must Skip");
-    // NOTE: deliberately no `frame_submitted = true` here.
-
-    // Authoring change → expect `Partial`, not `Full`.
-    let next = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             one_frame(ui, RED)
         })
         .plan;
@@ -933,7 +875,31 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
                 ..
             })
         ),
-        "unacked skip poisoned next frame into Full: {next:?}",
+        "valid skip must retain the incremental baseline: {next:?}",
+    );
+}
+
+#[test]
+fn invalid_prior_output_forces_full_damage() {
+    let mut ui = Ui::for_test();
+    ui.record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+        one_frame(ui, BLUE)
+    });
+
+    let next = ui
+        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+            one_frame(ui, RED)
+        })
+        .plan;
+    assert!(
+        matches!(
+            next,
+            Some(RenderPlan {
+                kind: RenderKind::Full,
+                ..
+            })
+        ),
+        "invalid output must discard the incremental baseline: {next:?}",
     );
 }
 
@@ -1864,17 +1830,14 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} f1"
         );
-        ui.frame_runtime.frame_submitted = true;
         let f2 = ui
-            .record(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
+            .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
             .plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
-        ui.frame_runtime.frame_submitted = true;
-
         // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_plan = ui
-            .record(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
+            .record_acked(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
             .plan;
         assert!(
             matches!(
@@ -1886,7 +1849,6 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} display change"
         );
-        ui.frame_runtime.frame_submitted = true;
         assert!(
             !ui.damage_engine.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
@@ -1894,7 +1856,7 @@ fn display_change_forces_full_repaint() {
 
         // Stable surface at the new size, identical authoring → back to Skip.
         let stable = ui
-            .record(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
+            .record_acked(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
             .plan;
         assert!(
             stable.is_none(),
@@ -2016,19 +1978,17 @@ fn stable_surface_does_not_short_circuit() {
         build(ui, BLUE)
     });
     let warm = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             build(ui, BLUE)
         })
         .plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(ui.damage_engine.dirty.is_empty());
-    ui.frame_runtime.frame_submitted = true;
-
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
     let changed = ui
-        .record(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
+        .record_acked(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             build(ui, RED)
         })
         .plan;
@@ -3039,7 +2999,8 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::forest::element::{Element, Salt};
     use crate::primitives::size::Size;
-    use crate::shape::{Shape, TextWrap};
+    use crate::shape::Shape;
+    use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
 
     let mut ui = Ui::for_test();

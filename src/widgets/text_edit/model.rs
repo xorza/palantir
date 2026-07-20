@@ -1,6 +1,6 @@
 //! Persistent text-edit state, mutation history, and Unicode navigation.
 
-use crate::common::clipboard;
+use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::shortcut::Shortcut;
@@ -247,11 +247,11 @@ impl<'a> Editor<'a> {
     }
 
     /// Cut the live selection to the clipboard. No-op without one.
-    pub(crate) fn cut(&mut self) {
+    pub(crate) fn cut(&mut self, clipboard: &Clipboard) {
         let Some(r) = self.state.sel_range() else {
             return;
         };
-        if clipboard::set(&self.text[r.clone()]).is_err() {
+        if clipboard.set(&self.text[r.clone()]).is_err() {
             return;
         }
         self.record_edit(EditKind::Other);
@@ -262,9 +262,9 @@ impl<'a> Editor<'a> {
     }
 
     /// Copy the live selection to the clipboard. No-op without one.
-    pub(crate) fn copy(&self) {
+    pub(crate) fn copy(&self, clipboard: &Clipboard) {
         if let Some(r) = self.state.sel_range() {
-            let _ = clipboard::set(&self.text[r]);
+            let _ = clipboard.set(&self.text[r]);
         }
     }
 
@@ -311,7 +311,12 @@ impl<'a> Editor<'a> {
     /// that key. Undo/redo always fire; clipboard + select-all are
     /// suppressed when a context menu owns the same bindings
     /// (`menu_open == true`).
-    pub(crate) fn dispatch_shortcut(&mut self, kp: KeyPress, menu_open: bool) -> bool {
+    pub(crate) fn dispatch_shortcut(
+        &mut self,
+        kp: KeyPress,
+        menu_open: bool,
+        clipboard: &Clipboard,
+    ) -> bool {
         if UNDO.matches(kp) {
             self.undo();
             return true;
@@ -328,15 +333,15 @@ impl<'a> Editor<'a> {
             return true;
         }
         if COPY.matches(kp) {
-            self.copy();
+            self.copy(clipboard);
             return true;
         }
         if CUT.matches(kp) {
-            self.cut();
+            self.cut(clipboard);
             return true;
         }
         if PASTE.matches(kp) {
-            self.paste(&clipboard::get());
+            self.paste(&clipboard.get());
             return true;
         }
         false

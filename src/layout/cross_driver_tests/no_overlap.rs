@@ -4,7 +4,7 @@
 //! check on emitted `DrawText` x positions.
 use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::forest::element::Configure;

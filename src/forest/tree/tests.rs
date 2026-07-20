@@ -15,7 +15,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::Command;
-use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
+use crate::shape::style::{LineCap, LineJoin};
+use crate::shape::{PolylineColors, Shape};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

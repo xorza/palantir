@@ -20,15 +20,14 @@ use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, ResolvedGradient,
+    BrushSource, ColorModeBits, DrawArcPayload, DrawCurvePayload, DrawImagePayload,
+    DrawMeshPayload, DrawPolylinePayload, LineCapBits, LineJoinBits, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
 };
-use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::{TextShaper, text_in_rect};
 use crate::ui::cascade::CascadeInputHash;
 use crate::ui::damage::region::DamageRegion;

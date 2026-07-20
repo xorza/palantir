@@ -4,7 +4,7 @@
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::TextWrap;
+use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;

@@ -60,9 +60,12 @@ pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// instead of a swapchain (screenshots, thumbnails, server-side
 /// compositing); also backs the visual harness + GPU benches.
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
-pub use host::winit::config::WinitHostConfig;
-pub use host::winit::handle::{HostHandle, UserEvent};
-pub use host::winit::{WinitHost, WinitHostBuilder};
+#[cfg(feature = "winit-host")]
+pub use host::winit::{
+    WinitHost, WinitHostBuilder,
+    config::WinitHostConfig,
+    handle::{HostHandle, UserEvent},
+};
 pub use input::InputEvent;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
@@ -106,13 +109,14 @@ pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::ImageHandle;
-pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
+pub use shape::style::{LineCap, LineJoin};
+pub use shape::{PolylineColors, Shape};
 pub use text::cosmic::CosmicMeasure;
+pub use text::wrap::TextWrap;
 pub use text::{
     FontFamily, FontWeight, ShapeParams, ShapeParamsError, TextMeasurement, TextShaper,
 };
 pub use ui::Ui;
-pub use ui::frame::FrameStamp;
 pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;

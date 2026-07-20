@@ -22,21 +22,20 @@ required-features = ["showcase"]
 
 [dependencies]
 aperture-anim-derive = { path = "anim-derive" }
-arboard = { version = "3.6", default-features = false }
+arboard = { version = "3.6", default-features = false, optional = true }
 bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
-encase = "0.12"
 cosmic-text = "0.19"
 fixedbitset = "0.5"
 # Window/image extents use i32/u16/u32; Shadow and GPU wires need the integration features.
-glam = { version = "0.33", default-features = false, features = ["std", "i32", "u16", "u32", "bytemuck", "encase", "serde"] }
+glam = { version = "0.33", default-features = false, features = ["std", "i32", "u16", "u32", "bytemuck", "serde"] }
 etagere = "0.3"
 half = { version = "2.7", features = ["bytemuck"] }
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = "1.0"
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
-winit = "0.30"
+winit = { version = "0.30", optional = true }
 padding-struct = "0.2"
 soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
@@ -74,7 +73,15 @@ required-features = ["internals"]
 
 [[example]]
 name = "frame_visual"
-required-features = ["internals"]
+required-features = ["internals", "winit-host"]
+
+[[example]]
+name = "counter"
+required-features = ["winit-host"]
+
+[[example]]
+name = "custom_widget"
+required-features = ["winit-host"]
 
 [[bench]]
 name = "frame"
@@ -156,11 +163,14 @@ harness = false
 required-features = ["internals"]
 
 [features]
+default = ["system-clipboard", "winit-host"]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets.
 internals = ["dep:criterion", "dep:dhat", "dep:gethostname"]
 # Enables the bundled widget-tour binary and its logging setup.
-showcase = ["dep:tracing-subscriber"]
+showcase = ["dep:tracing-subscriber", "winit-host"]
+system-clipboard = ["winit-host", "dep:arboard"]
+winit-host = ["dep:winit"]
 # Profiler backend — off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
