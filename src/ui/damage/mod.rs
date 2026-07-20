@@ -229,13 +229,6 @@ pub(crate) enum Damage {
 }
 
 impl Damage {
-    /// True iff this is the skip signal — caller can short-circuit
-    /// the renderer entirely.
-    #[inline]
-    pub(crate) fn is_skip(self) -> bool {
-        matches!(self, Damage::Skip)
-    }
-
     /// Classify a region (already sealed against its surface by
     /// [`DamageRegion::collapse_from`]) into the frame's paint decision. Pure
     /// dispatch on the precomputed `coverage` — no surface needed here; the
