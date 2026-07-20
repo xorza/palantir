@@ -1380,7 +1380,7 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
             .show(ui);
     });
 
-    let payloads = ui.record_store.payloads.borrow();
+    let payloads = ui.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     assert_eq!(
         &*text_bytes,
@@ -1413,7 +1413,7 @@ fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
     use std::rc::Rc;
 
     fn assert_recorded_text(ui: &Ui, expected: &str) {
-        let payloads = ui.record_store.payloads.borrow();
+        let payloads = ui.forest.record_store.payloads.borrow();
         let text_bytes = payloads.text_bytes();
         let records = &ui.forest.trees[Layer::Main].shapes.records;
         let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
@@ -1546,7 +1546,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let r0 = ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
-        let payloads = ui.record_store.payloads.borrow();
+        let payloads = ui.forest.record_store.payloads.borrow();
         assert_eq!(&*payloads.text_bytes(), "retained 7");
     }
 
@@ -1559,13 +1559,19 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     // Direct pin: the gradient interned during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        ui.record_store.payloads.borrow().gradients.records.len(),
+        ui.forest
+            .record_store
+            .payloads
+            .borrow()
+            .gradients
+            .records
+            .len(),
         1,
         "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",
     );
     {
-        let payloads = ui.record_store.payloads.borrow();
+        let payloads = ui.forest.record_store.payloads.borrow();
         assert_eq!(
             &*payloads.text_bytes(),
             "retained 7",

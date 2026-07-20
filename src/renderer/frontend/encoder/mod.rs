@@ -8,7 +8,6 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
-use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::cmd_buffer::payload::{
@@ -21,6 +20,7 @@ use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
 };
+use crate::renderer::repaint::damage_cull_margin;
 use crate::scene::Forest;
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
@@ -161,7 +161,7 @@ impl Encoder {
         let text_bytes = scene.payloads.text_bytes();
         // Matches the *padded* region the backend actually PreClears — the
         // pad + rounding-slack derivation lives next to the scissor math in
-        // `renderer::damage::damage_cull_margin` so the two can't drift.
+        // `renderer::repaint::damage_cull_margin` so the two can't drift.
         let damage_cull_margin = damage_cull_margin(scene.display.scale_factor);
         for (layer, tree) in scene.forest.trees.iter_paint_order() {
             let layer_cascades = &scene.cascades.layers[layer];

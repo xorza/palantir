@@ -169,7 +169,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let node = ui.run_at_value(UVec2::new(200, 400), |ui| {
         two_hug_cols_with_wrap(ui, PARAGRAPH)
     });
-    let payloads = ui.record_store.payloads.borrow();
+    let payloads = ui.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
@@ -422,7 +422,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
             .show(ui)
             .node()
     });
-    let payloads = ui.record_store.payloads.borrow();
+    let payloads = ui.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
@@ -493,7 +493,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // Probe label's natural unbroken width at an unconstrained surface.
     let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
     let probe_label = probe.run_at_value(UVec2::new(2000, 400), |ui| build(ui).1);
-    let payloads = probe.record_store.payloads.borrow();
+    let payloads = probe.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],
@@ -560,7 +560,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
     // Label's natural unbroken width, probed unconstrained.
     let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
     let probe_label = probe.run_at_value(UVec2::new(2000, 400), build);
-    let payloads = probe.record_store.payloads.borrow();
+    let payloads = probe.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],

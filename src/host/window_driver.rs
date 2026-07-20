@@ -356,7 +356,7 @@ impl WindowDriver {
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
-                let payloads = self.ui.record_store.payloads.borrow();
+                let payloads = self.ui.forest.record_store.payloads.borrow();
                 backend.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
@@ -386,7 +386,7 @@ impl WindowDriver {
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"
                 );
-                let payloads = self.ui.record_store.payloads.borrow();
+                let payloads = self.ui.forest.record_store.payloads.borrow();
                 backend.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
@@ -633,7 +633,7 @@ mod record_store_tests {
     }
 
     fn snapshot(driver: &WindowDriver) -> RecordPayloadSnapshot {
-        let payloads = driver.ui.record_store.payloads.borrow();
+        let payloads = driver.ui.forest.record_store.payloads.borrow();
         RecordPayloadSnapshot {
             mesh_vertices: payloads.meshes.vertices.clone(),
             mesh_indices: payloads.meshes.indices.clone(),

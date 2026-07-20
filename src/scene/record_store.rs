@@ -1,6 +1,6 @@
-//! Per-window store for retained record payloads. Owned by `Ui`, which handles
-//! record-time mesh / polyline / formatting writes. Later CPU and GPU phases
-//! borrow that window's payloads through the same `Ui`.
+//! Per-window store for retained record payloads. Owned by [`Forest`], which
+//! pairs it with the trees whose shapes reference it. Later CPU and GPU phases
+//! borrow that window's payloads through explicit frame inputs.
 //! Cleared at record-pass start and retained across `PaintOnly` frames.
 //!
 //! Replaces the previous three-step copy (user `Mesh` →
@@ -12,6 +12,8 @@
 //! This file is storage only: the authoring `Shape` → `ShapeRecord` /
 //! `ChromeRow` lowering that appends here lives in
 //! [`crate::scene::shapes::lower`].
+//!
+//! [`Forest`]: crate::scene::Forest
 
 use crate::common::hash::hash_str;
 use crate::primitives::brush::{FillAxis, GradientStops, Interp};
@@ -96,7 +98,7 @@ impl RecordedGradients {
     }
 }
 
-/// Owner of one window's retained record payloads. `Ui` owns one;
+/// Owner of one window's retained record payloads. `Forest` owns one;
 /// frontend and backend phases receive a borrow of the same payloads.
 /// Phases run sequentially (record → encode → compose → upload) so the
 /// underlying borrow is never contested; a double-borrow indicates a wiring

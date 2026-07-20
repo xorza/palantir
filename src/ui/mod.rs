@@ -34,8 +34,6 @@ use crate::renderer::plan::RenderPlan;
 use crate::scene::Forest;
 use crate::scene::element::Element;
 use crate::scene::layer::Layer;
-use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::lower::ChromeInput;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::scene::tree::recording::Placement;
 use crate::{InternedStr, TextInput};
@@ -75,9 +73,6 @@ pub struct Ui {
     /// the redraw epoch and the encoder looks the view up here by the node's
     /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
     pub(crate) gpu_views: WidgetIdMap<GpuViewEntry>,
-    /// This window's retained record store. Cleared only when a record pass
-    /// rebuilds the forest; `PaintOnly` keeps it paired with the retained tree.
-    pub(crate) record_store: RecordStore,
     /// App-global capabilities selected for the recorder: text shaping,
     /// render assets, diagnostics, and the live-window directory.
     pub(crate) shared: UiShared,
@@ -127,7 +122,7 @@ impl Ui {
             forest: &self.forest,
             layout: &self.layout,
             cascades: &self.cascades,
-            payloads: self.record_store.payloads.borrow(),
+            payloads: self.forest.record_store.payloads.borrow(),
             text: &self.shared.text,
             gradient_atlas: &self.shared.assets.gradients,
             gpu_views: &self.gpu_views,
@@ -139,12 +134,11 @@ impl Ui {
     /// Construct a per-window `Ui` from the host's [`UiShared`] capabilities.
     /// The capabilities provide the same text and render assets used by the
     /// backend, plus shared diagnostics and the live window directory. Each
-    /// `Ui` creates its own [`RecordStore`], so retained shape spans are
-    /// isolated from other windows' record passes.
+    /// Each `Ui` creates its own [`Forest`], whose retained record payloads
+    /// remain isolated from other windows' record passes.
     pub(crate) fn new(shared: UiShared) -> Self {
         Self {
             shared,
-            record_store: RecordStore::default(),
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
@@ -342,11 +336,8 @@ impl Ui {
     fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
         {
             profiling::scope!("Ui::pre_record");
-            // Arena is per-record-pass storage: tree.shapes records
-            // index into it (gradients / polyline points+colors /
-            // meshes / interned text). Clear in lockstep with
-            // `forest.pre_record` — both refill during user record.
-            self.record_store.clear();
+            // `forest.pre_record` clears both its trees and the retained
+            // payloads their shape records index into.
             self.forest.pre_record();
             // Subscription set is rebuilt from scratch each full record
             // pass — symmetric to `Sense` on a node. Widgets re-assert
@@ -402,7 +393,7 @@ impl Ui {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
-        let payloads = self.record_store.payloads.borrow();
+        let payloads = self.forest.record_store.payloads.borrow();
         let text_bytes = payloads.text_bytes();
         let tc = TextCtx {
             bytes: &text_bytes,
@@ -739,7 +730,7 @@ impl Ui {
     /// layout only on a leaf; container-owned text is an overlay shaped against
     /// that container's final padded width.
     pub fn add_shape(&mut self, shape: Shape<'_>) {
-        self.forest.add_shape(shape, &self.record_store);
+        self.forest.add_shape(shape);
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
@@ -805,7 +796,7 @@ impl Ui {
     /// stay in its source `String` and be passed to widgets by reference.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
-        self.record_store.intern_fmt(args)
+        self.forest.record_store.intern_fmt(args)
     }
 
     /// Normalize borrowed, owned, or already-interned text into an
@@ -815,8 +806,8 @@ impl Ui {
     #[must_use]
     pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
         match text.into() {
-            TextInput::Borrowed(text) => self.record_store.intern_str(text),
-            TextInput::Owned(text) => self.record_store.intern_str(&text),
+            TextInput::Borrowed(text) => self.forest.record_store.intern_str(text),
+            TextInput::Owned(text) => self.forest.record_store.intern_str(&text),
             TextInput::Interned(text) => text,
         }
     }
@@ -829,8 +820,7 @@ impl Ui {
     /// itself was noop-collapsed (zero stroke + transparent fill,
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
     pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
-        self.forest
-            .add_shape_animated(shape, anim, &self.record_store);
+        self.forest.add_shape_animated(shape, anim);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
@@ -928,10 +918,6 @@ impl Ui {
         chrome: Option<&Background>,
         f: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        let chrome = chrome.map(|bg| ChromeInput {
-            bg,
-            store: &self.record_store,
-        });
         self.forest.open_node(id, element, chrome);
         let r = f(self);
         self.forest.close_node();
