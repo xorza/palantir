@@ -1,25 +1,18 @@
-use crate::FrameReport;
 use crate::TextStyle;
 use crate::Ui;
-use crate::animation::animatable::Animatable;
 use crate::display::Display;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
 use crate::host::shared::HostShared;
 use crate::input::InputEvent;
-use crate::input::pointer::PointerButton;
-use crate::layout::scroll::ScrollLayoutState;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
-use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-use crate::renderer::frontend::encoder;
 use crate::text::wrap::TextWrap;
 use crate::ui::damage::Damage;
-use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame::{FrameRuntime, FrameStamp};
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
@@ -29,150 +22,6 @@ use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
-
-impl Ui {
-    pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-        let tree = &self.forest.trees[Layer::Main];
-        let idx = tree
-            .records
-            .widget_id()
-            .iter()
-            .position(|widget_id| *widget_id == id)
-            .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
-        NodeId(idx as u32)
-    }
-
-    pub(crate) fn for_test_at(size: UVec2) -> Self {
-        let display = Display::from_physical(size, 1.0);
-        let mut ui = Self {
-            display,
-            ..Self::default()
-        };
-        ui.frame_runtime.prev_stamp = Some(FrameStamp::new(display, Duration::ZERO));
-        ui
-    }
-
-    pub(crate) fn for_test_at_text(size: UVec2) -> Self {
-        let display = Display::from_physical(size, 1.0);
-        let mut ui = Self::for_test_text();
-        ui.display = display;
-        ui.frame_runtime.prev_stamp = Some(FrameStamp::new(display, Duration::ZERO));
-        ui
-    }
-
-    pub(crate) fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.record_test_frame(Display::from_physical(size, 1.0), Duration::ZERO, record)
-    }
-
-    pub(crate) fn run_at_without_baseline(
-        &mut self,
-        size: UVec2,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
-        self.record_test_frame_without_baseline(
-            Display::from_physical(size, 1.0),
-            Duration::ZERO,
-            record,
-        )
-    }
-
-    pub(crate) fn run_at_value<R>(
-        &mut self,
-        size: UVec2,
-        mut record: impl FnMut(&mut Ui) -> R,
-    ) -> R {
-        let mut value = None;
-        self.run_at(size, |ui| value = Some(record(ui)));
-        value.expect("test frame did not run a record pass")
-    }
-
-    pub(crate) fn run_at_value_without_baseline<R>(
-        &mut self,
-        size: UVec2,
-        mut record: impl FnMut(&mut Ui) -> R,
-    ) -> R {
-        let mut value = None;
-        self.run_at_without_baseline(size, |ui| value = Some(record(ui)));
-        value.expect("test frame did not run a record pass")
-    }
-
-    pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
-        &mut self,
-        surface: UVec2,
-        mut f: F,
-    ) -> NodeId {
-        use crate::layout::types::sizing::Sizing;
-
-        self.run_at_value_without_baseline(surface, |ui| {
-            Panel::hstack()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, &mut f)
-                .inner
-        })
-    }
-
-    pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
-        self.forest.trees[Layer::Main]
-            .children(parent)
-            .map(|child| child.id)
-            .collect()
-    }
-
-    pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
-        self.forest.trees[Layer::Main]
-            .children(parent)
-            .map(|child| self.layout[Layer::Main].rect[child.id.idx()])
-            .collect()
-    }
-
-    pub(crate) fn click_at(&mut self, pos: Vec2) {
-        self.on_input(InputEvent::PointerMoved(pos));
-        self.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        self.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    }
-
-    pub(crate) fn press_at(&mut self, pos: Vec2) {
-        self.on_input(InputEvent::PointerMoved(pos));
-        self.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    }
-
-    pub(crate) fn release_left(&mut self) {
-        self.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    }
-
-    pub(crate) fn secondary_click_at(&mut self, pos: Vec2) {
-        self.on_input(InputEvent::PointerMoved(pos));
-        self.on_input(InputEvent::PointerPressed(PointerButton::Right));
-        self.on_input(InputEvent::PointerReleased(PointerButton::Right));
-    }
-
-    pub(crate) fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
-        self.layout_engine.scroll_states.entry(id).or_default()
-    }
-
-    pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
-        self.anim
-            .try_typed_mut::<T>()
-            .map_or(0, |rows| rows.rows.len())
-    }
-
-    pub(crate) fn encode_cmds(&self) -> RenderCmdBuffer {
-        let plan = RenderPlan {
-            clear: self.theme.window_clear,
-            kind: RenderKind::Full,
-        };
-        encoder::test_support::encode(self.frame_scene(), plan)
-    }
-
-    pub(crate) fn encode_cmds_for(&self, region: DamageRegion) -> RenderCmdBuffer {
-        let plan = RenderPlan {
-            clear: self.theme.window_clear,
-            kind: RenderKind::Partial { region },
-        };
-        encoder::test_support::encode(self.frame_scene(), plan)
-    }
-}
 
 fn measure_calls(ui: &Ui) -> u64 {
     ui.shared.text.measure_calls()
