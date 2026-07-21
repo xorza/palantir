@@ -11,7 +11,7 @@ use crate::ui::resources::UiResources;
 #[derive(Debug)]
 pub(crate) struct HostShared {
     pub(crate) resources: UiResources,
-    pub(crate) frontend: FrontendResources,
+    pub(crate) frontend_resources: FrontendResources,
 }
 
 impl HostShared {
@@ -22,7 +22,7 @@ impl HostShared {
     pub(crate) fn with_clipboard(text: TextShaper, clipboard: Clipboard) -> Self {
         Self {
             resources: UiResources::new(text, clipboard),
-            frontend: FrontendResources::default(),
+            frontend_resources: FrontendResources::default(),
         }
     }
 
@@ -30,7 +30,7 @@ impl HostShared {
         BackendResources {
             text: self.resources.text.clone(),
             images: self.resources.images.clone(),
-            gradient_atlas: self.frontend.gradient_atlas.clone(),
+            gradient_atlas: self.frontend_resources.gradient_atlas.clone(),
             gpu_pass_stats: self.resources.diagnostics.gpu_pass_stats.clone(),
         }
     }

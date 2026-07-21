@@ -1,10 +1,44 @@
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
 use aperture::{
-    Color, Configure, Mesh, Panel, PolylineColors, Shape, Spinner, Text, Ui, Vec2, WidgetId,
+    Color, Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Mesh, Panel, PolylineColors,
+    Shape, Spinner, Text, Ui, Vec2, WidgetId,
 };
 use glam::UVec2;
 
 use crate::fixtures::DARK_BG;
 use crate::harness::TwoWindowHarness;
+
+#[derive(Debug)]
+struct InitCounter {
+    count: Rc<Cell<u32>>,
+}
+
+impl GpuPaint for InitCounter {
+    fn init(&mut self, _ctx: &GpuInitCtx<'_>) {
+        self.count.set(self.count.get() + 1);
+    }
+
+    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+        let _pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("visual.multi_window.gpu_view"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: ctx.target,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+    }
+}
 
 fn scene(
     ui: &mut Ui,
@@ -108,4 +142,37 @@ fn interleaved_window_paint_only_preserves_pixels() {
     });
 
     assert_eq!(paint_only_a, first_a);
+}
+
+#[test]
+fn interleaved_windows_retain_their_own_gpu_view_targets() {
+    let mut harness = TwoWindowHarness::new();
+    let size = UVec2::new(32, 32);
+    let a_inits = Rc::new(Cell::new(0));
+    let b_inits = Rc::new(Cell::new(0));
+    let a: Rc<RefCell<dyn GpuPaint>> = Rc::new(RefCell::new(InitCounter {
+        count: a_inits.clone(),
+    }));
+    let b: Rc<RefCell<dyn GpuPaint>> = Rc::new(RefCell::new(InitCounter {
+        count: b_inits.clone(),
+    }));
+
+    let _ = harness.render(0, size, 1.0, DARK_BG, |ui| {
+        GpuView::new(a.clone())
+            .id(WidgetId::from_hash("gpu-a"))
+            .show(ui);
+    });
+    let _ = harness.render(1, size, 1.0, DARK_BG, |ui| {
+        GpuView::new(b.clone())
+            .id(WidgetId::from_hash("gpu-b"))
+            .show(ui);
+    });
+    let _ = harness.render(0, size, 1.0, DARK_BG, |ui| {
+        GpuView::new(a.clone())
+            .id(WidgetId::from_hash("gpu-a"))
+            .show(ui);
+    });
+
+    assert_eq!(a_inits.get(), 1, "window B evicted window A's target");
+    assert_eq!(b_inits.get(), 1);
 }

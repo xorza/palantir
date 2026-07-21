@@ -9,14 +9,12 @@ pub(crate) mod batch;
 pub(crate) mod curve;
 pub(crate) mod image;
 pub(crate) mod mesh;
-pub(crate) mod owner;
 pub(crate) mod text;
 
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::image::{ImageDrawRow, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
-use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::render_buffer::text::TextRun;
 
 /// Deepest rounded-mask chain representable by the renderer's
@@ -119,18 +117,11 @@ pub(crate) struct RenderBuffer {
     /// The backend diffs it against each `GpuView`'s last paint to derive
     /// `GpuFrameCtx::dt`.
     pub(crate) time: Duration,
-    /// Stable submitter identity, minted once at construction (one
-    /// `RenderBuffer` per `Frontend`, i.e. per window) and never reset by
-    /// `start_frame`. The shared backend's `ImagePipeline::paint_gpu_views`
-    /// scopes `GpuView`-target eviction to it, so window A's submit can't
-    /// free window B's targets.
-    pub(crate) owner: RenderOwnerId,
 }
 
 impl RenderBuffer {
-    pub(crate) fn new(owner: RenderOwnerId) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            owner,
             quads: Vec::new(),
             texts: Vec::new(),
             meshes: Soa::default(),
@@ -197,20 +188,4 @@ impl RenderBuffer {
 pub(crate) struct RoundedClip {
     pub(crate) mask_rect: Rect,
     pub(crate) corners: Corners,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::RenderBuffer;
-    use crate::renderer::render_buffer::owner::RenderOwnerId;
-
-    #[test]
-    fn render_owner_is_explicit_and_unique() {
-        let first = RenderOwnerId::reserve();
-        let second = RenderOwnerId::reserve();
-        assert_ne!(first, second);
-
-        let buffer = RenderBuffer::new(first);
-        assert_eq!(buffer.owner, first);
-    }
 }

@@ -39,6 +39,7 @@ use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::record_store::RecordPayloads;
 use crate::text::TextShaper;
 use rustc_hash::FxHashMap;
@@ -104,6 +105,7 @@ pub(crate) struct SubmissionTargets<'a> {
 
 #[derive(Debug)]
 pub(crate) struct Submission<'a> {
+    pub(crate) owner: RenderOwnerId,
     pub(crate) targets: SubmissionTargets<'a>,
     pub(crate) payloads: &'a RecordPayloads,
     pub(crate) buffer: &'a RenderBuffer,
@@ -382,6 +384,7 @@ impl WgpuBackend {
     #[profiling::function]
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
         let Submission {
+            owner,
             targets:
                 SubmissionTargets {
                     surface: surface_tex,
@@ -506,7 +509,7 @@ impl WgpuBackend {
             // window).
             // `submit` itself carries no render-target logic.
             self.image
-                .paint_gpu_views(&mut ctx, &buffer.frame_targets, buffer.owner, buffer.time);
+                .paint_gpu_views(&mut ctx, &buffer.frame_targets, owner, buffer.time);
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if is_partial {

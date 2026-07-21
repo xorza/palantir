@@ -156,7 +156,7 @@ fn gpu() -> &'static Gpu {
     })
 }
 
-/// Build an `OffscreenHost` (one shared backend + one window) from
+/// Build an `OffscreenHost` (one shared renderer + one window) from
 /// the shared bench device with GPU instrumentation on. Every bench arm
 /// wants the same shape — bundled fonts and a timestamp-enabled device.
 fn bench_host(g: &Gpu) -> OffscreenHost {

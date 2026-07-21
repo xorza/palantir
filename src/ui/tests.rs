@@ -1633,7 +1633,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     }
 
     let shared = HostShared::new(TextShaper::mono());
-    let atlas = shared.frontend.gradient_atlas.clone();
+    let atlas = shared.frontend_resources.gradient_atlas.clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let half = Duration::from_millis(500);

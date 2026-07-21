@@ -5,10 +5,11 @@
 //! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
-//!    persistent per-frame allocation. [`WindowDriver`] calls [`Frontend::build`]
-//!    once per frame and hands the composed buffer to the backend; the
-//!    frontend and backend hold capability-specific clones of the shared
-//!    gradient atlas and image registry.
+//!    persistent per-frame allocation. A host shares one frontend serially
+//!    across its windows: [`WindowDriver`] calls [`Frontend::build`] once per
+//!    painted frame and hands the composed buffer to the backend. The frontend
+//!    and backend hold capability-specific clones of the shared gradient atlas
+//!    and image registry.
 //!
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
@@ -31,7 +32,6 @@ use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::scene::Forest;
 use crate::scene::cascade::Cascades;
 use crate::scene::record_store::RecordPayloads;
@@ -71,8 +71,9 @@ impl std::fmt::Debug for FrameScene<'_> {
 /// and the [`Composer`] with its scratch).
 /// No GPU handles; its gradient-atlas handle shares state with the backend.
 ///
-/// Owned by [`WindowDriver`](crate::host::window_driver::WindowDriver);
-/// the host builds into the staged [`Self::buffer`] before GPU submission.
+/// Owned once by the host and reused serially across its window drivers. The
+/// active driver builds into the staged [`Self::buffer`] immediately before GPU
+/// submission.
 #[derive(Debug)]
 pub(crate) struct Frontend {
     encoder: Encoder,
@@ -85,11 +86,10 @@ impl Frontend {
     /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
     /// the [`Composer`] which uniformly downsamples oversized composited views.
     pub(crate) fn new(max_texture_dim: u32, resources: FrontendResources) -> Self {
-        let owner = RenderOwnerId::reserve();
         Self {
             encoder: Encoder::new(resources.gradient_atlas),
             composer: Composer::new(max_texture_dim),
-            buffer: RenderBuffer::new(owner),
+            buffer: RenderBuffer::new(),
         }
     }
 

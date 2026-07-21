@@ -13,6 +13,8 @@ use crate::host::winit::gpu::{SurfaceManager, WindowSurface};
 use crate::input::InputEvent;
 use crate::input::response::InputDelta;
 use crate::renderer::backend::WgpuBackend;
+use crate::renderer::frontend::Frontend;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::window::{CursorIcon, WindowCommands, WindowFrameState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,6 +84,7 @@ impl Window {
     pub(crate) fn frame<T: App>(
         &mut self,
         surfaces: &SurfaceManager,
+        frontend: &mut Frontend,
         backend: &mut WgpuBackend,
         app: &mut T,
     ) -> WindowFrameOutput {
@@ -126,8 +129,8 @@ impl Window {
             self.configured = Some(target);
         }
 
-        let cpu = self.driver.cpu_frame(display, app);
-        let present = self.present(surfaces, backend, cpu);
+        let cpu = self.driver.cpu_frame(frontend, display, app);
+        let present = self.present(surfaces, &frontend.buffer, backend, cpu);
 
         profiling::finish_frame!();
         frame_output(&mut self.driver, present)
@@ -136,6 +139,7 @@ impl Window {
     fn present(
         &mut self,
         surfaces: &SurfaceManager,
+        buffer: &RenderBuffer,
         backend: &mut WgpuBackend,
         cpu: CpuFrame,
     ) -> FramePresent {
@@ -146,7 +150,8 @@ impl Window {
             use wgpu::CurrentSurfaceTexture::*;
             match self.surface.get_current_texture() {
                 Success(frame) => {
-                    self.driver.render_to_texture(backend, &frame.texture, mode);
+                    self.driver
+                        .render_to_texture(buffer, backend, &frame.texture, mode);
                     self.window.pre_present_notify();
                     surfaces.present(frame);
                     report.repaint_requested
@@ -218,7 +223,7 @@ mod tests {
     fn frame_output_drains_commands_and_applies_close_veto() {
         let shared = HostShared::new(TextShaper::default());
         let token = WindowToken(17);
-        let mut driver = WindowDriver::builder(token, &shared, 8192).build();
+        let mut driver = WindowDriver::builder(token, &shared).build();
         let opened = WindowToken(18);
 
         driver

@@ -1,4 +1,4 @@
-//! Stable identity of one frontend's submitted render stream.
+//! Stable identity of one window's submitted render stream.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

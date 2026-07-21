@@ -1,10 +1,10 @@
-//! `WindowDriver` — the target-agnostic render core one host target owns above
-//! the shared [`WgpuBackend`](crate::renderer::backend::WgpuBackend): its [`Ui`]
-//! recorder, a per-target [`Frontend`] (CPU encode/compose scratch), the
+//! `WindowDriver` — the target-agnostic state one host target owns around the
+//! shared renderer: its [`Ui`] recorder, stable render-stream identity, the
 //! persistent [`Backbuffer`] (the target's last-frame pixels), and the
 //! per-target frame clock.
 //!
-//! What every window shares splits two ways: the GPU resources — render
+//! What every window shares splits two ways: CPU encode/compose scratch lives
+//! on the one [`Frontend`] each host passes into the frame methods; GPU resources — render
 //! pipelines, glyph + gradient atlases, the image texture cache, and renderer
 //! device/queue handles — live on the **one** shared `WgpuBackend` the host
 //! passes into every method; renderer and recorder capabilities derive from
@@ -12,8 +12,8 @@
 //! its per-window record store alongside its tree. So N windows render through
 //! one GPU renderer without sharing frame-local geometry.
 //!
-//! [`WindowDriver::cpu_frame`] freezes the frame and builds the draw list;
-//! [`WindowDriver::render_to_texture`] submits it to any caller-owned texture.
+//! [`WindowDriver::cpu_frame`] freezes the frame and builds the draw list into
+//! the shared frontend; [`WindowDriver::render_to_texture`] submits it to any caller-owned texture.
 //! [`crate::OffscreenHost`] drives those operations directly, while the winit
 //! adapter owns swapchain acquisition, presentation, occlusion, and wake
 //! scheduling.
@@ -24,14 +24,16 @@ use crate::host::shared::HostShared;
 use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
 use crate::ui::frame::{FrameInput, FrameStamp};
 use crate::window::WindowToken;
 use crate::{Display, FrameReport};
 
-/// Per-window state driving the shared [`WgpuBackend`]. Built by
-/// [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU
+/// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
+/// Built by [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU
 /// resources except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
 pub(crate) struct WindowDriver {
@@ -39,9 +41,9 @@ pub(crate) struct WindowDriver {
     /// retained `Ui` cannot be driven under a different token on a later frame.
     pub(crate) token: WindowToken,
     pub(crate) ui: Ui,
-    /// Per-window CPU encode/compose scratch with its own retained
-    /// `RenderBuffer` — this window's draw list.
-    frontend: Frontend,
+    /// Stable submitter identity used by the shared backend to scope retained
+    /// `GpuView` targets to this window.
+    render_owner: RenderOwnerId,
     /// Persistent off-screen color target holding last frame's pixels for
     /// `LoadOp::Load` partial damage. Used by `BackbufferCopy` every frame and
     /// by `DirectAdaptive` for its small-partial path (paint the damage region,
@@ -188,12 +190,11 @@ pub(crate) struct CpuFrame {
     pub(crate) mode: PresentMode,
 }
 
-/// Seals per-window policy before allocating the recorder and frontend.
+/// Seals per-window policy before allocating the recorder.
 #[derive(Debug)]
 pub(crate) struct WindowDriverBuilder<'a> {
     token: WindowToken,
     shared: &'a HostShared,
-    max_texture_dim: u32,
     strategy: PresentStrategy,
     clock: Box<dyn Clock>,
     pixel_snap: bool,
@@ -219,7 +220,7 @@ impl WindowDriverBuilder<'_> {
         WindowDriver {
             token: self.token,
             ui: Ui::new(self.shared.resources.clone()),
-            frontend: Frontend::new(self.max_texture_dim, self.shared.frontend.clone()),
+            render_owner: RenderOwnerId::reserve(),
             backbuffer: None,
             backbuffer_fresh: false,
             output_valid: false,
@@ -234,19 +235,12 @@ impl WindowDriverBuilder<'_> {
 impl WindowDriver {
     /// Start building a driver for `token` from the shared [`HostShared`].
     /// Its `Ui` receives recorder capabilities plus a fresh per-window record
-    /// store; its frontend receives the shared gradient atlas.
-    /// `max_texture_dim` is the device's fixed texture limit used to cap
-    /// `GpuView` targets. Defaults suit a swapchain window: direct adaptive
-    /// presentation, realtime clock, and physical-pixel snapping.
-    pub(crate) fn builder(
-        token: WindowToken,
-        shared: &HostShared,
-        max_texture_dim: u32,
-    ) -> WindowDriverBuilder<'_> {
+    /// store. Defaults suit a swapchain window: direct adaptive presentation,
+    /// realtime clock, and physical-pixel snapping.
+    pub(crate) fn builder(token: WindowToken, shared: &HostShared) -> WindowDriverBuilder<'_> {
         WindowDriverBuilder {
             token,
             shared,
-            max_texture_dim,
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
             pixel_snap: true,
@@ -271,7 +265,12 @@ impl WindowDriver {
     /// `Frontend` at construction. Shared by the offscreen and surface
     /// adapters.
     #[profiling::function]
-    pub(crate) fn cpu_frame<T: App>(&mut self, display: Display, app: &mut T) -> CpuFrame {
+    pub(crate) fn cpu_frame<T: App>(
+        &mut self,
+        frontend: &mut Frontend,
+        display: Display,
+        app: &mut T,
+    ) -> CpuFrame {
         let report = self.ui.frame(
             FrameInput {
                 stamp: FrameStamp::new(display, self.clock.now()),
@@ -280,10 +279,10 @@ impl WindowDriver {
             self.token,
             app,
         );
-        self.finish_cpu_frame(report)
+        self.finish_cpu_frame(frontend, report)
     }
 
-    fn finish_cpu_frame(&mut self, report: FrameReport) -> CpuFrame {
+    fn finish_cpu_frame(&mut self, frontend: &mut Frontend, report: FrameReport) -> CpuFrame {
         let mode = present_mode(report.plan, self.strategy, self.backbuffer_fresh);
         if !matches!(mode, PresentMode::SkipNoop) {
             self.output_valid = false;
@@ -292,7 +291,7 @@ impl WindowDriver {
         // compose, and resolve `GpuView` targets from the frozen scene.
         // Skip frames build nothing.
         if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
-            self.frontend.build(self.ui.frame_scene(), plan);
+            frontend.build(self.ui.frame_scene(), plan);
         }
         CpuFrame { report, mode }
     }
@@ -305,6 +304,7 @@ impl WindowDriver {
     #[profiling::function]
     pub(crate) fn render_to_texture(
         &mut self,
+        buffer: &RenderBuffer,
         backend: &mut WgpuBackend,
         target: &wgpu::Texture,
         mode: PresentMode,
@@ -323,7 +323,7 @@ impl WindowDriver {
             display_phys.y,
         );
         // The CPU phase already composed `GpuView`s into
-        // `self.frontend.buffer.frame_targets` (callback + raster target — see
+        // `buffer.frame_targets` (callback + raster target — see
         // `cpu_frame`); this is GPU submit only.
         let debug_overlay = *self.ui.resources.diagnostics.overlay.borrow();
         // Rounded-clip stencil, shared by both paint paths and sized to the
@@ -331,7 +331,7 @@ impl WindowDriver {
         // so `buffer.rounded_clips` is stale and no pass reads the stencil.
         let stencil_view = match mode {
             PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
-                if !self.frontend.buffer.rounded_clips.is_empty() =>
+                if !buffer.rounded_clips.is_empty() =>
             {
                 backend.ensure_stencil(&mut self.stencil, size);
                 Some(&self.stencil.as_ref().expect("ensure_stencil ran").view)
@@ -358,13 +358,14 @@ impl WindowDriver {
             PresentMode::Direct(plan) => {
                 let payloads = self.ui.forest.record_store.payloads.borrow();
                 backend.submit(Submission {
+                    owner: self.render_owner,
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: None,
                         stencil: stencil_view,
                     },
                     payloads: &payloads,
-                    buffer: &self.frontend.buffer,
+                    buffer,
                     plan,
                     debug_overlay,
                 });
@@ -388,13 +389,14 @@ impl WindowDriver {
                 );
                 let payloads = self.ui.forest.record_store.payloads.borrow();
                 backend.submit(Submission {
+                    owner: self.render_owner,
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: self.backbuffer.as_ref(),
                         stencil: stencil_view,
                     },
                     payloads: &payloads,
-                    buffer: &self.frontend.buffer,
+                    buffer,
                     plan,
                     debug_overlay,
                 });
@@ -522,6 +524,7 @@ mod output_validity_tests {
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentMode, PresentStrategy, WindowDriver};
     use crate::primitives::color::Color;
+    use crate::renderer::frontend::Frontend;
     use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::text::TextShaper;
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
@@ -537,9 +540,19 @@ mod output_validity_tests {
     }
 
     #[test]
+    fn window_drivers_have_distinct_render_owners() {
+        let shared = HostShared::new(TextShaper::default());
+        let first = WindowDriver::builder(WindowToken(1), &shared).build();
+        let second = WindowDriver::builder(WindowToken(2), &shared).build();
+
+        assert_ne!(first.render_owner, second.render_owner);
+    }
+
+    #[test]
     fn output_validity_tracks_invalidation_pending_and_completion() {
         let shared = HostShared::new(TextShaper::default());
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared, 8192).build();
+        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
         assert!(!driver.output_valid, "first frame has no presented output");
 
         driver.output_valid = true;
@@ -552,10 +565,13 @@ mod output_validity_tests {
         );
 
         driver.output_valid = true;
-        let paint = driver.finish_cpu_frame(report(Some(RenderPlan {
-            clear: Color::BLACK,
-            kind: RenderKind::Full,
-        })));
+        let paint = driver.finish_cpu_frame(
+            &mut frontend,
+            report(Some(RenderPlan {
+                clear: Color::BLACK,
+                kind: RenderKind::Full,
+            })),
+        );
         assert!(matches!(paint.mode, PresentMode::Direct(_)));
         assert!(
             !driver.output_valid,
@@ -565,7 +581,7 @@ mod output_validity_tests {
         driver.output_valid = true;
         assert!(driver.output_valid, "successful submit restores validity");
 
-        let skip = driver.finish_cpu_frame(report(None));
+        let skip = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(matches!(skip.mode, PresentMode::SkipNoop));
         assert!(
             driver.output_valid,
@@ -573,7 +589,7 @@ mod output_validity_tests {
         );
 
         driver.strategy = PresentStrategy::BackbufferCopy;
-        let skip_copy = driver.finish_cpu_frame(report(None));
+        let skip_copy = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(matches!(skip_copy.mode, PresentMode::SkipCopy));
         assert!(
             !driver.output_valid,
@@ -598,6 +614,7 @@ mod record_store_tests {
     use crate::primitives::color::{Color, ColorU8};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
+    use crate::renderer::frontend::Frontend;
     use crate::shape::{PolylineColors, Shape};
     use crate::text::TextShaper;
     use crate::ui::Ui;
@@ -675,8 +692,9 @@ mod record_store_tests {
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = HostShared::new(TextShaper::default());
+        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
         let token = WindowToken(17);
-        let mut window = WindowDriver::builder(token, &shared, 8192)
+        let mut window = WindowDriver::builder(token, &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .pixel_snap(false)
             .build();
@@ -685,7 +703,11 @@ mod record_store_tests {
         assert_eq!(window.clock.now(), Duration::ZERO);
         let mut app = LifecycleApp::default();
 
-        let _ = window.cpu_frame(Display::from_physical(UVec2::new(112, 112), 1.0), &mut app);
+        let _ = window.cpu_frame(
+            &mut frontend,
+            Display::from_physical(UVec2::new(112, 112), 1.0),
+            &mut app,
+        );
 
         assert_eq!(app.updates, [token], "update runs once");
         assert_eq!(
@@ -700,10 +722,11 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = HostShared::new(TextShaper::default());
-        let mut window_a = WindowDriver::builder(WindowToken(1), &shared, 8192)
+        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut window_a = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
-        let mut window_b = WindowDriver::builder(WindowToken(2), &shared, 8192)
+        let mut window_b = WindowDriver::builder(WindowToken(2), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);
@@ -757,7 +780,7 @@ mod record_store_tests {
         let mut app_a = RecordApp::new(|ui| {
             record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
         });
-        let _ = window_a.cpu_frame(display, &mut app_a);
+        let _ = window_a.cpu_frame(&mut frontend, display, &mut app_a);
         window_a.output_valid = true;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
@@ -774,11 +797,11 @@ mod record_store_tests {
                 "window-b",
             );
         });
-        let _ = window_b.cpu_frame(display, &mut app_b);
+        let _ = window_b.cpu_frame(&mut frontend, display, &mut app_b);
         window_b.output_valid = true;
         assert_eq!(snapshot(&window_a), retained);
 
-        let paint_only = window_a.cpu_frame(display, &mut app_a);
+        let paint_only = window_a.cpu_frame(&mut frontend, display, &mut app_a);
         assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
         assert_eq!(snapshot(&window_a), retained);
     }

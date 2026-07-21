@@ -14,7 +14,6 @@ use crate::renderer::frontend::cmd_buffer::payload::{
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_scissor};
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
@@ -30,7 +29,7 @@ fn composer() -> Composer {
 }
 
 fn render_buffer() -> RenderBuffer {
-    RenderBuffer::new(RenderOwnerId::reserve())
+    RenderBuffer::new()
 }
 
 #[test]

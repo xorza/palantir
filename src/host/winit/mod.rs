@@ -14,13 +14,13 @@
 //! (theme tweaks, restoring persisted state, stashing the handle) happens
 //! there.
 //!
-//! **Multi-window model.** Every window is an independent UI tree — its
-//! own `Ui` (input / focus / layout / `Display`) and [`WindowDriver`] —
-//! all rendering through one shared
-//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The backend solely
-//! owns renderer resources; [`SurfaceManager`] retains the native-surface
-//! instance, adapter, and cloned device/queue handles used to configure and
-//! present swapchains.
+//! **Multi-window model.** Every window is an independent UI tree — its own
+//! `Ui` (input / focus / layout / `Display`) and [`WindowDriver`] — all
+//! rendering serially through one shared CPU [`Frontend`] and one shared
+//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The frontend reuses
+//! encode/compose allocations between windows; the backend owns GPU renderer
+//! resources. [`SurfaceManager`] retains the native-surface instance, adapter,
+//! and cloned device/queue handles used to configure and present swapchains.
 //! Windows are addressed by a caller-chosen [`WindowToken`]; winit's
 //! opaque `WindowId` stays internal for event routing. The app opens /
 //! closes windows from inside `record` via [`Ui::open_window`] /
@@ -76,6 +76,7 @@ use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::window::{FramePresent, Window};
 use crate::primitives::image::Image;
 use crate::renderer::backend::WgpuBackend;
+use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{CursorIcon, WindowCommands, WindowConfig, WindowToken};
@@ -135,6 +136,8 @@ struct WinitRuntime<T> {
     /// overlay) every window's `Ui` clones; each `WindowDriver` and the
     /// backend (render handles only) derive from it.
     shared: HostShared,
+    /// Shared CPU encode/compose allocations, reused serially across windows.
+    frontend: Frontend,
     /// The one shared GPU renderer every window draws through (pipelines,
     /// atlases); passed into each window's native frame adapter.
     backend: WgpuBackend,
@@ -191,7 +194,8 @@ impl<T> WinitRuntime<T> {
             backend,
             first_surface,
         } = GpuInit::new(&window, &config, &shared);
-        let mut driver = WindowDriver::builder(token, &shared, surfaces.max_texture_dim).build();
+        let frontend = Frontend::new(surfaces.max_texture_dim, shared.frontend_resources.clone());
+        let mut driver = WindowDriver::builder(token, &shared).build();
 
         shared.resources.windows.set_live(token, true);
         let mut app = create_app(&mut driver.ui, handle);
@@ -206,6 +210,7 @@ impl<T> WinitRuntime<T> {
             app,
             surfaces,
             shared,
+            frontend,
             backend,
             observed_overlay,
             windows,
@@ -229,8 +234,7 @@ impl<T> WinitRuntime<T> {
         }
         let window = create_window(event_loop, &config);
         let surface = self.surfaces.make_surface(&window);
-        let driver =
-            WindowDriver::builder(token, &self.shared, self.surfaces.max_texture_dim).build();
+        let driver = WindowDriver::builder(token, &self.shared).build();
         self.register_window(window, surface, driver);
     }
 
@@ -412,7 +416,12 @@ where
         let Some(win) = runtime.windows.get_mut(&id) else {
             return;
         };
-        let mut output = win.frame(&runtime.surfaces, &mut runtime.backend, &mut runtime.app);
+        let mut output = win.frame(
+            &runtime.surfaces,
+            &mut runtime.frontend,
+            &mut runtime.backend,
+            &mut runtime.app,
+        );
         win.next = output.present;
         if output.cursor != win.cursor {
             win.window.set_cursor(winit_cursor(output.cursor));
