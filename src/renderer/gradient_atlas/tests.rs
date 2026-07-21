@@ -268,7 +268,7 @@ fn distinct_grad(seed: f32) -> LinearGradient {
     LinearGradient::two_stop(0.0, ColorU8::rgb(r, g, b), ColorU8::rgb(0, 0xff, 0))
 }
 
-fn register_for(atlas: &mut GradientCpuAtlas, g: LinearGradient) -> LutRow {
+fn register_for(atlas: &mut CpuGradientAtlas, g: LinearGradient) -> LutRow {
     atlas.register_stops(&g.stops, g.interp)
 }
 
@@ -286,7 +286,7 @@ fn assert_real_row(row: LutRow) {
 /// in 1..ATLAS_ROWS).
 #[test]
 fn row_zero_reserved_as_magenta_fallback() {
-    let atlas = GradientCpuAtlas::default();
+    let atlas = CpuGradientAtlas::default();
     // Row 0 is linear (1, 0, 1, 1) across all texels — encodes to
     // #ff00ff on the sRGB framebuffer.
     let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
@@ -298,7 +298,7 @@ fn row_zero_reserved_as_magenta_fallback() {
 /// dirty so the GPU upload includes the new row.
 #[test]
 fn register_returns_nonzero_row_and_marks_dirty() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let g = distinct_grad(0.1);
     let row = atlas.register_stops(&g.stops, g.interp);
     assert_real_row(row);
@@ -309,7 +309,7 @@ fn register_returns_nonzero_row_and_marks_dirty() {
 /// not re-mark dirty after a flush.
 #[test]
 fn register_same_gradient_twice_reuses_row() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let g = distinct_grad(0.5);
     let r1 = atlas.register_stops(&g.stops, g.interp);
     // Flush so subsequent registrations of the same content can
@@ -323,11 +323,47 @@ fn register_same_gradient_twice_reuses_row() {
     );
 }
 
+/// A matching probe hash is only a candidate: the exact bake key must
+/// also match before a row can be reused.
+#[test]
+fn register_hash_collision_confirms_exact_key() {
+    let mut atlas = CpuGradientAtlas::default();
+    let occupant = distinct_grad(0.1);
+    let target = distinct_grad(0.2);
+    let occupant_key = GradientLutKey {
+        stops: occupant.stops,
+        interp: occupant.interp,
+    };
+    let target_key = GradientLutKey {
+        stops: target.stops,
+        interp: target.interp,
+    };
+    assert_ne!(occupant_key, target_key);
+
+    let target_hash = hash_lut(&target_key.stops, target_key.interp);
+    let colliding_row = 1 + (target_hash % u64::from(ATLAS_ROWS - 1)) as u32;
+    atlas.rows[colliding_row as usize] = Some(GradientAtlasSlot {
+        content_hash: target_hash,
+        key: occupant_key.clone(),
+    });
+
+    let target_row = atlas.register_stops(&target_key.stops, target_key.interp);
+    assert_ne!(target_row.0, colliding_row);
+    assert_eq!(
+        atlas.rows[target_row.0 as usize].as_ref().unwrap().key,
+        target_key,
+    );
+    assert_eq!(
+        atlas.rows[colliding_row as usize].as_ref().unwrap().key,
+        occupant_key
+    );
+}
+
 /// Distinct gradients get distinct rows; both leave the atlas
 /// dirty for upload.
 #[test]
 fn register_distinct_gradients_get_distinct_rows() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush();
     let ra = register_for(&mut atlas, distinct_grad(0.1));
     let rb = register_for(&mut atlas, distinct_grad(0.2));
@@ -343,7 +379,7 @@ fn register_distinct_gradients_get_distinct_rows() {
 /// the probe path naturally when collisions occur).
 #[test]
 fn register_many_distinct_gradients_all_unique_rows() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let mut seen = HashSet::new();
     for i in 0..(ATLAS_ROWS - 1) {
         let g = distinct_grad(i as f32 * 0.01);
@@ -366,7 +402,7 @@ fn register_many_distinct_gradients_all_unique_rows() {
 /// onto its exact original row (hit path).
 #[test]
 fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let mut filled_rows: Vec<LutRow> = Vec::with_capacity((ATLAS_ROWS - 1) as usize);
     for i in 0..(ATLAS_ROWS - 1) {
         filled_rows.push(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
@@ -405,7 +441,7 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
 #[test]
 #[should_panic(expected = "gradient atlas exhausted")]
 fn full_atlas_same_epoch_overflow_panics() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     for i in 0..(ATLAS_ROWS - 1) {
         register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
     }
@@ -419,7 +455,7 @@ fn full_atlas_same_epoch_overflow_panics() {
 #[test]
 #[should_panic(expected = "gradient atlas exhausted")]
 fn full_atlas_all_hit_this_epoch_panics() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     for i in 0..(ATLAS_ROWS - 1) {
         register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
     }
@@ -436,7 +472,7 @@ fn full_atlas_all_hit_this_epoch_panics() {
 /// table fills.
 #[test]
 fn register_hit_bumps_stamp_protecting_recent_content() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let pinned = distinct_grad(0.0);
     let pinned_row = register_for(&mut atlas, pinned.clone());
     // Fill 253 more rows.
@@ -465,7 +501,7 @@ fn register_hit_bumps_stamp_protecting_recent_content() {
 /// that loses content silently is caught.
 #[test]
 fn evicted_content_can_be_re_registered() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let first = distinct_grad(0.0);
     let _ = register_for(&mut atlas, first.clone());
     // Fill, cross the epoch boundary, then force eviction of `first`
@@ -484,7 +520,7 @@ fn evicted_content_can_be_re_registered() {
 /// until the next register. Idle-frame upload is zero bytes.
 #[test]
 fn flush_returns_bytes_once_then_none() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     register_for(&mut atlas, distinct_grad(0.3));
     assert!(atlas.flush().is_some(), "dirty atlas must yield bytes");
     assert!(
@@ -499,7 +535,7 @@ fn flush_returns_bytes_once_then_none() {
 /// LUT bake doesn't depend on it.
 #[test]
 fn register_stops_dedups_across_variants() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let stops = GradientStops::new([
         Stop::new(0.0, ColorU8::rgb(255, 64, 0)),
         Stop::new(1.0, ColorU8::rgb(0, 128, 255)),
@@ -518,7 +554,7 @@ fn register_stops_dedups_across_variants() {
 /// then stays clean.
 #[test]
 fn freshly_constructed_atlas_flushes_magenta_once() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     {
         let first = atlas.flush().expect("first flush carries magenta init");
         assert_eq!(first.first_row, 0);
@@ -534,7 +570,7 @@ fn freshly_constructed_atlas_flushes_magenta_once() {
 /// → `None`.
 #[test]
 fn flush_range_covers_min_to_max_dirty_rows() {
-    let mut atlas = GradientCpuAtlas::default();
+    let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
     // Single row: range is exactly [row, row].
     let ra = register_for(&mut atlas, distinct_grad(0.1));

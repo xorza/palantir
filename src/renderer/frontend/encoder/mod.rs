@@ -15,7 +15,7 @@ use crate::renderer::frontend::cmd_buffer::payload::{
     DrawMeshPayload, DrawPolylinePayload, LineCapBits, LineJoinBits, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::plan::{RenderKind, RenderPlan, damage_cull_margin};
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
@@ -44,7 +44,7 @@ const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0)
 pub(crate) struct Encoder {
     cmds: RenderCmdBuffer,
     gradients: GradientResolver,
-    gradient_atlas: GradientAtlas,
+    gradient_atlas: SharedGradientAtlas,
 }
 
 /// Entries reset each encode because another window may have evicted their atlas rows.
@@ -62,7 +62,7 @@ impl GradientResolver {
     fn source(
         &mut self,
         gradients: &[RecordedGradient],
-        atlas: &GradientAtlas,
+        atlas: &SharedGradientAtlas,
         brush: ShapeBrush,
     ) -> BrushSource {
         let id = match brush {
@@ -141,7 +141,7 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 ///
 /// The command buffer is cleared at entry; capacity is retained across frames.
 impl Encoder {
-    pub(crate) fn new(gradient_atlas: GradientAtlas) -> Self {
+    pub(crate) fn new(gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
             cmds: RenderCmdBuffer::default(),
             gradients: GradientResolver::default(),
@@ -210,7 +210,7 @@ struct LayerCtx<'a> {
     gradients: &'a [RecordedGradient],
     text_bytes: &'a str,
     shaper: &'a TextShaper,
-    gradient_atlas: &'a GradientAtlas,
+    gradient_atlas: &'a SharedGradientAtlas,
     gradient_resolver: &'a mut GradientResolver,
     paint_anim_cursor: PaintAnimCursor<'a>,
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
@@ -866,12 +866,12 @@ pub(crate) mod test_support {
     use crate::renderer::frontend::FrameScene;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder::Encoder;
-    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::renderer::plan::RenderPlan;
 
     pub(crate) fn encode(
         scene: FrameScene<'_>,
-        gradient_atlas: &GradientAtlas,
+        gradient_atlas: &SharedGradientAtlas,
         plan: RenderPlan,
     ) -> RenderCmdBuffer {
         let mut encoder = Encoder::new(gradient_atlas.clone());

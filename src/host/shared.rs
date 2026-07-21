@@ -1,17 +1,17 @@
-//! App-global resource composition for hosts. [`HostShared`] retains the
-//! authority and creates capability-specific bundles for each recorder and the
-//! two renderer stages.
+//! App-global resource composition for hosts. [`HostShared`] retains recorder
+//! resources and the frontend's gradient-atlas handle, then derives the
+//! backend's capability bundle from those shared authorities.
 
 use crate::common::clipboard::Clipboard;
 use crate::renderer::backend::BackendResources;
-use crate::renderer::frontend::FrontendResources;
+use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::text::TextShaper;
 use crate::ui::resources::UiResources;
 
 #[derive(Debug)]
 pub(crate) struct HostShared {
     pub(crate) resources: UiResources,
-    pub(crate) frontend_resources: FrontendResources,
+    pub(crate) gradient_atlas: SharedGradientAtlas,
 }
 
 impl HostShared {
@@ -22,7 +22,7 @@ impl HostShared {
     pub(crate) fn with_clipboard(text: TextShaper, clipboard: Clipboard) -> Self {
         Self {
             resources: UiResources::new(text, clipboard),
-            frontend_resources: FrontendResources::default(),
+            gradient_atlas: SharedGradientAtlas::default(),
         }
     }
 
@@ -30,7 +30,7 @@ impl HostShared {
         BackendResources {
             text: self.resources.text.clone(),
             images: self.resources.images.clone(),
-            gradient_atlas: self.frontend_resources.gradient_atlas.clone(),
+            gradient_atlas: self.gradient_atlas.clone(),
             gpu_pass_stats: self.resources.diagnostics.gpu_pass_stats.clone(),
         }
     }

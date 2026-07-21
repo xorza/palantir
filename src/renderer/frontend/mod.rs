@@ -29,7 +29,7 @@ use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::gpu_view::GpuViewEntry;
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::Forest;
@@ -49,12 +49,6 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) display: Display,
     /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.
     pub(crate) time: Duration,
-}
-
-/// App-global renderer state used only while encoding CPU commands.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct FrontendResources {
-    pub(crate) gradient_atlas: GradientAtlas,
 }
 
 impl std::fmt::Debug for FrameScene<'_> {
@@ -85,9 +79,9 @@ impl Frontend {
     /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
     /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
     /// the [`Composer`] which uniformly downsamples oversized composited views.
-    pub(crate) fn new(max_texture_dim: u32, resources: FrontendResources) -> Self {
+    pub(crate) fn new(max_texture_dim: u32, gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
-            encoder: Encoder::new(resources.gradient_atlas),
+            encoder: Encoder::new(gradient_atlas),
             composer: Composer::new(max_texture_dim),
             buffer: RenderBuffer::new(),
         }

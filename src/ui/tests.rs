@@ -1594,13 +1594,13 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::renderer::frontend::cmd_buffer::Command;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::ATLAS_ROWS;
-    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::shape::Shape;
     use crate::text::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
     use std::collections::HashSet;
 
-    fn rows(ui: &Ui, atlas: &GradientAtlas) -> Vec<LutRow> {
+    fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
         let plan = RenderPlan {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
@@ -1633,7 +1633,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     }
 
     let shared = HostShared::new(TextShaper::mono());
-    let atlas = shared.frontend_resources.gradient_atlas.clone();
+    let atlas = shared.gradient_atlas.clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let half = Duration::from_millis(500);

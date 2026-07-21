@@ -551,7 +551,7 @@ mod output_validity_tests {
     #[test]
     fn output_validity_tracks_invalidation_pending_and_completion() {
         let shared = HostShared::new(TextShaper::default());
-        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
         assert!(!driver.output_valid, "first frame has no presented output");
 
@@ -692,7 +692,7 @@ mod record_store_tests {
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = HostShared::new(TextShaper::default());
-        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let token = WindowToken(17);
         let mut window = WindowDriver::builder(token, &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
@@ -722,7 +722,7 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = HostShared::new(TextShaper::default());
-        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut window_a = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();

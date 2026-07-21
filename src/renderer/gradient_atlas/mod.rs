@@ -1,7 +1,7 @@
 //! CPU side of the gradient LUT atlas. Bakes stop sequences into LUT
 //! rows shared across linear / radial / conic gradient variants; the
 //! shader does the per-fragment `t` derivation. See [`bake_stops`] and
-//! [`GradientCpuAtlas::register_stops`].
+//! [`CpuGradientAtlas::register_stops`].
 //!
 //! ## Bake output convention
 //!
@@ -42,7 +42,7 @@ use crate::primitives::brush::{GradientStops, Interp};
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 
 pub(crate) mod bake;
 pub(crate) mod handle;
@@ -53,11 +53,27 @@ pub(crate) mod handle;
 /// wrong); real registrations occupy rows 1..ATLAS_ROWS.
 pub(crate) const ATLAS_ROWS: u32 = 256;
 
-/// Width of one baked row in texels. Picked to match the LUT texture's
-/// 256-texel width; 256 gives 1 LSB per stride on the parametric axis,
-/// well below 8-bit display precision.
+/// Exact bake identity shared by every gradient variant.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GradientLutKey {
+    stops: GradientStops,
+    interp: Interp,
+}
+
+impl GradientLutKey {
+    fn matches(&self, stops: &GradientStops, interp: Interp) -> bool {
+        self.interp == interp && self.stops.eq(stops)
+    }
+}
+
+#[derive(Debug)]
+struct GradientAtlasSlot {
+    content_hash: u64,
+    key: GradientLutKey,
+}
+
 /// CPU side of the gradient LUT atlas. Owns the baked row bytes and a
-/// content-hash → row-id map; the backend mirrors this into a wgpu
+/// bake-key → row-id map; the backend mirrors this into a wgpu
 /// texture each frame by draining [`Self::flush`].
 ///
 /// Row 0 is reserved as a magenta-fill fallback and never evicted.
@@ -67,12 +83,12 @@ pub(crate) const ATLAS_ROWS: u32 = 256;
 /// excluding rows registered since the last flush, whose `LutRow` ids
 /// this frame's draws already captured (see [`Self::lru_victim`]).
 #[derive(Debug)]
-pub(crate) struct GradientCpuAtlas {
-    /// `Some(content_hash)` per row occupied by a gradient; `None` for
-    /// free rows. Row 0 is unreachable from the probe (which scans
-    /// `1..ATLAS_ROWS`) so its slot stays `None` — the magenta-fill
-    /// payload in `baked[0]` is the real fallback contract.
-    rows: [Option<u64>; ATLAS_ROWS as usize],
+pub(crate) struct CpuGradientAtlas {
+    /// Exact bake key plus its probe hash per occupied row. Equality
+    /// confirmation keeps a true hash collision from aliasing another
+    /// gradient's baked row. Row 0 stays `None` because probing scans
+    /// only `1..ATLAS_ROWS`; `baked[0]` carries the fallback payload.
+    rows: [Option<GradientAtlasSlot>; ATLAS_ROWS as usize],
     /// Baked LUT row bytes, indexed by row id. Row 0's contents are
     /// the magenta-fallback fill. Storage is a single 512 KB heap
     /// allocation — `Vec<LutRowTexels>` is contiguous, so casting to
@@ -113,7 +129,7 @@ pub(crate) struct GradientCpuAtlas {
 }
 
 /// Inclusive dirty row span for the next upload — see
-/// [`GradientCpuAtlas::dirty`].
+/// [`CpuGradientAtlas::dirty`].
 #[derive(Clone, Copy, Debug)]
 struct DirtyRows {
     first: u32,
@@ -121,7 +137,7 @@ struct DirtyRows {
 }
 
 /// One contiguous span of freshly baked LUT rows for GPU upload,
-/// returned by [`GradientCpuAtlas::flush`]. `bytes` starts at row
+/// returned by [`CpuGradientAtlas::flush`]. `bytes` starts at row
 /// `first_row` (the `write_texture` `origin.y`) and covers whole rows —
 /// its length is a multiple of `size_of::<LutRowTexels>()`.
 #[derive(Debug)]
@@ -130,10 +146,10 @@ pub(crate) struct FlushedRows<'a> {
     pub(crate) bytes: &'a [u8],
 }
 
-impl Default for GradientCpuAtlas {
+impl Default for CpuGradientAtlas {
     fn default() -> Self {
         let mut atlas = Self {
-            rows: [None; ATLAS_ROWS as usize],
+            rows: std::array::from_fn(|_| None),
             baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]; ATLAS_ROWS as usize],
             last_used: [0; ATLAS_ROWS as usize],
             row_epoch: [0; ATLAS_ROWS as usize],
@@ -146,7 +162,7 @@ impl Default for GradientCpuAtlas {
     }
 }
 
-impl GradientCpuAtlas {
+impl CpuGradientAtlas {
     /// Fill row 0 with bright magenta (sRGB `#ff00ff`, full alpha). Any
     /// quad whose `fill_lut_row = 0` paints this — visible at a glance,
     /// catches "registered with the atlas but the resulting row id
@@ -176,7 +192,7 @@ impl GradientCpuAtlas {
     /// least-recently-touched row when the table is full.
     pub(crate) fn register_stops(&mut self, stops: &GradientStops, interp: Interp) -> LutRow {
         self.clock = self.clock.wrapping_add(1);
-        let content_hash = hash_stops(stops, interp);
+        let content_hash = hash_lut(stops, interp);
         // Probe starting at `1 + (hash mod 255)` so row 0 is never
         // claimed by a real gradient. Two passes: first look for a
         // match or an empty slot; if neither exists, evict the LRU
@@ -184,8 +200,10 @@ impl GradientCpuAtlas {
         let base = (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
         for offset in 0..(ATLAS_ROWS - 1) {
             let row = 1 + (base + offset) % (ATLAS_ROWS - 1);
-            match self.rows[row as usize] {
-                Some(h) if h == content_hash => {
+            match self.rows[row as usize].as_ref() {
+                Some(slot)
+                    if slot.content_hash == content_hash && slot.key.matches(stops, interp) =>
+                {
                     // Hit: bump the LRU stamp and mark the row as
                     // referenced this epoch — its `LutRow` id is now in
                     // a draw payload, so it must not be evicted before
@@ -216,7 +234,13 @@ impl GradientCpuAtlas {
         interp: Interp,
     ) -> LutRow {
         bake_stops(stops, interp, &mut self.baked[row as usize]);
-        self.rows[row as usize] = Some(content_hash);
+        self.rows[row as usize] = Some(GradientAtlasSlot {
+            content_hash,
+            key: GradientLutKey {
+                stops: *stops,
+                interp,
+            },
+        });
         self.last_used[row as usize] = self.clock;
         self.row_epoch[row as usize] = self.epoch;
         self.mark_row_dirty(row);
@@ -298,16 +322,10 @@ impl GradientCpuAtlas {
 /// interp reuse one row regardless of geometry (linear angle, radial
 /// centre/radius, conic centre/start-angle).
 #[inline]
-fn hash_stops(stops: &GradientStops, interp: Interp) -> u64 {
+fn hash_lut(stops: &GradientStops, interp: Interp) -> u64 {
     let mut h = FxHasher::new();
-    h.write_u16(((interp as u16) << 8) | (stops.len() as u16));
-    for s in stops.iter() {
-        // Pack `(color_u32, offset_u8)` into one u64 — one hasher
-        // write per stop instead of five. `offset` is already u8
-        // quantized; no `canon_bits` needed (no NaN / -0 to canonicalise).
-        let packed = ((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64);
-        h.write_u64(packed);
-    }
+    stops.hash(&mut h);
+    interp.hash(&mut h);
     h.finish()
 }
 

@@ -22,11 +22,10 @@ struct StopsDocument {
     stops: GradientStops,
 }
 
-/// `LinearGradient::Hash` feeds `GradientCpuAtlas::register`'s
-/// content-hashed row addressing — `±0.0` and NaN bit-pattern variants
-/// must collapse so visually-identical gradients reuse one atlas row.
+/// `LinearGradient::Hash` feeds retained shape identity, so `±0.0` and
+/// NaN bit-pattern variants must collapse instead of causing false damage.
 #[test]
-fn linear_gradient_canon_bits_collapses_equivalent_f32_patterns() {
+fn linear_gradient_hash_tracks_canonical_content() {
     let nan_a = f32::from_bits(0x7fc0_0001);
     let nan_b = f32::from_bits(0x7fc0_0002);
     assert!(nan_a.is_nan() && nan_b.is_nan());
@@ -56,6 +55,25 @@ fn linear_gradient_canon_bits_collapses_equivalent_f32_patterns() {
     for (label, x, y) in cases {
         assert_eq!(h(x.clone()), h(y.clone()), "case: {label}");
     }
+
+    let two_stops = Brush::Linear(LinearGradient::two_stop(
+        0.0,
+        ColorU8::BLACK,
+        ColorU8::WHITE,
+    ));
+    let three_stops = Brush::Linear(LinearGradient::three_stop(
+        0.0,
+        ColorU8::BLACK,
+        ColorU8::rgb(127, 127, 127),
+        ColorU8::WHITE,
+    ));
+    let recolored = Brush::Linear(LinearGradient::two_stop(
+        0.0,
+        ColorU8::BLACK,
+        ColorU8::rgb(255, 0, 0),
+    ));
+    assert_ne!(h(two_stops.clone()), h(three_stops));
+    assert_ne!(h(two_stops), h(recolored));
 }
 
 #[test]

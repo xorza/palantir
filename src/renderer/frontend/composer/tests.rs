@@ -691,11 +691,11 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
-    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
-    let atlas = GradientAtlas::default();
+    let atlas = SharedGradientAtlas::default();
     let row = atlas.register_stops(&g.stops, g.interp);
     let lowered = ResolvedGradient {
         axis: expected_axis,
@@ -731,9 +731,9 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
-    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
-    let atlas = GradientAtlas::default();
+    let atlas = SharedGradientAtlas::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),
         row: atlas.register_stops(&g.stops, g.interp),

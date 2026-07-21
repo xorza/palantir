@@ -70,7 +70,7 @@ impl FillAxis {
 /// internal `offset_u8` byte — theme authors write `offset = 0.5`,
 /// matching how every other spatial value in the crate is authored;
 /// the u8 quantization stays an implementation detail.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Stop {
     pub offset_u8: u8,
     pub color: ColorU8,
@@ -99,7 +99,7 @@ impl Stop {
 
 /// Inline gradient-stop sequence whose length is always two through eight.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GradientStops(ArrayVec<[Stop; MAX_STOPS]>);
 
 impl GradientStops {
@@ -133,6 +133,16 @@ impl std::ops::Deref for GradientStops {
 impl std::ops::DerefMut for GradientStops {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.as_mut_slice()
+    }
+}
+
+impl std::hash::Hash for GradientStops {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u8(self.len() as u8);
+        for stop in self.iter() {
+            state.write_u64(((stop.color.to_u32() as u64) << 32) | u64::from(stop.offset_u8));
+        }
     }
 }
 
@@ -193,15 +203,14 @@ impl std::hash::Hash for LinearGradient {
     /// canonical bit encoding via `canon_bits` so `-0.0` / `+0.0` and
     /// NaN bit patterns don't fragment cache keys. Used by command-
     /// buffer dedup; the atlas hashes `(stops, interp)` separately
-    /// (variant-agnostic) in `gradient_atlas::hash_stops`.
+    /// (variant-agnostic) in `gradient_atlas::GradientLutKey`.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Angle's canonical bits in the high lane; the shared
-        // (spread/interp/len) tag in the low 24 bits.
+        // (spread/interp) tag in the low 16 bits.
         state.write_u64(
-            ((canon_bits(self.angle) as u64) << 32)
-                | stops_tag(self.spread, self.interp, self.stops.len()),
+            ((canon_bits(self.angle) as u64) << 32) | gradient_tag(self.spread, self.interp),
         );
-        hash_stops(state, &self.stops);
+        std::hash::Hash::hash(&self.stops, state);
     }
 }
 
@@ -277,8 +286,8 @@ impl std::hash::Hash for RadialGradient {
         state.write_u64(
             ((canon_bits(self.radius.x) as u64) << 32) | (canon_bits(self.radius.y) as u64),
         );
-        state.write_u64(stops_tag(self.spread, self.interp, self.stops.len()));
-        hash_stops(state, &self.stops);
+        state.write_u64(gradient_tag(self.spread, self.interp));
+        std::hash::Hash::hash(&self.stops, state);
     }
 }
 
@@ -341,10 +350,9 @@ impl std::hash::Hash for ConicGradient {
         // `start_angle` bits in the high lane; shared tag in the low —
         // same layout as `LinearGradient`.
         state.write_u64(
-            ((canon_bits(self.start_angle) as u64) << 32)
-                | stops_tag(self.spread, self.interp, self.stops.len()),
+            ((canon_bits(self.start_angle) as u64) << 32) | gradient_tag(self.spread, self.interp),
         );
-        hash_stops(state, &self.stops);
+        std::hash::Hash::hash(&self.stops, state);
     }
 }
 
@@ -377,23 +385,13 @@ impl ConicGradient {
     }
 }
 
-/// Per-stop hash loop, identical across all three gradient variants —
-/// only the geometry prefix differs. Each stop folds its colour + 8-bit
-/// offset into one `u64` write.
-#[inline]
-fn hash_stops<H: std::hash::Hasher>(state: &mut H, stops: &GradientStops) {
-    for s in stops.iter() {
-        state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
-    }
-}
-
-/// `(spread, interp, len)` packed into the low 24 bits of a `u64` — the
-/// shared tail tag every gradient hash writes. Linear/Conic OR it with
+/// `(spread, interp)` packed into the low 16 bits of a `u64` — the
+/// shared tag every gradient hash writes. Linear/Conic OR it with
 /// `canon_bits(angle) << 32`; Radial writes it standalone after its
-/// centre/radius words.
+/// centre/radius words. `GradientStops::hash` carries the stop count.
 #[inline]
-const fn stops_tag(spread: Spread, interp: Interp, len: usize) -> u64 {
-    ((spread as u64) << 16) | ((interp as u64) << 8) | (len as u64)
+const fn gradient_tag(spread: Spread, interp: Interp) -> u64 {
+    ((spread as u64) << 8) | interp as u64
 }
 
 /// Generate the builder + `is_noop` methods shared verbatim by all

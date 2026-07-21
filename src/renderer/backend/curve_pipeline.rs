@@ -111,7 +111,7 @@ impl CurvePipeline {
 
     /// Build the base + stencil-test color pipelines against `format`.
     /// Caller passes the shared `gradient_bgl` (owned by
-    /// `GradientResources`) so the layout matches; the instance buffer
+    /// `GpuGradientAtlas`) so the layout matches; the instance buffer
     /// is format-independent. Called by `FormatPipelines` per format.
     pub(crate) fn build_variants(
         &self,
@@ -143,7 +143,7 @@ impl CurvePipeline {
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
     /// curve group batch. Viewport rides the shared immediate region;
-    /// `gradient_bg` is the group-0 handle owned by `GradientResources`
+    /// `gradient_bg` is the group-0 handle owned by `GpuGradientAtlas`
     /// (one allocation, used by both the quad and curve pipelines).
     pub(crate) fn bind<'a>(
         &'a self,

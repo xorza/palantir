@@ -16,7 +16,9 @@ use crate::primitives::{
 use crate::renderer::frontend::cmd_buffer::payload::{BrushSource, CmdKind, PushClipPayload};
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::gradient_atlas::handle::{GradientAtlas, test_support::registration_count};
+use crate::renderer::gradient_atlas::handle::{
+    SharedGradientAtlas, test_support::registration_count,
+};
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
@@ -81,7 +83,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         interp: Interp::Oklab,
     };
     let gradients = [gradient];
-    let atlas = GradientAtlas::default();
+    let atlas = SharedGradientAtlas::default();
     let mut resolver = GradientResolver::default();
     let brush = ShapeBrush::Gradient(GradientId(0));
 
