@@ -194,7 +194,7 @@ impl<T> WinitRuntime<T> {
             backend,
             first_surface,
         } = GpuInit::new(&window, &config, &shared);
-        let frontend = Frontend::new(surfaces.max_texture_dim, shared.frontend_resources.clone());
+        let frontend = Frontend::new(surfaces.max_texture_dim, shared.gradient_atlas.clone());
         let mut driver = WindowDriver::builder(token, &shared).build();
 
         shared.resources.windows.set_live(token, true);

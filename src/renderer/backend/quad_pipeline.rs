@@ -30,7 +30,7 @@ pub(crate) struct QuadPipeline {
     /// `bind` / `bind_clear` / `bind_mask` still own the
     /// `set_pipeline` / `set_bind_group` pair. Group 0 (gradient atlas +
     /// sampler) is owned by
-    /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources)
+    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas)
     /// and passed to every `bind*` call.
     instance_buffer: DynamicBuffer<Quad>,
     /// Lazy buffer holding one `Quad` per deduped rounded clip in the
@@ -68,7 +68,7 @@ pub(crate) struct QuadPipeline {
 
 impl QuadPipeline {
     /// `gradient_bgl` is the group-0 layout owned by
-    /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources);
+    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas);
     /// the pipeline composes its layout against it and the matching bind
     /// group arrives at each `bind*` call.
     /// Build the format-independent quad resources. The format-dependent

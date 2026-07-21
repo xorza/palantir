@@ -93,7 +93,7 @@ impl OffscreenHostBuilder {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         );
-        let frontend = Frontend::new(backend.max_texture_dim(), shared.frontend_resources.clone());
+        let frontend = Frontend::new(backend.max_texture_dim(), shared.gradient_atlas.clone());
         let driver = WindowDriver::builder(self.token, &shared)
             .strategy(PresentStrategy::BackbufferCopy)
             .clock(self.clock)
@@ -294,7 +294,7 @@ pub(crate) mod test_support {
                 BackendConfig::default(),
             );
             let max_texture_dim = backend.max_texture_dim();
-            let frontend = Frontend::new(max_texture_dim, shared.frontend_resources.clone());
+            let frontend = Frontend::new(max_texture_dim, shared.gradient_atlas.clone());
             let [clock_a, clock_b] = clocks;
             let window_a = WindowDriver::builder(WindowToken(0), &shared)
                 .strategy(PresentStrategy::BackbufferCopy)
@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn completion_discards_replayed_window_state_and_reuses_capacity() {
         let shared = HostShared::new(TextShaper::default());
-        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut window = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();

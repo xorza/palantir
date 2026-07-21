@@ -139,7 +139,7 @@ impl StencilVariant {
 /// Build a group-0 bind-group layout pairing a filterable 2D float
 /// texture at binding 0 with a filtering sampler at binding 1, both
 /// fragment-visible. The shape shared by the gradient LUT atlas
-/// (`GradientResources`) and the per-image bind group (`ImagePipeline`).
+/// (`GpuGradientAtlas`) and the per-image bind group (`ImagePipeline`).
 pub(crate) fn texture_sampler_bgl(
     device: &wgpu::Device,
     label: &'static str,
@@ -172,7 +172,7 @@ pub(crate) fn texture_sampler_bgl(
 /// value twin of that layout builder. One construction site for the
 /// CPU-image upload (`ImagePipeline::upload`), the `GpuView` off-screen
 /// target (`image_pipeline::render_target::make_target`), and the
-/// gradient LUT atlas (`GradientResources::new`), so their bindings
+/// gradient LUT atlas (`GpuGradientAtlas::new`), so their bindings
 /// can't drift.
 pub(crate) fn texture_bind_group(
     device: &wgpu::Device,

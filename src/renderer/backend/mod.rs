@@ -2,8 +2,8 @@ mod curve_pipeline;
 mod dynamic_buffer;
 mod format_pipelines;
 pub(crate) mod gpu_ctx;
+mod gpu_gradient_atlas;
 mod gpu_timings;
-mod gradient_resources;
 pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
@@ -22,7 +22,6 @@ use self::curve_pipeline::CurvePipeline;
 use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
 use self::gpu_timings::GpuTimings;
-use self::gradient_resources::GradientResources;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::overlay_pass::DebugOverlay;
@@ -34,8 +33,9 @@ use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::gpu_stats::{BatchKind, GpuPassStats};
 use crate::primitives::urect::URect;
+use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::text::TextBackend;
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -122,7 +122,7 @@ pub(crate) struct BackendConfig {
 pub(crate) struct BackendResources {
     pub(crate) text: TextShaper,
     pub(crate) images: ImageRegistry,
-    pub(crate) gradient_atlas: GradientAtlas,
+    pub(crate) gradient_atlas: SharedGradientAtlas,
     pub(crate) gpu_pass_stats: GpuPassStats,
 }
 
@@ -150,7 +150,7 @@ pub(crate) struct WgpuBackend {
     /// Shared gradient LUT atlas resources (texture + sampler + group-0
     /// bind group), lent to the quad and curve pipelines — both render
     /// gradient brushes off this one allocation.
-    gradient: GradientResources,
+    gradient: GpuGradientAtlas,
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
@@ -167,8 +167,6 @@ pub(crate) struct WgpuBackend {
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
     /// Shared image lifecycle drained each frame for uploads and releases.
     images: ImageRegistry,
-    /// Shared CPU gradient rows flushed into the GPU atlas each frame.
-    gradient_atlas: GradientAtlas,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation and the device was created with `TIMESTAMP_QUERY`
     /// enabled. Publishes into the host's shared `GpuPassStats` handle;
@@ -194,7 +192,7 @@ impl WgpuBackend {
         // pipelines (both sample gradient brushes). Owned here so neither
         // pipeline owns the other's input — each composes its layout
         // against `gradient.bgl` and binds `gradient.bg`.
-        let gradient = GradientResources::new(&device);
+        let gradient = GpuGradientAtlas::new(&device, resources.gradient_atlas);
         let quad = QuadPipeline::new(&device);
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device);
@@ -237,7 +235,6 @@ impl WgpuBackend {
             debug,
             pipelines,
             images: resources.images,
-            gradient_atlas: resources.gradient_atlas,
             gpu_timings,
         }
     }
@@ -469,7 +466,7 @@ impl WgpuBackend {
             //   magenta fallback plus any baked rows composer queued.
             // - image registry: first-frame images need a bind group
             //   ready when the schedule's draw call lands.
-            self.gradient.upload(&ctx, &self.gradient_atlas);
+            self.gradient.upload(&ctx);
             self.image.drain_registry(&mut ctx, &self.images);
 
             if dim_undamaged {

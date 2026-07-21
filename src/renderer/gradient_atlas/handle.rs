@@ -2,33 +2,33 @@
 
 use crate::primitives::brush::{GradientStops, Interp};
 use crate::primitives::fill_wire::LutRow;
-use crate::renderer::gradient_atlas::{FlushedRows, GradientCpuAtlas};
+use crate::renderer::gradient_atlas::{CpuGradientAtlas, FlushedRows};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct GradientAtlas {
-    inner: Rc<RefCell<GradientCpuAtlas>>,
+pub(crate) struct SharedGradientAtlas {
+    cpu: Rc<RefCell<CpuGradientAtlas>>,
 }
 
-impl GradientAtlas {
+impl SharedGradientAtlas {
     #[inline]
     pub(crate) fn register_stops(&self, stops: &GradientStops, interp: Interp) -> LutRow {
-        self.inner.borrow_mut().register_stops(stops, interp)
+        self.cpu.borrow_mut().register_stops(stops, interp)
     }
 
     #[inline]
     pub(crate) fn flush_with<R>(&self, upload: impl FnOnce(FlushedRows<'_>) -> R) -> Option<R> {
-        let mut atlas = self.inner.borrow_mut();
+        let mut atlas = self.cpu.borrow_mut();
         atlas.flush().map(upload)
     }
 }
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 
-    pub(crate) fn registration_count(atlas: &GradientAtlas) -> u64 {
-        atlas.inner.borrow().clock
+    pub(crate) fn registration_count(atlas: &SharedGradientAtlas) -> u64 {
+        atlas.cpu.borrow().clock
     }
 }

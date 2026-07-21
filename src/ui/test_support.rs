@@ -85,7 +85,7 @@ mod unit {
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder;
-    use crate::renderer::gradient_atlas::handle::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::element::Configure;
@@ -228,7 +228,7 @@ mod unit {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Full,
             };
-            encoder::test_support::encode(self.frame_scene(), &GradientAtlas::default(), plan)
+            encoder::test_support::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
         }
 
         pub(crate) fn encode_cmds_for(&self, region: DamageRegion) -> RenderCmdBuffer {
@@ -236,7 +236,7 @@ mod unit {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Partial { region },
             };
-            encoder::test_support::encode(self.frame_scene(), &GradientAtlas::default(), plan)
+            encoder::test_support::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
         }
     }
 }

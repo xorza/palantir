@@ -1,5 +1,4 @@
-//! Shared gradient LUT atlas GPU resources — the texture, its sampler,
-//! and the group-0 bind group every gradient-aware pipeline samples.
+//! Device-side gradient LUT atlas and its shared CPU source.
 //!
 //! Owned by [`WgpuBackend`](crate::renderer::backend::WgpuBackend) and lent to the quad and
 //! curve pipelines (both render gradient brushes). Keeping the resource
@@ -12,7 +11,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
 use crate::renderer::gradient_atlas::ATLAS_ROWS;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
-use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 
 /// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
 /// Derived from the CPU-side `ColorF16` row store
@@ -28,11 +27,12 @@ const _: () = assert!(
     "gradient atlas row pitch must be a multiple of COPY_BYTES_PER_ROW_ALIGNMENT (256)"
 );
 
-/// Gradient LUT atlas texture + sampler + bind group, shared by the
-/// quad and curve pipelines. Format-independent: survives a swapchain
-/// format change untouched (only the pipelines carry the color target).
+/// Shared CPU gradient source plus the texture, sampler, and bind group
+/// consumed by the quad and curve pipelines. Format-independent: survives a
+/// swapchain format change untouched (only the pipelines carry the target).
 #[derive(Debug)]
-pub(crate) struct GradientResources {
+pub(crate) struct GpuGradientAtlas {
+    cpu: SharedGradientAtlas,
     /// LUT atlas texture. 256 cols × 256 rows of `Rgba16Float`
     /// (linear, no sampler decode — the LUT bake stores linear-RGB
     /// directly via `From<Color> for ColorF16`, so the GPU sees
@@ -50,8 +50,8 @@ pub(crate) struct GradientResources {
     pub(crate) bg: wgpu::BindGroup,
 }
 
-impl GradientResources {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+impl GpuGradientAtlas {
+    pub(crate) fn new(device: &wgpu::Device, cpu: SharedGradientAtlas) -> Self {
         // Group 0 = gradient LUT atlas + sampler. Viewport rides
         // immediates (shared with every pipeline) — no bind-group slot.
         let bgl = texture_sampler_bgl(device, "aperture.gradient.bgl");
@@ -88,7 +88,12 @@ impl GradientResources {
 
         let bg = texture_bind_group(device, &bgl, &sampler, &view, "aperture.gradient.bg");
 
-        Self { texture, bgl, bg }
+        Self {
+            cpu,
+            texture,
+            bgl,
+            bg,
+        }
     }
 
     /// Sync the gradient LUT atlas from CPU to GPU if anything changed.
@@ -98,11 +103,11 @@ impl GradientResources {
     /// offset via `origin.y` — one call keeps the fixed API cost of the
     /// old whole-atlas upload while an animated gradient re-baking one
     /// row moves 2 KB per frame instead of 512 KB (see the dirty-range
-    /// note in `GradientCpuAtlas`). Called from `WgpuBackend::submit`
+    /// note in `CpuGradientAtlas`). Called from `WgpuBackend::submit`
     /// before the render pass starts.
     #[profiling::function]
-    pub(crate) fn upload(&self, ctx: &GpuCtx<'_>, atlas: &GradientAtlas) {
-        atlas.flush_with(|rows| {
+    pub(crate) fn upload(&self, ctx: &GpuCtx<'_>) {
+        self.cpu.flush_with(|rows| {
             // Whole rows by the `FlushedRows` contract, so this divides
             // exactly.
             let height = rows.bytes.len() as u32 / ROW_PITCH;
