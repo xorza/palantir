@@ -13,8 +13,8 @@
 //!   Populated when `PIPELINE_STATISTICS_QUERY` is on.
 //!
 //! Single-producer (the backend's `GpuTimings::after_submit`),
-//! many-reader (debug overlay, benches), all on the same thread
-//! (WindowDriver owns both sides). `RefCell` is sufficient and panics on the
+//! many-reader (debug overlay, benches), all on the host thread.
+//! `RefCell` is sufficient and panics on the
 //! caller-bug case of a concurrent borrow.
 
 use std::cell::RefCell;

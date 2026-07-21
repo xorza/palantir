@@ -18,7 +18,7 @@ use crate::renderer::backend::pipeline_utils::{
 };
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::image::{ImageInstance, RenderTargetDraw};
-use crate::renderer::render_buffer::owner::RenderOwnerId;
+use crate::renderer::render_owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use std::time::Duration;
 
@@ -149,9 +149,8 @@ impl ImagePipeline {
     /// freed-then-recomposited target is never sampled blank — but a
     /// `repaint(false)` view culled from a frame frees its texture, so
     /// `GpuPaint::init` re-runs when it next composites (guard expensive
-    /// setup). `owner` is the submitting window's stable buffer identity
-    /// ([`RenderBuffer::owner`](crate::renderer::render_buffer::RenderBuffer)):
-    /// the one shared backend serves all windows, so a submit may only
+    /// setup). `owner` is the submitting window's stable render-stream
+    /// identity: the one shared backend serves all windows, so a submit may only
     /// evict its *own* absent targets — another window's targets survive
     /// both this submit and their owner's idle (non-submitting) frames.
     #[profiling::function]

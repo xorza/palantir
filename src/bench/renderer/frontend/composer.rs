@@ -7,7 +7,6 @@ use crate::renderer::frontend::cmd_buffer::payload::{
 };
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::record_store::RecordPayloads;
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -30,7 +29,7 @@ impl ComposeBench {
             cmds,
             payloads: RecordPayloads::default(),
             composer: Composer::new(8192),
-            out: RenderBuffer::new(RenderOwnerId::reserve()),
+            out: RenderBuffer::new(),
             display: Display::from_physical(UVec2::splat(128), 1.0),
         }
     }

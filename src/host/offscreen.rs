@@ -1,8 +1,8 @@
 //! [`OffscreenHost`] — the headless peer of
-//! [`WinitHost`](crate::WinitHost). Like `WinitHost` it owns the one
-//! shared [`WgpuBackend`] and drives a [`WindowDriver`] (built from a
-//! [`HostShared`]); unlike it there's no winit, no swapchain, and exactly
-//! one window — it renders to a caller-supplied `wgpu::Texture`.
+//! [`WinitHost`](crate::WinitHost). Like `WinitHost` it owns one [`Frontend`],
+//! one [`WgpuBackend`], and drives a [`WindowDriver`] (built from a
+//! [`HostShared`]); unlike it there's no winit, no swapchain, and exactly one
+//! window — it renders to a caller-supplied `wgpu::Texture`.
 //! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
 //! the windowed host, so update and replay semantics do not depend on the
 //! output backend.
@@ -24,6 +24,7 @@ use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, WindowDriver};
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
+use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{WindowFrameState, WindowToken};
@@ -35,11 +36,12 @@ struct OffscreenTarget {
     format: wgpu::TextureFormat,
 }
 
-/// One shared `WgpuBackend` + one `WindowDriver`, rendering to a
-/// texture instead of a surface. The offscreen analogue of `WinitHost`.
+/// One shared renderer + one `WindowDriver`, rendering to a texture instead of
+/// a surface. The offscreen analogue of `WinitHost`.
 #[derive(Debug)]
 pub struct OffscreenHost {
     shared: HostShared,
+    frontend: Frontend,
     backend: WgpuBackend,
     driver: WindowDriver,
     target: Option<OffscreenTarget>,
@@ -91,13 +93,15 @@ impl OffscreenHostBuilder {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         );
-        let driver = WindowDriver::builder(self.token, &shared, backend.max_texture_dim())
+        let frontend = Frontend::new(backend.max_texture_dim(), shared.frontend_resources.clone());
+        let driver = WindowDriver::builder(self.token, &shared)
             .strategy(PresentStrategy::BackbufferCopy)
             .clock(self.clock)
             .pixel_snap(self.pixel_snap)
             .build();
         OffscreenHost {
             shared,
+            frontend,
             backend,
             driver,
             target: None,
@@ -154,6 +158,7 @@ impl OffscreenHost {
     ) -> FrameReport {
         render_frame(
             &mut self.driver,
+            &mut self.frontend,
             &mut self.backend,
             &mut self.target,
             target,
@@ -171,6 +176,7 @@ impl OffscreenHost {
 
 fn render_frame<T: App>(
     driver: &mut WindowDriver,
+    frontend: &mut Frontend,
     backend: &mut WgpuBackend,
     current_target: &mut Option<OffscreenTarget>,
     target: &wgpu::Texture,
@@ -189,8 +195,8 @@ fn render_frame<T: App>(
         pixel_snap: driver.pixel_snap,
         ..Display::from_physical(target_state.physical, scale_factor)
     };
-    let CpuFrame { report, mode } = driver.cpu_frame(display, app);
-    driver.render_to_texture(backend, target, mode);
+    let CpuFrame { report, mode } = driver.cpu_frame(frontend, display, app);
+    driver.render_to_texture(&frontend.buffer, backend, target, mode);
     discard_window_output(driver);
     report
 }
@@ -238,6 +244,7 @@ pub(crate) mod test_support {
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::renderer::backend::{BackendConfig, WgpuBackend};
+    use crate::renderer::frontend::Frontend;
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::window::WindowToken;
@@ -259,11 +266,12 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Two window render streams sharing one backend and render resources. This is
-    /// intentionally test-only: production multi-window ownership stays with
-    /// `WinitHost`.
+    /// Two window render streams sharing one frontend, backend, and render
+    /// resources. This is intentionally test-only: production multi-window
+    /// ownership stays with `WinitHost`.
     #[derive(Debug)]
     pub struct TwoWindowOffscreenHost {
+        frontend: Frontend,
         backend: WgpuBackend,
         windows: [WindowDriver; 2],
         targets: [Option<OffscreenTarget>; 2],
@@ -286,16 +294,18 @@ pub(crate) mod test_support {
                 BackendConfig::default(),
             );
             let max_texture_dim = backend.max_texture_dim();
+            let frontend = Frontend::new(max_texture_dim, shared.frontend_resources.clone());
             let [clock_a, clock_b] = clocks;
-            let window_a = WindowDriver::builder(WindowToken(0), &shared, max_texture_dim)
+            let window_a = WindowDriver::builder(WindowToken(0), &shared)
                 .strategy(PresentStrategy::BackbufferCopy)
                 .clock(clock_a)
                 .build();
-            let window_b = WindowDriver::builder(WindowToken(1), &shared, max_texture_dim)
+            let window_b = WindowDriver::builder(WindowToken(1), &shared)
                 .strategy(PresentStrategy::BackbufferCopy)
                 .clock(clock_b)
                 .build();
             Self {
+                frontend,
                 backend,
                 windows: [window_a, window_b],
                 targets: [None, None],
@@ -312,6 +322,7 @@ pub(crate) mod test_support {
             let mut app = RecordApp::new(record);
             offscreen::render_frame(
                 &mut self.windows[window],
+                &mut self.frontend,
                 &mut self.backend,
                 &mut self.targets[window],
                 target,
@@ -334,6 +345,7 @@ mod tests {
     use crate::host::offscreen::{OffscreenTarget, discard_window_output, note_target};
     use crate::host::shared::HostShared;
     use crate::host::window_driver::WindowDriver;
+    use crate::renderer::frontend::Frontend;
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::window::{WindowConfig, WindowToken};
@@ -382,14 +394,15 @@ mod tests {
     #[test]
     fn completion_discards_replayed_window_state_and_reuses_capacity() {
         let shared = HostShared::new(TextShaper::default());
-        let mut window = WindowDriver::builder(WindowToken(1), &shared, 8192)
+        let mut frontend = Frontend::new(8192, shared.frontend_resources.clone());
+        let mut window = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
         let display = Display::from_physical(UVec2::new(64, 64), 1.0);
         let mut app = WindowCommandApp::default();
         window.ui.window_frame.close_requested = true;
 
-        let _ = window.cpu_frame(display, &mut app);
+        let _ = window.cpu_frame(&mut frontend, display, &mut app);
         assert_eq!(
             app.records, 3,
             "cold-start warmup plus relayout must replay record three times"
@@ -415,7 +428,7 @@ mod tests {
         assert!(!window.ui.window_frame.close_requested);
 
         window.ui.request_repaint();
-        let _ = window.cpu_frame(display, &mut app);
+        let _ = window.cpu_frame(&mut frontend, display, &mut app);
         assert_eq!(app.records, 5, "relayout must replay the warm frame once");
         assert_eq!(
             window.ui.window_requests.commands.opens.capacity(),

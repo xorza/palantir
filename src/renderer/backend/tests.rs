@@ -12,7 +12,6 @@ use crate::primitives::urect::URect;
 use crate::renderer::backend::schedule::{MaskPlan, RenderStep, build_mask_plan, for_each_step};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
-use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::text::TextCacheKey;
@@ -982,7 +981,7 @@ fn group_outside_damage_emits_no_steps() {
 /// [`text_batch`]). Quads/texts pools have four slots each so any
 /// small span is valid.
 fn buf_with_batches(groups: Vec<DrawGroup>, text_batches: Vec<TextBatch>) -> RenderBuffer {
-    let mut buffer = RenderBuffer::new(RenderOwnerId::reserve());
+    let mut buffer = RenderBuffer::new();
     buffer.quads = vec![dummy_quad(); 4];
     buffer.texts = vec![dummy_text(); 4];
     buffer.groups = groups;

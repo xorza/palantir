@@ -126,12 +126,11 @@ mod tests {
     };
     use crate::renderer::plan::RenderKind;
     use crate::renderer::render_buffer::RenderBuffer;
-    use crate::renderer::render_buffer::owner::RenderOwnerId;
     use crate::scene::damage::region::DamageRegion;
     use glam::{UVec2, Vec2};
 
     fn buffer() -> RenderBuffer {
-        let mut buffer = RenderBuffer::new(RenderOwnerId::reserve());
+        let mut buffer = RenderBuffer::new();
         buffer.start_frame(Display::from_physical(UVec2::new(100, 100), 2.0));
         buffer
     }

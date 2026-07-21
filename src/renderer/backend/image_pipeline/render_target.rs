@@ -5,7 +5,7 @@ use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::backend::pipeline_utils::texture_bind_group;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
 use crate::renderer::render_buffer::image::RenderTargetDraw;
-use crate::renderer::render_buffer::owner::RenderOwnerId;
+use crate::renderer::render_owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
@@ -181,7 +181,7 @@ fn keep_target(
 #[cfg(test)]
 mod tests {
     use super::keep_target;
-    use crate::renderer::render_buffer::owner::RenderOwnerId;
+    use crate::renderer::render_owner::RenderOwnerId;
 
     fn evicted(
         entries: &[(u64, RenderOwnerId, u64)],
