@@ -1,14 +1,17 @@
 use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::limits::MAX_PACKED_GAP;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::configuration::ConfiguredFields;
-use crate::scene::element::configuration::test_support::configured;
+use crate::scene::element::configuration::{ConfiguredElement, ConfiguredFields};
 use crate::scene::element::*;
 use crate::scene::visibility::Visibility;
 use crate::widgets::context_menu::MenuItem;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
+
+fn configured<W: Configure>(widget: &mut W) -> ConfiguredElement<'_> {
+    ConfiguredElement::new(widget.element_mut(ConfigureAccess::new()))
+}
 
 #[test]
 fn flag_setters_round_trip_each_field_independently() {
@@ -87,9 +90,7 @@ fn configured_accessors_cover_the_complete_external_element_surface() {
     let sense = Sense::CLICK | Sense::DRAG;
     let transform = TranslateScale::new(Vec2::new(11.0, 12.0), 1.5);
 
-    let mut element = Element::hstack();
-    element
-        .configure()
+    let mut element = Element::hstack()
         .id(id)
         .size(size)
         .min_size(min_size)
@@ -108,8 +109,8 @@ fn configured_accessors_cover_the_complete_external_element_surface() {
         .disabled(false)
         .focusable(true)
         .visibility(Visibility::Hidden)
-        .clip(ClipMode::None)
-        .transform(transform);
+        .clip(ClipMode::None);
+    element.set_transform(transform);
 
     assert_eq!(element.configured.bits(), ConfiguredFields::all().bits());
     assert_eq!(element.configured.bits().count_ones(), 19);
@@ -148,22 +149,22 @@ fn widget_specific_element_setters_preserve_configuration_provenance() {
     let transform = TranslateScale::new(Vec2::new(4.0, 5.0), 2.0);
     let mut panel = Panel::hstack().transform(transform);
     let mut grid = Grid::new().transform(transform);
-    assert_eq!(configured(panel.element_mut()).transform(), Some(transform),);
-    assert_eq!(configured(grid.element_mut()).transform(), Some(transform),);
+    assert_eq!(configured(&mut panel).transform(), Some(transform));
+    assert_eq!(configured(&mut grid).transform(), Some(transform));
 
     let mut item = MenuItem::new("Open").enabled(true);
-    assert_eq!(configured(item.element_mut()).disabled(), Some(false));
+    assert_eq!(configured(&mut item).disabled(), Some(false));
 
     let mut value = 0.0;
     let mut drag = DragValue::new(&mut value).editable(true);
     assert_eq!(
-        configured(drag.element_mut()).sense(),
+        configured(&mut drag).sense(),
         Some(Sense::CLICK | Sense::DRAG),
     );
 
     let mut scroll = Scroll::both().with_zoom();
     assert_eq!(
-        configured(scroll.element_mut()).sense(),
+        configured(&mut scroll).sense(),
         Some(Sense::SCROLL | Sense::PINCH),
     );
 }
@@ -460,7 +461,7 @@ fn id_of<W: Configure>(mut w: W) -> WidgetId {
     // No parent context in this micro-test — `Salt::resolve(None)`
     // yields the bare auto/explicit id without any parent-scoping
     // mix.
-    configured(w.element_mut()).salt().unwrap().resolve(None)
+    configured(&mut w).salt().unwrap().resolve(None)
 }
 
 /// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable
