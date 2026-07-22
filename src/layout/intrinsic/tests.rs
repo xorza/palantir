@@ -265,8 +265,8 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     let tree = &ui.forest.trees[Layer::Main];
     for expected in expected_modes {
         assert!(
-            tree.records.layout().iter().any(|style| {
-                std::mem::discriminant(&LayoutMode::from(style.meta))
+            tree.records.layout().iter().any(|layout| {
+                std::mem::discriminant(&LayoutMode::from(layout.meta))
                     == std::mem::discriminant(&expected)
             }),
             "fixture must exercise {expected:?}",

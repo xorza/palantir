@@ -60,7 +60,7 @@ pub(crate) fn measure(
     })
 }
 
-/// Each child gets a slot at `inner.min + style.position`, sized per its
+/// Each child gets a slot at `inner.min + bounds.position`, sized per its
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
 pub(crate) fn arrange(
@@ -81,7 +81,7 @@ pub(crate) fn arrange(
         }
         let d = layout.scratch.desired[c.idx()];
         let pos = tree.bounds(c).position;
-        let style = layouts[c.idx()];
+        let child_layout = layouts[c.idx()];
         let bounds = tree.bounds(c);
         let slot_w = if canvas_size.w().is_hug() {
             d.w
@@ -96,8 +96,8 @@ pub(crate) fn arrange(
         let child_rect = Rect {
             min: inner.min + pos,
             size: Size::new(
-                arrange_axis(Axis::X, AxisAlign::Auto, &style, bounds, d, slot_w).size,
-                arrange_axis(Axis::Y, AxisAlign::Auto, &style, bounds, d, slot_h).size,
+                arrange_axis(Axis::X, AxisAlign::Auto, &child_layout, bounds, d, slot_w).size,
+                arrange_axis(Axis::Y, AxisAlign::Auto, &child_layout, bounds, d, slot_h).size,
             ),
         };
         layout.arrange(tree, c, self_outer, child_rect, out);

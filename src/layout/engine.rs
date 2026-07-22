@@ -221,7 +221,7 @@ fn restore_after_cache_hit(
 }
 
 /// Full per-node sizing pipeline: derive `inner_avail` from the parent-
-/// supplied `available` + `style` + clamps, hand it to the driver via
+/// supplied `available` + `layout` + clamps, hand it to the driver via
 /// `dispatch`, fold the driver's raw `content` into a margin-inclusive
 /// `desired`. Returns `desired`.
 ///
@@ -247,7 +247,7 @@ fn restore_after_cache_hit(
 /// `cross_driver_tests::convergence`.
 #[inline]
 fn resolve_sizing(
-    style: LayoutCore,
+    layout: LayoutCore,
     available: Size,
     intrinsic_min: Size,
     min_size: Size,
@@ -257,11 +257,11 @@ fn resolve_sizing(
     let Sums {
         horiz: p_horiz,
         vert: p_vert,
-    } = style.padding.sums();
+    } = layout.padding.sums();
     let Sums {
         horiz: m_horiz,
         vert: m_vert,
-    } = style.margin.sums();
+    } = layout.margin.sums();
 
     let dispatch_avail = Size::new(
         available.w.max(intrinsic_min.w),
@@ -274,13 +274,13 @@ fn resolve_sizing(
     // than it can later arrange; deflate by padding. The clamp matches
     // `resolve_axis_size` below so children's `available` tracks the
     // parent's eventual arranged width.
-    let outer_w = style
+    let outer_w = layout
         .size
         .w()
         .fixed_value()
         .unwrap_or_else(|| (dispatch_avail.w - m_horiz).max(0.0))
         .clamp(min_size.w, max_size.w);
-    let outer_h = style
+    let outer_h = layout
         .size
         .h()
         .fixed_value()
@@ -295,7 +295,7 @@ fn resolve_sizing(
     // margin-exclusive space (`content_plus_padding = content + p_*`).
     Size::new(
         resolve_axis_size(AxisCtx {
-            sizing: style.size.w(),
+            sizing: layout.size.w(),
             content_plus_padding: content.w + p_horiz,
             available: available.w,
             intrinsic_min: intrinsic_min.w,
@@ -304,7 +304,7 @@ fn resolve_sizing(
             max: max_size.w,
         }),
         resolve_axis_size(AxisCtx {
-            sizing: style.size.h(),
+            sizing: layout.size.h(),
             content_plus_padding: content.h + p_vert,
             available: available.h,
             intrinsic_min: intrinsic_min.h,
@@ -526,13 +526,13 @@ impl LayoutEngine {
                     slot.placement.available(surface)
                 };
                 let desired = self.measure(tree, root, available, tc, out);
-                let root_style = tree.records.layout()[root.idx()];
+                let root_layout = tree.records.layout()[root.idx()];
                 let bounds = tree.bounds(root);
                 let size = Size::new(
                     arrange_axis(
                         Axis::X,
                         AxisAlign::Auto,
-                        &root_style,
+                        &root_layout,
                         bounds,
                         desired,
                         available.w,
@@ -541,7 +541,7 @@ impl LayoutEngine {
                     arrange_axis(
                         Axis::Y,
                         AxisAlign::Auto,
-                        &root_style,
+                        &root_layout,
                         bounds,
                         desired,
                         available.h,
@@ -577,13 +577,13 @@ impl LayoutEngine {
             let layouts = tree.records.layout();
             // Container text is paint-only; its wrap width exists only after arrange.
             for index in tree.rollups.container_text.ones() {
-                let style = layouts[index];
-                if !style.meta.visibility().is_visible() {
+                let layout = layouts[index];
+                if !layout.meta.visibility().is_visible() {
                     continue;
                 }
                 let node = NodeId(index as u32);
                 let available_w =
-                    (out[self.active_layer].rect[index].size.w - style.padding.horiz()).max(0.0);
+                    (out[self.active_layer].rect[index].size.w - layout.padding.horiz()).max(0.0);
                 self.shape_text_runs(
                     tree,
                     node,
@@ -614,10 +614,10 @@ impl LayoutEngine {
         tc: &TextCtx<'_>,
         out: &mut Layout,
     ) -> Size {
-        let style = tree.records.layout()[node.idx()];
+        let layout = tree.records.layout()[node.idx()];
         let available_q = quantize_available(available);
         self.scratch.available_q[node.idx()] = available_q;
-        if style.meta.visibility().is_collapsed() {
+        if layout.meta.visibility().is_collapsed() {
             self.scratch.desired[node.idx()] = Size::ZERO;
             return Size::ZERO;
         }
@@ -630,7 +630,7 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        if LayoutMode::from(style.meta) != LayoutMode::Leaf {
+        if LayoutMode::from(layout.meta) != LayoutMode::Leaf {
             let cache_wid = tree.records.widget_id()[node.idx()];
             let cache_hash = tree.rollups.subtree[node.idx()];
             if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, available_q) {
@@ -672,12 +672,12 @@ impl LayoutEngine {
         // a Fixed leaf doesn't trigger a subtree intrinsic walk every
         // frame.
         let intrinsic_min = Size::new(
-            if style.size.w().fixed_value().is_some() {
+            if layout.size.w().fixed_value().is_some() {
                 0.0
             } else {
                 self.intrinsic(tree, node, Axis::X, LenReq::MinContent, tc)
             },
-            if style.size.h().fixed_value().is_some() {
+            if layout.size.h().fixed_value().is_some() {
                 0.0
             } else {
                 self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, tc)
@@ -689,12 +689,12 @@ impl LayoutEngine {
         // contains the rationale for each step (intrinsic_min floor,
         // outer clamp to `[min, max]`, single-dispatch monotonicity).
         let desired = resolve_sizing(
-            style,
+            layout,
             available,
             intrinsic_min,
             min_size,
             max_size,
-            |inner_avail| self.measure_dispatch(tree, node, style, inner_avail, tc, out),
+            |inner_avail| self.measure_dispatch(tree, node, layout, inner_avail, tc, out),
         );
 
         self.scratch.desired[node.idx()] = desired;
@@ -746,12 +746,12 @@ impl LayoutEngine {
         &mut self,
         tree: &Tree,
         node: NodeId,
-        style: LayoutCore,
+        layout: LayoutCore,
         inner_avail: Size,
         tc: &TextCtx<'_>,
         out: &mut Layout,
     ) -> Size {
-        match LayoutMode::from(style.meta) {
+        match LayoutMode::from(layout.meta) {
             LayoutMode::Leaf => self.shape_text_runs(
                 tree,
                 node,
@@ -794,16 +794,16 @@ impl LayoutEngine {
         slot: Rect,
         out: &mut Layout,
     ) {
-        let style = tree.records.layout()[node.idx()];
-        if style.meta.visibility().is_collapsed() {
+        let layout = tree.records.layout()[node.idx()];
+        if layout.meta.visibility().is_collapsed() {
             zero_subtree(self, tree, node, slot.min, out);
             return;
         }
-        let mode = LayoutMode::from(style.meta);
+        let mode = LayoutMode::from(layout.meta);
 
-        let rendered = slot.deflated_by(style.margin);
+        let rendered = slot.deflated_by(layout.margin);
         out[self.active_layer].rect[node.idx()] = rendered;
-        let inner = rendered.deflated_by(style.padding);
+        let inner = rendered.deflated_by(layout.padding);
 
         match mode {
             LayoutMode::Leaf => {}

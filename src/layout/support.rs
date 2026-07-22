@@ -338,7 +338,7 @@ pub(crate) fn measure_per_axis_hug(
     out: &mut Layout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
-    let style = tree.records.layout()[node.idx()];
+    let node_layout = tree.records.layout()[node.idx()];
     // Per-axis-hug availability: a `Hug` axis passes `INF` so the child
     // reports its natural size; a bounded axis passes the committed inner
     // extent. `INF` here is *height-given-width* via measure, not an
@@ -348,12 +348,12 @@ pub(crate) fn measure_per_axis_hug(
     // with wrapping cells, etc.): intrinsic queries the unbounded shape,
     // while INF-measure runs the child's full layout under the committed cross.
     let child_avail = Size::new(
-        if style.size.w().is_hug() {
+        if node_layout.size.w().is_hug() {
             f32::INFINITY
         } else {
             inner_avail.w
         },
-        if style.size.h().is_hug() {
+        if node_layout.size.h().is_hug() {
             f32::INFINITY
         } else {
             inner_avail.h
