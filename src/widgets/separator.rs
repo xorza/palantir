@@ -1,8 +1,8 @@
 use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -62,16 +62,18 @@ impl Separator {
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let theme = &ui.theme.separator;
         let t = self.thickness.unwrap_or(theme.thickness).max(0.0);
-        // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
-        // the same sentinel convention as theme padding/margin.
-        if self.element.size == Sizes::default() {
-            if self.horizontal {
-                self.element.size = (Sizing::HUG, Sizing::fixed(t)).into();
-                self.element.align = Align::h(HAlign::Stretch);
+        let default_size = if self.horizontal {
+            (Sizing::HUG, Sizing::fixed(t)).into()
+        } else {
+            (Sizing::fixed(t), Sizing::HUG).into()
+        };
+        if self.element.configured().size().is_none() {
+            self.element.size = default_size;
+            self.element.align = if self.horizontal {
+                Align::h(HAlign::Stretch)
             } else {
-                self.element.size = (Sizing::fixed(t), Sizing::HUG).into();
-                self.element.align = Align::v(VAlign::Stretch);
-            }
+                Align::v(VAlign::Stretch)
+            };
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
         let id = ui.widget_id(&self.element);
@@ -82,8 +84,8 @@ impl Separator {
 }
 
 impl Configure for Separator {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 
@@ -98,13 +100,12 @@ mod tests {
     use glam::UVec2;
 
     /// Explicit `.size(...)` replaces the Hug+Stretch/thickness default
-    /// entirely (the `Sizes::default()` sentinel), and an untouched
-    /// horizontal rule still stretches across the 400-wide FILL column
-    /// at the theme thickness of 1.
+    /// entirely, and an untouched horizontal rule still stretches across
+    /// the 400-wide FILL column at the theme thickness of 1.
     #[test]
     fn explicit_size_overrides_stretch_default() {
         let mut ui = Ui::for_test();
-        let (mut sized, mut default) = (None, None);
+        let (mut sized, mut hug, mut default) = (None, None, None);
         ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
@@ -114,12 +115,20 @@ mod tests {
                         .show(ui)
                         .node(),
                 );
+                hug = Some(
+                    Separator::horizontal()
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .show(ui)
+                        .node(),
+                );
                 default = Some(Separator::horizontal().show(ui).node());
             });
         });
         let rects = &ui.layout[Layer::Main].rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (50.0, 3.0), "explicit size");
+        let h = rects[hug.unwrap().idx()];
+        assert_eq!((h.size.w, h.size.h), (0.0, 0.0), "explicit hug");
         let d = rects[default.unwrap().idx()];
         assert_eq!((d.size.w, d.size.h), (400.0, 1.0), "untouched default");
     }

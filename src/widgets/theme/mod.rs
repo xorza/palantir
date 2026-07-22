@@ -177,10 +177,10 @@ impl Theme {
 
 /// The shape a per-widget theme bundle needs for [`resolve_look`]:
 /// a per-state [`WidgetLook`] pick plus the box defaults
-/// (padding / margin / motion) that fill in where the builder left
-/// the `Spacing::ZERO` sentinel. Implemented by [`ButtonTheme`] and
-/// [`TextEditTheme`]; each impl defines its own `active` semantics by
-/// delegating to its inherent `pick`.
+/// (padding / margin / motion) that fill in fields the builder did not
+/// configure. Implemented by [`ButtonTheme`] and [`TextEditTheme`]; each
+/// impl defines its own `active` semantics by delegating to its inherent
+/// `pick`.
 pub(crate) trait WidgetTheme {
     fn pick(&self, state: &ResponseState) -> &WidgetLook;
     fn padding(&self) -> Spacing;
@@ -189,8 +189,8 @@ pub(crate) trait WidgetTheme {
 }
 
 /// Resolve a widget's animated look from its theme: pick the per-state
-/// [`WidgetLook`], fill in the theme's padding/margin wherever the
-/// caller left the `Spacing::ZERO` sentinel, and animate. Used by every
+/// [`WidgetLook`], fill in padding/margin the caller did not configure,
+/// and animate. Used by every
 /// chrome-box widget (`Button` / `ComboBox` / `DragValue` / `TextEdit`).
 /// The scalars are copied out so the borrow on `ui.theme` (borrowed,
 /// not cloned) ends before `animate` reborrows `ui` mutably. `style` of
@@ -202,7 +202,7 @@ pub(crate) trait WidgetTheme {
 // the default inliner kept the resolver plus its tiny trait accessors outlined
 // in release builds; the frame bench measured that path at 3.9% precise
 // self-time. Force the whole lookup chain into each widget so state picking,
-// sentinel checks, and target construction optimize as one block.
+// default resolution and target construction optimize as one block.
 #[inline(always)]
 pub(crate) fn resolve_look<T: WidgetTheme>(
     ui: &mut Ui,
@@ -218,12 +218,8 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     let margin = style.margin();
     let anim = style.anim();
     let look_target = style.pick(state).clone();
-    if element.padding == Spacing::ZERO {
-        element.padding = padding;
-    }
-    if element.margin == Spacing::ZERO {
-        element.margin = margin;
-    }
+    element.padding = element.configured().padding().unwrap_or(padding);
+    element.margin = element.configured().margin().unwrap_or(margin);
     look_target.animate(ui, id, &fallback_text, anim)
 }
 

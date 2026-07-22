@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -107,7 +107,51 @@ impl<'a> Button<'a> {
 }
 
 impl Configure for Button<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Ui;
+    use crate::primitives::background::Background;
+    use crate::primitives::spacing::Spacing;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
+    use crate::widgets::button::Button;
+    use crate::widgets::theme::button::ButtonTheme;
+    use glam::UVec2;
+
+    #[test]
+    fn explicit_zero_spacing_overrides_theme_spacing() {
+        let mut theme = ButtonTheme {
+            padding: Spacing::all(8.0),
+            margin: Spacing::all(4.0),
+            ..ButtonTheme::default()
+        };
+        theme.looks.normal.background = Some(Background::NONE);
+
+        let mut ui = Ui::for_test();
+        let (mut explicit, mut inherited) = (None, None);
+        ui.run_at_without_baseline(UVec2::new(200, 120), |ui| {
+            explicit = Some(
+                Button::new()
+                    .style(&theme)
+                    .padding(Spacing::ZERO)
+                    .margin(Spacing::ZERO)
+                    .show(ui)
+                    .node(),
+            );
+            inherited = Some(Button::new().style(&theme).show(ui).node());
+        });
+
+        let layouts = ui.forest.trees[Layer::Main].records.layout();
+        let explicit = layouts[explicit.unwrap().idx()];
+        let inherited = layouts[inherited.unwrap().idx()];
+        assert_eq!(explicit.padding, Spacing::ZERO);
+        assert_eq!(explicit.margin, Spacing::ZERO);
+        assert_eq!(inherited.padding, Spacing::all(8.0));
+        assert_eq!(inherited.margin, Spacing::all(4.0));
     }
 }

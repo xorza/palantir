@@ -1,10 +1,10 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::{Response, enter_widget};
@@ -92,11 +92,10 @@ impl<'a> Slider<'a> {
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
         let mut element = self.element;
-        // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
-        // the same sentinel convention as theme padding/margin.
-        if element.size == Sizes::default() {
-            element.size = (Sizing::FILL, Sizing::fixed(knob)).into();
-        }
+        element.size = element
+            .configured()
+            .size()
+            .unwrap_or((Sizing::FILL, Sizing::fixed(knob)).into());
         element.child_align = Align::v(VAlign::Center);
 
         ui.node(id, element, None, |ui| {
@@ -121,8 +120,8 @@ impl<'a> Slider<'a> {
 }
 
 impl Configure for Slider<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 
@@ -194,15 +193,13 @@ mod tests {
     use glam::{UVec2, Vec2};
 
     /// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
-    /// default (the `Sizes::default()` "caller didn't set a size"
-    /// sentinel), and an untouched slider still gets that default
-    /// (400-wide FILL column → 400 × knob_size 18) — the sentinel
-    /// changes behavior in both directions.
+    /// default, and an untouched slider still gets that default
+    /// (400-wide FILL column → 400 × knob_size 18).
     #[test]
     fn explicit_size_overrides_fill_default() {
         let mut ui = Ui::for_test();
         let mut v = 0.5_f32;
-        let (mut sized, mut default) = (None, None);
+        let (mut sized, mut hug, mut default) = (None, None, None);
         ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
@@ -212,12 +209,20 @@ mod tests {
                         .show(ui)
                         .node(),
                 );
+                hug = Some(
+                    Slider::new(&mut v, 0.0..=1.0)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .show(ui)
+                        .node(),
+                );
                 default = Some(Slider::new(&mut v, 0.0..=1.0).show(ui).node());
             });
         });
         let rects = &ui.layout[Layer::Main].rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
+        let h = rects[hug.unwrap().idx()];
+        assert_eq!((h.size.w, h.size.h), (18.0, 18.0), "explicit hug");
         let d = rects[default.unwrap().idx()];
         assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
     }

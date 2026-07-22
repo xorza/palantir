@@ -1,6 +1,6 @@
 use crate::input::sense::Sense;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::{PolylineColors, Shape};
 use crate::ui::Ui;
@@ -88,8 +88,8 @@ impl<'a> Checkbox<'a> {
 }
 
 impl Configure for Checkbox<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

@@ -17,9 +17,9 @@
 //! Run with: `cargo run --example custom_widget`
 
 use aperture::{
-    Align, App, Background, Color, Configure, Corners, Element, HostHandle, LineCap, LineJoin,
-    Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing, Stroke, Text, Ui,
-    VAlign, Vec2, WidgetId, WindowToken, WinitHost,
+    Align, App, Background, Color, Configure, ConfigureElement, Corners, Element, HostHandle,
+    LineCap, LineJoin, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape,
+    Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
@@ -101,8 +101,8 @@ impl<'a> Stepper<'a> {
 /// The container builder gets every chained setter (`.gap`, `.padding`,
 /// `.id_salt`, `.size`, …) for free by implementing just `element_mut`.
 impl Configure for Stepper<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

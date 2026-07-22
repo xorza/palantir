@@ -1,7 +1,7 @@
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
@@ -44,11 +44,10 @@ impl<'a> ProgressBar<'a> {
         let radius = Corners::all(height * 0.5);
 
         let mut element = self.element;
-        // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
-        // the same sentinel convention as theme padding/margin.
-        if element.size == Sizes::default() {
-            element.size = (Sizing::FILL, Sizing::fixed(height)).into();
-        }
+        element.size = element
+            .configured()
+            .size()
+            .unwrap_or((Sizing::FILL, Sizing::fixed(height)).into());
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
 
@@ -73,8 +72,8 @@ impl<'a> ProgressBar<'a> {
 }
 
 impl Configure for ProgressBar<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 
@@ -103,14 +102,13 @@ mod tests {
     use crate::widgets::progress_bar::{ProgressBar, fill_weights};
     use glam::UVec2;
 
-    /// Explicit `.size(...)` wins over the widget's `Fill ×
-    /// theme.height` default (the `Sizes::default()` sentinel), and an
-    /// untouched bar still gets that default (400-wide FILL column →
-    /// 400 × theme height 6).
+    /// Explicit `.size(...)` wins over the widget's `Fill × theme.height`
+    /// default, and an untouched bar still gets that default (400-wide FILL
+    /// column → 400 × theme height 6).
     #[test]
     fn explicit_size_overrides_fill_default() {
         let mut ui = Ui::for_test();
-        let (mut sized, mut default) = (None, None);
+        let (mut sized, mut hug, mut default) = (None, None, None);
         ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
@@ -120,12 +118,20 @@ mod tests {
                         .show(ui)
                         .node(),
                 );
+                hug = Some(
+                    ProgressBar::new(0.3)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .show(ui)
+                        .node(),
+                );
                 default = Some(ProgressBar::new(0.3).show(ui).node());
             });
         });
         let rects = &ui.layout[Layer::Main].rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (80.0, 10.0), "explicit size");
+        let h = rects[hug.unwrap().idx()];
+        assert_eq!((h.size.w, h.size.h), (0.0, 0.0), "explicit hug");
         let d = rects[default.unwrap().idx()];
         assert_eq!((d.size.w, d.size.h), (400.0, 6.0), "untouched default");
     }

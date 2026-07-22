@@ -2,7 +2,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::{PolylineColors, Shape};
 use crate::ui::Ui;
@@ -115,11 +115,11 @@ impl<'a> ComboBox<'a> {
             let panel = ui.theme.context_menu.panel.clone();
             let options = self.options;
             let selected = self.selected;
-            let mut popup = Popup::below(rect)
+            let popup = Popup::below(rect)
                 .click_outside(ClickOutside::Dismiss)
                 .background(panel)
-                .id(id.with("list"));
-            popup.element_mut().min_size.w = rect.size.w;
+                .id(id.with("list"))
+                .min_size((rect.size.w, 0.0));
             let resp = popup.show(ui, |ui, popup| {
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(opt);
@@ -139,8 +139,8 @@ impl<'a> ComboBox<'a> {
 }
 
 impl Configure for ComboBox<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

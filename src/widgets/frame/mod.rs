@@ -1,5 +1,5 @@
 use crate::primitives::background::Background;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -39,8 +39,8 @@ impl Frame {
 }
 
 impl Configure for Frame {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

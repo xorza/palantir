@@ -24,7 +24,7 @@ pub struct TooltipTheme {
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is
     /// usually `INF` so tall tooltips just keep growing. Builder
-    /// callers override via `.max_size(...)` (`Configure`). The
+    /// callers override via `.max_size(...)`. The
     /// infinite height axis round-trips because `Size`'s serde maps
     /// non-finite axes to `None`.
     pub max_size: Size,

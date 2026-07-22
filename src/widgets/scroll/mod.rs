@@ -13,7 +13,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::{InnerResponse, Response};
@@ -380,9 +380,8 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
         grid,
         flags,
         visibility,
-        // Owned by Scroll: `show()` writes the pan/zoom transform onto
-        // `inner` each frame, so a user transform has no slot here.
-        transform: _,
+        // Scroll owns its mode/transform, and no fallback runs after this split.
+        ..
     } = element;
 
     let mut outer = Element::zstack();
@@ -530,8 +529,7 @@ impl Scroll {
     pub fn with_zoom_config(mut self, cfg: ZoomConfig) -> Self {
         self.zoom = Some(cfg);
         let sense = self.element.flags.sense() | Sense::PINCH;
-        self.element.flags.set_sense(sense);
-        self
+        self.sense(sense)
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
@@ -779,17 +777,10 @@ impl Scroll {
         inner.salt = Salt::Verbatim(scroll_id);
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
         let inner_chrome = self.chrome;
-        // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
-        // by default; if the caller upgraded to `Rounded` via
-        // `Configure::clip_rounded`, that wins.
+        // `with_axes` set `ClipMode::Rect` by default; caller configuration
+        // can replace it with rounded clipping or no clipping.
         let user_clip = self.element.flags.clip_mode();
-        inner
-            .flags
-            .set_clip(if matches!(user_clip, ClipMode::None) {
-                ClipMode::Rect
-            } else {
-                user_clip
-            });
+        inner.flags.set_clip(user_clip);
         // Raw pan/zoom — cascade anchors the scale at the inner's own
         // `layout_rect.min` (`TranslateScale::anchored_at`), so we
         // don't pre-bake the origin compensation. Translation is just
@@ -853,8 +844,8 @@ impl Scroll {
 }
 
 impl Configure for Scroll {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

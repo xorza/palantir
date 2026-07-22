@@ -16,10 +16,8 @@ use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 /// response state and `Element::disabled` via [`Self::pick`].
 ///
 /// `padding`/`margin` apply when the user didn't call `.padding(...)`
-/// / `.margin(...)` on the builder. The "user didn't override" check
-/// is `element.padding == Spacing::ZERO` — so if you want a button
-/// with no padding while the theme has padding, set a custom theme
-/// rather than passing zero.
+/// / `.margin(...)` on the builder. Explicit zero spacing overrides
+/// the theme like any other value.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
     /// The four per-state looks. `flatten` keeps theme files flat

@@ -5,7 +5,7 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -127,8 +127,8 @@ impl<'a> Switch<'a> {
 }
 
 impl Configure for Switch<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

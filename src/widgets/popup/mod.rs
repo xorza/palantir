@@ -3,7 +3,7 @@ use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
@@ -97,7 +97,7 @@ impl PopupResponse {
 pub struct Popup {
     position: OverlayPosition,
     click_outside: ClickOutside,
-    element: Element,
+    pub(crate) element: Element,
     chrome: Option<Background>,
 }
 
@@ -146,7 +146,8 @@ impl Popup {
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme.panel_background` when unset.
+    /// from `ui.theme.panel_background` when unset. Pass
+    /// [`Background::NONE`] to suppress that fallback for this popup.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
@@ -204,8 +205,8 @@ impl Popup {
 }
 
 impl Configure for Popup {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

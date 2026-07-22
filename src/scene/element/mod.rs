@@ -1,6 +1,7 @@
 //! Public element authoring data and the builder configuration surface.
 
 pub(crate) mod columns;
+pub(crate) mod configuration;
 
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
@@ -17,6 +18,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::element::columns::{
     BoundsExtras, ElementColumns, Gaps, LayoutCore, NodeFlags, PanelExtras,
 };
+use crate::scene::element::configuration::{ConfiguredElement, ConfiguredFields};
 use crate::scene::visibility::Visibility;
 use glam::Vec2;
 use std::hash::Hash;
@@ -112,8 +114,8 @@ impl Salt {
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
-/// Every widget builder owns one and forwards it to `Ui::node`. `Configure` (the
-/// trait below) gives chained setters for all fields by impl'ing one method.
+/// Every widget builder owns one and forwards it to `Ui::node`. [`Configure`]
+/// gives chained setters for all fields by implementing one method.
 ///
 /// Fields are grouped by who reads them: identity, own-size (every parent),
 /// mode-specific (only certain parents read these), interaction, and paint.
@@ -155,9 +157,7 @@ pub struct Element {
     /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
     pub(crate) grid: GridCell,
 
-    /// Packed paint/input flags (sense, disabled, focusable, clip).
-    /// Two bytes, mirrors the `NodeFlags` column `into_columns` writes
-    /// to — fan-out is a single `u16` copy.
+    /// Packed paint/input flags copied directly into the recorded tree.
     pub(crate) flags: NodeFlags,
 
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
@@ -172,7 +172,11 @@ pub struct Element {
     /// is the top-left of the panel's logical-rect — the caller
     /// composes its own pivot by pre/post-translation.
     pub(crate) transform: TranslateScale,
+
+    /// Builder provenance is authoring-only and never enters the recorded tree.
+    configured: ConfiguredFields,
 }
+
 impl Element {
     /// Paint/layout leaf for custom widget content.
     #[track_caller]
@@ -247,6 +251,15 @@ impl Element {
         spec
     }
 
+    pub(crate) fn configured(&self) -> ConfiguredElement<'_> {
+        ConfiguredElement::new(self)
+    }
+
+    pub(crate) fn set_transform(&mut self, value: TranslateScale) {
+        self.transform = value;
+        self.configured.insert(ConfiguredFields::TRANSFORM);
+    }
+
     #[track_caller]
     fn new(mode: ElementMode) -> Self {
         Self {
@@ -266,6 +279,7 @@ impl Element {
             flags: NodeFlags::default(),
             visibility: Visibility::Visible,
             transform: TranslateScale::IDENTITY,
+            configured: ConfiguredFields::default(),
         }
     }
 
@@ -297,6 +311,14 @@ impl Element {
     }
 }
 
+/// Opaque mutable view used only to implement [`Configure`] for a widget.
+/// Delegating through an owned [`Element`] exposes configuration without
+/// exposing the element's structural layout mode.
+#[derive(Debug)]
+pub struct ConfigureElement<'a> {
+    element: &'a mut Element,
+}
+
 #[inline]
 fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
     // Builder setters run per widget per frame, so validation compiles out in release.
@@ -316,7 +338,7 @@ fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
 /// free by impl'ing just `element_mut`.
 pub trait Configure: Sized {
-    fn element_mut(&mut self) -> &mut Element;
+    fn element_mut(&mut self) -> ConfigureElement<'_>;
 
     /// Override this widget's id with a hash of `key`, scoped to the
     /// parent. The stored hash is mixed with the parent node's
@@ -332,7 +354,9 @@ pub trait Configure: Sized {
     /// outline because they're caller bugs. For an unscoped "use this
     /// exact id" override, see [`Self::id`].
     fn id_salt(mut self, key: impl Hash) -> Self {
-        self.element_mut().salt = Salt::Hash(WidgetId::from_hash(key));
+        let element = self.element_mut().element;
+        element.salt = Salt::Hash(WidgetId::from_hash(key));
+        element.configured.insert(ConfiguredFields::SALT);
         self
     }
 
@@ -344,7 +368,9 @@ pub trait Configure: Sized {
     /// For the parent-scoped path, prefer [`Self::id_salt`]. Stores
     /// the id verbatim.
     fn id(mut self, id: WidgetId) -> Self {
-        self.element_mut().salt = Salt::Verbatim(id);
+        let element = self.element_mut().element;
+        element.salt = Salt::Verbatim(id);
+        element.configured.insert(ConfiguredFields::SALT);
         self
     }
 
@@ -354,48 +380,61 @@ pub trait Configure: Sized {
     /// `helper().auto_id().show(ui)` reads the caller's `(file, line, col)`.
     #[track_caller]
     fn auto_id(mut self) -> Self {
-        self.element_mut().salt = Salt::Auto(WidgetId::auto_stable());
+        let element = self.element_mut().element;
+        element.salt = Salt::Auto(WidgetId::auto_stable());
+        element.configured.insert(ConfiguredFields::SALT);
         self
     }
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.element_mut().size = s.into();
+        let element = self.element_mut().element;
+        element.size = s.into();
+        element.configured.insert(ConfiguredFields::SIZE);
         self
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
-        let s = s.into();
-        let element = self.element_mut();
-        debug_assert_valid_bounds(s, element.max_size);
-        element.min_size = s;
+        let element = self.element_mut().element;
+        let value = s.into();
+        debug_assert_valid_bounds(value, element.max_size);
+        element.min_size = value;
+        element.configured.insert(ConfiguredFields::MIN_SIZE);
         self
     }
     fn max_size(mut self, s: impl Into<Size>) -> Self {
-        let s = s.into();
-        let element = self.element_mut();
-        debug_assert_valid_bounds(element.min_size, s);
-        element.max_size = s;
+        let element = self.element_mut().element;
+        let value = s.into();
+        debug_assert_valid_bounds(element.min_size, value);
+        element.max_size = value;
+        element.configured.insert(ConfiguredFields::MAX_SIZE);
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.element_mut().padding = p.into();
+        let element = self.element_mut().element;
+        element.padding = p.into();
+        element.configured.insert(ConfiguredFields::PADDING);
         self
     }
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.element_mut().margin = m.into();
+        let element = self.element_mut().element;
+        element.margin = m.into();
+        element.configured.insert(ConfiguredFields::MARGIN);
         self
     }
     /// Absolute position inside a `Canvas` parent (parent-inner coords).
     /// Ignored by other layout modes.
     fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.element_mut().position = p.into();
+        let element = self.element_mut().element;
+        element.position = p.into();
+        element.configured.insert(ConfiguredFields::POSITION);
         self
     }
     /// Cell `(row, col)` inside a `Grid` parent. Default `(0, 0)`. Ignored
     /// outside a Grid parent.
     fn grid_cell(mut self, (row, col): (u16, u16)) -> Self {
-        let g = &mut self.element_mut().grid;
-        g.row = row;
-        g.col = col;
+        let element = self.element_mut().element;
+        element.grid.row = row;
+        element.grid.col = col;
+        element.configured.insert(ConfiguredFields::GRID);
         self
     }
     /// Span `(row_span, col_span)` inside a `Grid` parent. Default `(1, 1)`.
@@ -403,16 +442,19 @@ pub trait Configure: Sized {
     /// time — an out-of-range placement panics (`Tree::check_grid_cell`).
     /// Ignored outside a Grid parent.
     fn grid_span(mut self, (rs, cs): (u16, u16)) -> Self {
-        let g = &mut self.element_mut().grid;
-        g.row_span = rs.max(1);
-        g.col_span = cs.max(1);
+        let element = self.element_mut().element;
+        element.grid.row_span = rs.max(1);
+        element.grid.col_span = cs.max(1);
+        element.configured.insert(ConfiguredFields::GRID);
         self
     }
     /// Logical-px space between siblings within a line. Read by
     /// HStack/VStack and the within-line direction of WrapHStack/
     /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
     fn gap(mut self, g: f32) -> Self {
-        self.element_mut().gaps.set_gap(g);
+        let element = self.element_mut().element;
+        element.gaps.set_gap(g);
+        element.configured.insert(ConfiguredFields::GAP);
         self
     }
 
@@ -421,35 +463,47 @@ pub trait Configure: Sized {
     /// every other layout mode. Pair with `.gap(...)` for the within-
     /// line spacing.
     fn line_gap(mut self, g: f32) -> Self {
-        self.element_mut().gaps.set_line_gap(g);
+        let element = self.element_mut().element;
+        element.gaps.set_line_gap(g);
+        element.configured.insert(ConfiguredFields::LINE_GAP);
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
     /// Ignored when any child has [`crate::Sizing::fill`] on the main axis.
     fn justify(mut self, j: Justify) -> Self {
-        self.element_mut().justify = j;
+        let element = self.element_mut().element;
+        element.justify = j;
+        element.configured.insert(ConfiguredFields::JUSTIFY);
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn align(mut self, a: Align) -> Self {
-        self.element_mut().align = a;
+        let element = self.element_mut().element;
+        element.align = a;
+        element.configured.insert(ConfiguredFields::ALIGN);
         self
     }
     /// Default alignment applied to children when their own axis is `Auto`.
     /// Mirrors CSS `align-items`. For single-axis defaults use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn child_align(mut self, a: Align) -> Self {
-        self.element_mut().child_align = a;
+        let element = self.element_mut().element;
+        element.child_align = a;
+        element.configured.insert(ConfiguredFields::CHILD_ALIGN);
         self
     }
     fn sense(mut self, s: Sense) -> Self {
-        self.element_mut().flags.set_sense(s);
+        let element = self.element_mut().element;
+        element.flags.set_sense(s);
+        element.configured.insert(ConfiguredFields::SENSE);
         self
     }
     /// Suppress this node's interactions and cascade to all descendants.
     fn disabled(mut self, d: bool) -> Self {
-        self.element_mut().flags.set_disabled(d);
+        let element = self.element_mut().element;
+        element.flags.set_disabled(d);
+        element.configured.insert(ConfiguredFields::DISABLED);
         self
     }
     /// Mark this node as eligible to take keyboard focus on press.
@@ -457,12 +511,16 @@ pub trait Configure: Sized {
     /// or invisible nodes are excluded from focus regardless of this
     /// flag — same cascade rule as `Sense`.
     fn focusable(mut self, f: bool) -> Self {
-        self.element_mut().flags.set_focusable(f);
+        let element = self.element_mut().element;
+        element.flags.set_focusable(f);
+        element.configured.insert(ConfiguredFields::FOCUSABLE);
         self
     }
     /// Three-state visibility. See [`Visibility`].
     fn visibility(mut self, v: Visibility) -> Self {
-        self.element_mut().visibility = v;
+        let element = self.element_mut().element;
+        element.visibility = v;
+        element.configured.insert(ConfiguredFields::VISIBILITY);
         self
     }
     /// Shorthand for [`Visibility::Hidden`]: keeps the slot, hides paint + input.
@@ -477,7 +535,9 @@ pub trait Configure: Sized {
     /// Generic clip setter. Most callers use the [`Self::clip_rect`]
     /// / [`Self::clip_rounded`] sugars instead.
     fn clip(mut self, mode: ClipMode) -> Self {
-        self.element_mut().flags.set_clip(mode);
+        let element = self.element_mut().element;
+        element.flags.set_clip(mode);
+        element.configured.insert(ConfiguredFields::CLIP);
         self
     }
 
@@ -501,8 +561,8 @@ pub trait Configure: Sized {
 /// `Element::leaf().id(my_id).size(...).sense(Sense::CLICK)`.
 impl Configure for Element {
     #[inline]
-    fn element_mut(&mut self) -> &mut Element {
-        self
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        ConfigureElement { element: self }
     }
 }
 

@@ -3,8 +3,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::primitives::spacing::Spacing;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
@@ -52,7 +51,8 @@ impl Modal {
         }
     }
 
-    /// Override the card chrome (fill / stroke / corners / shadow).
+    /// Override the card chrome (fill / stroke / corners / shadow). Pass
+    /// [`Background::NONE`] to suppress the themed card chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
@@ -78,10 +78,8 @@ impl Modal {
 
         let mut card = self.element;
         card.salt = Salt::Verbatim(card_id);
-        if card.padding == Spacing::ZERO {
-            card.padding = theme_padding;
-        }
-        if card.min_size.w <= 0.0 {
+        card.padding = card.configured().padding().unwrap_or(theme_padding);
+        if card.configured().min_size().is_none() {
             card.min_size.w = theme_min_width;
         }
 
@@ -106,7 +104,47 @@ impl Modal {
 }
 
 impl Configure for Modal {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Ui;
+    use crate::primitives::background::Background;
+    use crate::primitives::size::Size;
+    use crate::primitives::spacing::Spacing;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
+    use crate::scene::tree::node::NodeId;
+    use crate::widgets::modal::Modal;
+    use glam::UVec2;
+
+    #[test]
+    fn explicit_zero_padding_and_minimum_override_card_theme() {
+        let mut ui = Ui::for_test();
+        let root_id = WidgetId::from_hash("modal-explicit-zero");
+        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+            Modal::new()
+                .id(root_id)
+                .background(Background::NONE)
+                .padding(Spacing::ZERO)
+                .min_size(Size::ZERO)
+                .show(ui, |_| {});
+        });
+
+        let card_id = root_id.with("card");
+        let tree = &ui.forest.trees[Layer::Modal];
+        let index = tree
+            .records
+            .widget_id()
+            .iter()
+            .position(|id| *id == card_id)
+            .expect("modal card node");
+        let node = NodeId(index as u32);
+        assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
+        assert_eq!(tree.bounds(node).min_size, Size::ZERO);
     }
 }

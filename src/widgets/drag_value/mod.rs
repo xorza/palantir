@@ -3,7 +3,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -265,7 +265,7 @@ impl<'a> DragValue<'a> {
     pub fn editable(mut self, on: bool) -> Self {
         self.editable = on;
         if on {
-            self.element.flags.set_sense(Sense::CLICK | Sense::DRAG);
+            return self.sense(Sense::CLICK | Sense::DRAG);
         }
         self
     }
@@ -480,8 +480,8 @@ impl<'a> DragValue<'a> {
 }
 
 impl Configure for DragValue<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 
