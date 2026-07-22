@@ -128,15 +128,15 @@ fn build_stack_plan(
     let mut count = 0usize;
     for c in tree.active_children(node) {
         count += 1;
-        let style = layouts[c.idx()];
-        if let Some(weight) = axis.main_sizing(style.size).fill_weight() {
+        let child_layout = layouts[c.idx()];
+        if let Some(weight) = axis.main_sizing(child_layout.size).fill_weight() {
             total_weight += f64::from(weight);
             let floor = fill_floor(layout, c);
             layout.scratch.stack_fill.pool.push(FillEntry {
                 node: c,
                 weight,
                 floor,
-                cap: axis.main(tree.bounds(c).max_size) + axis.spacing(style.margin),
+                cap: axis.main(tree.bounds(c).max_size) + axis.spacing(child_layout.margin),
                 frozen_alloc: None,
             });
         } else {

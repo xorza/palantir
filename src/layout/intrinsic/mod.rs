@@ -146,14 +146,14 @@ pub(crate) fn compute<const RANGE: bool>(
     query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
 ) -> IntrinsicRange {
-    let style = tree.records.layout()[node.idx()];
-    if style.meta.visibility().is_collapsed() {
+    let layout = tree.records.layout()[node.idx()];
+    if layout.meta.visibility().is_collapsed() {
         return IntrinsicRange::ZERO;
     }
     let bounds = tree.bounds(node);
 
-    let sizing = axis.main_sizing(style.size);
-    let margin = axis.spacing(style.margin);
+    let sizing = axis.main_sizing(layout.size);
+    let margin = axis.spacing(layout.margin);
     let min_clamp = axis.main(bounds.min_size);
     let max_clamp = axis.main(bounds.max_size);
 
@@ -167,8 +167,8 @@ pub(crate) fn compute<const RANGE: bool>(
     let mut content = if sizing.fixed_value().is_some() {
         IntrinsicRange::ZERO
     } else {
-        let mut content = content_intrinsic(engine, tree, node, axis, query, tc, style);
-        let pad = axis.spacing(style.padding);
+        let mut content = content_intrinsic(engine, tree, node, axis, query, tc, layout);
+        let pad = axis.spacing(layout.padding);
         if query.includes(LenReq::MinContent) {
             content.min += pad;
         }
@@ -206,9 +206,9 @@ fn content_intrinsic<const RANGE: bool>(
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
     tc: &TextCtx<'_>,
-    style: LayoutCore,
+    layout: LayoutCore,
 ) -> IntrinsicRange {
-    match LayoutMode::from(style.meta) {
+    match LayoutMode::from(layout.meta) {
         LayoutMode::Leaf => leaf(engine, tree, node, axis, query, tc),
         LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, query, tc),
         LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, query, tc),
