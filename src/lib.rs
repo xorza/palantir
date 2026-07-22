@@ -91,7 +91,7 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
-pub use scene::element::{Configure, ConfigureAccess, Element};
+pub use scene::element::{Configure, ConfigureElement, Element};
 pub use scene::layer::Layer;
 pub use scene::visibility::Visibility;
 // Re-exported (not an aperture type) because it's the canonical integer

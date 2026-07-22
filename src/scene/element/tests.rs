@@ -10,7 +10,7 @@ use crate::widgets::scroll::Scroll;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
 fn configured<W: Configure>(widget: &mut W) -> ConfiguredElement<'_> {
-    ConfiguredElement::new(widget.element_mut(ConfigureAccess::new()))
+    ConfiguredElement::new(widget.element_mut().element)
 }
 
 #[test]
