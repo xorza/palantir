@@ -93,6 +93,16 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         self
     }
 
+    pub fn max_size(mut self, size: impl Into<Size>) -> Self {
+        self.element = self.element.max_size(size);
+        self
+    }
+
+    pub fn padding(mut self, padding: impl Into<Spacing>) -> Self {
+        self.element = self.element.padding(padding);
+        self
+    }
+
     pub fn text<'text>(self, text: impl Into<TextInput<'text>>) -> Tooltip<'r, 'text> {
         Tooltip {
             snapshot: self.snapshot,
@@ -129,14 +139,6 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         let trigger_id = self.snapshot.id;
         let bubble_id = trigger_id.with("tooltip.bubble");
         let g_id = *GLOBAL_STATE_ID;
-
-        // Accepting an override would split bubble identity from the trigger-owned lifecycle.
-        debug_assert!(
-            matches!(self.element.salt, Salt::Auto(_)),
-            "Tooltip does not honor `.id(...)` / `.id_salt(...)` — the id is \
-             derived from the trigger's response so per-trigger state stays \
-             paired. Drop the override.",
-        );
 
         let trigger_hovered = self.snapshot.state.hovered;
         let trigger_disabled = self.snapshot.state.disabled;
@@ -205,12 +207,6 @@ impl<'r, 'a> Tooltip<'r, 'a> {
 
         *ui.state_mut::<TooltipState>(trigger_id) = state;
         *ui.state_mut::<TooltipGlobal>(g_id) = global;
-    }
-}
-
-impl Configure for Tooltip<'_, '_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
     }
 }
 

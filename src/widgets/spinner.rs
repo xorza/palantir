@@ -1,4 +1,4 @@
-use crate::layout::types::sizing::Sizing;
+use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::brush::LinearGradient;
 use crate::primitives::color::Color;
 use crate::scene::element::{Configure, Element};
@@ -34,7 +34,7 @@ const SPEED: f32 = 4.5;
 #[derive(Debug)]
 pub struct Spinner {
     element: Element,
-    size: Option<f32>,
+    diameter: Option<f32>,
     color: Option<Color>,
     thickness: Option<f32>,
 }
@@ -45,7 +45,7 @@ impl Spinner {
     pub fn new() -> Self {
         Self {
             element: Element::leaf(),
-            size: None,
+            diameter: None,
             color: None,
             thickness: None,
         }
@@ -53,8 +53,8 @@ impl Spinner {
 
     /// Diameter in logical px. `None` (default) inherits
     /// [`crate::Theme::spinner`].
-    pub fn size(mut self, px: f32) -> Self {
-        self.size = Some(px);
+    pub fn diameter(mut self, px: f32) -> Self {
+        self.diameter = Some(px);
         self
     }
 
@@ -65,7 +65,7 @@ impl Spinner {
         self
     }
 
-    /// Stroke width in logical px. Default `size * 0.12` (min `1.5`).
+    /// Stroke width in logical px. Default `diameter * 0.12` (min `1.5`).
     pub fn thickness(mut self, px: f32) -> Self {
         self.thickness = Some(px);
         self
@@ -73,17 +73,19 @@ impl Spinner {
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let theme = &ui.theme.spinner;
-        let size = self.size.unwrap_or(theme.size).max(1.0);
-        let width = self.thickness.unwrap_or((size * 0.12).max(1.5));
+        let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
+        let width = self.thickness.unwrap_or((diameter * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);
-        self.element.size = (Sizing::fixed(size), Sizing::fixed(size)).into();
+        if self.element.size == Sizes::default() {
+            self.element.size = (Sizing::fixed(diameter), Sizing::fixed(diameter)).into();
+        }
 
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
             // Static arc (phase 0) + a paint-time spin: the recorded
             // shape is identical every frame, so the spinner's subtree
             // stays cache-stable and only the composer re-spins it.
-            let ArcGeometry { center, radius } = arc_geometry(size, width);
+            let ArcGeometry { center, radius } = arc_geometry(diameter, width);
             ui.add_shape_animated(
                 Shape::arc(center, radius, 0.0, SWEEP, width)
                     .brush(comet_brush(color))
@@ -114,10 +116,10 @@ struct ArcGeometry {
 /// Inset the trace circle by half the stroke width so the stroke (and
 /// its round caps, which reach `width/2` past the centerline) stays
 /// inside the widget box.
-fn arc_geometry(size: f32, width: f32) -> ArcGeometry {
+fn arc_geometry(diameter: f32, width: f32) -> ArcGeometry {
     ArcGeometry {
-        center: Vec2::splat(size * 0.5),
-        radius: (size - width).max(0.0) * 0.5,
+        center: Vec2::splat(diameter * 0.5),
+        radius: (diameter - width).max(0.0) * 0.5,
     }
 }
 
@@ -134,8 +136,15 @@ fn comet_brush(base: Color) -> LinearGradient {
 mod tests {
     use std::f32::consts::TAU;
 
+    use crate::Ui;
+    use crate::layout::types::sizing::Sizing;
     use crate::primitives::color::{Color, ColorU8};
+    use crate::scene::element::Configure;
+    use crate::scene::layer::Layer;
+    use crate::widgets::panel::Panel;
+    use crate::widgets::spinner::Spinner;
     use crate::widgets::spinner::{ArcGeometry, SWEEP, arc_geometry, comet_brush};
+    use glam::UVec2;
     use glam::Vec2;
 
     /// The trace circle insets by half the stroke width (round caps
@@ -174,5 +183,29 @@ mod tests {
         assert_eq!(tail.color.r, head.color.r);
         assert_eq!(tail.color.g, head.color.g);
         assert_eq!(tail.color.b, head.color.b);
+    }
+
+    #[test]
+    fn explicit_layout_size_is_independent_from_diameter() {
+        let mut ui = Ui::for_test();
+        let (mut sized, mut default) = (None, None);
+        ui.run_at_without_baseline(UVec2::new(200, 120), |ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                sized = Some(
+                    Spinner::new()
+                        .diameter(12.0)
+                        .size((Sizing::fixed(30.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .node(),
+                );
+                default = Some(Spinner::new().diameter(12.0).show(ui).node());
+            });
+        });
+
+        let rects = &ui.layout[Layer::Main].rect;
+        let sized = rects[sized.unwrap().idx()];
+        let default = rects[default.unwrap().idx()];
+        assert_eq!((sized.size.w, sized.size.h), (30.0, 40.0));
+        assert_eq!((default.size.w, default.size.h), (12.0, 12.0));
     }
 }

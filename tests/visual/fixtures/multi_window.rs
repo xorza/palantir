@@ -65,7 +65,7 @@ fn scene(
                 .show(ui);
             Spinner::new()
                 .id(WidgetId::from_hash((id, "spinner")))
-                .size(92.0)
+                .diameter(92.0)
                 .thickness(2.0)
                 .show(ui);
         });
