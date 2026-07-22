@@ -691,7 +691,7 @@ rail_thickness = 4.0
 
 [spinner]
 color = "#9adbfb"
-size = 24.0
+diameter = 24.0
 
 [splitter]
 thickness = 6.0

@@ -207,7 +207,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
             ProgressBar::new(frac).id_salt("sync-bar").show(ui);
             if s.syncing {
                 Panel::hstack().id_salt("sync-row").gap(8.0).show(ui, |ui| {
-                    Spinner::new().size(16.0).id_salt("sync-spin").show(ui);
+                    Spinner::new().diameter(16.0).id_salt("sync-spin").show(ui);
                     let pct = ui.fmt(format_args!("syncing {:.0}%", frac * 100.0));
                     Text::new(pct)
                         .id_salt("sync-pct")
@@ -289,10 +289,16 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
                 "Spinner — indeterminate, three sizes + custom color",
                 |ui| {
                     Panel::hstack().id_salt("spin-row").gap(20.0).show(ui, |ui| {
-                        Spinner::new().size(20.0).id_salt("spin-a").show(ui);
-                        Spinner::new().size(32.0).id_salt("spin-b").show(ui);
                         Spinner::new()
-                            .size(48.0)
+                            .diameter(20.0)
+                            .id_salt("spin-a")
+                            .show(ui);
+                        Spinner::new()
+                            .diameter(32.0)
+                            .id_salt("spin-b")
+                            .show(ui);
+                        Spinner::new()
+                            .diameter(48.0)
                             .color(Color::hex(0xff8866))
                             .id_salt("spin-c")
                             .show(ui);

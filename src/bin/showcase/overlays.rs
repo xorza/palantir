@@ -264,7 +264,7 @@ fn context_menu_section(ui: &mut Ui) {
                     attach_menu(ui, &surface, state_id, MenuFlavor::Default);
 
                     // Same items, configured wider with bigger padding and
-                    // a max width — ContextMenu's Configure surface.
+                    // a maximum width.
                     let wide = Frame::new()
                         .id_salt("ctx-wide-surface")
                         .size((Sizing::FILL, Sizing::fixed(90.0)))

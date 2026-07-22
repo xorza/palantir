@@ -684,7 +684,7 @@ mod record_store_tests {
                     .show(ui);
                 Spinner::new()
                     .id(WidgetId::from_hash((id, "spinner")))
-                    .size(92.0)
+                    .diameter(92.0)
                     .show(ui);
             });
     }

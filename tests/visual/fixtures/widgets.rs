@@ -1071,7 +1071,7 @@ fn spinner_matches_golden() {
             .padding(16.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Spinner::new().size(48.0).id_salt("sp").show(ui);
+                Spinner::new().diameter(48.0).id_salt("sp").show(ui);
             });
     });
     assert_matches_golden("spinner", &img, Tolerance::default());

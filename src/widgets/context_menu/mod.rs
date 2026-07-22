@@ -3,7 +3,9 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
+use crate::layout::types::sizing::Sizes;
 use crate::primitives::background::Background;
+use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::element::{Configure, Element, Salt};
@@ -47,10 +49,10 @@ pub(crate) struct ContextMenuState {
 /// reports `clicked()`, or when a [`MenuItem`]'s declared
 /// [`Shortcut`] matches a keypress this frame.
 ///
-/// Implements [`Configure`] — chain `.max_size(...)`, `.min_size(...)`,
-/// `.padding(...)`, `.gap(...)`, `.background(...)`, etc. on the menu
-/// body. Theme-driven defaults fill in any field the caller leaves
-/// untouched (`chrome`, `padding`, `min_size.w`).
+/// Chain `.size(...)`, `.max_size(...)`, `.min_size(...)`, `.padding(...)`,
+/// `.gap(...)`, and `.background(...)` to configure the menu body. Theme-driven
+/// defaults fill in any field the caller leaves untouched (`chrome`, `padding`,
+/// `min_size.w`). Identity and input behavior remain owned by the trigger.
 #[derive(Debug)]
 pub struct ContextMenu {
     for_id: WidgetId,
@@ -74,6 +76,31 @@ impl ContextMenu {
     /// from `ui.theme.context_menu.panel` when unset.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
+        self
+    }
+
+    pub fn size(mut self, size: impl Into<Sizes>) -> Self {
+        self.element = self.element.size(size);
+        self
+    }
+
+    pub fn min_size(mut self, size: impl Into<Size>) -> Self {
+        self.element = self.element.min_size(size);
+        self
+    }
+
+    pub fn max_size(mut self, size: impl Into<Size>) -> Self {
+        self.element = self.element.max_size(size);
+        self
+    }
+
+    pub fn padding(mut self, padding: impl Into<Spacing>) -> Self {
+        self.element = self.element.padding(padding);
+        self
+    }
+
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.element = self.element.gap(gap);
         self
     }
 
@@ -121,15 +148,6 @@ impl ContextMenu {
         let theme_padding = ctx.padding;
         let theme_min_width = ctx.min_width;
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
-
-        // Id is derived from `for_id` so per-site state pairs with the
-        // trigger; a caller-supplied `.id_salt(...)` would be silently
-        // dropped — debug-assert instead (mirrors `Tooltip`).
-        debug_assert!(
-            matches!(self.element.salt, Salt::Auto(_)),
-            "ContextMenu does not honor `.id(...)` / `.id_salt(...)` — its id is \
-             derived from the trigger so per-site state stays paired. Drop the override.",
-        );
 
         let mut e = self.element;
         e.salt = Salt::Verbatim(body_id);
@@ -182,12 +200,6 @@ impl ContextMenu {
 pub struct ContextMenuResponse {
     pub dismissed: bool,
     pub item_clicked: bool,
-}
-
-impl Configure for ContextMenu {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
-    }
 }
 
 /// One row inside a [`ContextMenu`]. Label on the left, optional
