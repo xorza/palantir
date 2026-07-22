@@ -4,6 +4,7 @@ use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id::TextureIdSource;
 use crate::text::TextShaper;
 use crate::window::WindowDirectory;
+use std::num::NonZeroU32;
 
 /// Capabilities available to a recorder. Every field is app-global and
 /// clone-shared; frame-local scene and layout state remain directly on `Ui`.
@@ -18,11 +19,15 @@ pub(crate) struct UiResources {
 }
 
 impl UiResources {
-    pub(crate) fn new(text: TextShaper, clipboard: Clipboard) -> Self {
+    pub(crate) fn new(
+        text: TextShaper,
+        clipboard: Clipboard,
+        max_texture_dimension_2d: Option<NonZeroU32>,
+    ) -> Self {
         let texture_ids = TextureIdSource::default();
         Self {
             text,
-            images: ImageRegistry::new(texture_ids.clone()),
+            images: ImageRegistry::new(texture_ids.clone(), max_texture_dimension_2d),
             texture_ids,
             clipboard,
             diagnostics: Diagnostics::default(),
@@ -33,7 +38,7 @@ impl UiResources {
 
 impl Default for UiResources {
     fn default() -> Self {
-        Self::new(TextShaper::default(), Clipboard::default())
+        Self::new(TextShaper::default(), Clipboard::default(), None)
     }
 }
 

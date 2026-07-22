@@ -6,9 +6,7 @@ use std::sync::Arc;
 use glam::UVec2;
 use winit::window::{Window as WinitWindow, WindowId};
 
-use crate::host::shared::HostShared;
 use crate::host::winit::config::WinitHostConfig;
-use crate::renderer::backend::{BackendConfig, WgpuBackend};
 
 /// Native-surface authority retained after startup. The cloned device/queue
 /// handles refer to the same GPU objects owned by `WgpuBackend`.
@@ -40,18 +38,14 @@ pub(crate) struct WindowSurface {
 #[derive(Debug)]
 pub(crate) struct GpuInit {
     pub(crate) surfaces: SurfaceManager,
-    pub(crate) backend: WgpuBackend,
+    pub(crate) device: wgpu::Device,
+    pub(crate) queue: wgpu::Queue,
     pub(crate) first_surface: WindowSurface,
 }
 
 impl GpuInit {
-    /// Pick the shared adapter/device and give the renderer and native-surface
-    /// manager handles to the same device and queue.
-    pub(crate) fn new(
-        window: &Arc<WinitWindow>,
-        cfg: &WinitHostConfig,
-        shared: &HostShared,
-    ) -> Self {
+    /// Pick the shared adapter/device and create the first native surface.
+    pub(crate) fn new(window: &Arc<WinitWindow>, cfg: &WinitHostConfig) -> Self {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.flags = desc.flags.with_env();
         let instance = wgpu::Instance::new(desc);
@@ -113,14 +107,6 @@ impl GpuInit {
             max_texture_dim,
             requested_present_mode: cfg.present_mode,
         };
-        let backend = WgpuBackend::new(
-            device,
-            queue,
-            shared.backend_resources(),
-            BackendConfig {
-                collect_gpu_stats: cfg.collect_gpu_stats,
-            },
-        );
         let size = window.inner_size();
         let first_surface = surfaces.build_window_surface(
             surface,
@@ -129,7 +115,8 @@ impl GpuInit {
         );
         Self {
             surfaces,
-            backend,
+            device,
+            queue,
             first_surface,
         }
     }

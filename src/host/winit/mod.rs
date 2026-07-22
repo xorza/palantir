@@ -27,7 +27,7 @@
 //! [`Ui::close_window`].
 //!
 //! Submodules: [`config`] ([`WinitHostConfig`]), [`handle`]
-//! ([`HostHandle`] + [`UserEvent`]), and [`gpu`] (surface/backend startup).
+//! ([`HostHandle`] + [`UserEvent`]), and [`gpu`] (surface/device startup).
 //! The backend-agnostic window vocabulary ([`WindowToken`],
 //! [`WindowConfig`]) lives in [`crate::window`].
 //!
@@ -55,6 +55,7 @@ mod window;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -75,7 +76,7 @@ use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::window::{FramePresent, Window};
 use crate::primitives::image::Image;
-use crate::renderer::backend::WgpuBackend;
+use crate::renderer::backend::{BackendConfig, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
@@ -187,13 +188,27 @@ impl<T> WinitRuntime<T> {
             .expect("bootstrap app factory already consumed");
         let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
         let window = create_window(event_loop, &config.window);
-        let shared =
-            HostShared::with_clipboard(TextShaper::with_bundled_fonts(), window_clipboard());
         let GpuInit {
             surfaces,
-            backend,
+            device,
+            queue,
             first_surface,
-        } = GpuInit::new(&window, &config, &shared);
+        } = GpuInit::new(&window, &config);
+        let max_texture_dimension_2d = NonZeroU32::new(surfaces.max_texture_dim)
+            .expect("device texture dimension limit is zero");
+        let shared = HostShared::with_clipboard(
+            TextShaper::with_bundled_fonts(),
+            window_clipboard(),
+            Some(max_texture_dimension_2d),
+        );
+        let backend = WgpuBackend::new(
+            device,
+            queue,
+            shared.backend_resources(),
+            BackendConfig {
+                collect_gpu_stats: config.collect_gpu_stats,
+            },
+        );
         let frontend = Frontend::new(surfaces.max_texture_dim, shared.gradient_atlas.clone());
         let mut driver = WindowDriver::builder(token, &shared).build();
 
