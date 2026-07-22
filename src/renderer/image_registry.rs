@@ -22,7 +22,30 @@
 use crate::primitives::image::Image;
 use crate::renderer::texture_id::{TextureId, TextureIdSource};
 use std::cell::RefCell;
+use std::fmt::{Display, Formatter};
+use std::num::NonZeroU32;
 use std::rc::Rc;
+
+/// Why an [`Image`] could not be registered for GPU upload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RegisterImageError {
+    /// Rejected intrinsic pixel dimensions.
+    pub size: glam::UVec2,
+    /// Maximum accepted width or height for the selected device.
+    pub max_dimension: u32,
+}
+
+impl Display for RegisterImageError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "image is {}x{} px but the device's maximum 2D texture dimension is {}",
+            self.size.x, self.size.y, self.max_dimension,
+        )
+    }
+}
+
+impl std::error::Error for RegisterImageError {}
 
 /// RAII owner of a registered image's GPU texture, returned by
 /// [`Ui::register_image`](crate::Ui::register_image). The texture lives exactly
@@ -50,7 +73,7 @@ pub struct ImageHandle {
 #[derive(Debug)]
 struct ImageToken {
     id: TextureId,
-    size: glam::U16Vec2,
+    size: glam::UVec2,
     shared: Rc<RefCell<Inner>>,
 }
 
@@ -73,12 +96,6 @@ impl ImageHandle {
     /// downstream code never consults the registry to read them.
     #[inline]
     pub fn size(&self) -> glam::UVec2 {
-        self.inner.size.as_uvec2()
-    }
-
-    /// `u16`-packed intrinsic size as stored on the shape record.
-    #[inline]
-    pub(crate) fn size_u16(&self) -> glam::U16Vec2 {
         self.inner.size
     }
 }
@@ -104,6 +121,7 @@ pub(crate) struct ImageRegistry {
     /// Shared id source — also drawn from by each `GpuView` target so the two
     /// never mint colliding ids (see [`TextureIdSource`]).
     ids: TextureIdSource,
+    max_texture_dimension_2d: Option<NonZeroU32>,
 }
 
 #[derive(Debug, Default)]
@@ -122,10 +140,12 @@ struct Inner {
 impl ImageRegistry {
     /// Build a registry minting from `ids`. Shares the same [`TextureIdSource`]
     /// with `GpuView` target minting (`Ui::gpu_view`) so their ids can't collide.
-    pub(crate) fn new(ids: TextureIdSource) -> Self {
+    /// `None` is reserved for standalone CPU recorders with no selected device.
+    pub(crate) fn new(ids: TextureIdSource, max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
         Self {
             inner: Rc::new(RefCell::new(Inner::default())),
             ids,
+            max_texture_dimension_2d,
         }
     }
 
@@ -133,17 +153,26 @@ impl ImageRegistry {
     /// lives until the returned handle (and every clone of it) is
     /// dropped. Each call uploads independently — share one image across
     /// call sites by cloning the handle, not by re-registering.
-    pub(crate) fn register(&self, image: Image) -> ImageHandle {
-        let size = u16_size(&image);
+    pub(crate) fn register(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
+        let size = image.size;
+        let mut inner = self.inner.borrow_mut();
+        if let Some(max_dimension) = self.max_texture_dimension_2d.map(NonZeroU32::get)
+            && (size.x > max_dimension || size.y > max_dimension)
+        {
+            return Err(RegisterImageError {
+                size,
+                max_dimension,
+            });
+        }
         let id = self.ids.reserve();
-        self.inner.borrow_mut().pending.push((id, image));
-        ImageHandle {
+        inner.pending.push((id, image));
+        Ok(ImageHandle {
             inner: Rc::new(ImageToken {
                 id,
                 size,
                 shared: Rc::clone(&self.inner),
             }),
-        }
+        })
     }
 
     /// Drain images needing GPU upload, calling `upload` for each. The
@@ -173,22 +202,17 @@ impl ImageRegistry {
     }
 }
 
-/// Pack an image's dimensions into `u16` axes (caps each side at
-/// 65 535 px — past 8K). Saturates rather than wrapping.
-fn u16_size(image: &Image) -> glam::U16Vec2 {
-    glam::U16Vec2::new(
-        image.size.x.min(u16::MAX as u32) as u16,
-        image.size.y.min(u16::MAX as u32) as u16,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use crate::renderer::image_registry::*;
     use crate::renderer::texture_id::TextureIdSource;
+    use std::num::NonZeroU32;
 
-    fn reg() -> ImageRegistry {
-        ImageRegistry::new(TextureIdSource::default())
+    fn reg(max_dimension: u32) -> ImageRegistry {
+        ImageRegistry::new(
+            TextureIdSource::default(),
+            Some(NonZeroU32::new(max_dimension).unwrap()),
+        )
     }
 
     fn img(w: u32, h: u32) -> Image {
@@ -197,9 +221,9 @@ mod tests {
 
     #[test]
     fn register_queues_one_upload_and_unique_ids() {
-        let reg = reg();
-        let a = reg.register(img(2, 3));
-        let b = reg.register(img(4, 5));
+        let reg = ImageRegistry::new(TextureIdSource::default(), None);
+        let a = reg.register(img(2, 3)).unwrap();
+        let b = reg.register(img(4, 5)).unwrap();
         // Distinct registrations get distinct ids, both nonzero.
         assert_ne!(a.id(), b.id());
         assert_ne!(a.id().0, 0);
@@ -212,6 +236,40 @@ mod tests {
         assert_eq!(uploaded, 2, "drain consumes pending");
     }
 
+    #[test]
+    fn registration_rejects_dimension_overflow_before_queueing() {
+        let reg = reg(4);
+        let accepted = reg.register(img(4, 4)).unwrap();
+        assert_eq!(
+            accepted.id(),
+            TextureId(1),
+            "rejection must not consume an id"
+        );
+        for size in [glam::UVec2::new(5, 1), glam::UVec2::new(1, 5)] {
+            assert_eq!(
+                reg.register(img(size.x, size.y)).unwrap_err(),
+                RegisterImageError {
+                    size,
+                    max_dimension: 4,
+                },
+            );
+        }
+        let next = reg.register(img(1, 1)).unwrap();
+        assert_eq!(next.id(), TextureId(2), "rejections must not consume ids");
+
+        let mut uploaded = Vec::new();
+        reg.drain_pending(|id, _| uploaded.push(id));
+        assert_eq!(uploaded, vec![accepted.id(), next.id()]);
+    }
+
+    #[test]
+    fn dimensions_above_u16_are_preserved() {
+        const WIDTH: u32 = u16::MAX as u32 + 1;
+        let reg = reg(WIDTH);
+        let handle = reg.register(img(WIDTH, 1)).unwrap();
+        assert_eq!(handle.size(), glam::UVec2::new(WIDTH, 1));
+    }
+
     /// A 0×0 image is a logic error caught at construction — before it
     /// can reach `register` and blow up a frame later in the GPU upload.
     #[test]
@@ -222,8 +280,8 @@ mod tests {
 
     #[test]
     fn dropping_last_handle_queues_release() {
-        let reg = reg();
-        let h = reg.register(img(1, 1));
+        let reg = reg(1);
+        let h = reg.register(img(1, 1)).unwrap();
         let id = h.id();
         reg.drain_pending(|_, _| {});
         // A live clone keeps it alive: no release queued yet.

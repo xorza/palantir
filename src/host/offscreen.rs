@@ -15,6 +15,8 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 
+use std::num::NonZeroU32;
+
 use glam::UVec2;
 
 use crate::app::App;
@@ -83,7 +85,10 @@ impl OffscreenHostBuilder {
 
     /// Allocate the backend and window driver from the sealed settings.
     pub fn build(self) -> OffscreenHost {
-        let shared = HostShared::new(self.shaper);
+        let max_texture_dimension_2d =
+            NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
+                .expect("device texture dimension limit is zero");
+        let shared = HostShared::new(self.shaper, Some(max_texture_dimension_2d));
         shared.resources.windows.set_live(self.token, true);
         let backend = WgpuBackend::new(
             self.device,
@@ -238,6 +243,8 @@ impl OffscreenHost {
 
 #[cfg(feature = "internals")]
 pub(crate) mod test_support {
+    use std::num::NonZeroU32;
+
     use crate::app::test_support::RecordApp;
     use crate::host::clock::Clock;
     use crate::host::offscreen::{self, OffscreenHost, OffscreenTarget};
@@ -284,7 +291,10 @@ pub(crate) mod test_support {
             shaper: TextShaper,
             clocks: [Box<dyn Clock>; 2],
         ) -> Self {
-            let shared = HostShared::new(shaper);
+            let max_texture_dimension_2d =
+                NonZeroU32::new(device.limits().max_texture_dimension_2d)
+                    .expect("device texture dimension limit is zero");
+            let shared = HostShared::new(shaper, Some(max_texture_dimension_2d));
             shared.resources.windows.set_live(WindowToken(0), true);
             shared.resources.windows.set_live(WindowToken(1), true);
             let backend = WgpuBackend::new(
@@ -393,7 +403,7 @@ mod tests {
 
     #[test]
     fn completion_discards_replayed_window_state_and_reuses_capacity() {
-        let shared = HostShared::new(TextShaper::default());
+        let shared = HostShared::new(TextShaper::default(), None);
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut window = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
