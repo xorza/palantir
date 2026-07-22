@@ -7,7 +7,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ModePayload, ScrollSpec};
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};
 use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::size::Size;
@@ -20,6 +20,24 @@ use crate::scene::element::columns::{
 use crate::scene::visibility::Visibility;
 use glam::Vec2;
 use std::hash::Hash;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum ElementMode {
+    Resolved(LayoutMode),
+    PendingGrid,
+}
+
+impl ElementMode {
+    #[inline(always)]
+    pub(crate) fn resolved(self) -> LayoutMode {
+        match self {
+            Self::Resolved(mode) => mode,
+            Self::PendingGrid => {
+                panic!("grid element recorded before its definition was installed")
+            }
+        }
+    }
+}
 
 /// Recipe for an [`Element`]'s `WidgetId`. Mirrors egui's
 /// `Option<Id>` "raw `id_salt`, resolve at `Ui::widget_id`"
@@ -109,10 +127,7 @@ pub struct Element {
     /// raw `id_salt`, `Ui::widget_id` mixes in the parent's
     /// id at `.show()`" pattern.
     pub(crate) salt: Salt,
-    pub(crate) mode: LayoutMode,
-    /// `LayoutMode::Grid` arena idx. Set by `Grid::show` once the def is
-    /// pushed; ignored for every other `mode`.
-    pub(crate) mode_payload: ModePayload,
+    pub(crate) mode: ElementMode,
 
     pub(crate) size: Sizes,
     pub(crate) min_size: Size,
@@ -162,89 +177,81 @@ impl Element {
     /// Paint/layout leaf for custom widget content.
     #[track_caller]
     pub fn leaf() -> Self {
-        Self::new(LayoutMode::Leaf, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::Leaf))
     }
 
     /// Horizontal stack container for custom widgets.
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::new(LayoutMode::HStack, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::HStack))
     }
 
     /// Vertical stack container for custom widgets.
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::new(LayoutMode::VStack, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::VStack))
     }
 
     /// Wrapping horizontal stack container for custom widgets.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::new(LayoutMode::WrapHStack, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::WrapHStack))
     }
 
     /// Wrapping vertical stack container for custom widgets.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::new(LayoutMode::WrapVStack, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::WrapVStack))
     }
 
     /// Layered stack container for custom widgets.
     #[track_caller]
     pub fn zstack() -> Self {
-        Self::new(LayoutMode::ZStack, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::ZStack))
     }
 
     /// Absolute-positioned container for custom widgets.
     #[track_caller]
     pub fn canvas() -> Self {
-        Self::new(LayoutMode::Canvas, ModePayload::NONE)
+        Self::new(ElementMode::Resolved(LayoutMode::Canvas))
     }
 
     #[track_caller]
     pub(crate) fn grid() -> Self {
-        Self::new(LayoutMode::Grid, ModePayload::NONE)
+        Self::new(ElementMode::PendingGrid)
     }
 
     #[track_caller]
     pub(crate) fn scroll(spec: ScrollSpec) -> Self {
-        Self::new(LayoutMode::Scroll, ModePayload::scroll(spec))
+        Self::new(ElementMode::Resolved(LayoutMode::Scroll(spec)))
     }
 
     pub(crate) fn set_grid_def(&mut self, id: GridDefId) {
-        debug_assert_eq!(
-            self.mode,
-            LayoutMode::Grid,
-            "grid payload set on {:?}",
-            self.mode
-        );
-        self.mode_payload = ModePayload::grid(id);
-    }
-
-    pub(crate) fn grid_def_id(&self) -> GridDefId {
-        self.mode_payload.grid_def_id(self.mode)
+        let ElementMode::PendingGrid = self.mode else {
+            panic!("grid definition installed on {:?} element", self.mode);
+        };
+        self.mode = ElementMode::Resolved(LayoutMode::Grid(id));
     }
 
     pub(crate) fn set_scroll_spec(&mut self, spec: ScrollSpec) {
-        debug_assert_eq!(
-            self.mode,
-            LayoutMode::Scroll,
-            "scroll payload set on {:?}",
-            self.mode,
-        );
-        self.mode_payload = ModePayload::scroll(spec);
+        let ElementMode::Resolved(LayoutMode::Scroll(current)) = &mut self.mode else {
+            panic!("scroll specification installed on {:?} element", self.mode);
+        };
+        *current = spec;
     }
 
     pub(crate) fn scroll_spec(&self) -> ScrollSpec {
-        self.mode_payload.scroll_spec(self.mode)
+        let ElementMode::Resolved(LayoutMode::Scroll(spec)) = self.mode else {
+            panic!("scroll specification read from {:?} element", self.mode);
+        };
+        spec
     }
 
     #[track_caller]
-    fn new(mode: LayoutMode, mode_payload: ModePayload) -> Self {
+    fn new(mode: ElementMode) -> Self {
         Self {
             salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
-            mode_payload,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,

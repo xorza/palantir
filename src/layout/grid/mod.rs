@@ -287,8 +287,7 @@ impl GridHugStore {
         let layouts = tree.records.layout();
         for i in subtree {
             let core = layouts[i];
-            if core.mode == LayoutMode::Grid {
-                let idx = core.grid_def_id();
+            if let LayoutMode::Grid(idx) = LayoutMode::from(core.meta) {
                 for (axis, kind) in HUG_ORDER {
                     out.extend_from_slice(self.slice(idx, axis, kind));
                 }
@@ -306,8 +305,7 @@ impl GridHugStore {
         let mut pos = 0usize;
         for i in subtree {
             let core = layouts[i];
-            if core.mode == LayoutMode::Grid {
-                let idx = core.grid_def_id();
+            if let LayoutMode::Grid(idx) = LayoutMode::from(core.meta) {
                 for (axis, kind) in HUG_ORDER {
                     let dst = self.slice_mut(idx, axis, kind);
                     let n = dst.len();

@@ -367,7 +367,6 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
     let Element {
         salt,
         mode: _,
-        mode_payload: _,
         size,
         min_size,
         max_size,

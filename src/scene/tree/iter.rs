@@ -49,7 +49,7 @@ impl<'a> Iterator for ChildIter<'a> {
             return None;
         }
         let i = self.next as usize;
-        let visibility = self.layouts[i].visibility();
+        let visibility = self.layouts[i].meta.visibility();
         self.next = self.ends[i].end();
         Some(Child {
             id: NodeId(i as u32),
@@ -103,7 +103,7 @@ impl<'a> Iterator for TreeItems<'a> {
                 self.cursor += 1;
                 return Some(TreeItem::ShapeRecord(idx, s));
             }
-            let visibility = self.layouts[self.next_child_id as usize].visibility();
+            let visibility = self.layouts[self.next_child_id as usize].meta.visibility();
             let child = Child {
                 id: NodeId(self.next_child_id),
                 visibility,

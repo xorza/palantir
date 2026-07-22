@@ -147,7 +147,7 @@ pub(crate) fn compute<const RANGE: bool>(
     tc: &TextCtx<'_>,
 ) -> IntrinsicRange {
     let style = tree.records.layout()[node.idx()];
-    if style.visibility().is_collapsed() {
+    if style.meta.visibility().is_collapsed() {
         return IntrinsicRange::ZERO;
     }
     let bounds = tree.bounds(node);
@@ -208,7 +208,7 @@ fn content_intrinsic<const RANGE: bool>(
     tc: &TextCtx<'_>,
     style: LayoutCore,
 ) -> IntrinsicRange {
-    match style.mode {
+    match LayoutMode::from(style.meta) {
         LayoutMode::Leaf => leaf(engine, tree, node, axis, query, tc),
         LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, query, tc),
         LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, query, tc),
@@ -220,16 +220,16 @@ fn content_intrinsic<const RANGE: bool>(
         }
         LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, query, tc),
         LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, query, tc),
-        LayoutMode::Grid => {
-            grid::intrinsic(engine, tree, node, style.grid_def_id(), axis, query, tc)
+        LayoutMode::Grid(grid_def_id) => {
+            grid::intrinsic(engine, tree, node, grid_def_id, axis, query, tc)
         }
         // Scroll viewports "want" zero on every panned axis — sizing
         // comes from the viewport's own `Sizing`, never from content.
         // The non-panned axis falls back to a stack intrinsic on the
         // panned axis (pan-Y → stack on Y, pan-X → stack on X). If
         // both axes pan, the answer is unconditionally zero.
-        LayoutMode::Scroll => {
-            let pan = style.scroll_spec().pan_mask();
+        LayoutMode::Scroll(scroll_spec) => {
+            let pan = scroll_spec.pan_mask();
             let pan_axis = match axis {
                 Axis::X => pan.x,
                 Axis::Y => pan.y,

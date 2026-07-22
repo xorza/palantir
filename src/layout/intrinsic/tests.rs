@@ -3,7 +3,7 @@ use crate::scene::tree::node::NodeId;
 
 use crate::Ui;
 use crate::layout::support::TextCtx;
-use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::scene::element::Configure;
@@ -259,16 +259,16 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         LayoutMode::WrapVStack,
         LayoutMode::ZStack,
         LayoutMode::Canvas,
-        LayoutMode::Grid,
-        LayoutMode::Scroll,
+        LayoutMode::Grid(GridDefId::from_index(0)),
+        LayoutMode::Scroll(ScrollSpec::VERTICAL),
     ];
     let tree = &ui.forest.trees[Layer::Main];
     for expected in expected_modes {
         assert!(
-            tree.records
-                .layout()
-                .iter()
-                .any(|style| style.mode == expected),
+            tree.records.layout().iter().any(|style| {
+                std::mem::discriminant(&LayoutMode::from(style.meta))
+                    == std::mem::discriminant(&expected)
+            }),
             "fixture must exercise {expected:?}",
         );
     }
@@ -281,7 +281,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     };
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
-        let mode = tree.records.layout()[idx].mode;
+        let mode = LayoutMode::from(tree.records.layout()[idx].meta);
         for axis in [Axis::X, Axis::Y] {
             ui.layout_engine
                 .scratch
