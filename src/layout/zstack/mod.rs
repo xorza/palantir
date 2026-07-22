@@ -74,7 +74,7 @@ pub(crate) fn arrange(
         let s = layouts[i];
         let bounds = tree.bounds(c);
         let mut d = layout.scratch.desired[i];
-        if s.mode == LayoutMode::Scroll {
+        if matches!(LayoutMode::from(s.meta), LayoutMode::Scroll(_)) {
             // Scroll content sizes its Hug wrapper, but its viewport clips to the slot.
             d = d.min(inner.size);
         }

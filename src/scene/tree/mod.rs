@@ -261,12 +261,11 @@ impl Tree {
                     }
                 }
             }
-            if has_direct_text && layouts[i].mode != LayoutMode::Leaf {
+            if has_direct_text && LayoutMode::from(layouts[i].meta) != LayoutMode::Leaf {
                 container_text.grow(n);
                 container_text.insert(i);
             }
-            if layouts[i].mode == LayoutMode::Grid {
-                let id = layouts[i].grid_def_id();
+            if let LayoutMode::Grid(id) = LayoutMode::from(layouts[i].meta) {
                 grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h);
             }
             let node_hash = h.finish();
@@ -367,15 +366,13 @@ impl Tree {
                 placement: pending,
             });
         }
-        if matches!(element.mode, LayoutMode::Grid) {
-            let id = element.grid_def_id();
+        let mut cols = element.into_columns(widget_id);
+        if let LayoutMode::Grid(id) = LayoutMode::from(cols.layout.meta) {
             debug_assert!(
                 usize::from(id) < self.grid_defs.len(),
                 "LayoutMode::Grid id {id:?} references no grid_def — only Grid::show should push grid nodes",
             );
         }
-
-        let mut cols = element.into_columns(widget_id);
         self.check_grid_cell(parent_frame.map(|f| f.node), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
@@ -413,11 +410,14 @@ impl Tree {
         }
         self.extras_idx.push(ex);
 
-        // Stamp the self-Grid bit at open time — `cols.layout.mode` is
+        // Stamp the self-Grid bit at open time — `cols.layout.meta` is
         // already in registers here. Lets `close_node` drop its
-        // `layout[i].mode` read (3 record columns → 2). `new_open`
+        // `layout[i].meta` read (3 record columns → 2). `new_open`
         // asserts the 31-bit arena ceiling (high bit is the grid flag).
-        let init_end = SubtreeEnd::new_open(new_id.0, cols.layout.mode == LayoutMode::Grid);
+        let init_end = SubtreeEnd::new_open(
+            new_id.0,
+            matches!(LayoutMode::from(cols.layout.meta), LayoutMode::Grid(_)),
+        );
         self.records.push(NodeRecord {
             widget_id: cols.widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
@@ -434,7 +434,7 @@ impl Tree {
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         let effectively_visible = parent_frame.is_none_or(|f| f.effectively_visible)
-            && cols.layout.visibility().is_visible();
+            && cols.layout.meta.visibility().is_visible();
         // This child contributes one marker row to the parent's paint
         // span; the child's own counter starts past its chrome row.
         if let Some(parent) = scratch.open_frames.last_mut() {
@@ -456,10 +456,10 @@ impl Tree {
     fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
         if let Some(parent_id) = parent {
             let parent_layout = self.records.layout()[parent_id.0 as usize];
-            if parent_layout.mode != LayoutMode::Grid {
+            let LayoutMode::Grid(grid_def_id) = LayoutMode::from(parent_layout.meta) else {
                 return;
-            }
-            let def = &self.grid_defs[usize::from(parent_layout.grid_def_id())];
+            };
+            let def = &self.grid_defs[usize::from(grid_def_id)];
             let n_rows = def.rows.len as usize;
             let n_cols = def.cols.len as usize;
             if n_rows > 0 && n_cols > 0 {
@@ -496,7 +496,7 @@ impl Tree {
         // `subtree_end[i]` is already the finalized "subtree contains
         // Grid" answer: self-Grid was stamped at `open_node`, and
         // descendants merged their flags up via this same code at
-        // close. No `layout[i].mode` read needed — drops close_node
+        // close. No `layout[i].meta` read needed — drops close_node
         // from 3 record-column touches to 2.
         let child_end = self.records.subtree_end()[i];
 

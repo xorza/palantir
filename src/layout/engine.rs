@@ -391,7 +391,7 @@ impl LayoutEngine {
         if !cached.is_nan() {
             return cached;
         }
-        if tree.records.layout()[idx].mode != LayoutMode::Leaf {
+        if LayoutMode::from(tree.records.layout()[idx].meta) != LayoutMode::Leaf {
             let wid = tree.records.widget_id()[idx];
             let hash = tree.rollups.subtree[idx];
             if let Some(value) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
@@ -442,7 +442,7 @@ impl LayoutEngine {
         // children, so the children's own cache-hit restore comes too late
         // — only a lookup here stops the ancestor cold-recursing through
         // every unchanged sibling subtree.
-        if tree.records.layout()[idx].mode != LayoutMode::Leaf {
+        if LayoutMode::from(tree.records.layout()[idx].meta) != LayoutMode::Leaf {
             let wid = tree.records.widget_id()[idx];
             let hash = tree.rollups.subtree[idx];
             for (slot, value) in [(min_slot, &mut range.min), (max_slot, &mut range.max)] {
@@ -578,7 +578,7 @@ impl LayoutEngine {
             // Container text is paint-only; its wrap width exists only after arrange.
             for index in tree.rollups.container_text.ones() {
                 let style = layouts[index];
-                if !style.visibility().is_visible() {
+                if !style.meta.visibility().is_visible() {
                     continue;
                 }
                 let node = NodeId(index as u32);
@@ -617,7 +617,7 @@ impl LayoutEngine {
         let style = tree.records.layout()[node.idx()];
         let available_q = quantize_available(available);
         self.scratch.available_q[node.idx()] = available_q;
-        if style.visibility().is_collapsed() {
+        if style.meta.visibility().is_collapsed() {
             self.scratch.desired[node.idx()] = Size::ZERO;
             return Size::ZERO;
         }
@@ -630,7 +630,7 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        if style.mode != LayoutMode::Leaf {
+        if LayoutMode::from(style.meta) != LayoutMode::Leaf {
             let cache_wid = tree.records.widget_id()[node.idx()];
             let cache_hash = tree.rollups.subtree[node.idx()];
             if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, available_q) {
@@ -751,7 +751,7 @@ impl LayoutEngine {
         tc: &TextCtx<'_>,
         out: &mut Layout,
     ) -> Size {
-        match style.mode {
+        match LayoutMode::from(style.meta) {
             LayoutMode::Leaf => self.shape_text_runs(
                 tree,
                 node,
@@ -770,15 +770,15 @@ impl LayoutEngine {
             }
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, tc, out),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, tc, out),
-            LayoutMode::Grid => {
-                grid::measure(self, tree, node, style.grid_def_id(), inner_avail, tc, out)
+            LayoutMode::Grid(grid_def_id) => {
+                grid::measure(self, tree, node, grid_def_id, inner_avail, tc, out)
             }
             // Scroll viewport. INF-axis measure of children; the
             // driver also writes the panned-axis content extent into
             // the persistent `ScrollLayoutState` row (see
             // `scroll::measure`).
-            LayoutMode::Scroll => {
-                scroll::measure(self, tree, node, inner_avail, style.scroll_spec(), tc, out)
+            LayoutMode::Scroll(scroll_spec) => {
+                scroll::measure(self, tree, node, inner_avail, scroll_spec, tc, out)
             }
         }
     }
@@ -795,11 +795,11 @@ impl LayoutEngine {
         out: &mut Layout,
     ) {
         let style = tree.records.layout()[node.idx()];
-        if style.visibility().is_collapsed() {
+        if style.meta.visibility().is_collapsed() {
             zero_subtree(self, tree, node, slot.min, out);
             return;
         }
-        let mode = style.mode;
+        let mode = LayoutMode::from(style.meta);
 
         let rendered = slot.deflated_by(style.margin);
         out[self.active_layer].rect[node.idx()] = rendered;
@@ -813,16 +813,12 @@ impl LayoutEngine {
             LayoutMode::WrapVStack => wrapstack::arrange(self, tree, node, inner, Axis::Y, out),
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner, out),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner, out),
-            LayoutMode::Grid => grid::arrange(self, tree, node, inner, style.grid_def_id(), out),
-            LayoutMode::Scroll => scroll::arrange(
-                self,
-                tree,
-                node,
-                parent_outer,
-                inner,
-                style.scroll_spec(),
-                out,
-            ),
+            LayoutMode::Grid(grid_def_id) => {
+                grid::arrange(self, tree, node, inner, grid_def_id, out)
+            }
+            LayoutMode::Scroll(scroll_spec) => {
+                scroll::arrange(self, tree, node, parent_outer, inner, scroll_spec, out)
+            }
         }
     }
 

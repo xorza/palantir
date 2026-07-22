@@ -3,7 +3,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ModePayload, ScrollSpec};
+use crate::layout::types::layout_mode::{LayoutMode, PackedLayoutMeta};
 use crate::layout::types::limits::valid_packed_gap;
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::approx;
@@ -12,7 +12,6 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::element::Element;
-use crate::scene::visibility::Visibility;
 use glam::Vec2;
 use half::f16;
 use std::hash::Hash;
@@ -170,49 +169,18 @@ pub(crate) struct LayoutCore {
     pub(crate) size: Sizes,
     pub(crate) padding: Spacing,
     pub(crate) margin: Spacing,
-    pub(crate) mode_payload: ModePayload,
-    bits: u8,
-    pub(crate) mode: LayoutMode,
+    pub(crate) meta: PackedLayoutMeta,
 }
 
 impl LayoutCore {
-    const ALIGN_MASK: u8 = 0b11_1111;
-    const VIS_SHIFT: u8 = 6;
-    const VIS_MASK: u8 = 0b11 << Self::VIS_SHIFT;
-
     pub(crate) fn from_element(element: &Element) -> Self {
+        let mode = element.mode.resolved();
         Self {
             size: element.size,
             padding: element.padding,
             margin: element.margin,
-            mode_payload: element.mode_payload,
-            bits: Self::pack_bits(element.align, element.visibility),
-            mode: element.mode,
+            meta: PackedLayoutMeta::new(mode, element.align, element.visibility),
         }
-    }
-
-    #[inline]
-    const fn pack_bits(align: Align, vis: Visibility) -> u8 {
-        (align.raw() & Self::ALIGN_MASK) | (((vis as u8) << Self::VIS_SHIFT) & Self::VIS_MASK)
-    }
-
-    #[inline(always)]
-    pub(crate) fn align(&self) -> Align {
-        Align::from_raw(self.bits & Self::ALIGN_MASK)
-    }
-
-    #[inline(always)]
-    pub(crate) fn visibility(&self) -> Visibility {
-        let raw = (self.bits & Self::VIS_MASK) >> Self::VIS_SHIFT;
-        unsafe { std::mem::transmute::<u8, Visibility>(raw) }
-    }
-
-    pub(crate) fn grid_def_id(self) -> GridDefId {
-        self.mode_payload.grid_def_id(self.mode)
-    }
-
-    pub(crate) fn scroll_spec(self) -> ScrollSpec {
-        self.mode_payload.scroll_spec(self.mode)
     }
 
     #[inline]
@@ -220,19 +188,15 @@ impl LayoutCore {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
+        let mode = self.meta.into();
         let [flags_lo, flags_hi] = flags.bits.to_ne_bytes();
-        let tail = u32::from_ne_bytes([self.bits, self.mode as u8, flags_lo, flags_hi]);
+        let tail = u32::from_ne_bytes([self.meta.metadata(), self.meta.tag(), flags_lo, flags_hi]);
         h.write_u32(tail);
-        if matches!(self.mode, LayoutMode::Scroll) {
-            self.scroll_spec().hash(h);
+        if let LayoutMode::Scroll(spec) = mode {
+            spec.hash(h);
         }
     }
 }
-
-const _: () = assert!(
-    (Visibility::Collapsed as u8) <= (LayoutCore::VIS_MASK >> LayoutCore::VIS_SHIFT),
-    "Visibility discriminant exceeds 2 bits",
-);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct NodeFlags {

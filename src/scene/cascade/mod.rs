@@ -709,7 +709,7 @@ impl CascadesEngine {
             let layout_core = layout_col[iu];
 
             let disabled = parent_dis || attrs.is_disabled();
-            let owner_visible = layout_core.visibility().is_visible();
+            let owner_visible = layout_core.meta.visibility().is_visible();
             let invisible = parent_inv || !owner_visible;
 
             let layout_rect = layout.rect[iu];

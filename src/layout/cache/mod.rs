@@ -254,7 +254,7 @@ impl MeasureCache {
             self.hug_offsets.resize(node_count + 1, 0);
             for (index, style) in layouts.iter().copied().enumerate() {
                 self.hug_offsets[index] = self.current.hugs.len() as u32;
-                if style.mode == LayoutMode::Grid {
+                if matches!(LayoutMode::from(style.meta), LayoutMode::Grid(_)) {
                     grid_hugs.snapshot_subtree(tree, index..index + 1, &mut self.current.hugs);
                 }
             }
@@ -271,7 +271,9 @@ impl MeasureCache {
         }
 
         for index in 0..node_count {
-            if layouts[index].mode == LayoutMode::Leaf || available_q[index] == INVALID_AVAILABLE {
+            if LayoutMode::from(layouts[index].meta) == LayoutMode::Leaf
+                || available_q[index] == INVALID_AVAILABLE
+            {
                 continue;
             }
             let end = tree.subtree_end_of(index) as usize;
