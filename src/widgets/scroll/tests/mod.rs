@@ -3,6 +3,7 @@ mod zoom_config;
 use crate::Ui;
 use crate::input::InputEvent;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
@@ -44,6 +45,38 @@ fn scroll_state_records_viewport_and_content_after_arrange() {
     assert_eq!(row.viewport.h, 200.0);
     assert_eq!(row.content.h, 800.0);
     assert_eq!(row.offset, Vec2::ZERO, "no wheel input → offset stays at 0");
+}
+
+#[test]
+fn explicit_no_clip_overrides_scroll_default() {
+    let mut ui = Ui::for_test();
+    let unclipped_id = WidgetId::from_hash("unclipped-scroll");
+    let clipped_id = WidgetId::from_hash("default-scroll");
+    ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+        Scroll::vertical()
+            .id(unclipped_id)
+            .clip(ClipMode::None)
+            .size((Sizing::fixed(100.0), Sizing::fixed(80.0)))
+            .show(ui, |_| {});
+        Scroll::vertical()
+            .id(clipped_id)
+            .size((Sizing::fixed(100.0), Sizing::fixed(80.0)))
+            .show(ui, |_| {});
+    });
+
+    let tree = &ui.forest.trees[Layer::Main];
+    let clip_for = |id: WidgetId| {
+        let viewport_id = id.with("__viewport");
+        let index = tree
+            .records
+            .widget_id()
+            .iter()
+            .position(|recorded| *recorded == viewport_id)
+            .expect("scroll viewport node");
+        tree.records.attrs()[index].clip_mode()
+    };
+    assert_eq!(clip_for(unclipped_id), ClipMode::None);
+    assert_eq!(clip_for(clipped_id), ClipMode::Rect);
 }
 
 #[test]

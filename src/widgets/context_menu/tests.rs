@@ -4,8 +4,13 @@ use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
+use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::element::Configure;
+use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
 use crate::widgets::panel::Panel;
@@ -205,4 +210,29 @@ fn menu_body_width_does_not_span_surface() {
         rect.size.w,
         SURFACE.x,
     );
+}
+
+#[test]
+fn explicit_zero_padding_and_minimum_override_menu_theme() {
+    let mut ui = Ui::for_test();
+    ContextMenu::open(&mut ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ui.run_at_without_baseline(SURFACE, |ui| {
+        ContextMenu::for_id(trigger_id())
+            .background(Background::NONE)
+            .padding(Spacing::ZERO)
+            .min_size(Size::ZERO)
+            .show(ui, |_, _| {});
+    });
+
+    let body_id = trigger_id().with("ctx_menu_body");
+    let tree = &ui.forest.trees[Layer::Popup];
+    let index = tree
+        .records
+        .widget_id()
+        .iter()
+        .position(|id| *id == body_id)
+        .expect("context menu body node");
+    let node = NodeId(index as u32);
+    assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
+    assert_eq!(tree.bounds(node).min_size, Size::ZERO);
 }
