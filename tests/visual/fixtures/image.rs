@@ -55,6 +55,7 @@ fn minification_and_magnification_filters_are_independent() {
         let handle = mag_strip
             .get_or_insert_with(|| {
                 ui.register_image(aperture::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
+                    .expect("fixture image fits every supported GPU")
             })
             .clone();
         Panel::canvas()
@@ -114,6 +115,7 @@ fn minification_and_magnification_filters_are_independent() {
                     1,
                     [RED, BLUE, RED, BLUE].concat(),
                 ))
+                .expect("fixture image fits every supported GPU")
             })
             .clone();
         Panel::canvas()

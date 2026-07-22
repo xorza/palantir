@@ -1,4 +1,7 @@
 use crate::primitives::color::Color;
+use crate::primitives::image::Image;
+use crate::renderer::image_registry::ImageRegistry;
+use crate::renderer::texture_id::TextureIdSource;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::record::ShapeRecord;
@@ -110,4 +113,22 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
             }
         }
     }
+}
+
+#[test]
+fn image_dimensions_above_u16_survive_lowering() {
+    const WIDTH: u32 = u16::MAX as u32 + 1;
+    let registry = ImageRegistry::new(TextureIdSource::default());
+    registry.set_max_texture_dimension_2d(WIDTH);
+    let handle = registry
+        .register(Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]))
+        .unwrap();
+    let mut shapes = Shapes::default();
+    let store = RecordStore::default();
+
+    assert_eq!(shapes.add(Shape::image(handle), &store), Some(0));
+    let ShapeRecord::Image { size, .. } = shapes.records[0] else {
+        panic!("image lowered to another record variant");
+    };
+    assert_eq!(size, glam::UVec2::new(WIDTH, 1));
 }

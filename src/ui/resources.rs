@@ -48,7 +48,7 @@ mod tests {
         let resources = UiResources::default();
         let gpu_view_id = resources.texture_ids.reserve();
         let image = Image::from_rgba8(1, 1, vec![0, 0, 0, 0]);
-        let image_id = resources.images.register(image).id();
+        let image_id = resources.images.register(image).unwrap().id();
 
         assert_eq!(gpu_view_id, TextureId(1));
         assert_eq!(image_id, TextureId(2));

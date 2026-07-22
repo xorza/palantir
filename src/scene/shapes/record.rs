@@ -169,7 +169,7 @@ pub(crate) enum ShapeRecord {
         id: TextureId,
         /// Intrinsic dims, baked in at registration so the encoder reads
         /// them with no registry borrow.
-        size: glam::U16Vec2,
+        size: glam::UVec2,
         fit: ImageFit,
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
@@ -630,21 +630,26 @@ mod tests {
     }
 
     #[test]
-    fn shape_image_hash_distinguishes_handle_tint_and_filters() {
-        let make =
-            |id: TextureId, tint: Color, min_filter: ImageFilter, mag_filter: ImageFilter| {
-                ShapeRecord::Image {
-                    local_rect: None,
-                    tint: ColorF16::from(tint),
-                    id,
-                    size: glam::U16Vec2::new(64, 64),
-                    fit: ImageFit::Fill,
-                    min_filter,
-                    mag_filter,
-                }
-            };
+    fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
+        let make = |id: TextureId,
+                    size: glam::UVec2,
+                    tint: Color,
+                    min_filter: ImageFilter,
+                    mag_filter: ImageFilter| {
+            ShapeRecord::Image {
+                local_rect: None,
+                tint: ColorF16::from(tint),
+                id,
+                size,
+                fit: ImageFit::Fill,
+                min_filter,
+                mag_filter,
+            }
+        };
+        let size = glam::UVec2::new(64, 64);
         let baseline = compute_record_hash(&make(
             TextureId(0xa),
+            size,
             Color::WHITE,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -653,15 +658,32 @@ mod tests {
             baseline,
             compute_record_hash(&make(
                 TextureId(0xb),
+                size,
                 Color::WHITE,
                 ImageFilter::Linear,
                 ImageFilter::Linear,
             ))
         );
+        for changed_size in [
+            glam::UVec2::new(size.x + (1 << 16), size.y),
+            glam::UVec2::new(size.x, size.y + (1 << 16)),
+        ] {
+            assert_ne!(
+                baseline,
+                compute_record_hash(&make(
+                    TextureId(0xa),
+                    changed_size,
+                    Color::WHITE,
+                    ImageFilter::Linear,
+                    ImageFilter::Linear,
+                ))
+            );
+        }
         assert_ne!(
             baseline,
             compute_record_hash(&make(
                 TextureId(0xa),
+                size,
                 Color::rgba(1.0, 0.0, 0.0, 1.0),
                 ImageFilter::Linear,
                 ImageFilter::Linear,
@@ -671,6 +693,7 @@ mod tests {
             baseline,
             compute_record_hash(&make(
                 TextureId(0xa),
+                size,
                 Color::WHITE,
                 ImageFilter::Nearest,
                 ImageFilter::Linear,
@@ -680,6 +703,7 @@ mod tests {
             baseline,
             compute_record_hash(&make(
                 TextureId(0xa),
+                size,
                 Color::WHITE,
                 ImageFilter::Linear,
                 ImageFilter::Nearest,

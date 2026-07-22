@@ -526,7 +526,7 @@ fn emit_one_shape(
                 rect,
                 uv_min,
                 uv_size,
-            } = resolve_fit(base, size.as_uvec2(), *fit);
+            } = resolve_fit(base, *size, *fit);
             let mut flags = 0;
             if matches!(*fit, ImageFit::Tile { .. }) {
                 flags |= IMG_FLAG_TILED;

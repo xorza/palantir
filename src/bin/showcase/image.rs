@@ -80,9 +80,12 @@ fn handles(ui: &Ui) -> (ImageHandle, ImageHandle, ImageHandle) {
     IMAGES.with_borrow_mut(|slot| {
         slot.get_or_insert_with(|| {
             (
-                ui.register_image(checker()),
-                ui.register_image(gradient()),
-                ui.register_image(sprite()),
+                ui.register_image(checker())
+                    .expect("showcase checker fits every supported GPU"),
+                ui.register_image(gradient())
+                    .expect("showcase gradient fits every supported GPU"),
+                ui.register_image(sprite())
+                    .expect("showcase sprite fits every supported GPU"),
             )
         })
         .clone()

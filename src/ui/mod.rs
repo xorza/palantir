@@ -29,7 +29,7 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::renderer::plan::RenderPlan;
 use crate::scene::Forest;
 use crate::scene::element::Element;
@@ -728,7 +728,13 @@ impl Ui {
     /// clone frees it; there is no `unregister`. Reference it in
     /// [`Shape::Image`] every frame (`clone` it where it needs to live).
     /// The CPU bytes are dropped right after the upload.
-    pub fn register_image(&self, image: Image) -> ImageHandle {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an image axis exceeds the selected device's 2D
+    /// texture limit. A rejected image is never queued for upload. Standalone
+    /// CPU recorders have no device limit and retain the original dimensions.
+    pub fn register_image(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
         self.resources.images.register(image)
     }
 

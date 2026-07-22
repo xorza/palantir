@@ -167,8 +167,11 @@ thread_local! {
 /// in `TEST_IMAGE`); later frames clone the handle.
 fn image_scene(ui: &mut aperture::Ui) {
     let handle = TEST_IMAGE.with_borrow_mut(|slot| {
-        slot.get_or_insert_with(|| ui.register_image(test_image()))
-            .clone()
+        slot.get_or_insert_with(|| {
+            ui.register_image(test_image())
+                .expect("fixture image fits every supported GPU")
+        })
+        .clone()
     });
     Panel::zstack()
         .auto_id()
