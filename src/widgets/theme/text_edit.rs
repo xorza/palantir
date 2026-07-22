@@ -20,10 +20,8 @@ use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 /// aren't state-varying in any plausible v1.x design.
 ///
 /// `padding`/`margin` apply when the user didn't call
-/// `.padding(...)` / `.margin(...)` on the builder. The "user didn't
-/// override" check is `element.padding == Spacing::ZERO` — so if you
-/// want a TextEdit with no padding while the theme has padding, set a
-/// custom theme rather than passing zero.
+/// `.padding(...)` / `.margin(...)` on the builder. Explicit zero spacing
+/// overrides the theme like any other value.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TextEditTheme {
     /// The four per-state looks (`active` = focused). `flatten` keeps

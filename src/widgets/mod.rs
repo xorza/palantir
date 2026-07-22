@@ -38,9 +38,8 @@ use std::cell::OnceCell;
 /// fallbacks, mutating `element`'s clip mode in place. Shared by
 /// `Panel`/`Grid`/`Popup` (theme slot `panel_background` / `panel_clip`):
 /// an explicit `.background(...)` wins, otherwise the theme default
-/// fills in; the clip default only applies when the caller left clip at
-/// [`ClipMode::None`]. Returns the chrome to pass to
-/// [`Ui::node`].
+/// fills in; the clip default only applies when the caller did not configure
+/// clipping. Returns the chrome to pass to [`Ui::node`].
 pub(crate) fn resolve_container_chrome(
     element: &mut Element,
     explicit: Option<Background>,
@@ -48,9 +47,8 @@ pub(crate) fn resolve_container_chrome(
     theme_clip: ClipMode,
 ) -> Option<Background> {
     let chrome = explicit.or_else(|| theme_bg.cloned());
-    if matches!(element.flags.clip_mode(), ClipMode::None) {
-        element.flags.set_clip(theme_clip);
-    }
+    let clip = element.configured().clip().unwrap_or(theme_clip);
+    element.flags.set_clip(clip);
     chrome
 }
 

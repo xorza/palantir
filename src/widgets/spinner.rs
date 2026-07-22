@@ -1,7 +1,7 @@
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::LinearGradient;
 use crate::primitives::color::Color;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -76,9 +76,11 @@ impl Spinner {
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
         let width = self.thickness.unwrap_or((diameter * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);
-        if self.element.size == Sizes::default() {
-            self.element.size = (Sizing::fixed(diameter), Sizing::fixed(diameter)).into();
-        }
+        self.element.size = self
+            .element
+            .configured()
+            .size()
+            .unwrap_or((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
 
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
@@ -101,8 +103,8 @@ impl Spinner {
 }
 
 impl Configure for Spinner {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 
@@ -188,7 +190,7 @@ mod tests {
     #[test]
     fn explicit_layout_size_is_independent_from_diameter() {
         let mut ui = Ui::for_test();
-        let (mut sized, mut default) = (None, None);
+        let (mut sized, mut hug, mut default) = (None, None, None);
         ui.run_at_without_baseline(UVec2::new(200, 120), |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 sized = Some(
@@ -198,14 +200,23 @@ mod tests {
                         .show(ui)
                         .node(),
                 );
+                hug = Some(
+                    Spinner::new()
+                        .diameter(12.0)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .show(ui)
+                        .node(),
+                );
                 default = Some(Spinner::new().diameter(12.0).show(ui).node());
             });
         });
 
         let rects = &ui.layout[Layer::Main].rect;
         let sized = rects[sized.unwrap().idx()];
+        let hug = rects[hug.unwrap().idx()];
         let default = rects[default.unwrap().idx()];
         assert_eq!((sized.size.w, sized.size.h), (30.0, 40.0));
+        assert_eq!((hug.size.w, hug.size.h), (0.0, 0.0));
         assert_eq!((default.size.w, default.size.h), (12.0, 12.0));
     }
 }

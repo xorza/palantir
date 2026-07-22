@@ -2,7 +2,7 @@ use crate::input::sense::Sense;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -100,8 +100,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 }
 
 impl<T: PartialEq> Configure for RadioButton<'_, T> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

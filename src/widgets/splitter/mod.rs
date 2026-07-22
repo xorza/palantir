@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, enter_widget};
@@ -220,8 +220,8 @@ impl<'a> Splitter<'a> {
 }
 
 impl Configure for Splitter<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

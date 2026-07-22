@@ -1,6 +1,6 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::{Response, enter_widget};
 use std::cell::RefCell;
@@ -99,8 +99,8 @@ impl GpuView {
 }
 
 impl Configure for GpuView {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

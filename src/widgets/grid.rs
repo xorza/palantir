@@ -2,7 +2,7 @@ use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::{InnerResponse, Response, resolve_container_chrome};
 
@@ -95,13 +95,14 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     /// applies to body (children + direct shapes), not to chrome;
     /// scale anchors at the grid's own origin.
     pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.element.transform = t;
+        self.element.set_transform(t);
         self
     }
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
     /// the default; theme fallback in [`Self::show`] fills it in from
-    /// `ui.theme.panel_background` when unset.
+    /// `ui.theme.panel_background` when unset. Pass [`Background::NONE`]
+    /// to suppress that fallback for this grid.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
@@ -140,8 +141,8 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 }
 
 impl<Rows, Cols> Configure for Grid<Rows, Cols> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

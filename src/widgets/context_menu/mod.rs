@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
@@ -73,7 +73,8 @@ impl ContextMenu {
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme.context_menu.panel` when unset.
+    /// from `ui.theme.context_menu.panel` when unset. Pass
+    /// [`Background::NONE`] to suppress the themed menu chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
@@ -151,10 +152,8 @@ impl ContextMenu {
 
         let mut e = self.element;
         e.salt = Salt::Verbatim(body_id);
-        if e.padding == Spacing::ZERO {
-            e.padding = theme_padding;
-        }
-        if e.min_size.w <= 0.0 {
+        e.padding = e.configured().padding().unwrap_or(theme_padding);
+        if e.configured().min_size().is_none() {
             e.min_size.w = theme_min_width;
         }
 
@@ -162,7 +161,7 @@ impl ContextMenu {
         let mut popup = Popup::anchored_to(raw_anchor)
             .click_outside(ClickOutside::Dismiss)
             .background(panel);
-        *popup.element_mut() = e;
+        popup.element = e;
         let resp = popup.show(ui, body);
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);
@@ -242,9 +241,8 @@ impl<'a> MenuItem<'a> {
         self
     }
 
-    pub fn enabled(mut self, e: bool) -> Self {
-        self.element.flags.set_disabled(!e);
-        self
+    pub fn enabled(self, e: bool) -> Self {
+        self.disabled(!e)
     }
 
     /// Thin horizontal divider — no label, no input. Free function in
@@ -334,8 +332,8 @@ impl<'a> MenuItem<'a> {
 }
 
 impl Configure for MenuItem<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 

@@ -87,7 +87,8 @@ impl<'r> Tooltip<'r, 'static> {
 impl<'r, 'a> Tooltip<'r, 'a> {
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme.tooltip.panel` when unset.
+    /// from `ui.theme.tooltip.panel` when unset. Pass [`Background::NONE`]
+    /// to suppress the themed bubble chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
@@ -189,12 +190,14 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             let chrome = self
                 .chrome
                 .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
-            if element.padding == Spacing::ZERO {
-                element.padding = ui.theme.tooltip.padding;
-            }
-            if element.max_size == Size::INF {
-                element.max_size = ui.theme.tooltip.max_size;
-            }
+            element.padding = element
+                .configured()
+                .padding()
+                .unwrap_or(ui.theme.tooltip.padding);
+            element.max_size = element
+                .configured()
+                .max_size()
+                .unwrap_or(ui.theme.tooltip.max_size);
             ui.overlay_layer(Layer::Tooltip, position, |ui| {
                 ui.node(bubble_id, element, Some(&chrome), |ui| {
                     Text::new(text)

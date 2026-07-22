@@ -9,7 +9,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
@@ -281,7 +281,7 @@ impl<'a> TextEdit<'a> {
             is_focused = false;
         }
         // `resolve_look` also substitutes theme padding/margin where
-        // the builder left the `Spacing::ZERO` sentinel. The renderer
+        // the builder left those fields unconfigured. The renderer
         // reads `element.padding` to deflate the buffer layout, and
         // the caret hit-test reads it back below — both see the
         // resolved value.
@@ -708,8 +708,8 @@ impl<'a> TextEdit<'a> {
 }
 
 impl Configure for TextEdit<'_> {
-    fn element_mut(&mut self) -> &mut Element {
-        &mut self.element
+    fn element_mut(&mut self) -> ConfigureElement<'_> {
+        self.element.element_mut()
     }
 }
 
