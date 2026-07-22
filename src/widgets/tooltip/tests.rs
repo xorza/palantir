@@ -7,10 +7,14 @@ use crate::Ui;
 use crate::display::Display;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::tree::node::NodeId;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{GLOBAL_STATE_ID, Tooltip, TooltipGlobal, TooltipState};
@@ -109,6 +113,41 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         shaped.measured.w,
         bubble.size.w,
     );
+}
+
+#[test]
+fn explicit_zero_padding_and_infinite_maximum_override_tooltip_theme() {
+    let mut ui = Ui::for_test();
+    let trigger_id = WidgetId::from_hash("unbounded-tooltip-trigger");
+    let snapshot = ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+            hovered: true,
+            ..ResponseState::default()
+        },
+    };
+    ui.run_at_without_baseline(SURFACE, |ui| {
+        Tooltip::on(&snapshot)
+            .text("tip")
+            .background(Background::NONE)
+            .padding(Spacing::ZERO)
+            .max_size(Size::INF)
+            .delay(Duration::ZERO)
+            .show(ui);
+    });
+
+    let bubble_id = trigger_id.with("tooltip.bubble");
+    let tree = &ui.forest.trees[Layer::Tooltip];
+    let index = tree
+        .records
+        .widget_id()
+        .iter()
+        .position(|id| *id == bubble_id)
+        .expect("tooltip bubble node");
+    let node = NodeId(index as u32);
+    assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
+    assert_eq!(tree.bounds(node).max_size, Size::INF);
 }
 
 fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {

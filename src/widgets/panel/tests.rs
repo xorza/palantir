@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -19,8 +20,6 @@ use glam::{UVec2, Vec2};
 /// Refactors that touch any mode are caught by the table.
 #[test]
 fn surface_apply_to_sets_clip_bit_and_chrome() {
-    use crate::ClipMode;
-
     let mut ui = Ui::for_test();
     let mut cases: Vec<(&str, NodeId, ClipMode, bool)> = Vec::new();
     ui.run_at_without_baseline(UVec2::new(200, 200), |ui| {
@@ -103,6 +102,38 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             "[{name}] chrome stamping"
         );
     }
+}
+
+#[test]
+fn explicit_no_chrome_and_no_clip_override_panel_theme() {
+    let mut ui = Ui::for_test();
+    ui.theme.panel_background = Some(Background::fill(Color::WHITE));
+    ui.theme.panel_clip = ClipMode::Rect;
+    let (mut explicit, mut inherited) = (None, None);
+    ui.run_at_without_baseline(UVec2::new(200, 120), |ui| {
+        explicit = Some(
+            Panel::vstack()
+                .background(Background::NONE)
+                .clip(ClipMode::None)
+                .show(ui, |_| {})
+                .node(),
+        );
+        inherited = Some(Panel::vstack().show(ui, |_| {}).node());
+    });
+
+    let tree = &ui.forest.trees[Layer::Main];
+    let explicit = explicit.unwrap();
+    let inherited = inherited.unwrap();
+    assert_eq!(
+        tree.records.attrs()[explicit.idx()].clip_mode(),
+        ClipMode::None,
+    );
+    assert!(tree.chrome(explicit).is_none());
+    assert_eq!(
+        tree.records.attrs()[inherited.idx()].clip_mode(),
+        ClipMode::Rect,
+    );
+    assert!(tree.chrome(inherited).is_some());
 }
 
 #[test]

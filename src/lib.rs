@@ -91,6 +91,7 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
+pub use scene::element::configuration::ElementConfiguration;
 pub use scene::element::{Configure, Element};
 pub use scene::layer::Layer;
 pub use scene::visibility::Visibility;
