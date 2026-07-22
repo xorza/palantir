@@ -198,7 +198,7 @@ impl Shapes {
                 // Extract the cheap id + size; the owning `ImageHandle`
                 // the caller holds is what keeps the GPU texture alive.
                 id: handle.id(),
-                size: handle.size_u16(),
+                size: handle.size(),
                 fit,
                 min_filter,
                 mag_filter,

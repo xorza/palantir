@@ -74,7 +74,8 @@ mod tests {
         assert!(Rc::ptr_eq(&ui.text.inner, &backend.text.inner));
         let image = ui
             .images
-            .register(Image::from_rgba8(1, 1, vec![1, 2, 3, 4]));
+            .register(Image::from_rgba8(1, 1, vec![1, 2, 3, 4]))
+            .unwrap();
         let mut uploaded = None;
         backend.images.drain_pending(|id, data| {
             uploaded = Some(id);

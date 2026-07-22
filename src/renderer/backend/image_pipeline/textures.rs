@@ -40,7 +40,6 @@ fn upload(
     id: TextureId,
     image: &Image,
 ) -> wgpu::BindGroup {
-    assert_within_device_limit(image.size, device.limits().max_texture_dimension_2d);
     let raw_id = id.0;
     let size = wgpu::Extent3d {
         width: image.size.x,
@@ -76,33 +75,4 @@ fn upload(
     );
     let view = texture.create_view(&Default::default());
     texture_bind_group(device, layout, sampler, &view, &bind_group_label)
-}
-
-fn assert_within_device_limit(size: glam::UVec2, max_dim: u32) {
-    assert!(
-        size.x <= max_dim && size.y <= max_dim,
-        "registered image is {}x{} px but the device's \
-         max_texture_dimension_2d is {max_dim}; downscale or tile it \
-         before Ui::register_image",
-        size.x,
-        size.y,
-    );
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::renderer::backend::image_pipeline::textures::assert_within_device_limit;
-    use glam::UVec2;
-
-    #[test]
-    fn device_limit_boundaries_are_accepted() {
-        assert_within_device_limit(UVec2::ONE, 8192);
-        assert_within_device_limit(UVec2::splat(8192), 8192);
-    }
-
-    #[test]
-    #[should_panic(expected = "max_texture_dimension_2d is 8192")]
-    fn oversized_image_names_device_limit() {
-        assert_within_device_limit(UVec2::new(8193, 4), 8192);
-    }
 }
