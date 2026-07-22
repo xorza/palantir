@@ -6,7 +6,7 @@ use aperture_anim_derive::Animatable;
 
 /// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
 /// and per-state widget visuals: fill colour, optional stroke, and
-/// corner radii. Default is transparent fill / no stroke / zero radius
+/// corner radii. [`Self::NONE`] is transparent fill / no stroke / zero radius
 /// — emitting nothing.
 ///
 /// Pure data, no methods that need a `Ui` — paint emission goes
@@ -28,9 +28,7 @@ use aperture_anim_derive::Animatable;
 // takes `&Background`; the matching `Animatable` supertrait relaxed
 // to `Clone` (not `Copy`) so the animation path doesn't bring
 // auto-`Copy` back in through the trait bound.
-#[derive(
-    Clone, Debug, Default, PartialEq, Hash, serde::Serialize, serde::Deserialize, Animatable,
-)]
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize, Animatable)]
 pub struct Background {
     pub fill: Brush,
     /// `Stroke::ZERO` (the `Default`) omitted from serialized output —
@@ -56,6 +54,16 @@ pub struct Background {
 }
 
 impl Background {
+    /// Canonical background that paints nothing. Use this as an explicit
+    /// builder override when a theme supplies chrome that this widget should
+    /// suppress.
+    pub const NONE: Self = Self {
+        fill: Brush::TRANSPARENT,
+        stroke: Stroke::ZERO,
+        corners: Corners::ZERO,
+        shadow: Shadow::NONE,
+    };
+
     /// True when this Background paints nothing visible — transparent
     /// fill + transparent/zero-width stroke + no-op shadow. The
     /// encoder skips emitting a `DrawRect` for no-op chrome so
@@ -104,6 +112,12 @@ impl Background {
     }
 }
 
+impl Default for Background {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::Color;
@@ -112,14 +126,9 @@ mod tests {
 
     // `with_stroke`/`with_shadow` chained in a const context. If either
     // regresses to non-const, this fails to compile.
-    const _CONST_BUILDER: Background = Background {
-        fill: Brush::TRANSPARENT,
-        stroke: Stroke::ZERO,
-        corners: Corners::ZERO,
-        shadow: Shadow::NONE,
-    }
-    .with_stroke(Stroke::ZERO)
-    .with_shadow(Shadow::NONE);
+    const _CONST_BUILDER: Background = Background::NONE
+        .with_stroke(Stroke::ZERO)
+        .with_shadow(Shadow::NONE);
 
     #[test]
     fn with_stroke_and_with_shadow_set_the_named_field_only() {
@@ -138,5 +147,11 @@ mod tests {
         assert_eq!(with_shadow.fill, base.fill);
         assert_eq!(with_shadow.stroke, base.stroke);
         assert_eq!(with_shadow.corners, base.corners);
+    }
+
+    #[test]
+    fn none_is_the_default_noop_background() {
+        assert_eq!(Background::default(), Background::NONE);
+        assert!(Background::NONE.is_noop());
     }
 }
