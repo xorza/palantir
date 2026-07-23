@@ -1,4 +1,4 @@
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
@@ -344,7 +344,7 @@ pub(crate) fn measure(
     idx: GridDefId,
     inner_avail: Size,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     let depth = layout.scratch.grid.depth_stack.enter();
     let result = measure_inner(layout, tree, node, idx, depth, inner_avail, tc, out);
@@ -361,7 +361,7 @@ fn measure_inner(
     depth: usize,
     inner_avail: Size,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     let def = tree.grid_defs[usize::from(idx)];
     let row_tracks = &tree.grid_tracks[def.rows.range()];
@@ -589,7 +589,7 @@ pub(crate) fn arrange(
     node: NodeId,
     inner: Rect,
     idx: GridDefId,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let depth = layout.scratch.grid.depth_stack.enter();
     arrange_inner(layout, tree, node, inner, idx, depth, out);
@@ -603,7 +603,7 @@ fn arrange_inner(
     inner: Rect,
     idx: GridDefId,
     depth: usize,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let def = tree.grid_defs[usize::from(idx)];
     let row_tracks = &tree.grid_tracks[def.rows.range()];
@@ -618,7 +618,7 @@ fn arrange_inner(
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node).map(|c| c.id) {
-            zero_subtree(layout, tree, c, inner.min, out);
+            zero_subtree(tree, c, inner.min, out);
         }
         return;
     }
@@ -666,11 +666,11 @@ fn arrange_inner(
 
     let parent_child_align = tree.panel(node).child_align;
     let layouts = tree.records.layout();
-    let self_outer = out[layout.active_layer].rect[node.idx()].size;
+    let self_outer = out.rect[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, inner.min, out);
+            zero_subtree(tree, c, inner.min, out);
             continue;
         }
         let i = c.idx();

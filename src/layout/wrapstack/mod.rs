@@ -13,7 +13,7 @@
 //! shared arrange-axis resolution makes Fill children grow to that
 //! height without shrinking below their measured content.
 
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
@@ -116,7 +116,7 @@ pub(crate) fn measure(
     inner_avail: Size,
     axis: Axis,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     let panel = tree.panel(node);
     let gap = panel.gaps.gap();
@@ -166,7 +166,7 @@ pub(crate) fn arrange(
     node: NodeId,
     inner: Rect,
     axis: Axis,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let panel = tree.panel(node);
     let gap = panel.gaps.gap();
@@ -174,7 +174,7 @@ pub(crate) fn arrange(
     let justify = panel.justify;
     let parent_child_align = panel.child_align;
     let main_avail = axis.main(inner.size);
-    let self_outer = out[layout.active_layer].rect[node.idx()].size;
+    let self_outer = out.rect[node.idx()].size;
 
     // Same packing logic as `measure`. Each row needs lookahead —
     // can't place a child until we know the row's `line_main` (for
@@ -190,7 +190,7 @@ pub(crate) fn arrange(
     let mut first_line = true;
 
     let place_line = |layout: &mut LayoutEngine,
-                      out: &mut Layout,
+                      out: &mut LayerLayout,
                       line_main: f32,
                       line_cross: f32,
                       cross_cursor: &mut f32,
@@ -255,7 +255,6 @@ pub(crate) fn arrange(
             // cursor. Position is stable; size is zero so there's no
             // visual or input contribution.
             zero_subtree(
-                layout,
                 tree,
                 c,
                 axis.compose_point(axis.main_v(inner.min), cross_cursor),

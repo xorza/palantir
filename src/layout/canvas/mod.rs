@@ -1,4 +1,4 @@
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
@@ -43,7 +43,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     let canvas_size = tree.records.layout()[node.idx()].size;
     let pos_inflates_x = canvas_size.w().is_hug();
@@ -68,15 +68,15 @@ pub(crate) fn arrange(
     tree: &Tree,
     node: NodeId,
     inner: Rect,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let layouts = tree.records.layout();
     let canvas_size = layouts[node.idx()].size;
-    let self_outer = out[layout.active_layer].rect[node.idx()].size;
+    let self_outer = out.rect[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, inner.min, out);
+            zero_subtree(tree, c, inner.min, out);
             continue;
         }
         let d = layout.scratch.desired[c.idx()];

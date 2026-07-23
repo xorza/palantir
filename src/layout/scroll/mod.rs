@@ -16,7 +16,7 @@
 //! unaware of scrollbars and of the outer ZStack the widget wraps it
 //! in.
 
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -323,7 +323,7 @@ pub(crate) fn measure(
     inner_avail: Size,
     spec: ScrollSpec,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     let pan = spec.pan_mask();
     // A panned axis the user sized `Hug` "fits" to content (reports its
@@ -379,7 +379,7 @@ pub(crate) fn arrange(
     parent_outer: Size,
     inner: Rect,
     spec: ScrollSpec,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let pan = spec.pan_mask();
     if pan.x && pan.y {

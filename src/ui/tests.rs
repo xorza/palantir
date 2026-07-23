@@ -4,6 +4,7 @@ use crate::display::Display;
 use crate::host::shared::HostShared;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
+use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
@@ -190,6 +191,77 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
         .any(|q| (q.rect.min - popup_rect.min).length() < 1.0);
     assert!(has_main, "no overlay quad at Main rect {main_rect:?}");
     assert!(has_popup, "no overlay quad at Popup rect {popup_rect:?}");
+}
+
+#[test]
+fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
+    let mut ui = Ui::for_test_text();
+    let main_id = WidgetId::from_hash("layer-output-main");
+    let popup_id = WidgetId::from_hash("layer-output-popup");
+
+    let mut record = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("layer-output-main-root"))
+            .show(ui, |ui| {
+                Button::new()
+                    .id(main_id)
+                    .label("main layer")
+                    .size((40.0, 20.0))
+                    .show(ui);
+            });
+        ui.layer(Layer::Popup, Vec2::new(80.0, 60.0), None, |ui| {
+            Button::new()
+                .id(popup_id)
+                .label("popup layer")
+                .size((70.0, 30.0))
+                .show(ui);
+        });
+    };
+    let node_for = |ui: &Ui, layer: Layer, id: WidgetId| {
+        let index = ui.forest.trees[layer]
+            .records
+            .widget_id()
+            .iter()
+            .position(|widget_id| *widget_id == id)
+            .unwrap();
+        NodeId(index as u32)
+    };
+
+    ui.run_at_without_baseline(SURFACE, &mut record);
+    let main_node = node_for(&ui, Layer::Main, main_id);
+    let popup_node = node_for(&ui, Layer::Popup, popup_id);
+    let cold_main = ui.layout[Layer::Main].rect[main_node.idx()];
+    let cold_popup = ui.layout[Layer::Popup].rect[popup_node.idx()];
+    assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
+    assert_eq!(cold_popup, Rect::new(80.0, 60.0, 70.0, 30.0));
+
+    let main_span = ui.layout[Layer::Main].text_spans[main_node.idx()];
+    let popup_span = ui.layout[Layer::Popup].text_spans[popup_node.idx()];
+    assert_eq!(main_span, Span::new(0, 1));
+    assert_eq!(popup_span, Span::new(0, 1));
+    assert_eq!(ui.layout[Layer::Main].text_shapes.len(), 1);
+    assert_eq!(ui.layout[Layer::Popup].text_shapes.len(), 1);
+    let cold_main_key = ui.layout[Layer::Main].text_shapes[main_span.start as usize].key;
+    let cold_popup_key = ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key;
+    assert_ne!(cold_main_key, cold_popup_key);
+
+    ui.run_at_without_baseline(SURFACE, &mut record);
+    assert!(
+        !ui.layout_engine.scratch.cache_hits.is_empty(),
+        "warm frame must exercise measure-cache restoration",
+    );
+    let main_node = node_for(&ui, Layer::Main, main_id);
+    let popup_node = node_for(&ui, Layer::Popup, popup_id);
+    assert_eq!(ui.layout[Layer::Main].rect[main_node.idx()], cold_main);
+    assert_eq!(ui.layout[Layer::Popup].rect[popup_node.idx()], cold_popup);
+    assert_eq!(
+        ui.layout[Layer::Main].text_shapes[main_span.start as usize].key,
+        cold_main_key,
+    );
+    assert_eq!(
+        ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key,
+        cold_popup_key,
+    );
 }
 
 /// Pin: the encoder-direct overlay path leaves `Layer::Debug` empty
