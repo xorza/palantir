@@ -213,8 +213,14 @@ pub struct ContextMenuResponse {
 pub struct MenuItem<'a> {
     node: Node,
     label: TextInput<'a>,
-    shortcut: Option<Shortcut>,
-    intercept_shortcut: bool,
+    shortcut: MenuShortcut,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MenuShortcut {
+    None,
+    Hint(Shortcut),
+    Activate(Shortcut),
 }
 
 impl<'a> MenuItem<'a> {
@@ -225,8 +231,7 @@ impl<'a> MenuItem<'a> {
         Self {
             node,
             label: label.into(),
-            shortcut: None,
-            intercept_shortcut: false,
+            shortcut: MenuShortcut::None,
         }
     }
 
@@ -236,13 +241,12 @@ impl<'a> MenuItem<'a> {
     /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
     /// `Shortcut::new(Mods::NONE, Key::Backspace)`.
     pub fn shortcut(mut self, s: Shortcut) -> Self {
-        self.shortcut = Some(s);
-        self.intercept_shortcut = true;
+        self.shortcut = MenuShortcut::Activate(s);
         self
     }
 
     pub(crate) fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
-        self.shortcut = Some(shortcut);
+        self.shortcut = MenuShortcut::Hint(shortcut);
         self
     }
 
@@ -297,19 +301,19 @@ impl<'a> MenuItem<'a> {
         node.gaps.set_gap(16.0);
 
         let label = ui.intern(self.label);
-        let shortcut = self.shortcut;
-        // Shortcut intercept: while the menu is open, a matching
-        // keypress synthesizes a click and closes the menu. Resolved
-        // before the node records so we don't pay for the label
-        // resolution on rows with no shortcut.
-        let shortcut_fired = shortcut.is_some_and(|s| {
-            if self.intercept_shortcut {
-                !disabled && popup.key_pressed(ui, s)
-            } else {
-                ui.subscribe_key(s);
-                false
+        // Passive hints subscribe for wake-up while their parent owns dispatch.
+        let mut shortcut_fired = false;
+        let shortcut = match self.shortcut {
+            MenuShortcut::None => None,
+            MenuShortcut::Hint(shortcut) => {
+                ui.subscribe_key(shortcut);
+                Some(shortcut)
             }
-        });
+            MenuShortcut::Activate(shortcut) => {
+                shortcut_fired = !disabled && popup.key_pressed(ui, shortcut);
+                Some(shortcut)
+            }
+        };
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));
 
         // Label + optional right-aligned shortcut hint as `Text` leaves;
