@@ -1,5 +1,5 @@
-use crate::widgets::text_edit::TextEditState;
 use crate::common::hash;
+use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::input::{
     KeyOutcome, apply_key as apply_editor_key, dispatch_action,
 };
