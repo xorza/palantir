@@ -103,9 +103,8 @@ fn context_menu_cut_copy_paste_clear() {
         "menu Paste must sanitize newlines for single-line editor"
     );
 
-    // Select All is menu-owned while the popup is open. The editor's
-    // keyboard dispatcher must defer the chord so the menu item executes
-    // it once and closes the popup.
+    // Select All is menu-owned while the popup is open. The captured
+    // command stream executes it once and closes the popup.
     open_menu_and_record(&mut ui, &mut buf);
     ui.on_input(InputEvent::ModifiersChanged(Modifiers {
         ctrl: true,
@@ -316,4 +315,61 @@ fn secondary_click_opens_text_edit_menu() {
         ContextMenu::is_open(&ui, editor_id),
         "secondary click on TextEdit opens its default menu",
     );
+}
+
+#[test]
+fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
+    use crate::widgets::context_menu::ContextMenu;
+
+    let a_id = WidgetId::from_hash("focused-editor");
+    let b_id = WidgetId::from_hash("menu-editor");
+    let mut ui = ui_at_no_cosmic(UVec2::new(400, 120));
+    let mut a = String::from("focused");
+    let mut b = String::from("menu");
+    let body = |ui: &mut Ui, a: &mut String, b: &mut String| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            TextEdit::new(a)
+                .id(a_id)
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                .show(ui);
+            TextEdit::new(b)
+                .id(b_id)
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                .show(ui);
+        });
+    };
+    ui.run_at(UVec2::new(400, 120), |ui| body(ui, &mut a, &mut b));
+    ui.request_focus(Some(a_id));
+    {
+        let state = ui.state_mut::<TextEditState>(a_id);
+        state.edit.caret = a.len();
+        state.edit.selection = Some(0);
+    }
+    ContextMenu::open(&mut ui, b_id, Vec2::new(200.0, 20.0));
+    ui.run_at_without_baseline(UVec2::new(400, 120), |ui| {
+        body(ui, &mut a, &mut b);
+    });
+
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
+    for key in [Key::Char('a'), Key::Char('x')] {
+        ui.on_input(InputEvent::KeyDown {
+            key,
+            repeat: false,
+            physical: Key::Other,
+        });
+    }
+    ui.run_at_without_baseline(UVec2::new(400, 120), |ui| {
+        body(ui, &mut a, &mut b);
+    });
+
+    assert_eq!(
+        a, "focused",
+        "the focused editor must not see menu commands"
+    );
+    assert_eq!(b, "", "Select All then Cut must execute in arrival order");
+    assert_eq!(ui.resources.clipboard.get(), "menu");
+    assert!(!ContextMenu::is_open(&ui, b_id));
 }

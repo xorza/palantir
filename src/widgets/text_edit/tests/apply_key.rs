@@ -229,13 +229,12 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
             selection: case.selection,
             ..Default::default()
         };
-        let mut view = ViewState {
+        let mut interaction = InteractionState {
             drag_anchor: case.drag_anchor,
-            ..Default::default()
         };
 
         state.normalize(&text);
-        view.normalize(&text);
+        interaction.normalize(&text);
         assert_eq!(
             state.caret, case.repaired_caret,
             "{}: repair caret",
@@ -247,7 +246,7 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
             case.label,
         );
         assert_eq!(
-            view.drag_anchor, case.repaired_drag_anchor,
+            interaction.drag_anchor, case.repaired_drag_anchor,
             "{}: repair drag anchor",
             case.label,
         );
@@ -299,6 +298,7 @@ fn max_chars_caps_typed_input() {
     }
     assert_eq!(s, "abc");
     assert_eq!(state.caret, 3);
+    assert_eq!(state.char_count, Some(3));
 
     // At the cap, inserting in the *middle* is rejected outright — it
     // must not steal a slot by dropping some other char.
@@ -313,6 +313,7 @@ fn max_chars_caps_typed_input() {
     assert_eq!(s, "aXc", "selection deletion frees room under the cap");
     assert_eq!(state.caret, 2);
     assert_eq!(state.selection, None);
+    assert_eq!(state.char_count, Some(3));
 }
 
 #[test]

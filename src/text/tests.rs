@@ -615,9 +615,8 @@ fn selection_rects_empty_range_is_noop() {
     let m = TextShaper::with_bundled_fonts();
     let mut out: SelectionRects = SelectionRects::new();
     out.push(Rect::new(1.0, 2.0, 3.0, 4.0)); // pre-populate
-    m.selection_rects(
+    m.with_layout(
         "hello",
-        5..5,
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
@@ -626,8 +625,9 @@ fn selection_rects_empty_range_is_noop() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        &mut out,
-    );
+        |layout| layout.selection_rects(5..5, &mut out),
+    )
+    .unwrap();
     assert!(
         out.is_empty(),
         "empty range must clear out and emit nothing"
@@ -638,9 +638,8 @@ fn selection_rects_empty_range_is_noop() {
 fn selection_rects_single_line_emits_one_rect() {
     let m = TextShaper::with_bundled_fonts();
     let mut out: SelectionRects = SelectionRects::new();
-    m.selection_rects(
+    m.with_layout(
         "hello",
-        1..4,
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
@@ -649,8 +648,9 @@ fn selection_rects_single_line_emits_one_rect() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        &mut out,
-    );
+        |layout| layout.selection_rects(1..4, &mut out),
+    )
+    .unwrap();
     assert_eq!(out.len(), 1, "single-line range → one rect");
     let r = out[0];
     assert!(r.size.w > 0.0, "rect has positive width");
@@ -704,7 +704,8 @@ fn selection_rects_match_cosmic_highlight_spans() {
             halign: HAlign::Auto,
         };
         let mut expected = Vec::new();
-        m.with_buffer(case.text, params.validated().unwrap(), |buffer| {
+        m.with_layout(case.text, params, |layout| {
+            let buffer = layout.buffer.unwrap();
             let start = cursor_from_byte(case.text, case.range.start);
             let end = cursor_from_byte(case.text, case.range.end);
             for run in buffer.layout_runs() {
@@ -717,7 +718,10 @@ fn selection_rects_match_cosmic_highlight_spans() {
         .unwrap();
 
         let mut actual = SelectionRects::new();
-        m.selection_rects(case.text, case.range, params, &mut actual);
+        m.with_layout(case.text, params, |layout| {
+            layout.selection_rects(case.range, &mut actual);
+        })
+        .unwrap();
         assert_eq!(
             actual.as_slice(),
             expected.as_slice(),
