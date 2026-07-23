@@ -510,10 +510,6 @@ impl Ui {
         self.input.key_pressed(sc)
     }
 
-    pub(crate) fn captured_key_pressed(&mut self, owner: WidgetId, sc: Shortcut) -> bool {
-        self.input.captured_key_pressed(owner, sc)
-    }
-
     /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
     /// Used by overlays without exclusive keyboard capture, such as
     /// [`crate::widgets::modal::Modal`].
