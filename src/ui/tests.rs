@@ -1415,8 +1415,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 }
 
 #[test]
-fn widget_text_inputs_lower_exact_bytes_and_hashes() {
-    use crate::common::hash::hash_str;
+fn widget_text_inputs_lower_exact_bytes() {
     use crate::scene::shapes::record::ShapeRecord;
 
     let mut ui = Ui::for_test();
@@ -1460,9 +1459,7 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
     ]) {
         match record {
             ShapeRecord::Text { text, .. } => {
-                let resolved = text.resolve(&interned_text);
-                assert_eq!(resolved.text, expected);
-                assert_eq!(resolved.hash, hash_str(expected));
+                assert_eq!(text.resolve(&interned_text), expected);
             }
             shape => panic!("expected text shape, got {shape:?}"),
         }
@@ -1470,8 +1467,7 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
 }
 
 #[test]
-fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
-    use crate::common::hash::hash_str;
+fn retained_arena_text_preserves_bytes_across_record_stores() {
     use crate::scene::shapes::record::ShapeRecord;
     use std::rc::Rc;
 
@@ -1482,9 +1478,7 @@ fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
         let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
             panic!("expected one text shape, got {records:?}");
         };
-        let resolved = text.resolve(&interned_text);
-        assert_eq!(resolved.text, expected);
-        assert_eq!(resolved.hash, hash_str(expected));
+        assert_eq!(text.resolve(&interned_text), expected);
     }
 
     for (original, replacement) in [

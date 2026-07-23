@@ -61,12 +61,6 @@ pub(crate) struct RecordedText {
     hash: u64,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ResolvedText<'a> {
-    pub(crate) text: &'a str,
-    pub(crate) hash: u64,
-}
-
 impl InternedStr {
     pub(crate) fn arena_backed(span: Span, arena: Rc<TextArena>) -> Self {
         Self { span, arena }
@@ -121,16 +115,11 @@ impl RecordedText {
         Self { span, hash }
     }
 
-    /// Resolve the paired recorded bytes and content hash. The span is
-    /// guaranteed to target `interned_text` by `RecordStore::record_text`.
+    /// Resolve the recorded bytes. The span is guaranteed to target
+    /// `interned_text` by `RecordStore::record_text`.
     #[inline]
-    pub(crate) fn resolve<'a>(&self, interned_text: &'a InternedText<'_>) -> ResolvedText<'a> {
-        let text = &interned_text.bytes
-            [self.span.start as usize..(self.span.start + self.span.len) as usize];
-        ResolvedText {
-            text,
-            hash: self.hash,
-        }
+    pub(crate) fn resolve<'a>(&self, interned_text: &'a InternedText<'_>) -> &'a str {
+        &interned_text.bytes[self.span.range()]
     }
 }
 

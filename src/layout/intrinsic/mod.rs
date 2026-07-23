@@ -12,7 +12,6 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use crate::common::content_hash::ContentHash;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{AxisCtx, TextShapeInput, leaf_text_shapes, resolve_axis_size};
@@ -261,10 +260,9 @@ fn leaf<const RANGE: bool>(
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let wid = tree.records.widget_id()[node.idx()];
-    let curr_hash = tree.rollups.node[node.idx()];
     let mut range = IntrinsicRange::ZERO;
     for ts in leaf_text_shapes(tree, interned_text, node) {
-        let measurement = shape_leaf_text(engine, wid, curr_hash, &ts);
+        let measurement = shape_leaf_text(engine, wid, &ts);
         if query.includes(LenReq::MinContent) {
             range.min = range
                 .min
@@ -282,7 +280,6 @@ fn leaf<const RANGE: bool>(
 fn shape_leaf_text(
     engine: &mut LayoutEngine,
     wid: WidgetId,
-    curr_hash: ContentHash,
     ts: &TextShapeInput<'_>,
 ) -> TextMeasurement {
     engine
@@ -291,10 +288,8 @@ fn shape_leaf_text(
             TextRunIdentity {
                 widget_id: wid,
                 ordinal: ts.ordinal,
-                authoring_hash: curr_hash,
             },
             ts.text,
-            ts.text_hash,
             ShapeParams {
                 font_size_px: ts.font_size_px,
                 line_height_px: ts.line_height_px,

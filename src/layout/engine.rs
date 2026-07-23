@@ -844,23 +844,16 @@ impl LayoutEngine {
         out: &mut LayerLayout,
     ) -> Size {
         let wid = tree.records.widget_id()[node.idx()];
-        let curr_hash = tree.rollups.node[node.idx()];
         let identity = TextRunIdentity {
             widget_id: wid,
             ordinal: ts.ordinal,
-            authoring_hash: curr_hash,
         };
 
-        // Refresh the unbounded measurement only when the authoring hash
-        // has shifted. Crucially, when only the wrap target changed
-        // (e.g. animated parent width), the unbounded cache is
-        // preserved and only the bounded reshape runs.
         let prepared = self
             .text
             .prepare_run(
                 identity,
                 ts.text,
-                ts.text_hash,
                 ShapeParams {
                     font_size_px: ts.font_size_px,
                     line_height_px: ts.line_height_px,

@@ -9,11 +9,10 @@ fn lh(font_size: f32) -> f32 {
     font_size
 }
 
-fn identity(widget_id: WidgetId, authoring_hash: ContentHash) -> TextRunIdentity {
+fn identity(widget_id: WidgetId) -> TextRunIdentity {
     TextRunIdentity {
         widget_id,
         ordinal: 0,
-        authoring_hash,
     }
 }
 
@@ -342,73 +341,60 @@ fn cosmic_text_weight_distinguishes_key_and_metrics() {
 }
 
 #[test]
-fn prepared_run_caches_per_authoring_hash_only() {
-    // The reuse cache is keyed by `(WidgetId, ContentHash)` — different
-    // line heights with the *same* hash would collide (same widget
-    // id, same hash → cache hit returning the wrong measurement).
-    // Authoring-side hash includes line_height_px (pinned in
-    // node_hash tests), so callers that change leading must produce
-    // a different hash — pin that the measure cache respects the
-    // hash distinction.
+fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
     let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
-    let h1 = ContentHash(1);
-    let h2 = ContentHash(2);
-    let r1 = text
-        .prepare_run(
-            identity(wid, h1),
-            "hi",
-            hash_str("hi"),
-            ShapeParams {
-                font_size_px: 16.0,
-                line_height_px: 16.0,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        )
-        .unwrap()
-        .unbounded;
+    let identity = identity(wid);
+    let compact = ShapeParams {
+        font_size_px: 16.0,
+        line_height_px: 16.0,
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+    let r1 = text.prepare_run(identity, "hi", compact).unwrap().unbounded;
+    let calls = text.shaper.measure_calls();
+    assert_eq!(r1.size, Size::new(16.0, 16.0));
+
+    let same = text.prepare_run(identity, "hi", compact).unwrap().unbounded;
+    assert_eq!(same.size, r1.size);
+    assert_eq!(same.key, r1.key);
+    assert_eq!(same.intrinsic_min, r1.intrinsic_min);
+    assert_eq!(
+        text.shaper.measure_calls(),
+        calls,
+        "identical shaping inputs must reuse the row",
+    );
+
     let r2 = text
         .prepare_run(
-            identity(wid, h2),
+            identity,
             "hi",
-            hash_str("hi"),
             ShapeParams {
-                font_size_px: 16.0,
                 line_height_px: 24.0,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
+                ..compact
             },
         )
         .unwrap()
         .unbounded;
-    assert_ne!(
-        r1.size.h, r2.size.h,
-        "different leading via different hash → distinct cache entries",
+    assert_eq!(r2.size, Size::new(16.0, 24.0));
+    assert_eq!(
+        text.shaper.measure_calls(),
+        calls + 1,
+        "metric changes must refresh the row",
     );
-    // Re-querying the original hash after refreshing the single identity
-    // row must recover the original 16 px measurement.
-    let r1_again = text
-        .prepare_run(
-            identity(wid, h1),
-            "hi",
-            hash_str("hi"),
-            ShapeParams {
-                font_size_px: 16.0,
-                line_height_px: 16.0,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        )
+
+    let different_text = text
+        .prepare_run(identity, "hello", compact)
         .unwrap()
         .unbounded;
-    assert_eq!(r1.size.h, r1_again.size.h);
+    assert_eq!(different_text.size, Size::new(40.0, 16.0));
+    assert_eq!(
+        text.shaper.measure_calls(),
+        calls + 2,
+        "text changes must refresh the row",
+    );
 }
 
 #[test]
@@ -424,9 +410,7 @@ fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
         halign: HAlign::Auto,
     };
 
-    let old = text
-        .prepare_run(identity(wid, ContentHash(1)), "hi", hash_str("hi"), params)
-        .unwrap();
+    let old = text.prepare_run(identity(wid), "hi", params).unwrap();
     assert_eq!(old.unbounded.size, Size::new(16.0, 16.0));
     assert_eq!(
         old.shape_bounded(32.0, HAlign::Auto, LineFit::Wrap)
@@ -435,14 +419,7 @@ fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
         Size::new(16.0, 16.0),
     );
 
-    let current = text
-        .prepare_run(
-            identity(wid, ContentHash(2)),
-            "abcdefgh",
-            hash_str("abcdefgh"),
-            params,
-        )
-        .unwrap();
+    let current = text.prepare_run(identity(wid), "abcdefgh", params).unwrap();
     assert_eq!(current.unbounded.size, Size::new(64.0, 16.0));
     // Eight 8 px glyphs at 32 px fit four per line: 32 px × two 16 px lines.
     assert_eq!(
@@ -932,7 +909,7 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
     {
         let mut text = TextSystem::new(shaper.clone());
         let widget_id = WidgetId::from_hash(("invalid metrics", index));
-        let identity = identity(widget_id, ContentHash(index as u64));
+        let identity = identity(widget_id);
         let invalid_metrics = ShapeParams {
             font_size_px: EPS * 0.5,
             line_height_px: 16.0,
@@ -944,7 +921,7 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
         let calls = shaper.measure_calls();
 
         let error = text
-            .prepare_run(identity, "hi", 1, invalid_metrics)
+            .prepare_run(identity, "hi", invalid_metrics)
             .unwrap_err();
         assert_eq!(error, ShapeParamsError::InvalidFontSize, "fit={fit:?}",);
         assert!(
@@ -961,7 +938,6 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
             .prepare_run(
                 identity,
                 "hi",
-                1,
                 ShapeParams {
                     font_size_px: 16.0,
                     line_height_px: 16.0,
@@ -1224,7 +1200,6 @@ fn prepared_bounded_cache_keys_width_and_halign() {
     let m = TextShaper::with_bundled_fonts();
     let mut text = TextSystem::new(m.clone());
     let wid = WidgetId::from_hash("w");
-    let hash = ContentHash(7);
     let params = ShapeParams {
         font_size_px: 16.0,
         line_height_px: 16.0,
@@ -1233,18 +1208,17 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
-        .unwrap();
+    text.prepare_run(identity(wid), "hi", params).unwrap();
     let baseline = m.measure_calls();
 
-    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid), "hi", params)
         .unwrap()
         .shape_bounded(200.0, HAlign::Left, LineFit::Wrap)
         .unwrap();
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
 
-    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid), "hi", params)
         .unwrap()
         .shape_bounded(200.0, HAlign::Left, LineFit::Wrap)
         .unwrap();
@@ -1254,7 +1228,7 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         "identical wrap call must hit cache"
     );
 
-    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid), "hi", params)
         .unwrap()
         .shape_bounded(200.0, HAlign::Right, LineFit::Wrap)
         .unwrap();
@@ -1264,7 +1238,7 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         "halign change at same target must bust wrap reuse",
     );
 
-    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid), "hi", params)
         .unwrap()
         .shape_bounded(201.0, HAlign::Right, LineFit::Wrap)
         .unwrap();
@@ -1281,9 +1255,8 @@ fn end_frame_evicts_removed_reuse_entries() {
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
     text.prepare_run(
-        identity(a, ContentHash(1)),
+        identity(a),
         "hi",
-        hash_str("hi"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -1295,9 +1268,8 @@ fn end_frame_evicts_removed_reuse_entries() {
     )
     .unwrap();
     text.prepare_run(
-        identity(b, ContentHash(2)),
+        identity(b),
         "yo",
-        hash_str("yo"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -1641,7 +1613,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     );
     assert_eq!(
         clipped.key.text_hash, full.key.text_hash,
-        "bounded keys reuse the authoring-time text hash",
+        "bounded keys reuse the source text hash",
     );
     assert_eq!(clipped.key.fit_q, LineFit::Clip as u8);
     assert_eq!(elided.key.fit_q, LineFit::Ellipsis as u8);

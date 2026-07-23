@@ -27,7 +27,6 @@ use glam::Vec2;
 pub(crate) struct TextShapeInput<'a> {
     pub(crate) ordinal: u16,
     pub(crate) text: &'a str,
-    pub(crate) text_hash: u64,
     pub(crate) font_size_px: f32,
     pub(crate) line_height_px: f32,
     pub(crate) wrap: TextWrap,
@@ -109,20 +108,16 @@ fn text_shape_input<'a>(
             weight,
             align,
             ..
-        } => {
-            let resolved = text.resolve(interned_text);
-            Some(TextShapeInput {
-                ordinal: checked_text_ordinal(ordinal),
-                text: resolved.text,
-                text_hash: resolved.hash,
-                font_size_px: *font_size_px,
-                line_height_px: *line_height_px,
-                wrap: *wrap,
-                family: *family,
-                weight: *weight,
-                halign: align.halign(),
-            })
-        }
+        } => Some(TextShapeInput {
+            ordinal: checked_text_ordinal(ordinal),
+            text: text.resolve(interned_text),
+            font_size_px: *font_size_px,
+            line_height_px: *line_height_px,
+            wrap: *wrap,
+            family: *family,
+            weight: *weight,
+            halign: align.halign(),
+        }),
         _ => None,
     }
 }
