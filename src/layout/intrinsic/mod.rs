@@ -285,7 +285,7 @@ fn shape_leaf_text(
 ) -> TextMeasurement {
     engine
         .text_reuse
-        .shape_unbounded(
+        .prepare_run(
             tc.shaper,
             TextRunIdentity {
                 widget_id: wid,
@@ -304,6 +304,7 @@ fn shape_leaf_text(
             },
         )
         .expect("recorded text metrics were validated")
+        .unbounded
 }
 
 fn leaf_value(axis: Axis, req: LenReq, wrap: TextWrap, measurement: TextMeasurement) -> f32 {

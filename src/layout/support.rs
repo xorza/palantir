@@ -47,7 +47,7 @@ pub(crate) struct TextShapeInput<'a> {
     /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
     /// bakes per-line offsets into the shaped buffer when wrap is on,
     /// so the layout pass has to thread this all the way down to
-    /// `shape_wrap` (and into `TextCacheKey`) — two shapes with
+    /// `shape_bounded` (and into `TextCacheKey`) — two shapes with
     /// identical text/size/wrap but different halign aren't
     /// interchangeable.
     pub(crate) halign: HAlign,

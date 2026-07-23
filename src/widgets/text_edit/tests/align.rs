@@ -579,10 +579,10 @@ mod per_line {
         );
     }
 
-    /// Regression: `LayoutEngine::shape_text` always re-shapes
-    /// through `shape_wrap` for `TextWrap::WrapWithOverflow` (item 4 in the
-    /// per-line-align review). With the slot cache keyed on
-    /// `(target_q, halign)`, the layout pipeline must hit that
+    /// Regression: `LayoutEngine::shape_text` always re-shapes through the
+    /// bounded path for `TextWrap::WrapWithOverflow` (item 4 in the
+    /// per-line-align review). With the slot cache keyed on width and
+    /// halign, the layout pipeline must hit that
     /// cache on every steady-state frame — otherwise we'd reshape
     /// on every frame and the per-frame text path becomes O(n) in
     /// glyph count.
