@@ -666,6 +666,8 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
 
 #[cfg(test)]
 mod test_support {
+    use crate::common::hash;
+
     use super::*;
 
     #[derive(Debug, PartialEq, Eq)]
@@ -678,7 +680,7 @@ mod test_support {
     impl CosmicMeasure {
         pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> TextMeasurement {
             let params = params.validated().unwrap();
-            self.measure_validated(text, params)
+            self.measure_hashed_validated(text, hash::hash_str(text), params)
         }
 
         pub(crate) fn measure_truncated(
