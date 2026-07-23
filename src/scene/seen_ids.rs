@@ -2,7 +2,7 @@
 //! "which widgets were recorded this frame":
 //!
 //! 1. **Eager disambiguation.** [`Self::resolve`] runs at
-//!    `Ui::widget_id` time — *before* the matching `ui.node`
+//!    `Ui::widget` time — *before* the matching `Widget::node`
 //!    opens the actual record. It rewrites the resolved id by mixing
 //!    in an occurrence counter when the raw id has already been
 //!    handed out this frame, so the returned id matches what the
@@ -14,8 +14,8 @@
 //!    [`Self::record_endpoint`] finalizes the [`CollisionRecord`]
 //!    once both opens have provided their `Endpoint`s.
 //! 2. **Endpoint tracking.** [`Self::record_endpoint`] runs at
-//!    `Forest::open_node` time, after the final id has been threaded
-//!    through `Ui::node`'s parameter. Stores `final_id → Endpoint` so
+//!    `Forest::open_node` time, after the final id has been carried
+//!    there by the `Widget`. Stores `final_id → Endpoint` so
 //!    the magenta debug overlay has both halves of a collision pair
 //!    on hand.
 //! 3. **Removed-widget diff + rollover.** [`Self::rollover`] computes
@@ -89,7 +89,7 @@ pub(crate) struct SeenIds {
     /// progress through `raw_id.with(1)`, `.with(2)`, etc.; explicitly
     /// occupied candidates are skipped. Cleared each frame in
     /// [`Self::pre_record`]. Independent of the `(layer, node)` of the
-    /// actual record, so `widget_id` gives the right id without peeking
+    /// actual record, so `Ui::widget` gives the right id without peeking
     /// at `Tree::peek_next_id`.
     counters: FxHashMap<WidgetId, u32>,
     /// `final_id → Endpoint` of every widget actually opened this
@@ -159,7 +159,7 @@ impl SeenIds {
     /// `resolve(raw_id)` — otherwise this routine can't see the
     /// first occurrence in `curr` and would incorrectly report
     /// "first time". Widget call sites pair them immediately
-    /// (`ui::widget_id` → `ui::node` → `scene::open_node`),
+    /// (`Ui::widget` → `Widget::node` → `scene::open_node`),
     /// so the contract holds for production code.
     #[inline]
     pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> WidgetId {
@@ -221,7 +221,7 @@ impl SeenIds {
         // un-disambiguated raw id and MUST already be present:
         // `resolve` only queues a pending entry on the *second*
         // explicit `resolve(X, true)` call this frame, and widgets
-        // pair `widget_id` with an immediate `ui.node` left-
+        // pair `Ui::widget` with an immediate `Widget::node` left-
         // to-right, so the first widget's `record_endpoint(X, ...)`
         // always runs before the second's. A missing entry means the
         // recording-order contract was violated — surface loudly.
@@ -279,7 +279,7 @@ mod tests {
     }
 
     /// Stand-in for the production `resolve → record_endpoint`
-    /// pairing every widget does (`widget_id` →
+    /// pairing every widget does (`Ui::widget` →
     /// `scene::open_node`). The lazy-counter fast path in `resolve`
     /// depends on `curr` being populated between consecutive resolves
     /// of the same raw id, so tests interleave them the same way.

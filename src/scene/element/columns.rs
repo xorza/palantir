@@ -176,9 +176,9 @@ impl LayoutCore {
     pub(crate) fn from_element(element: &Element) -> Self {
         let mode = element.mode.resolved();
         Self {
-            size: element.size,
-            padding: element.padding,
-            margin: element.margin,
+            size: element.size.unwrap_or_default(),
+            padding: element.padding.unwrap_or(Spacing::ZERO),
+            margin: element.margin.unwrap_or(Spacing::ZERO),
             meta: PackedLayoutMeta::new(mode, element.align, element.visibility),
         }
     }

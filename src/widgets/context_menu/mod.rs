@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
@@ -150,12 +150,9 @@ impl ContextMenu {
         let theme_min_width = ctx.min_width;
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
-        let mut e = self.element;
-        e.salt = Salt::Verbatim(body_id);
-        e.padding = e.configured().padding().unwrap_or(theme_padding);
-        if e.configured().min_size().is_none() {
-            e.min_size.w = theme_min_width;
-        }
+        let mut e = self.element.id(body_id);
+        e.padding.get_or_insert(theme_padding);
+        e.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
 
         // `Popup::show` resolves the current body against the surface.
         let mut popup = Popup::anchored_to(raw_anchor)
@@ -260,9 +257,9 @@ impl<'a> MenuItem<'a> {
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the state
-        // is identical before and after `ui.node`.
-        let mut entry = enter_widget(ui, &self.element);
-        let id = entry.id;
+        // is identical before and after the node records.
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
         let disabled = entry.state.disabled;
 
         // Borrow the per-item theme and copy out only what the row paints
@@ -281,14 +278,14 @@ impl<'a> MenuItem<'a> {
             ..text_style.clone()
         };
 
-        let mut element = self.element;
+        let element = &mut entry.widget.element;
         // Hug+Stretch+SpaceBetween: row hugs content (the default
         // `Sizes` — respects an explicit `.size(...)`), arrange
         // stretches to widest row, label/shortcut pin to opposite
         // edges. Fill would leak INF.
         element.align = Align::h(HAlign::Stretch);
         element.justify = Justify::SpaceBetween;
-        element.padding = padding;
+        element.padding = Some(padding);
         element.gaps.set_gap(16.0);
 
         let label = ui.intern(self.label);
@@ -316,7 +313,7 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        ui.node(id, element, look_bg.as_ref(), body);
+        entry.widget.node(ui, look_bg.as_ref(), body);
 
         if shortcut_fired {
             entry.state.left.phase = ButtonPhase::Up { click: Some(1) };

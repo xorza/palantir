@@ -56,7 +56,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, &self.element);
+        let entry = enter_widget(ui, self.element);
         let state = &entry.state;
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -77,20 +77,13 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let indicator = theme.indicator;
         let dot_inset = theme.indicator_inset;
 
-        toggle_row(
-            ui,
-            entry,
-            self.element,
-            chrome,
-            self.label,
-            |ui, pip_size| {
-                if selected {
-                    let dot_size = pip_size - 2.0 * dot_inset;
-                    let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
-                    ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
-                }
-            },
-        )
+        toggle_row(ui, entry, chrome, self.label, |ui, pip_size| {
+            if selected {
+                let dot_size = pip_size - 2.0 * dot_inset;
+                let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
+                ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
+            }
+        })
     }
 }
 

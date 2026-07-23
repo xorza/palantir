@@ -2,6 +2,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::shape::Shape;
@@ -278,8 +279,8 @@ impl<'a> DragValue<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
-        let mut entry = enter_widget(ui, &self.element);
-        let id = entry.id;
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
 
         // Focused + editable + enabled: the inline text editor owns the
         // frame. Pass the chip's last *pre-transform* rect (logical px,
@@ -296,7 +297,6 @@ impl<'a> DragValue<'a> {
             }
         }
 
-        let mut element = self.element;
         let mut changed = false;
         let mut committed = false;
 
@@ -382,11 +382,11 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = resolve_look(ui, id, &mut element, &entry.state, chip, |t| {
+        let look = resolve_look(ui, id, &mut entry.widget.element, &entry.state, chip, |t| {
             &t.drag_value.chip
         });
 
-        ui.node(id, element, Some(&look.background), |ui| {
+        entry.widget.node(ui, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text,
@@ -426,8 +426,10 @@ impl<'a> DragValue<'a> {
         // `min_size.w`) so a long value scrolls inside the chip's box instead
         // of growing a content-hugging row. Before the first chip frame gives
         // us a width to hold, fall back to the field's own width sizing.
-        let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(self.element.min_size.w)));
-        let width = held_w.unwrap_or(self.element.size.w());
+        let min_size = self.element.min_size.unwrap_or(Size::ZERO);
+        let sizes = self.element.size.unwrap_or_default();
+        let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
+        let width = held_w.unwrap_or(sizes.w());
         // Entry edge: seed the buffer from the current value — a click and a
         // programmatic focus both get a fresh draft, never a previous
         // session's stale text — and disarm any scrub anchor, so a drag that
@@ -451,9 +453,9 @@ impl<'a> DragValue<'a> {
                 .id(id)
                 .text_align(Align::CENTER)
                 .select_all_on_focus()
-                .size((width, self.element.size.h()))
-                .min_size(self.element.min_size)
-                .max_size(self.element.max_size);
+                .size((width, sizes.h()))
+                .min_size(min_size)
+                .max_size(self.element.max_size.unwrap_or(Size::INF));
             let edit = if let Some(editor) = editor {
                 edit.style(editor)
             } else {

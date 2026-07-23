@@ -107,8 +107,8 @@ impl<'a> Text<'a> {
         let metrics_valid = style.metrics().is_some();
         let font_size_px = style.font_size_px;
         let line_height_px = style.line_height_for(font_size_px);
-        let id = ui.widget_id(&self.element);
-        ui.node(id, self.element, None, |ui| {
+        let widget = ui.widget(self.element);
+        widget.node(ui, None, |ui| {
             if metrics_valid {
                 let text = ui.intern(self.text);
                 ui.add_shape(Shape::Text {
@@ -126,7 +126,7 @@ impl<'a> Text<'a> {
         });
         // Decorative: skip eager `response_for`. Discarded responses
         // pay zero; a `.left.clicked()` call later does one lazy probe.
-        Response::lazy(id, ui)
+        widget.response(ui)
     }
 }
 

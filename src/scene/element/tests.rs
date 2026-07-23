@@ -1,7 +1,6 @@
 use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::limits::MAX_PACKED_GAP;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::configuration::{ConfiguredElement, ConfiguredFields};
 use crate::scene::element::*;
 use crate::scene::visibility::Visibility;
 use crate::widgets::context_menu::MenuItem;
@@ -9,8 +8,8 @@ use crate::widgets::drag_value::DragValue;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
-fn configured<W: Configure>(widget: &mut W) -> ConfiguredElement<'_> {
-    ConfiguredElement::new(widget.element_mut().element)
+fn element_of<W: Configure>(widget: &mut W) -> &mut Element {
+    widget.element_mut().element
 }
 
 #[test]
@@ -59,8 +58,7 @@ fn authoring_struct_sizes_stay_packed() {
     // Still packed — sense (5 bits) + disabled (1) + clip (2) +
     // focusable (1) = 9 bits, fitting in a u16 with 7 spare.
     assert_eq!(std::mem::size_of::<NodeFlags>(), 2);
-    assert_eq!(std::mem::size_of::<ConfiguredFields>(), 4);
-    assert_eq!(std::mem::size_of::<Element>(), 104);
+    assert_eq!(std::mem::size_of::<Element>(), 120);
 }
 
 #[test]
@@ -75,11 +73,11 @@ fn layout_mode_size() {
 }
 
 #[test]
-fn configured_accessors_cover_the_complete_external_element_surface() {
+fn builder_setters_cover_the_complete_external_element_surface() {
     use crate::layout::types::sizing::Sizing;
 
     let id = WidgetId::from_hash("complete-configuration-surface");
-    let size = (Sizing::fixed(40.0), Sizing::fixed(30.0)).into();
+    let size: Sizes = (Sizing::fixed(40.0), Sizing::fixed(30.0)).into();
     let min_size = Size::new(10.0, 12.0);
     let max_size = Size::new(100.0, 120.0);
     let padding = Spacing::new(1.0, 2.0, 3.0, 4.0);
@@ -110,88 +108,71 @@ fn configured_accessors_cover_the_complete_external_element_surface() {
         .focusable(true)
         .visibility(Visibility::Hidden)
         .clip(ClipMode::None);
-    element.set_transform(transform);
+    element.transform = transform;
 
-    assert_eq!(element.configured.bits(), ConfiguredFields::all().bits());
-    assert_eq!(element.configured.bits().count_ones(), 19);
-    let configured = element.configured();
-    assert!(matches!(configured.salt(), Some(Salt::Verbatim(value)) if value == id));
-    assert_eq!(configured.size(), Some(size));
-    assert_eq!(configured.min_size(), Some(min_size));
-    assert_eq!(configured.max_size(), Some(max_size));
-    assert_eq!(configured.padding(), Some(padding));
-    assert_eq!(configured.margin(), Some(margin));
-    assert_eq!(configured.position(), Some(position));
+    assert!(matches!(element.salt, Salt::Verbatim(value) if value == id));
+    assert_eq!(element.size, Some(size));
+    assert_eq!(element.min_size, Some(min_size));
+    assert_eq!(element.max_size, Some(max_size));
+    assert_eq!(element.padding, Some(padding));
+    assert_eq!(element.margin, Some(margin));
+    assert_eq!(element.position, position);
     assert_eq!(
-        configured.grid(),
-        Some(GridCell {
+        element.grid,
+        GridCell {
             row: 2,
             col: 3,
             row_span: 4,
             col_span: 5,
-        }),
+        },
     );
-    assert_eq!(configured.gap(), Some(6.0));
-    assert_eq!(configured.line_gap(), Some(7.0));
-    assert_eq!(configured.justify(), Some(Justify::SpaceBetween));
-    assert_eq!(configured.align(), Some(align));
-    assert_eq!(configured.child_align(), Some(child_align));
-    assert_eq!(configured.sense(), Some(sense));
-    assert_eq!(configured.disabled(), Some(false));
-    assert_eq!(configured.focusable(), Some(true));
-    assert_eq!(configured.visibility(), Some(Visibility::Hidden));
-    assert_eq!(configured.clip(), Some(ClipMode::None));
-    assert_eq!(configured.transform(), Some(transform));
+    assert_eq!(element.gaps.gap(), 6.0);
+    assert_eq!(element.gaps.line_gap(), 7.0);
+    assert_eq!(element.justify, Justify::SpaceBetween);
+    assert_eq!(element.align, align);
+    assert_eq!(element.child_align, child_align);
+    assert_eq!(element.flags.sense(), sense);
+    assert!(!element.flags.is_disabled());
+    assert!(element.flags.is_focusable());
+    assert_eq!(element.visibility, Visibility::Hidden);
+    assert_eq!(element.clip, Some(ClipMode::None));
+    assert_eq!(element.transform, transform);
 }
 
 #[test]
-fn widget_specific_element_setters_preserve_configuration_provenance() {
+fn widget_specific_element_setters_reach_the_inner_element() {
     let transform = TranslateScale::new(Vec2::new(4.0, 5.0), 2.0);
     let mut panel = Panel::hstack().transform(transform);
     let mut grid = Grid::new().transform(transform);
-    assert_eq!(configured(&mut panel).transform(), Some(transform));
-    assert_eq!(configured(&mut grid).transform(), Some(transform));
+    assert_eq!(element_of(&mut panel).transform, transform);
+    assert_eq!(element_of(&mut grid).transform, transform);
 
     let mut item = MenuItem::new("Open").enabled(true);
-    assert_eq!(configured(&mut item).disabled(), Some(false));
+    assert!(!element_of(&mut item).flags.is_disabled());
 
     let mut value = 0.0;
     let mut drag = DragValue::new(&mut value).editable(true);
     assert_eq!(
-        configured(&mut drag).sense(),
-        Some(Sense::CLICK | Sense::DRAG),
+        element_of(&mut drag).flags.sense(),
+        Sense::CLICK | Sense::DRAG,
     );
 
     let mut scroll = Scroll::both().with_zoom();
     assert_eq!(
-        configured(&mut scroll).sense(),
-        Some(Sense::SCROLL | Sense::PINCH),
+        element_of(&mut scroll).flags.sense(),
+        Sense::SCROLL | Sense::PINCH,
     );
 }
 
 #[test]
-fn unconfigured_and_explicit_default_values_remain_distinct_and_unrecorded() {
+fn unconfigured_and_explicit_default_values_remain_distinct() {
     let inherited = Element::leaf();
-    let configured = inherited.configured();
-    assert!(configured.salt().is_none());
-    assert_eq!(configured.size(), None);
-    assert_eq!(configured.min_size(), None);
-    assert_eq!(configured.max_size(), None);
-    assert_eq!(configured.padding(), None);
-    assert_eq!(configured.margin(), None);
-    assert_eq!(configured.position(), None);
-    assert_eq!(configured.grid(), None);
-    assert_eq!(configured.gap(), None);
-    assert_eq!(configured.line_gap(), None);
-    assert_eq!(configured.justify(), None);
-    assert_eq!(configured.align(), None);
-    assert_eq!(configured.child_align(), None);
-    assert_eq!(configured.sense(), None);
-    assert_eq!(configured.disabled(), None);
-    assert_eq!(configured.focusable(), None);
-    assert_eq!(configured.visibility(), None);
-    assert_eq!(configured.clip(), None);
-    assert_eq!(configured.transform(), None);
+    assert_eq!(inherited.size, None);
+    assert_eq!(inherited.min_size, None);
+    assert_eq!(inherited.max_size, None);
+    assert_eq!(inherited.padding, None);
+    assert_eq!(inherited.margin, None);
+    assert_eq!(inherited.clip, None);
 
     let explicit = Element::leaf()
         .size(Sizes::default())
@@ -203,19 +184,17 @@ fn unconfigured_and_explicit_default_values_remain_distinct_and_unrecorded() {
         .focusable(false)
         .visibility(Visibility::Visible)
         .clip(ClipMode::None);
-    let configured = explicit.configured();
-    assert_eq!(configured.size(), Some(Sizes::default()));
-    assert_eq!(configured.min_size(), Some(Size::ZERO));
-    assert_eq!(configured.max_size(), Some(Size::INF));
-    assert_eq!(configured.padding(), Some(Spacing::ZERO));
-    assert_eq!(configured.margin(), Some(Spacing::ZERO));
-    assert_eq!(configured.disabled(), Some(false));
-    assert_eq!(configured.focusable(), Some(false));
-    assert_eq!(configured.visibility(), Some(Visibility::Visible));
-    assert_eq!(configured.clip(), Some(ClipMode::None));
+    assert_eq!(explicit.size, Some(Sizes::default()));
+    assert_eq!(explicit.min_size, Some(Size::ZERO));
+    assert_eq!(explicit.max_size, Some(Size::INF));
+    assert_eq!(explicit.padding, Some(Spacing::ZERO));
+    assert_eq!(explicit.margin, Some(Spacing::ZERO));
+    assert_eq!(explicit.clip, Some(ClipMode::None));
 
+    // Explicitly-set defaults record identically to unset fields.
     let columns = explicit.into_columns(WidgetId::from_hash("explicit-defaults"));
     assert_eq!(columns.attrs, NodeFlags::default());
+    assert_eq!(columns.bounds, BoundsExtras::DEFAULT);
 }
 
 #[test]
@@ -342,17 +321,17 @@ fn element_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
     let min_then_max = Element::leaf()
         .min_size((10.0, 20.0))
         .max_size((10.0, 30.0));
-    assert_eq!(min_then_max.min_size, Size::new(10.0, 20.0));
-    assert_eq!(min_then_max.max_size, Size::new(10.0, 30.0));
+    assert_eq!(min_then_max.min_size, Some(Size::new(10.0, 20.0)));
+    assert_eq!(min_then_max.max_size, Some(Size::new(10.0, 30.0)));
 
     let max_then_min = Element::leaf()
         .max_size((30.0, 20.0))
         .min_size((10.0, 20.0));
-    assert_eq!(max_then_min.min_size, Size::new(10.0, 20.0));
-    assert_eq!(max_then_min.max_size, Size::new(30.0, 20.0));
+    assert_eq!(max_then_min.min_size, Some(Size::new(10.0, 20.0)));
+    assert_eq!(max_then_min.max_size, Some(Size::new(30.0, 20.0)));
 
     let unbounded = Element::leaf().max_size(Size::INF);
-    assert_eq!(unbounded.max_size, Size::INF);
+    assert_eq!(unbounded.max_size, Some(Size::INF));
 }
 
 #[test]
@@ -461,7 +440,7 @@ fn id_of<W: Configure>(mut w: W) -> WidgetId {
     // No parent context in this micro-test — `Salt::resolve(None)`
     // yields the bare auto/explicit id without any parent-scoping
     // mix.
-    configured(&mut w).salt().unwrap().resolve(None)
+    element_of(&mut w).salt.resolve(None)
 }
 
 /// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable

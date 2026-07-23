@@ -34,7 +34,7 @@ impl WidgetId {
     /// Hard-coded (rather than derived from `auto_stable()` at the
     /// viewport construction site) so refactors to `ui/mod.rs` don't
     /// shift it. Treated like any other parent by
-    /// `Ui::widget_id` — top-level `id_salt("k")` resolves to
+    /// `Ui::widget` — top-level `id_salt("k")` resolves to
     /// `VIEWPORT.with(from_hash("k").0)`.
     pub(crate) const VIEWPORT: Self = Self(u64::MAX);
 

@@ -155,13 +155,13 @@ impl Popup {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
         // Popup body resolves at the root of `Layer::Popup` (no
-        // open frames in that layer), so `widget_id`'s
-        // parent-scoping is a no-op — `body_id` equals the bare
+        // open frames in that layer), so `Ui::widget`'s
+        // parent-scoping is a no-op — the body id equals the bare
         // salt hash. That keeps the eater id (and any persistent
         // popup-side state) stable regardless of where in `Main`
         // the trigger lives.
-        let body_id = ui.widget_id(&self.element);
-        let eater_id = body_id.with("eater");
+        let mut widget = ui.widget(self.element);
+        let eater_id = widget.id().with("eater");
         // Eater records first → paints under the body. Hit-test runs
         // reverse-iter so the body's leaves still win inside its rect.
         //
@@ -180,16 +180,15 @@ impl Popup {
                 .sense(Sense::CLICK | Sense::DRAG | Sense::SCROLL | Sense::PINCH)
                 .show(ui);
         });
-        let mut element = self.element;
         let chrome = resolve_container_chrome(
-            &mut element,
+            &mut widget.element,
             self.chrome,
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
         let handle = PopupHandle::new();
         ui.overlay_layer(Layer::Popup, self.position, |ui| {
-            ui.node(body_id, element, chrome.as_ref(), |ui| body(ui, &handle));
+            widget.node(ui, chrome.as_ref(), |ui| body(ui, &handle));
         });
         let dismiss_mode = self.click_outside == ClickOutside::Dismiss;
         let eater_clicked = ui.response_for(eater_id).left.clicked();

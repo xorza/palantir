@@ -3,7 +3,8 @@ use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::primitives::size::Size;
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
@@ -67,8 +68,8 @@ impl Modal {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ModalResponse {
         let surface = ui.display().logical_rect();
-        let root_id = ui.widget_id(&self.element);
-        let card_id = root_id.with("card");
+        let mut widget = ui.widget(self.element);
+        let root_id = widget.id();
 
         let mt = &ui.theme.modal;
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
@@ -76,24 +77,22 @@ impl Modal {
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
-        let mut card = self.element;
-        card.salt = Salt::Verbatim(card_id);
-        card.padding = card.configured().padding().unwrap_or(theme_padding);
-        if card.configured().min_size().is_none() {
-            card.min_size.w = theme_min_width;
-        }
+        // The user-configured element becomes the card; the widget's
+        // resolved id stays on the backdrop root it records below.
+        let mut card = widget.element.id(root_id.with("card"));
+        card.padding.get_or_insert(theme_padding);
+        card.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
 
+        // Root fills the surface, dims it, eats stray pointer events,
+        // and centers the card. The card re-senses `BLOCK` so clicks
+        // on it never fall through to this dismiss-backdrop.
+        widget.element = Element::zstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .child_align(Align::CENTER)
+            .sense(BLOCK);
         ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
-            // Root fills the surface, dims it, eats stray pointer events,
-            // and centers the card. The card re-senses `BLOCK` so clicks
-            // on it never fall through to this dismiss-backdrop.
-            let mut root = Element::zstack();
-            root.salt = Salt::Verbatim(root_id);
-            root.size = (Sizing::FILL, Sizing::FILL).into();
-            root.child_align = Align::CENTER;
-            root.flags.set_sense(BLOCK);
-            ui.node(root_id, root, Some(&dim), |ui| {
-                ui.node(card_id, card, Some(&card_bg), body);
+            widget.node(ui, Some(&dim), |ui| {
+                ui.widget(card).node(ui, Some(&card_bg), body);
             });
         });
 

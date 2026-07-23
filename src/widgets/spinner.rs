@@ -76,14 +76,12 @@ impl Spinner {
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
         let width = self.thickness.unwrap_or((diameter * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);
-        self.element.size = self
-            .element
-            .configured()
-            .size()
-            .unwrap_or((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
+        self.element
+            .size
+            .get_or_insert((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
 
-        let id = ui.widget_id(&self.element);
-        ui.node(id, self.element, None, |ui| {
+        let widget = ui.widget(self.element);
+        widget.node(ui, None, |ui| {
             // Static arc (phase 0) + a paint-time spin: the recorded
             // shape is identical every frame, so the spinner's subtree
             // stays cache-stable and only the composer re-spins it.
@@ -98,7 +96,7 @@ impl Spinner {
                 },
             );
         });
-        Response::lazy(id, ui)
+        widget.response(ui)
     }
 }
 

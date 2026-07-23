@@ -5,7 +5,6 @@ use crate::primitives::interned_str::TextInput;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Salt;
 use crate::scene::element::{Configure, Element};
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
@@ -184,22 +183,15 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
-            let mut element = self.element;
-            element.salt = Salt::Verbatim(bubble_id);
+            let mut element = self.element.id(bubble_id);
             let text_style = ui.theme.tooltip.text.clone();
             let chrome = self
                 .chrome
                 .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
-            element.padding = element
-                .configured()
-                .padding()
-                .unwrap_or(ui.theme.tooltip.padding);
-            element.max_size = element
-                .configured()
-                .max_size()
-                .unwrap_or(ui.theme.tooltip.max_size);
+            element.padding.get_or_insert(ui.theme.tooltip.padding);
+            element.max_size.get_or_insert(ui.theme.tooltip.max_size);
             ui.overlay_layer(Layer::Tooltip, position, |ui| {
-                ui.node(bubble_id, element, Some(&chrome), |ui| {
+                ui.widget(element).node(ui, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(&text_style)
                         .text_wrap(TextWrap::Wrap)

@@ -2,7 +2,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
@@ -65,15 +65,20 @@ impl<'a> ComboBox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut element = self.element;
-        let entry = enter_widget(ui, &element);
-        let id = entry.id;
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = resolve_look(ui, id, &mut element, &entry.state, self.style, |t| {
-            &t.button
-        });
+        let look = resolve_look(
+            ui,
+            id,
+            &mut entry.widget.element,
+            &entry.state,
+            self.style,
+            |t| &t.button,
+        );
 
+        let element = &mut entry.widget.element;
         element.justify = Justify::SpaceBetween;
         element.child_align = Align::v(VAlign::Center);
         element.gaps.set_gap(12.0);
@@ -84,17 +89,16 @@ impl<'a> ComboBox<'a> {
         // options aren't `'static`, so they route through `Ui::intern`.
         let label = ui.intern(self.options.get(*self.selected).copied().unwrap_or(""));
 
-        ui.node(id, element, Some(&look.background), |ui| {
+        entry.widget.node(ui, Some(&look.background), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)
                 .show(ui);
 
-            let arrow_id = id.with("arrow");
-            let mut arrow = Element::leaf();
-            arrow.salt = Salt::Verbatim(arrow_id);
-            arrow.size = (Sizing::fixed(ARROW_W), Sizing::fixed(ARROW_H)).into();
-            ui.node(arrow_id, arrow, None, |ui| {
+            let arrow = Element::leaf()
+                .id(id.with("arrow"))
+                .size((Sizing::fixed(ARROW_W), Sizing::fixed(ARROW_H)));
+            ui.widget(arrow).node(ui, None, |ui| {
                 let pts = chevron_pts();
                 ui.add_shape(
                     Shape::polyline(&pts, PolylineColors::Single(arrow_color), 1.5)
