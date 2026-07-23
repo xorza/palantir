@@ -9,7 +9,6 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
-use crate::input::keyboard::KeyboardEvent;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::record::ShapeRecord;
@@ -104,22 +103,17 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
     (text_origin, caret_origin)
 }
 
-/// Emit a shift+ArrowRight as the focused widget would see it.
-/// `InputEvent::KeyDown` is a unit event; modifier state attaches to
-/// the queued `KeyPress` after the fact (mirror of how
-/// `multiline.rs:96-98` builds shift+arrow).
+/// Emit Shift+ArrowRight as the focused widget would see it.
 fn shift_arrow_right(ui: &mut Ui) {
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    }));
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowRight,
         repeat: false,
         physical: Key::Other,
     });
-    if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
-        kp.mods = Modifiers {
-            shift: true,
-            ..Modifiers::NONE
-        };
-    }
 }
 
 #[test]

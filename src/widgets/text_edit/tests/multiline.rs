@@ -1,4 +1,3 @@
-use crate::input::keyboard::KeyboardEvent;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -71,21 +70,15 @@ fn multiline_paste_keeps_newlines() {
     let ed_id = WidgetId::from_hash("ml-ed");
     ui.request_focus(Some(ed_id));
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('v'),
         repeat: false,
         physical: Key::Other,
     });
-    // Inject the primary command modifier via the key event —
-    // InputState reads modifiers from a separate `ModifiersChanged`
-    // queue, but for this test we drive the synthesizer directly.
-    // `Modifiers::ctrl` is the platform-normalized command bit.
-    if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
-        kp.mods = Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        };
-    }
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
@@ -107,17 +100,15 @@ fn multiline_selection_crosses_newline() {
         st.edit.caret = 3;
     }
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    }));
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowDown,
         repeat: false,
         physical: Key::Other,
     });
-    if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
-        kp.mods = Modifiers {
-            shift: true,
-            ..Modifiers::NONE
-        };
-    }
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(

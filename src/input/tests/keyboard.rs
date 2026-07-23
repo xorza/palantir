@@ -1,4 +1,5 @@
-use crate::input::keyboard::{Key, Modifiers, TextChunk};
+use crate::input::keyboard::{Key, KeyboardEvent, Modifiers, TextChunk};
+use crate::input::shortcut::Shortcut;
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
@@ -60,7 +61,6 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         &cascades,
     );
 
-    use crate::input::keyboard::KeyboardEvent;
     let presses: Vec<_> = state
         .frame_keyboard_events
         .iter()
@@ -80,7 +80,6 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 
 #[test]
 fn text_events_arrive_in_order_in_keyboard_buffer() {
-    use crate::input::keyboard::KeyboardEvent;
     let mut state = InputState::default();
     let cascades = Cascades::default();
     state.focused = Some(WidgetId::from_hash("editor"));
@@ -95,6 +94,43 @@ fn text_events_arrive_in_order_in_keyboard_buffer() {
         })
         .collect();
     assert_eq!(texts, vec!["hé".to_string(), "llo".to_string()]);
+}
+
+#[test]
+fn keyboard_views_and_shortcuts_follow_capture_owner() {
+    let mut state = InputState::default();
+    let cascades = Cascades::default();
+    state.focused = Some(WidgetId::from_hash("editor"));
+    state.on_input(
+        InputEvent::KeyDown {
+            key: Key::Escape,
+            repeat: false,
+            physical: Key::Escape,
+        },
+        &cascades,
+    );
+    let shortcut = Shortcut::key(Key::Escape);
+    let event = state.keyboard_events()[0];
+    let KeyboardEvent::Down(keypress) = event else {
+        panic!("expected queued key press");
+    };
+
+    assert_eq!(state.keyboard_events(), &[event]);
+    assert!(state.key_pressed(shortcut));
+    assert!(state.subs.matches_press(keypress));
+    assert_eq!(state.subs.keys.len(), 1);
+
+    let owner = WidgetId::from_hash("popup");
+    let other = WidgetId::from_hash("other-popup");
+    state.capture_keyboard(owner);
+
+    assert!(state.keyboard_events().is_empty());
+    assert!(!state.key_pressed(shortcut));
+    assert_eq!(state.captured_keyboard_events(owner), &[event]);
+    assert!(state.captured_key_pressed(owner, shortcut));
+    assert!(state.captured_keyboard_events(other).is_empty());
+    assert!(!state.captured_key_pressed(other, shortcut));
+    assert_eq!(state.subs.keys.len(), 1);
 }
 
 #[test]
