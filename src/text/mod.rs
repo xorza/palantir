@@ -21,7 +21,6 @@
 //!
 //! [`Ui`]: crate::Ui
 
-use crate::common::content_hash::ContentHash;
 use crate::common::hash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::approx::EPS;
@@ -161,13 +160,12 @@ struct PreparedTextRunState<'a> {
     entry: &'a mut TextReuseEntry,
 }
 
-/// Per-window identity of one text run. The widget and ordinal select the
-/// reuse row; `authoring_hash` validates its contents.
+/// Per-window identity of one text run. The widget and ordinal select its
+/// reuse row; [`TextSystem`] derives validity from the shaping inputs.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextRunIdentity {
     pub(crate) widget_id: WidgetId,
     pub(crate) ordinal: u16,
-    pub(crate) authoring_hash: ContentHash,
 }
 
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
@@ -397,16 +395,19 @@ impl TextSystem {
     }
 
     /// Prepare one identity-cached text run, refreshing its unbounded shape
-    /// and clearing its stale bounded result when the authoring hash changes.
+    /// and clearing its stale bounded result when any shaping input changes.
     pub(crate) fn prepare_run<'a>(
         &'a mut self,
         identity: TextRunIdentity,
         text: &'a str,
-        text_hash: u64,
         params: ShapeParams,
     ) -> Result<PreparedTextRun<'a>, ShapeParamsError> {
         let shaper = &self.shaper;
         let params = params.validated()?.unbounded();
+        let inputs = TextReuseInputs {
+            text_hash: hash::hash_str(text),
+            params,
+        };
         if text.is_empty() {
             return Ok(PreparedTextRun {
                 unbounded: TextMeasurement::ZERO,
@@ -421,20 +422,20 @@ impl TextSystem {
             let unbounded = dispatch(
                 &mut inner.cosmic,
                 text,
-                text_hash,
+                inputs.text_hash,
                 params,
                 LineFit::Wrap,
                 TextCacheKey::INVALID,
             );
             TextReuseEntry {
-                hash: identity.authoring_hash,
+                inputs,
                 unbounded,
                 wrap: None,
             }
         };
         let entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
             Entry::Occupied(mut occupied) => {
-                if occupied.get().hash != identity.authoring_hash {
+                if occupied.get().inputs != inputs {
                     occupied.insert(refresh());
                 }
                 occupied.into_mut()
@@ -1045,11 +1046,17 @@ fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
     text.len()
 }
 
-/// Cached unbounded shape + most-recent wrap result, validity-checked
-/// by authoring `hash`.
+/// Inputs that fully determine an unbounded shaping result.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TextReuseInputs {
+    text_hash: u64,
+    params: ValidatedShapeParams,
+}
+
+/// Cached unbounded shape + most-recent wrap result.
 #[derive(Clone, Copy, Debug)]
 struct TextReuseEntry {
-    hash: ContentHash,
+    inputs: TextReuseInputs,
     unbounded: TextMeasurement,
     wrap: Option<WrapReuse>,
 }

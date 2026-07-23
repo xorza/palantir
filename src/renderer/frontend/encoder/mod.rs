@@ -349,7 +349,7 @@ fn emit_one_shape(
                 return;
             }
             ctx.shaper
-                .ensure_buffer(text.resolve(ctx.interned_text).text, shaped.key);
+                .ensure_buffer(text.resolve(ctx.interned_text), shaped.key);
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect

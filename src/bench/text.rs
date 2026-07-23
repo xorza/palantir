@@ -1,5 +1,3 @@
-use crate::common::content_hash::ContentHash;
-use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
@@ -33,12 +31,9 @@ fn measure_truncated_width(
     text_system: &mut TextSystem,
     identity: TextRunIdentity,
     text: &str,
-    text_hash: u64,
     params: ShapeParams,
 ) -> TextMeasurement {
-    let prepared = text_system
-        .prepare_run(identity, text, text_hash, params)
-        .unwrap();
+    let prepared = text_system.prepare_run(identity, text, params).unwrap();
     let target = params
         .max_width_px
         .expect("truncation benchmark requires a finite width");
@@ -54,28 +49,19 @@ pub fn bench(c: &mut Criterion) {
         b.iter(|| black_box(arena_text.clone()));
     });
 
-    let text_hash = hash_str(TEXT);
     let reuse_identity = TextRunIdentity {
         widget_id: WidgetId::from_hash("text-shape-reuse-hit"),
         ordinal: 0,
-        authoring_hash: ContentHash(text_hash),
     };
     c.bench_function("text_shape/ellipsis_reuse_hit", |b| {
         let mut text_system = TextSystem::new(TextShaper::with_bundled_fonts());
         let shape_params = params(80.0);
-        measure_truncated_width(
-            &mut text_system,
-            reuse_identity,
-            TEXT,
-            text_hash,
-            shape_params,
-        );
+        measure_truncated_width(&mut text_system, reuse_identity, TEXT, shape_params);
         b.iter(|| {
             black_box(measure_truncated_width(
                 &mut text_system,
                 reuse_identity,
                 TEXT,
-                text_hash,
                 shape_params,
             ));
         });
@@ -84,13 +70,12 @@ pub fn bench(c: &mut Criterion) {
     let churn_identity = TextRunIdentity {
         widget_id: WidgetId::from_hash("text-shape-width-churn"),
         ordinal: 0,
-        authoring_hash: ContentHash(text_hash),
     };
     c.bench_function("text_shape/ellipsis_width_churn", |b| {
         b.iter_batched(
             || {
                 let mut text = TextSystem::new(TextShaper::with_bundled_fonts());
-                measure_truncated_width(&mut text, churn_identity, TEXT, text_hash, params(39.75));
+                measure_truncated_width(&mut text, churn_identity, TEXT, params(39.75));
                 BenchState { text }
             },
             |mut state| {
@@ -99,7 +84,6 @@ pub fn bench(c: &mut Criterion) {
                         &mut state.text,
                         churn_identity,
                         TEXT,
-                        text_hash,
                         params(40.0 + i as f32 * 0.25),
                     );
                     black_box(measured.size);

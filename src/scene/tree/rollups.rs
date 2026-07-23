@@ -87,12 +87,9 @@ mod tests {
     }
 
     /// Pin: every authoring-relevant `ShapeRecord::Text` field participates
-    /// in the node hash. Without this, the measure cache would
-    /// conflate runs whose shaped buffers genuinely differ
-    /// (`line_height_px` → different `Metrics::new`; `weight` → different
-    /// physical face) or whose paint position differs (`local_rect` →
-    /// different `DrawText` rects). New fields go in the table, not in a
-    /// new test.
+    /// in the node hash so layout and paint caches invalidate when text
+    /// metrics, appearance, or position changes. New fields go in the table,
+    /// not in a new test.
     #[test]
     fn text_shape_hash_distinguishes_each_authoring_field() {
         use FontWeight::{Bold, Regular};
