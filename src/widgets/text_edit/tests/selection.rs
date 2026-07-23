@@ -163,7 +163,7 @@ fn selection_state_transitions() {
     ];
     for c in cases {
         let mut s = String::from(c.buf);
-        let mut state = TextEditState {
+        let mut state = EditState {
             caret: c.caret,
             selection: c.sel,
             ..Default::default()

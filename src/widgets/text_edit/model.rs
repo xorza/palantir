@@ -1,51 +1,20 @@
-//! Persistent text-edit state, mutation history, and Unicode navigation.
+//! Text-buffer mutation history and Unicode navigation.
 
-use crate::common::clipboard::Clipboard;
-use crate::common::platform::{PLATFORM, Platform};
-use crate::input::keyboard::{Key, KeyPress, Modifiers};
-use crate::input::shortcut::Shortcut;
-use crate::text::{SelectionRects, ShapeParams, TextShaper};
-use glam::Vec2;
 use std::borrow::Cow;
 use std::collections::VecDeque;
-use std::time::Duration;
 
-/// Editing shortcuts, shared by the keyboard dispatch ([`dispatch_shortcut`])
-/// and the default context menu, so a chord and its menu label can't drift.
-pub(crate) const CUT: Shortcut = Shortcut::ctrl('X');
-pub(crate) const COPY: Shortcut = Shortcut::ctrl('C');
-pub(crate) const PASTE: Shortcut = Shortcut::ctrl('V');
-const SELECT_ALL: Shortcut = Shortcut::ctrl('A');
-const UNDO: Shortcut = Shortcut::ctrl('Z');
-const REDO: Shortcut = Shortcut::ctrl_shift('Z');
-
-/// Cross-frame state for one [`crate::widgets::text_edit::TextEdit`]. Stored in [`crate::ui::Ui`]'s
-/// `WidgetId → Any` map keyed by the widget's id; lifecycle managed by
-/// the same removed-widget sweep that drives the layout/text caches.
+/// Semantic state for the host-owned text buffer.
 ///
-/// `caret` is a *byte* offset into the buffer (cosmic-text returns
-/// byte cursors and `&buffer[..caret]` is the natural prefix-measure
-/// path). All widget-driven mutations step grapheme-cluster boundaries
-/// (which are themselves codepoint-aligned), so the caret should never
-/// land mid-codepoint. Application code may replace the buffer between
-/// frames, so `show()` repairs every persisted byte offset to the nearest
-/// preceding UTF-8 boundary before processing input.
+/// `caret` is a byte offset. Widget-driven mutations step grapheme
+/// boundaries, while [`Self::normalize`] repairs offsets after the host
+/// replaces the buffer between frames.
 #[derive(Clone, Default, Debug)]
-pub(crate) struct TextEditState {
+pub(crate) struct EditState {
     pub(crate) caret: usize,
     /// Selection anchor. `None` = no selection. Invariant: never
     /// `Some(caret)` — every mutation site collapses an empty selection
     /// to `None` so "selection live" is a single `is_some()` check.
     pub(crate) selection: Option<usize>,
-    /// Lazily retained only after selection geometry spills past inline storage.
-    pub(crate) selection_rects: Option<Box<SelectionRects>>,
-    /// Caret byte at the rising edge of the pointer press, used as the
-    /// drag anchor for click+drag selection. Reset on release.
-    pub(crate) drag_anchor: Option<usize>,
-    /// Was the widget focused last frame? Used to detect the
-    /// focus rising edge so the caret blink resets on re-focus
-    /// even when the caret position itself didn't change.
-    pub(crate) prev_focused: bool,
     pub(crate) undo: VecDeque<EditSnapshot>,
     pub(crate) redo: Vec<EditSnapshot>,
     /// Kind of the most recent recorded edit, used to coalesce
@@ -53,19 +22,6 @@ pub(crate) struct TextEditState {
     /// a single undo unit. `None` after any caret-only motion so the
     /// next edit always opens a fresh group.
     pub(crate) last_edit_kind: Option<EditKind>,
-    /// Viewport offset into the unscrolled text layout, in
-    /// editor-local px. Single-line uses `.x` only (text wraps to
-    /// inner width in multi-line so x stays at 0); multi-line uses
-    /// `.y` for scroll-to-caret as content grows past the visible
-    /// height. Updated each frame after input so the caret stays
-    /// inside the visible area; subtracted from every shape
-    /// (text / selection / caret) at emit time.
-    pub(crate) scroll: Vec2,
-    /// Frame-runtime clock snapshot from the last frame the caret moved, text
-    /// changed, or selection shifted. The blink phase is computed
-    /// against this so the caret stays solid for the first
-    /// [`crate::widgets::text_edit::BLINK_HALF`] seconds after any input.
-    pub(crate) last_caret_change: Duration,
 }
 
 #[derive(Clone, Debug)]
@@ -85,15 +41,11 @@ pub(crate) enum EditKind {
 
 const UNDO_LIMIT: usize = 128;
 
-/// One frame's editing session: the host-owned buffer, the widget's
-/// cross-frame [`TextEditState`] row, and the config that gates
-/// mutations — everything the edit / nav / clipboard paths need,
-/// bundled so they read as methods instead of free functions each
-/// threading the same five parameters and an `&mut bool` out-flag.
+/// One frame's semantic editing session.
 #[derive(Debug)]
 pub(crate) struct Editor<'a> {
     pub(crate) text: &'a mut String,
-    pub(crate) state: &'a mut TextEditState,
+    pub(crate) state: &'a mut EditState,
     pub(crate) multiline: bool,
     max_chars: Option<usize>,
     /// The buffer was mutated this session (typing, delete, paste,
@@ -105,7 +57,7 @@ pub(crate) struct Editor<'a> {
 impl<'a> Editor<'a> {
     pub(crate) fn new(
         text: &'a mut String,
-        state: &'a mut TextEditState,
+        state: &'a mut EditState,
         multiline: bool,
         max_chars: Option<usize>,
     ) -> Self {
@@ -153,24 +105,6 @@ impl<'a> Editor<'a> {
         self.state.selection = snap.selection.filter(|&a| a != snap.caret);
         self.state.last_edit_kind = None;
         self.edited = true;
-    }
-
-    /// No-op on an empty stack.
-    fn undo(&mut self) {
-        if let Some(snap) = self.state.undo.pop_back() {
-            let cur = self.snapshot();
-            self.state.redo.push(cur);
-            self.apply_history(snap);
-        }
-    }
-
-    /// No-op on an empty stack.
-    fn redo(&mut self) {
-        if let Some(snap) = self.state.redo.pop() {
-            let cur = self.snapshot();
-            self.state.undo.push_back(cur);
-            self.apply_history(snap);
-        }
     }
 
     /// Delete the live selection range (if any), landing the caret at
@@ -246,14 +180,11 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Cut the live selection to the clipboard. No-op without one.
-    pub(crate) fn cut(&mut self, clipboard: &Clipboard) {
+    /// Delete the live selection as one bulk edit.
+    pub(crate) fn cut_selection(&mut self) {
         let Some(r) = self.state.sel_range() else {
             return;
         };
-        if clipboard.set(&self.text[r.clone()]).is_err() {
-            return;
-        }
         self.record_edit(EditKind::Other);
         self.text.replace_range(r.clone(), "");
         self.state.caret = r.start;
@@ -261,11 +192,8 @@ impl<'a> Editor<'a> {
         self.edited = true;
     }
 
-    /// Copy the live selection to the clipboard. No-op without one.
-    pub(crate) fn copy(&self, clipboard: &Clipboard) {
-        if let Some(r) = self.state.sel_range() {
-            let _ = clipboard.set(&self.text[r]);
-        }
+    pub(crate) fn selected_text(&self) -> Option<&str> {
+        self.state.sel_range().map(|range| &self.text[range])
     }
 
     /// Clear the whole buffer (the context menu's Clear).
@@ -292,7 +220,7 @@ impl<'a> Editor<'a> {
     /// `Some(caret)`" invariant. Always ends the current edit-coalesce
     /// group — caret-only motion breaks Typing / Delete runs into
     /// separate undo entries.
-    fn move_caret(&mut self, new_caret: usize, extend: bool) {
+    pub(crate) fn move_caret(&mut self, new_caret: usize, extend: bool) {
         if extend {
             self.state.selection.get_or_insert(self.state.caret);
         } else {
@@ -305,184 +233,99 @@ impl<'a> Editor<'a> {
         self.state.last_edit_kind = None;
     }
 
-    /// Route platform shortcuts (undo / redo / select-all / cut /
-    /// copy / paste) before keyboard edit dispatch. Returns `true`
-    /// when `kp` was claimed; the caller skips [`Self::apply_key`] for
-    /// that key. Undo/redo always fire; clipboard + select-all are
-    /// suppressed when a context menu owns the same bindings
-    /// (`menu_open == true`).
-    pub(crate) fn dispatch_shortcut(
-        &mut self,
-        kp: KeyPress,
-        menu_open: bool,
-        clipboard: &Clipboard,
-    ) -> bool {
-        if UNDO.matches(kp) {
-            self.undo();
-            return true;
+    /// No-op on an empty stack.
+    pub(crate) fn undo(&mut self) {
+        if let Some(snap) = self.state.undo.pop_back() {
+            let cur = self.snapshot();
+            self.state.redo.push(cur);
+            self.apply_history(snap);
         }
-        if REDO.matches(kp) {
-            self.redo();
-            return true;
-        }
-        if menu_open {
-            return false;
-        }
-        if SELECT_ALL.matches(kp) {
-            self.select_all();
-            return true;
-        }
-        if COPY.matches(kp) {
-            self.copy(clipboard);
-            return true;
-        }
-        if CUT.matches(kp) {
-            self.cut(clipboard);
-            return true;
-        }
-        if PASTE.matches(kp) {
-            self.paste(&clipboard.get());
-            return true;
-        }
-        false
     }
 
-    /// Apply one keypress to the buffer + state. Recognized keys are
-    /// consumed silently except the two [`KeyOutcome`]s the caller
-    /// must act on: Escape asked to blur, or Up/Down needs the
-    /// shaper's 2D layout — which this pure buffer+state method
-    /// deliberately doesn't carry. Platform shortcuts (undo /
-    /// clipboard / select-all) are handled by [`Self::dispatch_shortcut`]
-    /// before this; `multiline` toggles Enter → `\n` insertion and
-    /// enables Up/Down motion.
-    pub(crate) fn apply_key(&mut self, kp: KeyPress) -> KeyOutcome {
-        let shift = kp.mods.shift;
-        match kp.key {
-            Key::Char(c) if !kp.mods.any_command() => {
-                let mut buf = [0u8; 4];
-                self.replace_selection(c.encode_utf8(&mut buf), EditKind::Typing);
-            }
-            Key::Backspace => {
-                if self.state.selection.is_some() || self.state.caret > 0 {
-                    self.record_edit(EditKind::Delete);
-                    if !self.delete_selection() {
-                        let prev = prev_grapheme_boundary(self.text, self.state.caret);
-                        self.text.replace_range(prev..self.state.caret, "");
-                        self.state.caret = prev;
-                    }
-                    self.edited = true;
-                }
-            }
-            Key::Delete => {
-                if self.state.selection.is_some() || self.state.caret < self.text.len() {
-                    self.record_edit(EditKind::Delete);
-                    if !self.delete_selection() {
-                        let next = next_grapheme_boundary(self.text, self.state.caret);
-                        self.text.replace_range(self.state.caret..next, "");
-                    }
-                    self.edited = true;
-                }
-            }
-            Key::ArrowLeft if is_word_nav(kp.mods) => {
-                let target = prev_word_boundary(self.text, self.state.caret);
-                self.move_caret(target, shift);
-            }
-            Key::ArrowRight if is_word_nav(kp.mods) => {
-                let target = next_word_boundary(self.text, self.state.caret);
-                self.move_caret(target, shift);
-            }
-            Key::ArrowLeft => {
-                let target = if !shift && let Some(r) = self.state.sel_range() {
-                    r.start
-                } else {
-                    prev_grapheme_boundary(self.text, self.state.caret)
-                };
-                self.move_caret(target, shift);
-            }
-            Key::ArrowRight => {
-                let target = if !shift && let Some(r) = self.state.sel_range() {
-                    r.end
-                } else {
-                    next_grapheme_boundary(self.text, self.state.caret)
-                };
-                self.move_caret(target, shift);
-            }
-            Key::ArrowUp if self.multiline => {
-                return KeyOutcome::Vertical {
-                    up: true,
-                    extend: shift,
-                };
-            }
-            Key::ArrowDown if self.multiline => {
-                return KeyOutcome::Vertical {
-                    up: false,
-                    extend: shift,
-                };
-            }
-            Key::Enter if self.multiline => {
-                self.replace_selection("\n", EditKind::Other);
-            }
-            Key::Home => self.move_caret(0, shift),
-            Key::End => self.move_caret(self.text.len(), shift),
-            Key::Escape => {
-                // Two-stage: collapse selection first, blur only when
-                // there's no selection to drop.
-                if self.state.selection.is_some() {
-                    self.state.selection = None;
-                    self.state.last_edit_kind = None;
-                } else {
-                    return KeyOutcome::Blur;
-                }
-            }
-            _ => {}
+    /// No-op on an empty stack.
+    pub(crate) fn redo(&mut self) {
+        if let Some(snap) = self.state.redo.pop() {
+            let cur = self.snapshot();
+            self.state.undo.push_back(cur);
+            self.apply_history(snap);
         }
-        KeyOutcome::None
     }
 
-    /// Resolve an Up/Down [`KeyOutcome::Vertical`] against the
-    /// shaper's 2D layout: probe one line above/below the caret's
-    /// current x and move the caret there (extending the selection if
-    /// `extend`). Up from the first line snaps to byte 0.
-    pub(crate) fn resolve_vertical(
-        &mut self,
-        shaper: &TextShaper,
-        params: ShapeParams,
-        up: bool,
-        extend: bool,
-    ) {
-        let pos = shaper.cursor_xy(self.text, self.state.caret, params);
-        let target = if up && pos.y_top <= 0.5 {
-            0
+    pub(crate) fn insert_char(&mut self, c: char) {
+        let mut buf = [0u8; 4];
+        self.replace_selection(c.encode_utf8(&mut buf), EditKind::Typing);
+    }
+
+    pub(crate) fn delete_backward(&mut self) {
+        if self.state.selection.is_none() && self.state.caret == 0 {
+            return;
+        }
+        self.record_edit(EditKind::Delete);
+        if !self.delete_selection() {
+            let prev = prev_grapheme_boundary(self.text, self.state.caret);
+            self.text.replace_range(prev..self.state.caret, "");
+            self.state.caret = prev;
+        }
+        self.edited = true;
+    }
+
+    pub(crate) fn delete_forward(&mut self) {
+        if self.state.selection.is_none() && self.state.caret == self.text.len() {
+            return;
+        }
+        self.record_edit(EditKind::Delete);
+        if !self.delete_selection() {
+            let next = next_grapheme_boundary(self.text, self.state.caret);
+            self.text.replace_range(self.state.caret..next, "");
+        }
+        self.edited = true;
+    }
+
+    pub(crate) fn move_grapheme_left(&mut self, extend: bool) {
+        let target = if !extend && let Some(range) = self.state.sel_range() {
+            range.start
         } else {
-            let probe_y = if up {
-                pos.y_top - 1.0
-            } else {
-                pos.y_top + pos.line_height + 1.0
-            };
-            shaper.byte_at_xy(self.text, pos.x, probe_y, params)
+            prev_grapheme_boundary(self.text, self.state.caret)
         };
         self.move_caret(target, extend);
     }
+
+    pub(crate) fn move_grapheme_right(&mut self, extend: bool) {
+        let target = if !extend && let Some(range) = self.state.sel_range() {
+            range.end
+        } else {
+            next_grapheme_boundary(self.text, self.state.caret)
+        };
+        self.move_caret(target, extend);
+    }
+
+    pub(crate) fn move_word_left(&mut self, extend: bool) {
+        let target = prev_word_boundary(self.text, self.state.caret);
+        self.move_caret(target, extend);
+    }
+
+    pub(crate) fn move_word_right(&mut self, extend: bool) {
+        let target = next_word_boundary(self.text, self.state.caret);
+        self.move_caret(target, extend);
+    }
+
+    pub(crate) fn collapse_selection(&mut self) -> bool {
+        if self.state.selection.is_none() {
+            return false;
+        }
+        self.state.selection = None;
+        self.state.last_edit_kind = None;
+        true
+    }
 }
 
-/// Non-edit outcome of one keypress that the dispatcher must act on:
-/// Escape asked to blur (applied by `show()` after the node closes),
-/// or Up/Down needs resolving against the shaper's 2D layout via
-/// [`Editor::resolve_vertical`].
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum KeyOutcome {
-    None,
-    Blur,
-    Vertical { up: bool, extend: bool },
-}
-
-impl TextEditState {
+impl EditState {
     pub(crate) fn sel_range(&self) -> Option<std::ops::Range<usize>> {
         let a = self.selection?;
         Some(a.min(self.caret)..a.max(self.caret))
     }
 
-    fn repair_offset(text: &str, offset: usize) -> usize {
+    pub(crate) fn repair_offset(text: &str, offset: usize) -> usize {
         let mut offset = offset.min(text.len());
         while !text.is_char_boundary(offset) {
             offset -= 1;
@@ -499,9 +342,6 @@ impl TextEditState {
         self.caret = Self::repair_offset(text, self.caret);
         self.selection = self
             .selection
-            .map(|offset| Self::repair_offset(text, offset));
-        self.drag_anchor = self
-            .drag_anchor
             .map(|offset| Self::repair_offset(text, offset));
         if self.selection == Some(self.caret) {
             self.selection = None;
@@ -537,19 +377,6 @@ pub(crate) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
         }
     }
     Cow::Owned(out)
-}
-
-/// Word-nav modifier: Alt (Option) on macOS, Ctrl elsewhere — matches
-/// the platform conventions every desktop text field follows. Shift may
-/// be held in addition (selection-extending word nav).
-fn is_word_nav(m: Modifiers) -> bool {
-    // `m.ctrl` is the platform primary command bit (= Cmd on macOS).
-    match PLATFORM {
-        // macOS: Option (Alt) + arrow, with Cmd not held.
-        Platform::Mac => m.alt && !m.ctrl,
-        // Elsewhere: Ctrl + arrow, with Alt not held.
-        _ => m.ctrl && !m.alt,
-    }
 }
 
 /// Next grapheme-cluster boundary strictly after `offset` (clamped to

@@ -6,7 +6,7 @@ fn backspace_deletes_whole_grapheme_cluster() {
     // 3 bytes), 'b'. Caret at end. One backspace must delete 'b',
     // a second must delete *both* bytes of the combining grapheme.
     let mut s = String::from("ae\u{0301}b");
-    let mut state = TextEditState {
+    let mut state = EditState {
         caret: s.len(),
         ..Default::default()
     };

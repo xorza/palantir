@@ -308,15 +308,18 @@ fn drag_select_continues_past_editor_bounds() {
     // Press inside: caret lands mid-text and the anchor latches there.
     ui.press_at(Vec2::new(22.0, 20.0));
     ui.run_at(NARROW, |ui| body(ui, &mut buf));
-    let anchor = ui.state_mut::<TextEditState>(ed_id).caret;
+    let anchor = ui.state_mut::<TextEditState>(ed_id).edit.caret;
     assert!(
         anchor > 0 && anchor < buf.len(),
         "press should land mid-text (room to extend both ways), got {anchor}",
     );
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
-        assert_eq!(st.drag_anchor, Some(anchor));
-        assert_eq!(st.selection, None, "a single press selects nothing yet");
+        assert_eq!(st.view.drag_anchor, Some(anchor));
+        assert_eq!(
+            st.edit.selection, None,
+            "a single press selects nothing yet"
+        );
     }
 
     // Drag far RIGHT, way past the editor's right edge. Selection extends
@@ -326,17 +329,17 @@ fn drag_select_continues_past_editor_bounds() {
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
         assert_eq!(
-            st.caret,
+            st.edit.caret,
             buf.len(),
             "caret rides to the clamped end past the right edge"
         );
         assert_eq!(
-            st.selection,
+            st.edit.selection,
             Some(anchor),
             "selection extends from the anchor — not lost"
         );
         assert_eq!(
-            st.drag_anchor,
+            st.view.drag_anchor,
             Some(anchor),
             "anchor survives the out-of-bounds drag"
         );
@@ -348,9 +351,9 @@ fn drag_select_continues_past_editor_bounds() {
     ui.run_at(NARROW, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
-        assert_eq!(st.caret, 0, "caret clamps to 0 past the left edge");
+        assert_eq!(st.edit.caret, 0, "caret clamps to 0 past the left edge");
         assert_eq!(
-            st.selection,
+            st.edit.selection,
             Some(anchor),
             "still selected — the anchor held"
         );
@@ -363,12 +366,12 @@ fn drag_select_continues_past_editor_bounds() {
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
         assert_eq!(
-            st.selection,
+            st.edit.selection,
             Some(anchor),
             "off-surface must not drop the selection"
         );
         assert_eq!(
-            st.drag_anchor,
+            st.view.drag_anchor,
             Some(anchor),
             "off-surface must not drop the anchor"
         );
@@ -379,8 +382,12 @@ fn drag_select_continues_past_editor_bounds() {
     ui.run_at(NARROW, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
-        assert_eq!(st.selection, Some(anchor), "selection survives release");
-        assert_eq!(st.drag_anchor, None, "release clears the drag anchor");
+        assert_eq!(
+            st.edit.selection,
+            Some(anchor),
+            "selection survives release"
+        );
+        assert_eq!(st.view.drag_anchor, None, "release clears the drag anchor");
     }
 }
 
@@ -462,12 +469,12 @@ fn select_all_on_focus_gates_on_the_flag() {
     {
         let st = ui.state_mut::<TextEditState>(on_id);
         assert_eq!(
-            st.selection,
+            st.edit.selection,
             Some(0),
             "flag on: focus selects from the start"
         );
         assert_eq!(
-            st.caret,
+            st.edit.caret,
             "1.985".len(),
             "flag on: ...to the end of the buffer"
         );
@@ -476,7 +483,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     ui.request_focus(Some(off_id));
     ui.run_at(WIDE, |ui| render(ui, &mut on, &mut off));
     assert_eq!(
-        ui.state_mut::<TextEditState>(off_id).selection,
+        ui.state_mut::<TextEditState>(off_id).edit.selection,
         None,
         "flag off: focus leaves the selection untouched"
     );
@@ -515,7 +522,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
         );
         ui.press_at(click);
         ui.run_at(WIDE, |ui| render(ui, &mut buf));
-        ui.state_mut::<TextEditState>(id).caret
+        ui.state_mut::<TextEditState>(id).edit.caret
     }
 
     let full = caret_at_scale(1.0);

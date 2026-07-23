@@ -131,7 +131,7 @@ fn apply_key_word_nav_cases() {
     ];
     for (label, buf, caret, key, want_caret, want_sel) in cases {
         let mut s = String::from(*buf);
-        let mut state = TextEditState {
+        let mut state = EditState {
             caret: *caret,
             ..Default::default()
         };

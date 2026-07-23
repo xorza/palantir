@@ -47,8 +47,8 @@ fn context_menu_cut_copy_paste_clear() {
     ui.run_at(SMALL, |ui| body(ui, &mut buf));
     {
         let st = ui.state_mut::<TextEditState>(editor_id());
-        st.caret = 4;
-        st.selection = Some(1);
+        st.edit.caret = 4;
+        st.edit.selection = Some(1);
     }
 
     // Copy → clipboard holds "ell", buffer unchanged. Menu closes
@@ -65,31 +65,31 @@ fn context_menu_cut_copy_paste_clear() {
     // Cut → buffer drops "ell", caret collapses to selection start.
     {
         let st = ui.state_mut::<TextEditState>(editor_id());
-        st.caret = 4;
-        st.selection = Some(1);
+        st.edit.caret = 4;
+        st.edit.selection = Some(1);
     }
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
     assert_eq!(ui.resources.clipboard.get(), "ell");
     let st = ui.state_mut::<TextEditState>(editor_id()).clone();
-    assert_eq!(st.caret, 1);
-    assert_eq!(st.selection, None);
+    assert_eq!(st.edit.caret, 1);
+    assert_eq!(st.edit.selection, None);
 
     // Paste at caret → "h" + "ell" + "o" = "hello".
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 2); // row 2 == Paste
     assert_eq!(buf, "hello", "paste inserts clipboard at caret");
     let st = ui.state_mut::<TextEditState>(editor_id()).clone();
-    assert_eq!(st.caret, 4, "caret advances past pasted text");
+    assert_eq!(st.edit.caret, 4, "caret advances past pasted text");
 
-    // Clear → buffer wiped, caret reset. Row 3 is the separator;
-    // row 4 is Clear in render order.
+    // Clear → buffer wiped, caret reset. Row 3 is the separator,
+    // row 4 is Select All, and row 5 is Clear.
     open_menu_and_record(&mut ui, &mut buf);
-    click_menu_row(&mut ui, &mut buf, 4);
+    click_menu_row(&mut ui, &mut buf, 5);
     assert_eq!(buf, "");
     let st = ui.state_mut::<TextEditState>(editor_id()).clone();
-    assert_eq!(st.caret, 0);
+    assert_eq!(st.edit.caret, 0);
 
     // Regression: pasting `\n`-bearing clipboard via the menu must
     // sanitize the same way the Cmd+V keypress does — otherwise the
@@ -101,6 +101,27 @@ fn context_menu_cut_copy_paste_clear() {
     assert_eq!(
         buf, "foo bar",
         "menu Paste must sanitize newlines for single-line editor"
+    );
+
+    // Select All is menu-owned while the popup is open. The editor's
+    // keyboard dispatcher must defer the chord so the menu item executes
+    // it once and closes the popup.
+    open_menu_and_record(&mut ui, &mut buf);
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('a'),
+        repeat: false,
+        physical: Key::Other,
+    });
+    ui.run_at_without_baseline(SMALL, |ui| body(ui, &mut buf));
+    let state = ui.state_mut::<TextEditState>(editor_id()).clone();
+    assert_eq!(state.edit.sel_range(), Some(0..buf.len()));
+    assert!(
+        !ContextMenu::is_open(&ui, editor_id()),
+        "Select All shortcut closes the menu",
     );
 }
 
@@ -141,10 +162,10 @@ fn clipboard_shortcuts_apply_keypresses() {
 
     clipboard.set("").unwrap();
     let mut text = String::from("hello");
-    let mut state = TextEditState {
+    let mut state = EditState {
         caret: 4,
         selection: Some(1),
-        ..TextEditState::default()
+        ..EditState::default()
     };
 
     // Copy: clipboard ← "ell", buffer unchanged.
@@ -169,10 +190,10 @@ fn clipboard_shortcuts_apply_keypresses() {
     // not Copy.) Reset state and verify a no-op.
     clipboard.set("CLIP").unwrap();
     let mut text2 = String::from("hello");
-    let mut state2 = TextEditState {
+    let mut state2 = EditState {
         caret: 4,
         selection: Some(1),
-        ..TextEditState::default()
+        ..EditState::default()
     };
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('c'), &clipboard);
     assert_eq!(clipboard.get(), "CLIP", "non-primary must not copy");
@@ -181,10 +202,10 @@ fn clipboard_shortcuts_apply_keypresses() {
 
     let rejecting = test_support::rejecting();
     let mut rejected_text = String::from("hello");
-    let mut rejected_state = TextEditState {
+    let mut rejected_state = EditState {
         caret: 4,
         selection: Some(1),
-        ..TextEditState::default()
+        ..EditState::default()
     };
     apply_key_with_clipboard(
         &mut rejected_text,
@@ -228,7 +249,7 @@ fn paste_strips_newlines() {
     let clipboard = Clipboard::default();
     clipboard.set("first\r\nsecond\nthird").unwrap();
     let mut text = String::new();
-    let mut state = TextEditState::default();
+    let mut state = EditState::default();
     apply_key_with_clipboard(
         &mut text,
         &mut state,
@@ -247,9 +268,9 @@ fn clipboard_shortcut_does_not_insert_char() {
     clipboard.set("").unwrap();
 
     let mut text = String::from("ab");
-    let mut state = TextEditState {
+    let mut state = EditState {
         caret: 2,
-        ..TextEditState::default()
+        ..EditState::default()
     };
     apply_key_with_clipboard(
         &mut text,
