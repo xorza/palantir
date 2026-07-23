@@ -13,6 +13,7 @@ use crate::input::response::{
     ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta,
 };
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
+use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -294,10 +295,9 @@ pub(crate) struct InputState {
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from `Text` events, in arrival order.
     /// Capacity-retained; cleared in [`Self::drain_per_frame_queues`].
-    /// Read by the focused widget (drains all events) and by global
-    /// keyboard subscribers ([`KeyboardSense`]) — both reading the
-    /// same buffer.
-    pub(crate) frame_keyboard_events: Vec<KeyboardEvent>,
+    /// Focused/global readers see this only without popup capture; the
+    /// active popup reads it through its scoped capture id.
+    frame_keyboard_events: Vec<KeyboardEvent>,
     /// Latest modifier-key snapshot. Persists across `end_frame` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
@@ -309,6 +309,14 @@ pub(crate) struct InputState {
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
     pub(crate) focused: Option<WidgetId>,
+    /// Popup that exclusively owns this frame's keyboard stream. Kept
+    /// separate from focus because opening a context menu must not move
+    /// the caret focus it acts on, yet its shortcuts must not also reach
+    /// that focused widget.
+    keyboard_capture: Option<WidgetId>,
+    /// Capture stack rebuilt in popup record order. Capacity is retained
+    /// so stable overlays stay allocation-free after their first frame.
+    keyboard_capture_candidates: Vec<WidgetId>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when a routed event could drive a state mutation
@@ -342,7 +350,7 @@ pub(crate) struct InputState {
     /// signal a dormant popup needs to be paged in by the next click.
     /// `on_input` short-circuits on the masks before touching event
     /// buffers, so idle frames pay nothing.
-    pub(crate) subs: Subscriptions,
+    subs: Subscriptions,
     /// Unified pointer event stream this frame: moves, presses,
     /// releases, scrolls, zooms, leave. Pushes are gated per-category
     /// on [`Subscriptions::pointer_mask`] (`MOVE` for `Move`,
@@ -373,6 +381,8 @@ impl Default for InputState {
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
+            keyboard_capture: None,
+            keyboard_capture_candidates: Vec::new(),
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
@@ -385,6 +395,77 @@ impl Default for InputState {
 }
 
 impl InputState {
+    pub(crate) fn begin_record(&mut self) {
+        self.subs.clear();
+        self.keyboard_capture_candidates.clear();
+        self.snapshot_frame_quiescent();
+    }
+
+    pub(crate) fn subscribe_pointer(&mut self, flags: PointerSense) {
+        self.subs.pointer_mask |= flags;
+    }
+
+    pub(crate) fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
+        self.subs.keyboard_mask |= flags;
+    }
+
+    pub(crate) fn subscribe_key(&mut self, shortcut: Shortcut) {
+        self.subs.subscribe_key(shortcut);
+    }
+
+    pub(crate) fn keyboard_events(&self) -> &[KeyboardEvent] {
+        self.keyboard_events_for(None)
+    }
+
+    pub(crate) fn captured_keyboard_events(&self, owner: WidgetId) -> &[KeyboardEvent] {
+        self.keyboard_events_for(Some(owner))
+    }
+
+    pub(crate) fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
+        self.key_pressed_for(None, shortcut)
+    }
+
+    pub(crate) fn captured_key_pressed(&mut self, owner: WidgetId, shortcut: Shortcut) -> bool {
+        self.key_pressed_for(Some(owner), shortcut)
+    }
+
+    fn keyboard_events_for(&self, capture: Option<WidgetId>) -> &[KeyboardEvent] {
+        if self.keyboard_capture == capture {
+            &self.frame_keyboard_events
+        } else {
+            &[]
+        }
+    }
+
+    fn key_pressed_for(&mut self, capture: Option<WidgetId>, shortcut: Shortcut) -> bool {
+        self.subs.subscribe_key(shortcut);
+        self.keyboard_events_for(capture).iter().any(
+            |event| matches!(event, KeyboardEvent::Down(keypress) if shortcut.matches(*keypress)),
+        )
+    }
+
+    pub(crate) fn capture_keyboard(&mut self, owner: WidgetId) {
+        self.keyboard_capture_candidates.push(owner);
+        if self.keyboard_capture.is_none() {
+            self.keyboard_capture = Some(owner);
+        }
+    }
+
+    pub(crate) fn release_keyboard_capture(&mut self, owner: WidgetId) {
+        if let Some(index) = self
+            .keyboard_capture_candidates
+            .iter()
+            .rposition(|candidate| *candidate == owner)
+        {
+            self.keyboard_capture_candidates.remove(index);
+        }
+    }
+
+    pub(crate) fn finish_record(&mut self) -> bool {
+        self.keyboard_capture = self.keyboard_capture_candidates.last().copied();
+        self.take_action_flag()
+    }
+
     fn target_deltas(&self, target: WidgetId) -> Option<&TargetDeltas> {
         self.frame_target_deltas
             .iter()
@@ -784,7 +865,7 @@ impl InputState {
     /// `focused` is deliberately *not* part of this: [`crate::Ui::request_focus`]
     /// can set it mid-record, after the snapshot is taken, so
     /// `response_for` always reads it live — even on the fast path.
-    pub(crate) fn snapshot_frame_quiescent(&mut self) {
+    fn snapshot_frame_quiescent(&mut self) {
         self.frame_quiescent = self.pointer_pos.is_none()
             && self.hovered.is_none()
             && self.scroll_target.is_none()
