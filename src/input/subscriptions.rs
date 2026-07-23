@@ -14,11 +14,10 @@
 //! that's the wake signal: a dormant popup needs `BUTTONS`
 //! to still be set when the next click outside lands.
 //!
-//! Delivery isn't routed through subscriptions. Pointer events flow
-//! into [`InputState::frame_pointer_events`](crate::input::InputState),
-//! keys into [`InputState::frame_keyboard_events`](crate::input::InputState).
-//! Both buffers are populated only when a relevant subscription is
-//! active (the mask check short-circuits the push), so idle frames
+//! Delivery isn't routed through subscriptions. Pointer and keyboard
+//! events flow into their per-frame [`InputState`](crate::input::InputState)
+//! queues. Both buffers are populated only when a relevant subscription
+//! is active (the mask check short-circuits the push), so idle frames
 //! pay nothing.
 
 use crate::input::keyboard::KeyPress;
@@ -95,11 +94,7 @@ pub(crate) struct Subscriptions {
 impl Subscriptions {
     /// Idempotent push — duplicate shortcuts from multiple
     /// subscribers collapse to one entry. Linear `contains` is fine
-    /// at the expected count. (Direct field assignment is the
-    /// pattern for `pointer_mask` / `keyboard_mask` — both are
-    /// `pub(crate)` and `Ui::subscribe_pointer` /
-    /// `Ui::subscribe_keyboard` OR into them inline; the dedup logic
-    /// here is the only non-trivial bit.)
+    /// at the expected count.
     pub(crate) fn subscribe_key(&mut self, sc: Shortcut) {
         if !self.keys.contains(&sc) {
             self.keys.push(sc);
