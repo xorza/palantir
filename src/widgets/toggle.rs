@@ -4,7 +4,7 @@ use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, Element};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -52,7 +52,7 @@ impl ToggleChrome {
 /// gap / cross-centering, the `Fixed×Fixed` box leaf with its chrome,
 /// the label leaf — lives here.
 ///
-/// The row `HStack` element (sense + salt already set) rides in
+/// The row `HStack` node (sense + salt already set) rides in
 /// `entry.widget`. `paint_indicator` runs inside the box leaf — it
 /// receives the box side length and is responsible for its own
 /// checked/selected gate.
@@ -73,16 +73,17 @@ pub(crate) fn toggle_row<'ui, 'text>(
         look.background.corners = Corners::all(box_size * 0.5);
     }
 
-    entry.widget.element.gaps.set_gap(chrome.row_gap);
-    entry.widget.element.child_align = Align::v(VAlign::Center);
+    entry.widget.node.gaps.set_gap(chrome.row_gap);
+    entry.widget.node.child_align = Align::v(VAlign::Center);
 
-    entry.widget.node(ui, None, |ui| {
-        let box_elem = Element::leaf()
+    entry.widget.record(ui, None, |ui| {
+        let box_elem = Node::leaf()
             .id(id.with("box"))
             .size((Sizing::fixed(box_size), Sizing::fixed(box_size)));
-        ui.widget(box_elem).node(ui, Some(&look.background), |ui| {
-            paint_indicator(ui, box_size)
-        });
+        ui.widget(box_elem)
+            .record(ui, Some(&look.background), |ui| {
+                paint_indicator(ui, box_size)
+            });
 
         if !label.is_empty() {
             Text::new(label)

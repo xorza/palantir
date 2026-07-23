@@ -4,7 +4,7 @@ use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
 use crate::widgets::drag_value::{DragEdit, DragNum, DragValue, round_to_decimals};
 use crate::widgets::panel::Panel;
@@ -575,8 +575,8 @@ fn editing_a_long_value_holds_the_field_width() {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
 
@@ -633,7 +633,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::transform::TranslateScale;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::element::Configure;
+    use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
 

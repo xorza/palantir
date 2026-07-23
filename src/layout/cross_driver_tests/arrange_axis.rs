@@ -5,7 +5,7 @@ use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;

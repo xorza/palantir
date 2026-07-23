@@ -26,7 +26,7 @@ use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::ui::Ui;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;

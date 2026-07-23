@@ -2,7 +2,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
@@ -38,7 +38,7 @@ struct ComboState {
 /// ([`crate::Theme::context_menu`]).
 #[derive(Debug)]
 pub struct ComboBox<'a> {
-    element: Element,
+    node: Node,
     selected: &'a mut usize,
     options: &'a [&'a str],
     style: Option<&'a ButtonTheme>,
@@ -47,10 +47,10 @@ pub struct ComboBox<'a> {
 impl<'a> ComboBox<'a> {
     #[track_caller]
     pub fn new(selected: &'a mut usize, options: &'a [&'a str]) -> Self {
-        let mut element = Element::hstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
-            element,
+            node,
             selected,
             options,
             style: None,
@@ -65,23 +65,23 @@ impl<'a> ComboBox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
         let look = resolve_look(
             ui,
             id,
-            &mut entry.widget.element,
+            &mut entry.widget.node,
             &entry.state,
             self.style,
             |t| &t.button,
         );
 
-        let element = &mut entry.widget.element;
-        element.justify = Justify::SpaceBetween;
-        element.child_align = Align::v(VAlign::Center);
-        element.gaps.set_gap(12.0);
+        let node = &mut entry.widget.node;
+        node.justify = Justify::SpaceBetween;
+        node.child_align = Align::v(VAlign::Center);
+        node.gaps.set_gap(12.0);
 
         let arrow_color = look.text.color;
         let text_style = look.text;
@@ -89,16 +89,16 @@ impl<'a> ComboBox<'a> {
         // options aren't `'static`, so they route through `Ui::intern`.
         let label = ui.intern(self.options.get(*self.selected).copied().unwrap_or(""));
 
-        entry.widget.node(ui, Some(&look.background), |ui| {
+        entry.widget.record(ui, Some(&look.background), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)
                 .show(ui);
 
-            let arrow = Element::leaf()
+            let arrow = Node::leaf()
                 .id(id.with("arrow"))
                 .size((Sizing::fixed(ARROW_W), Sizing::fixed(ARROW_H)));
-            ui.widget(arrow).node(ui, None, |ui| {
+            ui.widget(arrow).record(ui, None, |ui| {
                 let pts = chevron_pts();
                 ui.add_shape(
                     Shape::polyline(&pts, PolylineColors::Single(arrow_color), 1.5)
@@ -144,8 +144,8 @@ impl<'a> ComboBox<'a> {
 }
 
 impl Configure for ComboBox<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

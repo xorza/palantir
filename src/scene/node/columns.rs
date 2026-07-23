@@ -11,7 +11,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Element;
+use crate::scene::node::Node;
 use glam::Vec2;
 use half::f16;
 use std::hash::Hash;
@@ -173,13 +173,13 @@ pub(crate) struct LayoutCore {
 }
 
 impl LayoutCore {
-    pub(crate) fn from_element(element: &Element) -> Self {
-        let mode = element.mode.resolved();
+    pub(crate) fn from_node(node: &Node) -> Self {
+        let mode = node.mode.resolved();
         Self {
-            size: element.size.unwrap_or_default(),
-            padding: element.padding.unwrap_or(Spacing::ZERO),
-            margin: element.margin.unwrap_or(Spacing::ZERO),
-            meta: PackedLayoutMeta::new(mode, element.align, element.visibility),
+            size: node.size.unwrap_or_default(),
+            padding: node.padding.unwrap_or(Spacing::ZERO),
+            margin: node.margin.unwrap_or(Spacing::ZERO),
+            meta: PackedLayoutMeta::new(mode, node.align, node.visibility),
         }
     }
 
@@ -266,7 +266,7 @@ const _: () = assert!(
 );
 
 #[derive(Debug)]
-pub(crate) struct ElementColumns {
+pub(crate) struct NodeColumns {
     pub(crate) widget_id: WidgetId,
     pub(crate) layout: LayoutCore,
     pub(crate) attrs: NodeFlags,

@@ -26,7 +26,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Element;
+use crate::scene::node::Node;
 use crate::text::TextMetrics;
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
@@ -207,7 +207,7 @@ pub(crate) trait WidgetTheme {
 pub(crate) fn resolve_look<T: WidgetTheme>(
     ui: &mut Ui,
     id: WidgetId,
-    element: &mut Element,
+    node: &mut Node,
     state: &ResponseState,
     style: Option<&T>,
     fallback: impl FnOnce(&Theme) -> &T,
@@ -218,8 +218,8 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     let margin = style.margin();
     let anim = style.anim();
     let look_target = style.pick(state).clone();
-    element.padding.get_or_insert(padding);
-    element.margin.get_or_insert(margin);
+    node.padding.get_or_insert(padding);
+    node.margin.get_or_insert(margin);
     look_target.animate(ui, id, &fallback_text, anim)
 }
 

@@ -1,6 +1,6 @@
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::{InnerResponse, resolve_container_chrome};
 
@@ -19,16 +19,13 @@ use crate::widgets::{InnerResponse, resolve_container_chrome};
 /// set its own.
 #[derive(Debug)]
 pub struct Panel {
-    element: Element,
+    node: Node,
     chrome: Option<Background>,
 }
 
 impl Panel {
-    fn auto(element: Element) -> Self {
-        Self {
-            element,
-            chrome: None,
-        }
+    fn auto(node: Node) -> Self {
+        Self { node, chrome: None }
     }
 
     /// Apply a pan/zoom transform to the panel's body — both child
@@ -55,7 +52,7 @@ impl Panel {
     /// that scales/pans *with* the body, nest one panel deep: put the
     /// transform on the outer panel and the chrome on its child.
     pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.element.transform = t;
+        self.node.transform = t;
         self
     }
 
@@ -72,15 +69,15 @@ impl Panel {
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
-        let mut element = self.element;
+        let mut node = self.node;
         let chrome = resolve_container_chrome(
-            &mut element,
+            &mut node,
             self.chrome,
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
-        let widget = ui.widget(element);
-        let inner = widget.node(ui, chrome.as_ref(), body);
+        let widget = ui.widget(node);
+        let inner = widget.record(ui, chrome.as_ref(), body);
         InnerResponse {
             // Decorative: skip eager `response_for`.
             response: widget.response(ui),
@@ -90,12 +87,12 @@ impl Panel {
 
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::auto(Element::hstack())
+        Self::auto(Node::hstack())
     }
 
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::auto(Element::vstack())
+        Self::auto(Node::vstack())
     }
 
     /// HStack with overflow wrap: children flow left-to-right; when the
@@ -107,7 +104,7 @@ impl Panel {
     /// to row height.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::auto(Element::wrap_hstack())
+        Self::auto(Node::wrap_hstack())
     }
 
     /// VStack with overflow wrap: children flow top-to-bottom; when the
@@ -116,14 +113,14 @@ impl Panel {
     /// axes swapped.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::auto(Element::wrap_vstack())
+        Self::auto(Node::wrap_vstack())
     }
 
     /// Layered children: each child placed at the parent's inner top-left,
     /// sized per its own `Sizing`. Last sibling paints on top.
     #[track_caller]
     pub fn zstack() -> Self {
-        Self::auto(Element::zstack())
+        Self::auto(Node::zstack())
     }
 
     /// Children placed at their declared `Layout.position` (parent-inner
@@ -131,13 +128,13 @@ impl Panel {
     /// box of placed children.
     #[track_caller]
     pub fn canvas() -> Self {
-        Self::auto(Element::canvas())
+        Self::auto(Node::canvas())
     }
 }
 
 impl Configure for Panel {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

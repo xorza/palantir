@@ -10,7 +10,7 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::scene::element::columns::{BoundsExtras, LayoutCore};
+use crate::scene::node::columns::{BoundsExtras, LayoutCore};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
@@ -403,7 +403,7 @@ pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
 /// Resolve the outer extent and alignment offset for one arranged axis.
 /// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
 /// grow to their slot without shrinking below measured content, while the
-/// element's outer min/max bounds remain authoritative.
+/// node's outer min/max bounds remain authoritative.
 pub(crate) fn arrange_axis(
     axis: Axis,
     align: AxisAlign,

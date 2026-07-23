@@ -4,8 +4,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
-use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::layer::Layer;
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use glam::Vec2;
 
@@ -27,7 +27,7 @@ const BLOCK: Sense = Sense::CLICK
 /// with dialog content never closes it.
 #[derive(Debug)]
 pub struct Modal {
-    element: Element,
+    node: Node,
     chrome: Option<Background>,
     backdrop: Option<Color>,
 }
@@ -43,10 +43,10 @@ impl Modal {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        let mut element = Element::vstack();
-        element.flags.set_sense(BLOCK);
+        let mut node = Node::vstack();
+        node.flags.set_sense(BLOCK);
         Self {
-            element,
+            node,
             chrome: None,
             backdrop: None,
         }
@@ -68,7 +68,7 @@ impl Modal {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ModalResponse {
         let surface = ui.display().logical_rect();
-        let mut widget = ui.widget(self.element);
+        let mut widget = ui.widget(self.node);
         let root_id = widget.id();
 
         let mt = &ui.theme.modal;
@@ -77,22 +77,22 @@ impl Modal {
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
-        // The user-configured element becomes the card; the widget's
+        // The user-configured node becomes the card; the widget's
         // resolved id stays on the backdrop root it records below.
-        let mut card = widget.element.id(root_id.with("card"));
+        let mut card = widget.node.id(root_id.with("card"));
         card.padding.get_or_insert(theme_padding);
         card.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
 
         // Root fills the surface, dims it, eats stray pointer events,
         // and centers the card. The card re-senses `BLOCK` so clicks
         // on it never fall through to this dismiss-backdrop.
-        widget.element = Element::zstack()
+        widget.node = Node::zstack()
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(BLOCK);
         ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
-            widget.node(ui, Some(&dim), |ui| {
-                ui.widget(card).node(ui, Some(&card_bg), body);
+            widget.record(ui, Some(&dim), |ui| {
+                ui.widget(card).record(ui, Some(&card_bg), body);
             });
         });
 
@@ -103,8 +103,8 @@ impl Modal {
 }
 
 impl Configure for Modal {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -115,8 +115,8 @@ mod tests {
     use crate::primitives::size::Size;
     use crate::primitives::spacing::Spacing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::scene::tree::node::NodeId;
     use crate::widgets::modal::Modal;
     use glam::UVec2;

@@ -23,7 +23,7 @@ pub(crate) mod theme;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
-use crate::scene::element::Element;
+use crate::scene::node::Node;
 
 use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
@@ -35,48 +35,48 @@ use crate::ui::Ui;
 use std::cell::OnceCell;
 
 /// Resolve a container widget's chrome + clip against the theme
-/// fallbacks, mutating `element`'s clip mode in place. Shared by
+/// fallbacks, mutating `node`'s clip mode in place. Shared by
 /// `Panel`/`Grid`/`Popup` (theme slot `panel_background` / `panel_clip`):
 /// an explicit `.background(...)` wins, otherwise the theme default
 /// fills in; the clip default only applies when the caller did not configure
 /// clipping. Returns the chrome to pass to [`Ui::node`].
 pub(crate) fn resolve_container_chrome(
-    element: &mut Element,
+    node: &mut Node,
     explicit: Option<Background>,
     theme_bg: Option<&Background>,
     theme_clip: ClipMode,
 ) -> Option<Background> {
     let chrome = explicit.or_else(|| theme_bg.cloned());
-    element.clip.get_or_insert(theme_clip);
+    node.clip.get_or_insert(theme_clip);
     chrome
 }
 
 /// A widget whose [`WidgetId`] has been resolved for this frame, paired
-/// with the [`Element`] that id was resolved from — what [`Ui::widget`]
+/// with the [`Node`] that id was resolved from — what [`Ui::widget`]
 /// returns. This is the authoring primitive for widgets that need their
 /// id *before* their node records: read last frame's interaction via
-/// [`Ui::response_for`], pick themed chrome, mutate [`Self::element`],
+/// [`Ui::response_for`], pick themed chrome, mutate [`Self::node`],
 /// derive child ids with `widget.id().with("child")` — then record with
-/// [`Self::node`].
+/// [`Self::record`].
 ///
 /// The id is read-only: it is the disambiguated identity the tree,
 /// cascade, and `response_for` will see, and rebinding it would desync
-/// them. The element stays open for mutation until `node` consumes it.
+/// them. The node stays open for mutation until `record` consumes it.
 ///
 /// Record exactly once: resolution reserved this frame's occurrence
-/// slot for the id and [`Self::node`] claims it. The type is `Copy`
-/// (both halves are), so the compiler won't stop a second `node` call —
-/// the frame will, with a duplicate-endpoint panic.
+/// slot for the id and [`Self::record`] claims it. The type is `Copy`
+/// (both halves are), so the compiler won't stop a second `record` call
+/// — the frame will, with a duplicate-endpoint panic.
 #[derive(Clone, Copy, Debug)]
-#[must_use = "record the widget with Widget::node"]
+#[must_use = "record the widget with Widget::record"]
 pub struct Widget {
     id: WidgetId,
-    pub element: Element,
+    pub node: Node,
 }
 
 impl Widget {
-    pub(crate) fn new(id: WidgetId, element: Element) -> Self {
-        Self { id, element }
+    pub(crate) fn new(id: WidgetId, node: Node) -> Self {
+        Self { id, node }
     }
 
     /// The resolved, frame-disambiguated id — key for
@@ -98,13 +98,13 @@ impl Widget {
     /// per hop down `Forest::open_node` → `Tree::open_node` →
     /// `shapes::lower::background`, and the no-chrome path is just a
     /// perfectly-predicted `None` branch.
-    pub fn node<R>(
+    pub fn record<R>(
         self,
         ui: &mut Ui,
         chrome: Option<&Background>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        ui.node(self.id, self.element, chrome, body)
+        ui.node(self.id, self.node, chrome, body)
     }
 
     /// Lazy [`Response`] for this widget — the return value of choice
@@ -115,9 +115,9 @@ impl Widget {
 }
 
 /// Per-frame entry probe shared by interactive widgets
-/// (`Button`/`Checkbox`/`RadioButton`): resolve the element into a
+/// (`Button`/`Checkbox`/`RadioButton`): resolve the node into a
 /// [`Widget`] and probe its response exactly once. `state` has
-/// `Element::disabled` OR-ed in for same-frame visuals and interaction;
+/// `Node::disabled` OR-ed in for same-frame visuals and interaction;
 /// [`Self::into_response`] restores the cascade snapshot's original
 /// disabled bit for the returned [`Response::eager`].
 #[derive(Debug)]
@@ -134,11 +134,11 @@ impl WidgetEntry {
     }
 }
 
-pub(crate) fn enter_widget(ui: &mut Ui, element: Element) -> WidgetEntry {
-    let widget = ui.widget(element);
+pub(crate) fn enter_widget(ui: &mut Ui, node: Node) -> WidgetEntry {
+    let widget = ui.widget(node);
     let mut state = ui.response_for(widget.id());
     let raw_disabled = state.disabled;
-    state.disabled |= widget.element.flags.is_disabled();
+    state.disabled |= widget.node.flags.is_disabled();
     WidgetEntry {
         widget,
         state,

@@ -88,8 +88,8 @@ mod unit {
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::DamageRegion;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::scene::tree::node::NodeId;
     use crate::ui::frame::FrameStamp;
     use crate::widgets::panel::Panel;

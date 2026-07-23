@@ -9,7 +9,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
@@ -153,7 +153,7 @@ fn update_scroll(
 /// (the widget clamps `caret <= text.len()` at the top of every show).
 #[derive(Debug)]
 pub struct TextEdit<'a> {
-    element: Element,
+    node: Node,
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
     placeholder: Cow<'static, str>,
@@ -182,20 +182,20 @@ pub struct TextEdit<'a> {
 impl<'a> TextEdit<'a> {
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
-        let mut element = Element::leaf();
-        element.flags.set_sense(Sense::CLICK);
-        element.flags.set_focusable(true);
+        let mut node = Node::leaf();
+        node.flags.set_sense(Sense::CLICK);
+        node.flags.set_focusable(true);
         // Clip glyphs, caret, and selection wash to the editor's own
         // rect so a `Fixed`-sized editor with long content doesn't
         // bleed over its neighbours. Chrome (background) draws before
         // the clip, so the editor's surround still paints normally.
-        element.clip = Some(ClipMode::Rect);
-        // `Element::padding` left at zero — `show()` substitutes
+        node.clip = Some(ClipMode::Rect);
+        // `Node::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
         // `.padding(...)`. Same renderer semantics as before; the
         // value just lives on the theme instead of hard-coded here.
         Self {
-            element,
+            node,
             text,
             style: None,
             placeholder: Cow::Borrowed(""),
@@ -261,7 +261,7 @@ impl<'a> TextEdit<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
-        let mut widget = ui.widget(self.element);
+        let mut widget = ui.widget(self.node);
         let id = widget.id();
         let mut is_focused = ui.input.focused == Some(id);
         // Pick the per-state look + animate its visual components.
@@ -271,7 +271,7 @@ impl<'a> TextEdit<'a> {
         // (one-frame stale); OR self-disabled in for lag-free
         // response to a freshly toggled `.disabled(true)`.
         let mut response = ui.response_for(id);
-        response.disabled |= self.element.flags.is_disabled();
+        response.disabled |= self.node.flags.is_disabled();
         // A disabled editor must not keep keyboard focus — it would
         // paint disabled while still routing typing / paste / undo
         // into the host's buffer. Kick focus out (mirrors `DragValue`'s
@@ -283,10 +283,10 @@ impl<'a> TextEdit<'a> {
         }
         // `resolve_look` also substitutes theme padding/margin where
         // the builder left those fields unconfigured. The renderer
-        // reads `element.padding` to deflate the buffer layout, and
+        // reads `node.padding` to deflate the buffer layout, and
         // the caret hit-test reads it back below — both see the
         // resolved value.
-        let look = resolve_look(ui, id, &mut self.element, &response, self.style, |t| {
+        let look = resolve_look(ui, id, &mut self.node, &response, self.style, |t| {
             &t.text_edit
         });
         // State-independent scalars off the same style source, copied
@@ -304,8 +304,8 @@ impl<'a> TextEdit<'a> {
                 was_focused
             };
             let chrome = look.background;
-            widget.element = self.element;
-            widget.node(ui, Some(&chrome), |_| {});
+            widget.node = self.node;
+            widget.record(ui, Some(&chrome), |_| {});
             let state = ui.response_for(id);
             return TextEditResponse {
                 response: Response::eager(id, ui, state),
@@ -323,20 +323,15 @@ impl<'a> TextEdit<'a> {
         // `rect.deflated_by(post-inflate padding)`, so glyph + caret
         // coordinates must use the same effective value — otherwise
         // the top row of glyphs sits above the clip and gets scissored
-        // away. The element's own padding stays at the pre-inflate
+        // away. The node's own padding stays at the pre-inflate
         // value so Tree's fold reproduces the same effective padding.
         let stroke_w = if noop_f32(look.background.stroke.width) {
             0.0
         } else {
             look.background.stroke.width
         };
-        let padding = Spacing::from_array(
-            self.element
-                .padding
-                .unwrap()
-                .as_array()
-                .map(|v| v + stroke_w),
-        );
+        let padding =
+            Spacing::from_array(self.node.padding.unwrap().as_array().map(|v| v + stroke_w));
         // Reserve a caret-width sliver at the trailing edge of every
         // line so a caret sitting at end-of-line on right/center-
         // aligned text stays inside the clip. The shaper's per-line
@@ -527,9 +522,9 @@ impl<'a> TextEdit<'a> {
         // caret/text painted into it) with it. Single-line only;
         // multi-line callers usually set their own min_size and the
         // wrap target already gives them height per line.
-        let mut element = self.element;
+        let mut node = self.node;
         if !self.multiline {
-            let min_size = element.min_size.get_or_insert(Size::ZERO);
+            let min_size = node.min_size.get_or_insert(Size::ZERO);
             let row_min_h = ctx.line_height_px + ctx.padding.vert();
             if min_size.h < row_min_h {
                 min_size.h = row_min_h;
@@ -543,7 +538,7 @@ impl<'a> TextEdit<'a> {
             // Fold that reservation (the trailing sliver + the caret quad
             // itself) into the desired width so Hug accounts for it.
             // `Fixed`/`Fill` editors are meant to scroll, so leave them.
-            if element.size.unwrap_or_default().w().is_hug() {
+            if node.size.unwrap_or_default().w().is_hug() {
                 let measure_str: &str = if self.text.is_empty() {
                     self.placeholder.as_ref()
                 } else {
@@ -559,7 +554,7 @@ impl<'a> TextEdit<'a> {
                     .size
                     .w;
                 let reserved = reserve_w + ctx.padding.horiz() + 2.0 * caret_room;
-                let min_size = element.min_size.get_or_insert(Size::ZERO);
+                let min_size = node.min_size.get_or_insert(Size::ZERO);
                 if min_size.w < reserved {
                     min_size.w = reserved;
                 }
@@ -579,8 +574,8 @@ impl<'a> TextEdit<'a> {
                 .text
                 .selection_rects(text_ptr, range, ctx.params(), selection_rects);
         }
-        widget.element = element;
-        widget.node(ui, Some(&chrome), |ui| {
+        widget.node = node;
+        widget.record(ui, Some(&chrome), |ui| {
             let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash.
@@ -719,8 +714,8 @@ impl<'a> TextEdit<'a> {
 }
 
 impl Configure for TextEdit<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

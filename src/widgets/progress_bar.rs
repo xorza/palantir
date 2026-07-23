@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
@@ -15,7 +15,7 @@ use crate::widgets::theme::progress_bar::ProgressBarTheme;
 /// `progress_bar`).
 #[derive(Debug)]
 pub struct ProgressBar<'a> {
-    element: Element,
+    node: Node,
     fraction: f32,
     style: Option<&'a ProgressBarTheme>,
 }
@@ -24,7 +24,7 @@ impl<'a> ProgressBar<'a> {
     #[track_caller]
     pub fn new(fraction: f32) -> Self {
         Self {
-            element: Element::hstack(),
+            node: Node::hstack(),
             fraction,
             style: None,
         }
@@ -43,35 +43,34 @@ impl<'a> ProgressBar<'a> {
         let height = theme.height.max(0.0);
         let radius = Corners::all(height * 0.5);
 
-        let mut element = self.element;
-        element
-            .size
+        let mut node = self.node;
+        node.size
             .get_or_insert((Sizing::FILL, Sizing::fixed(height)).into());
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
 
-        let widget = ui.widget(element);
+        let widget = ui.widget(node);
         let id = widget.id();
-        widget.node(ui, Some(&track), |ui| {
-            let fill_el = Element::leaf()
+        widget.record(ui, Some(&track), |ui| {
+            let fill_el = Node::leaf()
                 .id(id.with("fill"))
                 .size((Sizing::share(fill), Sizing::FILL));
-            ui.widget(fill_el).node(ui, Some(&fill_bg), |_| {});
+            ui.widget(fill_el).record(ui, Some(&fill_bg), |_| {});
 
             // Remainder spacer — its `Fill` weight pushes the fill to the
             // correct fraction of the track width.
-            let rest = Element::leaf()
+            let rest = Node::leaf()
                 .id(id.with("rest"))
                 .size((Sizing::share(spacer), Sizing::FILL));
-            ui.widget(rest).node(ui, None, |_| {});
+            ui.widget(rest).record(ui, None, |_| {});
         });
         widget.response(ui)
     }
 }
 
 impl Configure for ProgressBar<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -94,8 +93,8 @@ fn fill_weights(fraction: f32) -> WeightSplit {
 mod tests {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::progress_bar::{ProgressBar, fill_weights};
     use glam::UVec2;

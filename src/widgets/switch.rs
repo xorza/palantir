@@ -5,7 +5,7 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -27,7 +27,7 @@ const TRACK_ASPECT: f32 = 1.75;
 /// absolutely positioned; the knob's x animates through [`Ui::animate`].
 #[derive(Debug)]
 pub struct Switch<'a> {
-    element: Element,
+    node: Node,
     value: &'a mut bool,
     label: TextInput<'a>,
     style: Option<&'a ToggleTheme>,
@@ -36,10 +36,10 @@ pub struct Switch<'a> {
 impl<'a> Switch<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
-        let mut element = Element::hstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
-            element,
+            node,
             value,
             label: TextInput::default(),
             style: None,
@@ -59,7 +59,7 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {
@@ -97,18 +97,18 @@ impl<'a> Switch<'a> {
         let knob_x = ui.animate(knob_id, "x", target_x, anim);
         let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
 
-        entry.widget.element.gaps.set_gap(row_gap);
-        entry.widget.element.child_align = Align::v(VAlign::Center);
-        entry.widget.node(ui, None, |ui| {
-            let track = Element::canvas()
+        entry.widget.node.gaps.set_gap(row_gap);
+        entry.widget.node.child_align = Align::v(VAlign::Center);
+        entry.widget.record(ui, None, |ui| {
+            let track = Node::canvas()
                 .id(id.with("track"))
                 .size((Sizing::fixed(geom.track_w), Sizing::fixed(track_h)));
-            ui.widget(track).node(ui, Some(&look.background), |ui| {
-                let knob = Element::leaf()
+            ui.widget(track).record(ui, Some(&look.background), |ui| {
+                let knob = Node::leaf()
                     .id(knob_id)
                     .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
                     .position(Vec2::new(knob_x, geom.knob_y));
-                ui.widget(knob).node(ui, Some(&knob_bg), |_| {});
+                ui.widget(knob).record(ui, Some(&knob_bg), |_| {});
             });
 
             if !label.is_empty() {
@@ -125,8 +125,8 @@ impl<'a> Switch<'a> {
 }
 
 impl Configure for Switch<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

@@ -1,15 +1,15 @@
 use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::limits::MAX_PACKED_GAP;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::*;
+use crate::scene::node::*;
 use crate::scene::visibility::Visibility;
 use crate::widgets::context_menu::MenuItem;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
-fn element_of<W: Configure>(widget: &mut W) -> &mut Element {
-    widget.element_mut().element
+fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
+    widget.node_mut().node
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn authoring_struct_sizes_stay_packed() {
     // Still packed — sense (5 bits) + disabled (1) + clip (2) +
     // focusable (1) = 9 bits, fitting in a u16 with 7 spare.
     assert_eq!(std::mem::size_of::<NodeFlags>(), 2);
-    assert_eq!(std::mem::size_of::<Element>(), 120);
+    assert_eq!(std::mem::size_of::<Node>(), 120);
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn layout_mode_size() {
 }
 
 #[test]
-fn builder_setters_cover_the_complete_external_element_surface() {
+fn builder_setters_cover_the_complete_external_node_surface() {
     use crate::layout::types::sizing::Sizing;
 
     let id = WidgetId::from_hash("complete-configuration-surface");
@@ -88,7 +88,7 @@ fn builder_setters_cover_the_complete_external_element_surface() {
     let sense = Sense::CLICK | Sense::DRAG;
     let transform = TranslateScale::new(Vec2::new(11.0, 12.0), 1.5);
 
-    let mut element = Element::hstack()
+    let mut node = Node::hstack()
         .id(id)
         .size(size)
         .min_size(min_size)
@@ -108,17 +108,17 @@ fn builder_setters_cover_the_complete_external_element_surface() {
         .focusable(true)
         .visibility(Visibility::Hidden)
         .clip(ClipMode::None);
-    element.transform = transform;
+    node.transform = transform;
 
-    assert!(matches!(element.salt, Salt::Verbatim(value) if value == id));
-    assert_eq!(element.size, Some(size));
-    assert_eq!(element.min_size, Some(min_size));
-    assert_eq!(element.max_size, Some(max_size));
-    assert_eq!(element.padding, Some(padding));
-    assert_eq!(element.margin, Some(margin));
-    assert_eq!(element.position, position);
+    assert!(matches!(node.salt, Salt::Verbatim(value) if value == id));
+    assert_eq!(node.size, Some(size));
+    assert_eq!(node.min_size, Some(min_size));
+    assert_eq!(node.max_size, Some(max_size));
+    assert_eq!(node.padding, Some(padding));
+    assert_eq!(node.margin, Some(margin));
+    assert_eq!(node.position, position);
     assert_eq!(
-        element.grid,
+        node.grid,
         GridCell {
             row: 2,
             col: 3,
@@ -126,47 +126,44 @@ fn builder_setters_cover_the_complete_external_element_surface() {
             col_span: 5,
         },
     );
-    assert_eq!(element.gaps.gap(), 6.0);
-    assert_eq!(element.gaps.line_gap(), 7.0);
-    assert_eq!(element.justify, Justify::SpaceBetween);
-    assert_eq!(element.align, align);
-    assert_eq!(element.child_align, child_align);
-    assert_eq!(element.flags.sense(), sense);
-    assert!(!element.flags.is_disabled());
-    assert!(element.flags.is_focusable());
-    assert_eq!(element.visibility, Visibility::Hidden);
-    assert_eq!(element.clip, Some(ClipMode::None));
-    assert_eq!(element.transform, transform);
+    assert_eq!(node.gaps.gap(), 6.0);
+    assert_eq!(node.gaps.line_gap(), 7.0);
+    assert_eq!(node.justify, Justify::SpaceBetween);
+    assert_eq!(node.align, align);
+    assert_eq!(node.child_align, child_align);
+    assert_eq!(node.flags.sense(), sense);
+    assert!(!node.flags.is_disabled());
+    assert!(node.flags.is_focusable());
+    assert_eq!(node.visibility, Visibility::Hidden);
+    assert_eq!(node.clip, Some(ClipMode::None));
+    assert_eq!(node.transform, transform);
 }
 
 #[test]
-fn widget_specific_element_setters_reach_the_inner_element() {
+fn widget_specific_node_setters_reach_the_inner_node() {
     let transform = TranslateScale::new(Vec2::new(4.0, 5.0), 2.0);
     let mut panel = Panel::hstack().transform(transform);
     let mut grid = Grid::new().transform(transform);
-    assert_eq!(element_of(&mut panel).transform, transform);
-    assert_eq!(element_of(&mut grid).transform, transform);
+    assert_eq!(node_of(&mut panel).transform, transform);
+    assert_eq!(node_of(&mut grid).transform, transform);
 
     let mut item = MenuItem::new("Open").enabled(true);
-    assert!(!element_of(&mut item).flags.is_disabled());
+    assert!(!node_of(&mut item).flags.is_disabled());
 
     let mut value = 0.0;
     let mut drag = DragValue::new(&mut value).editable(true);
-    assert_eq!(
-        element_of(&mut drag).flags.sense(),
-        Sense::CLICK | Sense::DRAG,
-    );
+    assert_eq!(node_of(&mut drag).flags.sense(), Sense::CLICK | Sense::DRAG,);
 
     let mut scroll = Scroll::both().with_zoom();
     assert_eq!(
-        element_of(&mut scroll).flags.sense(),
+        node_of(&mut scroll).flags.sense(),
         Sense::SCROLL | Sense::PINCH,
     );
 }
 
 #[test]
 fn unconfigured_and_explicit_default_values_remain_distinct() {
-    let inherited = Element::leaf();
+    let inherited = Node::leaf();
     assert_eq!(inherited.size, None);
     assert_eq!(inherited.min_size, None);
     assert_eq!(inherited.max_size, None);
@@ -174,7 +171,7 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
     assert_eq!(inherited.margin, None);
     assert_eq!(inherited.clip, None);
 
-    let explicit = Element::leaf()
+    let explicit = Node::leaf()
         .size(Sizes::default())
         .min_size(Size::ZERO)
         .max_size(Size::INF)
@@ -200,34 +197,34 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
 #[test]
 fn constructors_install_layout_modes() {
     let cases = [
-        (Element::leaf(), LayoutMode::Leaf),
-        (Element::hstack(), LayoutMode::HStack),
-        (Element::vstack(), LayoutMode::VStack),
-        (Element::wrap_hstack(), LayoutMode::WrapHStack),
-        (Element::wrap_vstack(), LayoutMode::WrapVStack),
-        (Element::zstack(), LayoutMode::ZStack),
-        (Element::canvas(), LayoutMode::Canvas),
+        (Node::leaf(), LayoutMode::Leaf),
+        (Node::hstack(), LayoutMode::HStack),
+        (Node::vstack(), LayoutMode::VStack),
+        (Node::wrap_hstack(), LayoutMode::WrapHStack),
+        (Node::wrap_vstack(), LayoutMode::WrapVStack),
+        (Node::zstack(), LayoutMode::ZStack),
+        (Node::canvas(), LayoutMode::Canvas),
     ];
 
-    for (element, expected) in cases {
-        assert_eq!(element.mode, ElementMode::Resolved(expected));
+    for (node, expected) in cases {
+        assert_eq!(node.mode, NodeMode::Resolved(expected));
     }
 
-    let mut grid = Element::grid();
-    assert_eq!(grid.mode, ElementMode::PendingGrid);
-    assert!(std::panic::catch_unwind(|| LayoutCore::from_element(&grid)).is_err());
+    let mut grid = Node::grid();
+    assert_eq!(grid.mode, NodeMode::PendingGrid);
+    assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&grid)).is_err());
     let grid_id = GridDefId::from_index(42);
     grid.set_grid_def(grid_id);
-    assert_eq!(grid.mode, ElementMode::Resolved(LayoutMode::Grid(grid_id)));
+    assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
 
     let last_grid = GridDefId::from_index(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
     assert!(std::panic::catch_unwind(|| GridDefId::from_index(65_535)).is_err());
 
-    let scroll = Element::scroll(ScrollSpec::VERTICAL);
+    let scroll = Node::scroll(ScrollSpec::VERTICAL);
     assert_eq!(
         scroll.mode,
-        ElementMode::Resolved(LayoutMode::Scroll(ScrollSpec::VERTICAL)),
+        NodeMode::Resolved(LayoutMode::Scroll(ScrollSpec::VERTICAL)),
     );
     assert_eq!(scroll.scroll_spec(), ScrollSpec::VERTICAL);
 }
@@ -294,10 +291,10 @@ fn layout_core_round_trips_mode_align_visibility() {
         ),
     ];
     for &(mode, align, vis) in cases {
-        let mut element = Element::new(ElementMode::Resolved(mode));
-        element.align = align;
-        element.visibility = vis;
-        let core = LayoutCore::from_element(&element);
+        let mut node = Node::new(NodeMode::Resolved(mode));
+        node.align = align;
+        node.visibility = vis;
+        let core = LayoutCore::from_node(&node);
         assert_eq!(
             LayoutMode::from(core.meta),
             mode,
@@ -317,61 +314,57 @@ fn layout_core_round_trips_mode_align_visibility() {
 }
 
 #[test]
-fn element_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
-    let min_then_max = Element::leaf()
-        .min_size((10.0, 20.0))
-        .max_size((10.0, 30.0));
+fn node_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
+    let min_then_max = Node::leaf().min_size((10.0, 20.0)).max_size((10.0, 30.0));
     assert_eq!(min_then_max.min_size, Some(Size::new(10.0, 20.0)));
     assert_eq!(min_then_max.max_size, Some(Size::new(10.0, 30.0)));
 
-    let max_then_min = Element::leaf()
-        .max_size((30.0, 20.0))
-        .min_size((10.0, 20.0));
+    let max_then_min = Node::leaf().max_size((30.0, 20.0)).min_size((10.0, 20.0));
     assert_eq!(max_then_min.min_size, Some(Size::new(10.0, 20.0)));
     assert_eq!(max_then_min.max_size, Some(Size::new(30.0, 20.0)));
 
-    let unbounded = Element::leaf().max_size(Size::INF);
+    let unbounded = Node::leaf().max_size(Size::INF);
     assert_eq!(unbounded.max_size, Some(Size::INF));
 }
 
 #[test]
 #[cfg(debug_assertions)]
-fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
-    type Case = (&'static str, fn() -> Element);
+fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
+    type Case = (&'static str, fn() -> Node);
 
     let cases: &[Case] = &[
         ("minimum exceeds existing x maximum", || {
-            Element::leaf()
+            Node::leaf()
                 .max_size((10.0, f32::INFINITY))
                 .min_size((11.0, 0.0))
         }),
         ("minimum exceeds existing y maximum", || {
-            Element::leaf()
+            Node::leaf()
                 .max_size((f32::INFINITY, 10.0))
                 .min_size((0.0, 11.0))
         }),
         ("maximum is below existing x minimum", || {
-            Element::leaf()
+            Node::leaf()
                 .min_size((11.0, 0.0))
                 .max_size((10.0, f32::INFINITY))
         }),
         ("maximum is below existing y minimum", || {
-            Element::leaf()
+            Node::leaf()
                 .min_size((0.0, 11.0))
                 .max_size((f32::INFINITY, 10.0))
         }),
         ("infinite x minimum", || {
-            Element::leaf().min_size((f32::INFINITY, 0.0))
+            Node::leaf().min_size((f32::INFINITY, 0.0))
         }),
         ("infinite y minimum", || {
-            Element::leaf().min_size((0.0, f32::INFINITY))
+            Node::leaf().min_size((0.0, f32::INFINITY))
         }),
-        ("NaN minimum", || Element::leaf().min_size((f32::NAN, 0.0))),
+        ("NaN minimum", || Node::leaf().min_size((f32::NAN, 0.0))),
         ("negative infinite maximum", || {
-            Element::leaf().max_size((f32::NEG_INFINITY, f32::INFINITY))
+            Node::leaf().max_size((f32::NEG_INFINITY, f32::INFINITY))
         }),
         ("NaN maximum", || {
-            Element::leaf().max_size((f32::INFINITY, f32::NAN))
+            Node::leaf().max_size((f32::INFINITY, f32::NAN))
         }),
     ];
 
@@ -386,37 +379,33 @@ fn element_bounds_reject_inversions_on_each_axis_and_setter_order() {
 #[test]
 #[cfg(debug_assertions)]
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
-    let valid = Element::hstack()
-        .gap(MAX_PACKED_GAP)
-        .line_gap(MAX_PACKED_GAP);
+    let valid = Node::hstack().gap(MAX_PACKED_GAP).line_gap(MAX_PACKED_GAP);
     assert_eq!(valid.gaps.gap(), MAX_PACKED_GAP);
     assert_eq!(valid.gaps.line_gap(), MAX_PACKED_GAP);
 
-    type Case = (&'static str, fn() -> Element);
+    type Case = (&'static str, fn() -> Node);
     let cases: &[Case] = &[
-        ("negative gap", || Element::hstack().gap(-1.0)),
-        ("NaN gap", || Element::hstack().gap(f32::NAN)),
+        ("negative gap", || Node::hstack().gap(-1.0)),
+        ("NaN gap", || Node::hstack().gap(f32::NAN)),
         ("positive infinite gap", || {
-            Element::hstack().gap(f32::INFINITY)
+            Node::hstack().gap(f32::INFINITY)
         }),
         ("negative infinite gap", || {
-            Element::hstack().gap(f32::NEG_INFINITY)
+            Node::hstack().gap(f32::NEG_INFINITY)
         }),
         ("f16-overflow gap", || {
-            Element::hstack().gap(MAX_PACKED_GAP + 1.0)
+            Node::hstack().gap(MAX_PACKED_GAP + 1.0)
         }),
-        ("negative line gap", || {
-            Element::wrap_hstack().line_gap(-1.0)
-        }),
-        ("NaN line gap", || Element::wrap_hstack().line_gap(f32::NAN)),
+        ("negative line gap", || Node::wrap_hstack().line_gap(-1.0)),
+        ("NaN line gap", || Node::wrap_hstack().line_gap(f32::NAN)),
         ("positive infinite line gap", || {
-            Element::wrap_hstack().line_gap(f32::INFINITY)
+            Node::wrap_hstack().line_gap(f32::INFINITY)
         }),
         ("negative infinite line gap", || {
-            Element::wrap_hstack().line_gap(f32::NEG_INFINITY)
+            Node::wrap_hstack().line_gap(f32::NEG_INFINITY)
         }),
         ("f16-overflow line gap", || {
-            Element::wrap_hstack().line_gap(MAX_PACKED_GAP + 1.0)
+            Node::wrap_hstack().line_gap(MAX_PACKED_GAP + 1.0)
         }),
     ];
 
@@ -440,7 +429,7 @@ fn id_of<W: Configure>(mut w: W) -> WidgetId {
     // No parent context in this micro-test — `Salt::resolve(None)`
     // yields the bare auto/explicit id without any parent-scoping
     // mix.
-    element_of(&mut w).salt.resolve(None)
+    node_of(&mut w).salt.resolve(None)
 }
 
 /// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable

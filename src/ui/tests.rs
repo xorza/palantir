@@ -9,8 +9,8 @@ use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::scene::damage::Damage;
-use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::frame::{FrameRuntime, FrameStamp};
@@ -653,7 +653,7 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::renderer::frontend::Frontend;
-    use crate::scene::element::Element;
+    use crate::scene::node::Node;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use crate::text::{FontFamily, FontWeight, TextShaper};
@@ -662,9 +662,9 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
     const HALF: Duration = Duration::from_millis(500);
 
     fn idle_body(ui: &mut Ui) {
-        let mut element = Element::leaf();
-        element.size = Some((Sizing::fixed(160.0), Sizing::fixed(30.0)).into());
-        ui.widget(element).node(ui, None, |ui| {
+        let mut node = Node::leaf();
+        node.size = Some((Sizing::fixed(160.0), Sizing::fixed(30.0)).into());
+        ui.widget(node).record(ui, None, |ui| {
             let text = ui.intern("idle interned window text");
             ui.add_shape_animated(
                 Shape::Text {

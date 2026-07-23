@@ -1,6 +1,6 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::{Response, enter_widget};
 use std::cell::RefCell;
@@ -34,7 +34,7 @@ use std::rc::Rc;
 /// by default — opt in with [`Configure::sense`] to drive interaction
 /// (drag / click) from the returned [`Response`].
 pub struct GpuView {
-    element: Element,
+    node: Node,
     paint: Rc<RefCell<dyn GpuPaint>>,
     repaint: bool,
 }
@@ -42,7 +42,7 @@ pub struct GpuView {
 impl std::fmt::Debug for GpuView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GpuView")
-            .field("element", &self.element)
+            .field("node", &self.node)
             .field("repaint", &self.repaint)
             .finish_non_exhaustive()
     }
@@ -55,10 +55,10 @@ impl GpuView {
     /// sized to this widget's effective raster resolution.
     #[track_caller]
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
-        let mut element = Element::leaf();
-        element.size = Some((Sizing::fill(1.0), Sizing::fill(1.0)).into());
+        let mut node = Node::leaf();
+        node.size = Some((Sizing::fill(1.0), Sizing::fill(1.0)).into());
         Self {
-            element,
+            node,
             paint,
             repaint: true,
         }
@@ -85,13 +85,13 @@ impl GpuView {
     /// frame to animate.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let Self {
-            element,
+            node,
             paint,
             repaint,
         } = self;
-        let entry = enter_widget(ui, element);
+        let entry = enter_widget(ui, node);
         let id = entry.widget.id();
-        entry.widget.node(ui, None, |ui| {
+        entry.widget.record(ui, None, |ui| {
             ui.gpu_view(id, paint, repaint);
         });
         entry.into_response(ui)
@@ -99,8 +99,8 @@ impl GpuView {
 }
 
 impl Configure for GpuView {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -112,8 +112,8 @@ mod tests {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::gpu_view::GpuFrameCtx;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};

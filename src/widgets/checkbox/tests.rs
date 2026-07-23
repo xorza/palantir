@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

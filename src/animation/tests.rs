@@ -10,7 +10,7 @@ use crate::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};
 use std::time::Duration;

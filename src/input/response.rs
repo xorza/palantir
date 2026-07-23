@@ -231,7 +231,7 @@ impl Default for ScrollDelta {
 /// `disabled` is the **cascaded** disabled flag (the widget OR any ancestor),
 /// read from the previous frame's cascade — one-frame stale, like
 /// hover/press. Widgets that need lag-free self-disabled visuals also
-/// merge their own `Element::disabled` (`state.disabled |= element.disabled`)
+/// merge their own `Node::disabled` (`state.disabled |= node.disabled`)
 /// before reading the field.
 ///
 /// `focused` is `true` when this widget currently holds keyboard focus

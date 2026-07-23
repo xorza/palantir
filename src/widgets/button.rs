@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -11,7 +11,7 @@ use crate::widgets::{Response, enter_widget};
 
 #[derive(Debug)]
 pub struct Button<'a> {
-    element: Element,
+    node: Node,
     style: Option<&'a ButtonTheme>,
     label: TextInput<'a>,
     label_align: Align,
@@ -22,10 +22,10 @@ impl<'a> Button<'a> {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        let mut element = Element::leaf();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::leaf();
+        node.flags.set_sense(Sense::CLICK);
         Self {
-            element,
+            node,
             style: None,
             label: TextInput::default(),
             // Buttons center their labels by convention. Override with
@@ -71,12 +71,12 @@ impl<'a> Button<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
         let look = resolve_look(
             ui,
             id,
-            &mut entry.widget.element,
+            &mut entry.widget.node,
             &entry.state,
             self.style,
             |t| &t.button,
@@ -85,7 +85,7 @@ impl<'a> Button<'a> {
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        entry.widget.node(ui, Some(&look.background), |ui| {
+        entry.widget.record(ui, Some(&look.background), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(Shape::Text {
@@ -111,8 +111,8 @@ impl<'a> Button<'a> {
 }
 
 impl Configure for Button<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -121,8 +121,8 @@ mod tests {
     use crate::Ui;
     use crate::primitives::background::Background;
     use crate::primitives::spacing::Spacing;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::widgets::button::Button;
     use crate::widgets::theme::button::ButtonTheme;
     use glam::UVec2;

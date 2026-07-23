@@ -58,7 +58,7 @@ impl TextEditTheme {
     /// Pick the visual state: `active` = focused. Disabled wins over
     /// focused, focused over hovered; otherwise normal.
     /// `state.disabled` is the cascaded ancestor-or-self flag —
-    /// caller can merge `state.disabled |= element.disabled` for
+    /// caller can merge `state.disabled |= node.disabled` for
     /// lag-free response to its own self-toggle (mirrors Button).
     #[inline(always)]
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {

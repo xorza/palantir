@@ -46,7 +46,7 @@ pub(crate) struct RecordingScratch {
     /// frames.
     ///
     /// Each frame carries precomputed disabled and effective-visibility
-    /// cascade bits. That makes inherited state a one-element load
+    /// cascade bits. That makes inherited state a one-node load
     /// instead of an O(depth) walk.
     pub(crate) open_frames: Vec<OpenFrame>,
 

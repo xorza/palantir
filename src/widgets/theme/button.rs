@@ -13,7 +13,7 @@ use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live
-/// response state and `Element::disabled` via [`Self::pick`].
+/// response state and `Node::disabled` via [`Self::pick`].
 ///
 /// `padding`/`margin` apply when the user didn't call `.padding(...)`
 /// / `.margin(...)` on the builder. Explicit zero spacing overrides
@@ -122,7 +122,7 @@ impl ButtonTheme {
     /// otherwise normal.
     /// `state.disabled` is the cascaded ancestor-or-self flag — if
     /// the caller wants lag-free response to its own self-toggle,
-    /// merge `state.disabled |= element.disabled` before calling.
+    /// merge `state.disabled |= node.disabled` before calling.
     #[inline(always)]
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())

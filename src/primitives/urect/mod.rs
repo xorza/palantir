@@ -53,7 +53,7 @@ impl URect {
     /// Axis-aligned union (smallest enclosing rect). A zero-sized rect
     /// (the [`Default`]) acts as identity — `default.union(x) == x` —
     /// so callers can fold an empty accumulator without a special
-    /// "first element" branch.
+    /// "first node" branch.
     pub(crate) const fn union(self, other: Self) -> Self {
         if self.w == 0 || self.h == 0 {
             return other;

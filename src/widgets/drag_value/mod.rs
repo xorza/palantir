@@ -4,7 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -203,7 +203,7 @@ impl<'a> std::ops::Deref for DragValueResponse<'a> {
 /// longer editable) is dropped, not committed.
 #[derive(Debug)]
 pub struct DragValue<'a> {
-    element: Element,
+    node: Node,
     value: DragNum<'a>,
     speed: f64,
     min: f64,
@@ -217,10 +217,10 @@ pub struct DragValue<'a> {
 impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
-        let mut element = Element::leaf();
-        element.flags.set_sense(Sense::DRAG);
+        let mut node = Node::leaf();
+        node.flags.set_sense(Sense::DRAG);
         Self {
-            element,
+            node,
             value: value.into(),
             speed: 1.0,
             min: f64::NEG_INFINITY,
@@ -279,7 +279,7 @@ impl<'a> DragValue<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
 
         // Focused + editable + enabled: the inline text editor owns the
@@ -382,11 +382,11 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = resolve_look(ui, id, &mut entry.widget.element, &entry.state, chip, |t| {
+        let look = resolve_look(ui, id, &mut entry.widget.node, &entry.state, chip, |t| {
             &t.drag_value.chip
         });
 
-        entry.widget.node(ui, Some(&look.background), |ui| {
+        entry.widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text,
@@ -426,8 +426,8 @@ impl<'a> DragValue<'a> {
         // `min_size.w`) so a long value scrolls inside the chip's box instead
         // of growing a content-hugging row. Before the first chip frame gives
         // us a width to hold, fall back to the field's own width sizing.
-        let min_size = self.element.min_size.unwrap_or(Size::ZERO);
-        let sizes = self.element.size.unwrap_or_default();
+        let min_size = self.node.min_size.unwrap_or(Size::ZERO);
+        let sizes = self.node.size.unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
         let width = held_w.unwrap_or(sizes.w());
         // Entry edge: seed the buffer from the current value — a click and a
@@ -455,7 +455,7 @@ impl<'a> DragValue<'a> {
                 .select_all_on_focus()
                 .size((width, sizes.h()))
                 .min_size(min_size)
-                .max_size(self.element.max_size.unwrap_or(Size::INF));
+                .max_size(self.node.max_size.unwrap_or(Size::INF));
             let edit = if let Some(editor) = editor {
                 edit.style(editor)
             } else {
@@ -482,8 +482,8 @@ impl<'a> DragValue<'a> {
 }
 
 impl Configure for DragValue<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

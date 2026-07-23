@@ -4,7 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::{Response, enter_widget};
@@ -21,7 +21,7 @@ use std::ops::RangeInclusive;
 /// `slider`).
 #[derive(Debug)]
 pub struct Slider<'a> {
-    element: Element,
+    node: Node,
     value: &'a mut f32,
     min: f32,
     max: f32,
@@ -32,10 +32,10 @@ pub struct Slider<'a> {
 impl<'a> Slider<'a> {
     #[track_caller]
     pub fn new(value: &'a mut f32, range: RangeInclusive<f32>) -> Self {
-        let mut element = Element::hstack();
-        element.flags.set_sense(Sense::CLICK | Sense::DRAG);
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK | Sense::DRAG);
         Self {
-            element,
+            node,
             value,
             min: *range.start(),
             max: *range.end(),
@@ -59,7 +59,7 @@ impl<'a> Slider<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
         let state = &entry.state;
 
@@ -91,13 +91,12 @@ impl<'a> Slider<'a> {
         let rail_bg = Background::rounded(rail_color, pill);
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
-        let element = &mut entry.widget.element;
-        element
-            .size
+        let node = &mut entry.widget.node;
+        node.size
             .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
-        element.child_align = Align::v(VAlign::Center);
+        node.child_align = Align::v(VAlign::Center);
 
-        entry.widget.node(ui, None, |ui| {
+        entry.widget.record(ui, None, |ui| {
             rail_leaf(
                 ui,
                 id.with("fill"),
@@ -119,21 +118,21 @@ impl<'a> Slider<'a> {
 }
 
 impl Configure for Slider<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
 fn rail_leaf(ui: &mut Ui, id: WidgetId, w: Sizing, h: f32, bg: &Background) {
-    let el = Element::leaf().id(id).size((w, Sizing::fixed(h)));
-    ui.widget(el).node(ui, Some(bg), |_| {});
+    let el = Node::leaf().id(id).size((w, Sizing::fixed(h)));
+    ui.widget(el).record(ui, Some(bg), |_| {});
 }
 
 fn knob_leaf(ui: &mut Ui, id: WidgetId, size: f32, bg: &Background) {
-    let el = Element::leaf()
+    let el = Node::leaf()
         .id(id)
         .size((Sizing::fixed(size), Sizing::fixed(size)));
-    ui.widget(el).node(ui, Some(bg), |_| {});
+    ui.widget(el).record(ui, Some(bg), |_| {});
 }
 
 /// Fraction (0..1) of the way from `min` to `max` that `value` sits.
@@ -180,8 +179,8 @@ mod tests {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::transform::TranslateScale;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::slider::{
         Slider, clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step,

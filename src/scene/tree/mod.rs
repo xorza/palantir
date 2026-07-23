@@ -33,8 +33,8 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Element;
-use crate::scene::element::columns::{BoundsExtras, PanelExtras};
+use crate::scene::node::Node;
+use crate::scene::node::columns::{BoundsExtras, PanelExtras};
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::lower::ChromeInput;
@@ -288,7 +288,7 @@ impl Tree {
     /// `records.len() as u32` wrapped. Lets callers (notably
     /// `Forest::open_node`) reserve the id ahead of the push so
     /// `SeenIds::record` can stash it for collision lookup before
-    /// `element` is moved into the tree.
+    /// `node` is moved into the tree.
     pub(crate) fn peek_next_id(&self) -> NodeId {
         // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
         // arena ceiling), which `open_node` asserts for this same id.
@@ -341,7 +341,7 @@ impl Tree {
         scratch: &mut RecordingScratch,
         new_id: NodeId,
         widget_id: WidgetId,
-        mut element: Element,
+        mut node: Node,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
         debug_assert_eq!(
@@ -350,10 +350,10 @@ impl Tree {
             "Tree::open_node received a NodeId that doesn't match the next slot",
         );
 
-        if matches!(element.clip, Some(ClipMode::Rounded)) {
+        if matches!(node.clip, Some(ClipMode::Rounded)) {
             let radius_zero = chrome.is_none_or(|c| c.bg.corners.approx_zero());
             if radius_zero {
-                element.clip = Some(ClipMode::Rect);
+                node.clip = Some(ClipMode::Rect);
             }
         }
 
@@ -366,7 +366,7 @@ impl Tree {
                 placement: pending,
             });
         }
-        let mut cols = element.into_columns(widget_id);
+        let mut cols = node.into_columns(widget_id);
         if let LayoutMode::Grid(id) = LayoutMode::from(cols.layout.meta) {
             debug_assert!(
                 usize::from(id) < self.grid_defs.len(),

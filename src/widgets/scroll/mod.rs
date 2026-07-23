@@ -13,7 +13,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::{InnerResponse, Response};
@@ -283,7 +283,7 @@ fn push_bar_nodes(
     theme: &ScrollbarTheme,
 ) {
     let radius = Corners::all(theme.radius);
-    let track = Element::leaf()
+    let track = Node::leaf()
         .id(track_id)
         .size((
             Sizing::fixed(plan.track_rect.size.w),
@@ -293,9 +293,9 @@ fn push_bar_nodes(
         .sense(Sense::CLICK);
     if !theme.track.is_noop() {
         let chrome = Background::rounded(theme.track, radius);
-        ui.widget(track).node(ui, Some(&chrome), |_| {});
+        ui.widget(track).record(ui, Some(&chrome), |_| {});
     } else {
-        ui.widget(track).node(ui, None, |_| {});
+        ui.widget(track).record(ui, None, |_| {});
     }
 
     let fill = if resp.left.drag.delta().is_some() || resp.pressed() {
@@ -305,7 +305,7 @@ fn push_bar_nodes(
     } else {
         theme.thumb
     };
-    let thumb = Element::leaf()
+    let thumb = Node::leaf()
         .id(thumb_id)
         .size((
             Sizing::fixed(plan.thumb_rect.size.w),
@@ -314,7 +314,7 @@ fn push_bar_nodes(
         .position(plan.thumb_rect.min)
         .sense(Sense::DRAG);
     let chrome = Background::rounded(fill, radius);
-    ui.widget(thumb).node(ui, Some(&chrome), |_| {});
+    ui.widget(thumb).record(ui, Some(&chrome), |_| {});
 }
 
 /// How the scrollbars relate to the content area on the pan axes.
@@ -340,20 +340,20 @@ pub enum BarMode {
     Hidden,
 }
 
-/// The two wrapper `Element`s a `Scroll` records: an outer `ZStack`
+/// The two wrapper `Node`s a `Scroll` records: an outer `ZStack`
 /// that owns sizing / placement / sense / visibility and an inner
 /// viewport that owns the `Scroll` layout mode, padding, and the panel
 /// knobs (gap / justify / child_align).
 #[derive(Debug)]
 struct ScrollWrappers {
-    outer: Element,
-    inner: Element,
+    outer: Node,
+    inner: Node,
 }
 
-/// Split a user `Scroll` element into its outer/inner wrappers.
+/// Split a user `Scroll` node into its outer/inner wrappers.
 ///
-/// **This routes every `Element` field that should survive on a
-/// `Scroll`** — the exhaustive destructure means adding an `Element`
+/// **This routes every `Node` field that should survive on a
+/// `Scroll`** — the exhaustive destructure means adding a `ode`
 /// field fails to compile here, forcing the decision whether it lands
 /// on `outer` (sizing/placement) or `inner` (layout/panel knobs).
 /// `Scroll::show` patches the remaining inner fields it computes per
@@ -361,9 +361,9 @@ struct ScrollWrappers {
 /// `clip` — read off `flags` before this runs — and the pan
 /// `transform`). The user salt stays on the `Widget` resolved in
 /// `Scroll::show`; neither wrapper carries it.
-fn scroll_wrappers(element: Element) -> ScrollWrappers {
-    let scroll_spec = element.scroll_spec();
-    let Element {
+fn scroll_wrappers(node: Node) -> ScrollWrappers {
+    let scroll_spec = node.scroll_spec();
+    let Node {
         salt: _,
         mode: _,
         size,
@@ -381,9 +381,9 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
         visibility,
         // Scroll owns its mode/transform, and no fallback runs after this split.
         ..
-    } = element;
+    } = node;
 
-    let mut outer = Element::zstack();
+    let mut outer = Node::zstack();
     outer.size = size;
     outer.min_size = min_size;
     outer.max_size = max_size;
@@ -396,7 +396,7 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
     outer.flags.set_focusable(flags.is_focusable());
     outer.visibility = visibility;
 
-    let mut inner = Element::scroll(scroll_spec);
+    let mut inner = Node::scroll(scroll_spec);
     // Inner fills the outer wrapper; the outer carries the user's
     // `Sizing` and drives the actual size.
     inner.size = Some((Sizing::FILL, Sizing::FILL).into());
@@ -423,7 +423,7 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
 /// via [`BarMode`].
 #[derive(Debug)]
 pub struct Scroll {
-    element: Element,
+    node: Node,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
     bar_mode: BarMode,
@@ -460,14 +460,14 @@ impl Scroll {
 
     #[track_caller]
     fn with_axes(spec: ScrollSpec) -> Self {
-        let mut element = Element::scroll(spec);
-        element.flags.set_sense(Sense::SCROLL);
+        let mut node = Node::scroll(spec);
+        node.flags.set_sense(Sense::SCROLL);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
-        element.clip = Some(ClipMode::Rect);
+        node.clip = Some(ClipMode::Rect);
         Self {
-            element,
+            node,
             zoom: None,
             chrome: None,
             bar_mode: BarMode::Reserved,
@@ -526,14 +526,14 @@ impl Scroll {
     /// Enable zoom with explicit config. See [`Self::with_zoom`].
     pub fn with_zoom_config(mut self, cfg: ZoomConfig) -> Self {
         self.zoom = Some(cfg);
-        let sense = self.element.flags.sense() | Sense::PINCH;
+        let sense = self.node.flags.sense() | Sense::PINCH;
         self.sense(sense)
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        let mut widget = ui.widget(self.element);
+        let mut widget = ui.widget(self.node);
         let id = widget.id();
-        let pan = self.element.scroll_spec().pan_mask();
+        let pan = self.node.scroll_spec().pan_mask();
         if self.zoom.is_some() {
             debug_assert!(
                 pan.x && pan.y,
@@ -639,7 +639,7 @@ impl Scroll {
                 let bl = bar_layout(
                     row,
                     pan,
-                    self.element.padding.unwrap_or(Spacing::ZERO),
+                    self.node.padding.unwrap_or(Spacing::ZERO),
                     &responses.theme,
                     self.bar_mode,
                 );
@@ -756,7 +756,7 @@ impl Scroll {
         // (outer = sizing/placement, inner = layout/panel knobs) lives
         // in `scroll_wrappers`; the per-frame computed fields below
         // patch `inner`.
-        let ScrollWrappers { outer, mut inner } = scroll_wrappers(self.element);
+        let ScrollWrappers { outer, mut inner } = scroll_wrappers(self.node);
 
         // Inner viewport owns the clip, the pan transform, the user-set
         // padding (encoder deflates the clip mask by it), and the
@@ -770,15 +770,15 @@ impl Scroll {
         // extent, so the scroll sizes to content like any other `Hug`
         // widget (bounded by `max_size`/available, scrolling past the
         // cap); `Fill`/`Fixed` keep the content-independent viewport.
-        let user = self.element.size.unwrap_or_default();
+        let user = self.node.size.unwrap_or_default();
         let fit = glam::BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
-        inner.set_scroll_spec(self.element.scroll_spec().with_fit(fit));
+        inner.set_scroll_spec(self.node.scroll_spec().with_fit(fit));
         let mut inner = inner.id(scroll_id);
         inner.margin = Some(Spacing::new(0.0, 0.0, reserve_y, reserve_x));
         let inner_chrome = self.chrome;
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
         // can replace it with rounded clipping or no clipping.
-        inner.clip = self.element.clip;
+        inner.clip = self.node.clip;
         // Raw pan/zoom — cascade anchors the scale at the inner's own
         // `layout_rect.min` (`TranslateScale::anchored_at`), so we
         // don't pre-bake the origin compensation. Translation is just
@@ -788,9 +788,9 @@ impl Scroll {
             inner.transform = TranslateScale::new(-offset, zoom);
         }
 
-        widget.element = outer;
-        let inner_value = widget.node(ui, None, |ui| {
-            let inner_value = ui.widget(inner).node(ui, inner_chrome.as_ref(), body);
+        widget.node = outer;
+        let inner_value = widget.record(ui, None, |ui| {
+            let inner_value = ui.widget(inner).record(ui, inner_chrome.as_ref(), body);
             // Bar overlay: Canvas sibling of inner, Fill on both axes
             // → covers outer's full rect. Tracks attach as shapes on
             // the overlay (paint first); thumbs are Sense::DRAG leaves
@@ -800,10 +800,10 @@ impl Scroll {
                 .bars
                 .filter(|bars| bars.plans.vertical.is_some() || bars.plans.horizontal.is_some())
             {
-                let overlay = Element::canvas()
+                let overlay = Node::canvas()
                     .id(scroll_id.with("__bars"))
                     .size((Sizing::FILL, Sizing::FILL));
-                ui.widget(overlay).node(ui, None, |ui| {
+                ui.widget(overlay).record(ui, None, |ui| {
                     if let Some(p) = bars.plans.vertical {
                         push_bar_nodes(
                             ui,
@@ -842,8 +842,8 @@ impl Scroll {
 }
 
 impl Configure for Scroll {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

@@ -3,8 +3,8 @@ use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
-use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::layer::Layer;
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::resolve_container_chrome;
@@ -97,7 +97,7 @@ impl PopupResponse {
 pub struct Popup {
     position: OverlayPosition,
     click_outside: ClickOutside,
-    pub(crate) element: Element,
+    pub(crate) node: Node,
     chrome: Option<Background>,
 }
 
@@ -129,12 +129,12 @@ impl Popup {
 
     #[track_caller]
     fn positioned(position: OverlayPosition) -> Self {
-        let mut element = Element::vstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::vstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
             position,
             click_outside: ClickOutside::Dismiss,
-            element,
+            node,
             chrome: None,
         }
     }
@@ -160,7 +160,7 @@ impl Popup {
         // salt hash. That keeps the eater id (and any persistent
         // popup-side state) stable regardless of where in `Main`
         // the trigger lives.
-        let mut widget = ui.widget(self.element);
+        let mut widget = ui.widget(self.node);
         let eater_id = widget.id().with("eater");
         // Eater records first → paints under the body. Hit-test runs
         // reverse-iter so the body's leaves still win inside its rect.
@@ -181,14 +181,14 @@ impl Popup {
                 .show(ui);
         });
         let chrome = resolve_container_chrome(
-            &mut widget.element,
+            &mut widget.node,
             self.chrome,
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
         let handle = PopupHandle::new();
         ui.overlay_layer(Layer::Popup, self.position, |ui| {
-            widget.node(ui, chrome.as_ref(), |ui| body(ui, &handle));
+            widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
         });
         let dismiss_mode = self.click_outside == ClickOutside::Dismiss;
         let eater_clicked = ui.response_for(eater_id).left.clicked();
@@ -204,8 +204,8 @@ impl Popup {
 }
 
 impl Configure for Popup {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
