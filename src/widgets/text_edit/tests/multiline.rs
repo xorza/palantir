@@ -45,6 +45,22 @@ fn single_line_enter_does_not_insert_newline() {
     assert_eq!(state.caret, 3);
 }
 
+#[test]
+fn single_line_widget_normalizes_host_newlines() {
+    let mut ui = Ui::for_test_at_text(UVec2::new(300, 80));
+    let mut text = String::from("first\r\nsecond\nthird");
+    let mut changed = false;
+    ui.run_at(UVec2::new(300, 80), |ui| {
+        changed |= TextEdit::new(&mut text)
+            .id(WidgetId::from_hash("single-line"))
+            .size((Sizing::fixed(240.0), Sizing::fixed(40.0)))
+            .show(ui)
+            .changed;
+    });
+    assert_eq!(text, "first second third");
+    assert!(changed, "normalizing host content is an observable edit");
+}
+
 /// Paste in multi-line mode preserves clipboard newlines (the
 /// sanitize-on-paste behaviour is gated to single-line only).
 #[test]

@@ -315,7 +315,7 @@ fn drag_select_continues_past_editor_bounds() {
     );
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
-        assert_eq!(st.view.drag_anchor, Some(anchor));
+        assert_eq!(st.interaction.drag_anchor, Some(anchor));
         assert_eq!(
             st.edit.selection, None,
             "a single press selects nothing yet"
@@ -339,7 +339,7 @@ fn drag_select_continues_past_editor_bounds() {
             "selection extends from the anchor — not lost"
         );
         assert_eq!(
-            st.view.drag_anchor,
+            st.interaction.drag_anchor,
             Some(anchor),
             "anchor survives the out-of-bounds drag"
         );
@@ -371,7 +371,7 @@ fn drag_select_continues_past_editor_bounds() {
             "off-surface must not drop the selection"
         );
         assert_eq!(
-            st.view.drag_anchor,
+            st.interaction.drag_anchor,
             Some(anchor),
             "off-surface must not drop the anchor"
         );
@@ -387,7 +387,10 @@ fn drag_select_continues_past_editor_bounds() {
             Some(anchor),
             "selection survives release"
         );
-        assert_eq!(st.view.drag_anchor, None, "release clears the drag anchor");
+        assert_eq!(
+            st.interaction.drag_anchor, None,
+            "release clears the drag anchor"
+        );
     }
 }
 

@@ -135,3 +135,36 @@ fn fill_width_editor_shrinks_below_text_content() {
         "Fill editor ({fill_w}) must be narrower than its text content ({text_w})",
     );
 }
+
+#[test]
+fn stable_editor_uses_one_direct_layout_probe() {
+    for (multiline, selected) in [(false, false), (true, true)] {
+        let mut ui = Ui::for_test_at_text(SIZE);
+        let id = WidgetId::from_hash((multiline, selected));
+        let mut text = String::from("editable text across two lines\nwith a selection");
+        let text_len = text.len();
+        let mut record = |ui: &mut Ui| {
+            TextEdit::new(&mut text)
+                .id(id)
+                .multiline(multiline)
+                .size((Sizing::fixed(240.0), Sizing::fixed(60.0)))
+                .show(ui);
+        };
+        ui.run_at(SIZE, &mut record);
+        ui.run_at(SIZE, &mut record);
+        if selected {
+            ui.request_focus(Some(id));
+            let state = ui.state_mut::<TextEditState>(id);
+            state.edit.selection = Some(0);
+            state.edit.caret = text_len;
+            ui.run_at(SIZE, &mut record);
+        }
+        let before = ui.resources.text.measure_calls();
+        ui.run_at(SIZE, &mut record);
+        assert_eq!(
+            ui.resources.text.measure_calls() - before,
+            1,
+            "multiline={multiline}, selected={selected}: measurement, caret, and selection must share one direct layout probe",
+        );
+    }
+}

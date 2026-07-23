@@ -1,4 +1,5 @@
 use crate::widgets::text_edit::TextEditState;
+use crate::common::hash;
 use crate::widgets::text_edit::input::{
     KeyOutcome, apply_key as apply_editor_key, dispatch_action,
 };
@@ -6,7 +7,7 @@ use crate::widgets::text_edit::model::{
     EditState, Editor, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
     prev_word_boundary, word_range_at,
 };
-use crate::widgets::text_edit::view::ViewState;
+use crate::widgets::text_edit::view::InteractionState;
 
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     let clipboard = Clipboard::default();
@@ -20,10 +21,11 @@ fn apply_key_with_clipboard(
     clipboard: &Clipboard,
 ) -> bool {
     let mut ed = Editor::new(text, state, false, None);
-    if dispatch_action(&mut ed, kp, false, clipboard) {
-        return false;
-    }
-    apply_editor_key(&mut ed, kp) == KeyOutcome::Blur
+    let blur = !dispatch_action(&mut ed, kp, clipboard)
+        && apply_editor_key(&mut ed, kp) == KeyOutcome::Blur;
+    let text_hash = hash::hash_str(ed.text);
+    ed.state.observe_text_hash(text_hash);
+    blur
 }
 use crate::Spacing;
 use crate::Ui;

@@ -1,3 +1,4 @@
+use crate::common::hash;
 use crate::widgets::text_edit::model::EditKind;
 use crate::widgets::text_edit::tests::*;
 
@@ -119,4 +120,26 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
 
     apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(s, "ab", "both deletes remain one undo group");
+}
+
+#[test]
+fn external_replacement_discards_unrelated_history() {
+    let mut text = String::new();
+    let mut state = EditState::default();
+    for c in ['a', 'b', 'c'] {
+        apply_key(&mut text, &mut state, press(Key::Char(c)));
+    }
+    assert_eq!(state.undo.len(), 1);
+
+    text = String::from("host value");
+    state.observe_text_hash(hash::hash_str(&text));
+    assert!(state.undo.is_empty(), "render observation drops stale undo");
+    assert!(state.redo.is_empty(), "render observation drops stale redo");
+    apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(text, "host value", "undo must not cross a host replacement");
+
+    apply_key(&mut text, &mut state, press(Key::Char('!')));
+    assert_eq!(text, "hos!t value");
+    apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(text, "host value", "new edits start fresh history");
 }

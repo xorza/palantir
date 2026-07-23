@@ -581,19 +581,16 @@ mod per_line {
     }
 
     /// Regression: `LayoutEngine::shape_text` always re-shapes through the
-    /// bounded path for `TextWrap::WrapWithOverflow` (item 4 in the
+    /// bounded path for `TextWrap::Wrap` (item 4 in the
     /// per-line-align review). With the slot cache keyed on width and
     /// halign, the layout pipeline must hit that
     /// cache on every steady-state frame — otherwise we'd reshape
     /// on every frame and the per-frame text path becomes O(n) in
     /// glyph count.
     ///
-    /// `TextShaper::measure` increments `measure_calls`
-    /// unconditionally (even on cosmic-cache hits), so the widget's
-    /// own probes (offset measure + cursor_xy) inflate the raw
-    /// counter every frame. We instead check the *delta* across
-    /// consecutive stable frames is constant — a reshape regression
-    /// would bump that delta by one or more.
+    /// Direct layout inspection increments `measure_calls` even on a
+    /// cosmic-cache hit. Check the delta across consecutive stable frames
+    /// so an extra layout-engine reshape cannot hide in the aggregate.
     #[test]
     fn stable_multiline_holds_constant_per_frame_cost() {
         let mut ui = cosmic_ui();
@@ -701,7 +698,7 @@ mod per_line {
     /// Regression: an empty multi-line buffer with right-align must
     /// place the caret at the right edge of the wrap target, not at
     /// x = 0. Empty text returns `TextCacheKey::INVALID` and the
-    /// shaper's `with_buffer` falls through to the mono path, which
+    /// shaper's empty-layout fallback must still honor halign; it
     /// historically ignored halign — caret pinned to the left while
     /// the user expects it to anchor where typed text will appear.
     #[test]

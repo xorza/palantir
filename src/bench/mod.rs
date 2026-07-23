@@ -31,3 +31,4 @@ pub use crate::bench::scene::cascade::bench as cascade;
 pub use crate::bench::scene::damage::bench as damage;
 pub use crate::bench::scene::tree::paint_anims::bench as paint_anims;
 pub use crate::bench::text::bench as text_shape;
+pub use crate::widgets::text_edit::bench::bench as text_edit;
