@@ -3,10 +3,11 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
-    TextCtx, arrange_axis, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
+    arrange_axis, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
 };
 use crate::layout::types::align::AxisAlign;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
@@ -42,7 +43,7 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
     let canvas_size = tree.records.layout()[node.idx()].size;
@@ -52,12 +53,20 @@ pub(crate) fn measure(
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    measure_per_axis_hug(layout, tree, node, inner_avail, tc, out, |tree, c, d| {
-        let pos = tree.bounds(c).position;
-        let off_x = if pos_inflates_x { pos.x } else { 0.0 };
-        let off_y = if pos_inflates_y { pos.y } else { 0.0 };
-        Size::new(off_x + d.w, off_y + d.h)
-    })
+    measure_per_axis_hug(
+        layout,
+        tree,
+        node,
+        inner_avail,
+        interned_text,
+        out,
+        |tree, c, d| {
+            let pos = tree.bounds(c).position;
+            let off_x = if pos_inflates_x { pos.x } else { 0.0 };
+            let off_y = if pos_inflates_y { pos.y } else { 0.0 };
+            Size::new(off_x + d.w, off_y + d.h)
+        },
+    )
 }
 
 /// Each child gets a slot at `inner.min + bounds.position`, sized per its
@@ -116,13 +125,13 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let pos_inflates = matches!(
         axis.main_sizing(tree.records.layout()[node.idx()].size),
         Sizing::HUG
     );
-    children_max_intrinsic_offset(layout, tree, node, axis, query, tc, |tree, c| {
+    children_max_intrinsic_offset(layout, tree, node, axis, query, interned_text, |tree, c| {
         if pos_inflates {
             axis.main_v(tree.bounds(c).position)
         } else {

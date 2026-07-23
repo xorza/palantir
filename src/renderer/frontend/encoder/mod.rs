@@ -5,6 +5,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
@@ -167,7 +168,7 @@ impl Encoder {
         let now = scene.time;
         let gradients = scene.payloads.gradients.records.as_slice();
         gradient_resolver.begin(gradients.len());
-        let text_bytes = scene.payloads.text_bytes();
+        let interned_text = scene.payloads.interned_text();
         // Matches the backend's padded physical scissor; both derive from
         // `renderer::plan::DAMAGE_AA_PADDING`.
         let damage_cull_margin = damage_cull_margin(scene.display.scale_factor);
@@ -179,7 +180,7 @@ impl Encoder {
                 cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
                 subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
                 gradients,
-                text_bytes: &text_bytes,
+                interned_text: &interned_text,
                 shaper: scene.text,
                 gradient_atlas,
                 gradient_resolver,
@@ -202,13 +203,13 @@ impl Encoder {
 
 /// Per-layer encode context. Bundles fixed inputs so recursion threads one
 /// `&mut ctx` instead of a long argument list.
-struct LayerCtx<'a> {
+struct LayerCtx<'a, 'text> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
     cascade_inputs: &'a [CascadeInputHash],
     subtree_paint_rects: &'a [Rect],
     gradients: &'a [RecordedGradient],
-    text_bytes: &'a str,
+    interned_text: &'a InternedText<'text>,
     shaper: &'a TextShaper,
     gradient_atlas: &'a SharedGradientAtlas,
     gradient_resolver: &'a mut GradientResolver,
@@ -226,7 +227,7 @@ struct LayerCtx<'a> {
     now: Duration,
 }
 
-impl LayerCtx<'_> {
+impl LayerCtx<'_, '_> {
     #[inline]
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradient_resolver
@@ -235,7 +236,7 @@ impl LayerCtx<'_> {
 }
 
 // Manual: `Tree` / `LayerLayout` don't implement `Debug`.
-impl std::fmt::Debug for LayerCtx<'_> {
+impl std::fmt::Debug for LayerCtx<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LayerCtx")
             .field("damage_cull_margin", &self.damage_cull_margin)
@@ -289,7 +290,7 @@ fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut RenderCmd
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
 fn emit_one_shape(
-    ctx: &mut LayerCtx,
+    ctx: &mut LayerCtx<'_, '_>,
     id: NodeId,
     owner_rect: Rect,
     shape_idx: u32,
@@ -348,7 +349,7 @@ fn emit_one_shape(
                 return;
             }
             ctx.shaper
-                .ensure_buffer(text.resolve(ctx.text_bytes).text, shaped.key);
+                .ensure_buffer(text.resolve(ctx.interned_text).text, shaped.key);
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect
@@ -557,7 +558,7 @@ fn emit_one_shape(
     }
 }
 
-fn encode_node(ctx: &mut LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
+fn encode_node(ctx: &mut LayerCtx<'_, '_>, id: NodeId, out: &mut RenderCmdBuffer) {
     if ctx.cascade_inputs[id.idx()].invisible() {
         return;
     }

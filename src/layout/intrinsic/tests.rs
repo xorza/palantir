@@ -2,7 +2,6 @@ use crate::layout::intrinsic::*;
 use crate::scene::tree::node::NodeId;
 
 use crate::Ui;
-use crate::layout::support::TextCtx;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -83,14 +82,13 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
     let payloads = ui.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
-    let tc = TextCtx { bytes: &text_bytes };
+    let interned_text = payloads.interned_text();
     let v = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         child,
         Axis::X,
         LenReq::MinContent,
-        &tc,
+        &interned_text,
     );
     assert_eq!(
         v, SENTINEL,
@@ -102,14 +100,17 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         child,
         Axis::X,
         LenReq::MaxContent,
-        &tc,
+        &interned_text,
     );
     let max_slot = LenReq::MaxContent.slot(Axis::X);
     ui.layout_engine.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
     ui.layout_engine.scratch.intrinsic_computes = 0;
-    let range =
-        ui.layout_engine
-            .intrinsic_range(&ui.forest.trees[Layer::Main], child, Axis::X, &tc);
+    let range = ui.layout_engine.intrinsic_range(
+        &ui.forest.trees[Layer::Main],
+        child,
+        Axis::X,
+        &interned_text,
+    );
     assert_eq!(
         range,
         IntrinsicRange {
@@ -122,7 +123,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         ui.layout_engine.scratch.intrinsic_computes, 1,
         "only the missing max-content side should compute",
     );
-    drop(text_bytes);
+    drop(interned_text);
     drop(payloads);
 }
 
@@ -160,15 +161,15 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     }
 
     let payloads = ui.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     let _ = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         root,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
-    drop(text_bytes);
+    drop(interned_text);
     drop(payloads);
 
     assert!(
@@ -271,8 +272,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     }
 
     let payloads = ui.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
-    let tc = TextCtx { bytes: &text_bytes };
+    let interned_text = payloads.interned_text();
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
@@ -282,12 +282,12 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 .intrinsics
                 .fill([f32::NAN; SLOT_COUNT]);
             ui.layout_engine.scratch.intrinsic_computes = 0;
-            let min = ui
-                .layout_engine
-                .intrinsic(tree, node, axis, LenReq::MinContent, &tc);
-            let max = ui
-                .layout_engine
-                .intrinsic(tree, node, axis, LenReq::MaxContent, &tc);
+            let min =
+                ui.layout_engine
+                    .intrinsic(tree, node, axis, LenReq::MinContent, &interned_text);
+            let max =
+                ui.layout_engine
+                    .intrinsic(tree, node, axis, LenReq::MaxContent, &interned_text);
             let separate_computes = ui.layout_engine.scratch.intrinsic_computes;
 
             ui.layout_engine
@@ -295,7 +295,9 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 .intrinsics
                 .fill([f32::NAN; SLOT_COUNT]);
             ui.layout_engine.scratch.intrinsic_computes = 0;
-            let range = ui.layout_engine.intrinsic_range(tree, node, axis, &tc);
+            let range = ui
+                .layout_engine
+                .intrinsic_range(tree, node, axis, &interned_text);
             let range_computes = ui.layout_engine.scratch.intrinsic_computes;
 
             assert_eq!(range.min, min, "{mode:?} {axis:?} min-content");

@@ -3,10 +3,11 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
-    AxisAlignPair, TextCtx, arrange_axis, resolved_axis_align, weighted_share, zero_subtree,
+    AxisAlignPair, arrange_axis, resolved_axis_align, weighted_share, zero_subtree,
 };
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::track::Track;
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
@@ -343,11 +344,20 @@ pub(crate) fn measure(
     node: NodeId,
     idx: GridDefId,
     inner_avail: Size,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
     let depth = layout.scratch.grid.depth_stack.enter();
-    let result = measure_inner(layout, tree, node, idx, depth, inner_avail, tc, out);
+    let result = measure_inner(
+        layout,
+        tree,
+        node,
+        idx,
+        depth,
+        inner_avail,
+        interned_text,
+        out,
+    );
     layout.scratch.grid.depth_stack.exit();
     result
 }
@@ -360,7 +370,7 @@ fn measure_inner(
     idx: GridDefId,
     depth: usize,
     inner_avail: Size,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
     let def = tree.grid_defs[usize::from(idx)];
@@ -382,7 +392,7 @@ fn measure_inner(
         // entry per text record, regardless of whether the rect is zero.
         // Skipping the walk breaks `text_reshape_skipped_when_unchanged`.
         for c in tree.children(node).map(|c| c.id) {
-            layout.measure(tree, c, Size::ZERO, tc, out);
+            layout.measure(tree, c, Size::ZERO, interned_text, out);
         }
         return Size::ZERO;
     }
@@ -411,12 +421,12 @@ fn measure_inner(
             let t = &col_tracks[cell.col as usize];
             let i = cell.col as usize;
             if t.size.is_hug() {
-                let range = layout.intrinsic_range(tree, c, Axis::X, tc);
+                let range = layout.intrinsic_range(tree, c, Axis::X, interned_text);
                 let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
                 cols_min[i] = cols_min[i].max(range.min);
                 cols_max[i] = cols_max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
-                let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+                let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, interned_text);
                 let cols_min = layout
                     .scratch
                     .grid
@@ -502,7 +512,7 @@ fn measure_inner(
             Size::new(avail_w, avail_h)
         };
 
-        let d = layout.measure(tree, c, avail, tc, out);
+        let d = layout.measure(tree, c, avail, interned_text, out);
 
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
@@ -966,7 +976,7 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     idx: GridDefId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let def = tree.grid_defs[usize::from(idx)];
     // An empty dimension means no cells, so the grid measures to
@@ -1017,7 +1027,7 @@ pub(crate) fn intrinsic<const RANGE: bool>(
         if t.size.fixed_value().is_some() {
             continue;
         }
-        let child = query.child(layout, tree, c, axis, tc);
+        let child = query.child(layout, tree, c, axis, interned_text);
         if wants_min {
             let slot = &mut layout.scratch.grid.track_aggregator[min_base + track_idx];
             *slot = slot.max(content_floor(t, child.min));

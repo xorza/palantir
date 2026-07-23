@@ -1444,9 +1444,9 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
     });
 
     let payloads = ui.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     assert_eq!(
-        &*text_bytes,
+        &*interned_text.bytes,
         "borrowedownedowned internedinternedformatted 7"
     );
     let records = &ui.forest.trees[Layer::Main].shapes.records;
@@ -1460,7 +1460,7 @@ fn widget_text_inputs_lower_exact_bytes_and_hashes() {
     ]) {
         match record {
             ShapeRecord::Text { text, .. } => {
-                let resolved = text.resolve(&text_bytes);
+                let resolved = text.resolve(&interned_text);
                 assert_eq!(resolved.text, expected);
                 assert_eq!(resolved.hash, hash_str(expected));
             }
@@ -1477,12 +1477,12 @@ fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
 
     fn assert_recorded_text(ui: &Ui, expected: &str) {
         let payloads = ui.forest.record_store.payloads.borrow();
-        let text_bytes = payloads.text_bytes();
+        let interned_text = payloads.interned_text();
         let records = &ui.forest.trees[Layer::Main].shapes.records;
         let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
             panic!("expected one text shape, got {records:?}");
         };
-        let resolved = text.resolve(&text_bytes);
+        let resolved = text.resolve(&interned_text);
         assert_eq!(resolved.text, expected);
         assert_eq!(resolved.hash, hash_str(expected));
     }
@@ -1611,7 +1611,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let payloads = ui.forest.record_store.payloads.borrow();
-        assert_eq!(&*payloads.text_bytes(), "retained 7");
+        assert_eq!(&*payloads.interned_text().bytes, "retained 7");
     }
 
     // Frame 1 at the blink boundary: only the anim wake fires →
@@ -1637,7 +1637,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     {
         let payloads = ui.forest.record_store.payloads.borrow();
         assert_eq!(
-            &*payloads.text_bytes(),
+            &*payloads.interned_text().bytes,
             "retained 7",
             "PaintOnly must preserve bytes referenced by retained text",
         );

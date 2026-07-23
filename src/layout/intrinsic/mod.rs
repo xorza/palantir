@@ -15,12 +15,11 @@
 use crate::common::content_hash::ContentHash;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::support::{
-    AxisCtx, TextCtx, TextShapeInput, leaf_text_shapes, resolve_axis_size,
-};
+use crate::layout::support::{AxisCtx, TextShapeInput, leaf_text_shapes, resolve_axis_size};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
@@ -68,12 +67,12 @@ impl<const RANGE: bool> IntrinsicQuery<RANGE> {
         tree: &Tree,
         node: NodeId,
         axis: Axis,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
         if RANGE {
-            engine.intrinsic_range(tree, node, axis, tc)
+            engine.intrinsic_range(tree, node, axis, interned_text)
         } else {
-            let value = engine.intrinsic(tree, node, axis, self.single_req, tc);
+            let value = engine.intrinsic(tree, node, axis, self.single_req, interned_text);
             match self.single_req {
                 LenReq::MinContent => IntrinsicRange {
                     min: value,
@@ -144,7 +143,7 @@ pub(crate) fn compute<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let layout = tree.records.layout()[node.idx()];
     if layout.meta.visibility().is_collapsed() {
@@ -167,7 +166,7 @@ pub(crate) fn compute<const RANGE: bool>(
     let mut content = if sizing.fixed_value().is_some() {
         IntrinsicRange::ZERO
     } else {
-        let mut content = content_intrinsic(engine, tree, node, axis, query, tc, layout);
+        let mut content = content_intrinsic(engine, tree, node, axis, query, interned_text, layout);
         let pad = axis.spacing(layout.padding);
         if query.includes(LenReq::MinContent) {
             content.min += pad;
@@ -205,23 +204,27 @@ fn content_intrinsic<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     layout: LayoutCore,
 ) -> IntrinsicRange {
     match LayoutMode::from(layout.meta) {
-        LayoutMode::Leaf => leaf(engine, tree, node, axis, query, tc),
-        LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, query, tc),
-        LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, query, tc),
+        LayoutMode::Leaf => leaf(engine, tree, node, axis, query, interned_text),
+        LayoutMode::HStack => {
+            stack::intrinsic(engine, tree, node, Axis::X, axis, query, interned_text)
+        }
+        LayoutMode::VStack => {
+            stack::intrinsic(engine, tree, node, Axis::Y, axis, query, interned_text)
+        }
         LayoutMode::WrapHStack => {
-            wrapstack::intrinsic(engine, tree, node, Axis::X, axis, query, tc)
+            wrapstack::intrinsic(engine, tree, node, Axis::X, axis, query, interned_text)
         }
         LayoutMode::WrapVStack => {
-            wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, query, tc)
+            wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, query, interned_text)
         }
-        LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, query, tc),
-        LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, query, tc),
+        LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, query, interned_text),
+        LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, query, interned_text),
         LayoutMode::Grid(grid_def_id) => {
-            grid::intrinsic(engine, tree, node, grid_def_id, axis, query, tc)
+            grid::intrinsic(engine, tree, node, grid_def_id, axis, query, interned_text)
         }
         // Scroll viewports "want" zero on every panned axis — sizing
         // comes from the viewport's own `Sizing`, never from content.
@@ -238,7 +241,7 @@ fn content_intrinsic<const RANGE: bool>(
                 IntrinsicRange::ZERO
             } else {
                 let main = if pan.y { Axis::Y } else { Axis::X };
-                stack::intrinsic(engine, tree, node, main, axis, query, tc)
+                stack::intrinsic(engine, tree, node, main, axis, query, interned_text)
             }
         }
     }
@@ -255,12 +258,12 @@ fn leaf<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let wid = tree.records.widget_id()[node.idx()];
     let curr_hash = tree.rollups.node[node.idx()];
     let mut range = IntrinsicRange::ZERO;
-    for ts in leaf_text_shapes(tree, tc, node) {
+    for ts in leaf_text_shapes(tree, interned_text, node) {
         let measurement = shape_leaf_text(engine, wid, curr_hash, &ts);
         if query.includes(LenReq::MinContent) {
             range.min = range
