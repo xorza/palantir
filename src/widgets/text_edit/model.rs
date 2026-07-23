@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
+use crate::common::hash;
+
 /// Semantic state for the host-owned text buffer.
 ///
 /// `caret` is a byte offset. Widget-driven mutations step grapheme
@@ -15,20 +17,31 @@ pub(crate) struct EditState {
     /// `Some(caret)` — every mutation site collapses an empty selection
     /// to `None` so "selection live" is a single `is_some()` check.
     pub(crate) selection: Option<usize>,
-    pub(crate) undo: VecDeque<EditSnapshot>,
-    pub(crate) redo: Vec<EditSnapshot>,
+    pub(crate) undo: VecDeque<EditDelta>,
+    pub(crate) redo: Vec<EditDelta>,
     /// Kind of the most recent recorded edit, used to coalesce
     /// consecutive same-kind edits (typing chars, deleting chars) into
     /// a single undo unit. `None` after any caret-only motion so the
     /// next edit always opens a fresh group.
     pub(crate) last_edit_kind: Option<EditKind>,
+    pub(crate) expected_hash: Option<u64>,
+    pub(crate) local_edit_pending: bool,
+    pub(crate) char_count: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SelectionState {
+    caret: usize,
+    selection: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct EditSnapshot {
-    pub(crate) text: String,
-    pub(crate) caret: usize,
-    pub(crate) selection: Option<usize>,
+pub(crate) struct EditDelta {
+    start: usize,
+    removed: String,
+    inserted: String,
+    before: SelectionState,
+    after: SelectionState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -48,6 +61,7 @@ pub(crate) struct Editor<'a> {
     pub(crate) state: &'a mut EditState,
     pub(crate) multiline: bool,
     max_chars: Option<usize>,
+    history_checked: bool,
     /// The buffer was mutated this session (typing, delete, paste,
     /// cut, undo/redo). Set by the mutation choke points, so it's
     /// content-accurate — a same-length overwrite still reports.
@@ -66,73 +80,139 @@ impl<'a> Editor<'a> {
             state,
             multiline,
             max_chars,
+            history_checked: false,
             edited: false,
         }
     }
 
-    /// Undo snapshot of the current buffer + caret/selection.
-    fn snapshot(&self) -> EditSnapshot {
-        EditSnapshot {
-            text: self.text.clone(),
+    fn selection_state(&self) -> SelectionState {
+        SelectionState {
             caret: self.state.caret,
             selection: self.state.selection,
         }
     }
 
-    /// Open (or coalesce into) an undo unit before a mutation.
-    /// Consecutive same-kind `Typing` / `Delete` edits merge into one
-    /// unit; `Other` never coalesces. Any redo tail is invalidated.
-    fn record_edit(&mut self, kind: EditKind) {
-        let coalesce = kind != EditKind::Other
-            && self.state.last_edit_kind == Some(kind)
-            && !self.state.undo.is_empty();
-        if !coalesce {
-            if self.state.undo.len() >= UNDO_LIMIT {
+    fn ensure_history_matches(&mut self) {
+        if self.history_checked {
+            return;
+        }
+        if self.state.local_edit_pending {
+            self.history_checked = true;
+            return;
+        }
+        let current_hash = hash::hash_str(self.text);
+        if self
+            .state
+            .expected_hash
+            .is_some_and(|expected| expected != current_hash)
+        {
+            self.state.undo.clear();
+            self.state.redo.clear();
+            self.state.last_edit_kind = None;
+            self.state.char_count = None;
+        }
+        self.state.expected_hash = Some(current_hash);
+        self.history_checked = true;
+    }
+
+    fn mark_local_edit(&mut self) {
+        self.state.local_edit_pending = true;
+    }
+
+    fn push_delta(&mut self, delta: EditDelta, kind: EditKind) {
+        let coalesced = self.state.last_edit_kind == Some(kind)
+            && self
+                .state
+                .undo
+                .back_mut()
+                .is_some_and(|previous| previous.coalesce(&delta, kind));
+        if !coalesced {
+            if self.state.undo.len() == UNDO_LIMIT {
                 self.state.undo.pop_front();
             }
-            let snap = self.snapshot();
-            self.state.undo.push_back(snap);
+            self.state.undo.push_back(delta);
         }
         self.state.redo.clear();
         self.state.last_edit_kind = Some(kind);
     }
 
-    fn apply_history(&mut self, snap: EditSnapshot) {
-        assert!(snap.caret <= snap.text.len());
-        assert!(snap.selection.is_none_or(|s| s <= snap.text.len()));
-        *self.text = snap.text;
-        self.state.caret = snap.caret;
-        self.state.selection = snap.selection.filter(|&a| a != snap.caret);
-        self.state.last_edit_kind = None;
+    fn replace_range(&mut self, range: std::ops::Range<usize>, replacement: &str, kind: EditKind) {
+        debug_assert!(self.text.is_char_boundary(range.start));
+        debug_assert!(self.text.is_char_boundary(range.end));
+        debug_assert!(range.start <= range.end);
+        if &self.text[range.clone()] == replacement {
+            self.state.caret = range.start + replacement.len();
+            self.state.selection = None;
+            self.state.last_edit_kind = None;
+            return;
+        }
+        self.ensure_history_matches();
+        let before = self.selection_state();
+        let removed = self.text[range.clone()].to_owned();
+        let removed_chars = self
+            .state
+            .char_count
+            .is_some()
+            .then(|| removed.chars().count());
+        let inserted_chars = self
+            .state
+            .char_count
+            .is_some()
+            .then(|| replacement.chars().count());
+        self.text.replace_range(range.clone(), replacement);
+        self.state.caret = range.start + replacement.len();
+        self.state.selection = None;
+        let delta = EditDelta {
+            start: range.start,
+            removed,
+            inserted: replacement.to_owned(),
+            before,
+            after: self.selection_state(),
+        };
+        self.push_delta(delta, kind);
+        if let Some(count) = &mut self.state.char_count {
+            *count = *count - removed_chars.unwrap() + inserted_chars.unwrap();
+        }
+        self.mark_local_edit();
         self.edited = true;
     }
 
-    /// Delete the live selection range (if any), landing the caret at
-    /// its start. Returns whether anything was deleted — callers use
-    /// it to know whether to skip a subsequent codepoint-delete
-    /// (Backspace/Delete).
-    fn delete_selection(&mut self) -> bool {
-        let Some(range) = self.state.sel_range() else {
-            return false;
+    fn apply_history(&mut self, delta: &EditDelta, undo: bool) {
+        let (remove_len, replacement, selection) = if undo {
+            (delta.inserted.len(), delta.removed.as_str(), delta.before)
+        } else {
+            (delta.removed.len(), delta.inserted.as_str(), delta.after)
         };
-        let start = range.start;
-        self.text.replace_range(range, "");
-        self.state.caret = start;
-        self.state.selection = None;
-        true
+        let end = delta.start + remove_len;
+        debug_assert!(end <= self.text.len());
+        debug_assert!(self.text.is_char_boundary(delta.start));
+        debug_assert!(self.text.is_char_boundary(end));
+        self.text.replace_range(delta.start..end, replacement);
+        self.state.caret = selection.caret;
+        self.state.selection = selection.selection;
+        if self.state.char_count.is_some() {
+            self.state.char_count = Some(self.text.chars().count());
+        }
+        self.state.last_edit_kind = None;
+        self.mark_local_edit();
+        self.edited = true;
     }
 
     /// Portion of `s` that fits after deleting the live selection.
     /// The cap is by character count; the returned prefix remains on
     /// a UTF-8 boundary.
-    fn capped_prefix<'s>(&self, s: &'s str) -> &'s str {
+    fn capped_prefix<'s>(&mut self, s: &'s str) -> &'s str {
         match self.max_chars {
             Some(max) => {
                 let selected_chars = self
                     .state
                     .sel_range()
                     .map_or(0, |range| self.text[range].chars().count());
-                let chars_after_delete = self.text.chars().count() - selected_chars;
+                let current_chars = *self
+                    .state
+                    .char_count
+                    .get_or_insert_with(|| self.text.chars().count());
+                let chars_after_delete = current_chars - selected_chars;
                 let room = max.saturating_sub(chars_after_delete);
                 match s.char_indices().nth(room) {
                     Some((byte, _)) => &s[..byte],
@@ -147,17 +227,17 @@ impl<'a> Editor<'a> {
     /// `kind` — the shared choke point for typing, IME text, newline
     /// insert, and paste.
     pub(crate) fn replace_selection(&mut self, s: &str, kind: EditKind) {
-        let fit = self.capped_prefix(s);
+        self.ensure_history_matches();
+        let fit_len = self.capped_prefix(s).len();
+        let fit = &s[..fit_len];
         if self.state.selection.is_none() && fit.is_empty() {
             return;
         }
-        self.record_edit(kind);
-        self.delete_selection();
-        if !fit.is_empty() {
-            self.text.insert_str(self.state.caret, fit);
-            self.state.caret += fit.len();
-        }
-        self.edited = true;
+        let range = self
+            .state
+            .sel_range()
+            .unwrap_or(self.state.caret..self.state.caret);
+        self.replace_range(range, fit, kind);
     }
 
     /// Single-line editors never admit line breaks; multi-line passes
@@ -185,11 +265,7 @@ impl<'a> Editor<'a> {
         let Some(r) = self.state.sel_range() else {
             return;
         };
-        self.record_edit(EditKind::Other);
-        self.text.replace_range(r.clone(), "");
-        self.state.caret = r.start;
-        self.state.selection = None;
-        self.edited = true;
+        self.replace_range(r, "", EditKind::Other);
     }
 
     pub(crate) fn selected_text(&self) -> Option<&str> {
@@ -199,12 +275,28 @@ impl<'a> Editor<'a> {
     /// Clear the whole buffer (the context menu's Clear).
     pub(crate) fn clear(&mut self) {
         if !self.text.is_empty() {
-            self.record_edit(EditKind::Other);
-            self.text.clear();
-            self.state.caret = 0;
-            self.state.selection = None;
-            self.edited = true;
+            self.replace_range(0..self.text.len(), "", EditKind::Other);
         }
+    }
+
+    pub(crate) fn enforce_single_line(&mut self) {
+        if self.multiline {
+            return;
+        }
+        let Cow::Owned(cleaned) = sanitize_single_line(self.text) else {
+            return;
+        };
+        self.ensure_history_matches();
+        self.state.undo.clear();
+        self.state.redo.clear();
+        self.state.last_edit_kind = None;
+        *self.text = cleaned;
+        self.state.normalize(self.text);
+        if self.state.char_count.is_some() {
+            self.state.char_count = Some(self.text.chars().count());
+        }
+        self.mark_local_edit();
+        self.edited = true;
     }
 
     /// Select the whole buffer (collapses to no-selection when empty).
@@ -235,19 +327,19 @@ impl<'a> Editor<'a> {
 
     /// No-op on an empty stack.
     pub(crate) fn undo(&mut self) {
-        if let Some(snap) = self.state.undo.pop_back() {
-            let cur = self.snapshot();
-            self.state.redo.push(cur);
-            self.apply_history(snap);
+        self.ensure_history_matches();
+        if let Some(delta) = self.state.undo.pop_back() {
+            self.apply_history(&delta, true);
+            self.state.redo.push(delta);
         }
     }
 
     /// No-op on an empty stack.
     pub(crate) fn redo(&mut self) {
-        if let Some(snap) = self.state.redo.pop() {
-            let cur = self.snapshot();
-            self.state.undo.push_back(cur);
-            self.apply_history(snap);
+        self.ensure_history_matches();
+        if let Some(delta) = self.state.redo.pop() {
+            self.apply_history(&delta, false);
+            self.state.undo.push_back(delta);
         }
     }
 
@@ -260,25 +352,26 @@ impl<'a> Editor<'a> {
         if self.state.selection.is_none() && self.state.caret == 0 {
             return;
         }
-        self.record_edit(EditKind::Delete);
-        if !self.delete_selection() {
+        let range = if let Some(range) = self.state.sel_range() {
+            range
+        } else {
             let prev = prev_grapheme_boundary(self.text, self.state.caret);
-            self.text.replace_range(prev..self.state.caret, "");
-            self.state.caret = prev;
-        }
-        self.edited = true;
+            prev..self.state.caret
+        };
+        self.replace_range(range, "", EditKind::Delete);
     }
 
     pub(crate) fn delete_forward(&mut self) {
         if self.state.selection.is_none() && self.state.caret == self.text.len() {
             return;
         }
-        self.record_edit(EditKind::Delete);
-        if !self.delete_selection() {
+        let range = if let Some(range) = self.state.sel_range() {
+            range
+        } else {
             let next = next_grapheme_boundary(self.text, self.state.caret);
-            self.text.replace_range(self.state.caret..next, "");
-        }
-        self.edited = true;
+            self.state.caret..next
+        };
+        self.replace_range(range, "", EditKind::Delete);
     }
 
     pub(crate) fn move_grapheme_left(&mut self, extend: bool) {
@@ -319,7 +412,60 @@ impl<'a> Editor<'a> {
     }
 }
 
+impl EditDelta {
+    fn coalesce(&mut self, next: &Self, kind: EditKind) -> bool {
+        if self.after != next.before {
+            return false;
+        }
+        let merged = match kind {
+            EditKind::Typing
+                if next.removed.is_empty() && next.start == self.start + self.inserted.len() =>
+            {
+                self.inserted.push_str(&next.inserted);
+                true
+            }
+            EditKind::Delete
+                if self.inserted.is_empty()
+                    && next.inserted.is_empty()
+                    && next.start + next.removed.len() == self.start =>
+            {
+                self.start = next.start;
+                self.removed.insert_str(0, &next.removed);
+                true
+            }
+            EditKind::Delete
+                if self.inserted.is_empty()
+                    && next.inserted.is_empty()
+                    && next.start == self.start =>
+            {
+                self.removed.push_str(&next.removed);
+                true
+            }
+            EditKind::Typing | EditKind::Delete | EditKind::Other => false,
+        };
+        if merged {
+            self.after = next.after;
+        }
+        merged
+    }
+}
+
 impl EditState {
+    pub(crate) fn observe_text_hash(&mut self, text_hash: u64) {
+        if !self.local_edit_pending
+            && self
+                .expected_hash
+                .is_some_and(|expected| expected != text_hash)
+        {
+            self.undo.clear();
+            self.redo.clear();
+            self.last_edit_kind = None;
+            self.char_count = None;
+        }
+        self.expected_hash = Some(text_hash);
+        self.local_edit_pending = false;
+    }
+
     pub(crate) fn sel_range(&self) -> Option<std::ops::Range<usize>> {
         let a = self.selection?;
         Some(a.min(self.caret)..a.max(self.caret))
@@ -359,7 +505,7 @@ impl EditState {
 /// pass-through on the common break-free case — no per-keystroke
 /// allocation.
 pub(crate) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
-    if !s.contains(['\n', '\r']) {
+    if memchr::memchr2(b'\n', b'\r', s.as_bytes()).is_none() {
         return Cow::Borrowed(s);
     }
     let mut out = String::with_capacity(s.len());
