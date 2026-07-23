@@ -2,7 +2,6 @@ mod zoom_config;
 
 use crate::Ui;
 use crate::input::InputEvent;
-use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -10,9 +9,11 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::scene::seen_ids::Endpoint;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
+use crate::widgets::scroll::state::ScrollState;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 600);
@@ -34,17 +35,41 @@ fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
 }
 
 fn read_state(ui: &mut Ui) -> ScrollState {
-    *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
+    *ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
+}
+
+fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {
+    *ui.cascades
+        .by_id
+        .get(&outer_id.with("__viewport"))
+        .expect("scroll viewport endpoint")
+}
+
+fn scroll_content(ui: &Ui, outer_id: WidgetId) -> Size {
+    let endpoint = scroll_viewport_endpoint(ui, outer_id);
+    ui.layout[endpoint.layer].scroll_content[endpoint.node.idx()]
+}
+
+fn scroll_viewport(ui: &Ui, outer_id: WidgetId) -> Size {
+    let endpoint = scroll_viewport_endpoint(ui, outer_id);
+    let tree = &ui.forest.trees[endpoint.layer];
+    ui.layout[endpoint.layer].rect[endpoint.node.idx()]
+        .deflated_by(tree.records.layout()[endpoint.node.idx()].padding)
+        .size
 }
 
 #[test]
-fn scroll_state_records_viewport_and_content_after_arrange() {
+fn scroll_layout_records_viewport_and_content_after_arrange() {
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
-    let row = read_state(&mut ui);
-    assert_eq!(row.viewport.h, 200.0);
-    assert_eq!(row.content.h, 800.0);
-    assert_eq!(row.offset, Vec2::ZERO, "no wheel input → offset stays at 0");
+    let id = WidgetId::from_hash("scroll");
+    assert_eq!(scroll_viewport(&ui, id).h, 200.0);
+    assert_eq!(scroll_content(&ui, id).h, 800.0);
+    assert_eq!(
+        read_state(&mut ui).offset,
+        Vec2::ZERO,
+        "no wheel input → offset stays at 0"
+    );
 }
 
 #[test]
@@ -109,10 +134,37 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     assert!(ui.on_input(InputEvent::Zoom(1.5)).requests_repaint);
     ui.run_at(UVec2::new(400, 400), build);
 
-    let outer_zoom = ui.scroll_state(outer_id.with("__viewport")).zoom;
-    let inner_zoom = ui.scroll_state(inner_id.with("__viewport")).zoom;
+    let outer_zoom = ui.state_mut::<ScrollState>(outer_id).zoom;
+    let inner_zoom = ui.state_mut::<ScrollState>(inner_id).zoom;
     assert_eq!(outer_zoom, 1.5);
     assert_eq!(inner_zoom, 1.0);
+}
+
+#[test]
+fn state_is_swept_when_scroll_disappears() {
+    let mut ui = Ui::for_test();
+    let id = WidgetId::from_hash("scroll");
+    let build = |ui: &mut Ui| {
+        Scroll::both()
+            .id(id)
+            .with_zoom()
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+            .show(ui, |_| {});
+    };
+
+    ui.run_at(SURFACE, build);
+    let state = ui.try_state_mut::<ScrollState>(id).unwrap();
+    state.offset = Vec2::new(12.0, 34.0);
+    state.zoom = 2.0;
+
+    ui.run_at(SURFACE, |_| {});
+    assert!(ui.try_state::<ScrollState>(id).is_none());
+
+    ui.run_at(SURFACE, build);
+    let state = ui.try_state::<ScrollState>(id).unwrap();
+    assert_eq!(state.offset, Vec2::ZERO);
+    assert_eq!(state.zoom, 1.0);
+    assert!(state.drag_anchor.is_none());
 }
 
 /// Wheel delta accumulates across frames into offset, clamped to
@@ -220,8 +272,8 @@ fn horizontal_scroll_pans_only_x() {
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(75.0, 200.0)));
 
     ui.run_at(SURFACE, build_h);
-    let id = WidgetId::from_hash("hscroll").with("__viewport");
-    let row = *ui.scroll_state(id);
+    let id = WidgetId::from_hash("hscroll");
+    let row = *ui.state_mut::<ScrollState>(id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
 }
 
@@ -248,16 +300,16 @@ fn both_axis_scroll_pans_both_axes() {
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
 
     ui.run_at(SURFACE, build_xy);
-    let id = WidgetId::from_hash("xy").with("__viewport");
-    let row = *ui.scroll_state(id);
+    let id = WidgetId::from_hash("xy");
+    let row = *ui.state_mut::<ScrollState>(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
-    assert_eq!(row.content, Size::new(800.0, 800.0));
+    assert_eq!(scroll_content(&ui, id), Size::new(800.0, 800.0));
     // Viewport reserves `theme.width + theme.gap = 12px` per panned
     // axis when content overflows; 200 - 12 = 188.
-    assert_eq!(row.viewport, Size::new(188.0, 188.0));
+    assert_eq!(scroll_viewport(&ui, id), Size::new(188.0, 188.0));
 }
 
-/// `ScrollState.content` records the content extent the scroll
+/// `LayerLayout::scroll_content` records the extent the scroll
 /// viewport sees. V-axis and H-axis behave like a Stack: sum along
 /// the panned axis, max on the cross. XY behaves like a ZStack: max
 /// per axis. An empty scroll records zero.
@@ -348,9 +400,12 @@ fn scroll_records_content_extent() {
                 .response
                 .node(),
         });
-        let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
-        let state = *ui.scroll_state(scroll_id);
-        assert_eq!(state.content, *expected, "case: {label} content");
+        let scroll_id = WidgetId::from_hash(scroll_key);
+        assert_eq!(
+            scroll_content(&ui, scroll_id),
+            *expected,
+            "case: {label} content"
+        );
         let rect = ui.layout[Layer::Main].rect[scroll_node.idx()];
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
@@ -365,13 +420,9 @@ fn scroll_records_content_extent() {
     }
 }
 
-/// Two identical frames: first populates `ScrollState.content` from
-/// the live measure; second is a measure-cache hit at an ancestor —
-/// the Scroll's measure arm doesn't fire, so no write to `content`
-/// happens this frame. The previous frame's `ScrollState.content`
-/// stays valid because cache-hit ⟹ byte-identical measure output.
+/// A measure-cache hit restores the scroll content column.
 #[test]
-fn scroll_state_content_survives_measure_cache_hit() {
+fn scroll_content_is_restored_on_measure_cache_hit() {
     let surface = UVec2::new(400, 600);
     let build = |ui: &mut Ui| {
         Panel::vstack()
@@ -394,17 +445,25 @@ fn scroll_state_content_survives_measure_cache_hit() {
 
     let mut ui = Ui::for_test();
     ui.run_at(surface, build);
-    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-    let after_first = *ui.scroll_state(scroll_id);
-    assert_eq!(after_first.content.h, 92.0);
+    let scroll_id = WidgetId::from_hash("scroll");
+    let after_first = scroll_content(&ui, scroll_id);
+    let viewport_first = scroll_viewport(&ui, scroll_id);
+    assert_eq!(after_first.h, 92.0);
 
     ui.run_at(surface, build);
-    let after_second = *ui.scroll_state(scroll_id);
-    assert_eq!(
-        after_second.content, after_first.content,
-        "ScrollState.content survives a measure-cache hit",
+    let after_second = scroll_content(&ui, scroll_id);
+    assert!(
+        ui.layout_engine
+            .scratch
+            .cache_hits
+            .contains(&WidgetId::VIEWPORT),
+        "warm frame must restore scroll content from an ancestor cache hit"
     );
-    assert_eq!(after_second.viewport, after_first.viewport);
+    assert_eq!(
+        after_second, after_first,
+        "scroll content survives a measure-cache hit",
+    );
+    assert_eq!(scroll_viewport(&ui, scroll_id), viewport_first);
 }
 
 #[test]
@@ -496,8 +555,8 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             ui.run_at(SURFACE, build);
         }
 
-        let id = WidgetId::from_hash("xy").with("__viewport");
-        let before = *ui.scroll_state(id);
+        let id = WidgetId::from_hash("xy");
+        let before = *ui.state_mut::<ScrollState>(id);
         let pivot_local = Vec2::new(pointer.0 - OUTER_PAD, pointer.1 - (OUTER_PAD + TEXT_GAP));
         let world_before = Vec2::new(
             (pivot_local.x + before.offset.x) / before.zoom,
@@ -509,7 +568,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             ui.run_at(SURFACE, build);
         }
 
-        let after = *ui.scroll_state(id);
+        let after = *ui.state_mut::<ScrollState>(id);
         let world_after = Vec2::new(
             (pivot_local.x + after.offset.x) / after.zoom,
             (pivot_local.y + after.offset.y) / after.zoom,
@@ -585,9 +644,9 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     };
     ui.run_at(SURFACE, build);
 
-    let id = WidgetId::from_hash("xy").with("__viewport");
+    let id = WidgetId::from_hash("xy");
     {
-        let row = ui.scroll_state(id);
+        let row = ui.state_mut::<ScrollState>(id);
         row.offset = Vec2::new(0.0, -50.0);
     }
 
@@ -595,7 +654,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     ui.run_at(SURFACE, build);
 
-    let after = *ui.scroll_state(id);
+    let after = *ui.state_mut::<ScrollState>(id);
     assert!(
         (after.offset.y - (-45.0)).abs() < 1e-3,
         "wheel pan from out-of-range offset snapped: -50 + 5 should be -45, got {}",
@@ -604,7 +663,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
     ui.run_at(SURFACE, build);
-    let after2 = *ui.scroll_state(id);
+    let after2 = *ui.state_mut::<ScrollState>(id);
     assert!(
         (after2.offset.y - (-45.0)).abs() < 1e-3,
         "pan further out-of-range should be blocked at current ({}), got {}",
@@ -633,15 +692,15 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     ui.on_input(InputEvent::Zoom(0.5));
     ui.run_at(SURFACE, build);
 
-    let id = WidgetId::from_hash("scroll").with("__viewport");
-    let zoomed = *ui.scroll_state(id);
+    let id = WidgetId::from_hash("scroll");
+    let zoomed = *ui.state_mut::<ScrollState>(id);
     let expected_zoomed_offset = (0.0 + 50.0) * 0.5 - 50.0;
     assert_eq!(zoomed.zoom, 0.5);
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
     ui.run_at(SURFACE, build);
-    let panned = *ui.scroll_state(id);
+    let panned = *ui.state_mut::<ScrollState>(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset.y, zoomed.offset.y);
 }
@@ -649,7 +708,6 @@ fn pivot_zoom_preserves_underflow_pan_range() {
 #[test]
 fn pointer_zoom_pivot_is_scale_invariant() {
     let id = WidgetId::from_hash("scaled-scroll");
-    let scroll_id = id.with("__viewport");
     let logical_pointer = Vec2::new(50.0, 70.0);
 
     for scale in [0.5, 1.0, 2.0] {
@@ -681,7 +739,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         ui.on_input(InputEvent::Zoom(1.5));
         ui.run_at(SURFACE, build);
 
-        let state = *ui.scroll_state(scroll_id);
+        let state = *ui.state_mut::<ScrollState>(id);
         assert_eq!(state.zoom, 1.5, "zoom at {scale}×");
         assert_eq!(
             state.offset,
@@ -708,6 +766,8 @@ mod bars {
     use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
+    use crate::widgets::scroll::state::ScrollState;
+    use crate::widgets::scroll::tests::{scroll_content, scroll_viewport};
     use crate::widgets::scroll::{Scroll, bar_geometry};
     use crate::widgets::theme::scrollbar::ScrollbarTheme;
     use glam::{UVec2, Vec2};
@@ -932,8 +992,8 @@ mod bars {
         ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
         ui.on_input(InputEvent::Zoom(1.5));
         ui.run_at(surface, build);
-        let state = *ui.scroll_state(scroll_id);
-        assert_eq!(state.viewport, Size::new(200.0, 200.0));
+        let state = *ui.state_mut::<ScrollState>(outer_id);
+        assert_eq!(scroll_viewport(&ui, outer_id), Size::new(200.0, 200.0));
         assert_eq!(state.zoom, 1.5);
         assert_eq!(
             state.offset,
@@ -1089,9 +1149,8 @@ mod bars {
         };
         ui.run_at(surface, build);
         ui.run_at(surface, build);
-        let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
         assert_eq!(
-            row.viewport,
+            scroll_viewport(&ui, WidgetId::from_hash("scroll")),
             Size::new(188.0, 200.0),
             "V overflow reserves theme.width + theme.gap = 12px on the right; H axis untouched"
         );
@@ -1121,8 +1180,10 @@ mod bars {
         };
         ui.run_at(surface, build);
         ui.run_at(surface, build);
-        let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
-        assert_eq!(row.viewport, Size::new(156.0, 168.0));
+        assert_eq!(
+            scroll_viewport(&ui, WidgetId::from_hash("scroll")),
+            Size::new(156.0, 168.0)
+        );
     }
 
     /// Pin bar positioning: V bar's overlay rect sits flush with
@@ -1171,8 +1232,8 @@ mod bars {
     fn bar_reservation_stays_constant_across_overflow_toggle() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-        let read_viewport = |ui: &mut Ui| ui.scroll_state(scroll_id).viewport;
+        let scroll_id = WidgetId::from_hash("scroll");
+        let read_viewport = |ui: &Ui| scroll_viewport(ui, scroll_id);
 
         let build = |ui: &mut Ui, content_h: f32| {
             Panel::vstack()
@@ -1232,7 +1293,7 @@ mod bars {
         };
         ui.run_at(surface, build);
         ui.run_at(surface, build);
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let scroll_id = WidgetId::from_hash("scroll");
         let z1_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
         let v1 = z1_thumbs
@@ -1242,7 +1303,7 @@ mod bars {
             .size
             .h;
 
-        ui.scroll_state(scroll_id).zoom = 2.0;
+        ui.state_mut::<ScrollState>(scroll_id).zoom = 2.0;
         ui.run_at(surface, build);
         ui.run_at(surface, build);
         let z2_thumbs = thumb_rects(&ui, "scroll");
@@ -1339,7 +1400,7 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
         let theme = theme();
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let scroll_id = WidgetId::from_hash("scroll");
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1356,17 +1417,16 @@ mod bars {
                 });
         };
         ui.run_at(surface, scene);
-        let row = *ui.scroll_state(scroll_id);
         let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
         assert_eq!(
-            row.viewport, expected,
+            scroll_viewport(&ui, scroll_id),
+            expected,
             "cold-mount overflowing scroll: gutter reservation must be \
              active on the first painted frame; viewport should already \
              be deflated by `theme.width + theme.gap` on the cross axis",
         );
-        assert_eq!(
-            row.overflow,
-            (false, true),
+        assert!(
+            scroll_content(&ui, scroll_id).h > scroll_viewport(&ui, scroll_id).h,
             "overflow flag must reflect post-relayout measurement (Y \
              overflows, X doesn't)",
         );
@@ -1432,7 +1492,7 @@ mod bars {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let scroll_id = WidgetId::from_hash("scroll");
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1451,15 +1511,14 @@ mod bars {
         };
         ui.run_at(surface, scene);
         ui.run_at(surface, scene);
-        let row = *ui.scroll_state(scroll_id);
         assert_eq!(
-            row.viewport,
+            scroll_viewport(&ui, scroll_id),
             Size::new(200.0, 200.0),
             "Overlay: viewport = full outer (no gutter reservation), \
              even when content overflows and the bar is drawn",
         );
         assert!(
-            row.overflow.1,
+            scroll_content(&ui, scroll_id).h > scroll_viewport(&ui, scroll_id).h,
             "content > viewport on Y — bar should be drawn"
         );
     }
@@ -1472,7 +1531,7 @@ mod bars {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let scroll_id = WidgetId::from_hash("scroll");
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1489,13 +1548,16 @@ mod bars {
                 });
         };
         ui.run_at(surface, scene);
-        let row = *ui.scroll_state(scroll_id);
         assert_eq!(
-            row.viewport,
+            scroll_viewport(&ui, scroll_id),
             Size::new(188.0, 200.0),
             "gutter is constant — viewport = outer - (width + gap) even with no overflow",
         );
-        assert_eq!(row.overflow, (false, false));
+        assert_eq!(scroll_content(&ui, scroll_id), Size::new(180.0, 50.0));
+        assert!(
+            scroll_content(&ui, scroll_id).w <= scroll_viewport(&ui, scroll_id).w
+                && scroll_content(&ui, scroll_id).h <= scroll_viewport(&ui, scroll_id).h
+        );
     }
 }
 
@@ -1527,7 +1589,8 @@ fn drag_thumb_pans_proportionally() {
         ui.run_at(SURFACE, build);
         ui.run_at(SURFACE, build);
 
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let outer_id = WidgetId::from_hash("scroll");
+        let scroll_id = outer_id.with("__viewport");
         let thumb_id = scroll_id.with("__vthumb");
         let thumb_rect = ui.response_for(thumb_id).rect.expect("thumb visible");
         let press = thumb_rect.min + Vec2::new(thumb_rect.size.w * 0.5, thumb_rect.size.h * 0.5);
@@ -1542,7 +1605,7 @@ fn drag_thumb_pans_proportionally() {
         // viewport = 200, content = 800 ⇒ max_offset = 600.
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
         // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
-        let offset_y = ui.scroll_state(scroll_id).offset.y;
+        let offset_y = ui.state_mut::<ScrollState>(outer_id).offset.y;
         assert!(
             (offset_y - 120.0).abs() < 0.5,
             "30 logical px at {scale}× should produce offset 120, got {offset_y}",
@@ -1553,7 +1616,7 @@ fn drag_thumb_pans_proportionally() {
         ));
         ui.run_at(SURFACE, build);
         assert_eq!(
-            ui.scroll_state(scroll_id).offset.y,
+            ui.state_mut::<ScrollState>(outer_id).offset.y,
             600.0,
             "drag past end at {scale}× clamps to max offset",
         );
@@ -1603,7 +1666,8 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             };
             ui.run_at(SURFACE, build_axis);
 
-            let scroll_id = WidgetId::from_hash(*scroll_key).with("__viewport");
+            let outer_id = WidgetId::from_hash(*scroll_key);
+            let scroll_id = outer_id.with("__viewport");
             let track_id = scroll_id.with(*track_suffix);
             let track = ui.response_for(track_id);
             let layout = track.layout_rect.expect("track arranged");
@@ -1618,7 +1682,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
             ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
             ui.run_at(SURFACE, build_axis);
-            let offset = ui.scroll_state(scroll_id).offset;
+            let offset = ui.state_mut::<ScrollState>(outer_id).offset;
             let forward = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -1632,7 +1696,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
             ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
             ui.run_at(SURFACE, build_axis);
-            let offset = ui.scroll_state(scroll_id).offset;
+            let offset = ui.state_mut::<ScrollState>(outer_id).offset;
             let back = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -1671,8 +1735,8 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     };
     ui.run_at(SURFACE, build_zoom);
 
-    let scroll_id = WidgetId::from_hash("zoomy").with("__viewport");
-    let before_zoom = ui.scroll_state(scroll_id).zoom;
+    let scroll_id = WidgetId::from_hash("zoomy");
+    let before_zoom = ui.state_mut::<ScrollState>(scroll_id).zoom;
 
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
@@ -1685,7 +1749,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
     ui.run_at(SURFACE, build_zoom);
 
-    let after_zoom = ui.scroll_state(scroll_id).zoom;
+    let after_zoom = ui.state_mut::<ScrollState>(scroll_id).zoom;
     let expected = before_zoom * 1.03_f32.powf(-2.0);
     assert!(
         (after_zoom - expected).abs() < 1e-3,
@@ -1730,8 +1794,8 @@ fn wheel_zoom_step_is_font_independent() {
         ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
         ui.run_at(SURFACE, build_zoom);
 
-        let scroll_id = WidgetId::from_hash("fz").with("__viewport");
-        let zoom = ui.scroll_state(scroll_id).zoom;
+        let scroll_id = WidgetId::from_hash("fz");
+        let zoom = ui.state_mut::<ScrollState>(scroll_id).zoom;
         if let Some(prev) = last_zoom {
             assert!(
                 (zoom - prev).abs() < 1e-4,
@@ -1764,8 +1828,8 @@ fn line_wheel_step_scales_with_theme_font_size() {
         ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
         ui.run_at(SURFACE, build_v);
 
-        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-        let offset_y = ui.scroll_state(scroll_id).offset.y;
+        let scroll_id = WidgetId::from_hash("scroll");
+        let offset_y = ui.state_mut::<ScrollState>(scroll_id).offset.y;
         assert!(
             (offset_y - expected_px).abs() < 0.01,
             "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",
@@ -1807,11 +1871,8 @@ fn shrinking_content_unstrands_offset_without_input() {
     );
 }
 
-/// O5 stage 0 completeness: a scroll-offset change must bust the cascade
-/// skip. The offset lives in `LayoutEngine.scroll_states` (not in
-/// `subtree_hash`), so it's folded into the cascade fingerprint
-/// explicitly — without that, a scroll would wrongly skip the cascade
-/// and leave stale geometry. Pinned via `dbg_cascade_ran`.
+/// A scroll-offset change updates the authored viewport transform, so
+/// its subtree hash must bust the cascade skip.
 #[test]
 fn cascade_skip_busts_on_scroll_offset_change() {
     let mut ui = Ui::for_test();

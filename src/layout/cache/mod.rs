@@ -39,6 +39,7 @@ pub(crate) struct RootSnapshotKey {
 pub(crate) struct CachedSubtree<'a> {
     pub(crate) root: Size,
     pub(crate) desired: &'a [Size],
+    pub(crate) scroll_content: &'a [Size],
     pub(crate) text_spans: &'a [Span],
     pub(crate) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(crate) available_q: &'a [AvailableKey],
@@ -50,6 +51,7 @@ pub(crate) struct CachedSubtree<'a> {
 #[derive(Debug)]
 pub(crate) struct CaptureTreeInput<'a> {
     pub(crate) desired: &'a mut Vec<Size>,
+    pub(crate) scroll_content: &'a [Size],
     pub(crate) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(crate) available_q: &'a mut Vec<AvailableKey>,
     pub(crate) grid_hugs: &'a GridHugStore,
@@ -87,6 +89,7 @@ fn union_spans(a: Span, b: Span) -> Span {
 #[derive(Debug, Default)]
 pub(crate) struct NodeArenas {
     pub(crate) desired: Vec<Size>,
+    pub(crate) scroll_content: Vec<Size>,
     pub(crate) text_spans: Vec<Span>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(crate) available_q: Vec<AvailableKey>,
@@ -95,6 +98,7 @@ pub(crate) struct NodeArenas {
 impl NodeArenas {
     fn clear(&mut self) {
         self.desired.clear();
+        self.scroll_content.clear();
         self.text_spans.clear();
         self.intrinsics.clear();
         self.available_q.clear();
@@ -162,6 +166,7 @@ impl MeasureCache {
         Some(CachedSubtree {
             root: self.previous.nodes.desired[nodes.start],
             desired: &self.previous.nodes.desired[nodes.clone()],
+            scroll_content: &self.previous.nodes.scroll_content[nodes.clone()],
             text_spans: &self.previous.nodes.text_spans[nodes.clone()],
             intrinsics: &self.previous.nodes.intrinsics[nodes.clone()],
             available_q: &self.previous.nodes.available_q[nodes],
@@ -190,6 +195,7 @@ impl MeasureCache {
     pub(crate) fn capture_tree(&mut self, tree: &Tree, input: CaptureTreeInput<'_>) {
         let CaptureTreeInput {
             desired,
+            scroll_content,
             intrinsics,
             available_q,
             grid_hugs,
@@ -198,6 +204,7 @@ impl MeasureCache {
         } = input;
         let node_count = tree.records.len();
         assert_eq!(desired.len(), node_count);
+        assert_eq!(scroll_content.len(), node_count);
         assert_eq!(intrinsics.len(), node_count);
         assert_eq!(available_q.len(), node_count);
         assert_eq!(text_spans.len(), node_count);
@@ -206,6 +213,10 @@ impl MeasureCache {
         let text_base = self.current.text_shapes.len() as u32;
 
         self.current.nodes.intrinsics.extend_from_slice(intrinsics);
+        self.current
+            .nodes
+            .scroll_content
+            .extend_from_slice(scroll_content);
         let has_text = !text_shapes.is_empty();
         if has_text {
             self.current.text_shapes.extend_from_slice(text_shapes);

@@ -371,6 +371,17 @@ fn popup_with_scroll_settles_in_one_frame() {
     };
     ui.run_at(SURF, scene);
     let first = body_rect(&ui);
+    let viewport_id = WidgetId::from_hash("popup-scroll").with("__viewport");
+    let viewport = ui
+        .cascades
+        .by_id
+        .get(&viewport_id)
+        .expect("popup scroll viewport endpoint");
+    assert_eq!(viewport.layer, Layer::Popup);
+    assert_eq!(
+        ui.layout[Layer::Popup].scroll_content[viewport.node.idx()],
+        Size::new(80.0, 300.0)
+    );
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));

@@ -72,7 +72,6 @@ pub(crate) fn arrange(
 ) {
     let layouts = tree.records.layout();
     let canvas_size = layouts[node.idx()].size;
-    let self_outer = out.rect[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -100,7 +99,7 @@ pub(crate) fn arrange(
                 arrange_axis(Axis::Y, AxisAlign::Auto, &child_layout, bounds, d, slot_h).size,
             ),
         };
-        layout.arrange(tree, c, self_outer, child_rect, out);
+        layout.arrange(tree, c, child_rect, out);
     }
 }
 

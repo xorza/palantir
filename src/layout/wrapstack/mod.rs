@@ -174,7 +174,6 @@ pub(crate) fn arrange(
     let justify = panel.justify;
     let parent_child_align = panel.child_align;
     let main_avail = axis.main(inner.size);
-    let self_outer = out.rect[node.idx()].size;
 
     // Same packing logic as `measure`. Each row needs lookahead —
     // can't place a child until we know the row's `line_main` (for
@@ -235,7 +234,7 @@ pub(crate) fn arrange(
                 main_size,
                 cross_p.size,
             );
-            layout.arrange(tree, c, self_outer, child_rect, out);
+            layout.arrange(tree, c, child_rect, out);
             main_cursor += main_size;
         }
         *cross_cursor += line_cross;

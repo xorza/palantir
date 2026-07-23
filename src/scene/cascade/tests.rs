@@ -14,6 +14,7 @@ use crate::scene::tree::node::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::widgets::panel::Panel;
+use crate::widgets::scroll::state::ScrollState;
 use crate::{Ui, renderer::frontend::Frontend};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -803,7 +804,7 @@ fn incremental_scroll_matches_full() {
     };
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::splat(300), build);
-    ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
+    ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
         .offset
         .y = 40.0;
     ui.run_at(UVec2::splat(300), build);

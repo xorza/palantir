@@ -1,10 +1,7 @@
-//! Driver-level tests for [`crate::layout::scroll::measure`] and [`crate::layout::scroll::arrange`]:
-//! INF-axis measure, content-extent recording into the persistent
-//! [`crate::layout::scroll::ScrollLayoutState`] row, and the cache-hit fallback
-//! (driver doesn't fire; row keeps last frame's `content`).
+//! Driver-level tests for [`crate::layout::scroll::measure`] and
+//! [`crate::layout::scroll::arrange`].
 
 use crate::Ui;
-use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -17,12 +14,35 @@ use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
-/// Read the post-frame `ScrollState` for the scroll widget at
-/// `id_salt`. State is what the codebase reads at record time and is
-/// the stable observation point — on measure-cache hits the driver
-/// doesn't run, but the persisted row keeps last frame's value.
-fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
-    *ui.scroll_state(WidgetId::from_hash(id_salt).with("__viewport"))
+#[derive(Clone, Copy, Debug)]
+struct ScrollLayoutSnapshot {
+    outer: Size,
+    viewport: Size,
+    content: Size,
+}
+
+fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
+    let outer_id = WidgetId::from_hash(id_salt);
+    let viewport_id = outer_id.with("__viewport");
+    let outer = ui
+        .cascades
+        .by_id
+        .get(&outer_id)
+        .expect("scroll outer endpoint");
+    let viewport = ui
+        .cascades
+        .by_id
+        .get(&viewport_id)
+        .expect("scroll viewport endpoint");
+    let viewport_tree = &ui.forest.trees[viewport.layer];
+    let viewport_rect = ui.layout[viewport.layer].rect[viewport.node.idx()];
+    ScrollLayoutSnapshot {
+        outer: ui.layout[outer.layer].rect[outer.node.idx()].size,
+        viewport: viewport_rect
+            .deflated_by(viewport_tree.records.layout()[viewport.node.idx()].padding)
+            .size,
+        content: ui.layout[viewport.layer].scroll_content[viewport.node.idx()],
+    }
 }
 
 /// Vertical scroll measures children with INF on Y; content extent is
@@ -43,7 +63,7 @@ fn vertical_scroll_records_content_extent() {
                 }
             });
     });
-    assert_eq!(state_for(&mut ui, "scroll").content.h, 5.0 * 50.0);
+    assert_eq!(layout_for(&ui, "scroll").content.h, 5.0 * 50.0);
 }
 
 /// Horizontal scroll measures children with INF on X.
@@ -68,7 +88,7 @@ fn horizontal_scroll_records_content_extent() {
                     });
             });
     });
-    let content_w = state_for(&mut ui, "scroll").content.w;
+    let content_w = layout_for(&ui, "scroll").content.w;
     assert!(
         content_w > 200.0,
         "content overflows the 200 viewport on X: got {}",
@@ -91,16 +111,12 @@ fn both_axis_scroll_records_content_extent() {
                     .show(ui);
             });
     });
-    assert_eq!(
-        state_for(&mut ui, "scroll").content,
-        Size::new(300.0, 250.0)
-    );
+    assert_eq!(layout_for(&ui, "scroll").content, Size::new(300.0, 250.0));
 }
 
-/// `ScrollState` survives across frames — record time reads it for
-/// offset clamp + reservation guess + bar geometry.
+/// Cached measure output restores every scroll geometry input.
 #[test]
-fn state_survives_across_frames() {
+fn layout_output_survives_across_frames() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack()
@@ -120,15 +136,12 @@ fn state_survives_across_frames() {
             });
     };
     ui.run_at_without_baseline(SURFACE, build);
-    let f1 = state_for(&mut ui, "scroll");
+    let f1 = layout_for(&ui, "scroll");
     ui.run_at_without_baseline(SURFACE, build);
-    let f2 = state_for(&mut ui, "scroll");
+    let f2 = layout_for(&ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
     assert_eq!(f1.outer, f2.outer);
-    assert!(f1.seen, "first frame's relayout populated state");
-    assert!(f2.seen);
-    // Sanity: pinned numbers.
     assert_eq!(f1.content.h, 4.0 * 40.0);
 }
 
@@ -150,7 +163,7 @@ fn content_margin_leaves_content_size_unchanged() {
                     .show(ui);
             });
     });
-    assert_eq!(state_for(&mut ui, "scroll").content, Size::new(80.0, 160.0));
+    assert_eq!(layout_for(&ui, "scroll").content, Size::new(80.0, 160.0));
 }
 
 /// Arranged height of the scroll widget's outer wrapper (the node that
@@ -238,9 +251,12 @@ fn hug_scroll_caps_at_max_and_scrolls() {
             });
     });
     assert_eq!(scroll_height(&ui, "scroll"), 200.0, "capped at max_size");
-    let st = state_for(&mut ui, "scroll");
+    let st = layout_for(&ui, "scroll");
     assert_eq!(st.content.h, 400.0, "records full content extent");
-    assert!(st.overflow.1, "content past the cap overflows on Y");
+    assert!(
+        st.content.h > st.viewport.h,
+        "content past the cap overflows on Y"
+    );
 
     let mut ui = Ui::for_test();
     ui.run_at_without_baseline(SURFACE, |ui| {
@@ -261,10 +277,13 @@ fn hug_scroll_caps_at_max_and_scrolls() {
                     });
             });
     });
-    let st = state_for(&mut ui, "parent-capped-scroll");
+    let st = layout_for(&ui, "parent-capped-scroll");
     assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
     assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
-    assert!(st.overflow.1, "parent-capped content overflows on Y");
+    assert!(
+        st.content.h > st.viewport.h,
+        "parent-capped content overflows on Y"
+    );
 }
 
 /// Counterpart guard: a `Fill` scroll keeps the content-independent

@@ -30,6 +30,7 @@ use std::ops::{Index, IndexMut};
 #[derive(Default)]
 pub(crate) struct LayerLayout {
     pub(crate) rect: Vec<Rect>,
+    pub(crate) scroll_content: Vec<Size>,
     /// Flat per-frame buffer of shaped text runs. Leaf text appends during
     /// measure because it drives desired size; container text appends after
     /// arrange against its final padded width. Indexed via
@@ -78,6 +79,8 @@ impl LayerLayout {
         let n = tree.records.len();
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
+        self.scroll_content.clear();
+        self.scroll_content.resize(n, Size::ZERO);
         self.text_shapes.clear();
         self.text_spans.clear();
         self.text_spans.resize(n, Span::default());

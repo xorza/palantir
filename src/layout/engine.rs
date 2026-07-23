@@ -5,7 +5,6 @@ use crate::layout::cache::{
 };
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
-use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
     AxisCtx, TextCtx, TextShapeInput, arrange_axis, container_text_shapes, leaf_text_shapes,
@@ -56,9 +55,12 @@ use rustc_hash::FxHashSet;
 ///    [`MeasureCache`] hit that skips a subtree's measure is
 ///    invisible to these — they were never going to carry state out.
 ///
-/// 2. **Retained measure → arrange** — `desired` and `grid.hugs`.
+/// 2. **Retained measure → arrange/record** — `desired`,
+///    `LayerLayout::scroll_content`, and `grid.hugs`.
 ///    `desired` is node-indexed and the cache transparently round-
-///    trips it through [`CachedSubtree::desired`]. `grid.hugs` is
+///    trips it through [`CachedSubtree::desired`]. Scroll content is
+///    likewise node-indexed and restored into the current layout
+///    result for the next record pass. `grid.hugs` is
 ///    indexed per-grid (not per-node) so the cache hit path has to
 ///    explicitly call [`Self::restore_after_cache_hit`] to splat
 ///    [`CachedSubtree::hugs`] back into the live pool — without
@@ -111,8 +113,6 @@ impl LayoutScratch {
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `scroll_states` — cross-frame `WidgetId → ScrollLayoutState` for
-///   every scroll widget (see the field doc below).
 /// - `text_reuse` — per-window widget-identity shaping cache.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
@@ -126,13 +126,6 @@ impl LayoutScratch {
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     cache_rebuild: bool,
-    /// Cross-frame `WidgetId → ScrollLayoutState` for every scroll
-    /// widget. Owned here (not in `StateMap`) because the contents
-    /// are layout-derived; the scroll driver writes layout fields
-    /// during measure + arrange, the widget reads at record time and
-    /// mutates `offset` from input. Keyed by the inner viewport
-    /// node's id — see [`scroll::ScrollLayoutState`].
-    pub(crate) scroll_states: ScrollStates,
     pub(crate) text_reuse: TextReuseCache,
     pub(crate) cache: MeasureCache,
 }
@@ -156,9 +149,9 @@ fn quantize_wrap_target(v: f32) -> u32 {
 
 /// Splat every per-subtree side-state column carried by `arenas` back
 /// into the live pools after a measure-cache hit. Owns the dispatch
-/// over every retained category-(2) field: text shapes (appended to
-/// the live frame buffer with per-node spans rebased) and per-grid
-/// hug arrays. Adding a new retained driver column adds one branch
+/// over every retained category-(2) field: scroll content, text shapes
+/// (appended to the live frame buffer with per-node spans rebased), and
+/// per-grid hug arrays. Adding a new retained driver column adds one branch
 /// here so the engine's cache-hit path stays a single call. Free fn
 /// (not a method on `LayoutEngine`) because the caller holds an
 /// immutable borrow of `self.cache` via the cached-subtree handle —
@@ -177,6 +170,7 @@ fn restore_after_cache_hit(
     layer: &mut LayerLayout,
     cache_rebuild: bool,
 ) {
+    layer.scroll_content[subtree.clone()].copy_from_slice(cached.scroll_content);
     // Append the snapshot's flat text-shape range to the live
     // per-frame buffer, then rebase its subtree-local spans by
     // `dest_start` into the per-node `text_spans` column.
@@ -355,13 +349,9 @@ impl LayoutEngine {
         true
     }
 
-    /// Drop cross-frame layout and text-reuse rows for `WidgetId`s that
-    /// vanished from this window. Called from `Ui::frame` with the same
-    /// `removed` set that feeds the other per-widget stores.
+    /// Drop text-reuse rows for `WidgetId`s that vanished from this
+    /// window.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        for wid in removed {
-            self.scroll_states.remove(wid);
-        }
         self.text_reuse.sweep_removed(removed);
     }
 
@@ -550,17 +540,14 @@ impl LayoutEngine {
                 } else {
                     slot.placement.origin(size, surface)
                 };
-                // Root has no parent — pass its own outer size as a
-                // sensible default for any driver that reads
-                // `parent_outer` (today only scroll, when mounted as
-                // root with no wrapper ZStack).
-                self.arrange(tree, root, size, Rect { min: origin, size }, layer_out);
+                self.arrange(tree, root, Rect { min: origin, size }, layer_out);
             }
             if self.cache_rebuild {
                 self.cache.capture_tree(
                     tree,
                     CaptureTreeInput {
                         desired: &mut self.scratch.desired,
+                        scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
                         available_q: &mut self.scratch.available_q,
                         grid_hugs: &self.scratch.grid.hugs,
@@ -767,10 +754,7 @@ impl LayoutEngine {
             LayoutMode::Grid(grid_def_id) => {
                 grid::measure(self, tree, node, grid_def_id, inner_avail, tc, out)
             }
-            // Scroll viewport. INF-axis measure of children; the
-            // driver also writes the panned-axis content extent into
-            // the persistent `ScrollLayoutState` row (see
-            // `scroll::measure`).
+            // Scroll viewport. INF-axis measure of children.
             LayoutMode::Scroll(scroll_spec) => {
                 scroll::measure(self, tree, node, inner_avail, scroll_spec, tc, out)
             }
@@ -780,14 +764,7 @@ impl LayoutEngine {
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` for each visited node in the
     /// active layer's `Layout`.
-    pub(crate) fn arrange(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        parent_outer: Size,
-        slot: Rect,
-        out: &mut LayerLayout,
-    ) {
+    pub(crate) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect, out: &mut LayerLayout) {
         let layout = tree.records.layout()[node.idx()];
         if layout.meta.visibility().is_collapsed() {
             zero_subtree(tree, node, slot.min, out);
@@ -811,7 +788,7 @@ impl LayoutEngine {
                 grid::arrange(self, tree, node, inner, grid_def_id, out)
             }
             LayoutMode::Scroll(scroll_spec) => {
-                scroll::arrange(self, tree, node, parent_outer, inner, scroll_spec, out)
+                scroll::arrange(self, tree, node, inner, scroll_spec, out)
             }
         }
     }

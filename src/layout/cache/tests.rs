@@ -45,6 +45,7 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
 fn assert_snapshot_is_linear(ui: &Ui) {
     let snapshot = &ui.layout_engine.cache.previous;
     let len = snapshot.nodes.desired.len();
+    assert_eq!(snapshot.nodes.scroll_content.len(), len);
     assert_eq!(snapshot.nodes.text_spans.len(), len);
     assert_eq!(snapshot.nodes.intrinsics.len(), len);
     assert_eq!(snapshot.nodes.available_q.len(), len);

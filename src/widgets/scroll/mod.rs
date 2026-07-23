@@ -1,8 +1,9 @@
+pub(crate) mod state;
+
 use crate::input;
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::scroll::{ScrollLayoutState, TrackPage};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
@@ -15,6 +16,7 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
+use crate::widgets::scroll::state::{ScrollBounds, ScrollState, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::{InnerResponse, Response};
 use glam::Vec2;
@@ -90,14 +92,6 @@ impl Default for ZoomConfig {
     }
 }
 
-// `ScrollLayoutState` lives on `LayoutEngine::scroll_states` rather
-// than `StateMap` — it's a layout-derived concern, the scroll driver
-// writes the layout fields during measure + arrange, and the widget
-// reads/mutates the row at record time via [`Ui::scroll_state`].
-//
-// Bar drawing + reservation logic stay here as widget concerns; the
-// layout primitive itself is unaware of scrollbars.
-
 /// Cross-axis space stolen from children when an axis's bar is shown:
 /// the bar's `width` plus a `gap` strip so the bar doesn't touch the
 /// visible content. Returns 0 when the axis isn't panned.
@@ -136,28 +130,22 @@ pub(crate) fn bar_geometry(
     })
 }
 
-/// Offset-independent bar layout derived from a scroll state row:
-/// the cross-axis gutter reservations, the post-zoom content extent,
-/// and the bar's main-axis length (= `outer − reservation − user
-/// padding`). Both drag math and the renderer derive their bar
-/// geometry from this — the only difference is which `offset` they
-/// feed in to position the thumb.
+/// Offset-independent bar layout: cross-axis gutter reservations,
+/// post-zoom content extent, and bar main-axis length.
 #[derive(Copy, Clone, Debug)]
-struct BarLayout {
-    scaled_content: Size,
+struct BarSpace {
     bar_viewport: Size,
     reserve_y: f32,
     reserve_x: f32,
 }
 
-fn bar_layout(
-    row: &ScrollLayoutState,
+fn bar_space(
+    outer: Size,
     pan: glam::BVec2,
     user_padding: Spacing,
     theme: &ScrollbarTheme,
     bar_mode: BarMode,
-) -> BarLayout {
-    let scaled_content = Size::new(row.content.w * row.zoom, row.content.h * row.zoom);
+) -> BarSpace {
     // Only `Reserved` reserves the gutter on the pan axes. `Overlay`
     // paints the bar over content without reservation; `Hidden` has
     // no bar at all. Reservation is constant for `Reserved` (not
@@ -168,14 +156,26 @@ fn bar_layout(
     let reserve_y = bar_reservation(pan.y && reserve, theme);
     let reserve_x = bar_reservation(pan.x && reserve, theme);
     let bar_viewport = Size::new(
-        (row.outer.w - reserve_y - user_padding.horiz()).max(0.0),
-        (row.outer.h - reserve_x - user_padding.vert()).max(0.0),
+        (outer.w - reserve_y - user_padding.horiz()).max(0.0),
+        (outer.h - reserve_x - user_padding.vert()).max(0.0),
     );
-    BarLayout {
-        scaled_content,
+    BarSpace {
         bar_viewport,
         reserve_y,
         reserve_x,
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct BarLayout {
+    scaled_content: Size,
+    space: BarSpace,
+}
+
+fn bar_layout(content: Size, zoom: f32, space: BarSpace) -> BarLayout {
+    BarLayout {
+        scaled_content: Size::new(content.w * zoom, content.h * zoom),
+        space,
     }
 }
 
@@ -237,8 +237,15 @@ struct BarFrame {
 
 #[derive(Debug)]
 struct ScrollFrame {
-    scroll: ScrollLayoutState,
+    state: ScrollState,
     bars: Option<BarFrame>,
+}
+
+fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
+    let Some(endpoint) = ui.cascades.by_id.get(&scroll_id) else {
+        return Size::ZERO;
+    };
+    ui.layout[endpoint.layer].scroll_content[endpoint.node.idx()]
 }
 
 fn bar_plan(
@@ -541,14 +548,10 @@ impl Scroll {
             );
         }
 
-        // Record-time clamp uses last frame's `viewport`/`content`/
-        // `offset`. Off-axis offsets stay at 0 for single-axis scrolls.
-        //
         // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack (so wheel events over the bar gutter still pan the
-        // viewport). Layout state, however, is keyed by the inner
-        // viewport node's id — that's the `LayoutMode::Scroll` node
-        // the driver writes to.
+        // viewport). Measured content is keyed by the inner viewport
+        // node because that is the `LayoutMode::Scroll` node.
         let scroll_id = id.with("__viewport");
         // Font-derived line step for wheel→pixel conversion. Pulls
         // `theme.text` (the default font config) rather than scanning
@@ -592,6 +595,15 @@ impl Scroll {
         // pointer-tracked anchoring kicks in.
         let outer_response = ui.response_for(id);
         let widget_size = outer_response.layout_rect.map(|r| r.size);
+        let outer = widget_size.unwrap_or(Size::ZERO);
+        let content = previous_scroll_content(ui, scroll_id);
+        let user_padding = self.node.padding.unwrap_or(Spacing::ZERO);
+        let bar_space = bar_space(outer, pan, user_padding, &ui.theme.scrollbar, self.bar_mode);
+        let bounds = ScrollBounds {
+            content,
+            viewport: bar_space.bar_viewport,
+            content_margin: self.content_margin,
+        };
         let pivot_local = if (zoom_delta - 1.0).abs() > f32::EPSILON {
             let cfg_pivot = self
                 .zoom
@@ -613,36 +625,23 @@ impl Scroll {
         };
 
         let frame = {
-            let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
-            // Keep margin separate from measured content so overflow
-            // and bars continue to reflect the real content bounds.
-            row.content_margin = self.content_margin;
-            // The offset/zoom-mutation math lives on `ScrollLayoutState`
-            // (the type that owns `offset`); the widget computes the
-            // per-frame inputs + the theme-derived bar geometry here and
-            // calls the row methods to apply them.
+            let state = ui.state_mut::<ScrollState>(id);
             // 1) Pivot-anchored zoom step.
             if let (Some(cfg), Some(p)) = (self.zoom.as_ref(), pivot_local) {
-                row.apply_zoom(*cfg.range.start(), *cfg.range.end(), p, zoom_delta);
+                state.apply_zoom(*cfg.range.start(), *cfg.range.end(), p, zoom_delta);
             }
             // 2) Wheel pan, then 2b) the settled clamp for non-zoomable
             //    scrolls (zoomable ones keep the out-of-range drift the
             //    pivot path depends on).
             let preserve_zoom_underflow = self.zoom.is_some();
-            row.apply_wheel_pan(pan.x, pan.y, pan_delta, preserve_zoom_underflow);
+            state.apply_wheel_pan(bounds, pan.x, pan.y, pan_delta, preserve_zoom_underflow);
             if !preserve_zoom_underflow {
-                row.clamp_to_natural();
+                state.clamp_to_natural(bounds);
             }
             let bars = bar_responses.map(|responses| {
                 // Bars use the *scaled* content extent so dragging inside a
                 // zoomed viewport tracks the cursor 1:1 with the visible thumb.
-                let bl = bar_layout(
-                    row,
-                    pan,
-                    self.node.padding.unwrap_or(Spacing::ZERO),
-                    &responses.theme,
-                    self.bar_mode,
-                );
+                let bl = bar_layout(content, state.zoom, bar_space);
                 for (axis, resp) in [(Axis::Y, responses.resp_v), (Axis::X, responses.resp_h)] {
                     let panned = match axis {
                         Axis::Y => pan.y,
@@ -651,12 +650,12 @@ impl Scroll {
                     if !panned {
                         continue;
                     }
-                    let track_main = axis.main(bl.bar_viewport);
+                    let track_main = axis.main(bl.space.bar_viewport);
                     let main_content = axis.main(bl.scaled_content);
                     let geom = bar_geometry(
                         track_main,
                         main_content,
-                        axis.main_v(row.offset),
+                        axis.main_v(state.offset),
                         track_main,
                         &responses.theme,
                     )
@@ -665,7 +664,7 @@ impl Scroll {
                         let max_off = (main_content - track_main).max(0.0);
                         (max_off / travel, max_off)
                     });
-                    row.apply_thumb_drag(
+                    state.apply_thumb_drag(
                         axis,
                         resp.left.drag.started(),
                         resp.left.drag.delta(),
@@ -682,12 +681,12 @@ impl Scroll {
                     let Some(pointer_local) = resp_track.pointer_local else {
                         continue;
                     };
-                    let page_step = axis.main(bl.bar_viewport);
+                    let page_step = axis.main(bl.space.bar_viewport);
                     let main_content = axis.main(bl.scaled_content);
                     let page = bar_geometry(
                         page_step,
                         main_content,
-                        axis.main_v(row.offset),
+                        axis.main_v(state.offset),
                         page_step,
                         &responses.theme,
                     )
@@ -698,23 +697,23 @@ impl Scroll {
                         page_step,
                         max_off: (main_content - page_step).max(0.0),
                     });
-                    row.apply_track_page(axis, page);
+                    state.apply_track_page(axis, page);
                 }
                 let plans = BarPlans {
                     vertical: bar_plan(
-                        bl.bar_viewport,
-                        row.outer,
+                        bl.space.bar_viewport,
+                        outer,
                         bl.scaled_content,
-                        row.offset,
+                        state.offset,
                         Axis::Y,
                         pan.y,
                         &responses.theme,
                     ),
                     horizontal: bar_plan(
-                        bl.bar_viewport,
-                        row.outer,
+                        bl.space.bar_viewport,
+                        outer,
                         bl.scaled_content,
-                        row.offset,
+                        state.offset,
                         Axis::X,
                         pan.x,
                         &responses.theme,
@@ -726,26 +725,23 @@ impl Scroll {
                     plans,
                 }
             });
-            ScrollFrame { scroll: *row, bars }
+            ScrollFrame {
+                state: *state,
+                bars,
+            }
         };
 
-        if frame.bars.is_some() && !frame.scroll.seen {
-            // Cold-mount: state is default, so `bar_plan` below will
-            // see `content = 0`, decide "no overflow", and skip the
-            // thumb. After this pass's arrange the row is filled in
-            // with measured content + overflow; requesting a relayout
-            // re-records with the right thumb visibility on pass B.
-            // The viewport size itself is already correct on pass A
-            // because the gutter reservation is constant — only the
-            // thumb-or-no-thumb decision is stale.
+        if frame.bars.is_some() && widget_size.is_none() {
+            // Pass A has no previous geometry, so it cannot decide
+            // thumb visibility; pass B reads the just-measured layout.
             ui.request_relayout();
         }
-        let zoom = frame.scroll.zoom;
-        let offset = frame.scroll.offset;
+        let zoom = frame.state.zoom;
+        let offset = frame.state.offset;
         let (reserve_y, reserve_x) = frame
             .bars
             .as_ref()
-            .map(|bars| (bars.layout.reserve_y, bars.layout.reserve_x))
+            .map(|bars| (bars.layout.space.reserve_y, bars.layout.space.reserve_x))
             .unwrap_or_default();
 
         // Outer: bare ZStack that holds the inner viewport + a bar

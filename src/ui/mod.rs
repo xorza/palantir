@@ -412,11 +412,7 @@ impl Ui {
         // `Ui::cascades` can be reused verbatim (the tree is rebuilt
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
-        let fp = cascade_fingerprint(
-            &self.forest,
-            &self.layout_engine.scroll_states,
-            self.display,
-        );
+        let fp = cascade_fingerprint(&self.forest, self.display);
         let skip = self.frame_runtime.prev_cascade_fp == Some(fp);
         #[cfg(test)]
         {
