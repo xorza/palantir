@@ -22,6 +22,7 @@
 //! [`Ui`]: crate::Ui
 
 use crate::common::content_hash::ContentHash;
+use crate::common::hash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
@@ -58,7 +59,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 
-/// Output buffer for [`TextShaper::selection_rects`]. Stores selections
+/// Output buffer for [`TextLayoutProbe::selection_rects`]. Stores selections
 /// up to 16 visual lines inline; larger selections retain their spill
 /// allocation when the caller reuses the buffer.
 pub(crate) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
@@ -131,6 +132,16 @@ pub struct TextShaper {
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
+/// One direct text layout exposed for several read-only geometry queries.
+#[derive(Debug)]
+pub(crate) struct TextLayoutProbe<'a> {
+    pub(crate) measurement: TextMeasurement,
+    pub(crate) text_hash: u64,
+    buffer: Option<&'a cosmic_text::Buffer>,
+    text: &'a str,
+    params: ValidatedShapeParams,
+}
+
 /// Per-window cross-frame cache of text shaping output. `LayoutEngine`
 /// owns one, keeping identical widget ids in different windows independent
 /// while their [`TextCacheKey`] content buffers remain shared by
@@ -174,10 +185,11 @@ pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
     /// Total shaping dispatches: [`TextReuseCache`] misses plus every
-    /// bypass [`TextShaper::measure`] call — which may still hit the
-    /// cosmic buffer cache, so this counts dispatches, not reshapes.
-    /// Identity-cache hits don't increment. Read by tests pinning
-    /// reshape-skip behaviour via [`test_support::measure_calls`].
+    /// bypass [`TextShaper::measure`] or [`TextShaper::probe_layout`] call —
+    /// which may still hit the cosmic buffer cache, so this counts
+    /// dispatches, not reshapes. Identity-cache hits don't increment.
+    /// Read by tests pinning reshape-skip behaviour via
+    /// [`test_support::measure_calls`].
     pub(crate) measure_calls: u64,
 }
 
@@ -341,7 +353,43 @@ impl TextShaper {
         }
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
-        Ok(inner.dispatch_direct(text, params))
+        Ok(inner.dispatch_direct(text, hash::hash_str(text), params))
+    }
+
+    /// Shape `text` once and expose its measurement and geometry for the
+    /// duration of `body`.
+    pub(crate) fn probe_layout<R>(
+        &self,
+        text: &str,
+        params: ShapeParams,
+        body: impl FnOnce(TextLayoutProbe<'_>) -> R,
+    ) -> Result<R, ShapeParamsError> {
+        let params = params.validated()?;
+        let text_hash = hash::hash_str(text);
+        if text.is_empty() {
+            return Ok(body(TextLayoutProbe {
+                measurement: TextMeasurement::ZERO,
+                text_hash,
+                buffer: None,
+                text,
+                params,
+            }));
+        }
+
+        let mut inner = self.inner.borrow_mut();
+        inner.measure_calls += 1;
+        let measurement = inner.dispatch_direct(text, text_hash, params);
+        let buffer = inner
+            .cosmic
+            .as_ref()
+            .and_then(|cosmic| cosmic.buffer_for(measurement.key));
+        Ok(body(TextLayoutProbe {
+            measurement,
+            text_hash,
+            buffer,
+            text,
+            params,
+        }))
     }
 }
 
@@ -466,25 +514,6 @@ impl PreparedTextRun<'_> {
 }
 
 impl TextShaper {
-    /// Borrow the shaped cosmic `Buffer` for `(text, fs, lh, mw)`,
-    /// shaping on demand if the cache misses. Returns `None` on the
-    /// mono fallback (no cosmic installed) or empty text (cosmic
-    /// returns the invalid sentinel key). Centralises the
-    /// `measure → borrow → cosmic → buffer_for` preamble for every
-    /// caret/selection helper below.
-    fn with_buffer<R>(
-        &self,
-        text: &str,
-        params: ValidatedShapeParams,
-        body: impl FnOnce(&cosmic_text::Buffer) -> R,
-    ) -> Option<R> {
-        let mut inner = self.inner.borrow_mut();
-        inner.measure_calls += 1;
-        let result = inner.dispatch_direct(text, params);
-        let buffer = inner.cosmic.as_ref()?.buffer_for(result.key)?;
-        Some(body(buffer))
-    }
-
     /// (x, y_top, line_height) for the caret at `byte_offset` inside
     /// `text` rendered at `(font_size_px, line_height_px)` with an
     /// optional wrap `max_width_px`. Multi-line aware via cosmic-text
@@ -498,81 +527,8 @@ impl TextShaper {
         byte_offset: usize,
         params: ShapeParams,
     ) -> CursorPos {
-        let Ok(params) = params.validated() else {
-            return CursorPos::INVALID;
-        };
-        let font_size_px = params.metrics.font_size_px;
-        let line_height_px = params.metrics.line_height_px;
-        let max_width_px = params.raw.max_width_px;
-        let halign = params.raw.halign;
-        let target = cursor_from_byte(text, byte_offset);
-        self.with_buffer(text, params, |buffer| {
-            // Iterate visual lines (buffer lines × soft-wrap
-            // segments). For each run on the target's buffer line,
-            // locate the glyph whose `[start, end)` byte span
-            // contains `target.index`. For a trailing-edge caret
-            // (no glyph matches in this run), remember the last
-            // glyph's `(x + w)` — that's the post-aligned
-            // line-end position. Using `run.line_w` instead would
-            // ignore cosmic's per-line halign offset and the
-            // caret would jump back to the left on right/center-
-            // aligned lines. Empty lines (no glyphs) need the
-            // explicit halign-aware position because cosmic's
-            // per-line offset only kicks in when there's a glyph
-            // to offset — `line_w` stays 0.
-            let mut last_in_line: Option<(f32, f32, f32)> = None;
-            for run in buffer.layout_runs() {
-                if run.line_i != target.line {
-                    continue;
-                }
-                let line_end_x = run
-                    .glyphs
-                    .last()
-                    .map(|g| g.x + g.w)
-                    .unwrap_or_else(|| empty_line_x(max_width_px, halign));
-                last_in_line = Some((line_end_x, run.line_top, run.line_height));
-                for g in run.glyphs {
-                    if g.start == target.index {
-                        return CursorPos {
-                            x: g.x,
-                            y_top: run.line_top,
-                            line_height: run.line_height,
-                        };
-                    }
-                    if g.start < target.index && target.index < g.end {
-                        return CursorPos {
-                            x: g.x + g.w,
-                            y_top: run.line_top,
-                            line_height: run.line_height,
-                        };
-                    }
-                }
-                // Past the last glyph of this run: continue iterating
-                // — a soft-wrap continuation may carry `target.index`.
-            }
-            let (line_end_x, line_top, line_h) = last_in_line.unwrap_or((0.0, 0.0, line_height_px));
-            CursorPos {
-                x: line_end_x,
-                y_top: line_top,
-                line_height: line_h,
-            }
-        })
-        .unwrap_or_else(|| {
-            // No shaped buffer (mono fallback OR empty text → cosmic
-            // returns INVALID sentinel → `with_buffer` returns None).
-            // For empty text the caret must land where cosmic *would*
-            // per-line align it; for non-empty mono we walk chars.
-            let x = if text.is_empty() {
-                empty_line_x(max_width_px, halign)
-            } else {
-                caret_x_mono_single_line(text, byte_offset, font_size_px)
-            };
-            CursorPos {
-                x,
-                y_top: 0.0,
-                line_height: line_height_px,
-            }
-        })
+        self.probe_layout(text, params, |layout| layout.cursor_xy(byte_offset))
+            .unwrap_or(CursorPos::INVALID)
     }
 
     /// Pixel-position → byte-offset. Multi-line aware on the cosmic
@@ -580,56 +536,8 @@ impl TextShaper {
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
     pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, params: ShapeParams) -> usize {
-        let Ok(params) = params.validated() else {
-            return 0;
-        };
-        let font_size_px = params.metrics.font_size_px;
-        self.with_buffer(text, params, |buffer| {
-            buffer
-                .hit(x, y)
-                .map(|c| cursor_to_byte(text, c))
-                .unwrap_or(text.len())
-        })
-        .unwrap_or_else(|| mono_byte_at_x(text, x, font_size_px))
-    }
-
-    /// Append selection rectangles for `range` against the laid-out
-    /// `text` to `out` (cleared on entry). One [`Rect`] per visual
-    /// line that intersects the range. Multi-line aware via cosmic
-    /// `LayoutRun::highlight`; mono / empty-text path emits one rect
-    /// spanning the byte range. Caller applies any padding / offset /
-    /// scroll math when consuming. Stack-fast for typical line
-    /// counts; oversized selections reuse caller-retained spill capacity.
-    pub(crate) fn selection_rects(
-        &self,
-        text: &str,
-        range: std::ops::Range<usize>,
-        params: ShapeParams,
-        out: &mut SelectionRects,
-    ) {
-        out.clear();
-        let Ok(params) = params.validated() else {
-            return;
-        };
-        let font_size_px = params.metrics.font_size_px;
-        let line_height_px = params.metrics.line_height_px;
-        if range.is_empty() {
-            return;
-        }
-        let cosmic_ran = self
-            .with_buffer(text, params, |buffer| {
-                let start = cursor_from_byte(text, range.start);
-                let end = cursor_from_byte(text, range.end);
-                for run in buffer.layout_runs() {
-                    push_run_selection_rects(&run, start, end, out);
-                }
-            })
-            .is_some();
-        if !cosmic_ran {
-            let x0 = caret_x_mono_single_line(text, range.start, font_size_px);
-            let x1 = caret_x_mono_single_line(text, range.end, font_size_px);
-            out.push(Rect::new(x0, 0.0, x1 - x0, line_height_px));
-        }
+        self.probe_layout(text, params, |layout| layout.byte_at_xy(x, y))
+            .unwrap_or(0)
     }
 
     /// Per-frame maintenance hook. Called once per frame from
@@ -669,6 +577,98 @@ impl TextShaper {
     }
 }
 
+impl TextLayoutProbe<'_> {
+    pub(crate) fn cursor_xy(&self, byte_offset: usize) -> CursorPos {
+        let font_size_px = self.params.metrics.font_size_px;
+        let line_height_px = self.params.metrics.line_height_px;
+        let max_width_px = self.params.raw.max_width_px;
+        let halign = self.params.raw.halign;
+        let target = cursor_from_byte(self.text, byte_offset);
+        let Some(buffer) = self.buffer else {
+            let x = if self.text.is_empty() {
+                empty_line_x(max_width_px, halign)
+            } else {
+                caret_x_mono_single_line(self.text, byte_offset, font_size_px)
+            };
+            return CursorPos {
+                x,
+                y_top: 0.0,
+                line_height: line_height_px,
+            };
+        };
+
+        let mut last_in_line: Option<(f32, f32, f32)> = None;
+        for run in buffer.layout_runs() {
+            if run.line_i != target.line {
+                continue;
+            }
+            let line_end_x = run
+                .glyphs
+                .last()
+                .map(|g| g.x + g.w)
+                .unwrap_or_else(|| empty_line_x(max_width_px, halign));
+            last_in_line = Some((line_end_x, run.line_top, run.line_height));
+            for glyph in run.glyphs {
+                if glyph.start == target.index {
+                    return CursorPos {
+                        x: glyph.x,
+                        y_top: run.line_top,
+                        line_height: run.line_height,
+                    };
+                }
+                if glyph.start < target.index && target.index < glyph.end {
+                    return CursorPos {
+                        x: glyph.x + glyph.w,
+                        y_top: run.line_top,
+                        line_height: run.line_height,
+                    };
+                }
+            }
+        }
+        let (line_end_x, line_top, line_height) =
+            last_in_line.unwrap_or((0.0, 0.0, line_height_px));
+        CursorPos {
+            x: line_end_x,
+            y_top: line_top,
+            line_height,
+        }
+    }
+
+    fn byte_at_xy(&self, x: f32, y: f32) -> usize {
+        match self.buffer {
+            Some(buffer) => buffer
+                .hit(x, y)
+                .map(|cursor| cursor_to_byte(self.text, cursor))
+                .unwrap_or(self.text.len()),
+            None => mono_byte_at_x(self.text, x, self.params.metrics.font_size_px),
+        }
+    }
+
+    pub(crate) fn selection_rects(&self, range: std::ops::Range<usize>, out: &mut SelectionRects) {
+        out.clear();
+        if range.is_empty() {
+            return;
+        }
+        let Some(buffer) = self.buffer else {
+            let font_size_px = self.params.metrics.font_size_px;
+            let x0 = caret_x_mono_single_line(self.text, range.start, font_size_px);
+            let x1 = caret_x_mono_single_line(self.text, range.end, font_size_px);
+            out.push(Rect::new(
+                x0,
+                0.0,
+                x1 - x0,
+                self.params.metrics.line_height_px,
+            ));
+            return;
+        };
+        let start = cursor_from_byte(self.text, range.start);
+        let end = cursor_from_byte(self.text, range.end);
+        for run in buffer.layout_runs() {
+            push_run_selection_rects(&run, start, end, out);
+        }
+    }
+}
+
 impl ShaperInner {
     /// Bound the ordinary content cache. Layout and reuse entries may retain
     /// evicted keys because the encoder reconstructs every emitted run.
@@ -679,9 +679,14 @@ impl ShaperInner {
         cosmic.end_frame_evict(BUFFER_BUDGET);
     }
 
-    fn dispatch_direct(&mut self, text: &str, params: ValidatedShapeParams) -> TextMeasurement {
+    fn dispatch_direct(
+        &mut self,
+        text: &str,
+        text_hash: u64,
+        params: ValidatedShapeParams,
+    ) -> TextMeasurement {
         match self.cosmic.as_mut() {
-            Some(c) => c.measure_validated(text, params),
+            Some(c) => c.measure_hashed_validated(text, text_hash, params),
             None => mono_measure(text, params.metrics, params.raw.max_width_px, LineFit::Wrap),
         }
     }
