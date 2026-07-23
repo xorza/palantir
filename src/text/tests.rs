@@ -615,7 +615,7 @@ fn selection_rects_empty_range_is_noop() {
     let m = TextShaper::with_bundled_fonts();
     let mut out: SelectionRects = SelectionRects::new();
     out.push(Rect::new(1.0, 2.0, 3.0, 4.0)); // pre-populate
-    m.with_layout(
+    m.probe_layout(
         "hello",
         ShapeParams {
             font_size_px: 16.0,
@@ -641,7 +641,7 @@ fn selection_rects_empty_range_is_noop() {
 fn selection_rects_single_line_emits_one_rect() {
     let m = TextShaper::with_bundled_fonts();
     let mut out: SelectionRects = SelectionRects::new();
-    m.with_layout(
+    m.probe_layout(
         "hello",
         ShapeParams {
             font_size_px: 16.0,
@@ -707,7 +707,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
             halign: HAlign::Auto,
         };
         let mut expected = Vec::new();
-        m.with_layout(case.text, params, |layout| {
+        m.probe_layout(case.text, params, |layout| {
             let buffer = layout.buffer.unwrap();
             let start = cursor_from_byte(case.text, case.range.start);
             let end = cursor_from_byte(case.text, case.range.end);
@@ -721,7 +721,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
         .unwrap();
 
         let mut actual = SelectionRects::new();
-        m.with_layout(case.text, params, |layout| {
+        m.probe_layout(case.text, params, |layout| {
             layout.selection_rects(case.range, &mut actual);
         })
         .unwrap();
