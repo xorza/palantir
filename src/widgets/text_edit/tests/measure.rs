@@ -27,6 +27,7 @@ fn frame(ui: &mut Ui, buf: &mut String) -> NodeId {
                         .placeholder(PLACEHOLDER)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui)
+                        .response
                         .node(),
                 );
             });
@@ -85,6 +86,7 @@ fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizin
                         .id(WidgetId::from_hash("editor"))
                         .size((editor_w, Sizing::fixed(40.0)))
                         .show(ui)
+                        .response
                         .node(),
                 );
             });

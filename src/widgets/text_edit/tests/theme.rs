@@ -31,6 +31,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });
@@ -149,6 +150,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });
@@ -222,6 +224,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
                         .id(WidgetId::from_hash("invalid editor"))
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
+                        .response
                         .node(),
                 );
             });
@@ -275,6 +278,7 @@ fn textedit_style_override_replaces_default_theme() {
                         .style(&style)
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
+                        .response
                         .node(),
                 );
             });
@@ -303,6 +307,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });
@@ -341,6 +346,7 @@ fn no_selection_paints_no_highlight_rect() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });
@@ -372,6 +378,7 @@ fn shift_end_paints_selection_highlight() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });
@@ -513,7 +520,7 @@ fn line_height_override_changes_caret_rect_height() {
                 if let Some(s) = style {
                     e = e.style(s);
                 }
-                *leaf = Some(e.show(ui).node());
+                *leaf = Some(e.show(ui).response.node());
             });
         };
         ui.run_at(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));

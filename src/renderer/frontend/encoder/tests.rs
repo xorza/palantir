@@ -486,6 +486,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                             .size(40.0)
                             .show(ui);
                     })
+                    .response
                     .node(),
             );
         });

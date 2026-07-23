@@ -149,6 +149,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
                     .size(40.0)
                     .show(ui);
             })
+            .response
             .node();
     });
 
@@ -189,6 +190,7 @@ fn collapsed_does_not_consume_fill_weight() {
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
             })
+            .response
             .node();
     });
 
@@ -238,6 +240,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     })
                     .show(ui);
             })
+            .response
             .node();
     });
 

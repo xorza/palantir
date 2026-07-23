@@ -33,6 +33,7 @@ fn intrinsic_cache_populated_after_run() {
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui);
             })
+            .response
             .node();
     });
 
@@ -67,6 +68,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui);
             })
+            .response
             .node();
     });
 
@@ -147,6 +149,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
                 Text::new("abc").id_salt("a").show(ui);
                 Text::new("defgh").id_salt("b").show(ui);
             })
+            .response
             .node();
     });
     // Drop the measure-cache snapshots so `engine.intrinsic` can't

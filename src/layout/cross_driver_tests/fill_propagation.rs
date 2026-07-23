@@ -96,6 +96,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                             .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                             .show(ui);
                     })
+                    .response
                     .node(),
             );
         });
@@ -252,6 +253,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                                 .grid_cell((1, 1))
                                 .show(ui);
                         })
+                        .response
                         .node(),
                 );
             });
@@ -301,6 +303,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                                     .grid_cell((0, 1))
                                     .show(ui);
                                 })
+                                .response
                                 .node(),
                         );
                     });

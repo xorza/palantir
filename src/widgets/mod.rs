@@ -262,34 +262,28 @@ impl std::ops::Deref for ResponseSnapshot {
     }
 }
 
-/// `Response` plus a value returned by the body closure of widgets
-/// that take one (`Panel`/`Grid`/`Scroll`). `Deref`s to `Response` —
-/// which itself derefs on to [`ResponseState`] — so callers ignoring
-/// the inner value keep `panel.show(ui, body).left.clicked()` working
-/// unchanged.
-///
-/// Constraint that keeps the `Deref` chain honest: **no inherent
-/// methods or extra fields on `InnerResponse`** beyond `response` /
-/// `inner` — a member named like anything on `Response` /
-/// `ResponseState` would shadow it via the standard resolution order,
-/// and callers would never see a compile error.
+/// [`Response`] plus a value returned by the body closure of widgets
+/// that take one (`Panel`/`Grid`/`Scroll`). Interaction state is
+/// available through [`Self::response`]; the body result is available
+/// through [`Self::inner`].
 #[derive(Debug)]
 pub struct InnerResponse<'a, R> {
     pub response: Response<'a>,
     pub inner: R,
 }
 
-impl<'a, R> std::ops::Deref for InnerResponse<'a, R> {
-    type Target = Response<'a>;
-    fn deref(&self) -> &Response<'a> {
-        &self.response
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod test_support {
     use crate::scene::tree::node::NodeId;
-    use crate::widgets::*;
+    use crate::widgets::drag_value::DragValueResponse;
+    use crate::widgets::text_edit::TextEditResponse;
+    use crate::widgets::{InnerResponse, Response};
+    use static_assertions::assert_not_impl_any;
+    use std::ops::Deref;
+
+    assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
+    assert_not_impl_any!(DragValueResponse<'static>: Deref);
+    assert_not_impl_any!(TextEditResponse<'static>: Deref);
 
     impl Response<'_> {
         pub(crate) fn node(&self) -> NodeId {

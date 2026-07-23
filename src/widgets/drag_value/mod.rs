@@ -148,13 +148,12 @@ struct DragEdit {
     editing: bool,
 }
 
-/// What [`DragValue::show`] returns: the widget's [`Response`] (reachable
-/// via `Deref`) plus the edit signals computed inside `show()`, mirroring
+/// What [`DragValue::show`] returns: the widget's [`Response`] plus the
+/// edit signals computed inside `show()`, mirroring
 /// [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub struct DragValueResponse<'a> {
-    /// The widget's pointer/click/hover [`Response`]. Also reachable through
-    /// `Deref`, so `resp.left.clicked()` resolves here.
+    /// The widget's pointer/click/hover [`Response`].
     pub response: Response<'a>,
     /// The bound value was written with a value differing from what the
     /// caller passed in this frame. Under the commit-deferring pattern
@@ -167,13 +166,6 @@ pub struct DragValueResponse<'a> {
     /// lost). Callers that treat one gesture as one undoable edit act on
     /// this instead of `changed`.
     pub committed: bool,
-}
-
-impl<'a> std::ops::Deref for DragValueResponse<'a> {
-    type Target = Response<'a>;
-    fn deref(&self) -> &Self::Target {
-        &self.response
-    }
 }
 
 /// A numeric field you scrub by dragging horizontally (Blender / egui
