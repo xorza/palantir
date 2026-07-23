@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, enter_widget};
@@ -31,7 +31,7 @@ use crate::window::CursorIcon;
 /// a recursive pane tree can capture its state mutably once.
 #[derive(Debug)]
 pub struct Splitter<'a> {
-    element: Element,
+    node: Node,
     ratio: &'a mut f32,
     axis: Axis,
     min_pane: f32,
@@ -68,11 +68,11 @@ impl<'a> Splitter<'a> {
     #[track_caller]
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         // The clipped root contains the grab overlay's overhang within the splitter.
-        let mut element = Element::grid();
-        element.size = Some((Sizing::FILL, Sizing::FILL).into());
-        element.clip = Some(ClipMode::Rect);
+        let mut node = Node::grid();
+        node.size = Some((Sizing::FILL, Sizing::FILL).into());
+        node.clip = Some(ClipMode::Rect);
         Self {
-            element,
+            node,
             ratio,
             axis,
             min_pane: 0.0,
@@ -99,7 +99,7 @@ impl<'a> Splitter<'a> {
         ui: &'u mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> Response<'u> {
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
         let state = &entry.state;
 
@@ -188,20 +188,20 @@ impl<'a> Splitter<'a> {
             Axis::X => ui.forest.trees[layer].push_grid_def(&cross_tracks, &main_tracks, 0.0, 0.0),
             Axis::Y => ui.forest.trees[layer].push_grid_def(&main_tracks, &cross_tracks, 0.0, 0.0),
         };
-        entry.widget.element.set_grid_def(grid_def_id);
-        entry.widget.node(ui, None, |ui| {
+        entry.widget.node.set_grid_def(grid_def_id);
+        entry.widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
-            let mut rule = Element::leaf()
+            let mut rule = Node::leaf()
                 .id(id.with("rule"))
                 .size((Sizing::FILL, Sizing::FILL));
             set_main_cell(&mut rule, axis, 1);
-            ui.widget(rule).node(ui, Some(&rule_bg), |_| {});
+            ui.widget(rule).record(ui, Some(&rule_bg), |_| {});
 
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
             let inset = (rule_thickness - thickness) * 0.5;
-            let mut bar = Element::leaf()
+            let mut bar = Node::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL));
@@ -210,7 +210,7 @@ impl<'a> Splitter<'a> {
                 Axis::Y => (0.0, inset, 0.0, inset).into(),
             });
             set_main_cell(&mut bar, axis, 1);
-            ui.widget(bar).node(ui, Some(&bar_bg), |_| {});
+            ui.widget(bar).record(ui, Some(&bar_bg), |_| {});
         });
 
         entry.into_response(ui)
@@ -218,25 +218,25 @@ impl<'a> Splitter<'a> {
 }
 
 impl Configure for Splitter<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
-    let mut el = Element::zstack()
+    let mut el = Node::zstack()
         .id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .clip_rect();
     set_main_cell(&mut el, axis, main_cell);
-    ui.widget(el).node(ui, None, body)
+    ui.widget(el).record(ui, None, body)
 }
 
-fn set_main_cell(element: &mut Element, axis: Axis, main_cell: u16) {
+fn set_main_cell(node: &mut Node, axis: Axis, main_cell: u16) {
     match axis {
-        Axis::X => element.grid.col = main_cell,
-        Axis::Y => element.grid.row = main_cell,
+        Axis::X => node.grid.col = main_cell,
+        Axis::Y => node.grid.row = main_cell,
     }
 }
 

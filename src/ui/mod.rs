@@ -32,8 +32,8 @@ use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::renderer::plan::RenderPlan;
 use crate::scene::Forest;
-use crate::scene::element::Element;
 use crate::scene::layer::Layer;
+use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::scene::tree::recording::Placement;
 use crate::{InternedStr, TextInput};
@@ -360,7 +360,7 @@ impl Ui {
         // declared `Sizing` / `Sense` on the top-level widget. ZStack +
         // Fill matches the historical "root paints full surface"
         // behavior while letting user roots respect their own sizing.
-        let mut viewport = Element::zstack();
+        let mut viewport = Node::zstack();
         viewport.size = Some(Sizing::FILL.into());
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
@@ -855,13 +855,13 @@ impl Ui {
         self.forest.pop_layer();
     }
 
-    /// Resolve `element`'s stable [`WidgetId`] for this frame and hand
-    /// back the [`Widget`] pairing that id with the element. This is
+    /// Resolve `node`'s stable [`WidgetId`] for this frame and hand
+    /// back the [`Widget`] pairing that id with the node. This is
     /// the public entry a widget author calls first: read
     /// [`Self::response_for`] / per-widget [`Self::state_mut`] against
     /// `widget.id()` (theme picking off the prior frame, animation
-    /// slots, sub-id derivation), mutate `widget.element` as needed,
-    /// then record via [`Widget::node`]. Every built-in widget follows
+    /// slots, sub-id derivation), mutate `widget.node` as needed,
+    /// then record via [`Widget::record`]. Every built-in widget follows
     /// this resolve-once-then-`node` shape; see
     /// `examples/custom_widget.rs`.
     ///
@@ -880,30 +880,30 @@ impl Ui {
     /// `response_for` will see.
     ///
     /// **Record exactly once**: the resolution reserves this frame's
-    /// occurrence slot for the id, and the matching [`Widget::node`]
+    /// occurrence slot for the id, and the matching [`Widget::record`]
     /// call claims it. Dropping the `Widget` without recording leaves
     /// the slot dangling (a second same-salt widget this frame would
     /// reuse the id); recording twice panics.
-    #[must_use = "record the widget with Widget::node"]
-    pub fn widget(&mut self, element: Element) -> Widget {
-        let salt = element.salt;
+    #[must_use = "record the widget with Widget::record"]
+    pub fn widget(&mut self, node: Node) -> Widget {
+        let salt = node.salt;
         let raw_id = salt.resolve(self.forest.current_parent_id());
         let id = self.forest.ids.resolve(raw_id, salt.is_explicit());
-        Widget::new(id, element)
+        Widget::new(id, node)
     }
 
     /// Open a node under the id [`Self::widget`] resolved, run its
-    /// body, and close it — the recording half of [`Widget::node`],
+    /// body, and close it — the recording half of [`Widget::record`],
     /// its only caller. The id is final; no further `SeenIds` work
     /// here.
     pub(crate) fn node<R>(
         &mut self,
         id: WidgetId,
-        element: Element,
+        node: Node,
         chrome: Option<&Background>,
         f: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        self.forest.open_node(id, element, chrome);
+        self.forest.open_node(id, node, chrome);
         let r = f(self);
         self.forest.close_node();
         r

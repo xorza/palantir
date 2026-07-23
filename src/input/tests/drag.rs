@@ -5,8 +5,8 @@ use crate::input::response::ResponseState;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::node::Configure;
 use crate::widgets::{Response, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

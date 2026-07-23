@@ -17,7 +17,7 @@ use crate::input::subscriptions::PointerSense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::shape::Shape;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

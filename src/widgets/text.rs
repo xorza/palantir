@@ -1,6 +1,6 @@
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::text::FontWeight;
 use crate::text::wrap::TextWrap;
@@ -33,7 +33,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// ```
 #[derive(Debug)]
 pub struct Text<'a> {
-    element: Element,
+    node: Node,
     text: TextInput<'a>,
     style: Option<&'a TextStyle>,
     /// Single-axis weight override applied over the resolved `style` in
@@ -48,7 +48,7 @@ impl<'a> Text<'a> {
     #[track_caller]
     pub fn new(text: impl Into<TextInput<'a>>) -> Self {
         Self {
-            element: Element::leaf(),
+            node: Node::leaf(),
             text: text.into(),
             style: None,
             weight: None,
@@ -107,8 +107,8 @@ impl<'a> Text<'a> {
         let metrics_valid = style.metrics().is_some();
         let font_size_px = style.font_size_px;
         let line_height_px = style.line_height_for(font_size_px);
-        let widget = ui.widget(self.element);
-        widget.node(ui, None, |ui| {
+        let widget = ui.widget(self.node);
+        widget.record(ui, None, |ui| {
             if metrics_valid {
                 let text = ui.intern(self.text);
                 ui.add_shape(Shape::Text {
@@ -131,7 +131,7 @@ impl<'a> Text<'a> {
 }
 
 impl Configure for Text<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }

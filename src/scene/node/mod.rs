@@ -1,4 +1,4 @@
-//! Public element authoring data and the builder configuration surface.
+//! Public node authoring data and the builder configuration surface.
 
 pub(crate) mod columns;
 
@@ -14,32 +14,32 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::columns::{
-    BoundsExtras, ElementColumns, Gaps, LayoutCore, NodeFlags, PanelExtras,
+use crate::scene::node::columns::{
+    BoundsExtras, Gaps, LayoutCore, NodeColumns, NodeFlags, PanelExtras,
 };
 use crate::scene::visibility::Visibility;
 use glam::Vec2;
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ElementMode {
+pub(crate) enum NodeMode {
     Resolved(LayoutMode),
     PendingGrid,
 }
 
-impl ElementMode {
+impl NodeMode {
     #[inline(always)]
     pub(crate) fn resolved(self) -> LayoutMode {
         match self {
             Self::Resolved(mode) => mode,
             Self::PendingGrid => {
-                panic!("grid element recorded before its definition was installed")
+                panic!("grid node recorded before its definition was installed")
             }
         }
     }
 }
 
-/// Recipe for an [`Element`]'s `WidgetId`. Mirrors egui's
+/// Recipe for a [`ode`'s `WidgetId`. Mirrors egui's
 /// `Option<Id>` "raw `id_salt`, resolve at `Ui::widget`"
 /// pattern: the builder stores the user's intent, resolution happens
 /// at record time when the parent context is known. Three sources:
@@ -113,19 +113,19 @@ impl Salt {
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
 /// Every widget builder owns one and records it via `Ui::widget` +
-/// `Widget::node`. [`Configure`] gives chained setters for all fields by
+/// `Widget::record`. [`Configure`] gives chained setters for all fields by
 /// implementing one method.
 ///
 /// Fields are grouped by who reads them: identity, own-size (every parent),
 /// mode-specific (only certain parents read these), interaction, and paint.
 #[derive(Clone, Copy, Debug)]
-pub struct Element {
+pub struct Node {
     /// Recipe for this node's `WidgetId`. Resolution happens inside
-    /// [`crate::Ui::widget`] — `Element` itself never carries a
+    /// [`crate::Ui::widget`] — `Node` itself never carries a
     /// resolved id. Mirrors egui's "builder stores raw `id_salt`,
     /// `Ui::widget` mixes in the parent's id at `.show()`" pattern.
     pub(crate) salt: Salt,
-    pub(crate) mode: ElementMode,
+    pub(crate) mode: NodeMode,
 
     /// The five themable fields are `None` until explicitly set, so
     /// widgets can layer theme defaults under user intent with a plain
@@ -180,82 +180,82 @@ pub struct Element {
     pub(crate) transform: TranslateScale,
 }
 
-impl Element {
+impl Node {
     /// Paint/layout leaf for custom widget content.
     #[track_caller]
     pub fn leaf() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::Leaf))
+        Self::new(NodeMode::Resolved(LayoutMode::Leaf))
     }
 
     /// Horizontal stack container for custom widgets.
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::HStack))
+        Self::new(NodeMode::Resolved(LayoutMode::HStack))
     }
 
     /// Vertical stack container for custom widgets.
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::VStack))
+        Self::new(NodeMode::Resolved(LayoutMode::VStack))
     }
 
     /// Wrapping horizontal stack container for custom widgets.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::WrapHStack))
+        Self::new(NodeMode::Resolved(LayoutMode::WrapHStack))
     }
 
     /// Wrapping vertical stack container for custom widgets.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::WrapVStack))
+        Self::new(NodeMode::Resolved(LayoutMode::WrapVStack))
     }
 
     /// Layered stack container for custom widgets.
     #[track_caller]
     pub fn zstack() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::ZStack))
+        Self::new(NodeMode::Resolved(LayoutMode::ZStack))
     }
 
     /// Absolute-positioned container for custom widgets.
     #[track_caller]
     pub fn canvas() -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::Canvas))
+        Self::new(NodeMode::Resolved(LayoutMode::Canvas))
     }
 
     #[track_caller]
     pub(crate) fn grid() -> Self {
-        Self::new(ElementMode::PendingGrid)
+        Self::new(NodeMode::PendingGrid)
     }
 
     #[track_caller]
     pub(crate) fn scroll(spec: ScrollSpec) -> Self {
-        Self::new(ElementMode::Resolved(LayoutMode::Scroll(spec)))
+        Self::new(NodeMode::Resolved(LayoutMode::Scroll(spec)))
     }
 
     pub(crate) fn set_grid_def(&mut self, id: GridDefId) {
-        let ElementMode::PendingGrid = self.mode else {
-            panic!("grid definition installed on {:?} element", self.mode);
+        let NodeMode::PendingGrid = self.mode else {
+            panic!("grid definition installed on {:?} node", self.mode);
         };
-        self.mode = ElementMode::Resolved(LayoutMode::Grid(id));
+        self.mode = NodeMode::Resolved(LayoutMode::Grid(id));
     }
 
     pub(crate) fn set_scroll_spec(&mut self, spec: ScrollSpec) {
-        let ElementMode::Resolved(LayoutMode::Scroll(current)) = &mut self.mode else {
-            panic!("scroll specification installed on {:?} element", self.mode);
+        let NodeMode::Resolved(LayoutMode::Scroll(current)) = &mut self.mode else {
+            panic!("scroll specification installed on {:?} node", self.mode);
         };
         *current = spec;
     }
 
     pub(crate) fn scroll_spec(&self) -> ScrollSpec {
-        let ElementMode::Resolved(LayoutMode::Scroll(spec)) = self.mode else {
-            panic!("scroll specification read from {:?} element", self.mode);
+        let NodeMode::Resolved(LayoutMode::Scroll(spec)) = self.mode else {
+            panic!("scroll specification read from {:?} node", self.mode);
         };
         spec
     }
 
     #[track_caller]
-    fn new(mode: ElementMode) -> Self {
+    fn new(mode: NodeMode) -> Self {
         Self {
             salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
@@ -277,20 +277,20 @@ impl Element {
         }
     }
 
-    /// Fan this `Element` out into the per-NodeId columns `Tree` stores,
+    /// Fan this `Node` out into the per-NodeId columns `Tree` stores,
     /// resolving every still-`None` themable field to its layout
     /// default. Single routing point — adding a field is one edit in
     /// the column type and one in the routing block. `widget_id` is
     /// supplied by the caller (resolved from `self.salt` upstream in
-    /// `Forest::open_node`) so `Element` itself never carries a
+    /// `Forest::open_node`) so `Node` itself never carries a
     /// resolved id.
     #[inline(always)]
-    pub(crate) fn into_columns(self, widget_id: WidgetId) -> ElementColumns {
+    pub(crate) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
-        ElementColumns {
+        NodeColumns {
             widget_id,
-            layout: LayoutCore::from_element(&self),
+            layout: LayoutCore::from_node(&self),
             attrs,
             bounds: BoundsExtras {
                 position: self.position,
@@ -309,11 +309,11 @@ impl Element {
 }
 
 /// Opaque mutable view used only to implement [`Configure`] for a widget.
-/// Delegating through an owned [`Element`] exposes configuration without
-/// exposing the element's structural layout mode.
+/// Delegating through an owned [`Node`] exposes configuration without
+/// exposing the node's structural layout mode.
 #[derive(Debug)]
-pub struct ConfigureElement<'a> {
-    element: &'a mut Element,
+pub struct ConfigureNode<'a> {
+    node: &'a mut Node,
 }
 
 #[inline]
@@ -326,16 +326,16 @@ fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
             && valid_upper_bound(max_size.h)
             && min_size.w <= max_size.w
             && min_size.h <= max_size.h,
-        "element minimums must be finite, bounds must be non-negative and ordered, and only \
+        "node minimums must be finite, bounds must be non-negative and ordered, and only \
          maximums may be infinite; got min_size {min_size:?}, max_size {max_size:?}",
     );
 }
 
-/// Mixin: any widget builder that holds an `Element` gets the chained
+/// Mixin: any widget builder that holds a `ode` gets the chained
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
-/// free by impl'ing just `element_mut`.
+/// free by impl'ing just `node_mut`.
 pub trait Configure: Sized {
-    fn element_mut(&mut self) -> ConfigureElement<'_>;
+    fn node_mut(&mut self) -> ConfigureNode<'_>;
 
     /// Override this widget's id with a hash of `key`, scoped to the
     /// parent. The stored hash is mixed with the parent node's
@@ -351,7 +351,7 @@ pub trait Configure: Sized {
     /// outline because they're caller bugs. For an unscoped "use this
     /// exact id" override, see [`Self::id`].
     fn id_salt(mut self, key: impl Hash) -> Self {
-        self.element_mut().element.salt = Salt::Hash(WidgetId::from_hash(key));
+        self.node_mut().node.salt = Salt::Hash(WidgetId::from_hash(key));
         self
     }
 
@@ -363,7 +363,7 @@ pub trait Configure: Sized {
     /// For the parent-scoped path, prefer [`Self::id_salt`]. Stores
     /// the id verbatim.
     fn id(mut self, id: WidgetId) -> Self {
-        self.element_mut().element.salt = Salt::Verbatim(id);
+        self.node_mut().node.salt = Salt::Verbatim(id);
         self
     }
 
@@ -373,48 +373,48 @@ pub trait Configure: Sized {
     /// `helper().auto_id().show(ui)` reads the caller's `(file, line, col)`.
     #[track_caller]
     fn auto_id(mut self) -> Self {
-        self.element_mut().element.salt = Salt::Auto(WidgetId::auto_stable());
+        self.node_mut().node.salt = Salt::Auto(WidgetId::auto_stable());
         self
     }
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.element_mut().element.size = Some(s.into());
+        self.node_mut().node.size = Some(s.into());
         self
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
-        let element = self.element_mut().element;
+        let node = self.node_mut().node;
         let value = s.into();
-        debug_assert_valid_bounds(value, element.max_size.unwrap_or(Size::INF));
-        element.min_size = Some(value);
+        debug_assert_valid_bounds(value, node.max_size.unwrap_or(Size::INF));
+        node.min_size = Some(value);
         self
     }
     fn max_size(mut self, s: impl Into<Size>) -> Self {
-        let element = self.element_mut().element;
+        let node = self.node_mut().node;
         let value = s.into();
-        debug_assert_valid_bounds(element.min_size.unwrap_or(Size::ZERO), value);
-        element.max_size = Some(value);
+        debug_assert_valid_bounds(node.min_size.unwrap_or(Size::ZERO), value);
+        node.max_size = Some(value);
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.element_mut().element.padding = Some(p.into());
+        self.node_mut().node.padding = Some(p.into());
         self
     }
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.element_mut().element.margin = Some(m.into());
+        self.node_mut().node.margin = Some(m.into());
         self
     }
     /// Absolute position inside a `Canvas` parent (parent-inner coords).
     /// Ignored by other layout modes.
     fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.element_mut().element.position = p.into();
+        self.node_mut().node.position = p.into();
         self
     }
     /// Cell `(row, col)` inside a `Grid` parent. Default `(0, 0)`. Ignored
     /// outside a Grid parent.
     fn grid_cell(mut self, (row, col): (u16, u16)) -> Self {
-        let element = self.element_mut().element;
-        element.grid.row = row;
-        element.grid.col = col;
+        let node = self.node_mut().node;
+        node.grid.row = row;
+        node.grid.col = col;
         self
     }
     /// Span `(row_span, col_span)` inside a `Grid` parent. Default `(1, 1)`.
@@ -422,16 +422,16 @@ pub trait Configure: Sized {
     /// time — an out-of-range placement panics (`Tree::check_grid_cell`).
     /// Ignored outside a Grid parent.
     fn grid_span(mut self, (rs, cs): (u16, u16)) -> Self {
-        let element = self.element_mut().element;
-        element.grid.row_span = rs.max(1);
-        element.grid.col_span = cs.max(1);
+        let node = self.node_mut().node;
+        node.grid.row_span = rs.max(1);
+        node.grid.col_span = cs.max(1);
         self
     }
     /// Logical-px space between siblings within a line. Read by
     /// HStack/VStack and the within-line direction of WrapHStack/
     /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
     fn gap(mut self, g: f32) -> Self {
-        self.element_mut().element.gaps.set_gap(g);
+        self.node_mut().node.gaps.set_gap(g);
         self
     }
 
@@ -440,35 +440,35 @@ pub trait Configure: Sized {
     /// every other layout mode. Pair with `.gap(...)` for the within-
     /// line spacing.
     fn line_gap(mut self, g: f32) -> Self {
-        self.element_mut().element.gaps.set_line_gap(g);
+        self.node_mut().node.gaps.set_line_gap(g);
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
     /// Ignored when any child has [`crate::Sizing::fill`] on the main axis.
     fn justify(mut self, j: Justify) -> Self {
-        self.element_mut().element.justify = j;
+        self.node_mut().node.justify = j;
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn align(mut self, a: Align) -> Self {
-        self.element_mut().element.align = a;
+        self.node_mut().node.align = a;
         self
     }
     /// Default alignment applied to children when their own axis is `Auto`.
     /// Mirrors CSS `align-items`. For single-axis defaults use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn child_align(mut self, a: Align) -> Self {
-        self.element_mut().element.child_align = a;
+        self.node_mut().node.child_align = a;
         self
     }
     fn sense(mut self, s: Sense) -> Self {
-        self.element_mut().element.flags.set_sense(s);
+        self.node_mut().node.flags.set_sense(s);
         self
     }
     /// Suppress this node's interactions and cascade to all descendants.
     fn disabled(mut self, d: bool) -> Self {
-        self.element_mut().element.flags.set_disabled(d);
+        self.node_mut().node.flags.set_disabled(d);
         self
     }
     /// Mark this node as eligible to take keyboard focus on press.
@@ -476,12 +476,12 @@ pub trait Configure: Sized {
     /// or invisible nodes are excluded from focus regardless of this
     /// flag — same cascade rule as `Sense`.
     fn focusable(mut self, f: bool) -> Self {
-        self.element_mut().element.flags.set_focusable(f);
+        self.node_mut().node.flags.set_focusable(f);
         self
     }
     /// Three-state visibility. See [`Visibility`].
     fn visibility(mut self, v: Visibility) -> Self {
-        self.element_mut().element.visibility = v;
+        self.node_mut().node.visibility = v;
         self
     }
     /// Shorthand for [`Visibility::Hidden`]: keeps the slot, hides paint + input.
@@ -496,7 +496,7 @@ pub trait Configure: Sized {
     /// Generic clip setter. Most callers use the [`Self::clip_rect`]
     /// / [`Self::clip_rounded`] sugars instead.
     fn clip(mut self, mode: ClipMode) -> Self {
-        self.element_mut().element.clip = Some(mode);
+        self.node_mut().node.clip = Some(mode);
         self
     }
 
@@ -514,14 +514,14 @@ pub trait Configure: Sized {
     }
 }
 
-/// A bare `Element` is its own configurable builder, so widget authors
+/// A bare `Node` is its own configurable builder, so widget authors
 /// can chain the [`Configure`] setters on the child nodes they construct
 /// inside their `show` body — e.g.
-/// `Element::leaf().id(my_id).size(...).sense(Sense::CLICK)`.
-impl Configure for Element {
+/// `Node::leaf().id(my_id).size(...).sense(Sense::CLICK)`.
+impl Configure for Node {
     #[inline]
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        ConfigureElement { element: self }
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        ConfigureNode { node: self }
     }
 }
 

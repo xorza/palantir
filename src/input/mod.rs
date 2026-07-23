@@ -816,7 +816,7 @@ impl InputState {
         // Cascade flattens parent-disabled into each entry, so this is
         // the **effective** ancestor-or-self disabled — one frame stale.
         // Widgets that need lag-free self-toggle response merge their
-        // own `element.disabled` on top after calling.
+        // own `node.disabled` on top after calling.
         let disabled = entry_idx.is_some_and(|i| cascades.entries.disabled()[i]);
 
         // Interaction half — on a quiescent frame every field below is at

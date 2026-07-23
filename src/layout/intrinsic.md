@@ -191,7 +191,7 @@ The Fill distribution itself stops at:
 - **Min floor** — clamped to `MinContent` per child so wrap text never
   breaks inside a word (it overflows the slot instead).
 - **Weight** — `Sizing::Fill(w)` weights split leftover.
-- **Max-size clamp** — `Element.max_size` honored.
+- **Max-size clamp** — `Node.max_size` honored.
 
 Anything richer (`flex-basis`, `flex-shrink` distinct from `flex-grow`,
 `align-items: baseline`, `flex-wrap`, `align-content`) is **out of

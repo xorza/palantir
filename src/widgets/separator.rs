@@ -2,7 +2,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -17,7 +17,7 @@ use crate::widgets::Response;
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
 #[derive(Debug)]
 pub struct Separator {
-    element: Element,
+    node: Node,
     horizontal: bool,
     thickness: Option<f32>,
     color: Option<Color>,
@@ -39,7 +39,7 @@ impl Separator {
     #[track_caller]
     fn axis(horizontal: bool) -> Self {
         Self {
-            element: Element::leaf(),
+            node: Node::leaf(),
             horizontal,
             thickness: None,
             color: None,
@@ -67,25 +67,25 @@ impl Separator {
         } else {
             (Sizing::fixed(t), Sizing::HUG).into()
         };
-        if self.element.size.is_none() {
-            self.element.size = Some(default_size);
-            self.element.align = if self.horizontal {
+        if self.node.size.is_none() {
+            self.node.size = Some(default_size);
+            self.node.align = if self.horizontal {
                 Align::h(HAlign::Stretch)
             } else {
                 Align::v(VAlign::Stretch)
             };
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
-        let widget = ui.widget(self.element);
-        widget.node(ui, Some(&chrome), |_| {});
+        let widget = ui.widget(self.node);
+        widget.record(ui, Some(&chrome), |_| {});
         // Decorative: skip the eager `response_for` probe.
         widget.response(ui)
     }
 }
 
 impl Configure for Separator {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -93,8 +93,8 @@ impl Configure for Separator {
 mod tests {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::separator::Separator;
     use glam::UVec2;

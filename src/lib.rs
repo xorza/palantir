@@ -93,8 +93,8 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
-pub use scene::element::{Configure, ConfigureElement, Element};
 pub use scene::layer::Layer;
+pub use scene::node::{Configure, ConfigureNode, Node};
 pub use scene::visibility::Visibility;
 // Re-exported (not an aperture type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
@@ -194,8 +194,8 @@ mod hot_struct_sizes {
     use crate::scene::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::damage::snapshot::NodeSnapshot;
-    use crate::scene::element::Element;
-    use crate::scene::element::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
+    use crate::scene::node::Node;
+    use crate::scene::node::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::scene::record_store::RecordedGradient;
     use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
     use crate::scene::shapes::record::ShapeRecord;
@@ -273,7 +273,7 @@ mod hot_struct_sizes {
         ExtrasIdx => "scene::ExtrasIdx": 6 / 2,
         BoundsExtras => "scene::BoundsExtras": 32 / 4,
         PanelExtras => "scene::PanelExtras": 20 / 4,
-        Element => "scene::Element": 120 / 8,
+        Node => "scene::Node": 120 / 8,
         // Per-shape / per-chrome paint records + lowered fill forms.
         ShapeRecord => "scene::ShapeRecord": 88 / 8,
         RecordedText => "shapes::RecordedText": 16 / 8,

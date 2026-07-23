@@ -2,7 +2,7 @@ use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::{InnerResponse, resolve_container_chrome};
 
@@ -23,7 +23,7 @@ use crate::widgets::{InnerResponse, resolve_container_chrome};
 /// non-goals: no Auto-vs-Star cycle, `SharedSizeScope`, or auto-flow.
 #[derive(Debug)]
 pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
-    element: Element,
+    node: Node,
     rows: Rows,
     cols: Cols,
     row_gap: f32,
@@ -36,7 +36,7 @@ impl Grid {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            element: Element::grid(),
+            node: Node::grid(),
             rows: [],
             cols: [],
             row_gap: 0.0,
@@ -49,7 +49,7 @@ impl Grid {
 impl<Rows, Cols> Grid<Rows, Cols> {
     pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols> {
         Grid {
-            element: self.element,
+            node: self.node,
             rows,
             cols: self.cols,
             row_gap: self.row_gap,
@@ -60,7 +60,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 
     pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols> {
         Grid {
-            element: self.element,
+            node: self.node,
             rows: self.rows,
             cols,
             row_gap: self.row_gap,
@@ -95,7 +95,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     /// applies to body (children + direct shapes), not to chrome;
     /// scale anchors at the grid's own origin.
     pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.element.transform = t;
+        self.node.transform = t;
         self
     }
 
@@ -120,18 +120,18 @@ impl<Rows, Cols> Grid<Rows, Cols> {
             self.row_gap,
             self.col_gap,
         );
-        let mut element = self.element;
-        element.set_grid_def(id);
+        let mut node = self.node;
+        node.set_grid_def(id);
 
         // Theme fallback for chrome / clip — see `Panel::show`.
         let chrome = resolve_container_chrome(
-            &mut element,
+            &mut node,
             self.chrome,
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
-        let widget = ui.widget(element);
-        let inner = widget.node(ui, chrome.as_ref(), body);
+        let widget = ui.widget(node);
+        let inner = widget.record(ui, chrome.as_ref(), body);
         InnerResponse {
             // Decorative: skip eager `response_for`.
             response: widget.response(ui),
@@ -141,8 +141,8 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 }
 
 impl<Rows, Cols> Configure for Grid<Rows, Cols> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

@@ -4,7 +4,7 @@ use crate::input::{InputEvent, InputState, Press, PressDrag, Release, ReleaseKin
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

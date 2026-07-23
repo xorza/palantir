@@ -22,7 +22,7 @@ use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::columns::LayoutCore;
+use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;

@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::color::Color;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -33,7 +33,7 @@ const SPEED: f32 = 4.5;
 /// DPI; the comet fade is a linear gradient sampled along the sweep.
 #[derive(Debug)]
 pub struct Spinner {
-    element: Element,
+    node: Node,
     diameter: Option<f32>,
     color: Option<Color>,
     thickness: Option<f32>,
@@ -44,7 +44,7 @@ impl Spinner {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            element: Element::leaf(),
+            node: Node::leaf(),
             diameter: None,
             color: None,
             thickness: None,
@@ -76,12 +76,12 @@ impl Spinner {
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
         let width = self.thickness.unwrap_or((diameter * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);
-        self.element
+        self.node
             .size
             .get_or_insert((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
 
-        let widget = ui.widget(self.element);
-        widget.node(ui, None, |ui| {
+        let widget = ui.widget(self.node);
+        widget.record(ui, None, |ui| {
             // Static arc (phase 0) + a paint-time spin: the recorded
             // shape is identical every frame, so the spinner's subtree
             // stays cache-stable and only the composer re-spins it.
@@ -101,8 +101,8 @@ impl Spinner {
 }
 
 impl Configure for Spinner {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -139,8 +139,8 @@ mod tests {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::color::{Color, ColorU8};
-    use crate::scene::element::Configure;
     use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::spinner::Spinner;
     use crate::widgets::spinner::{ArcGeometry, SWEEP, arc_geometry, comet_brush};

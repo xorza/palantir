@@ -1,6 +1,6 @@
 use crate::input::sense::Sense;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
@@ -24,7 +24,7 @@ use glam::Vec2;
 /// glyph color from `indicator`, geometry from `box_size` etc.
 #[derive(Debug)]
 pub struct Checkbox<'a> {
-    element: Element,
+    node: Node,
     value: &'a mut bool,
     label: TextInput<'a>,
     style: Option<&'a ToggleTheme>,
@@ -33,10 +33,10 @@ pub struct Checkbox<'a> {
 impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
-        let mut element = Element::hstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
-            element,
+            node,
             value,
             label: TextInput::default(),
             style: None,
@@ -56,7 +56,7 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, self.element);
+        let entry = enter_widget(ui, self.node);
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {
             *self.value = !*self.value;
@@ -82,8 +82,8 @@ impl<'a> Checkbox<'a> {
 }
 
 impl Configure for Checkbox<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

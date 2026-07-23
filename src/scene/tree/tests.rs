@@ -7,8 +7,8 @@ use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::Command;
-use crate::scene::element::{Configure, Element};
 use crate::scene::layer::Layer;
+use crate::scene::node::{Configure, Node};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
@@ -29,7 +29,7 @@ fn open_node_rejects_non_next_id() {
         &mut RecordingScratch::default(),
         NodeId(1),
         WidgetId::from_hash("wrong-slot"),
-        Element::leaf(),
+        Node::leaf(),
         None,
     );
 }

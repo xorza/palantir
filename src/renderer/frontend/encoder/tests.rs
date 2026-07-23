@@ -22,8 +22,8 @@ use crate::renderer::gradient_atlas::handle::{
     SharedGradientAtlas, test_support::registration_count,
 };
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::node::Configure;
 use crate::scene::record_store::{GradientId, RecordedGradient};
 use crate::scene::shapes::paint::ShapeBrush;
 use crate::text::text_in_rect;

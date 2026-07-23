@@ -23,7 +23,7 @@ fn context_menu_cut_copy_paste_clear() {
         ContextMenu::open(ui, editor_id(), Vec2::new(20.0, 10.0));
         ui.run_at_without_baseline(SMALL, |ui| body(ui, buf));
     }
-    /// Click into the body element of the open menu at row-offset
+    /// Click into the body node of the open menu at row-offset
     /// `(rel_x, rel_y)` from the body's top-left, then run a frame
     /// so the click is observed by `MenuItem::show`.
     fn click_menu_row(ui: &mut Ui, buf: &mut String, row_idx: usize) {

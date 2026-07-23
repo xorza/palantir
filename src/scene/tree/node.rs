@@ -2,7 +2,7 @@
 
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::columns::{LayoutCore, NodeFlags};
+use crate::scene::node::columns::{LayoutCore, NodeFlags};
 use soa_rs::Soars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

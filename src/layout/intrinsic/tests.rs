@@ -6,8 +6,8 @@ use crate::layout::support::TextCtx;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
-use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::node::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;
 

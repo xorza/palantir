@@ -27,7 +27,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};

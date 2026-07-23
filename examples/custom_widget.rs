@@ -5,10 +5,10 @@
 //! surface, so this example doubles as a compile-time proof that the
 //! surface is complete:
 //!
-//! * `Element` constructors + the `Configure` builder (implemented for `Element`
+//! * `Node` constructors + the `Configure` builder (implemented for `Node`
 //!   itself) — construct and configure layout nodes.
 //! * `Ui::widget` — resolve a stable id once per widget, into a `Widget`.
-//! * `Widget::node` — open the widget's node, run its body, close it.
+//! * `Widget::record` — open the widget's node, run its body, close it.
 //! * `Ui::response_for` — read last frame's interaction (hover/click/…).
 //! * `Ui::add_shape` — paint custom geometry (the ± glyphs).
 //! * `WidgetId::with` — key child nodes off the parent id.
@@ -17,15 +17,15 @@
 //! Run with: `cargo run --example custom_widget`
 
 use aperture::{
-    Align, App, Background, Color, Configure, ConfigureElement, Corners, Element, HostHandle,
-    LineCap, LineJoin, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape,
-    Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost,
+    Align, App, Background, Color, Configure, ConfigureNode, Corners, HostHandle, LineCap,
+    LineJoin, Node, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing,
+    Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
 #[derive(Debug)]
 pub struct Stepper<'a> {
-    element: Element,
+    node: Node,
     value: &'a mut i32,
     min: i32,
     max: i32,
@@ -39,7 +39,7 @@ impl<'a> Stepper<'a> {
     #[track_caller]
     pub fn new(value: &'a mut i32) -> Self {
         Self {
-            element: Element::hstack(),
+            node: Node::hstack(),
             value,
             min: i32::MIN,
             max: i32::MAX,
@@ -67,7 +67,7 @@ impl<'a> Stepper<'a> {
         //    frame's interaction for the two buttons (keyed off its id)
         //    and apply clicks *before* recording — so the new value
         //    paints this frame.
-        let widget = ui.widget(self.element);
+        let widget = ui.widget(self.node);
         let id = widget.id();
         let minus_id = id.with("minus");
         let plus_id = id.with("plus");
@@ -85,7 +85,7 @@ impl<'a> Stepper<'a> {
         let label = ui.intern(self.value.to_string());
 
         // 2) Open the container and record its three children.
-        widget.node(ui, None, |ui| {
+        widget.record(ui, None, |ui| {
             step_button(ui, minus_id, minus, Glyph::Minus);
             Text::new(label)
                 .id(id.with("value"))
@@ -101,10 +101,10 @@ impl<'a> Stepper<'a> {
 }
 
 /// The container builder gets every chained setter (`.gap`, `.padding`,
-/// `.id_salt`, `.size`, …) for free by implementing just `element_mut`.
+/// `.id_salt`, `.size`, …) for free by implementing just `node_mut`.
 impl Configure for Stepper<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 
@@ -115,7 +115,7 @@ enum Glyph {
 
 /// One 24×24 button leaf: state-driven chrome plus a glyph painted with
 /// `Ui::add_shape`. `id` is an explicit child id (`parent.with(...)`)
-/// set via `.id(...)`, so the element resolves to it verbatim.
+/// set via `.id(...)`, so the node resolves to it verbatim.
 fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     let fill = if state.pressed() {
         Color::rgb_u8(0x3a, 0x3a, 0x52)
@@ -130,11 +130,11 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
         corners: Corners::all(5.0),
         shadow: Shadow::NONE,
     };
-    let el = Element::leaf()
+    let el = Node::leaf()
         .id(id)
         .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
         .sense(Sense::CLICK);
-    ui.widget(el).node(ui, Some(&chrome), |ui| {
+    ui.widget(el).record(ui, Some(&chrome), |ui| {
         // Glyphs in node-local coordinates (0..24 on each axis). A
         // horizontal bar is the minus; the plus adds a vertical bar.
         let horiz = [Vec2::new(7.0, 12.0), Vec2::new(17.0, 12.0)];

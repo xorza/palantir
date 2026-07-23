@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
 use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -22,7 +22,7 @@ use crate::widgets::{Response, enter_widget};
 /// pill (`box_size * 0.5` radius) regardless of `box_radius`.
 #[derive(Debug)]
 pub struct RadioButton<'a, T: PartialEq> {
-    element: Element,
+    node: Node,
     current: &'a mut T,
     value: T,
     label: TextInput<'a>,
@@ -32,10 +32,10 @@ pub struct RadioButton<'a, T: PartialEq> {
 impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
     pub fn new(current: &'a mut T, value: T) -> Self {
-        let mut element = Element::hstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
-            element,
+            node,
             current,
             value,
             label: TextInput::default(),
@@ -56,7 +56,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, self.element);
+        let entry = enter_widget(ui, self.node);
         let state = &entry.state;
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -88,8 +88,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 }
 
 impl<T: PartialEq> Configure for RadioButton<'_, T> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

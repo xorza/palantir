@@ -10,8 +10,8 @@ use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
 use crate::renderer::frontend::cmd_buffer::Command;
-use crate::scene::element::{Configure, Element};
 use crate::scene::layer::Layer;
+use crate::scene::node::{Configure, Node};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node::NodeId;
 use crate::scene::visibility::Visibility;
@@ -597,8 +597,8 @@ fn two_hug_cols_default_label_hugs_full_width() {
 fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
     let leaf_id = WidgetId::from_hash("multi-text-leaf");
     Panel::vstack().auto_id().show(ui, |ui| {
-        let element = Element::leaf().id(leaf_id);
-        ui.widget(element).node(ui, None, |ui| {
+        let node = Node::leaf().id(leaf_id);
+        ui.widget(node).record(ui, None, |ui| {
             let first = ui.intern("first");
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 0.0)),

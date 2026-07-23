@@ -7,8 +7,8 @@ use crate::layout::types::{
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::node::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

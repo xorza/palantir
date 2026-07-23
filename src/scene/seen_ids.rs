@@ -2,7 +2,7 @@
 //! "which widgets were recorded this frame":
 //!
 //! 1. **Eager disambiguation.** [`Self::resolve`] runs at
-//!    `Ui::widget` time — *before* the matching `Widget::node`
+//!    `Ui::widget` time — *before* the matching `Widget::record`
 //!    opens the actual record. It rewrites the resolved id by mixing
 //!    in an occurrence counter when the raw id has already been
 //!    handed out this frame, so the returned id matches what the
@@ -159,7 +159,7 @@ impl SeenIds {
     /// `resolve(raw_id)` — otherwise this routine can't see the
     /// first occurrence in `curr` and would incorrectly report
     /// "first time". Widget call sites pair them immediately
-    /// (`Ui::widget` → `Widget::node` → `scene::open_node`),
+    /// (`Ui::widget` → `Widget::record` → `scene::open_node`),
     /// so the contract holds for production code.
     #[inline]
     pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> WidgetId {
@@ -221,7 +221,7 @@ impl SeenIds {
         // un-disambiguated raw id and MUST already be present:
         // `resolve` only queues a pending entry on the *second*
         // explicit `resolve(X, true)` call this frame, and widgets
-        // pair `Ui::widget` with an immediate `Widget::node` left-
+        // pair `Ui::widget` with an immediate `Widget::record` left-
         // to-right, so the first widget's `record_endpoint(X, ...)`
         // always runs before the second's. A missing entry means the
         // recording-order contract was violated — surface loudly.

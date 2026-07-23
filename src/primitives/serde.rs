@@ -88,11 +88,11 @@ trait LaneCodec: Sized {
     fn from_lane_array(lanes: [f32; 4]) -> Self;
     fn to_lane_array(&self) -> [f32; 4];
 
-    /// The 2-element shorthand for these lanes, when they collapse to
+    /// The 2-node shorthand for these lanes, when they collapse to
     /// one. Callers have already ruled out the all-equal (scalar) case.
     fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]>;
 
-    /// Expand a parsed 2-element array back to four lanes.
+    /// Expand a parsed 2-node array back to four lanes.
     fn expand_two(pair: [f32; 2]) -> [f32; 4];
 }
 
@@ -192,7 +192,7 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "a number, a 1-, 2-, or 4-element array, or a {{{}}} table",
+            "a number, a 1-, 2-, or 4-node array, or a {{{}}} table",
             T::FIELDS.join(", ")
         )
     }
@@ -295,7 +295,7 @@ mod tests {
             assert_eq!(
                 error.to_string(),
                 format!(
-                    "invalid length {}, expected a number, a 1-, 2-, or 4-element array, or a {{a, b, c, d}} table",
+                    "invalid length {}, expected a number, a 1-, 2-, or 4-node array, or a {{a, b, c, d}} table",
                     values.len(),
                 ),
                 "values={values:?}",

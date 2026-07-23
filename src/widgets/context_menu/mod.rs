@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
@@ -56,17 +56,17 @@ pub(crate) struct ContextMenuState {
 #[derive(Debug)]
 pub struct ContextMenu {
     for_id: WidgetId,
-    element: Element,
+    node: Node,
     chrome: Option<Background>,
 }
 
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
-        let mut element = Element::vstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::vstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
             for_id,
-            element,
+            node,
             chrome: None,
         }
     }
@@ -81,27 +81,27 @@ impl ContextMenu {
     }
 
     pub fn size(mut self, size: impl Into<Sizes>) -> Self {
-        self.element = self.element.size(size);
+        self.node = self.node.size(size);
         self
     }
 
     pub fn min_size(mut self, size: impl Into<Size>) -> Self {
-        self.element = self.element.min_size(size);
+        self.node = self.node.min_size(size);
         self
     }
 
     pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.element = self.element.max_size(size);
+        self.node = self.node.max_size(size);
         self
     }
 
     pub fn padding(mut self, padding: impl Into<Spacing>) -> Self {
-        self.element = self.element.padding(padding);
+        self.node = self.node.padding(padding);
         self
     }
 
     pub fn gap(mut self, gap: f32) -> Self {
-        self.element = self.element.gap(gap);
+        self.node = self.node.gap(gap);
         self
     }
 
@@ -150,7 +150,7 @@ impl ContextMenu {
         let theme_min_width = ctx.min_width;
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
-        let mut e = self.element.id(body_id);
+        let mut e = self.node.id(body_id);
         e.padding.get_or_insert(theme_padding);
         e.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
 
@@ -158,7 +158,7 @@ impl ContextMenu {
         let mut popup = Popup::anchored_to(raw_anchor)
             .click_outside(ClickOutside::Dismiss)
             .background(panel);
-        popup.element = e;
+        popup.node = e;
         let resp = popup.show(ui, body);
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);
@@ -211,7 +211,7 @@ pub struct ContextMenuResponse {
 /// don't intercept.
 #[derive(Debug)]
 pub struct MenuItem<'a> {
-    element: Element,
+    node: Node,
     label: TextInput<'a>,
     shortcut: Option<Shortcut>,
 }
@@ -219,10 +219,10 @@ pub struct MenuItem<'a> {
 impl<'a> MenuItem<'a> {
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
-        let mut element = Element::hstack();
-        element.flags.set_sense(Sense::CLICK);
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK);
         Self {
-            element,
+            node,
             label: label.into(),
             shortcut: None,
         }
@@ -258,7 +258,7 @@ impl<'a> MenuItem<'a> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the state
         // is identical before and after the node records.
-        let mut entry = enter_widget(ui, self.element);
+        let mut entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
         let disabled = entry.state.disabled;
 
@@ -278,15 +278,15 @@ impl<'a> MenuItem<'a> {
             ..text_style.clone()
         };
 
-        let element = &mut entry.widget.element;
+        let node = &mut entry.widget.node;
         // Hug+Stretch+SpaceBetween: row hugs content (the default
         // `Sizes` — respects an explicit `.size(...)`), arrange
         // stretches to widest row, label/shortcut pin to opposite
         // edges. Fill would leak INF.
-        element.align = Align::h(HAlign::Stretch);
-        element.justify = Justify::SpaceBetween;
-        element.padding = Some(padding);
-        element.gaps.set_gap(16.0);
+        node.align = Align::h(HAlign::Stretch);
+        node.justify = Justify::SpaceBetween;
+        node.padding = Some(padding);
+        node.gaps.set_gap(16.0);
 
         let label = ui.intern(self.label);
         let shortcut = self.shortcut;
@@ -313,7 +313,7 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        entry.widget.node(ui, look_bg.as_ref(), body);
+        entry.widget.record(ui, look_bg.as_ref(), body);
 
         if shortcut_fired {
             entry.state.left.phase = ButtonPhase::Up { click: Some(1) };
@@ -329,8 +329,8 @@ impl<'a> MenuItem<'a> {
 }
 
 impl Configure for MenuItem<'_> {
-    fn element_mut(&mut self) -> ConfigureElement<'_> {
-        self.element.element_mut()
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.node.node_mut()
     }
 }
 

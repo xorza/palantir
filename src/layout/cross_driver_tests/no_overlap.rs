@@ -12,8 +12,8 @@ use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::Command;
-use crate::scene::element::Configure;
 use crate::scene::layer::Layer;
+use crate::scene::node::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 

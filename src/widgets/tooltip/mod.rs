@@ -5,8 +5,8 @@ use crate::primitives::interned_str::TextInput;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, Element};
 use crate::scene::layer::Layer;
+use crate::scene::node::{Configure, Node};
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
@@ -57,7 +57,7 @@ pub struct Tooltip<'r, 'a> {
     text: TextInput<'a>,
     delay: Option<Duration>,
     show_when_disabled: bool,
-    element: Element,
+    node: Node,
     chrome: Option<Background>,
 }
 
@@ -69,15 +69,15 @@ impl<'r> Tooltip<'r, 'static> {
     /// borrow before recording the tooltip body.
     #[track_caller]
     pub fn on(snapshot: &'r ResponseSnapshot) -> Self {
-        let mut element = Element::vstack();
+        let mut node = Node::vstack();
         // Bubble must never claim hover — would shadow its own trigger.
-        element.flags.set_sense(Sense::empty());
+        node.flags.set_sense(Sense::empty());
         Self {
             snapshot,
             text: TextInput::default(),
             delay: None,
             show_when_disabled: false,
-            element,
+            node,
             chrome: None,
         }
     }
@@ -94,12 +94,12 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     }
 
     pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.element = self.element.max_size(size);
+        self.node = self.node.max_size(size);
         self
     }
 
     pub fn padding(mut self, padding: impl Into<Spacing>) -> Self {
-        self.element = self.element.padding(padding);
+        self.node = self.node.padding(padding);
         self
     }
 
@@ -109,7 +109,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             text: text.into(),
             delay: self.delay,
             show_when_disabled: self.show_when_disabled,
-            element: self.element,
+            node: self.node,
             chrome: self.chrome,
         }
     }
@@ -183,15 +183,15 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
-            let mut element = self.element.id(bubble_id);
+            let mut node = self.node.id(bubble_id);
             let text_style = ui.theme.tooltip.text.clone();
             let chrome = self
                 .chrome
                 .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
-            element.padding.get_or_insert(ui.theme.tooltip.padding);
-            element.max_size.get_or_insert(ui.theme.tooltip.max_size);
+            node.padding.get_or_insert(ui.theme.tooltip.padding);
+            node.max_size.get_or_insert(ui.theme.tooltip.max_size);
             ui.overlay_layer(Layer::Tooltip, position, |ui| {
-                ui.widget(element).node(ui, Some(&chrome), |ui| {
+                ui.widget(node).record(ui, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(&text_style)
                         .text_wrap(TextWrap::Wrap)

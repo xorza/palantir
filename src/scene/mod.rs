@@ -5,8 +5,8 @@
 
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Element;
 use crate::scene::layer::{Layer, PerLayer};
+use crate::scene::node::Node;
 use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
 use crate::scene::shapes::lower::ChromeInput;
@@ -18,8 +18,8 @@ use std::time::Duration;
 
 pub(crate) mod cascade;
 pub(crate) mod damage;
-pub(crate) mod element;
 pub(crate) mod layer;
+pub(crate) mod node;
 pub(crate) mod record_store;
 pub(crate) mod seen_ids;
 pub(crate) mod shapes;
@@ -48,7 +48,7 @@ pub(crate) struct Forest {
     /// rolled over by `Ui::finalize_frame` (which fans `ids.removed`
     /// out to per-widget caches). Lives on `Forest` so any path that
     /// reaches `open_node` — including direct callers that bypass
-    /// `Widget::node` — gets the same collision check.
+    /// `Widget::record` — gets the same collision check.
     pub(crate) ids: SeenIds,
     /// Explicit-id collisions recorded this frame — each carries the
     /// first-occurrence and disambiguated nodes (with their layers).
@@ -138,18 +138,21 @@ impl Forest {
     /// `chrome` is `Some(Background { .. })` for nodes with a background
     /// paint and `None` otherwise. The `Background` is borrowed (not
     /// owned) so its 168 B don't get copied through the
-    /// `Widget::node → here → Tree::open_node →
+    /// `Widget::record → here → Tree::open_node →
     /// shapes::lower::background` chain on every chromed widget.
     #[inline]
     pub(crate) fn open_node(
         &mut self,
         widget_id: WidgetId,
-        element: Element,
+        node: Node,
         chrome: Option<&Background>,
     ) {
         let layer = self.current_layer();
-        let node = self.trees[layer].peek_next_id();
-        let endpoint = Endpoint { layer, node };
+        let node_id = self.trees[layer].peek_next_id();
+        let endpoint = Endpoint {
+            layer,
+            node: node_id,
+        };
         if let EndpointOutcome::ExplicitCollision { first, second } =
             self.ids.record_endpoint(widget_id, endpoint)
         {
@@ -163,7 +166,7 @@ impl Forest {
         // fields, so all three can be borrowed for the same call.
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
-        tree.open_node(scratch, node, widget_id, element, chrome);
+        tree.open_node(scratch, node_id, widget_id, node, chrome);
     }
 
     /// Outlined from [`Self::open_node`]: the `tracing::error!` expansion

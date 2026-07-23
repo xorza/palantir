@@ -4,7 +4,7 @@ use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::Configure;
+use crate::scene::node::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
