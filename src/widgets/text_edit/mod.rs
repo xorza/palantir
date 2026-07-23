@@ -633,7 +633,7 @@ impl<'a> TextEdit<'a> {
                         TextWrap::Scroll
                     },
                     // Pass the user's `text_align` so the layout
-                    // pipeline's `shape_wrap` builds a `TextCacheKey`
+                    // pipeline's bounded shape builds a `TextCacheKey`
                     // whose `halign_q` matches the buffer the widget
                     // queries via `cursor_xy` / `selection_rects`.
                     // Without this the rendered text shapes against

@@ -44,21 +44,14 @@ fn measure_truncated_width(
         ordinal: 0,
         authoring_hash: hash,
     };
-    reuse
-        .shape_unbounded(shaper, identity, text, text_hash, params)
+    let prepared = reuse
+        .prepare_run(shaper, identity, text, text_hash, params)
         .unwrap();
     let target = params
         .max_width_px
         .expect("truncation benchmark requires a finite width");
-    reuse
-        .shape_wrap(
-            shaper,
-            identity,
-            text,
-            params,
-            (target.max(0.0) * 64.0).round() as u32,
-            LineFit::Ellipsis,
-        )
+    prepared
+        .shape_bounded(target, params.halign, LineFit::Ellipsis)
         .unwrap()
 }
 

@@ -140,6 +140,22 @@ pub(crate) struct TextReuseCache {
     entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
+/// One text run whose identity and unbounded shape have been validated
+/// against the current authoring inputs.
+#[derive(Debug)]
+pub(crate) struct PreparedTextRun<'a> {
+    pub(crate) unbounded: TextMeasurement,
+    params: ValidatedShapeParams,
+    state: Option<PreparedTextRunState<'a>>,
+}
+
+#[derive(Debug)]
+struct PreparedTextRunState<'a> {
+    shaper: &'a TextShaper,
+    text: &'a str,
+    entry: &'a mut TextReuseEntry,
+}
+
 /// Per-window identity of one text run. The widget and ordinal select the
 /// reuse row; `authoring_hash` validates its contents.
 #[derive(Clone, Copy, Debug)]
@@ -240,6 +256,13 @@ impl ValidatedShapeParams {
         self.raw.halign = HAlign::Auto;
         self
     }
+
+    fn bounded(mut self, max_width_px: f32, halign: HAlign) -> Result<Self, ShapeParamsError> {
+        validate_max_width(Some(max_width_px))?;
+        self.raw.max_width_px = Some(max_width_px);
+        self.raw.halign = halign;
+        Ok(self)
+    }
 }
 
 /// Bundled text-shaping parameters, threaded through the `TextShaper` /
@@ -249,7 +272,7 @@ impl ValidatedShapeParams {
 /// wrap/truncation width; `None` is the sole unbounded representation.
 /// [`TextShaper::measure`] reports invalid metrics or widths as a
 /// [`ShapeParamsError`]. `halign` aligns each line inside a bounded width
-/// (ignored when unbounded, as in `shape_unbounded`).
+/// (ignored by [`TextReuseCache::prepare_run`]'s unbounded shape).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeParams {
     pub font_size_px: f32,
@@ -263,14 +286,16 @@ pub struct ShapeParams {
 impl ShapeParams {
     pub(crate) fn validated(self) -> Result<ValidatedShapeParams, ShapeParamsError> {
         let metrics = TextMetrics::new(self.font_size_px, self.line_height_px)?;
-        if self
-            .max_width_px
-            .is_some_and(|width| !width.is_finite() || width < 0.0)
-        {
-            return Err(ShapeParamsError::InvalidMaxWidth);
-        }
+        validate_max_width(self.max_width_px)?;
         Ok(ValidatedShapeParams { metrics, raw: self })
     }
+}
+
+fn validate_max_width(max_width_px: Option<f32>) -> Result<(), ShapeParamsError> {
+    if max_width_px.is_some_and(|width| !width.is_finite() || width < 0.0) {
+        return Err(ShapeParamsError::InvalidMaxWidth);
+    }
+    Ok(())
 }
 
 impl TextShaper {
@@ -321,102 +346,103 @@ impl TextShaper {
 }
 
 impl TextReuseCache {
-    /// Identity-cached unbounded shape for `wid`, refreshing it (and
-    /// clearing any stale wrap entry) when the authoring hash has
-    /// shifted.
-    pub(crate) fn shape_unbounded(
-        &mut self,
-        shaper: &TextShaper,
+    /// Prepare one identity-cached text run, refreshing its unbounded shape
+    /// and clearing its stale bounded result when the authoring hash changes.
+    pub(crate) fn prepare_run<'a>(
+        &'a mut self,
+        shaper: &'a TextShaper,
         identity: TextRunIdentity,
-        text: &str,
+        text: &'a str,
         text_hash: u64,
         params: ShapeParams,
-    ) -> Result<TextMeasurement, ShapeParamsError> {
-        let params = params.validated()?;
+    ) -> Result<PreparedTextRun<'a>, ShapeParamsError> {
+        let params = params.validated()?.unbounded();
         if text.is_empty() {
-            return Ok(TextMeasurement::ZERO);
+            return Ok(PreparedTextRun {
+                unbounded: TextMeasurement::ZERO,
+                params,
+                state: None,
+            });
         }
-        let params = params.unbounded();
-        let mut inner = shaper.inner.borrow_mut();
-        let inner = &mut *inner;
-        // Cache hit: same authoring hash, return last frame's result.
-        if let Entry::Occupied(o) = self.entries.entry((identity.widget_id, identity.ordinal))
-            && o.get().hash == identity.authoring_hash
-        {
-            return Ok(o.get().unbounded);
-        }
-        inner.measure_calls += 1;
-        // Unbounded shape ignores `halign` — cosmic only does per-line
-        // alignment when there's a wrap target to align inside, and
-        // there's no width here. Always passes `HAlign::Auto` so the
-        // shaped buffer (and its `TextCacheKey`) match callers who
-        // look it up without an align param.
-        let unbounded = dispatch(
-            &mut inner.cosmic,
-            text,
-            text_hash,
-            params,
-            LineFit::Wrap,
-            TextCacheKey::INVALID,
-        );
-        self.entries.insert(
-            (identity.widget_id, identity.ordinal),
+
+        let refresh = || {
+            let mut inner = shaper.inner.borrow_mut();
+            inner.measure_calls += 1;
+            let unbounded = dispatch(
+                &mut inner.cosmic,
+                text,
+                text_hash,
+                params,
+                LineFit::Wrap,
+                TextCacheKey::INVALID,
+            );
             TextReuseEntry {
                 hash: identity.authoring_hash,
                 unbounded,
                 wrap: None,
-            },
-        );
-        Ok(unbounded)
+            }
+        };
+        let entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
+            Entry::Occupied(mut occupied) => {
+                if occupied.get().hash != identity.authoring_hash {
+                    occupied.insert(refresh());
+                }
+                occupied.into_mut()
+            }
+            Entry::Vacant(vacant) => vacant.insert(refresh()),
+        };
+        Ok(PreparedTextRun {
+            unbounded: entry.unbounded,
+            params,
+            state: Some(PreparedTextRunState {
+                shaper,
+                text,
+                entry,
+            }),
+        })
     }
 
-    /// Identity-cached width-bounded shape for `wid` at the caller-
-    /// quantized `target_q`. `fit` picks the overflow behaviour: `Wrap`
-    /// reflows to the target width, `Clip` hard-cuts to one line, `Ellipsis`
-    /// cuts to one line with a trailing `…`. Hits when the same target +
-    /// halign + mode was used last frame; otherwise dispatches and refreshes
-    /// the entry. Must be preceded by [`Self::shape_unbounded`] on the same
-    /// `(wid, ordinal)` this frame so the parent entry exists and is fresh —
-    /// checked against `hash`, the same authoring hash the unbounded call
-    /// validated the entry with.
-    pub(crate) fn shape_wrap(
-        &mut self,
-        shaper: &TextShaper,
-        identity: TextRunIdentity,
-        text: &str,
-        params: ShapeParams,
-        target_q: u32,
+    /// Drop identity rows for widgets absent from this window's final tree.
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+        if removed.is_empty() {
+            return;
+        }
+        self.entries.retain(|(wid, _), _| !removed.contains(wid));
+    }
+}
+
+impl PreparedTextRun<'_> {
+    /// Shape this prepared run at a finite width. `fit` selects multiline
+    /// wrapping, hard single-line clipping, or ellipsis truncation.
+    pub(crate) fn shape_bounded(
+        self,
+        max_width_px: f32,
+        halign: HAlign,
         fit: LineFit,
     ) -> Result<TextMeasurement, ShapeParamsError> {
-        let params = params.validated()?;
-        if text.is_empty() {
+        let params = self.params.bounded(max_width_px, halign)?;
+        let Some(state) = self.state else {
             return Ok(TextMeasurement::ZERO);
+        };
+        let PreparedTextRunState {
+            shaper,
+            text,
+            entry,
+        } = state;
+        if let Some(w) = entry.wrap
+            && w.max_width_px == max_width_px
+            && w.halign == halign
+            && w.fit == fit
+        {
+            return Ok(w.result);
         }
-        let halign = params.raw.halign;
         let mut inner = shaper.inner.borrow_mut();
         let ShaperInner {
             cosmic,
             measure_calls,
             ..
         } = &mut *inner;
-        let mut entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
-            Entry::Occupied(o) => o,
-            Entry::Vacant(_) => panic!(
-                "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
-            ),
-        };
-        debug_assert!(
-            entry.get().hash == identity.authoring_hash,
-            "shape_wrap on a stale entry — shape_unbounded must run first with the current hash",
-        );
-        if let Some(w) = entry.get().wrap
-            && w.target_q == target_q
-            && w.halign == halign
-            && w.fit == fit
-        {
-            return Ok(w.result);
-        }
-        let unbounded_key = entry.get().unbounded.key;
+        let unbounded_key = entry.unbounded.key;
         *measure_calls += 1;
         let m = dispatch(
             cosmic,
@@ -426,21 +452,13 @@ impl TextReuseCache {
             fit,
             unbounded_key,
         );
-        entry.get_mut().wrap = Some(WrapReuse {
-            target_q,
+        entry.wrap = Some(WrapReuse {
+            max_width_px,
             halign,
             fit,
             result: m,
         });
         Ok(m)
-    }
-
-    /// Drop identity rows for widgets absent from this window's final tree.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        if removed.is_empty() {
-            return;
-        }
-        self.entries.retain(|(wid, _), _| !removed.contains(wid));
     }
 }
 
@@ -1036,15 +1054,14 @@ pub(crate) struct TextReuseEntry {
     wrap: Option<WrapReuse>,
 }
 
-/// One cached width-bounded result — the most-recent `target_q` (caller-
-/// quantized target), halign, and overflow mode, plus the `TextMeasurement`
-/// that came out of shaping at that target.
+/// One cached width-bounded result — the most-recent validated width,
+/// halign, and overflow mode, plus the `TextMeasurement` produced there.
 #[derive(Clone, Copy, Debug)]
 struct WrapReuse {
-    target_q: u32,
+    max_width_px: f32,
     /// Cached halign. Cosmic's per-line align changes glyph positions
     /// inside the shaped buffer, so changing halign invalidates this
-    /// slot even when `target_q` is unchanged.
+    /// slot even when the width is unchanged.
     halign: HAlign,
     /// Overflow mode. A widget that flips mode at the same call site
     /// reshapes — each mode bakes a different buffer (and `Clip`/`Ellipsis`
@@ -1055,7 +1072,7 @@ struct WrapReuse {
 
 /// How a width-bounded text run handles overflow. Maps from the public
 /// [`crate::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
-/// the unbounded path). Threaded through `shape_wrap` → `dispatch` and
+/// the unbounded path). Threaded through `shape_bounded` → `dispatch` and
 /// folded into the shape cache key.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
