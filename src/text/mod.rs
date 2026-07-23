@@ -420,8 +420,9 @@ impl PreparedTextRun<'_> {
         halign: HAlign,
         fit: LineFit,
     ) -> Result<TextMeasurement, ShapeParamsError> {
-        let params = self.params.bounded(max_width_px, halign)?;
+        let params = self.params;
         let Some(state) = self.state else {
+            params.bounded(max_width_px, halign)?;
             return Ok(TextMeasurement::ZERO);
         };
         let PreparedTextRunState {
@@ -429,6 +430,7 @@ impl PreparedTextRun<'_> {
             text,
             entry,
         } = state;
+        // A hit proves the stored width passed validation when it was shaped.
         if let Some(w) = entry.wrap
             && w.max_width_px == max_width_px
             && w.halign == halign
@@ -436,6 +438,7 @@ impl PreparedTextRun<'_> {
         {
             return Ok(w.result);
         }
+        let params = params.bounded(max_width_px, halign)?;
         let mut inner = shaper.inner.borrow_mut();
         let ShaperInner {
             cosmic,
