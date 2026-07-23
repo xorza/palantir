@@ -1,5 +1,5 @@
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::brush::LinearGradient;
+use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::color::Color;
 use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::scene::tree::paint_anims::PaintAnim;
@@ -23,7 +23,7 @@ const SPEED: f32 = 4.5;
 /// while the spinner is recorded — on the PaintOnly fast path, with no
 /// record/layout per tick — and costs nothing when it isn't.
 ///
-/// The recorded [`Shape::Arc`] is **identical every frame** (phase 0),
+/// The recorded [`Shape::arc`] is **identical every frame** (phase 0),
 /// so its `subtree_hash` is stable and measure/cascade skip the
 /// spinner's subtree; the live rotation is a paint-time
 /// spin animation sampled from the frame clock — the composer

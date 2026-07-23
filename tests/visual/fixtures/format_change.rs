@@ -12,8 +12,7 @@
 //! survive the switch with no re-upload.
 
 use aperture::{
-    Background, Button, Color, Configure, Corners, Frame, Image, ImageFit, Panel, Shape, Sizing,
-    Stroke,
+    Background, Button, Color, Configure, Corners, Frame, Image, Panel, Shape, Sizing, Stroke,
 };
 use glam::UVec2;
 use std::cell::RefCell;
@@ -178,14 +177,7 @@ fn image_scene(ui: &mut aperture::Ui) {
         .padding(8.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            ui.add_shape(Shape::Image {
-                handle,
-                local_rect: None,
-                fit: ImageFit::Fill,
-                min_filter: aperture::ImageFilter::Linear,
-                mag_filter: aperture::ImageFilter::Linear,
-                tint: Color::WHITE,
-            });
+            ui.add_shape(Shape::image(handle));
         });
 }
 

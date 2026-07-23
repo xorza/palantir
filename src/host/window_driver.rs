@@ -615,7 +615,8 @@ mod record_store_tests {
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
-    use crate::shape::{PolylineColors, Shape};
+    use crate::shape::Shape;
+    use crate::shape::polyline::PolylineColors;
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;

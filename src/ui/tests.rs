@@ -4,7 +4,6 @@ use crate::display::Display;
 use crate::host::shared::HostShared;
 use crate::input::InputEvent;
 use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
@@ -46,18 +45,11 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 }
 
 fn add_blink_shape(ui: &mut Ui, half: Duration) {
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
 
     ui.add_shape_animated(
-        Shape::RoundedRect {
-            local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-            corners: Corners::ZERO,
-            fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
-            stroke: Stroke::default(),
-        },
+        Shape::rect(Rect::new(0.0, 0.0, 4.0, 12.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
         PaintAnim::BlinkOpacity {
             half_period: half,
             started_at: Duration::ZERO,
@@ -1507,7 +1499,8 @@ fn retained_arena_text_preserves_bytes_and_hash_across_record_stores() {
 /// PaintOnly on frame 1, then re-runs the encoder.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
-    use crate::primitives::brush::{Brush, LinearGradient};
+    use crate::primitives::brush::Brush;
+    use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
@@ -1586,11 +1579,11 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
-    use crate::primitives::brush::{Brush, LinearGradient};
+    use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::color::ColorU8;
-    use crate::primitives::corners::Corners;
+
     use crate::primitives::fill_wire::LutRow;
-    use crate::primitives::stroke::Stroke;
+
     use crate::renderer::frontend::cmd_buffer::Command;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::ATLAS_ROWS;
@@ -1618,16 +1611,9 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     fn window_a(ui: &mut Ui, half: Duration) {
         Panel::hstack().size(20.0).show(ui, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                local_rect: Some(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                corners: Corners::ZERO,
-                fill: Brush::Linear(LinearGradient::two_stop(
-                    0.0,
-                    ColorU8::rgb(255, 0, 0),
-                    ColorU8::rgb(0, 0, 255),
-                )),
-                stroke: Stroke::ZERO,
-            });
+            ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
+                LinearGradient::two_stop(0.0, ColorU8::rgb(255, 0, 0), ColorU8::rgb(0, 0, 255)),
+            ));
             add_blink_shape(ui, half);
         });
     }
@@ -1645,10 +1631,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     b.run_at_without_baseline(SURFACE, |ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
             for index in 0..ATLAS_ROWS - 1 {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                    corners: Corners::ZERO,
-                    fill: Brush::Linear(LinearGradient::two_stop(
+                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
+                    LinearGradient::two_stop(
                         0.0,
                         ColorU8::rgb(
                             index as u8,
@@ -1656,9 +1640,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
                             (index >> (u8::BITS * 2)) as u8,
                         ),
                         ColorU8::WHITE,
-                    )),
-                    stroke: Stroke::ZERO,
-                });
+                    ),
+                ));
             }
         });
     });

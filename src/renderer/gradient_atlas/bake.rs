@@ -1,7 +1,8 @@
 //! Gradient-stop interpolation into one linear-f16 LUT row.
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::brush::{GradientStops, Interp, MAX_STOPS, Stop};
+use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;

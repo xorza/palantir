@@ -9,7 +9,9 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell_light};
-use aperture::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
+use aperture::{
+    Background, Color, Configure, Corners, Panel, Rect, Shadow, ShadowShape, Shape, Sizing, Ui,
+};
 use glam::Vec2;
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -38,7 +40,7 @@ pub(crate) fn build(ui: &mut Ui) {
     });
 }
 
-fn shadow_shape(s: Shadow) -> Shape<'static> {
+fn shadow_shape(s: Shadow) -> ShadowShape {
     Shape::shadow(s).at(card_rect()).corners(corners())
 }
 

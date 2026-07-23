@@ -3,7 +3,7 @@ use ::serde::ser::SerializeStruct;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tinyvec::ArrayVec;
 
-use crate::primitives::brush::{GradientStops, MAX_STOPS, Stop};
+use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::color::ColorU8;
 
 impl Serialize for Stop {

@@ -16,9 +16,7 @@ use crate::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
@@ -347,12 +345,11 @@ fn bench_workloads(c: &mut Criterion) {
             })
             .show(ui, |ui| {
                 for s in 0..count {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0)),
-                        corners: Corners::all(1.0),
-                        fill: Color::rgb(0.3 + (s as f32) * 0.05, 0.4, 0.6).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(
+                        Shape::rect(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0))
+                            .corners(1.0)
+                            .fill(Color::rgb(0.3 + (s as f32) * 0.05, 0.4, 0.6)),
+                    );
                 }
             });
     };

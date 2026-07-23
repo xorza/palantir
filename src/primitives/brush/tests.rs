@@ -1,8 +1,10 @@
 use crate::animation::animatable::Animatable;
-use crate::primitives::brush::{
-    Brush, ConicGradient, GradientStops, Interp, LinearGradient, MAX_STOPS, RadialGradient, Spread,
-    Stop,
-};
+use crate::primitives::brush::gradient::conic::ConicGradient;
+use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::radial::RadialGradient;
+use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
+use crate::primitives::brush::gradient::{Interp, Spread};
+use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
 use glam::Vec2;
 use std::collections::hash_map::DefaultHasher;
@@ -61,12 +63,13 @@ fn linear_gradient_hash_tracks_canonical_content() {
         ColorU8::BLACK,
         ColorU8::WHITE,
     ));
-    let three_stops = Brush::Linear(LinearGradient::three_stop(
-        0.0,
-        ColorU8::BLACK,
-        ColorU8::rgb(127, 127, 127),
-        ColorU8::WHITE,
-    ));
+    let three_stops = Brush::Linear(
+        LinearGradient::builder(0.0)
+            .stop(0.0, ColorU8::BLACK)
+            .stop(0.5, ColorU8::rgb(127, 127, 127))
+            .stop(1.0, ColorU8::WHITE)
+            .build(),
+    );
     let recolored = Brush::Linear(LinearGradient::two_stop(
         0.0,
         ColorU8::BLACK,
@@ -77,11 +80,29 @@ fn linear_gradient_hash_tracks_canonical_content() {
 }
 
 #[test]
-fn from_color_round_trip() {
-    let c = Color::WHITE;
-    let b: Brush = c.into();
-    assert_eq!(b, Brush::Solid(c));
-    assert_eq!(b.as_solid(), Some(c));
+fn authoring_values_convert_to_their_brush_variants() {
+    let color = Color::WHITE;
+    let color_u8 = ColorU8::rgb(10, 20, 30);
+    let linear = LinearGradient::two_stop(0.25, Color::BLACK, Color::WHITE);
+    let radial = RadialGradient::two_stop_centered(Color::BLACK, Color::WHITE);
+    let conic = ConicGradient::two_stop_centered(Color::BLACK, Color::WHITE);
+    let linear_builder = LinearGradient::builder(0.25)
+        .stop(0.0, Color::BLACK)
+        .stop(1.0, Color::WHITE);
+
+    assert_eq!(Brush::from(color), Brush::Solid(color));
+    assert_eq!(Brush::from(color_u8), Brush::Solid(color_u8.into()));
+    assert_eq!(Brush::from(linear.clone()), Brush::Linear(linear));
+    assert_eq!(Brush::from(radial.clone()), Brush::Radial(radial));
+    assert_eq!(Brush::from(conic.clone()), Brush::Conic(conic));
+    assert_eq!(
+        Brush::from(linear_builder.clone()),
+        Brush::Linear(linear_builder.clone().build()),
+    );
+    assert_eq!(
+        CurveBrush::from(linear_builder.clone()),
+        CurveBrush::Linear(linear_builder.build()),
+    );
 }
 
 #[test]
@@ -235,15 +256,39 @@ fn linear_two_stop_authoring() {
 }
 
 #[test]
-fn linear_three_stop_authoring() {
-    let g = LinearGradient::three_stop(
-        PI / 2.0,
-        Color::hex(0x000000),
-        Color::hex(0x808080),
-        Color::hex(0xffffff),
-    );
-    assert_eq!(g.stops.len(), 3);
-    assert!((g.stops[1].offset() - 0.5).abs() < 1.0 / 255.0);
+fn gradient_builders_preserve_geometry_stops_and_options() {
+    let linear = LinearGradient::builder(PI / 2.0)
+        .stop(-1.0, Color::hex(0x000000))
+        .stop(0.5, Color::hex(0x808080))
+        .stop(2.0, Color::hex(0xffffff))
+        .with_spread(Spread::Reflect)
+        .with_interp(Interp::Linear)
+        .build();
+    assert_eq!(linear.angle, PI / 2.0);
+    assert_eq!(linear.stops.len(), 3);
+    assert_eq!(linear.stops[0].offset_u8, 0);
+    assert_eq!(linear.stops[1].offset_u8, 128);
+    assert_eq!(linear.stops[2].offset_u8, 255);
+    assert_eq!(linear.spread, Spread::Reflect);
+    assert_eq!(linear.interp, Interp::Linear);
+
+    let center = Vec2::new(0.25, 0.75);
+    let radius = Vec2::new(0.4, 0.6);
+    let radial = RadialGradient::builder(center, radius)
+        .stop(0.0, Color::BLACK)
+        .stop(1.0, Color::WHITE)
+        .build();
+    assert_eq!(radial.center, center);
+    assert_eq!(radial.radius, radius);
+    assert_eq!(radial.interp, Interp::Oklab);
+
+    let conic = ConicGradient::builder(center, FRAC_PI_4)
+        .stop(0.0, Color::BLACK)
+        .stop(1.0, Color::WHITE)
+        .build();
+    assert_eq!(conic.center, center);
+    assert_eq!(conic.start_angle, FRAC_PI_4);
+    assert_eq!(conic.interp, Interp::Linear);
 }
 
 #[test]
@@ -256,16 +301,17 @@ fn linear_all_transparent_is_noop() {
 #[test]
 #[should_panic(expected = "exceeds MAX_STOPS")]
 fn linear_too_many_stops_panics() {
-    let many: Vec<Stop> = (0..=MAX_STOPS)
-        .map(|i| Stop::new(i as f32 / 8.0, Color::WHITE))
-        .collect();
-    let _ = LinearGradient::new(0.0, many);
+    let mut builder = LinearGradient::builder(0.0);
+    for i in 0..MAX_STOPS {
+        builder = builder.stop(i as f32 / (MAX_STOPS - 1) as f32, Color::WHITE);
+    }
+    let _ = builder.stop(1.0, Color::WHITE);
 }
 
 #[test]
 #[should_panic(expected = "at least 2 stops")]
 fn linear_one_stop_panics() {
-    let _ = LinearGradient::new(0.0, [Stop::new(0.0, Color::WHITE)]);
+    let _ = LinearGradient::builder(0.0).stop(0.0, Color::WHITE).build();
 }
 
 #[test]

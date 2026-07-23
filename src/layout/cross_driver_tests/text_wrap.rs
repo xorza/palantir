@@ -612,12 +612,12 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 family: FontFamily::Sans,
                 weight: FontWeight::Regular,
             });
-            ui.add_shape(Shape::RoundedRect {
-                local_rect: Some(crate::Rect::new(0.0, 20.0, 4.0, 2.0)),
-                corners: crate::Corners::ZERO,
-                fill: Color::WHITE.into(),
-                stroke: crate::Stroke::ZERO,
-            });
+            ui.add_shape(
+                Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
+                    .corners(crate::Corners::ZERO)
+                    .fill(Color::WHITE)
+                    .stroke(crate::Stroke::ZERO),
+            );
             let second = ui.intern("second-with-different-text");
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 22.0)),

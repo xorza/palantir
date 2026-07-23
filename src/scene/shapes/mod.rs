@@ -13,6 +13,8 @@ use crate::scene::shapes::hash::compute_record_hash;
 use crate::scene::shapes::paint::ShapeStroke;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
+use crate::shape::curve::CurveGeometry;
+use crate::shape::rect::RectKind;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
 ///
@@ -67,91 +69,82 @@ impl Shapes {
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
     pub(crate) fn add(&mut self, shape: Shape<'_>, store: &RecordStore) -> Option<u32> {
-        if let Shape::Polyline { points, colors, .. } = &shape {
-            colors.assert_matches(points.len());
+        if let Shape::Polyline(shape) = &shape {
+            shape.colors.assert_matches(shape.points.len());
         }
         if shape.is_noop() {
             return None;
         }
         let record = match shape {
-            Shape::RoundedRect {
-                local_rect,
-                corners,
-                fill,
-                stroke,
-            } => {
-                let lowered = lower::brush(store, &fill);
-                ShapeRecord::RoundedRect {
-                    local_rect,
-                    corners,
-                    fill: lowered.brush,
-                    stroke: ShapeStroke::from(stroke),
-                    fill_grad_hash: lowered.hash,
+            Shape::Rect(shape) => {
+                let lowered = lower::brush(store, &shape.fill);
+                match shape.kind {
+                    RectKind::Rounded => ShapeRecord::RoundedRect {
+                        local_rect: shape.local_rect,
+                        corners: shape.corners,
+                        fill: lowered.brush,
+                        stroke: ShapeStroke::from(shape.stroke),
+                        fill_grad_hash: lowered.hash,
+                    },
+                    RectKind::Windowed => ShapeRecord::WindowedRect {
+                        local_rect: shape.local_rect,
+                        corners: shape.corners,
+                        fill: lowered.brush,
+                        stroke: ShapeStroke::from(shape.stroke),
+                        fill_grad_hash: lowered.hash,
+                    },
                 }
             }
-            Shape::WindowedRect {
-                local_rect,
-                corners,
-                fill,
-                stroke,
-            } => {
-                let lowered = lower::brush(store, &fill);
-                ShapeRecord::WindowedRect {
-                    local_rect,
-                    corners,
-                    fill: lowered.brush,
-                    stroke: ShapeStroke::from(stroke),
-                    fill_grad_hash: lowered.hash,
+            Shape::Triangle(shape) => lower::triangle(
+                shape.a,
+                shape.b,
+                shape.c,
+                shape.radius,
+                shape.fill,
+                shape.stroke,
+            ),
+            Shape::Curve(shape) => match shape.geometry {
+                CurveGeometry::Line { a, b } => {
+                    lower::line(store, a, b, shape.width, shape.brush, shape.cap)
                 }
-            }
-            Shape::Triangle {
-                a,
-                b,
-                c,
-                radius,
-                fill,
-                stroke,
-            } => lower::triangle(a, b, c, radius, fill, stroke),
-            Shape::Line {
-                a,
-                b,
-                width,
-                brush,
-                cap,
-            } => lower::line(store, a, b, width, brush, cap),
-            Shape::Polyline {
-                points,
-                colors,
-                width,
-                cap,
-                join,
-            } => lower::polyline(store, points, colors, width, cap, join),
-            Shape::CubicBezier {
-                p0,
-                p1,
-                p2,
-                p3,
-                width,
-                brush,
-                cap,
-            } => lower::cubic_bezier(store, [p0, p1, p2, p3], width, brush, cap),
-            Shape::QuadraticBezier {
-                p0,
-                p1,
-                p2,
-                width,
-                brush,
-                cap,
-            } => lower::quadratic_bezier(store, [p0, p1, p2], width, brush, cap),
-            Shape::Arc {
-                center,
-                radius,
-                start_angle,
-                sweep,
-                width,
-                brush,
-                cap,
-            } => lower::arc(store, center, radius, start_angle, sweep, width, brush, cap),
+                CurveGeometry::CubicBezier { p0, p1, p2, p3 } => lower::cubic_bezier(
+                    store,
+                    [p0, p1, p2, p3],
+                    shape.width,
+                    shape.brush,
+                    shape.cap,
+                ),
+                CurveGeometry::QuadraticBezier { p0, p1, p2 } => lower::quadratic_bezier(
+                    store,
+                    [p0, p1, p2],
+                    shape.width,
+                    shape.brush,
+                    shape.cap,
+                ),
+                CurveGeometry::Arc {
+                    center,
+                    radius,
+                    start_angle,
+                    sweep,
+                } => lower::arc(
+                    store,
+                    center,
+                    radius,
+                    start_angle,
+                    sweep,
+                    shape.width,
+                    shape.brush,
+                    shape.cap,
+                ),
+            },
+            Shape::Polyline(shape) => lower::polyline(
+                store,
+                shape.points,
+                shape.colors,
+                shape.width,
+                shape.cap,
+                shape.join,
+            ),
             Shape::Text {
                 local_origin,
                 text,
@@ -176,50 +169,41 @@ impl Shapes {
                     weight,
                 }
             }
-            Shape::Shadow {
-                local_rect,
-                corners,
-                shadow,
-            } => ShapeRecord::Shadow {
-                local_rect,
-                corners,
-                shadow: shadow.into(),
+            Shape::Shadow(shape) => ShapeRecord::Shadow {
+                local_rect: shape.local_rect,
+                corners: shape.corners,
+                shadow: shape.shadow.into(),
             },
-            Shape::Image {
-                handle,
-                local_rect,
-                fit,
-                min_filter,
-                mag_filter,
-                tint,
-            } => ShapeRecord::Image {
-                local_rect,
-                tint: tint.into(),
+            Shape::Image(shape) => ShapeRecord::Image {
+                local_rect: shape.local_rect,
+                tint: shape.tint.into(),
                 // Extract the cheap id + size; the owning `ImageHandle`
                 // the caller holds is what keeps the GPU texture alive.
-                id: handle.id(),
-                size: handle.size(),
-                fit,
-                min_filter,
-                mag_filter,
+                id: shape.handle.id(),
+                size: shape.handle.size(),
+                fit: shape.fit,
+                min_filter: shape.min_filter,
+                mag_filter: shape.mag_filter,
             },
-            Shape::Mesh {
-                mesh,
-                local_rect,
-                tint,
-            } => {
+            Shape::Mesh(shape) => {
                 let mut payloads = store.payloads.borrow_mut();
                 let v_start = payloads.meshes.vertices.len() as u32;
-                payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
+                payloads
+                    .meshes
+                    .vertices
+                    .extend_from_slice(&shape.mesh.vertices);
                 let i_start = payloads.meshes.indices.len() as u32;
-                payloads.meshes.indices.extend_from_slice(&mesh.indices);
-                let content_hash = mesh.content_hash();
-                let bbox = mesh.bbox();
+                payloads
+                    .meshes
+                    .indices
+                    .extend_from_slice(&shape.mesh.indices);
+                let content_hash = shape.mesh.content_hash();
+                let bbox = shape.mesh.bbox();
                 ShapeRecord::Mesh {
-                    local_rect,
-                    tint: tint.into(),
-                    vertices: Span::new(v_start, mesh.vertices.len() as u32),
-                    indices: Span::new(i_start, mesh.indices.len() as u32),
+                    local_rect: shape.local_rect,
+                    tint: shape.tint.into(),
+                    vertices: Span::new(v_start, shape.mesh.vertices.len() as u32),
+                    indices: Span::new(i_start, shape.mesh.indices.len() as u32),
                     bbox,
                     content_hash,
                 }

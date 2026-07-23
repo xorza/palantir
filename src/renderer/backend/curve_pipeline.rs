@@ -14,7 +14,7 @@
 //! [`MeshPipeline`]: crate::renderer::backend::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::renderer::backend::image_pipeline::ImagePipeline
 
-use crate::primitives::brush::Spread;
+use crate::primitives::brush::gradient::Spread;
 use crate::primitives::fill_wire::FillKind;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;

@@ -15,7 +15,8 @@ use crate::primitives::approx;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
-use crate::primitives::brush::{Brush, CurveBrush, LinearGradient};
+use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::rect::Rect;
@@ -24,7 +25,7 @@ use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::{RecordStore, RecordedGradient};
 use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeBrush, ShapeStroke};
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
-use crate::shape::PolylineColors;
+use crate::shape::polyline::PolylineColors;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
@@ -332,7 +333,7 @@ pub(crate) fn arc(
 ) -> ShapeRecord {
     debug_assert!(
         sweep.abs() <= TAU + 1.0e-4,
-        "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
+        "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
     );
     let lowered = curve_brush(store, &brush);
     let a1 = start_angle + sweep;
@@ -405,9 +406,11 @@ fn curve_inner(ctrl: [Vec2; 4], width: f32, fill: LoweredBrush, cap: LineCap) ->
 #[cfg(test)]
 mod tests {
     use super::brush;
-    use crate::primitives::brush::{
-        Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread,
-    };
+    use crate::primitives::brush::Brush;
+    use crate::primitives::brush::gradient::conic::ConicGradient;
+    use crate::primitives::brush::gradient::linear::LinearGradient;
+    use crate::primitives::brush::gradient::radial::RadialGradient;
+    use crate::primitives::brush::gradient::{Interp, Spread};
     use crate::primitives::color::ColorU8;
     use crate::scene::record_store::{GradientId, RecordStore};
     use crate::scene::shapes::paint::ShapeBrush;

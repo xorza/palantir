@@ -1,7 +1,7 @@
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx::noop_f32;
-use crate::primitives::brush::FillAxis;
+use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageFilter, ImageFit};

@@ -5,7 +5,8 @@ use crate::renderer::texture_id::TextureIdSource;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::shape::{PolylineColors, Shape};
+use crate::shape::Shape;
+use crate::shape::polyline::PolylineColors;
 use glam::Vec2;
 use std::num::NonZeroU32;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -67,7 +68,7 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
                     source.colors(&colors[..colors_len]),
                     1.0,
                 );
-                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &store)));
+                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape.into(), &store)));
                 let accepted = source.accepts(points_len, colors_len);
 
                 assert_eq!(
@@ -129,7 +130,7 @@ fn image_dimensions_above_u16_survive_lowering() {
     let mut shapes = Shapes::default();
     let store = RecordStore::default();
 
-    assert_eq!(shapes.add(Shape::image(handle), &store), Some(0));
+    assert_eq!(shapes.add(Shape::image(handle).into(), &store), Some(0));
     let ShapeRecord::Image { size, .. } = shapes.records[0] else {
         panic!("image lowered to another record variant");
     };

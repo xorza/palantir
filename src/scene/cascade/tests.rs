@@ -2,9 +2,7 @@ use crate::display::Display;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
-use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::plan::{RenderKind, RenderPlan};
@@ -75,12 +73,10 @@ fn shape_rect_composes_self_transform() {
                 .size(Sizing::fixed(300.0))
                 .transform(xform)
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect::new(0.0, 0.0, 30.0, 30.0)),
-                        corners: Corners::ZERO,
-                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 30.0, 30.0))
+                            .fill(Color::rgb(0.5, 0.5, 0.5)),
+                    );
                 });
         });
     });
@@ -158,15 +154,16 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
                 panel = panel.clip(ClipMode::Rect);
             }
             panel.show(ui, |ui| {
-                ui.add_shape(Shape::CubicBezier {
-                    p0: Vec2::new(10.0, 20.0),
-                    p1: Vec2::new(20.0, 20.0),
-                    p2: Vec2::new(30.0, 20.0),
-                    p3: Vec2::new(40.0, 20.0),
-                    width: 4.0,
-                    brush: Color::WHITE.into(),
-                    cap: LineCap::Butt,
-                });
+                ui.add_shape(
+                    Shape::cubic_bezier(
+                        Vec2::new(10.0, 20.0),
+                        Vec2::new(20.0, 20.0),
+                        Vec2::new(30.0, 20.0),
+                        Vec2::new(40.0, 20.0),
+                        4.0,
+                    )
+                    .brush(Color::WHITE),
+                );
             });
         });
 
@@ -201,14 +198,12 @@ fn self_transform_anchors_scale_at_panel_origin() {
                 .size(Sizing::fixed(200.0))
                 .transform(xform)
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::RoundedRect {
-                        // Panel-local (0, 0) — the natural top-left
-                        // of the panel's body.
-                        local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
-                        corners: Corners::ZERO,
-                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    // Panel-local (0, 0) — the natural top-left
+                    // of the panel's body.
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0))
+                            .fill(Color::rgb(0.5, 0.5, 0.5)),
+                    );
                 });
         });
     });
@@ -378,12 +373,10 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
                 .transform(xform)
                 .show(ui, |ui| {
                     // Fully inside the 300×300 panel → clip never bites.
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
-                        corners: Corners::ZERO,
-                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))
+                            .fill(Color::rgb(0.5, 0.5, 0.5)),
+                    );
                 });
         });
     });
@@ -688,13 +681,11 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .show(ui, |ui| {
                 for index in 0..count {
                     let offset = index as f32 * 10.0;
-                    ui.add_shape(Shape::Line {
-                        a: Vec2::splat(offset),
-                        b: Vec2::splat(offset + 20.0),
-                        width: 2.0,
-                        brush: Color::WHITE.into(),
-                        cap: LineCap::Round,
-                    });
+                    ui.add_shape(
+                        Shape::line(Vec2::splat(offset), Vec2::splat(offset + 20.0), 2.0)
+                            .brush(Color::WHITE)
+                            .cap(LineCap::Round),
+                    );
                 }
             });
     }

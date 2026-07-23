@@ -1,6 +1,6 @@
 //! Pixel-level shadow fixtures.
 
-use aperture::{Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing};
+use aperture::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
 use glam::{IVec2, UVec2, Vec2};
 use image::RgbaImage;
 
@@ -24,17 +24,17 @@ fn render_shadow(
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::Shadow {
-                    local_rect: Some(source),
-                    corners: Corners::all(corners),
-                    shadow: Shadow {
+                ui.add_shape(
+                    Shape::shadow(Shadow {
                         color: Color::rgba(0.0, 0.0, 0.0, 0.85),
                         offset,
                         blur,
                         spread,
                         inset,
-                    },
-                });
+                    })
+                    .at(source)
+                    .corners(corners),
+                );
             });
     })
 }

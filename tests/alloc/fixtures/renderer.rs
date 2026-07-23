@@ -5,10 +5,7 @@
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
 use crate::harness::audit_steady_state;
-use aperture::{
-    Color, Configure, Frame, Grid, LineCap, LineJoin, Mesh, Panel, PolylineColors, Shape, Sizing,
-    Track,
-};
+use aperture::{Color, Configure, Frame, Grid, Mesh, Panel, PolylineColors, Shape, Sizing, Track};
 
 /// 16×16 grid of `Frame`s — 256 quads per frame. Stresses
 /// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse much
@@ -53,13 +50,11 @@ fn polyline_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::Polyline {
-                    points: &points,
-                    colors: PolylineColors::Single(Color::WHITE),
-                    width: 2.0,
-                    cap: LineCap::Butt,
-                    join: LineJoin::Miter,
-                });
+                ui.add_shape(Shape::polyline(
+                    &points,
+                    PolylineColors::Single(Color::WHITE),
+                    2.0,
+                ));
             });
     });
 }
@@ -84,11 +79,7 @@ fn mesh_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::Mesh {
-                    mesh: &mesh,
-                    local_rect: None,
-                    tint: Color::WHITE,
-                });
+                ui.add_shape(Shape::mesh(&mesh));
             });
     });
 }

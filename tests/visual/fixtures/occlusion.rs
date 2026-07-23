@@ -1,4 +1,4 @@
-use aperture::{Color, Configure, Corners, Panel, Rect, Shape, Sizing, Stroke, Ui};
+use aperture::{Color, Configure, Panel, Rect, Shape, Sizing, Ui};
 use glam::UVec2;
 use image::RgbaImage;
 
@@ -10,12 +10,7 @@ const CLEAR: Color = Color::WHITE;
 const LAYER_RECT: Rect = Rect::new(20.25, 20.25, 80.0, 80.0);
 
 fn add_layer(ui: &mut Ui, color: Color) {
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(LAYER_RECT),
-        corners: Corners::ZERO,
-        fill: color.into(),
-        stroke: Stroke::ZERO,
-    });
+    ui.add_shape(Shape::rect(LAYER_RECT).fill(color));
 }
 
 fn render_fractional_layers(split_groups: bool) -> RgbaImage {

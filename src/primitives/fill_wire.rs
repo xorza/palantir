@@ -3,10 +3,10 @@
 //! the shape store (`scene::shapes`), the record store, and the
 //! renderer all depend *down* on one definition instead of `forest`
 //! reaching up into `renderer`. The matching gradient *axis* lives in
-//! [`crate::primitives::brush::FillAxis`]; the actual LUT atlas texture
+//! [`crate::primitives::brush::gradient::FillAxis`]; the actual LUT atlas texture
 //! is a renderer resource ([`crate::renderer::gradient_atlas`]).
 
-use crate::primitives::brush::Spread;
+use crate::primitives::brush::gradient::Spread;
 use bytemuck::{Pod, Zeroable};
 
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching

@@ -1,5 +1,5 @@
 use crate::display::Display;
-use crate::primitives::brush::FillAxis;
+use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::span::Span;
 use crate::primitives::{
@@ -688,7 +688,8 @@ fn windowed_rect_is_not_an_opaque_cover() {
 /// cmd-buffer payload; composer pipes them through to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
-    use crate::primitives::brush::{LinearGradient, Spread};
+    use crate::primitives::brush::gradient::Spread;
+    use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -728,7 +729,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 /// frames and across multiple emitting widgets.
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
-    use crate::primitives::brush::LinearGradient;
+    use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -1908,7 +1909,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
-    use crate::primitives::brush::Spread;
+    use crate::primitives::brush::gradient::Spread;
     use crate::primitives::fill_wire::FillKind;
     use crate::primitives::fill_wire::LutRow;
     use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
@@ -2031,7 +2032,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     // Same 800 px span: a straight cubic (CPs on the segment thirds —
-    // exactly what Shape::Line lowers to) must collapse to one
+    // exactly what Shape::line lowers to) must collapse to one
     // instance; a genuinely curved one must subdivide (800 px polygon
     // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
     let straight = |b: &mut RenderCmdBuffer| {
@@ -2688,7 +2689,7 @@ fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
 
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
-    use crate::primitives::brush::FillAxis;
+    use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::fill_wire::FillKind;
     // A shadow's blur fringe extends past the stored rect — even if
     // a later opaque solid fully contains its rect, the visible
@@ -3017,7 +3018,8 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
 /// prior scene.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
-    use crate::primitives::brush::{FillAxis, Spread};
+    use crate::primitives::brush::gradient::FillAxis;
+    use crate::primitives::brush::gradient::Spread;
     use crate::primitives::color::ColorF16;
     use crate::primitives::fill_wire::{FillKind, LutRow};
 
@@ -3248,7 +3250,8 @@ fn clear_fold_resets_across_frames() {
 /// does NOT disqualify (the skip is coverage-based, not opacity-based).
 #[test]
 fn quad_fast_path_flag_cases() {
-    use crate::primitives::brush::{FillAxis, Spread};
+    use crate::primitives::brush::gradient::FillAxis;
+    use crate::primitives::brush::gradient::Spread;
     use crate::primitives::fill_wire::{FillKind, LutRow};
 
     let solid = |c: Color| BrushSource::Solid(c.into());

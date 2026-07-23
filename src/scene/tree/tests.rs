@@ -4,9 +4,7 @@ use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::{Color, ColorU8};
-use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::Command;
 use crate::scene::element::{Configure, Element};
@@ -15,8 +13,9 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
 use crate::scene::tree::recording::{Placement, RecordingScratch};
-use crate::shape::style::{LineCap, LineJoin};
-use crate::shape::{PolylineColors, Shape};
+use crate::shape::Shape;
+use crate::shape::polyline::PolylineColors;
+use crate::shape::rect::RectShape;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -65,14 +64,9 @@ fn shapes_attached_to_button_node() {
 /// order.
 #[test]
 fn interleaved_shapes_record_correct_order() {
-    fn pos_rect(slot: u16) -> Shape<'static> {
+    fn pos_rect(slot: u16) -> RectShape {
         let s = (slot + 1) as f32 * 10.0;
-        Shape::RoundedRect {
-            local_rect: Some(Rect::new(0.0, 0.0, s, s)),
-            corners: Corners::default(),
-            fill: Color::rgb(1.0, 0.0, 0.0).into(),
-            stroke: Stroke::ZERO,
-        }
+        Shape::rect(Rect::new(0.0, 0.0, s, s)).fill(Color::rgb(1.0, 0.0, 0.0))
     }
     let mut ui = Ui::for_test();
     let p = ui.run_at_value(SURFACE, |ui| {
@@ -145,13 +139,8 @@ fn interleaved_shapes_record_correct_order() {
 /// over-counts the bars and the encoder cursor overshoots.
 #[test]
 fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
-    fn pos_rect() -> Shape<'static> {
-        Shape::RoundedRect {
-            local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
-            corners: Corners::default(),
-            fill: Color::rgb(1.0, 0.0, 0.0).into(),
-            stroke: Stroke::ZERO,
-        }
+    fn pos_rect() -> RectShape {
+        Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(Color::rgb(1.0, 0.0, 0.0))
     }
     let mut ui = Ui::for_test();
     let mut child_id = None;
@@ -249,13 +238,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         Panel::canvas()
             .id(WidgetId::from_hash("polyline"))
             .show(ui, |ui| {
-                ui.add_shape(Shape::Polyline {
-                    points,
-                    colors: PolylineColors::Single(color),
-                    width: 2.0,
-                    cap: LineCap::Butt,
-                    join: LineJoin::Miter,
-                });
+                ui.add_shape(Shape::polyline(points, PolylineColors::Single(color), 2.0));
             })
             .node()
     }
@@ -1043,14 +1026,9 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
 /// exactly once, in its owning tree, in recording order.
 #[test]
 fn mid_recording_popup_keeps_trees_independent() {
-    fn marker(slot: u8) -> Shape<'static> {
+    fn marker(slot: u8) -> RectShape {
         let w = (slot + 1) as f32;
-        Shape::RoundedRect {
-            local_rect: Some(Rect::new(0.0, 0.0, w, w)),
-            corners: Corners::default(),
-            fill: Color::rgb(1.0, 0.0, 0.0).into(),
-            stroke: Stroke::ZERO,
-        }
+        Shape::rect(Rect::new(0.0, 0.0, w, w)).fill(Color::rgb(1.0, 0.0, 0.0))
     }
     fn marker_w(s: &ShapeRecord) -> u32 {
         match s {
@@ -1225,20 +1203,18 @@ fn shape_hashes_column_sized_to_shape_records() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(Shape::Line {
-                    a: glam::Vec2::new(0.0, 0.0),
-                    b: glam::Vec2::new(10.0, 10.0),
-                    width: 1.0,
-                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
-                ui.add_shape(Shape::Line {
-                    a: glam::Vec2::new(10.0, 10.0),
-                    b: glam::Vec2::new(20.0, 20.0),
-                    width: 1.0,
-                    brush: Color::rgb(0.0, 1.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
+                ui.add_shape(
+                    Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
+                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                );
+                ui.add_shape(
+                    Shape::line(
+                        glam::Vec2::new(10.0, 10.0),
+                        glam::Vec2::new(20.0, 20.0),
+                        1.0,
+                    )
+                    .brush(Color::rgb(0.0, 1.0, 0.0)),
+                );
             });
     });
     let tree = &ui.forest.trees[Layer::Main];
@@ -1279,13 +1255,10 @@ fn shape_hash_stable_across_frames() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(Shape::Line {
-                    a: glam::Vec2::new(0.0, 0.0),
-                    b: glam::Vec2::new(10.0, 10.0),
-                    width: 1.0,
-                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
+                ui.add_shape(
+                    Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
+                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                );
             });
     };
     let mut ui = Ui::for_test();
@@ -1313,20 +1286,14 @@ fn one_shape_change_only_flips_its_own_hash() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(Shape::Line {
-                    a: glam::Vec2::new(0.0, 0.0),
-                    b: glam::Vec2::new(10.0, 10.0),
-                    width: 1.0,
-                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
-                ui.add_shape(Shape::Line {
-                    a: glam::Vec2::new(5.0, 5.0),
-                    b: b_endpoint,
-                    width: 1.0,
-                    brush: Color::rgb(0.0, 1.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
+                ui.add_shape(
+                    Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
+                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                );
+                ui.add_shape(
+                    Shape::line(glam::Vec2::new(5.0, 5.0), b_endpoint, 1.0)
+                        .brush(Color::rgb(0.0, 1.0, 0.0)),
+                );
             });
     };
     let mut ui = Ui::for_test();

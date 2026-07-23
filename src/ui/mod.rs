@@ -719,8 +719,8 @@ impl Ui {
     /// Attach a paint primitive to the active node. Direct text contributes to
     /// layout only on a leaf; container-owned text is an overlay shaped against
     /// that container's final padded width.
-    pub fn add_shape(&mut self, shape: Shape<'_>) {
-        self.forest.add_shape(shape);
+    pub fn add_shape<'a>(&mut self, shape: impl Into<Shape<'a>>) {
+        self.forest.add_shape(shape.into());
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
@@ -815,8 +815,8 @@ impl Ui {
     /// caller doesn't manage scheduling. Drops silently if the shape
     /// itself was noop-collapsed (zero stroke + transparent fill,
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
-    pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
-        self.forest.add_shape_animated(shape, anim);
+    pub(crate) fn add_shape_animated<'a>(&mut self, shape: impl Into<Shape<'a>>, anim: PaintAnim) {
+        self.forest.add_shape_animated(shape.into(), anim);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left

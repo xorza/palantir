@@ -2,7 +2,8 @@
 
 use crate::display::Display;
 use crate::primitives::background::Background;
-use crate::primitives::brush::{Brush, LinearGradient};
+use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
