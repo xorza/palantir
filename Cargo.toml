@@ -31,6 +31,7 @@ fixedbitset = "0.5"
 glam = { version = "0.33", default-features = false, features = ["std", "i32", "u16", "u32", "bytemuck", "serde"] }
 etagere = "0.3"
 half = { version = "2.7", features = ["bytemuck"] }
+memchr = "2.8"
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = "1.0"
@@ -124,6 +125,11 @@ required-features = ["internals"]
 
 [[bench]]
 name = "text_shape"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
+name = "text_edit"
 harness = false
 required-features = ["internals"]
 
