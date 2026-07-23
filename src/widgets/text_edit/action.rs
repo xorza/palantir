@@ -16,7 +16,55 @@ pub(crate) enum EditAction {
     Clear,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ActionAvailability {
+    Always,
+    Selection,
+    Text,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MenuAction {
+    pub(crate) action: EditAction,
+    pub(crate) label: &'static str,
+    pub(crate) availability: ActionAvailability,
+    pub(crate) separator_before: bool,
+}
+
 impl EditAction {
+    pub(crate) const MENU: [MenuAction; 5] = [
+        MenuAction {
+            action: Self::Cut,
+            label: "Cut",
+            availability: ActionAvailability::Selection,
+            separator_before: false,
+        },
+        MenuAction {
+            action: Self::Copy,
+            label: "Copy",
+            availability: ActionAvailability::Selection,
+            separator_before: false,
+        },
+        MenuAction {
+            action: Self::Paste,
+            label: "Paste",
+            availability: ActionAvailability::Always,
+            separator_before: false,
+        },
+        MenuAction {
+            action: Self::SelectAll,
+            label: "Select All",
+            availability: ActionAvailability::Text,
+            separator_before: true,
+        },
+        MenuAction {
+            action: Self::Clear,
+            label: "Clear",
+            availability: ActionAvailability::Text,
+            separator_before: false,
+        },
+    ];
+
     pub(crate) const fn shortcut(self) -> Option<Shortcut> {
         match self {
             Self::Undo => Some(Shortcut::ctrl('Z')),
@@ -44,10 +92,6 @@ impl EditAction {
                 .shortcut()
                 .is_some_and(|shortcut| shortcut.matches(keypress))
         })
-    }
-
-    pub(crate) const fn routed_through_menu(self) -> bool {
-        matches!(self, Self::SelectAll | Self::Cut | Self::Copy | Self::Paste)
     }
 
     pub(crate) fn execute(self, editor: &mut Editor<'_>, clipboard: &Clipboard) {

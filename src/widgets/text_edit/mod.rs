@@ -1,4 +1,6 @@
 mod action;
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 mod input;
 mod menu;
 pub(crate) mod model;
@@ -10,21 +12,25 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::text::{SELECTION_RECTS_INLINE_CAPACITY, SelectionRects};
 use crate::ui::Ui;
 use crate::widgets::text_edit::input::{InputResult, handle_input};
 use crate::widgets::text_edit::menu::MenuResult;
 use crate::widgets::text_edit::model::EditState;
 use crate::widgets::text_edit::view::{
-    CaretPaint, LayoutInput, PaintInput, ViewState, ViewUpdateInput,
+    CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput, ViewState,
+    ViewUpdateInput,
 };
 use crate::widgets::theme::resolve_look;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::{Response, ResponseSnapshot};
+use glam::Vec2;
 use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct TextEditState {
     pub(crate) edit: EditState,
+    pub(crate) interaction: InteractionState,
     pub(crate) view: ViewState,
 }
 
@@ -103,7 +109,7 @@ impl<'a> TextEdit<'a> {
 
     /// Cap the buffer at `n` characters. Insertions are truncated to
     /// what fits; content already longer than `n` is left alone (the
-    /// cap only gates growth). `n == 0` makes the field read-only.
+    /// cap only gates growth). `n == 0` rejects every insertion.
     pub fn max_chars(mut self, n: usize) -> Self {
         self.max_chars = Some(n);
         self
@@ -218,27 +224,23 @@ impl<'a> TextEdit<'a> {
         };
         let padding =
             Spacing::from_array(self.node.padding.unwrap().as_array().map(|v| v + stroke_w));
-        let layout = view::resolve_layout(
-            &ui.resources.text,
-            LayoutInput {
-                text: self.text,
-                placeholder: &self.placeholder,
-                focused: is_focused,
-                response_rect: response.layout_rect,
-                padding,
-                caret_width,
-                font_size,
-                line_height_px,
-                family: look.text.family,
-                weight: look.text.weight,
-                multiline: self.multiline,
-                text_align: self.text_align,
-            },
-        );
+        let previous_block_offset = ui
+            .try_state::<TextEditState>(id)
+            .map_or(Vec2::ZERO, |state| state.view.block_offset);
+        let layout = view::resolve_layout(LayoutInput {
+            response_rect: response.layout_rect,
+            padding,
+            caret_width,
+            font_size,
+            line_height_px,
+            family: look.text.family,
+            weight: look.text.weight,
+            multiline: self.multiline,
+            text_align: self.text_align,
+            previous_block_offset,
+        });
         let ctx = layout.ctx;
         let InputResult {
-            caret: caret_byte,
-            selection,
             caret_moved,
             was_focused,
             blur: blur_after,
@@ -253,17 +255,51 @@ impl<'a> TextEdit<'a> {
             self.max_chars,
             self.select_all_on_focus,
         );
-        let mut changed = edited;
         if blur_after {
             ui.request_focus(None);
             is_focused = false;
         }
         let gained_focus = is_focused && !was_focused;
         let lost_focus = was_focused && !is_focused;
-        let caret_pos = ui
-            .resources
-            .text
-            .cursor_xy(self.text, caret_byte, ctx.params());
+
+        let snapshot = ResponseSnapshot {
+            id,
+            state: ui.response_for(id),
+        };
+        let MenuResult {
+            edited: menu_edited,
+            caret_moved: menu_caret_moved,
+        } = menu::show(ui, id, &snapshot, self.text, ctx.multiline, self.max_chars);
+        let changed = edited || menu_edited;
+        let caret_moved = caret_moved || menu_caret_moved;
+        let (caret_byte, selection) = {
+            let state = ui.state_mut::<TextEditState>(id);
+            (state.edit.caret, state.edit.sel_range())
+        };
+
+        let mut retained = ui
+            .state_mut::<TextEditState>(id)
+            .view
+            .selection_rects
+            .take();
+        let mut inline = SelectionRects::new();
+        let selection_rects = retained.as_deref_mut().unwrap_or(&mut inline);
+        let geometry = view::resolve_geometry(
+            &ui.resources.text,
+            GeometryInput {
+                layout,
+                text: self.text,
+                placeholder: &self.placeholder,
+                caret: caret_byte,
+                selection: is_focused.then_some(selection).flatten(),
+            },
+            selection_rects,
+        );
+        let layout = geometry.layout;
+        let caret_pos = geometry.caret_pos;
+        ui.state_mut::<TextEditState>(id)
+            .edit
+            .observe_text_hash(geometry.text_hash);
         let now = ui.frame_runtime.time;
         let view = ui
             .state_mut::<TextEditState>(id)
@@ -276,23 +312,23 @@ impl<'a> TextEdit<'a> {
                 content_width: layout.content_width,
                 focused: is_focused,
                 caret_moved,
-                edited,
+                edited: changed,
                 gained_focus,
                 now,
+                block_offset: layout.ctx.block_offset,
             });
         let text_color = look.text.color;
         let placeholder = self.placeholder;
         view::record(
             ui,
             widget,
-            id,
             PaintInput {
                 node: self.node,
                 chrome: look.background,
                 text: self.text,
                 placeholder: &placeholder,
                 layout,
-                selection: if is_focused { selection } else { None },
+                selection_rects,
                 selection_color,
                 text_color,
                 placeholder_color,
@@ -305,18 +341,12 @@ impl<'a> TextEdit<'a> {
                 }),
             },
         );
+        if retained.is_none() && inline.len() > SELECTION_RECTS_INLINE_CAPACITY {
+            retained = Some(Box::new(inline));
+        }
+        ui.state_mut::<TextEditState>(id).view.selection_rects = retained;
 
         let state = ui.response_for(id);
-        let snapshot = ResponseSnapshot { id, state };
-        let MenuResult {
-            edited: menu_edited,
-            caret_moved: menu_caret_moved,
-        } = menu::show(ui, id, &snapshot, self.text, ctx.multiline, self.max_chars);
-        changed |= menu_edited;
-        if is_focused && (menu_edited || menu_caret_moved) {
-            ui.state_mut::<TextEditState>(id).view.last_caret_change = now;
-        }
-
         TextEditResponse {
             response: Response::eager(id, ui, state),
             changed,

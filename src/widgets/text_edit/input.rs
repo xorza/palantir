@@ -6,7 +6,6 @@ use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::primitives::widget_id::WidgetId;
 use crate::text::{ShapeParams, TextShaper};
 use crate::ui::Ui;
-use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::model::{EditKind, Editor, word_range_at};
@@ -17,8 +16,6 @@ use crate::widgets::text_edit::view::ShapeCtx;
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(crate) struct InputResult {
-    pub(crate) caret: usize,
-    pub(crate) selection: Option<std::ops::Range<usize>>,
     /// Caret or selection differ from their pre-input values (compared
     /// against the pre-clamp snapshot, so an external buffer shrink
     /// that displaces the caret also reads as motion) — drives the
@@ -55,11 +52,6 @@ pub(crate) fn handle_input(
     let mut blur = false;
     let mut submitted = false;
     let resp_state = ui.response_for(id);
-    // Snapshot once before the long `&mut state` borrow below. The
-    // menu and the text-edit state live under the same WidgetId but
-    // different TypeIds; the borrow checker can't see the disjoint
-    // rows so we read the menu row first.
-    let menu_open = ContextMenu::is_open(ui, id);
     let clipboard = ui.resources.clipboard.clone();
 
     // Hold the state row once for the whole function (inside the
@@ -70,7 +62,11 @@ pub(crate) fn handle_input(
     let state = ui
         .state
         .get_or_insert_with::<TextEditState, _>(id, Default::default);
-    let TextEditState { edit, view } = state;
+    let TextEditState {
+        edit,
+        interaction,
+        view,
+    } = state;
     // Pre-input snapshot for the `caret_moved` / focus edges — taken
     // before the clamp so an external buffer shrink that displaces the
     // caret still reads as caret motion (blink reset).
@@ -81,8 +77,9 @@ pub(crate) fn handle_input(
     // Application code may have replaced `*text` with a same-length or
     // longer string whose UTF-8 boundaries differ from the prior frame.
     edit.normalize(text);
-    view.normalize(text);
+    interaction.normalize(text);
     let mut ed = Editor::new(text, edit, ctx.multiline, max_chars);
+    ed.enforce_single_line();
 
     // Select-all-on-focus: the frame focus lands (and no press this frame — a
     // press falls through to place the caret below).
@@ -138,46 +135,44 @@ pub(crate) fn handle_input(
                     // Double-click: select the word under the caret.
                     let r = word_range_at(ed.text, hit);
                     if r.is_empty() {
-                        view.drag_anchor = Some(hit);
+                        interaction.drag_anchor = Some(hit);
                         ed.state.selection = None;
                         ed.state.caret = hit;
                     } else {
-                        view.drag_anchor = None;
+                        interaction.drag_anchor = None;
                         ed.state.selection = Some(r.start);
                         ed.state.caret = r.end;
                     }
                 }
                 3.. => {
                     // Triple-click and beyond: select everything.
-                    view.drag_anchor = None;
+                    interaction.drag_anchor = None;
                     ed.select_all();
                 }
                 _ => {
-                    view.drag_anchor = Some(hit);
+                    interaction.drag_anchor = Some(hit);
                     ed.state.selection = None;
                     ed.state.caret = hit;
                 }
             }
-        } else if view.drag_anchor.is_some() {
+        } else if interaction.drag_anchor.is_some() {
             // Held drag from a single-click press — caret follows
             // pointer, selection grows from the anchor. Multi-click
             // sequences clear `drag_anchor` so they don't enter this
             // branch and the selection stays locked at the word/all
             // range chosen on the press.
-            let anchor = view.drag_anchor.unwrap_or(hit);
+            let anchor = interaction.drag_anchor.unwrap_or(hit);
             ed.state.caret = hit;
             ed.state.selection = if hit == anchor { None } else { Some(anchor) };
         }
     } else if !resp_state.left.held() {
-        view.drag_anchor = None;
+        interaction.drag_anchor = None;
     }
 
     if !is_focused {
         ed.state.normalize(ed.text);
-        view.normalize(ed.text);
+        interaction.normalize(ed.text);
         return InputResult {
-            caret: ed.state.caret,
-            selection: ed.state.sel_range(),
             caret_moved: caret_before != ed.state.caret || sel_before != ed.state.selection,
             was_focused,
             blur,
@@ -193,7 +188,11 @@ pub(crate) fn handle_input(
     // because they need the shaper + layout. Indexing keeps the borrow
     // on `frame_keyboard_events` short-lived so we can dispatch to
     // `ui.resources.text` inside the same loop without a scratch Vec.
-    let n = ui.input.frame_keyboard_events.len();
+    let n = if ui.input.keyboard_capture.is_none() {
+        ui.input.frame_keyboard_events.len()
+    } else {
+        0
+    };
     for i in 0..n {
         match ui.input.frame_keyboard_events[i] {
             KeyboardEvent::Text(chunk) => {
@@ -210,7 +209,7 @@ pub(crate) fn handle_input(
                     submitted = true;
                     continue;
                 }
-                if dispatch_action(&mut ed, kp, menu_open, &clipboard) {
+                if dispatch_action(&mut ed, kp, &clipboard) {
                     continue;
                 }
                 match apply_key(&mut ed, kp) {
@@ -225,10 +224,8 @@ pub(crate) fn handle_input(
     }
 
     ed.state.normalize(ed.text);
-    view.normalize(ed.text);
+    interaction.normalize(ed.text);
     InputResult {
-        caret: ed.state.caret,
-        selection: ed.state.sel_range(),
         caret_moved: caret_before != ed.state.caret || sel_before != ed.state.selection,
         was_focused,
         blur,
@@ -240,15 +237,12 @@ pub(crate) fn handle_input(
 pub(crate) fn dispatch_action(
     editor: &mut Editor<'_>,
     keypress: KeyPress,
-    menu_open: bool,
     clipboard: &Clipboard,
 ) -> bool {
     let Some(action) = EditAction::from_keypress(keypress) else {
         return false;
     };
-    if !menu_open || !action.routed_through_menu() {
-        action.execute(editor, clipboard);
-    }
+    action.execute(editor, clipboard);
     true
 }
 
