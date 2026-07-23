@@ -7,13 +7,13 @@
 //!   text prepare/append path. The frontend reconstructs an evicted entry
 //!   from its retained text shape before emitting the compact cache key.
 //! - [`mono_measure`] — deterministic placeholder metric used when no
-//!   `CosmicMeasure` is installed (default in [`Ui`]). Every glyph is
+//!   `CosmicMeasure` is installed. Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry
 //!   [`TextCacheKey::INVALID`] and the renderer drops them. Lets the engine
 //!   run in tests and headless tools without a font system.
-//! - [`TextReuseCache`] — per-window identity cache keyed by widget and
-//!   within-widget text ordinal. It skips shaping dispatch when authoring
-//!   and layout inputs are unchanged without coupling windows that reuse ids.
+//! - [`TextSystem`] — per-window text coordinator. It owns identity reuse
+//!   keyed by widget and within-widget text ordinal while referring to the
+//!   app-global [`TextShaper`] shared with the renderer.
 //!
 //! There's no `TextMeasure` trait: the renderer needs concrete access to
 //! `CosmicMeasure`'s `FontSystem` + cache, so a trait would just be a
@@ -106,7 +106,7 @@ pub enum FontWeight {
 /// Shared, cloneable text shaper. Holds an optional [`CosmicMeasure`] for
 /// real shaping (`None` ⇒ mono fallback) and a `measure_calls` counter for
 /// cache-effectiveness tests. Per-window widget identity reuse lives in
-/// `TextReuseCache`.
+/// the crate-internal `TextSystem`.
 ///
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
@@ -116,20 +116,23 @@ pub enum FontWeight {
 /// views give every consumer access to the same
 /// content cache.
 ///
-/// Two paths, picked at construction:
-///
-/// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
-///   glyph is `font_size_px * 0.5` wide). WindowDriver drops these runs
-///   because they carry no renderable shaped-buffer key. Useful
-///   for tests, headless drivers, and the `Ui::for_test()` state.
-/// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real
-///   shaping via cosmic-text.
-#[derive(Clone, Debug, Default)]
+/// Construct with [`Self::with_bundled_fonts`] or [`Self::with_cosmic`].
+/// Test and internals builds additionally provide a mono fallback.
+#[derive(Clone, Debug)]
 pub struct TextShaper {
     /// `pub(crate)` for [`test_support`] observability helpers. Direct
     /// field access from inside the crate is fine; invariants live in
     /// the mutating methods of `TextShaper`, not in encapsulation theater.
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
+}
+
+/// Per-window text coordinator. Identity reuse belongs to the window while
+/// shaped content buffers and the font system remain shared through
+/// [`TextShaper`].
+#[derive(Debug)]
+pub(crate) struct TextSystem {
+    shaper: TextShaper,
+    entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
 /// One direct text layout exposed for several read-only geometry queries.
@@ -140,15 +143,6 @@ pub(crate) struct TextLayoutProbe<'a> {
     buffer: Option<&'a cosmic_text::Buffer>,
     text: &'a str,
     params: ValidatedShapeParams,
-}
-
-/// Per-window cross-frame cache of text shaping output. `LayoutEngine`
-/// owns one, keeping identical widget ids in different windows independent
-/// while their [`TextCacheKey`] content buffers remain shared by
-/// [`TextShaper`].
-#[derive(Debug, Default)]
-pub(crate) struct TextReuseCache {
-    entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
 /// One text run whose identity and unbounded shape have been validated
@@ -180,11 +174,11 @@ pub(crate) struct TextRunIdentity {
 /// Both [`crate::Ui`] (layout-time measurement) and [`crate::WgpuBackend`]
 /// (shaping during render) borrow this; backend only touches `cosmic` via
 /// [`TextShaper::with_render_split`].
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
-    /// Total shaping dispatches: [`TextReuseCache`] misses plus every
+    /// Total shaping dispatches: [`TextSystem`] reuse misses plus every
     /// bypass [`TextShaper::measure`] or [`TextShaper::probe_layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
     /// dispatches, not reshapes. Identity-cache hits don't increment.
@@ -284,7 +278,7 @@ impl ValidatedShapeParams {
 /// wrap/truncation width; `None` is the sole unbounded representation.
 /// [`TextShaper::measure`] reports invalid metrics or widths as a
 /// [`ShapeParamsError`]. `halign` aligns each line inside a bounded width
-/// (ignored by [`TextReuseCache::prepare_run`]'s unbounded shape).
+/// (ignored by the text system's unbounded shape).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeParams {
     pub font_size_px: f32,
@@ -311,20 +305,13 @@ fn validate_max_width(max_width_px: Option<f32>) -> Result<(), ShapeParamsError>
 }
 
 impl TextShaper {
-    /// Mono fallback shaper. Every glyph is `font_size_px * 0.5` wide and
-    /// carries no renderable shaped-buffer key, so the renderer drops these
-    /// runs cleanly. Same as [`Self::default`].
-    pub fn mono() -> Self {
-        Self::default()
-    }
-
     /// Real shaping via the supplied [`CosmicMeasure`]. The shaper's
     /// shaped-buffer cache is shared across all clones of this handle.
     pub fn with_cosmic(cosmic: CosmicMeasure) -> Self {
         Self {
             inner: Rc::new(RefCell::new(ShaperInner {
                 cosmic: Some(cosmic),
-                ..Default::default()
+                measure_calls: 0,
             })),
         }
     }
@@ -393,17 +380,32 @@ impl TextShaper {
     }
 }
 
-impl TextReuseCache {
+impl TextSystem {
+    pub(crate) fn new(shaper: TextShaper) -> Self {
+        Self {
+            shaper,
+            entries: FxHashMap::default(),
+        }
+    }
+
+    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+        self.shaper.end_frame();
+        if !removed.is_empty() {
+            self.entries
+                .retain(|(widget_id, _), _| !removed.contains(widget_id));
+        }
+    }
+
     /// Prepare one identity-cached text run, refreshing its unbounded shape
     /// and clearing its stale bounded result when the authoring hash changes.
     pub(crate) fn prepare_run<'a>(
         &'a mut self,
-        shaper: &'a TextShaper,
         identity: TextRunIdentity,
         text: &'a str,
         text_hash: u64,
         params: ShapeParams,
     ) -> Result<PreparedTextRun<'a>, ShapeParamsError> {
+        let shaper = &self.shaper;
         let params = params.validated()?.unbounded();
         if text.is_empty() {
             return Ok(PreparedTextRun {
@@ -448,14 +450,6 @@ impl TextReuseCache {
                 entry,
             }),
         })
-    }
-
-    /// Drop identity rows for widgets absent from this window's final tree.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        if removed.is_empty() {
-            return;
-        }
-        self.entries.retain(|(wid, _), _| !removed.contains(wid));
     }
 }
 
@@ -540,10 +534,8 @@ impl TextShaper {
             .unwrap_or(0)
     }
 
-    /// Per-frame maintenance hook. Called once per frame from
-    /// `Ui::finalize_frame`. Currently bounds the reconstructible cosmic
-    /// buffer LRU; the home for future shared per-frame text upkeep. No-op
-    /// on the mono fallback.
+    /// Bounds the reconstructible cosmic buffer LRU. Called by
+    /// [`TextSystem::end_frame`]; no-op on the mono fallback.
     pub(crate) fn end_frame(&self) {
         self.inner.borrow_mut().end_frame();
     }
@@ -1056,7 +1048,7 @@ fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
 /// Cached unbounded shape + most-recent wrap result, validity-checked
 /// by authoring `hash`.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TextReuseEntry {
+struct TextReuseEntry {
     hash: ContentHash,
     unbounded: TextMeasurement,
     wrap: Option<WrapReuse>,
@@ -1098,7 +1090,28 @@ pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::text::*;
 
+    impl Default for TextShaper {
+        fn default() -> Self {
+            Self::mono()
+        }
+    }
+
+    impl Default for TextSystem {
+        fn default() -> Self {
+            Self::new(TextShaper::default())
+        }
+    }
+
     impl TextShaper {
+        pub fn mono() -> Self {
+            Self {
+                inner: Rc::new(RefCell::new(ShaperInner {
+                    cosmic: None,
+                    measure_calls: 0,
+                })),
+            }
+        }
+
         /// Total cache-miss `measure` dispatches.
         pub(crate) fn measure_calls(&self) -> u64 {
             self.inner.borrow().measure_calls
@@ -1122,7 +1135,7 @@ pub(crate) mod test_support {
         }
     }
 
-    impl TextReuseCache {
+    impl TextSystem {
         /// `true` iff an identity row exists for `(wid, ordinal)`.
         pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.entries.contains_key(&(wid, ordinal))

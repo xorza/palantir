@@ -646,7 +646,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let wid = WidgetId::from_hash("transient");
     assert!(
-        ui.layout_engine.text_reuse.has_entry(wid, 0),
+        ui.layout_engine.text.has_entry(wid, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -654,7 +654,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !ui.layout_engine.text_reuse.has_entry(wid, 0),
+        !ui.layout_engine.text.has_entry(wid, 0),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -688,8 +688,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
     assert!(a.resources.text.has_cosmic_buffer(a_key));
     assert!(a.resources.text.has_cosmic_buffer(b_key));
-    assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
-    assert!(b.layout_engine.text_reuse.has_entry(text_id, 0));
+    assert!(a.layout_engine.text.has_entry(text_id, 0));
+    assert!(b.layout_engine.text.has_entry(text_id, 0));
 
     let after_b = a.resources.text.measure_calls();
     a.run_at(SURFACE, |ui| text_window(ui, "window A", 140.0));
@@ -705,8 +705,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             .size((Sizing::fixed(120.0), Sizing::HUG))
             .show(ui, |_| {});
     });
-    assert!(!b.layout_engine.text_reuse.has_entry(text_id, 0));
-    assert!(a.layout_engine.text_reuse.has_entry(text_id, 0));
+    assert!(!b.layout_engine.text.has_entry(text_id, 0));
+    assert!(a.layout_engine.text.has_entry(text_id, 0));
 
     let after_b_removal = a.resources.text.measure_calls();
     a.run_at(SURFACE, |ui| text_window(ui, "window A", 160.0));

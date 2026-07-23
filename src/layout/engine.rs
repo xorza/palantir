@@ -20,6 +20,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
+#[cfg(test)]
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::Forest;
 use crate::scene::layer::Layer;
@@ -27,8 +28,7 @@ use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::{TextWrap, canonical_wrap_width};
-use crate::text::{LineFit, ShapeParams, TextReuseCache, TextRunIdentity, TextShaper};
-use rustc_hash::FxHashSet;
+use crate::text::{LineFit, ShapeParams, TextRunIdentity, TextShaper, TextSystem};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of
@@ -112,7 +112,7 @@ impl LayoutScratch {
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `text_reuse` — per-window widget-identity shaping cache.
+/// - `text` — per-window text shaping and identity reuse.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
 ///
@@ -121,11 +121,11 @@ impl LayoutScratch {
 /// and read by the encoder, cascade, hit-index, scroll-state refresh,
 /// and tests. Recursive work receives only the current [`LayerLayout`]
 /// slot.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     cache_rebuild: bool,
-    pub(crate) text_reuse: TextReuseCache,
+    pub(crate) text: TextSystem,
     pub(crate) cache: MeasureCache,
 }
 
@@ -288,6 +288,15 @@ fn resolve_sizing(
 }
 
 impl LayoutEngine {
+    pub(crate) fn new(shaper: TextShaper) -> Self {
+        Self {
+            scratch: LayoutScratch::default(),
+            cache_rebuild: false,
+            text: TextSystem::new(shaper),
+            cache: MeasureCache::default(),
+        }
+    }
+
     fn cache_snapshot_matches_forest(
         snapshot: &MeasureSnapshot,
         forest: &Forest,
@@ -329,12 +338,6 @@ impl LayoutEngine {
             }
         }
         true
-    }
-
-    /// Drop text-reuse rows for `WidgetId`s that vanished from this
-    /// window.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.text_reuse.sweep_removed(removed);
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -551,7 +554,6 @@ impl LayoutEngine {
                     tree,
                     node,
                     available_w,
-                    tc.shaper,
                     container_text_shapes(tree, tc, node),
                     layer_out,
                 );
@@ -719,7 +721,6 @@ impl LayoutEngine {
                 tree,
                 node,
                 inner_avail.w,
-                tc.shaper,
                 leaf_text_shapes(tree, tc, node),
                 out,
             ),
@@ -780,14 +781,13 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available_w: f32,
-        text: &TextShaper,
         runs: impl Iterator<Item = TextShapeInput<'a>>,
         out: &mut LayerLayout,
     ) -> Size {
         let span_start = out.text_shapes.len() as u32;
         let mut s = Size::ZERO;
         for ts in runs {
-            let m = self.shape_text(tree, node, &ts, available_w, text, out);
+            let m = self.shape_text(tree, node, &ts, available_w, out);
             s = s.max(m);
         }
         let span_len = out.text_shapes.len() as u32 - span_start;
@@ -804,7 +804,6 @@ impl LayoutEngine {
         node: NodeId,
         ts: &TextShapeInput<'_>,
         available_w: f32,
-        text: &TextShaper,
         out: &mut LayerLayout,
     ) -> Size {
         let wid = tree.records.widget_id()[node.idx()];
@@ -820,9 +819,8 @@ impl LayoutEngine {
         // (e.g. animated parent width), the unbounded cache is
         // preserved and only the bounded reshape runs.
         let prepared = self
-            .text_reuse
+            .text
             .prepare_run(
-                text,
                 identity,
                 ts.text,
                 ts.text_hash,

@@ -350,14 +350,12 @@ fn prepared_run_caches_per_authoring_hash_only() {
     // node_hash tests), so callers that change leading must produce
     // a different hash — pin that the measure cache respects the
     // hash distinction.
-    let m = TextShaper::default();
-    let mut reuse = TextReuseCache::default();
+    let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
     let h1 = ContentHash(1);
     let h2 = ContentHash(2);
-    let r1 = reuse
+    let r1 = text
         .prepare_run(
-            &m,
             identity(wid, h1),
             "hi",
             hash_str("hi"),
@@ -372,9 +370,8 @@ fn prepared_run_caches_per_authoring_hash_only() {
         )
         .unwrap()
         .unbounded;
-    let r2 = reuse
+    let r2 = text
         .prepare_run(
-            &m,
             identity(wid, h2),
             "hi",
             hash_str("hi"),
@@ -395,9 +392,8 @@ fn prepared_run_caches_per_authoring_hash_only() {
     );
     // Re-querying the original hash after refreshing the single identity
     // row must recover the original 16 px measurement.
-    let r1_again = reuse
+    let r1_again = text
         .prepare_run(
-            &m,
             identity(wid, h1),
             "hi",
             hash_str("hi"),
@@ -417,8 +413,7 @@ fn prepared_run_caches_per_authoring_hash_only() {
 
 #[test]
 fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
-    let m = TextShaper::default();
-    let mut reuse = TextReuseCache::default();
+    let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
     let params = ShapeParams {
         font_size_px: 16.0,
@@ -429,14 +424,8 @@ fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
         halign: HAlign::Auto,
     };
 
-    let old = reuse
-        .prepare_run(
-            &m,
-            identity(wid, ContentHash(1)),
-            "hi",
-            hash_str("hi"),
-            params,
-        )
+    let old = text
+        .prepare_run(identity(wid, ContentHash(1)), "hi", hash_str("hi"), params)
         .unwrap();
     assert_eq!(old.unbounded.size, Size::new(16.0, 16.0));
     assert_eq!(
@@ -446,9 +435,8 @@ fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
         Size::new(16.0, 16.0),
     );
 
-    let current = reuse
+    let current = text
         .prepare_run(
-            &m,
             identity(wid, ContentHash(2)),
             "abcdefgh",
             hash_str("abcdefgh"),
@@ -942,7 +930,7 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
         .into_iter()
         .enumerate()
     {
-        let mut reuse = TextReuseCache::default();
+        let mut text = TextSystem::new(shaper.clone());
         let widget_id = WidgetId::from_hash(("invalid metrics", index));
         let identity = identity(widget_id, ContentHash(index as u64));
         let invalid_metrics = ShapeParams {
@@ -955,12 +943,12 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
         };
         let calls = shaper.measure_calls();
 
-        let error = reuse
-            .prepare_run(&shaper, identity, "hi", 1, invalid_metrics)
+        let error = text
+            .prepare_run(identity, "hi", 1, invalid_metrics)
             .unwrap_err();
         assert_eq!(error, ShapeParamsError::InvalidFontSize, "fit={fit:?}",);
         assert!(
-            !reuse.has_entry(widget_id, 0),
+            !text.has_entry(widget_id, 0),
             "fit={fit:?}: invalid metrics entered the reuse cache",
         );
         assert_eq!(
@@ -969,9 +957,8 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
             "fit={fit:?}: invalid metrics reached a shaping dispatch",
         );
 
-        let prepared = reuse
+        let prepared = text
             .prepare_run(
-                &shaper,
                 identity,
                 "hi",
                 1,
@@ -1235,7 +1222,7 @@ fn cache_key_collapses_halign_when_unbounded() {
 #[test]
 fn prepared_bounded_cache_keys_width_and_halign() {
     let m = TextShaper::with_bundled_fonts();
-    let mut reuse = TextReuseCache::default();
+    let mut text = TextSystem::new(m.clone());
     let wid = WidgetId::from_hash("w");
     let hash = ContentHash(7);
     let params = ShapeParams {
@@ -1246,21 +1233,18 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    reuse
-        .prepare_run(&m, identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
         .unwrap();
     let baseline = m.measure_calls();
 
-    reuse
-        .prepare_run(&m, identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
         .unwrap()
         .shape_bounded(200.0, HAlign::Left, LineFit::Wrap)
         .unwrap();
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
 
-    reuse
-        .prepare_run(&m, identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
         .unwrap()
         .shape_bounded(200.0, HAlign::Left, LineFit::Wrap)
         .unwrap();
@@ -1270,8 +1254,7 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         "identical wrap call must hit cache"
     );
 
-    reuse
-        .prepare_run(&m, identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
         .unwrap()
         .shape_bounded(200.0, HAlign::Right, LineFit::Wrap)
         .unwrap();
@@ -1281,8 +1264,7 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         "halign change at same target must bust wrap reuse",
     );
 
-    reuse
-        .prepare_run(&m, identity(wid, hash), "hi", hash_str("hi"), params)
+    text.prepare_run(identity(wid, hash), "hi", hash_str("hi"), params)
         .unwrap()
         .shape_bounded(201.0, HAlign::Right, LineFit::Wrap)
         .unwrap();
@@ -1294,54 +1276,46 @@ fn prepared_bounded_cache_keys_width_and_halign() {
 }
 
 #[test]
-fn sweep_removed_evicts_reuse_entries() {
-    // `LayoutEngine::sweep_removed` calls this with the per-window removed
-    // set. Pin: removed ids vanish while surviving ids stay.
-    let m = TextShaper::default();
-    let mut reuse = TextReuseCache::default();
+fn end_frame_evicts_removed_reuse_entries() {
+    let mut text = TextSystem::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    reuse
-        .prepare_run(
-            &m,
-            identity(a, ContentHash(1)),
-            "hi",
-            hash_str("hi"),
-            ShapeParams {
-                font_size_px: 16.0,
-                line_height_px: 16.0,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        )
-        .unwrap();
-    reuse
-        .prepare_run(
-            &m,
-            identity(b, ContentHash(2)),
-            "yo",
-            hash_str("yo"),
-            ShapeParams {
-                font_size_px: 16.0,
-                line_height_px: 16.0,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        )
-        .unwrap();
-    assert!(reuse.has_entry(a, 0));
-    assert!(reuse.has_entry(b, 0));
+    text.prepare_run(
+        identity(a, ContentHash(1)),
+        "hi",
+        hash_str("hi"),
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+    )
+    .unwrap();
+    text.prepare_run(
+        identity(b, ContentHash(2)),
+        "yo",
+        hash_str("yo"),
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+    )
+    .unwrap();
+    assert!(text.has_entry(a, 0));
+    assert!(text.has_entry(b, 0));
     let removed: FxHashSet<WidgetId> = FxHashSet::from_iter([a]);
-    reuse.sweep_removed(&removed);
-    assert!(!reuse.has_entry(a, 0), "removed widget's entry evicted");
-    assert!(reuse.has_entry(b, 0), "surviving widget's entry kept");
-    // Empty removed set is a no-op (early return path).
-    reuse.sweep_removed(&FxHashSet::default());
-    assert!(reuse.has_entry(b, 0));
+    text.end_frame(&removed);
+    assert!(!text.has_entry(a, 0), "removed widget's entry evicted");
+    assert!(text.has_entry(b, 0), "surviving widget's entry kept");
+    text.end_frame(&FxHashSet::default());
+    assert!(text.has_entry(b, 0));
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands

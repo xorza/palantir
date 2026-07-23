@@ -84,10 +84,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 
     let payloads = ui.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
-    let tc = TextCtx {
-        bytes: &text_bytes,
-        shaper: &ui.resources.text,
-    };
+    let tc = TextCtx { bytes: &text_bytes };
     let v = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         child,
@@ -169,10 +166,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         root,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &ui.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     drop(text_bytes);
     drop(payloads);
@@ -278,10 +272,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
 
     let payloads = ui.forest.record_store.payloads.borrow();
     let text_bytes = payloads.text_bytes();
-    let tc = TextCtx {
-        bytes: &text_bytes,
-        shaper: &ui.resources.text,
-    };
+    let tc = TextCtx { bytes: &text_bytes };
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
