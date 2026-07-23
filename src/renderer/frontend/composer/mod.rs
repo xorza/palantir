@@ -601,9 +601,9 @@ impl Composer {
                         continue;
                     }
                     self.quad_forces_flush(quad_urect, out);
-                    let world_radius = p.corners.scaled_by(current_transform.scale);
-                    let phys_radius = world_radius.scaled_by(scale);
-                    let stroke_width_phys = p.stroke_width * current_transform.scale * scale;
+                    let phys_scale = current_transform.scale * scale;
+                    let phys_radius = p.corners.scaled_by(phys_scale);
+                    let stroke_width_phys = p.stroke_width * phys_scale;
                     // Fragment fast path: a solid, sharp, stroke-less
                     // quad whose physical rect is pixel-aligned
                     // rasterizes only interior fragments (SDF coverage
@@ -661,11 +661,11 @@ impl Composer {
                         continue;
                     }
                     self.quad_forces_flush(quad_urect, out);
-                    let world_radius = p.corners.scaled_by(current_transform.scale);
-                    let phys_radius = world_radius.scaled_by(scale);
+                    let phys_scale = current_transform.scale * scale;
+                    let phys_radius = p.corners.scaled_by(phys_scale);
                     // Live shadow parameters are logical-px scalars; scale
                     // them so the shader's `local` coords line up.
-                    let fill_axis = p.fill_axis.scaled(current_transform.scale * scale);
+                    let fill_axis = p.fill_axis.scaled(phys_scale);
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.color,
