@@ -17,6 +17,7 @@ use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
     LayerLayout, Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
 };
+use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
@@ -155,7 +156,7 @@ const WRAP_QUANTUM_PX_INV: f32 = 1.0;
 
 #[inline]
 fn quantize_wrap_target(v: f32) -> u32 {
-    (v.max(0.0) * WRAP_QUANTUM_PX_INV).round() as u32
+    (v.max(0.0) * WRAP_QUANTUM_PX_INV).fast_round() as u32
 }
 
 /// Splat every per-subtree side-state column carried by `arenas` back

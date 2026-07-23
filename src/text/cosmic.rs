@@ -23,6 +23,7 @@
 
 use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
+use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::text::{
     FontFamily, FontWeight, LineFit, ShapeParams, TextCacheKey, TextMeasurement,
@@ -54,7 +55,7 @@ pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
 const RECYCLE_POOL_CAP: usize = 128;
 
 fn quantize_width(v: f32) -> u32 {
-    (v.max(0.0) * 64.0).round() as u32
+    (v.max(0.0) * 64.0).fast_round() as u32
 }
 
 fn quantize_metric(v: f32) -> u32 {

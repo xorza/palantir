@@ -62,16 +62,16 @@ impl WidgetId {
         Self(if h == 0 { 1 } else { h })
     }
 
-    /// Stable across frames as long as the call site is unchanged. Const so
-    /// the compiler folds the FNV-1a hash to a `u64` literal at every
-    /// `Foo::new()` call site — widget construction is a single `mov` rather
-    /// than a hasher run.
+    /// Stable across frames as long as the call site is unchanged.
     ///
-    /// Hashes via FNV-1a (not the FxHasher used by [`Self::from_hash`]). The
-    /// two hash spaces never alias in practice — auto ids derive from
-    /// `(file, line, column)` triples that no sensible explicit key would
-    /// match — so we accept the small smell of two functions for the
-    /// const-fold win on the hot path.
+    /// Hashes the caller's `(file, line, column)` through `FxHasher`.
+    /// `Location::caller()` resolves at *runtime*, so this runs on every
+    /// widget constructor call — with a byte-serial FNV-1a over the file
+    /// path it was the single largest record-pass cost in the frame
+    /// profile (~90% of `Button::new` self-time); FxHasher walks the
+    /// path a word at a time. The [`Self::from_hash`] space can't alias
+    /// this one: `str`'s `Hash` impl appends a `0xff` terminator that the
+    /// raw byte-slice write here never produces.
     ///
     /// Repeated calls from the same source location (a loop or a closure
     /// helper) all produce the same id; `Ui::node` silently disambiguates by
@@ -79,37 +79,43 @@ impl WidgetId {
     /// [`crate::scene::node::Configure::id_salt`] when call order isn't
     /// stable across frames.
     #[track_caller]
-    pub const fn auto_stable() -> Self {
+    pub fn auto_stable() -> Self {
         let l = Location::caller();
-        let mut h: u64 = FNV_OFFSET;
-        h = fnv1a_extend_str(h, l.file());
-        h = fnv1a_extend_u32(h, l.line());
-        h = fnv1a_extend_u32(h, l.column());
-        Self::nonzero(h)
+        let mut hasher = FxHasher::default();
+        hasher.write(l.file().as_bytes());
+        hasher.write_u32(l.line());
+        hasher.write_u32(l.column());
+        Self::nonzero(hasher.finish())
     }
 }
 
-const FNV_OFFSET: u64 = 0xcbf29ce484222325;
-const FNV_PRIME: u64 = 0x100000001b3;
+#[cfg(test)]
+mod tests {
+    use crate::primitives::widget_id::WidgetId;
+    use rustc_hash::FxHasher;
+    use std::hash::Hasher;
 
-const fn fnv1a_extend_str(mut h: u64, s: &str) -> u64 {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        h ^= bytes[i] as u64;
-        h = h.wrapping_mul(FNV_PRIME);
-        i += 1;
+    /// Both calls resolve to the *same* caller location, letting the test
+    /// below rebuild the exact hash `auto_stable` must produce.
+    #[track_caller]
+    fn id_and_loc() -> (WidgetId, &'static std::panic::Location<'static>) {
+        (WidgetId::auto_stable(), std::panic::Location::caller())
     }
-    h
-}
 
-const fn fnv1a_extend_u32(mut h: u64, v: u32) -> u64 {
-    let bytes = v.to_le_bytes();
-    let mut i = 0;
-    while i < 4 {
-        h ^= bytes[i] as u64;
-        h = h.wrapping_mul(FNV_PRIME);
-        i += 1;
+    #[test]
+    fn auto_stable_hashes_location_via_fx() {
+        let (id, l) = id_and_loc();
+        let mut hasher = FxHasher::default();
+        hasher.write(l.file().as_bytes());
+        hasher.write_u32(l.line());
+        hasher.write_u32(l.column());
+        let h = hasher.finish();
+        assert_eq!(id, WidgetId(if h == 0 { 1 } else { h }));
+
+        // Same call site (loop) → identical ids; a different call line →
+        // a different id.
+        let repeated: Vec<WidgetId> = (0..2).map(|_| id_and_loc().0).collect();
+        assert_eq!(repeated[0], repeated[1]);
+        assert_ne!(repeated[0], id);
     }
-    h
 }

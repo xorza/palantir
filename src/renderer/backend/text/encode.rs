@@ -23,6 +23,7 @@
 //! (`etagere::grow`), so no invalidation is needed there.
 
 use crate::primitives::color::ColorU8;
+use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextRun;
@@ -161,7 +162,7 @@ pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
     EncodedRunKey {
         key: EncodedKey {
             text: r.key,
-            scale_q: (scale * 65536.0).round() as u32,
+            scale_q: (scale * 65536.0).fast_round() as u32,
             area_color,
             bins: ((x_bin as u8) << 2) | (y_bin as u8),
         },
@@ -262,7 +263,7 @@ pub(crate) fn encode_batch<'a>(
                 culled = true;
                 break;
             }
-            let line_y_px = (run.line_y * scale).round() as i32;
+            let line_y_px = (run.line_y * scale).fast_round() as i32;
             for glyph in run.glyphs.iter() {
                 let physical = glyph.physical((origin.x, origin.y), scale);
 
