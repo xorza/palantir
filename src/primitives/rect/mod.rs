@@ -215,7 +215,7 @@ impl Rect {
     /// width/height from rounded edges (not from `size * scale`) to avoid
     /// creeping width drift across rows of identical rects.
     #[inline]
-    pub const fn scaled_by(&self, scale: f32, snap: bool) -> Self {
+    pub fn scaled_by(&self, scale: f32, snap: bool) -> Self {
         // Scalar lanes because glam's `Vec2` ops aren't `const fn`.
         let m = self.max();
         let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);

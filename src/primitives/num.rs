@@ -14,7 +14,7 @@ pub(crate) trait F32Ext {
     /// minus the libm call. NaN reports `false` like the equality it
     /// replaces; magnitudes ≥ 2^63 (unreachable for pixel coordinates)
     /// report `false`, which only forgoes a fast path.
-    fn is_integral(self) -> bool;
+    fn is_integral(&self) -> bool;
 }
 
 impl F32Ext for f32 {
@@ -23,23 +23,22 @@ impl F32Ext for f32 {
         if !(-8_388_608.0 < self && self < 8_388_608.0) {
             return self;
         }
-        // Exact: |x| < 2^23 fits i32, and `x - trunc(x)` is a multiple of
-        // `ulp(x)` below 1.0, so the subtraction introduces no error. The
-        // int cast drops the sign of `-0.x` truncations; OR it back in.
-        let t = f32::from_bits(((self as i32 as f32).to_bits()) | (self.to_bits() & 0x8000_0000));
-        let d = self - t;
-        if d >= 0.5 {
-            t + 1.0
-        } else if d <= -0.5 {
-            t - 1.0
-        } else {
-            t
-        }
+        // Work on |x| so one compare covers both signs and LLVM keeps it
+        // branchless (a two-sided `d >= 0.5 / d <= -0.5` chain lowers to
+        // real branches that mispredict on arbitrary fractions — ~4x
+        // slower measured). Exact: |x| < 2^23 fits i32, and `ax - t` is
+        // a multiple of `ulp(ax)` below 1.0, so the subtraction is
+        // error-free. The final sign OR restores `-0.0` for inputs in
+        // `(-0.5, -0.0]`.
+        let ax = f32::from_bits(self.to_bits() & 0x7fff_ffff);
+        let t = ax as i32 as f32;
+        let inc = if ax - t >= 0.5 { 1.0 } else { 0.0 };
+        f32::from_bits((t + inc).to_bits() | (self.to_bits() & 0x8000_0000))
     }
 
     #[inline]
-    fn is_integral(self) -> bool {
-        self == (self as i64 as f32)
+    fn is_integral(&self) -> bool {
+        *self == (*self as i64 as f32)
     }
 }
 
