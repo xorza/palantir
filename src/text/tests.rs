@@ -625,7 +625,10 @@ fn selection_rects_empty_range_is_noop() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        |layout| layout.selection_rects(5..5, &mut out),
+        |layout| {
+            assert_eq!(layout.text_hash, hash_str("hello"));
+            layout.selection_rects(5..5, &mut out);
+        },
     )
     .unwrap();
     assert!(

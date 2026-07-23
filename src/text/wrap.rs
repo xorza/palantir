@@ -1,3 +1,11 @@
+use crate::primitives::num::F32Ext;
+
+/// Canonical width used by layout-time shaping and direct widget probes.
+#[inline]
+pub(crate) fn canonical_wrap_width(width: f32) -> f32 {
+    width.max(0.0).fast_round()
+}
+
 /// Text shaping and overflow policy.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
