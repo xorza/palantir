@@ -134,6 +134,38 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
 }
 
 #[test]
+fn ui_keyboard_capture_scope_retains_or_releases_its_candidate() {
+    let mut ui = Ui::for_test();
+    ui.input.focused = Some(WidgetId::from_hash("editor"));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Escape,
+        repeat: false,
+        physical: Key::Escape,
+    });
+    let event = ui.keyboard_events()[0];
+    let owner = WidgetId::from_hash("popup");
+    let shortcut = Shortcut::key(Key::Escape);
+
+    let result = ui.with_keyboard_capture(owner, |ui, capture| {
+        assert!(ui.keyboard_events().is_empty());
+        assert_eq!(capture.keyboard_events(ui), &[event]);
+        assert!(capture.key_pressed(ui, shortcut));
+        "captured"
+    });
+    assert_eq!(result, "captured");
+    ui.input.finish_record();
+    assert!(ui.keyboard_events().is_empty());
+
+    ui.input.begin_record();
+    ui.with_keyboard_capture(owner, |ui, capture| {
+        assert_eq!(capture.keyboard_events(ui), &[event]);
+        capture.release();
+    });
+    ui.input.finish_record();
+    assert_eq!(ui.keyboard_events(), &[event]);
+}
+
+#[test]
 fn focus_policy_routing() {
     use crate::FocusPolicy;
     use crate::Ui;

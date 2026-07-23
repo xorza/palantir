@@ -30,28 +30,27 @@ pub(crate) fn show(
     multiline: bool,
     max_chars: Option<usize>,
 ) -> MenuResult {
-    let keyboard_owner = ContextMenu::body_id(id);
-    let keyboard_event_count = ui.input.captured_keyboard_events(keyboard_owner).len();
     let mut result = MenuResult::default();
-    for index in 0..keyboard_event_count {
-        let event = ui.input.captured_keyboard_events(keyboard_owner)[index];
-        let KeyboardEvent::Down(keypress) = event else {
-            continue;
-        };
-        if let Some(action) = EditAction::from_keypress(keypress) {
-            result.include(execute_action(ui, id, text, multiline, max_chars, action));
-            if EditAction::MENU.iter().any(|item| item.action == action) {
-                ContextMenu::close(ui, id);
-            }
-        }
-    }
-
-    let has_selection = ui
-        .try_state::<TextEditState>(id)
-        .is_some_and(|state| state.edit.sel_range().is_some());
-    let has_text = !text.is_empty();
     let mut clicked_action = None;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
+        let keyboard_event_count = popup.keyboard_events(ui).len();
+        for index in 0..keyboard_event_count {
+            let event = popup.keyboard_events(ui)[index];
+            let KeyboardEvent::Down(keypress) = event else {
+                continue;
+            };
+            if let Some(action) = EditAction::from_keypress(keypress) {
+                result.include(execute_action(ui, id, text, multiline, max_chars, action));
+                if EditAction::MENU.iter().any(|item| item.action == action) {
+                    popup.close();
+                }
+            }
+        }
+
+        let has_selection = ui
+            .try_state::<TextEditState>(id)
+            .is_some_and(|state| state.edit.sel_range().is_some());
+        let has_text = !text.is_empty();
         for item in EditAction::MENU {
             if item.separator_before {
                 MenuItem::separator(ui);
