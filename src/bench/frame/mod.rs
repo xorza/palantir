@@ -330,7 +330,7 @@ fn assert_partial_invariant() {
         state.tick = state.tick.wrapping_add(1);
     }
     let report =
-        h.ui.record_test_frame_without_baseline(display, h.start.elapsed(), |ui| {
+        h.ui.record_test_frame(display, h.start.elapsed(), |ui| {
             build_ui(&mut state, BENCH_SCALE, ui)
         });
     assert_eq!(
