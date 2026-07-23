@@ -111,10 +111,6 @@ impl LayoutScratch {
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `active_layer` — which layer's slot the recursive measure/arrange
-///   currently writes to. Set at the top of each iteration in `run`;
-///   between/outside `run` invocations its value is whatever the last
-///   iteration left, but no recursive code runs there to read it.
 /// - `scroll_states` — cross-frame `WidgetId → ScrollLayoutState` for
 ///   every scroll widget (see the field doc below).
 /// - `text_reuse` — per-window widget-identity shaping cache.
@@ -122,14 +118,13 @@ impl LayoutScratch {
 ///   `src/layout/measure-cache.md`.
 ///
 /// Per-frame *output* is **not** held here: `run` threads it through an
-/// `out: &mut Layout` (one [`LayerLayout`] slot per `Layer`, written via
-/// `out[self.active_layer]`), so the finalized layout is owned by the
-/// caller and read by the encoder, cascade, hit-index, scroll-state
-/// refresh, and tests.
+/// `out: &mut Layout`, so the finalized layout is owned by the caller
+/// and read by the encoder, cascade, hit-index, scroll-state refresh,
+/// and tests. Recursive work receives only the current [`LayerLayout`]
+/// slot.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
-    pub(crate) active_layer: Layer,
     cache_rebuild: bool,
     /// Cross-frame `WidgetId → ScrollLayoutState` for every scroll
     /// widget. Owned here (not in `StateMap`) because the contents
@@ -486,9 +481,8 @@ impl LayoutEngine {
 
     /// Run measure + arrange for every root in every layer's tree
     /// against `surface` (the viewport rect). Iterates trees in
-    /// `Layer::PAINT_ORDER`; each tree's output lands in
-    /// `self.result[layer]` directly. Recursive measure/arrange reads
-    /// the active slot via `self.active_layer`.
+    /// `Layer::PAINT_ORDER`; each tree's recursive work receives only
+    /// that layer's output slot.
     #[profiling::function]
     pub(crate) fn run(
         &mut self,
@@ -513,8 +507,8 @@ impl LayoutEngine {
         }
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
-            self.active_layer = layer;
-            out[layer].resize_for(tree);
+            let layer_out = &mut out[layer];
+            layer_out.resize_for(tree);
             if tree.records.is_empty() {
                 continue;
             }
@@ -526,7 +520,7 @@ impl LayoutEngine {
                 } else {
                     slot.placement.available(surface)
                 };
-                let desired = self.measure(tree, root, available, tc, out);
+                let desired = self.measure(tree, root, available, tc, layer_out);
                 let root_layout = tree.records.layout()[root.idx()];
                 let bounds = tree.bounds(root);
                 let size = Size::new(
@@ -560,7 +554,7 @@ impl LayoutEngine {
                 // sensible default for any driver that reads
                 // `parent_outer` (today only scroll, when mounted as
                 // root with no wrapper ZStack).
-                self.arrange(tree, root, size, Rect { min: origin, size }, out);
+                self.arrange(tree, root, size, Rect { min: origin, size }, layer_out);
             }
             if self.cache_rebuild {
                 self.cache.capture_tree(
@@ -570,8 +564,8 @@ impl LayoutEngine {
                         intrinsics: &self.scratch.intrinsics,
                         available_q: &mut self.scratch.available_q,
                         grid_hugs: &self.scratch.grid.hugs,
-                        text_spans: &out[layer].text_spans,
-                        text_shapes: &out[layer].text_shapes,
+                        text_spans: &layer_out.text_spans,
+                        text_shapes: &layer_out.text_shapes,
                     },
                 );
             }
@@ -583,15 +577,14 @@ impl LayoutEngine {
                     continue;
                 }
                 let node = NodeId(index as u32);
-                let available_w =
-                    (out[self.active_layer].rect[index].size.w - layout.padding.horiz()).max(0.0);
+                let available_w = (layer_out.rect[index].size.w - layout.padding.horiz()).max(0.0);
                 self.shape_text_runs(
                     tree,
                     node,
                     available_w,
                     tc.shaper,
                     container_text_shapes(tree, tc, node),
-                    out,
+                    layer_out,
                 );
             }
         }
@@ -613,7 +606,7 @@ impl LayoutEngine {
         node: NodeId,
         available: Size,
         tc: &TextCtx<'_>,
-        out: &mut Layout,
+        out: &mut LayerLayout,
     ) -> Size {
         let layout = tree.records.layout()[node.idx()];
         let available_q = quantize_available(available);
@@ -648,7 +641,7 @@ impl LayoutEngine {
                     tree,
                     curr_start..curr_end,
                     &hit,
-                    &mut out[self.active_layer],
+                    out,
                     self.cache_rebuild,
                 );
                 return hit.root;
@@ -750,7 +743,7 @@ impl LayoutEngine {
         layout: LayoutCore,
         inner_avail: Size,
         tc: &TextCtx<'_>,
-        out: &mut Layout,
+        out: &mut LayerLayout,
     ) -> Size {
         match LayoutMode::from(layout.meta) {
             LayoutMode::Leaf => self.shape_text_runs(
@@ -793,17 +786,17 @@ impl LayoutEngine {
         node: NodeId,
         parent_outer: Size,
         slot: Rect,
-        out: &mut Layout,
+        out: &mut LayerLayout,
     ) {
         let layout = tree.records.layout()[node.idx()];
         if layout.meta.visibility().is_collapsed() {
-            zero_subtree(self, tree, node, slot.min, out);
+            zero_subtree(tree, node, slot.min, out);
             return;
         }
         let mode = LayoutMode::from(layout.meta);
 
         let rendered = slot.deflated_by(layout.margin);
-        out[self.active_layer].rect[node.idx()] = rendered;
+        out.rect[node.idx()] = rendered;
         let inner = rendered.deflated_by(layout.padding);
 
         match mode {
@@ -830,16 +823,16 @@ impl LayoutEngine {
         available_w: f32,
         text: &TextShaper,
         runs: impl Iterator<Item = TextShapeInput<'a>>,
-        out: &mut Layout,
+        out: &mut LayerLayout,
     ) -> Size {
-        let span_start = out[self.active_layer].text_shapes.len() as u32;
+        let span_start = out.text_shapes.len() as u32;
         let mut s = Size::ZERO;
         for ts in runs {
             let m = self.shape_text(tree, node, &ts, available_w, text, out);
             s = s.max(m);
         }
-        let span_len = out[self.active_layer].text_shapes.len() as u32 - span_start;
-        out[self.active_layer].text_spans[node.idx()] = Span {
+        let span_len = out.text_shapes.len() as u32 - span_start;
+        out.text_spans[node.idx()] = Span {
             start: span_start,
             len: span_len,
         };
@@ -853,7 +846,7 @@ impl LayoutEngine {
         ts: &TextShapeInput<'_>,
         available_w: f32,
         text: &TextShaper,
-        out: &mut Layout,
+        out: &mut LayerLayout,
     ) -> Size {
         let wid = tree.records.widget_id()[node.idx()];
         let curr_hash = tree.rollups.node[node.idx()];
@@ -932,7 +925,7 @@ impl LayoutEngine {
             unbounded
         };
 
-        out[self.active_layer].text_shapes.push(ShapedText {
+        out.text_shapes.push(ShapedText {
             measured: result.size,
             key: result.key,
         });

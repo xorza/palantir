@@ -1,4 +1,4 @@
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
@@ -44,7 +44,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     measure_per_axis_hug(layout, tree, node, inner_avail, tc, out, |_, _, d| d)
 }
@@ -59,15 +59,15 @@ pub(crate) fn arrange(
     tree: &Tree,
     node: NodeId,
     inner: Rect,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let parent_child_align = tree.panel(node).child_align;
     let layouts = tree.records.layout();
-    let self_outer = out[layout.active_layer].rect[node.idx()].size;
+    let self_outer = out.rect[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, inner.min, out);
+            zero_subtree(tree, c, inner.min, out);
             continue;
         }
         let i = c.idx();

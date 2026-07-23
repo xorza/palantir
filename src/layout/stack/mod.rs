@@ -1,4 +1,4 @@
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
@@ -160,7 +160,7 @@ pub(crate) fn measure(
     inner_avail: Size,
     axis: Axis,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) -> Size {
     let gap = tree.panel(node).gaps.gap();
     let cross_avail = axis.cross(inner_avail);
@@ -277,11 +277,11 @@ pub(crate) fn arrange(
     node: NodeId,
     inner: Rect,
     axis: Axis,
-    out: &mut Layout,
+    out: &mut LayerLayout,
 ) {
     let panel = tree.panel(node);
     let (gap, justify, parent_child_align) = (panel.gaps.gap(), panel.justify, panel.child_align);
-    let self_outer = out[layout.active_layer].rect[node.idx()].size;
+    let self_outer = out.rect[node.idx()].size;
 
     // WPF Stretch semantics: `Fill` (the Stretch hint) reports content
     // size at measure-time (so a Hug ancestor doesn't balloon to its
@@ -348,7 +348,7 @@ pub(crate) fn arrange(
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min), out);
+            zero_subtree(tree, c, axis.compose_point(cursor, cross_min), out);
             continue;
         }
         let i = c.idx();

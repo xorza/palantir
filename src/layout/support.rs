@@ -3,7 +3,7 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use crate::layout::Layout;
+use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
@@ -216,20 +216,14 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
 /// directly — no recursion, no child cursors.
-pub(crate) fn zero_subtree(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    anchor: Vec2,
-    out: &mut Layout,
-) {
+pub(crate) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut LayerLayout) {
     let zero = Rect {
         min: anchor,
         size: Size::ZERO,
     };
     let start = node.idx();
     let end = tree.subtree_end_of(start) as usize;
-    out[layout.active_layer].rect[start..end].fill(zero);
+    out.rect[start..end].fill(zero);
 }
 
 /// Max over non-collapsed children's outer intrinsic on `axis`. Used by
@@ -335,7 +329,7 @@ pub(crate) fn measure_per_axis_hug(
     node: NodeId,
     inner_avail: Size,
     tc: &TextCtx<'_>,
-    out: &mut Layout,
+    out: &mut LayerLayout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
     let node_layout = tree.records.layout()[node.idx()];

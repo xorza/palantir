@@ -4,15 +4,13 @@
 
 Aperture's record → measure → arrange → cascade → encode/compose → paint pipeline is coherent and deliberately optimized for stable-frame reuse. The review did not find evidence that the core architecture or its major rendering and text dependencies are fundamentally unsound.
 
-The highest-impact findings are concentrated at subsystem seams. Several APIs still permit ambiguous or internally inconsistent states through parallel fields and sentinel values. Persistent owners also retain transient layout context or widget interaction state across subsystem boundaries.
+The highest-impact findings are concentrated at subsystem seams. Several APIs still permit ambiguous or internally inconsistent states through parallel fields and sentinel values. Persistent owners also retain widget interaction state across subsystem boundaries.
 
 The remaining findings concern redundant retained data and repeated hot-path work, dead or unnecessarily broad API surface, module cycles and layering leaks, inconsistent widget conventions, and large functions or files that combine independently changing responsibilities. Dependency concerns are narrow: a few crates or features support very little production behavior, while the main rendering, shaping, allocation, and Unicode dependencies all have clear roles.
 
 Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measures and arranges it; `CascadesEngine` derives paint, clip, hit-test, and damage inputs; the renderer frontend encodes and composes commands; `WgpuBackend` uploads resources and submits passes. `InputState`, `TextShaper`, image resources, widget state, and scroll state persist beside that pipeline. Most findings concern ownership and contracts between those side stores and the passes that consume them.
 
 ## Batch 1 — High: Ownership and lifecycle contracts are misplaced
-
-- [ ] **`LayoutEngine::active_layer` retains transient ambient context on a persistent engine.** `run` changes the field per layer, while measure, arrange, cache restoration, text shaping, and subtree clearing accept the entire multi-layer output and index through the hidden current layer (`aperture/src/layout/engine.rs:109-141`, `aperture/src/layout/engine.rs:486-595`, `aperture/src/layout/engine.rs:609-700`, `aperture/src/layout/engine.rs:786-847`, `aperture/src/layout/support.rs:219-233`). Helpers can therefore mutate whichever layer happened to be selected most recently rather than expressing their target through their inputs.
 
 - [ ] **The layout engine owns and exposes widget interaction state.** `ScrollLayoutState` interleaves layout output (`viewport`, `outer`, `content`, `overflow`, `seen`) with interaction state (`offset`, `zoom`, `content_margin`, `drag_anchor`) and implements wheel, zoom, drag, and page behavior inside the layout module (`aperture/src/layout/scroll/mod.rs:36-95`, `aperture/src/layout/scroll/mod.rs:127-300`). Widgets directly mutate `layout_engine.scroll_states` (`aperture/src/widgets/scroll/mod.rs:619-705`), coupling widget input behavior to layout-engine persistence and exposing state across subsystem boundaries (`aperture/src/layout/engine.rs:129-141`).
 
