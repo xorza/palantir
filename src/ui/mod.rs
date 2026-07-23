@@ -1,6 +1,7 @@
 pub(crate) mod frame;
 pub(crate) mod frame_report;
 mod frame_stats;
+pub(crate) mod keyboard_capture;
 pub(crate) mod resources;
 pub(crate) mod state;
 
@@ -44,6 +45,7 @@ use crate::scene::damage::{Damage, DamageEngine, DamageInput};
 use crate::shape::Shape;
 use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
+use crate::ui::keyboard_capture::KeyboardCapture;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
 use crate::widgets::Widget;
@@ -495,6 +497,26 @@ impl Ui {
     /// scoped owner id.
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
         self.input.keyboard_events()
+    }
+
+    /// Register stable `owner` for exclusive keyboard input during
+    /// this record pass and run `body` with its scoped captured-input
+    /// handle. Call this every frame the owner is active. The candidate
+    /// remains registered after `body` returns so frame finalization
+    /// can commit the topmost owner; calling [`KeyboardCapture::release`]
+    /// withdraws it after the closure.
+    pub fn with_keyboard_capture<R>(
+        &mut self,
+        owner: WidgetId,
+        body: impl FnOnce(&mut Ui, &KeyboardCapture) -> R,
+    ) -> R {
+        self.input.capture_keyboard(owner);
+        let capture = KeyboardCapture::new(owner);
+        let result = body(self, &capture);
+        if capture.release_requested.get() {
+            self.input.release_keyboard_capture(owner);
+        }
+        result
     }
 
     /// `true` if any [`KeyboardEvent::Down`] this frame matches

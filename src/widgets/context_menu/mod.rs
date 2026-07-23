@@ -125,7 +125,7 @@ impl ContextMenu {
     pub fn show(
         self,
         ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &PopupHandle),
+        body: impl FnOnce(&mut Ui, &PopupHandle<'_>),
     ) -> ContextMenuResponse {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled `escape_pressed` here.
@@ -214,6 +214,7 @@ pub struct MenuItem<'a> {
     node: Node,
     label: TextInput<'a>,
     shortcut: Option<Shortcut>,
+    intercept_shortcut: bool,
 }
 
 impl<'a> MenuItem<'a> {
@@ -225,6 +226,7 @@ impl<'a> MenuItem<'a> {
             node,
             label: label.into(),
             shortcut: None,
+            intercept_shortcut: false,
         }
     }
 
@@ -235,6 +237,12 @@ impl<'a> MenuItem<'a> {
     /// `Shortcut::new(Mods::NONE, Key::Backspace)`.
     pub fn shortcut(mut self, s: Shortcut) -> Self {
         self.shortcut = Some(s);
+        self.intercept_shortcut = true;
+        self
+    }
+
+    pub(crate) fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
+        self.shortcut = Some(shortcut);
         self
     }
 
@@ -254,7 +262,7 @@ impl<'a> MenuItem<'a> {
             .show(ui)
     }
 
-    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
+    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle<'_>) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the state
         // is identical before and after the node records.
@@ -294,7 +302,14 @@ impl<'a> MenuItem<'a> {
         // keypress synthesizes a click and closes the menu. Resolved
         // before the node records so we don't pay for the label
         // resolution on rows with no shortcut.
-        let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.key_pressed(s));
+        let shortcut_fired = shortcut.is_some_and(|s| {
+            if self.intercept_shortcut {
+                !disabled && popup.key_pressed(ui, s)
+            } else {
+                ui.subscribe_key(s);
+                false
+            }
+        });
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));
 
         // Label + optional right-aligned shortcut hint as `Text` leaves;

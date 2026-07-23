@@ -126,6 +126,7 @@ pub use text::{
 };
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
+pub use ui::keyboard_capture::KeyboardCapture;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
