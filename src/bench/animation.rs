@@ -10,7 +10,7 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const ROWS: usize = 4096;
-const SLOT: AnimSlot = AnimSlot("bench");
+const SLOT: AnimSlot = AnimSlot::new("bench");
 
 #[derive(Clone, Copy, Debug)]
 enum Motion {

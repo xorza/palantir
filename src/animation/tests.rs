@@ -16,7 +16,23 @@ use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);
-const SLOT: AnimSlot = AnimSlot("test");
+const SLOT: AnimSlot = AnimSlot::new("test");
+
+/// Pins the `AnimSlot` identity contract: the cached hash is FNV-1a
+/// of the name bytes (checked against the published 64-bit test
+/// vectors), both construction routes agree, equality is by contents,
+/// and distinct names make distinct slots.
+#[test]
+fn anim_slot_hash_is_const_fnv1a_of_name() {
+    const A: AnimSlot = AnimSlot::new("a");
+    assert_eq!(A.hash, 0xaf63_dc4c_8601_ec8c);
+    assert_eq!(AnimSlot::new("foobar").hash, 0x8594_4171_f739_67e8);
+
+    let from: AnimSlot = "a".into();
+    assert_eq!(from, A, "From<&str> and const ctor must agree");
+    assert_eq!(from.hash, A.hash);
+    assert_ne!(AnimSlot::new("a"), AnimSlot::new("b"));
+}
 
 /// Process-global counter handed to `AnimMapTyped::tick` for tests
 /// that don't care about pass A/B semantics — every call gets a
@@ -837,15 +853,25 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     let mut map = AnimMap::default();
     let id = wid("a");
     let other = wid("b");
-    let _ =
-        map.typed_mut::<f32>()
-            .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016, next_frame());
-    let _ =
-        map.typed_mut::<f32>()
-            .tick(id, AnimSlot("b"), 2.0, AnimSpec::FAST, 0.016, next_frame());
+    let _ = map.typed_mut::<f32>().tick(
+        id,
+        AnimSlot::new("a"),
+        1.0,
+        AnimSpec::FAST,
+        0.016,
+        next_frame(),
+    );
+    let _ = map.typed_mut::<f32>().tick(
+        id,
+        AnimSlot::new("b"),
+        2.0,
+        AnimSpec::FAST,
+        0.016,
+        next_frame(),
+    );
     let _ = map.typed_mut::<Vec2>().tick(
         id,
-        AnimSlot("a"),
+        AnimSlot::new("a"),
         Vec2::ONE,
         AnimSpec::FAST,
         0.016,
@@ -853,7 +879,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     );
     let _ = map.typed_mut::<Color>().tick(
         id,
-        AnimSlot("a"),
+        AnimSlot::new("a"),
         Color::rgb(1.0, 0.0, 0.0),
         AnimSpec::FAST,
         0.016,
@@ -861,7 +887,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     );
     let _ = map.typed_mut::<f32>().tick(
         other,
-        AnimSlot("a"),
+        AnimSlot::new("a"),
         9.0,
         AnimSpec::FAST,
         0.016,
@@ -900,12 +926,22 @@ fn post_record_evicts_untouched_slots() {
 
     // Touch two slots, then run `post_record` to commit a "frame":
     // both rows survive, both `touched` flags clear.
-    let _ =
-        map.typed_mut::<f32>()
-            .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016, next_frame());
-    let _ =
-        map.typed_mut::<f32>()
-            .tick(id, AnimSlot("b"), 2.0, AnimSpec::FAST, 0.016, next_frame());
+    let _ = map.typed_mut::<f32>().tick(
+        id,
+        AnimSlot::new("a"),
+        1.0,
+        AnimSpec::FAST,
+        0.016,
+        next_frame(),
+    );
+    let _ = map.typed_mut::<f32>().tick(
+        id,
+        AnimSlot::new("b"),
+        2.0,
+        AnimSpec::FAST,
+        0.016,
+        next_frame(),
+    );
     map.sweep_removed(&empty);
     let count = |m: &mut AnimMap| m.try_typed_mut::<f32>().map_or(0, |t| t.rows.len());
     assert_eq!(
@@ -916,9 +952,14 @@ fn post_record_evicts_untouched_slots() {
 
     // Next frame: only poke slot 0. Slot 1 was never re-touched
     // after `post_record` cleared its flag, so it should drop.
-    let _ =
-        map.typed_mut::<f32>()
-            .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016, next_frame());
+    let _ = map.typed_mut::<f32>().tick(
+        id,
+        AnimSlot::new("a"),
+        1.0,
+        AnimSpec::FAST,
+        0.016,
+        next_frame(),
+    );
     map.sweep_removed(&empty);
     assert_eq!(
         count(&mut map),
@@ -928,9 +969,14 @@ fn post_record_evicts_untouched_slots() {
 
     // Re-poke slot 1 — first-touch path snaps to target. Confirms
     // dropped rows behave like any other never-seen `(id, slot)`.
-    let r =
-        map.typed_mut::<f32>()
-            .tick(id, AnimSlot("b"), 99.0, AnimSpec::FAST, 0.016, next_frame());
+    let r = map.typed_mut::<f32>().tick(
+        id,
+        AnimSlot::new("b"),
+        99.0,
+        AnimSpec::FAST,
+        0.016,
+        next_frame(),
+    );
     assert_eq!(r.current, 99.0);
     assert!(r.settled, "re-touch after eviction is a fresh first-touch");
 }

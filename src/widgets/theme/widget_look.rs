@@ -56,7 +56,7 @@ impl WidgetLook {
     /// per widget animates the whole resolved look (background + text)
     /// — halves `Ui::animate` call traffic compared to per-component
     /// slots.
-    const SLOT_LOOK: AnimSlot = AnimSlot("look");
+    const SLOT_LOOK: AnimSlot = AnimSlot::new("look");
 
     /// Resolve the look to flat animated values. `Background` (fill +
     /// stroke) animates as one slot; `TextStyle` (color animated,
