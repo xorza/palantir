@@ -21,7 +21,6 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
@@ -312,14 +311,6 @@ impl Default for CosmicMeasure {
 }
 
 impl CosmicMeasure {
-    pub(crate) fn measure_validated(
-        &mut self,
-        text: &str,
-        params: ValidatedShapeParams,
-    ) -> TextMeasurement {
-        self.measure_hashed_validated(text, hash_str(text), params)
-    }
-
     #[profiling::function]
     pub(crate) fn measure_hashed_validated(
         &mut self,
