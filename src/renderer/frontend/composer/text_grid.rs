@@ -4,7 +4,6 @@
 
 use crate::primitives::urect::URect;
 use glam::UVec2;
-use tinyvec::TinyVec;
 
 /// Physical-pixel size of one tile in [`TextRectGrid`]. Each text rect
 /// is registered into every tile it overlaps; each overlap query walks
@@ -14,21 +13,16 @@ use tinyvec::TinyVec;
 const TILE_SIZE: u32 = 64;
 const TILE_INDEX_CAPACITY: usize = u16::MAX as usize + 1;
 
-/// Per-tile inline capacity for the grid's index lists. Sized
-/// empirically from the `frame/resizing` workload (dense UI at 32×
-/// bench scale, viewport 3840×4800 phys px): observed max occupancy
-/// was **3**. `N = 8` keeps every tile fully inline with substantial
-/// headroom in any realistic UI — a 64-px tile holds 2-3 stacked
-/// labels in a typical column.
-///
-/// `TinyVec` rather than `ArrayVec` to keep pathological text-dense
-/// workloads (e.g. spreadsheet-grid layouts with tiny fonts and no
-/// padding) functional rather than panicking. Once a tile spills to
-/// the heap, its `clear()` between batches only resets `len`; the
-/// heap buffer is retained, so a one-time allocation amortizes across
-/// every subsequent frame. Steady-state alloc-free after warmup
-/// holds.
-type TileBucket = TinyVec<[u16; 8]>;
+/// Per-tile inline capacity. Sized empirically from the
+/// `frame/resizing` workload (dense UI at 32× bench scale, viewport
+/// 3840×4800 phys px): observed max occupancy was **3**. `8` gives
+/// substantial headroom in any realistic UI — a 64-px tile holds 2-3
+/// stacked labels in a typical column. A tile past capacity diverts to
+/// the shared [`TextRectGrid::spill`] list, so pathological text-dense
+/// workloads (spreadsheet grids with tiny fonts and no padding) stay
+/// functional — they degrade to a linear scan of the spilled indices
+/// rather than panicking.
+const TILE_CAP: usize = 8;
 
 /// Spatial index over the open batch's text-rect AABBs. Replaces a
 /// flat `Vec<URect>` linear scan that dominated compose time in
@@ -38,17 +32,30 @@ type TileBucket = TinyVec<[u16; 8]>;
 /// rect twice for rects spanning >1 tile — fine, we early-exit on
 /// first hit so duplicate visits cost only constant-factor false
 /// positives.
+///
+/// Tile storage is flat SoA (`lens` + fixed `slots` rows) rather than
+/// a `Vec<TinyVec>`: `push`/`any_overlap` are the composer's hottest
+/// per-text/per-quad loops, and the inline/heap tag dispatch TinyVec
+/// pays on every access profiled at ~2% of the frame on its own.
 #[derive(Debug, Default)]
 pub(crate) struct TextRectGrid {
     cols: u32,
     rows: u32,
-    /// Per-tile rect-index lists. Row-major: `tiles[ty * cols + tx]`.
-    /// The outer `Vec` is retained across batches; each inner
-    /// `TinyVec` is cleared (cheap, no dealloc) on [`Self::clear`].
-    tiles: Vec<TileBucket>,
-    /// Indices (into `tiles`) that received at least one `push` this
-    /// frame — the set we walk on [`Self::clear`] instead of the full
-    /// row-major grid. A tile is recorded the first time it
+    /// Per-tile occupancy (`0..=TILE_CAP`), row-major
+    /// `lens[ty * cols + tx]`. Parallel to `slots`. Reset per batch via
+    /// the `touched` walk.
+    lens: Vec<u8>,
+    /// Per-tile inline rect-index rows; only the first `lens[t]`
+    /// entries of `slots[t]` are live.
+    slots: Vec<[u16; TILE_CAP]>,
+    /// Rect indices whose tile row was full at push time. Checked
+    /// linearly (exact rect intersect, no tile pruning) by every query
+    /// while non-empty — correct because the tile walk is only an
+    /// acceleration structure; empty in any realistic workload.
+    spill: Vec<u16>,
+    /// Indices (into `lens`/`slots`) that received at least one `push`
+    /// this frame — the set we walk on [`Self::clear`] instead of the
+    /// full row-major grid. A tile is recorded the first time it
     /// transitions from empty to non-empty within a frame; subsequent
     /// pushes to the same tile skip the record. Capacity is retained
     /// across frames.
@@ -79,19 +86,19 @@ impl TextRectGrid {
         let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
         let want = (cols * rows) as usize;
         // Grow-only — never shrink. A smaller-viewport frame reuses
-        // the larger backing vector; tiles beyond the active grid
+        // the larger backing vectors; tiles beyond the active grid
         // never get touched because `push` clamps indices to
         // `cols - 1` / `rows - 1`. `touched` stores absolute indices
-        // into `tiles`, so `clear` works the same regardless of how
-        // `cols × rows` map onto positions inside the vec.
+        // into `lens`/`slots`, so `clear` works the same regardless of
+        // how `cols × rows` map onto positions inside the vecs.
         //
         // Profiling motivation: the resize-arm bench cycles through
-        // 4 different viewports per frame. With unconditional
-        // `tiles.clear()` + `resize_with(...)` the per-frame
-        // `drop_in_place` sweep over every old TinyVec dominated
-        // `Composer::compose` (~7% of the bench's CPU cycles).
-        if want > self.tiles.len() {
-            self.tiles.resize_with(want, TileBucket::default);
+        // 4 different viewports per frame; an unconditional clear +
+        // resize sweep over every tile dominated `Composer::compose`
+        // (~7% of the bench's CPU cycles in the Vec<TinyVec> era).
+        if want > self.lens.len() {
+            self.lens.resize(want, 0);
+            self.slots.resize(want, [0; TILE_CAP]);
         }
         self.cols = cols;
         self.rows = rows;
@@ -104,9 +111,10 @@ impl TextRectGrid {
     /// `~4500` on the full sweep.
     pub(crate) fn clear(&mut self) {
         for &i in &self.touched {
-            self.tiles[i as usize].clear();
+            self.lens[i as usize] = 0;
         }
         self.touched.clear();
+        self.spill.clear();
         self.rects.clear();
         self.union = URect::default();
     }
@@ -136,13 +144,17 @@ impl TextRectGrid {
             let row = ty * self.cols;
             for tx in cx0..=cx1 {
                 let tile_idx = (row + tx) as usize;
-                let tile = &mut self.tiles[tile_idx];
-                // First touch this frame? Track for the next `clear`
-                // so we don't have to walk the whole grid.
-                let was_empty = tile.is_empty();
-                tile.push(idx);
-                if was_empty {
-                    self.touched.push(tile_idx as u32);
+                let len = self.lens[tile_idx] as usize;
+                if len < TILE_CAP {
+                    self.slots[tile_idx][len] = idx;
+                    self.lens[tile_idx] = (len + 1) as u8;
+                    // First touch this frame? Track for the next
+                    // `clear` so we don't have to walk the whole grid.
+                    if len == 0 {
+                        self.touched.push(tile_idx as u32);
+                    }
+                } else {
+                    self.spill.push(idx);
                 }
             }
         }
@@ -168,12 +180,24 @@ impl TextRectGrid {
         for ty in cy0..=cy1 {
             let row = ty * self.cols;
             for tx in cx0..=cx1 {
-                for &i in self.tiles[(row + tx) as usize].iter() {
+                let t = (row + tx) as usize;
+                let n = self.lens[t] as usize;
+                for &i in &self.slots[t][..n] {
                     if self.rects[i as usize].intersect(q).is_some() {
                         return true;
                     }
                 }
             }
+        }
+        // Overflow paths (both empty in realistic workloads): rects
+        // whose tile row was full at push time, then rects past the
+        // u16 index space entirely.
+        if self
+            .spill
+            .iter()
+            .any(|&i| self.rects[i as usize].intersect(q).is_some())
+        {
+            return true;
         }
         self.rects[TILE_INDEX_CAPACITY.min(self.rects.len())..]
             .iter()
@@ -184,7 +208,9 @@ impl TextRectGrid {
 #[cfg(test)]
 mod tests {
     use crate::primitives::urect::URect;
-    use crate::renderer::frontend::composer::text_grid::{TILE_INDEX_CAPACITY, TextRectGrid};
+    use crate::renderer::frontend::composer::text_grid::{
+        TILE_CAP, TILE_INDEX_CAPACITY, TextRectGrid,
+    };
     use glam::UVec2;
 
     #[test]
@@ -246,11 +272,40 @@ mod tests {
         let overflow = URect::new(10, 10, 1, 1);
         g.push(overflow);
 
+        // First TILE_CAP pushes land inline; the rest of the u16 index
+        // space diverts to `spill`; the final rect exceeds the u16
+        // space entirely and only the linear tail sees it.
         assert_eq!(g.rects.len(), TILE_INDEX_CAPACITY + 1);
-        assert_eq!(g.tiles[0].len(), TILE_INDEX_CAPACITY);
+        assert_eq!(g.lens[0] as usize, TILE_CAP);
+        assert_eq!(g.spill.len(), TILE_INDEX_CAPACITY - TILE_CAP);
         assert!(g.any_overlap(indexed));
         assert!(g.any_overlap(overflow));
         assert!(!g.any_overlap(URect::new(20, 20, 1, 1)));
+    }
+
+    #[test]
+    fn text_grid_spill_hits_from_other_tiles_and_clears() {
+        // Fill one tile past TILE_CAP with rects that also span a
+        // second tile — the spilled copies must still be findable from
+        // any query position (spill is scanned tile-blind), and clear()
+        // must drop them.
+        let mut g = TextRectGrid::default();
+        g.start_frame(UVec2::new(256, 256));
+        // 10 rects all overlapping tiles (0,0) and (1,0): tile 0 holds
+        // TILE_CAP inline, 2 spill; tile 1 the same.
+        for i in 0..10u32 {
+            g.push(URect::new(60, i * 3, 8, 2));
+        }
+        assert_eq!(g.lens[0] as usize, TILE_CAP);
+        assert_eq!(g.spill.len(), 4, "2 spilled per spanned tile");
+        // The 9th rect (y=24..26) exists only in spill for both tiles;
+        // a query touching just it must still hit.
+        assert!(g.any_overlap(URect::new(60, 24, 1, 1)));
+        assert!(g.any_overlap(URect::new(66, 27, 1, 1)));
+        assert!(!g.any_overlap(URect::new(60, 40, 1, 1)));
+        g.clear();
+        assert!(!g.any_overlap(URect::new(60, 24, 1, 1)));
+        assert_eq!(g.spill.len(), 0);
     }
 
     #[test]
@@ -318,14 +373,15 @@ mod tests {
 
     #[test]
     fn text_grid_start_frame_is_grow_only() {
-        // Internal contract: shrinking the viewport doesn't free the tile
-        // vector — it stays sized to the high-water mark so the
+        // Internal contract: shrinking the viewport doesn't free the
+        // tile storage — it stays sized to the high-water mark so the
         // resize-arm benchmark (cycling between viewports) doesn't
-        // re-drop and re-allocate per-tile TinyVecs every frame.
+        // re-drop and re-allocate tile rows every frame.
         let mut g = TextRectGrid::default();
         g.start_frame(UVec2::new(2048, 2048));
-        let big = g.tiles.len();
+        let big = g.slots.len();
         g.start_frame(UVec2::new(256, 256));
-        assert_eq!(g.tiles.len(), big, "shrink must not deallocate tiles");
+        assert_eq!(g.slots.len(), big, "shrink must not deallocate tiles");
+        assert_eq!(g.lens.len(), big, "lens stays parallel to slots");
     }
 }
