@@ -181,14 +181,14 @@ debug = true
 opt-level = 3
 strip = "none"
 split-debuginfo = "off"
-lto = "thin"
+lto = "fat"
+codegen-units = 1
 
 [profile.release]
 debug = true
 opt-level = 3
 strip = "none"
 split-debuginfo = "off"
-lto = "thin"
 
 [profile.release-max]
 inherits = "release"
