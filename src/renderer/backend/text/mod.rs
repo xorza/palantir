@@ -27,14 +27,15 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
-use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
+use crate::text::{TextBufferRequest, TextShaper};
 use cosmic_text::SwashCache;
 
 use atlas::GlyphAtlas;
@@ -242,9 +243,9 @@ impl TextBackend {
         )
     }
 
-    /// Append-mode prepare. Looks up cosmic buffers via the shaper,
-    /// emits instances, optionally rebinds the atlas bind group if
-    /// it grew.
+    /// Append-mode prepare. Encoded-cache hits bypass shaping; misses restore
+    /// and borrow their cosmic buffers in one shaper transaction before
+    /// emitting instances. Rebinds the atlas bind group if it grew.
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
@@ -252,6 +253,7 @@ impl TextBackend {
         scale: f32,
         batch_idx: usize,
         runs: &[TextRun],
+        interned_text: &InternedText<'_>,
     ) {
         debug_assert_eq!(
             batch_idx,
@@ -262,8 +264,8 @@ impl TextBackend {
 
         // Pass 1: walk every run, emit encoded-cache hits straight to
         // `instances`, collect miss entries (carrying their already-
-        // computed key + origin so pass 2 doesn't re-derive). No
-        // `with_render_split` — an all-hit frame never cracks the
+        // computed key + origin so pass 2 doesn't re-derive). An
+        // all-hit frame never cracks the
         // RefCell or hits cosmic.
         self.misses.clear();
         let current_frame = self.atlas.current_frame;
@@ -299,7 +301,14 @@ impl TextBackend {
                 misses,
                 ..
             } = self;
-            shaper.with_render_split(|split| {
+            let requests = misses.iter().map(|miss| {
+                let run = &runs[miss.run_idx as usize];
+                TextBufferRequest {
+                    text: run.source.resolve(interned_text),
+                    key: run.key,
+                }
+            });
+            shaper.with_render_buffers(requests, |split| {
                 let RenderSplit {
                     font_system,
                     lookup,
@@ -309,7 +318,7 @@ impl TextBackend {
                     let r = &runs[m.run_idx as usize];
                     let buffer = lookup
                         .get(r.key)
-                        .expect("valid text key missing after frontend ensure");
+                        .expect("TextShaper did not prepare a requested render buffer");
                     ResolvedRun {
                         buffer,
                         origin: r.origin,
@@ -484,11 +493,13 @@ mod test_support {
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextRun;
+    use crate::scene::record_store::RecordStore;
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn make_inner_run(
+        store: &RecordStore,
         shaper: &TextShaper,
         text: &str,
         font_size_px: f32,
@@ -498,6 +509,7 @@ mod test_support {
         scale: f32,
         color: ColorU8,
     ) -> TextRun {
+        let source = store.record_text(store.intern_str(text)).source;
         let m = shaper
             .measure(
                 text,
@@ -515,6 +527,7 @@ mod test_support {
             key: m.key,
             origin,
             bounds: URect::new(0, 0, viewport.x, viewport.y),
+            source,
             color,
             scale,
         }
@@ -573,6 +586,7 @@ mod gpu_regression {
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::test_support::make_inner_run;
     use crate::renderer::render_buffer::text::TextRun;
+    use crate::scene::record_store::RecordStore;
     use crate::text::TextShaper;
     use glam::{UVec2, Vec2};
 
@@ -594,6 +608,7 @@ mod gpu_regression {
         device: &wgpu::Device,
         queue: &Queue,
         backend: &mut TextBackend,
+        store: &RecordStore,
         scale: f32,
         runs: &[TextRun],
     ) {
@@ -602,7 +617,9 @@ mod gpu_regression {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
-            backend.prepare_batch(&mut ctx, scale, 0, runs);
+            let payloads = store.payloads.borrow();
+            let interned_text = payloads.interned_text();
+            backend.prepare_batch(&mut ctx, scale, 0, runs, &interned_text);
             backend.flush(&mut ctx);
         }
         belt.finish_and_recall_on_submit(&encoder);
@@ -626,9 +643,11 @@ mod gpu_regression {
     fn cached_run_keeps_its_atlas_slots_live() {
         let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
+        let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let runs = [make_inner_run(
+            &store,
             &shaper,
             "File",
             14.0,
@@ -638,10 +657,26 @@ mod gpu_regression {
             1.0,
             ColorU8::rgba(240, 240, 240, 255),
         )];
+        shaper.evict_cosmic_buffers(0);
+        assert!(
+            !shaper.has_cosmic_buffer(runs[0].key),
+            "fixture must start with an evicted shaped buffer",
+        );
 
-        // Frame 1: encoded-cache miss → rasterize + cache. Slots get
-        // last_use == current_frame.
-        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
+        // Frame 1: both caches miss, so the backend reconstructs the shaped
+        // buffer before rasterizing and caching the encoded glyphs.
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            2.0,
+            &runs,
+        );
+        assert!(
+            shaper.has_cosmic_buffer(runs[0].key),
+            "an encoded-cache miss must restore its shaped buffer",
+        );
         let arena_after_warmup = backend.encoded_cache.arena.len();
         backend.post_record();
         assert!(
@@ -652,7 +687,16 @@ mod gpu_regression {
         // Frame 2: same run → encoded-cache hit (no cosmic walk, no new
         // rasterization). The hit must still bump every slot's
         // last_use to the now-current frame.
-        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
+        let shaper_borrow = shaper.inner.borrow_mut();
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            2.0,
+            &runs,
+        );
+        drop(shaper_borrow);
 
         let cf = backend.atlas.current_frame;
         let stale: Vec<u64> = backend
@@ -688,10 +732,12 @@ mod gpu_regression {
     fn slot_generation_invalidates_only_referencing_run() {
         let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
+        let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let runs = [
             make_inner_run(
+                &store,
                 &shaper,
                 "AAAA",
                 14.0,
@@ -702,6 +748,7 @@ mod gpu_regression {
                 ColorU8::rgba(240, 240, 240, 255),
             ),
             make_inner_run(
+                &store,
                 &shaper,
                 "ZZZZ",
                 14.0,
@@ -713,7 +760,14 @@ mod gpu_regression {
             ),
         ];
 
-        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            2.0,
+            &runs,
+        );
         assert_eq!(backend.encoded_cache.map.len(), 2);
         backend.post_record();
 
@@ -742,7 +796,14 @@ mod gpu_regression {
             .checked_add(1)
             .expect("test slot generation overflowed");
         let expected_generation = slot.generation;
-        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 2.0, &runs);
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            2.0,
+            &runs,
+        );
 
         assert_eq!(
             backend.encoded_cache.map[&stable_key].span, stable_span,
@@ -775,11 +836,13 @@ mod gpu_regression {
     fn deferred_upload_keeps_batches_distinct() {
         let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
+        let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let color_a = ColorU8::rgba(240, 240, 240, 255);
         let color_b = ColorU8::rgba(200, 100, 50, 255);
         let run_a = make_inner_run(
+            &store,
             &shaper,
             "File",
             14.0,
@@ -790,6 +853,7 @@ mod gpu_regression {
             color_a,
         );
         let run_b = make_inner_run(
+            &store,
             &shaper,
             "File",
             14.0,
@@ -807,8 +871,22 @@ mod gpu_regression {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
-            backend.prepare_batch(&mut ctx, 1.0, 0, std::slice::from_ref(&run_a));
-            backend.prepare_batch(&mut ctx, 1.0, 1, std::slice::from_ref(&run_b));
+            let payloads = store.payloads.borrow();
+            let interned_text = payloads.interned_text();
+            backend.prepare_batch(
+                &mut ctx,
+                1.0,
+                0,
+                std::slice::from_ref(&run_a),
+                &interned_text,
+            );
+            backend.prepare_batch(
+                &mut ctx,
+                1.0,
+                1,
+                std::slice::from_ref(&run_b),
+                &interned_text,
+            );
             backend.flush(&mut ctx);
         }
         belt.finish_and_recall_on_submit(&encoder);
@@ -845,11 +923,13 @@ mod gpu_regression {
     fn partially_culled_run_is_not_cached() {
         let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
+        let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         // Three 3-glyph lines at line_height 16 px, origin (0, 0):
         // line tops sit at 0 / 16 / 32.
         let mut run = make_inner_run(
+            &store,
             &shaper,
             "abc\ndef\nxyz",
             14.0,
@@ -870,6 +950,7 @@ mod gpu_regression {
             &gpu.lease.device,
             &gpu.queue,
             &mut backend,
+            &store,
             1.0,
             std::slice::from_ref(&run),
         );
@@ -890,6 +971,7 @@ mod gpu_regression {
             &gpu.lease.device,
             &gpu.queue,
             &mut backend,
+            &store,
             1.0,
             std::slice::from_ref(&run),
         );
@@ -905,6 +987,7 @@ mod gpu_regression {
             &gpu.lease.device,
             &gpu.queue,
             &mut backend,
+            &store,
             1.0,
             std::slice::from_ref(&run),
         );
@@ -919,6 +1002,7 @@ mod gpu_regression {
             &gpu.lease.device,
             &gpu.queue,
             &mut backend,
+            &store,
             1.0,
             std::slice::from_ref(&run),
         );
@@ -938,9 +1022,11 @@ mod gpu_regression {
     fn swept_empty_glyph_reinserts() {
         let gpu = test_gpu();
         let shaper = TextShaper::with_bundled_fonts();
+        let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
         let runs = [make_inner_run(
+            &store,
             &shaper,
             " ",
             14.0,
@@ -958,7 +1044,14 @@ mod gpu_regression {
                 .count()
         };
 
-        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 1.0, &runs);
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            1.0,
+            &runs,
+        );
         assert!(
             backend.instances.is_empty(),
             "whitespace prepares a text batch without drawable glyphs",
@@ -985,9 +1078,11 @@ mod gpu_regression {
             .lease
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let payloads = store.payloads.borrow();
+        let interned_text = payloads.interned_text();
         while backend.atlas.current_frame < 1024 {
             let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
-            backend.prepare_batch(&mut ctx, 1.0, 0, &[]);
+            backend.prepare_batch(&mut ctx, 1.0, 0, &[], &interned_text);
             backend.post_record();
         }
         assert_eq!(
@@ -999,7 +1094,14 @@ mod gpu_regression {
         // Re-encoding the same run re-inserts the empty entry (the
         // encoded cache was itself swept after 120 idle frames, so this
         // is a full walk through rasterize_and_insert → insert_unallocated).
-        run_one_frame(&gpu.lease.device, &gpu.queue, &mut backend, 1.0, &runs);
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            1.0,
+            &runs,
+        );
         assert_eq!(
             empties(&backend),
             1,

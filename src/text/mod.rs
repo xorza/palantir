@@ -4,8 +4,8 @@
 //!
 //! - [`CosmicMeasure`] — real shaping via `cosmic-text`, with a per-key
 //!   shaped-buffer cache. The wgpu backend reuses these `Buffer`s in its
-//!   text prepare/append path. The frontend reconstructs an evicted entry
-//!   from its retained text shape before emitting the compact cache key.
+//!   text prepare/append path. Each render run carries its record-local source
+//!   span so an encoded-cache miss can restore an evicted shaped buffer.
 //! - [`mono_measure`] — deterministic placeholder metric used when no
 //!   `CosmicMeasure` is installed. Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry
@@ -125,6 +125,13 @@ pub struct TextShaper {
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
+/// Source text paired with the shaped-buffer key the renderer requires.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TextBufferRequest<'a> {
+    pub(crate) text: &'a str,
+    pub(crate) key: TextCacheKey,
+}
+
 /// Per-window text coordinator. Identity reuse belongs to the window while
 /// shaped content buffers and the font system remain shared through
 /// [`TextShaper`].
@@ -171,7 +178,7 @@ pub(crate) struct TextRunIdentity {
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
 /// Both [`crate::Ui`] (layout-time measurement) and [`crate::WgpuBackend`]
 /// (shaping during render) borrow this; backend only touches `cosmic` via
-/// [`TextShaper::with_render_split`].
+/// [`TextShaper::with_render_buffers`].
 #[derive(Debug)]
 pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
@@ -185,9 +192,9 @@ pub(crate) struct ShaperInner {
     pub(crate) measure_calls: u64,
 }
 
-/// Max cosmic buffers retained after per-frame maintenance. Missing entries
-/// are restored from retained text shapes at encode, so the cache needs no
-/// separate live-layout allowance.
+/// Max cosmic buffers retained after per-frame maintenance. Backend misses
+/// restore entries from retained text sources, so the cache needs no separate
+/// live-layout allowance.
 const BUFFER_BUDGET: usize = 2048;
 
 pub(crate) const TEXT_METRICS_ERROR: &str =
@@ -541,32 +548,24 @@ impl TextShaper {
         self.inner.borrow_mut().end_frame();
     }
 
-    /// Ensure the shaped buffer referenced by an emitted text run exists.
-    /// The retained source text makes any LRU eviction recoverable here.
-    pub(crate) fn ensure_buffer(&self, text: &str, key: TextCacheKey) {
-        if key.is_invalid() {
-            return;
-        }
-        self.inner
-            .borrow_mut()
+    /// Restore every requested buffer, then lend the font system and buffer
+    /// lookup to the renderer under the same exclusive shaper borrow.
+    pub(crate) fn with_render_buffers<'a, R>(
+        &self,
+        requests: impl IntoIterator<Item = TextBufferRequest<'a>>,
+        body: impl FnOnce(RenderSplit<'_>) -> R,
+    ) -> R {
+        let mut inner = self.inner.borrow_mut();
+        let cosmic = inner
             .cosmic
             .as_mut()
-            .expect("valid TextCacheKey requires a cosmic text shaper")
-            .ensure_buffer(text, key);
-    }
-
-    /// Run `body` against a [`RenderSplit`] of the inner cosmic state
-    /// (`&mut FontSystem` + read-only buffer lookup). Returns `None`
-    /// when the shaper is mono (no cosmic to split). The borrow is
-    /// held for the closure's duration, so `body` must not re-enter
-    /// any `TextShaper` method on the same handle.
-    pub(crate) fn with_render_split<R>(
-        &self,
-        body: impl FnOnce(RenderSplit<'_>) -> R,
-    ) -> Option<R> {
-        let mut inner = self.inner.borrow_mut();
-        let cosmic = inner.cosmic.as_mut()?;
-        Some(body(cosmic.split_for_render()))
+            .expect("valid text render requests require a cosmic text shaper");
+        for request in requests {
+            debug_assert!(!request.key.is_invalid());
+            debug_assert_eq!(hash::hash_str(request.text), request.key.text_hash);
+            cosmic.ensure_buffer(request.text, request.key);
+        }
+        body(cosmic.split_for_render())
     }
 }
 

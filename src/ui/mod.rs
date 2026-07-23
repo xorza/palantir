@@ -124,7 +124,6 @@ impl Ui {
             layout: &self.layout,
             cascades: &self.cascades,
             payloads: self.forest.record_store.payloads.borrow(),
-            text: &self.resources.text,
             gpu_views: &self.gpu_views,
             display: self.display,
             time: self.frame_runtime.time,

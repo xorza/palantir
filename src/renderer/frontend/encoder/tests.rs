@@ -335,7 +335,7 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
 }
 
 #[test]
-fn text_shape_emits_draw_text() {
+fn text_shape_carries_source_without_reconstructing_buffer() {
     use crate::Text;
     fn body(ui: &mut Ui) {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -353,15 +353,22 @@ fn text_shape_emits_draw_text() {
     );
 
     let cmds = ui.encode_cmds();
+    let payload = cmds
+        .iter()
+        .find_map(|command| match command {
+            Command::DrawText(payload) => Some(payload),
+            _ => None,
+        })
+        .expect("Text widget must emit a DrawText command");
+    let scene = ui.frame_scene();
+    let interned_text = scene.payloads.interned_text();
+    assert_eq!(payload.source.resolve(&interned_text), "hi");
     assert!(
-        cmds.iter()
-            .any(|command| matches!(command, Command::DrawText(_))),
-        "Text widget must emit a DrawText command"
+        !ui.resources.text.has_cosmic_buffer(key),
+        "frontend encoding must not reconstruct an evicted text buffer",
     );
-    assert!(
-        ui.resources.text.has_cosmic_buffer(key),
-        "encoder must restore an evicted key from ShapeRecord::Text",
-    );
+    drop(interned_text);
+    drop(scene);
 
     ui.resources.text.evict_cosmic_buffers(0);
     let measure_calls = ui.resources.text.measure_calls();
@@ -379,13 +386,20 @@ fn text_shape_emits_draw_text() {
         "layout replay must be allowed to retain an evicted cache key",
     );
     let replayed = ui.encode_cmds();
+    let payload = replayed
+        .iter()
+        .find_map(|command| match command {
+            Command::DrawText(payload) => Some(payload),
+            _ => None,
+        })
+        .expect("replayed text must still emit");
+    let scene = ui.frame_scene();
+    let interned_text = scene.payloads.interned_text();
+    assert_eq!(payload.source.resolve(&interned_text), "hi");
     assert!(
-        replayed
-            .iter()
-            .any(|command| matches!(command, Command::DrawText(_))),
-        "replayed text must still emit after reconstruction",
+        !ui.resources.text.has_cosmic_buffer(replayed_key),
+        "frontend replay must leave reconstruction to an encoded-cache miss",
     );
-    assert!(ui.resources.text.has_cosmic_buffer(replayed_key));
 }
 
 /// Pin: a clip-only Surface (no painted background) still emits a

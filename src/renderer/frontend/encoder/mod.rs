@@ -5,7 +5,6 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageFilter, ImageFit};
-use crate::primitives::interned_str::InternedText;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
@@ -31,7 +30,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
-use crate::text::{TextShaper, text_in_rect};
+use crate::text::text_in_rect;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -168,7 +167,6 @@ impl Encoder {
         let now = scene.time;
         let gradients = scene.payloads.gradients.records.as_slice();
         gradient_resolver.begin(gradients.len());
-        let interned_text = scene.payloads.interned_text();
         // Matches the backend's padded physical scissor; both derive from
         // `renderer::plan::DAMAGE_AA_PADDING`.
         let damage_cull_margin = damage_cull_margin(scene.display.scale_factor);
@@ -180,8 +178,6 @@ impl Encoder {
                 cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
                 subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
                 gradients,
-                interned_text: &interned_text,
-                shaper: scene.text,
                 gradient_atlas,
                 gradient_resolver,
                 paint_anim_cursor: tree.paint_anims.cursor(),
@@ -203,14 +199,12 @@ impl Encoder {
 
 /// Per-layer encode context. Bundles fixed inputs so recursion threads one
 /// `&mut ctx` instead of a long argument list.
-struct LayerCtx<'a, 'text> {
+struct LayerCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
     cascade_inputs: &'a [CascadeInputHash],
     subtree_paint_rects: &'a [Rect],
     gradients: &'a [RecordedGradient],
-    interned_text: &'a InternedText<'text>,
-    shaper: &'a TextShaper,
     gradient_atlas: &'a SharedGradientAtlas,
     gradient_resolver: &'a mut GradientResolver,
     paint_anim_cursor: PaintAnimCursor<'a>,
@@ -227,7 +221,7 @@ struct LayerCtx<'a, 'text> {
     now: Duration,
 }
 
-impl LayerCtx<'_, '_> {
+impl LayerCtx<'_> {
     #[inline]
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradient_resolver
@@ -236,7 +230,7 @@ impl LayerCtx<'_, '_> {
 }
 
 // Manual: `Tree` / `LayerLayout` don't implement `Debug`.
-impl std::fmt::Debug for LayerCtx<'_, '_> {
+impl std::fmt::Debug for LayerCtx<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LayerCtx")
             .field("damage_cull_margin", &self.damage_cull_margin)
@@ -290,7 +284,7 @@ fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut RenderCmd
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
 fn emit_one_shape(
-    ctx: &mut LayerCtx<'_, '_>,
+    ctx: &mut LayerCtx<'_>,
     id: NodeId,
     owner_rect: Rect,
     shape_idx: u32,
@@ -348,8 +342,6 @@ fn emit_one_shape(
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
             }
-            ctx.shaper
-                .ensure_buffer(text.resolve(ctx.interned_text), shaped.key);
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect
@@ -371,7 +363,7 @@ fn emit_one_shape(
                     size: shaped.measured,
                 },
             };
-            out.draw_text(rect, *color, shaped.key);
+            out.draw_text(rect, *color, shaped.key, text.source);
         }
         ShapeRecord::Polyline {
             width,
@@ -558,7 +550,7 @@ fn emit_one_shape(
     }
 }
 
-fn encode_node(ctx: &mut LayerCtx<'_, '_>, id: NodeId, out: &mut RenderCmdBuffer) {
+fn encode_node(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut RenderCmdBuffer) {
     if ctx.cascade_inputs[id.idx()].invisible() {
         return;
     }

@@ -5,6 +5,7 @@
 
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
+use crate::primitives::interned_str::TextSource;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
@@ -107,6 +108,9 @@ fn dummy_text() -> TextRun {
             y: 0,
             w: 0,
             h: 0,
+        },
+        source: TextSource {
+            span: Span::default(),
         },
         color: ColorU8::WHITE,
         key: TextCacheKey::INVALID,

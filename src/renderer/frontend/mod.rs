@@ -35,7 +35,6 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::Forest;
 use crate::scene::cascade::Cascades;
 use crate::scene::record_store::RecordPayloads;
-use crate::text::TextShaper;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
 pub(crate) struct FrameScene<'a> {
@@ -44,7 +43,6 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) cascades: &'a Cascades,
     /// Keeps the record-store read lease alive through encode and compose.
     pub(crate) payloads: Ref<'a, RecordPayloads>,
-    pub(crate) text: &'a TextShaper,
     pub(crate) gpu_views: &'a WidgetIdMap<GpuViewEntry>,
     pub(crate) display: Display,
     /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.

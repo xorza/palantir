@@ -5,7 +5,7 @@
 //! no allocation. The cache is bounded:
 //! [`CosmicMeasure::end_frame_evict`] drops the least-recently-used
 //! buffers each frame. Missing buffers are reconstructible from the
-//! retained text shape at the frontend boundary, so a continuous resize
+//! retained text source at the backend boundary, so a continuous resize
 //! drag — every width unique, a fresh entry per run per frame — stays
 //! bounded without explicit cache ownership. Evicted buffers feed a
 //! bounded recycle pool so later misses retain Cosmic Text's internal
@@ -13,7 +13,7 @@
 //!
 //! The render side reaches the cached `Buffer`s and the `FontSystem`
 //! through [`CosmicMeasure::split_for_render`] (via
-//! `TextShaper::with_render_split`) — a disjoint borrow, not a trait
+//! `TextShaper::with_render_buffers`) — a disjoint borrow, not a trait
 //! object; `text/mod.rs` documents why there's no `TextMeasure` trait.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
