@@ -186,15 +186,12 @@ pub(crate) fn handle_input(
     // Down events route through shared edit actions (clipboard / undo)
     // then `apply_key` (edit / nav). Vertical-nav probes happen inline
     // because they need the shaper + layout. Indexing keeps the borrow
-    // on `frame_keyboard_events` short-lived so we can dispatch to
+    // on the input queue short-lived so we can dispatch to
     // `ui.resources.text` inside the same loop without a scratch Vec.
-    let n = if ui.input.keyboard_capture.is_none() {
-        ui.input.frame_keyboard_events.len()
-    } else {
-        0
-    };
+    let n = ui.input.keyboard_events().len();
     for i in 0..n {
-        match ui.input.frame_keyboard_events[i] {
+        let event = ui.input.keyboard_events()[i];
+        match event {
             KeyboardEvent::Text(chunk) => {
                 let to_insert = ed.sanitized(chunk.as_str());
                 if !to_insert.is_empty() {

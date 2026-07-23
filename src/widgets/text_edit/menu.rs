@@ -30,14 +30,12 @@ pub(crate) fn show(
     multiline: bool,
     max_chars: Option<usize>,
 ) -> MenuResult {
-    let keyboard_event_count = ui
-        .input
-        .keyboard_capture
-        .filter(|owner| *owner == ContextMenu::body_id(id))
-        .map_or(0, |_| ui.input.frame_keyboard_events.len());
+    let keyboard_owner = ContextMenu::body_id(id);
+    let keyboard_event_count = ui.input.captured_keyboard_events(keyboard_owner).len();
     let mut result = MenuResult::default();
     for index in 0..keyboard_event_count {
-        let KeyboardEvent::Down(keypress) = ui.input.frame_keyboard_events[index] else {
+        let event = ui.input.captured_keyboard_events(keyboard_owner)[index];
+        let KeyboardEvent::Down(keypress) = event else {
             continue;
         };
         if let Some(action) = EditAction::from_keypress(keypress) {

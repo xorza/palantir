@@ -336,23 +336,14 @@ impl Ui {
             // `forest.pre_record` clears both its trees and the retained
             // payloads their shape records index into.
             self.forest.pre_record();
-            // Subscription set is rebuilt from scratch each full record
-            // pass — symmetric to `Sense` on a node. Widgets re-assert
-            // during record; ones that didn't run drop their wake.
-            // Across silent (PaintOnly / skipped) frames the set
-            // persists, which is the whole point: a dormant popup
-            // needs `BUTTONS` to still be set when the next click
-            // outside lands.
-            self.input.subs.clear();
+            // Rebuild record-scoped input ownership and wake subscriptions;
+            // PaintOnly frames skip this so their last wake set persists.
+            self.input.begin_record();
             // Like the subscription set, the cursor request is
             // re-asserted by whoever still wants it this pass; reset
             // here (not per frame) so PaintOnly frames keep the last
             // recorded cursor instead of flickering back to the arrow.
             self.window_requests.cursor = CursorIcon::default();
-            // Snapshot whether any widget interaction is possible this
-            // frame; `response_for` skips its per-button capture scans for
-            // every widget when none is (the common idle frame).
-            self.input.snapshot_frame_quiescent();
         }
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
@@ -370,7 +361,7 @@ impl Ui {
             profiling::scope!("Ui::record_user");
             app.record(win, self);
         }
-        let action_flag = self.input.take_action_flag();
+        let action_flag = self.input.finish_record();
         if self.resources.diagnostics.overlay.borrow().frame_stats {
             frame_stats::record(self);
         }
@@ -472,21 +463,21 @@ impl Ui {
 
     /// Declare interest in off-target pointer events of `flags`.
     pub fn subscribe_pointer(&mut self, flags: PointerSense) {
-        self.input.subs.pointer_mask |= flags;
+        self.input.subscribe_pointer(flags);
     }
 
     /// Declare interest in off-focus keyboard categories. Hotkey
     /// recorders, accel-underline UIs, command palettes that record
     /// before focus. Specific chords use [`Self::subscribe_key`].
     pub fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
-        self.input.subs.keyboard_mask |= flags;
+        self.input.subscribe_keyboard(flags);
     }
 
     /// Declare interest in one specific shortcut (e.g.
     /// `Shortcut::key(Key::Escape)`, `Shortcut::ctrl('K')`).
     /// Duplicate subscribers collapse.
     pub fn subscribe_key(&mut self, sc: Shortcut) {
-        self.input.subs.subscribe_key(sc);
+        self.input.subscribe_key(sc);
     }
 
     /// Unified pointer event stream captured this frame. Empty when
@@ -499,10 +490,11 @@ impl Ui {
     /// Unified keyboard event stream this frame —
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from typed/IME-committed text, in
-    /// arrival order. Single buffer for both the focused widget and
-    /// global [`KeyboardSense`] / [`Shortcut`] subscribers.
+    /// arrival order. Empty while a popup has exclusive keyboard
+    /// capture; the popup reads the underlying stream through its
+    /// scoped owner id.
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
-        &self.input.frame_keyboard_events
+        self.input.keyboard_events()
     }
 
     /// `true` if any [`KeyboardEvent::Down`] this frame matches
@@ -511,21 +503,20 @@ impl Ui {
     ///
     /// Side-effect: auto-subscribes the chord for wake-up. Without
     /// this, aperture's keyboard wake-gate parks off-focus presses until the
-    /// next unrelated
-    /// frame, and the caller sees the event one user gesture late.
+    /// next unrelated frame, and the caller sees the event one gesture late.
     /// Pair with the call-it-every-frame discipline that the
     /// subscription system already requires.
     pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
-        self.input.subs.subscribe_key(sc);
-        self.input.frame_keyboard_events.iter().any(|e| match e {
-            KeyboardEvent::Down(kp) => sc.matches(*kp),
-            _ => false,
-        })
+        self.input.key_pressed(sc)
+    }
+
+    pub(crate) fn captured_key_pressed(&mut self, owner: WidgetId, sc: Shortcut) -> bool {
+        self.input.captured_key_pressed(owner, sc)
     }
 
     /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
-    /// Used by [`crate::widgets::context_menu::ContextMenu`] to
-    /// dismiss on Esc.
+    /// Used by overlays without exclusive keyboard capture, such as
+    /// [`crate::widgets::modal::Modal`].
     pub fn escape_pressed(&mut self) -> bool {
         use crate::input::keyboard::Key;
         self.key_pressed(Shortcut::key(Key::Escape))
