@@ -16,7 +16,6 @@ use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
     LayerLayout, Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
 };
-use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
@@ -27,7 +26,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::text::wrap::TextWrap;
+use crate::text::wrap::{TextWrap, canonical_wrap_width};
 use crate::text::{LineFit, ShapeParams, TextReuseCache, TextRunIdentity, TextShaper};
 use rustc_hash::FxHashSet;
 
@@ -128,23 +127,6 @@ pub(crate) struct LayoutEngine {
     cache_rebuild: bool,
     pub(crate) text_reuse: TextReuseCache,
     pub(crate) cache: MeasureCache,
-}
-
-/// Quantum (inverse) for wrap-target quantization: bucket width is
-/// `1.0 / WRAP_QUANTUM_PX_INV` logical pixels (= 1 px). Deliberately
-/// matches the measure cache's `available_q` grid
-/// (`cache::quantize_available`): the text a cache hit blits was shaped
-/// at this width, so the shaping granularity must not be finer than the
-/// key that gates the blit — otherwise a sub-pixel parent jitter inside
-/// one `available_q` bucket could serve text shaped for a ≤0.5 px-
-/// different width (visible as a wrong wrap point, unlike the invisible
-/// sub-pixel error on continuous Fill/Hug sizing). Layout policy — lives
-/// here, not in `text/`, so the tradeoff is local to its only consumer.
-const WRAP_QUANTUM_PX_INV: f32 = 1.0;
-
-#[inline]
-fn quantize_wrap_target(v: f32) -> u32 {
-    (v.max(0.0) * WRAP_QUANTUM_PX_INV).fast_round() as u32
 }
 
 /// Splat every per-subtree side-state column carried by `arenas` back
@@ -890,11 +872,10 @@ impl LayoutEngine {
             } else {
                 available_w.max(unbounded.intrinsic_min)
             };
-            let target_q = quantize_wrap_target(target);
             // Shape at the quantized width, not raw `target`: the measure
             // cache keys on the same 1px grid, so this keeps a cache hit
             // from blitting text shaped for a sub-pixel-different target.
-            let target = target_q as f32;
+            let target = canonical_wrap_width(target);
             prepared
                 .shape_bounded(target, ts.halign, fit)
                 .expect("recorded text metrics and wrap width were validated")
@@ -934,14 +915,14 @@ mod tests {
     #[test]
     fn wrap_target_matches_cache_grid() {
         // Sub-pixel jitter inside one 1px bucket → identical wrap target.
-        assert_eq!(quantize_wrap_target(100.1), quantize_wrap_target(100.4));
-        assert_eq!(quantize_wrap_target(99.6), quantize_wrap_target(100.4));
+        assert_eq!(canonical_wrap_width(100.1), canonical_wrap_width(100.4));
+        assert_eq!(canonical_wrap_width(99.6), canonical_wrap_width(100.4));
         // Crossing a 1px boundary → different target.
-        assert_ne!(quantize_wrap_target(100.4), quantize_wrap_target(100.6));
+        assert_ne!(canonical_wrap_width(100.4), canonical_wrap_width(100.6));
         // The wrap grid equals the cache's `available_q` rounding.
         for w in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
             let cache_w = quantize_available(Size::new(w, 0.0)).x;
-            assert_eq!(quantize_wrap_target(w) as i32, cache_w, "w={w}");
+            assert_eq!(canonical_wrap_width(w) as i32, cache_w, "w={w}");
         }
     }
 }
