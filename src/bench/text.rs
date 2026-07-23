@@ -33,17 +33,11 @@ fn params(width: f32) -> ShapeParams {
 fn measure_truncated_width(
     shaper: &TextShaper,
     reuse: &mut TextReuseCache,
-    wid: WidgetId,
+    identity: TextRunIdentity,
     text: &str,
+    text_hash: u64,
     params: ShapeParams,
 ) -> TextMeasurement {
-    let text_hash = hash_str(text);
-    let hash = ContentHash(text_hash);
-    let identity = TextRunIdentity {
-        widget_id: wid,
-        ordinal: 0,
-        authoring_hash: hash,
-    };
     let prepared = reuse
         .prepare_run(shaper, identity, text, text_hash, params)
         .unwrap();
@@ -62,13 +56,54 @@ pub fn bench(c: &mut Criterion) {
         b.iter(|| black_box(arena_text.clone()));
     });
 
-    let wid = WidgetId::from_hash("text-shape-width-churn");
+    let text_hash = hash_str(TEXT);
+    let reuse_identity = TextRunIdentity {
+        widget_id: WidgetId::from_hash("text-shape-reuse-hit"),
+        ordinal: 0,
+        authoring_hash: ContentHash(text_hash),
+    };
+    c.bench_function("text_shape/ellipsis_reuse_hit", |b| {
+        let shaper = TextShaper::with_bundled_fonts();
+        let mut reuse = TextReuseCache::default();
+        let shape_params = params(80.0);
+        measure_truncated_width(
+            &shaper,
+            &mut reuse,
+            reuse_identity,
+            TEXT,
+            text_hash,
+            shape_params,
+        );
+        b.iter(|| {
+            black_box(measure_truncated_width(
+                &shaper,
+                &mut reuse,
+                reuse_identity,
+                TEXT,
+                text_hash,
+                shape_params,
+            ));
+        });
+    });
+
+    let churn_identity = TextRunIdentity {
+        widget_id: WidgetId::from_hash("text-shape-width-churn"),
+        ordinal: 0,
+        authoring_hash: ContentHash(text_hash),
+    };
     c.bench_function("text_shape/ellipsis_width_churn", |b| {
         b.iter_batched(
             || {
                 let shaper = TextShaper::with_bundled_fonts();
                 let mut reuse = TextReuseCache::default();
-                measure_truncated_width(&shaper, &mut reuse, wid, TEXT, params(39.75));
+                measure_truncated_width(
+                    &shaper,
+                    &mut reuse,
+                    churn_identity,
+                    TEXT,
+                    text_hash,
+                    params(39.75),
+                );
                 BenchState { shaper, reuse }
             },
             |mut state| {
@@ -76,8 +111,9 @@ pub fn bench(c: &mut Criterion) {
                     let measured = measure_truncated_width(
                         &state.shaper,
                         &mut state.reuse,
-                        wid,
+                        churn_identity,
                         TEXT,
+                        text_hash,
                         params(40.0 + i as f32 * 0.25),
                     );
                     black_box(measured.size);
