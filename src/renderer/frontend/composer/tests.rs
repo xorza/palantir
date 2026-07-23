@@ -1,6 +1,7 @@
 use crate::display::Display;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::interned_str::TextSource;
 use crate::primitives::span::Span;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
@@ -52,7 +53,14 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
 }
 
 fn text(buf: &mut RenderCmdBuffer, r: Rect) {
-    buf.draw_text(r, Color::WHITE.into(), TextCacheKey::INVALID);
+    buf.draw_text(
+        r,
+        Color::WHITE.into(),
+        TextCacheKey::INVALID,
+        TextSource {
+            span: Span::default(),
+        },
+    );
 }
 
 fn params(scale: f32, physical: UVec2) -> Display {

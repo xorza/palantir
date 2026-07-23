@@ -10,16 +10,18 @@ isolation.
 
 Current flow: `LayoutEngine` consults its window-local `TextSystem`, which owns
 identity reuse and reaches into a shared `TextShaper` to obtain an unbounded
-measurement and optionally a bounded one. The layout retains only measurements
-and `TextCacheKey`s. Before rendering, the frontend asks `TextShaper` to
-reconstruct an evicted buffer, then the backend borrows the same shaper again and
-assumes that buffer is present.
+measurement and optionally a bounded one. The layout retains measurements and
+`TextCacheKey`s, while each rendered run also carries a compact span to its
+source bytes in the window's retained `RecordStore`. The backend resolves those
+bytes only for encoded-cache misses; `TextShaper::with_render_buffers` restores
+all requested shaped buffers and lends the render split under one exclusive
+borrow.
 
 ## High: split ownership leaves cache correctness to callers
 
 - [x] **Reuse validity was an external promise rather than an invariant of the cache key.** `prepare_run` now accepts only the run identity, actual text, and `ShapeParams`. `TextSystem` computes the text hash itself and compares the normalized, validated shaping parameters as part of each reuse row's inputs, so callers cannot retain stale measurements by supplying an unrelated authoring or text hash.
 
-- [ ] **No API owns the complete identity-to-render-buffer transaction.** `TextSystem` now owns window-local identity rows and their lifecycle together with a clone of the shared `TextShaper`, but layout still retains only measurements and buffer keys. The renderer frontend later repairs buffer availability through its separate `TextShaper` handle, and the backend treats that repair as an invariant and panics when it was missed (`src/renderer/frontend/encoder/mod.rs:339`, `src/renderer/backend/text/mod.rs:302`). Changes to buffer reconstruction or eviction therefore still require synchronized knowledge across the text system and both renderer stages.
+- [x] **No API owned the complete identity-to-render-buffer transaction.** `TextSystem` owns window-local identity rows and their lifecycle together with a clone of the shared `TextShaper`. Render runs retain their record-local source span, and the backend hands all encoded-cache misses to `TextShaper::with_render_buffers`; that one method restores the requested buffers and exposes them to the renderer without an intermediate availability promise. The frontend no longer knows about reconstruction, and encoded-cache hits avoid the shaper borrow entirely.
 
 - [ ] **Reuse rows for vanished text ordinals remain indefinitely while their widget survives.** Rows are keyed by `(WidgetId, u16)`, but maintenance removes entries only when the whole `WidgetId` appears in the removed-widget set (`src/text/mod.rs:145`, `src/text/mod.rs:453`). An immediate-mode widget whose number of direct text shapes falls from many runs to a few leaves every higher ordinal resident; repeated peaks on stable widget IDs retain the maximum historical row count rather than the current text-run set, wasting memory for the lifetime of those widgets.
 

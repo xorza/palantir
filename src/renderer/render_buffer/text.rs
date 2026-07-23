@@ -1,21 +1,21 @@
 //! Shaped text records consumed by the native text backend.
 
 use crate::primitives::color::ColorU8;
+use crate::primitives::interned_str::TextSource;
 use crate::primitives::urect::URect;
 use crate::text::TextCacheKey;
 use glam::Vec2;
 
-/// One shaped text run placed in physical-px space. The buffer it references
-/// is resolved by the backend at submit time using [`TextCacheKey`] against
-/// the active `TextMeasure`.
+/// One shaped text run placed in physical-px space. The backend resolves its
+/// source bytes from the active record store and restores the buffer identified
+/// by [`TextCacheKey`] when the encoded glyph cache misses.
 ///
 /// **Layout**: fields ordered so the struct is `Pod` with no internal
 /// padding. `TextCacheKey` (24 B, align 8) leads so its alignment
 /// requirement is satisfied without filler. Color stores **straight-alpha
 /// linear** bytes: the native text backend consumes linear and premultiplies
 /// at output (no sRGB roundtrip — matches the crate's colour contract), which
-/// keeps the per-frame hot path Pod-shaped and lets the backend hash whole
-/// `TextRun` slices via `bytemuck`.
+/// keeps the per-frame hot path Pod-shaped.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextRun {
@@ -30,6 +30,7 @@ pub(crate) struct TextRun {
     /// batch's bounds), which the composer's strict-bounds batching rule
     /// keeps no wider than any ancestor-clipped run's bounds.
     pub(crate) bounds: URect,
+    pub(crate) source: TextSource,
     pub(crate) color: ColorU8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time
@@ -41,11 +42,4 @@ pub(crate) struct TextRun {
     /// atlas slot. Snapping is what keeps a continuous zoom gesture from
     /// re-rasterizing every glyph every frame.
     pub(crate) scale: f32,
-}
-
-impl std::hash::Hash for TextRun {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
-    }
 }

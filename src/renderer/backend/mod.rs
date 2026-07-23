@@ -526,9 +526,11 @@ impl WgpuBackend {
                     "text.prepare_batches",
                     &format!("count={}", buffer.text_batches.len())
                 );
+                let interned_text = payloads.interned_text();
                 for (i, b) in buffer.text_batches.iter().enumerate() {
                     let runs = &buffer.texts[b.texts.range()];
-                    self.text.prepare_batch(&mut ctx, buffer.scale, i, runs);
+                    self.text
+                        .prepare_batch(&mut ctx, buffer.scale, i, runs, &interned_text);
                 }
             }
 

@@ -3,6 +3,7 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::interned_str::TextSource;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
@@ -276,6 +277,7 @@ pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
     pub(crate) color: ColorF16,
     pub(crate) key: TextCacheKey,
+    pub(crate) source: TextSource,
 }
 
 impl DrawTextPayload {

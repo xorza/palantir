@@ -52,12 +52,19 @@ pub(crate) struct InternedText<'a> {
     pub(crate) bytes: Ref<'a, str>,
 }
 
+/// Compact reference to source bytes in the active record store.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct TextSource {
+    pub(crate) span: Span,
+}
+
 /// Text stored on a [`ShapeRecord`](crate::scene::shapes::record::ShapeRecord).
 /// Its span always addresses the active record store because lowering rebases
 /// handles from any other arena before constructing this value.
 #[derive(Clone, Debug)]
 pub(crate) struct RecordedText {
-    span: Span,
+    pub(crate) source: TextSource,
     hash: u64,
 }
 
@@ -112,13 +119,23 @@ impl<'a> From<Cow<'a, str>> for TextInput<'a> {
 
 impl RecordedText {
     pub(crate) fn new(span: Span, hash: u64) -> Self {
-        Self { span, hash }
+        Self {
+            source: TextSource { span },
+            hash,
+        }
     }
 
     /// Resolve the recorded bytes. The span is guaranteed to target
     /// `interned_text` by `RecordStore::record_text`.
     #[inline]
     pub(crate) fn resolve<'a>(&self, interned_text: &'a InternedText<'_>) -> &'a str {
+        self.source.resolve(interned_text)
+    }
+}
+
+impl TextSource {
+    #[inline]
+    pub(crate) fn resolve<'a>(self, interned_text: &'a InternedText<'_>) -> &'a str {
         &interned_text.bytes[self.span.range()]
     }
 }

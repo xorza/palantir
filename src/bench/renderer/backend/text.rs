@@ -45,6 +45,7 @@ use std::time::Duration;
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::color::ColorU8;
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::StencilVariant;
@@ -52,6 +53,7 @@ use crate::renderer::backend::queue::Queue;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
+use crate::scene::record_store::RecordStore;
 use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
 use criterion::Criterion;
 use glam::{UVec2, Vec2};
@@ -89,6 +91,12 @@ struct BenchBatch<'a> {
     scale: f32,
 }
 
+#[derive(Debug)]
+struct BenchRuns {
+    store: RecordStore,
+    runs: Vec<TextRun>,
+}
+
 impl BenchText {
     fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
         let backend = TextBackend::new(device, shaper);
@@ -96,8 +104,14 @@ impl BenchText {
         Self { backend, pipelines }
     }
 
-    fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) {
-        self.prepare_batch(ctx, scale, 0, runs);
+    fn prepare(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        scale: f32,
+        runs: &[TextRun],
+        interned_text: &InternedText<'_>,
+    ) {
+        self.prepare_batch(ctx, scale, 0, runs, interned_text);
     }
 
     fn prepare_batch(
@@ -106,8 +120,10 @@ impl BenchText {
         scale: f32,
         batch_index: usize,
         runs: &[TextRun],
+        interned_text: &InternedText<'_>,
     ) {
-        self.backend.prepare_batch(ctx, scale, batch_index, runs);
+        self.backend
+            .prepare_batch(ctx, scale, batch_index, runs, interned_text);
     }
 
     fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
@@ -191,6 +207,7 @@ fn poll_drain(device: &wgpu::Device) {
 
 #[allow(clippy::too_many_arguments)]
 fn make_run(
+    store: &RecordStore,
     shaper: &TextShaper,
     text: &str,
     font_size_px: f32,
@@ -200,6 +217,7 @@ fn make_run(
     scale: f32,
     color: ColorU8,
 ) -> TextRun {
+    let source = store.record_text(store.intern_str(text)).source;
     let measured = shaper
         .measure(
             text,
@@ -217,6 +235,7 @@ fn make_run(
         key: measured.key,
         origin,
         bounds: URect::new(0, 0, viewport.x, viewport.y),
+        source,
         color,
         scale,
     }
@@ -225,7 +244,8 @@ fn make_run(
 /// Shape one frame's worth of runs against `shaper`. Stable layout so
 /// the same `TextRun` slice is reusable across iterations; only the
 /// per-iteration `scale` argument to `prepare` changes between frames.
-fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
+fn build_runs(shaper: &TextShaper) -> BenchRuns {
+    let store = RecordStore::default();
     let color = ColorU8::rgba(220, 220, 220, 255);
     let mut runs = Vec::with_capacity((ROWS * 4) as usize);
     for row in 0..ROWS {
@@ -233,6 +253,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
         // Four short labels per row at typical graph-node sizes.
         let label_color = ColorU8::rgba(245, 245, 245, 255);
         runs.push(make_run(
+            &store,
             shaper,
             "node",
             13.0,
@@ -243,6 +264,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
             label_color,
         ));
         runs.push(make_run(
+            &store,
             shaper,
             "input: f32",
             11.0,
@@ -253,6 +275,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
             color,
         ));
         runs.push(make_run(
+            &store,
             shaper,
             "output: Vec3",
             11.0,
@@ -263,6 +286,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
             color,
         ));
         runs.push(make_run(
+            &store,
             shaper,
             "123.45",
             11.0,
@@ -273,7 +297,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
             color,
         ));
     }
-    runs
+    BenchRuns { store, runs }
 }
 
 /// One iteration: prepare → flush → render pass → submit → poll →
@@ -283,6 +307,7 @@ fn run_frame(
     backend: &mut BenchText,
     belt: &mut wgpu::util::StagingBelt,
     target_view: &wgpu::TextureView,
+    store: &RecordStore,
     runs: &[TextRun],
     scale: f32,
 ) {
@@ -291,6 +316,7 @@ fn run_frame(
         backend,
         belt,
         target_view,
+        store,
         std::slice::from_ref(&BenchBatch { runs, scale }),
     );
 }
@@ -300,6 +326,7 @@ fn run_batches(
     backend: &mut BenchText,
     belt: &mut wgpu::util::StagingBelt,
     target_view: &wgpu::TextureView,
+    store: &RecordStore,
     batches: &[BenchBatch<'_>],
 ) {
     let mut encoder = g
@@ -309,8 +336,16 @@ fn run_batches(
         });
     {
         let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
+        let payloads = store.payloads.borrow();
+        let interned_text = payloads.interned_text();
         for (batch_index, batch) in batches.iter().enumerate() {
-            backend.prepare_batch(&mut ctx, batch.scale, batch_index, batch.runs);
+            backend.prepare_batch(
+                &mut ctx,
+                batch.scale,
+                batch_index,
+                batch.runs,
+                &interned_text,
+            );
         }
         backend.flush(&mut ctx);
     }
@@ -342,7 +377,7 @@ fn run_batches(
     backend.end_frame();
 }
 
-fn fresh_backend(g: &Gpu) -> (BenchText, Vec<TextRun>) {
+fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
     let shaper = TextShaper::with_bundled_fonts();
     let runs = build_runs(&shaper);
     let backend = BenchText::new(&g.device, FORMAT, shaper);
@@ -363,15 +398,31 @@ pub fn bench(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(5));
 
     {
-        let (mut backend, runs) = fresh_backend(g);
+        let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         // Two priming frames so every glyph is in the atlas.
         for _ in 0..2 {
-            run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
+            run_frame(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &scene.store,
+                &scene.runs,
+                BASE_SCALE,
+            );
         }
         group.bench_function("steady_warm", |b| {
             b.iter(|| {
-                run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
+                run_frame(
+                    g,
+                    &mut backend,
+                    &mut belt,
+                    &view,
+                    &scene.store,
+                    &scene.runs,
+                    BASE_SCALE,
+                );
             });
         });
         // CPU-only: prepare + end_frame, no encoder/submit/poll.
@@ -389,7 +440,9 @@ pub fn bench(c: &mut Criterion) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    backend.prepare(&mut ctx, BASE_SCALE, &runs);
+                    let payloads = scene.store.payloads.borrow();
+                    let interned_text = payloads.interned_text();
+                    backend.prepare(&mut ctx, BASE_SCALE, &scene.runs, &interned_text);
                 }
                 belt.finish();
                 belt.recall();
@@ -399,65 +452,113 @@ pub fn bench(c: &mut Criterion) {
     }
 
     {
-        let (mut backend, runs) = fresh_backend(g);
+        let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         // Prime the cycle so the LRU has all rungs resident before the
         // measured loop starts evicting + re-inserting.
         for step in 0..WARM_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
-            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+            run_frame(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &scene.store,
+                &scene.runs,
+                scale,
+            );
         }
         let mut i: u32 = 0;
         group.bench_function("zoom_smooth", |b| {
             b.iter(|| {
                 let step = (i % WARM_SCALE_CYCLE) as f32;
                 let scale = BASE_SCALE + step * TEXT_SCALE_STEP;
-                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                run_frame(
+                    g,
+                    &mut backend,
+                    &mut belt,
+                    &view,
+                    &scene.store,
+                    &scene.runs,
+                    scale,
+                );
                 i = i.wrapping_add(1);
             });
         });
     }
 
     {
-        let (mut backend, runs) = fresh_backend(g);
+        let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         let stride = 5.0 * TEXT_SCALE_STEP;
         for step in 0..WARM_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * stride;
-            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+            run_frame(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &scene.store,
+                &scene.runs,
+                scale,
+            );
         }
         let mut i: u32 = 0;
         group.bench_function("zoom_cold", |b| {
             b.iter(|| {
                 let step = (i % WARM_SCALE_CYCLE) as f32;
                 let scale = BASE_SCALE + step * stride;
-                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                run_frame(
+                    g,
+                    &mut backend,
+                    &mut belt,
+                    &view,
+                    &scene.store,
+                    &scene.runs,
+                    scale,
+                );
                 i = i.wrapping_add(1);
             });
         });
     }
 
     {
-        let (mut backend, runs) = fresh_backend(g);
+        let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         for step in 0..CHURN_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
-            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+            run_frame(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &scene.store,
+                &scene.runs,
+                scale,
+            );
         }
         let mut i: u32 = 0;
         group.bench_function("cache_churn", |b| {
             b.iter(|| {
                 let rung = i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE;
                 let scale = BASE_SCALE + (rung as f32) * TEXT_SCALE_STEP;
-                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                run_frame(
+                    g,
+                    &mut backend,
+                    &mut belt,
+                    &view,
+                    &scene.store,
+                    &scene.runs,
+                    scale,
+                );
                 i = i.wrapping_add(1);
             });
         });
     }
 
     {
-        let (mut backend, runs) = fresh_backend(g);
-        let (stable_runs, churning_runs) = runs.split_at(runs.len() / 2);
+        let (mut backend, scene) = fresh_backend(g);
+        let (stable_runs, churning_runs) = scene.runs.split_at(scene.runs.len() / 2);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         for step in 0..CHURN_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
@@ -466,6 +567,7 @@ pub fn bench(c: &mut Criterion) {
                 &mut backend,
                 &mut belt,
                 &view,
+                &scene.store,
                 &[
                     BenchBatch {
                         runs: stable_runs,
@@ -488,6 +590,7 @@ pub fn bench(c: &mut Criterion) {
                     &mut backend,
                     &mut belt,
                     &view,
+                    &scene.store,
                     &[
                         BenchBatch {
                             runs: stable_runs,

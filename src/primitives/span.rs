@@ -8,7 +8,8 @@ use std::ops::Range;
 /// constructing a `Span` from a `start..end` literal or for handing one
 /// to a u32-range-taking API. `range()` returns `Range<usize>` for
 /// slicing into `Vec<T>`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Span {
     pub(crate) start: u32,
     pub(crate) len: u32,

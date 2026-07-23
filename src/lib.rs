@@ -322,7 +322,7 @@ mod hot_struct_sizes {
         PushClipPayload => "cmd::PushClipPayload": 24 / 4,
         DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
         DrawShadowPayload => "cmd::DrawShadowPayload": 44 / 4,
-        DrawTextPayload => "cmd::DrawTextPayload": 48 / 8,
+        DrawTextPayload => "cmd::DrawTextPayload": 56 / 8,
         DrawPolylinePayload => "cmd::DrawPolylinePayload": 52 / 4,
         DrawMeshPayload => "cmd::DrawMeshPayload": 48 / 4,
         DrawImagePayload => "cmd::DrawImagePayload": 56 / 8,
@@ -336,6 +336,6 @@ mod hot_struct_sizes {
         ImageInstance => "renderer::ImageInstance": 40 / 4,
         MeshVertex => "primitives::MeshVertex": 12 / 4,
         GlyphInstance => "text::GlyphInstance": 20 / 4,
-        TextRun => "renderer::TextRun": 56 / 8,
+        TextRun => "renderer::TextRun": 64 / 8,
     }
 }

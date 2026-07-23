@@ -720,7 +720,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 }
 
 #[test]
-fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
+fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::host::shared::HostShared;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
@@ -790,13 +790,23 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
 
     let mut frontend = Frontend::for_test();
     frontend.build(idle.frame_scene(), plan);
-    assert!(
-        frontend.buffer.texts.iter().any(|run| run.key == idle_key),
-        "PaintOnly must emit the retained text run",
+    let run = frontend
+        .buffer
+        .texts
+        .iter()
+        .find(|run| run.key == idle_key)
+        .copied()
+        .expect("PaintOnly must emit the retained text run");
+    let scene = idle.frame_scene();
+    let interned_text = scene.payloads.interned_text();
+    assert_eq!(
+        run.source.resolve(&interned_text),
+        "idle interned window text",
+        "PaintOnly must retain the source needed for backend reconstruction",
     );
     assert!(
-        idle.resources.text.has_cosmic_buffer(idle_key),
-        "encoder must restore the idle window's evicted interned text",
+        !idle.resources.text.has_cosmic_buffer(idle_key),
+        "frontend composition must not reconstruct an evicted text buffer",
     );
 }
 
