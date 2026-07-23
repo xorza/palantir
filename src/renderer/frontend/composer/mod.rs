@@ -7,7 +7,7 @@ use crate::primitives::fill_wire::FillKind;
 use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
+use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
@@ -618,10 +618,10 @@ impl Composer {
                     let fast = p.fill_kind == FillKind::SOLID
                         && noop_f32(stroke_width_phys)
                         && phys_radius.approx_zero()
-                        && phys_rect.min.x == phys_rect.min.x.round()
-                        && phys_rect.min.y == phys_rect.min.y.round()
-                        && pmax.x == pmax.x.round()
-                        && pmax.y == pmax.y.round();
+                        && phys_rect.min.x.is_integral()
+                        && phys_rect.min.y.is_integral()
+                        && pmax.x.is_integral()
+                        && pmax.y.is_integral();
                     let fill_kind = if fast {
                         p.fill_kind.with_fast()
                     } else {
@@ -1376,7 +1376,7 @@ fn snap_text_scale(s: f32) -> f32 {
     if (s - 1.0).abs() < EPS {
         return 1.0;
     }
-    (s / TEXT_SCALE_STEP).round() * TEXT_SCALE_STEP
+    (s / TEXT_SCALE_STEP).fast_round() * TEXT_SCALE_STEP
 }
 
 /// Clamp a physical-px AABB to the viewport, returning the

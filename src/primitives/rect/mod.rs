@@ -1,4 +1,4 @@
-use crate::primitives::{approx, corners::Corners, size::Size, spacing::Spacing};
+use crate::primitives::{approx, corners::Corners, num::F32Ext, size::Size, spacing::Spacing};
 use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;
 
@@ -221,8 +221,8 @@ impl Rect {
         let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);
         let mut max = Vec2::new(m.x * scale, m.y * scale);
         if snap {
-            min = Vec2::new(min.x.round(), min.y.round());
-            max = Vec2::new(max.x.round(), max.y.round());
+            min = Vec2::new(min.x.fast_round(), min.y.fast_round());
+            max = Vec2::new(max.x.fast_round(), max.y.fast_round());
         }
         Self {
             min,

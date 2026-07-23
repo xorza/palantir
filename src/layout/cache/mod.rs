@@ -8,6 +8,7 @@ use crate::layout::ShapedText;
 use crate::layout::grid::GridHugStore;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::layout::types::layout_mode::LayoutMode;
+use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
@@ -61,7 +62,7 @@ fn quantize_axis(v: f32) -> i32 {
     if !v.is_finite() {
         i32::MAX
     } else {
-        v.round() as i32
+        v.fast_round() as i32
     }
 }
 

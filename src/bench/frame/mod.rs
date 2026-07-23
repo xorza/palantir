@@ -329,10 +329,9 @@ fn assert_partial_invariant() {
         h.frame(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
     }
-    let report =
-        h.ui.record_test_frame(display, h.start.elapsed(), |ui| {
-            build_ui(&mut state, BENCH_SCALE, ui)
-        });
+    let report = h.ui.record_test_frame(display, h.start.elapsed(), |ui| {
+        build_ui(&mut state, BENCH_SCALE, ui)
+    });
     assert_eq!(
         report.paint(),
         FramePaint::Partial,

@@ -9,12 +9,17 @@
 //! `frame` bench profile (~3.2% combined self-time + an absorbed ~3%
 //! attributed to the callers; net ~6% on `frame/cached`).
 //!
-//! The x86_64 path here uses `_mm_cvtph_ps` / `_mm_cvtps_ph` directly
-//! under a `#[target_feature(enable = "f16c")]` unsafe inner, called
-//! from a safe wrapper. With `.cargo/config.toml`'s `target-cpu=x86-64-v3`
-//! the feature is statically enabled and the wrapper compiles to a
-//! single instruction. The non-x86 fallback walks the four lanes via
-//! `half::f16::{from_bits,to_f32}` / `from_f32` — no slice dispatch.
+//! The x86_64 path uses `_mm_cvtph_ps` / `_mm_cvtps_ph` directly under a
+//! `#[target_feature(enable = "f16c")]` unsafe inner, called from a safe
+//! wrapper. With static F16C (a `target-cpu=x86-64-v3` build) the wrapper
+//! compiles to a single instruction. On a baseline x86-64 build the
+//! wrapper branches on `is_x86_feature_detected!` (a cached-atomic load
+//! and bit test, predicted after the first call) and direct-calls the
+//! same local kernel — skipping `half`'s out-of-line slice scaffolding,
+//! which profiled at ~1.4% self plus the dispatch absorbed by callers.
+//! Pre-F16C x86 (pre-2012) walks the lanes through `half::f16` scalar
+//! conversion. The non-x86 fallback goes through `half`'s slice path
+//! (`fcvtl` on aarch64-fp16).
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
 /// storage core behind `Corners`, `Spacing`, `FillAxis`, and
@@ -71,7 +76,7 @@ impl std::hash::Hash for F16x4 {
 
 #[cfg(any(test, not(all(target_arch = "x86_64", target_feature = "f16c"))))]
 use half::f16;
-#[cfg(not(all(target_arch = "x86_64", target_feature = "f16c")))]
+#[cfg(not(target_arch = "x86_64"))]
 use half::slice::HalfFloatSliceExt;
 
 /// Decode four packed f16 bit-patterns to f32 lanes.
@@ -83,11 +88,18 @@ pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
         // compile-time guarantee `_mm_cvtph_ps` requires.
         unsafe { f16x4_to_f32x4_f16c(bits) }
     }
-    #[cfg(not(all(target_arch = "x86_64", target_feature = "f16c")))]
+    #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
-        // Routes through `half`'s slice path: on aarch64-fp16 this is
-        // `fcvtl`; on x86_64 without static F16C it's a runtime CPUID
-        // dispatch (matching the pre-refactor behavior on v1/v2 builds).
+        // SAFETY: the branch is the runtime guarantee `_mm_cvtph_ps`
+        // requires; `is_x86_feature_detected!` is a cached-atomic load.
+        if std::arch::is_x86_feature_detected!("f16c") {
+            return unsafe { f16x4_to_f32x4_f16c(bits) };
+        }
+        bits.map(|b| f16::from_bits(b).to_f32())
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        // `half`'s slice path: `fcvtl` on aarch64-fp16, scalar elsewhere.
         let arr: &[f16; 4] = bytemuck::cast_ref(&bits);
         let mut out = [0.0f32; 4];
         arr.as_slice().convert_to_f32_slice(&mut out);
@@ -103,7 +115,15 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
         // SAFETY: see `f16x4_to_f32x4`.
         unsafe { f16x4_from_f32x4_f16c(src) }
     }
-    #[cfg(not(all(target_arch = "x86_64", target_feature = "f16c")))]
+    #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
+    {
+        // SAFETY: see the runtime branch in `f16x4_to_f32x4`.
+        if std::arch::is_x86_feature_detected!("f16c") {
+            return unsafe { f16x4_from_f32x4_f16c(src) };
+        }
+        src.map(|v| f16::from_f32(v).to_bits())
+    }
+    #[cfg(not(target_arch = "x86_64"))]
     {
         let mut out = [f16::ZERO; 4];
         out.as_mut_slice().convert_from_f32_slice(&src);
@@ -111,7 +131,7 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     }
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+#[cfg(target_arch = "x86_64")]
 #[inline]
 #[target_feature(enable = "f16c")]
 unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
@@ -126,7 +146,7 @@ unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
     }
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+#[cfg(target_arch = "x86_64")]
 #[inline]
 #[target_feature(enable = "f16c")]
 unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
@@ -179,5 +199,39 @@ mod tests {
             f16::from_f32(src[3]).to_bits(),
         ];
         assert_eq!(packed, expected);
+    }
+
+    #[test]
+    fn to_f32_matches_scalar_reference_exhaustively() {
+        // Every f16 bit pattern (including subnormals, ±inf, NaNs) must
+        // decode exactly like `half`'s scalar path — this cross-checks
+        // whichever SIMD/dispatch path the build selected.
+        for b in 0..=u16::MAX {
+            let got = f16x4_to_f32x4([b; 4]).map(f32::to_bits);
+            let want = f16::from_bits(b).to_f32().to_bits();
+            assert_eq!(got[0], want, "bits = {b:#06x}");
+            assert_eq!(got, [got[0]; 4], "lane divergence at {b:#06x}");
+        }
+    }
+
+    #[test]
+    fn from_f32_matches_scalar_reference_on_sweep() {
+        // Quantization sweep across magnitudes bracketing f16's range:
+        // subnormal (< 6.1e-5), normal, overflow-to-inf (> 65504), plus
+        // sign coverage. Bit-exact against `half`'s scalar RTNE.
+        for i in 0..20_000u32 {
+            let x = (i as f32 - 10_000.0) * 7.3;
+            let tiny = (i as f32 - 10_000.0) * 1.0e-8;
+            for v in [x, tiny] {
+                let got = f16x4_from_f32x4([v; 4]);
+                let want = f16::from_f32(v).to_bits();
+                assert_eq!(got[0], want, "v = {v}");
+            }
+        }
+        let inf = f16x4_from_f32x4([1.0e6, -1.0e6, f32::INFINITY, 0.0]);
+        assert_eq!(inf[0], f16::INFINITY.to_bits());
+        assert_eq!(inf[1], f16::NEG_INFINITY.to_bits());
+        assert_eq!(inf[2], f16::INFINITY.to_bits());
+        assert_eq!(inf[3], 0);
     }
 }
