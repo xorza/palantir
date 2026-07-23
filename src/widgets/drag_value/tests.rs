@@ -602,6 +602,7 @@ fn editing_a_long_value_holds_the_field_width() {
                         .min_size((40.0, 0.0))
                         .id(id)
                         .show(ui)
+                        .response
                         .node(),
                 );
             });

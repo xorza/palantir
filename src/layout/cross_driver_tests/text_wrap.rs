@@ -345,9 +345,9 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                         .grid_cell((0, 1))
                                                         .show(ui);
                                                 })
-                                                .node(),
+                                                .response.node(),
                                         );
-                                    }).node());
+                                    }).response.node());
                             });
                     });
             });
@@ -656,6 +656,7 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
                     .node(),
             );
         })
+        .response
         .node();
     ContainerTextScene {
         container,
@@ -693,6 +694,7 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
                 Some(glam::Vec2::new(0.0, 60.0)),
             );
         })
+        .response
         .node();
     ContainerTextScene {
         container,
@@ -709,6 +711,7 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
         .show(ui, |ui| {
             add_direct_text(ui, PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None);
         })
+        .response
         .node()
 }
 
@@ -1003,6 +1006,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                     })
+                    .response
                     .node();
             });
         // The chrome panel is the first child of the implicit root.

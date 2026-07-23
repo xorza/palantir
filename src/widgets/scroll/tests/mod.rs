@@ -310,6 +310,7 @@ fn scroll_records_content_extent() {
                             .show(ui);
                     }
                 })
+                .response
                 .node(),
             Axis::H => Scroll::horizontal()
                 .id(WidgetId::from_hash("scroll"))
@@ -323,6 +324,7 @@ fn scroll_records_content_extent() {
                             .show(ui);
                     }
                 })
+                .response
                 .node(),
             Axis::XY => Scroll::both()
                 .id(WidgetId::from_hash("scroll"))
@@ -337,11 +339,13 @@ fn scroll_records_content_extent() {
                         .size((Sizing::fixed(80.0), Sizing::fixed(250.0)))
                         .show(ui);
                 })
+                .response
                 .node(),
             Axis::Empty => Scroll::vertical()
                 .id(WidgetId::from_hash("empty"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |_| {})
+                .response
                 .node(),
         });
         let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");

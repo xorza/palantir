@@ -28,6 +28,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id(WidgetId::from_hash("none"))
                 .size(50.0)
                 .show(ui, |_| {})
+                .response
                 .node();
             cases.push(("none", n, ClipMode::None, false));
 
@@ -39,6 +40,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                     ..Default::default()
                 })
                 .show(ui, |_| {})
+                .response
                 .node();
             cases.push(("paint-only", n, ClipMode::None, true));
 
@@ -50,6 +52,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .size(50.0)
                 .clip_rect()
                 .show(ui, |_| {})
+                .response
                 .node();
             cases.push(("scissor", n, ClipMode::Rect, false));
 
@@ -62,6 +65,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rect()
                 .show(ui, |_| {})
+                .response
                 .node();
             cases.push(("clipped", n, ClipMode::Rect, true));
 
@@ -75,6 +79,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rounded()
                 .show(ui, |_| {})
+                .response
                 .node();
             cases.push(("rounded", n, ClipMode::Rounded, true));
 
@@ -88,6 +93,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rounded()
                 .show(ui, |_| {})
+                .response
                 .node();
             cases.push(("rounded-zero", n, ClipMode::Rect, true));
         });
@@ -116,9 +122,10 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
                 .background(Background::NONE)
                 .clip(ClipMode::None)
                 .show(ui, |_| {})
+                .response
                 .node(),
         );
-        inherited = Some(Panel::vstack().show(ui, |_| {}).node());
+        inherited = Some(Panel::vstack().show(ui, |_| {}).response.node());
     });
 
     let tree = &ui.forest.trees[Layer::Main];
@@ -166,7 +173,7 @@ fn panel_hugs_largest_child_and_layers_them() {
                                     .node(),
                             ]
                         });
-                    [panel.node(), panel.inner[0], panel.inner[1]]
+                    [panel.response.node(), panel.inner[0], panel.inner[1]]
                 })
                 .inner
         });
@@ -318,7 +325,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                                 .node(),
                         ]
                     });
-                    [canvas.node(), canvas.inner[0], canvas.inner[1]]
+                    [canvas.response.node(), canvas.inner[0], canvas.inner[1]]
                 })
                 .inner
         });
@@ -364,7 +371,7 @@ fn zstack_layers_children_without_painting_background() {
                                 .node(),
                         ]
                     });
-                [zstack.node(), zstack.inner[0], zstack.inner[1]]
+                [zstack.response.node(), zstack.inner[0], zstack.inner[1]]
             })
             .inner
     });

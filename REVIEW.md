@@ -4,17 +4,13 @@
 
 Aperture's record → measure → arrange → cascade → encode/compose → paint pipeline is coherent and deliberately optimized for stable-frame reuse. The review did not find evidence that the core architecture or its major rendering and text dependencies are fundamentally unsound.
 
-The highest-impact findings are concentrated at subsystem seams. Several APIs still permit ambiguous or internally inconsistent states through stacked projections, parallel fields, and sentinel values. Persistent owners also retain transient layout context or widget interaction state across subsystem boundaries.
+The highest-impact findings are concentrated at subsystem seams. Several APIs still permit ambiguous or internally inconsistent states through parallel fields and sentinel values. Persistent owners also retain transient layout context or widget interaction state across subsystem boundaries.
 
 The remaining findings concern redundant retained data and repeated hot-path work, dead or unnecessarily broad API surface, module cycles and layering leaks, inconsistent widget conventions, and large functions or files that combine independently changing responsibilities. Dependency concerns are narrow: a few crates or features support very little production behavior, while the main rendering, shaping, allocation, and Unicode dependencies all have clear roles.
 
 Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measures and arranges it; `CascadesEngine` derives paint, clip, hit-test, and damage inputs; the renderer frontend encodes and composes commands; `WgpuBackend` uploads resources and submits passes. `InputState`, `TextShaper`, image resources, widget state, and scroll state persist beside that pipeline. Most findings concern ownership and contracts between those side stores and the passes that consume them.
 
-## Batch 1 — High: APIs permit invalid or ambiguous states
-
-- [ ] **Composite widget responses stack multiple `Deref` projections.** `Response` already uses `Deref` as the lazy projection to `ResponseState` (`aperture/src/widgets/mod.rs:109-173`), while `InnerResponse<R>` adds another `Deref` to `Response` and explicitly cannot grow methods or fields without shadowing that target (`aperture/src/widgets/mod.rs:204-225`). `DragValueResponse` and `TextEditResponse` repeat the outer projection (`aperture/src/widgets/drag_value/mod.rs:150-176`, `aperture/src/widgets/text_edit/mod.rs:801-829`). Method lookup and ownership are consequently implicit, and extending a composite response risks silent name conflicts.
-
-## Batch 2 — High: Ownership and lifecycle contracts are misplaced
+## Batch 1 — High: Ownership and lifecycle contracts are misplaced
 
 - [ ] **`LayoutEngine::active_layer` retains transient ambient context on a persistent engine.** `run` changes the field per layer, while measure, arrange, cache restoration, text shaping, and subtree clearing accept the entire multi-layer output and index through the hidden current layer (`aperture/src/layout/engine.rs:109-141`, `aperture/src/layout/engine.rs:486-595`, `aperture/src/layout/engine.rs:609-700`, `aperture/src/layout/engine.rs:786-847`, `aperture/src/layout/support.rs:219-233`). Helpers can therefore mutate whichever layer happened to be selected most recently rather than expressing their target through their inputs.
 
@@ -22,7 +18,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **TextEdit's nominal model combines semantic editing with host, presentation, and menu policy.** `TextEditState` contains cursor/selection, retained paint scratch, focus/blink, undo/redo, and viewport scrolling (`aperture/src/widgets/text_edit/model.rs:22-69`). The model also imports Clipboard, platform detection, keys, and shortcuts and performs clipboard and shortcut dispatch itself (`aperture/src/widgets/text_edit/model.rs:3-7`, `aperture/src/widgets/text_edit/model.rs:239-269`, `aperture/src/widgets/text_edit/model.rs:308-358`), while `TextEdit::show` orchestrates five phases and menu behavior in one method (`aperture/src/widgets/text_edit/mod.rs:263-285`, `aperture/src/widgets/text_edit/mod.rs:429-725`). Changes to editing semantics, platform input, painting, focus, and menu behavior are therefore coupled through the same retained state and orchestration path.
 
-## Batch 3 — Medium-high: Retained state and dependencies are redundant or misplaced
+## Batch 2 — Medium-high: Retained state and dependencies are redundant or misplaced
 
 - [ ] **GPU-agnostic image lifecycle types live under `renderer`.** `UiResources` imports `ImageRegistry` and `TextureIdSource` from renderer (`aperture/src/ui/resources.rs:1-17`), the public `Shape` layer imports `ImageHandle` from renderer (`aperture/src/shape/mod.rs:4-20`), and scene records import `TextureId` from renderer (`aperture/src/scene/shapes/record.rs:1-15`). `ImageRegistry` itself contains CPU-side RAII ownership and pending/drop queues but no `wgpu` type (`aperture/src/renderer/image_registry.rs:22-25`, `aperture/src/renderer/image_registry.rs:41-119`, `aperture/src/renderer/image_registry.rs:122-173`). Authoring, UI, and scene layers consequently depend conceptually upward on the renderer for neutral resource identity and lifetime management.
 
@@ -34,7 +30,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **`fixedbitset` supports two narrow representations that duplicate nearby state.** `AxisScratch.resolved` parallels track sizes and `commit_fill` state (`aperture/src/layout/grid/mod.rs:50-83`, `aperture/src/layout/grid/mod.rs:432-503`, `aperture/src/layout/grid/mod.rs:709`, `aperture/src/layout/grid/mod.rs:783-818`). `container_text` is populated during one reverse traversal and iterated once later (`aperture/src/scene/tree/rollups.rs:31-52`, `aperture/src/scene/tree/mod.rs:245-267`, `aperture/src/layout/engine.rs:577-595`). These two uses carry a crate dependency while maintaining resolution or ownership information alongside data that already constrains it (`aperture/Cargo.toml:29`).
 
-## Batch 4 — Medium-high: Hot paths maintain redundant values and work
+## Batch 3 — Medium-high: Hot paths maintain redundant values and work
 
 - [ ] **The incremental cascade builds a prefix that only full cascade consumes.** Every internal-node `Frame` push runs `build_cascade_prefix`, including seven `canon_bits` canonicalizations and a fresh `Hasher` write (`aperture/src/scene/cascade/mod.rs:855-860`), while the only consumer, `finish_cascade_input`, is in the `!INCREMENTAL` branch (`aperture/src/scene/cascade/mod.rs:800-805`). On the steady-state incremental path, a paint-only change dirties every ancestor's subtree hash, making this unused hashing O(depth) per dirty node per frame.
 
@@ -46,7 +42,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **`PartialScissors` splits one collection into `first` and `rest` without a distinct consumer.** Every `RepaintScissors::Partial` site calls only `iter()` (`aperture/src/renderer/backend/mod.rs:582`, `aperture/src/renderer/backend/mod.rs:752`), which reconstructs the collection with `once(first).chain(rest)` (`aperture/src/renderer/backend/viewport.rs:22-41`). The constructor already asserts non-emptiness, so the split adds representation and iterator complexity without providing a used invariant at call sites.
 
-## Batch 5 — Medium: Dead code and broad surface obscure the live design
+## Batch 4 — Medium: Dead code and broad surface obscure the live design
 
 - [ ] **The primitives API contains a substantial zero-caller surface.** Unused items include seven `Corners` edge/diagonal constructors (`aperture/src/primitives/corners.rs:49-90`), `Color::midpoint` (`aperture/src/primitives/color.rs:96-103`), `TranslateScale::from_scale_about` (`aperture/src/primitives/transform.rs:87`), `Size::is_inf` (`aperture/src/primitives/size.rs:32`), and two `Span` conversion directions (`aperture/src/primitives/span.rs:29`, `aperture/src/primitives/span.rs:56`). `from_translate_scale_about` is also public despite having only in-crate use (`aperture/src/primitives/transform.rs:105`). This surface makes unsupported or abandoned vocabulary appear maintained.
 
@@ -56,7 +52,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **Diagnostics and clock re-exports expose internals-only types.** `RealtimeClock` is only the internally constructed default (`aperture/src/host/window_driver.rs:245`, `aperture/src/host/offscreen.rs:128`) and no example, test, or Darkroom code names it. Of the GPU-stats surface, only `last_pass_ms` has a production reader (`aperture/src/ui/frame_stats.rs:22`); `last_kind_ms`, `last_pipeline_stats`, `PipelineStats`, and the `BatchKind` re-export are consumed only by internals benches (`aperture/src/diagnostics/gpu_stats.rs:69-111`, `aperture/src/lib.rs:35`). The default API therefore advertises implementation and benchmark details as supported surface.
 
-## Batch 6 — Medium: Load-bearing modules combine unrelated responsibilities
+## Batch 5 — Medium: Load-bearing modules combine unrelated responsibilities
 
 - [ ] **`InputState` is a flat owner for several independent domains.** It combines routing, capture, scroll queues, keyboard, focus, modifiers, subscriptions, action and repaint flags, quiescence, and the frame clock (`aperture/src/input/mod.rs:258-358`); event dispatch spans `aperture/src/input/mod.rs:446-680`, and response projection adds another substantial responsibility (`aperture/src/input/mod.rs:799-925`). Input validation is also inconsistent: zoom rejects invalid factors, while pointer positions and scroll deltas accept non-finite values into persistent capture and delta math (`aperture/src/input/mod.rs:452-457`, `aperture/src/input/mod.rs:465-495`, `aperture/src/input/mod.rs:594-617`).
 
@@ -66,7 +62,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **`DamageEngine` combines region accumulation, retained scene diffing, snapshot storage, and traversal scratch.** The owner holds the damage budget and raw region alongside retained snapshots, the paint arena, and structural traversal state (`aperture/src/scene/damage/mod.rs:73-147`); `compute` performs the tree diff (`aperture/src/scene/damage/mod.rs:292-713`), while paint-only invalidation and geometry/order logic form separate paths (`aperture/src/scene/damage/mod.rs:728-900`). Moved-subtree handling uses `usize::MAX` as a control-flow sentinel through the `advance` stride and reinterprets it in an 81-line post-match block (`aperture/src/scene/damage/mod.rs:456`, `aperture/src/scene/damage/mod.rs:573-657`, `aperture/src/scene/damage/mod.rs:791`). That path also hand-builds a `NodeSnapshot` already duplicated in the vacant-entry path (`aperture/src/scene/damage/mod.rs:398-413`, `aperture/src/scene/damage/mod.rs:622-638`), making a delicate correctness path depend on parallel construction logic.
 
-## Batch 7 — Medium: Renderer and widget state machines are fused into orchestrators
+## Batch 6 — Medium: Renderer and widget state machines are fused into orchestrators
 
 - [ ] **Batch and polyline state machines are spread across `Composer::compose` and distant helpers.** `Composer` owns many independent state domains (`aperture/src/renderer/frontend/composer/mod.rs:60-93`). `BatchState` is declared separately, but its open, close, hit, and text lifecycle is distributed across composer methods (`aperture/src/renderer/frontend/composer/mod.rs:121-129`, `aperture/src/renderer/frontend/composer/mod.rs:195-322`, `aperture/src/renderer/frontend/composer/mod.rs:387-429`, `aperture/src/renderer/frontend/composer/mod.rs:1141-1212`), while polyline transformation and emission occupy a large inline command arm (`aperture/src/renderer/frontend/composer/mod.rs:964-1140`). The main command traversal must coordinate multiple implicit state machines directly.
 
@@ -78,7 +74,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **`WgpuBackend` combines resource ownership, target allocation, and frame submission.** It owns device, queue, belt, drawing systems, format caches, images, diagnostics, and timing (`aperture/src/renderer/backend/mod.rs:129-175`), then also creates resources, allocates per-window targets, performs upload/pass/copy/submit, and translates schedules into render-pass calls (`aperture/src/renderer/backend/mod.rs:178-240`, `aperture/src/renderer/backend/mod.rs:271-336`, `aperture/src/renderer/backend/mod.rs:382-647`, `aperture/src/renderer/backend/mod.rs:773-966`). Resource composition, window lifecycle, and per-frame scheduling consequently change through one large owner.
 
-## Batch 8 — Medium: Pipeline functions and files fuse independent concerns
+## Batch 7 — Medium: Pipeline functions and files fuse independent concerns
 
 - [ ] **`Ui::frame` interleaves classification, cold-start processing, damage, animation, and report assembly.** The 165-line method combines clock advance and classification (`aperture/src/ui/mod.rs:185-196`), the full-record branch with warmup and double-layout retry (`aperture/src/ui/mod.rs:212-271`), and a tail covering damage computation, the first-frame invariant, paint-animation wake requeue, and report assembly (`aperture/src/ui/mod.rs:278-326`). Multiple invariant clusters with long explanatory comments share one control-flow path, making changes to one frame phase risky for the others.
 
@@ -90,7 +86,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **Three low-level representations contain duplicated synchronization logic.** `Shapes::add` and `add_gpu_view` repeat the records/hashes push tail that keeps parallel columns aligned (`aperture/src/scene/shapes/mod.rs:228-233`, `aperture/src/scene/shapes/mod.rs:240-245`). `GlyphSlot` re-declares four `PackedGlyphMetadata` fields and copies them individually in both insertion paths (`aperture/src/renderer/backend/text/atlas.rs:63-75`, `aperture/src/renderer/backend/text/atlas.rs:219-230`, `aperture/src/renderer/backend/text/atlas.rs:394-405`). `GlyphAtlas.bind_group_dirty` is set during growth and later read and cleared by `TextBackend::prepare_batch`; that cross-owner flag is also the only mechanism keeping `atlas_px` fresh (`aperture/src/renderer/backend/text/atlas.rs:502`, `aperture/src/renderer/backend/text/mod.rs:337-348`). Drift in any of these protocols can desynchronize parallel data or cached GPU state.
 
-## Batch 9 — Medium: Widget APIs are inconsistent and duplicated
+## Batch 8 — Medium: Widget APIs are inconsistent and duplicated
 
 - [ ] **`Switch` duplicates the shared toggle-row behavior and the documentation misstates that relationship.** `toggle_row` owns row spacing, center alignment, the label leaf, and look animation for Checkbox and RadioButton (`aperture/src/widgets/toggle.rs:58-98`). `Switch` repeats the row setup, byte-identical label leaf, its own animation, and the Checkbox click-flip block (`aperture/src/widgets/switch.rs:65-67`, `aperture/src/widgets/switch.rs:82`, `aperture/src/widgets/switch.rs:101-122`, `aperture/src/widgets/checkbox/mod.rs:60-62`). The divergence exists because the shared helper hardcodes a square leaf while Switch uses a track and knob (`aperture/src/widgets/toggle.rs:80-86`), and AGENTS.md incorrectly claims the helper backs Checkbox and Switch.
 
@@ -102,7 +98,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **Modal/popup blocking and winit window lookup are hand-duplicated.** Modal declares a click|drag|scroll|pinch sense union locally, while Popup inlines the same union for its click-eater (`aperture/src/widgets/modal.rs:14-17`, `aperture/src/widgets/popup/mod.rs:179`). The resolve-running-window guard already represented by `window_by_token` is also repeated across five `window_event` arms (`aperture/src/host/winit/mod.rs:401-409`, `aperture/src/host/winit/mod.rs:609-612`, `aperture/src/host/winit/mod.rs:634-635`, `aperture/src/host/winit/mod.rs:643-644`, `aperture/src/host/winit/mod.rs:651-652`, `aperture/src/host/winit/mod.rs:684-685`). Changes to either policy require synchronized edits at multiple sites.
 
-## Batch 10 — Low-medium: Internal layering has cycles and leaks
+## Batch 9 — Low-medium: Internal layering has cycles and leaks
 
 - [ ] **`primitives` and `animation` form a genuine module cycle.** `primitives` depends upward on `animation` solely for `Animatable` (`aperture/src/primitives/brush/mod.rs:3` and derives on stroke, shadow, background, and color), while `animation` depends downward on `primitives` (`aperture/src/animation/mod.rs:23-25`, `aperture/src/animation/spring.rs:7`). The trait itself depends only on `glam::Vec2`, so its current placement creates a cycle unrelated to animation storage or ticking.
 
@@ -112,7 +108,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **Several types live in modules that do not own their behavior.** `PaintTier` is in renderer buffer vocabulary described as shared by composer and backend, but only composer code consumes it (`aperture/src/renderer/render_buffer/batch.rs:32-38`). `LineFit` is separated by roughly 1,000 lines from `TextWrap`, and their pure translation is stranded in the layout engine (`aperture/src/text/mod.rs`, `aperture/src/text/wrap.rs`, `aperture/src/layout/engine.rs:902-908`). `linear_to_oklab` and `oklab_to_linear` live in public color primitives even though gradient baking is their only consumer (`aperture/src/primitives/color.rs:419-455`, `aperture/src/renderer/gradient_atlas/bake.rs:5`). These placements widen module vocabulary and create dependencies that do not reflect ownership.
 
-## Batch 11 — Low: Dependencies and shipping hot paths carry unnecessary surface
+## Batch 10 — Low: Dependencies and shipping hot paths carry unnecessary surface
 
 - [ ] **GPU wire vocabulary is exposed as general-purpose primitives.** `primitives/fill_wire.rs` defines shader tags, packed flags, and a gradient-atlas row (`aperture/src/primitives/fill_wire.rs:1-30`, `aperture/src/primitives/fill_wire.rs:77-136`), while `FillAxis` is another GPU-wire type under the brush primitives (`aperture/src/primitives/brush/gradient/mod.rs`). Shader ABI and atlas implementation details are therefore presented as geometric authoring vocabulary and couple scene primitives to renderer representation.
 
@@ -122,7 +118,7 @@ Current flow: `Ui::frame` records `Forest`/`RecordStore`; `LayoutEngine` measure
 
 - [ ] **The frame-stats overlay heap-allocates text already destined for the record arena.** Each displayed frame creates one or two `String`s and then copies the result into the frame arena (`aperture/src/ui/frame_stats.rs:18-28`, `aperture/src/ui/frame_stats.rs:47`), even though `Ui::fmt` writes formatting arguments directly into that arena (`aperture/src/ui/mod.rs:777-790`). Enabling the diagnostic overlay therefore adds avoidable per-frame heap traffic.
 
-## Batch 12 — Low: Documentation contradicts the code
+## Batch 11 — Low: Documentation contradicts the code
 
 - [ ] **Four documentation statements describe stale structure or lifetime behavior.** AGENTS.md describes `bounds_table` as transform/position and `panel_table` as grid-cell/scroll-axes, while the code stores `BoundsExtras { position, grid, min_size, max_size }`, `PanelExtras { gaps, justify, child_align, transform }`, and scroll axes in packed `LayoutCore` mode data (`aperture/src/scene/element/columns.rs:72-86`, `aperture/src/scene/element/columns.rs:169-241`). It also locates the Shape enum at the removed `src/shape.rs` path and says `toggle` backs Checkbox/Switch when it backs Checkbox/RadioButton. `WindowRequests` is documented as retained across frames, but only `cursor` persists; `commands` is taken and `close_vetoed` reset each frame (`aperture/src/window.rs:203-210`, `aperture/src/host/winit/window.rs:105`, `aperture/src/host/winit/window.rs:190`). These statements direct maintainers to incorrect ownership and file boundaries.
 

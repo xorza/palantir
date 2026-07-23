@@ -17,6 +17,7 @@ fn caret_blinks_on_and_off_while_focused() {
                     .id(WidgetId::from_hash("blink-ed"))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });

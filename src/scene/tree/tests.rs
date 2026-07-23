@@ -80,6 +80,7 @@ fn interleaved_shapes_record_correct_order() {
                     .show(ui);
                 ui.add_shape(pos_rect(2));
             })
+            .response
             .node()
     });
     let pi = p.idx();
@@ -151,6 +152,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                     ui.add_shape(pos_rect());
                     ui.add_shape(pos_rect());
                 })
+                .response
                 .node(),
         );
     });
@@ -213,6 +215,7 @@ fn same_authoring_produces_same_hash() {
                     })
                     .show(ui);
             })
+            .response
             .node()
     };
     assert_eq!(record_hash(build), record_hash(build));
@@ -226,6 +229,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::polyline(points, PolylineColors::Single(color), 2.0));
             })
+            .response
             .node()
     }
 
@@ -282,12 +286,14 @@ fn widget_id_only_affects_cascade_static_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("a"))
             .show(ui, |_| {})
+            .response
             .node()
     });
     let h2 = record_hash(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("b"))
             .show(ui, |_| {})
+            .response
             .node()
     });
     assert_eq!(h1, h2);
@@ -296,12 +302,14 @@ fn widget_id_only_affects_cascade_static_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("a"))
             .show(ui, |_| {})
+            .response
             .node()
     });
     let static_2 = record_cascade_static(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("b"))
             .show(ui, |_| {})
+            .response
             .node()
     });
     assert_ne!(
@@ -322,6 +330,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
             |ui| {
@@ -329,6 +338,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .size((Sizing::fixed(101.0), Sizing::fixed(50.0)))
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
         ),
@@ -339,6 +349,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .padding(8.0)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
             |ui| {
@@ -346,6 +357,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .padding(12.0)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
         ),
@@ -356,6 +368,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .visibility(Visibility::Visible)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
             |ui| {
@@ -363,6 +376,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .visibility(Visibility::Hidden)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
         ),
@@ -373,6 +387,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .justify(Justify::Start)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
             |ui| {
@@ -380,6 +395,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .justify(Justify::Center)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
         ),
@@ -390,6 +406,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .focusable(false)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
             |ui| {
@@ -397,6 +414,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .focusable(true)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
         ),
@@ -407,6 +425,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .disabled(false)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
             |ui| {
@@ -414,6 +433,7 @@ fn changing_layout_property_changes_hash() {
                     .id(WidgetId::from_hash("root"))
                     .disabled(true)
                     .show(ui, |_| {})
+                    .response
                     .node()
             },
         ),
@@ -466,6 +486,7 @@ fn child_hash_does_not_affect_parent_hash() {
                     })
                     .show(ui);
             })
+            .response
             .node()
     }
     let h1 = record_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
@@ -502,6 +523,7 @@ fn subtree_hash_stable_across_frames() {
                     })
                     .show(ui);
             })
+            .response
             .node()
     };
     assert_eq!(record_subtree_hash(build), record_subtree_hash(build));
@@ -522,6 +544,7 @@ fn subtree_hash_changes_when_descendant_changes() {
                     })
                     .show(ui);
             })
+            .response
             .node()
     }
     let h1 = record_subtree_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
@@ -563,6 +586,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     b(ui);
                 }
             })
+            .response
             .node()
     }
     let h_ab = record_subtree_hash(|ui| build(ui, false));
@@ -585,6 +609,7 @@ fn self_transform_change_flips_node_hash() {
             .id(WidgetId::from_hash("root"))
             .transform(t)
             .show(ui, |_| {})
+            .response
             .node()
     }
     // Both transforms are non-identity — identity is the noop sentinel
@@ -637,6 +662,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                         .cols(cols)
                         .rows(rows)
                         .show(ui, |_| {})
+                        .response
                         .node(),
                 );
                 Grid::new()
@@ -663,6 +689,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                         .cols(cols)
                         .rows(rows)
                         .show(ui, |_| {})
+                        .response
                         .node(),
                 );
             });
@@ -701,6 +728,7 @@ fn subtree_end_rolls_up_during_recording() {
                     .size(10.0)
                     .show(ui);
             })
+            .response
             .node()
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
@@ -1070,6 +1098,7 @@ fn mid_recording_popup_keeps_trees_independent() {
                     .show(ui);
                 ui.add_shape(marker(4));
             })
+            .response
             .node()
     });
     let main_tree = &ui.forest.trees[Layer::Main];
@@ -1159,6 +1188,7 @@ fn child_iter_traverses_correctly_after_finalize() {
                     .size(10.0)
                     .show(ui);
             })
+            .response
             .node()
     });
     let kids: Vec<u32> = ui.forest.trees[Layer::Main]

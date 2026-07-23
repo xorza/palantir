@@ -65,6 +65,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .show(ui);
                             })
+                            .response
                             .node(),
                     );
                     // Right: FILL/FILL with a Fixed(180×80) descendant.
@@ -89,9 +90,11 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                                             .show(ui);
                                     });
                             })
+                            .response
                             .node(),
                     );
                 })
+                .response
                 .node();
         });
 

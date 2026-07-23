@@ -33,6 +33,7 @@ fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
                     .grid_cell((0, 1))
                     .show(ui);
             })
+            .response
             .node()
     });
     ui.main_child_rects(root)
@@ -63,6 +64,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
                     .grid_cell((0, 1))
                     .show(ui);
             })
+            .response
             .node()
     });
     let kids = ui.main_child_rects(root);
@@ -102,6 +104,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                     .grid_span((2, 1))
                     .show(ui);
             })
+            .response
             .node()
     });
     let nodes = ui.main_child_ids(root);
@@ -165,6 +168,7 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
                             .show(ui);
                     });
             })
+            .response
             .node()
     });
     let kids = ui.main_child_rects(root);
@@ -200,6 +204,7 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
                     .grid_cell((0, 0))
                     .show(ui);
             })
+            .response
             .node()
     });
     let btn = ui.main_child_rects(root)[0];
@@ -271,6 +276,7 @@ fn grid_fill_weights_and_clamps() {
                         .grid_cell((0, 1))
                         .show(ui);
                 })
+                .response
                 .node()
         });
         let kids = ui.main_child_rects(root);
@@ -312,6 +318,7 @@ fn grid_fill_col_floors_at_descendant_min_content() {
                     .grid_cell((0, 1))
                     .show(ui);
             })
+            .response
             .node()
     });
     let kids = ui.main_child_rects(root);
@@ -347,6 +354,7 @@ fn grid_fill_row_floors_at_descendant_min_content() {
                     .grid_cell((1, 0))
                     .show(ui);
             })
+            .response
             .node()
     });
     let kids = ui.main_child_rects(root);
@@ -398,6 +406,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                         .grid_cell((1, 1))
                         .show(ui);
                 })
+                .response
                 .node()
         });
         let kids = ui.main_child_rects(root);
@@ -488,6 +497,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                                 .node(),
                         );
                     })
+                    .response
                     .node(),
             );
         });
@@ -564,6 +574,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                                             .node(),
                                     );
                                 })
+                                .response
                                 .node(),
                         );
                     });
@@ -631,6 +642,7 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
                                 .grid_cell((0, 1))
                                 .show(ui);
                         })
+                        .response
                         .node(),
                 );
             });
@@ -665,6 +677,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
                         );
                     });
             })
+            .response
             .node()
     });
 
@@ -710,6 +723,7 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
+            .response
             .node()
     });
 
@@ -739,6 +753,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                     .align(Align::new(HAlign::Right, VAlign::Bottom))
                     .show(ui);
             })
+            .response
             .node()
     });
     let r = ui.main_child_rects(root)[0];
@@ -797,6 +812,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
                     .grid_cell((2, 2))
                     .show(ui);
             })
+            .response
             .node()
     });
     let kids = ui.main_child_rects(root);
@@ -837,6 +853,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                                     .node(),
                             );
                         })
+                        .response
                         .node(),
                 );
             });
@@ -873,6 +890,7 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
                             .node(),
                     );
                 })
+                .response
                 .node(),
         );
     });
@@ -931,6 +949,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                                     .node(),
                             );
                         })
+                        .response
                         .node(),
                 );
             });

@@ -121,8 +121,8 @@ fn stack_sense_routing() {
                         .left
                         .clicked();
                 });
-            stack_clicked |= r.left.clicked();
-            stack_hovered |= r.hovered;
+            stack_clicked |= r.response.left.clicked();
+            stack_hovered |= r.response.hovered;
         });
         assert_eq!(
             stack_clicked, *expect_stack_click,

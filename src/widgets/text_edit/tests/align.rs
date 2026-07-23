@@ -59,7 +59,7 @@ fn frame(
             if let Some(p) = placeholder {
                 e = e.placeholder(p);
             }
-            node = Some(e.show(ui).node());
+            node = Some(e.show(ui).response.node());
         });
     };
     ui.run_at(NARROW, &mut record);
@@ -544,6 +544,7 @@ mod per_line {
                         .text_align(Align::TOP_RIGHT)
                         .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                         .show(ui)
+                        .response
                         .node(),
                 );
             });
@@ -656,6 +657,7 @@ mod per_line {
                         .placeholder("type a paragraph here — long enough to actually wrap")
                         .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                         .show(ui)
+                        .response
                         .node(),
                 );
             });
@@ -879,6 +881,7 @@ fn multiline_default_is_top_left() {
                     .multiline(true)
                     .size((Sizing::fixed(EDIT_W), Sizing::fixed(80.0)))
                     .show(ui)
+                    .response
                     .node(),
             );
         });
@@ -918,6 +921,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
                             .id(WidgetId::from_hash("zoom-ed"))
                             .size((Sizing::fixed(EDIT_W), Sizing::fixed(EDIT_H)))
                             .show(ui)
+                            .response
                             .node(),
                     );
                 });

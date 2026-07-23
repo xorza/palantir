@@ -21,6 +21,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
                     .size((20.0, 20.0))
                     .show(ui);
             })
+            .response
             .node()
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
@@ -51,6 +52,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
                     .size((20.0, 20.0))
                     .show(ui);
             })
+            .response
             .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
@@ -82,6 +84,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
                     .size((160.0, 80.0))
                     .show(ui);
             })
+            .response
             .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
@@ -119,6 +122,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
                     .size((20.0, 20.0))
                     .show(ui);
             })
+            .response
             .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
@@ -162,6 +166,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
                 })
+                .response
                 .node()
         });
         let kids: Vec<_> = ui.main_child_ids(panel);
@@ -191,6 +196,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
                     .collapsed()
                     .show(ui);
             })
+            .response
             .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
@@ -226,6 +232,7 @@ fn canvas_ignores_child_align() {
                         .node(),
                 );
             })
+            .response
             .node()
     });
     let r = ui.layout[Layer::Main].rect[child.unwrap().idx()];

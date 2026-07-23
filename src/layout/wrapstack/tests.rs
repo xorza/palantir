@@ -64,6 +64,7 @@ fn max_capped_fill_cross_cell(
                 ))
                 .show(ui);
         })
+        .response
         .node()
 }
 
@@ -137,6 +138,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
                         children.push(cell(ui, "normal", normal_size.w, normal_size.h));
                     }
                 })
+                .response
                 .node()
         });
 
@@ -184,6 +186,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                         kids.push(cell(ui, ["a", "b", "c", "d"][i], 60.0, 20.0));
                     }
                 })
+                .response
                 .node()
         });
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
@@ -214,6 +217,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
                 kids.push(cell(ui, "wide", 200.0, 20.0));
                 kids.push(cell(ui, "tail", 50.0, 20.0));
             })
+            .response
             .node()
     });
     let small = ui.layout[Layer::Main].rect[kids[0].idx()];
@@ -245,6 +249,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
                 // overflow → new line
                 kids.push(cell(ui, "next-line", 100.0, 30.0));
             })
+            .response
             .node()
     });
     let tall = ui.layout[Layer::Main].rect[kids[0].idx()];
@@ -283,6 +288,7 @@ fn wrap_hstack_justify_per_line() {
                     kids.push(cell(ui, "a", 60.0, 20.0));
                     kids.push(cell(ui, "b", 60.0, 20.0));
                 })
+                .response
                 .node()
         });
         let a = ui.layout[Layer::Main].rect[kids[0].idx()];
@@ -318,6 +324,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
                 // 40+10+40+10+40 = 140 > 100 → c wraps
                 kids.push(cell(ui, "c", 20.0, 40.0));
             })
+            .response
             .node()
     });
     let a = ui.layout[Layer::Main].rect[kids[0].idx()];
@@ -355,6 +362,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
                     cell(ui, "c", 60.0, 20.0);
                     cell(ui, "d", 60.0, 20.0);
                 })
+                .response
                 .node(),
         );
         wrap_node.unwrap()
@@ -393,6 +401,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                         .node(),
                 );
             })
+            .response
             .node()
     });
     let tall = ui.layout[Layer::Main].rect[kids[0].idx()];
@@ -457,6 +466,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                             ));
                         }
                     })
+                    .response
                     .node()
             });
 
@@ -526,6 +536,7 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
                     let next_size = axis.compose_size(50.0, 10.0);
                     children.push(cell(ui, "mixed-next", next_size.w, next_size.h));
                 })
+                .response
                 .node()
         });
 
@@ -562,6 +573,7 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
                     ));
                     children.push(fill_cross_cell(ui, "next-fill", axis, 50.0, 15.0));
                 })
+                .response
                 .node()
         });
 
@@ -607,6 +619,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
                 );
                 kids.push(cell(ui, "b", 60.0, 20.0));
             })
+            .response
             .node()
     });
     let a = ui.layout[Layer::Main].rect[kids[0].idx()];
@@ -646,6 +659,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
                         .node(),
                 );
             })
+            .response
             .node()
     });
     let r = ui.layout[Layer::Main].rect[filler_node.unwrap().idx()];
@@ -687,6 +701,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
                     });
                 outer_b = Some(cell(ui, "ob", 100.0, 20.0));
             })
+            .response
             .node()
     });
     let ia = ui.layout[Layer::Main].rect[inner_a.unwrap().idx()];
@@ -753,6 +768,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
                                 );
                             }
                         })
+                        .response
                         .node(),
                 );
             });
