@@ -36,6 +36,7 @@ impl UiResources {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
 impl Default for UiResources {
     fn default() -> Self {
         Self::new(TextShaper::default(), Clipboard::default(), None)

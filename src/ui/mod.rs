@@ -136,13 +136,14 @@ impl Ui {
     /// creates its own [`Forest`], whose retained record payloads
     /// remain isolated from other windows' record passes.
     pub(crate) fn new(resources: UiResources) -> Self {
+        let layout_engine = LayoutEngine::new(resources.text.clone());
         Self {
             resources,
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
             gpu_views: Default::default(),
-            layout_engine: Default::default(),
+            layout_engine,
             layout: Default::default(),
             cascades: Default::default(),
             input: Default::default(),
@@ -385,10 +386,7 @@ impl Ui {
         self.forest.post_record();
         let payloads = self.forest.record_store.payloads.borrow();
         let text_bytes = payloads.text_bytes();
-        let tc = TextCtx {
-            bytes: &text_bytes,
-            shaper: &self.resources.text,
-        };
+        let tc = TextCtx { bytes: &text_bytes };
         self.layout_engine.run(
             &self.forest,
             &tc,
@@ -428,8 +426,7 @@ impl Ui {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
-        self.resources.text.end_frame();
-        self.layout_engine.sweep_removed(removed);
+        self.layout_engine.text.end_frame(removed);
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
         // Evict views whose widget vanished this frame; the backend frees the
@@ -1124,6 +1121,7 @@ impl Ui {
 ///
 /// Use [`crate::OffscreenHost`] when frames must be rendered or share
 /// resources with a GPU backend.
+#[cfg(any(test, feature = "internals"))]
 impl Default for Ui {
     fn default() -> Self {
         Self::new(UiResources::default())

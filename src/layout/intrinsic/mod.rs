@@ -261,7 +261,7 @@ fn leaf<const RANGE: bool>(
     let curr_hash = tree.rollups.node[node.idx()];
     let mut range = IntrinsicRange::ZERO;
     for ts in leaf_text_shapes(tree, tc, node) {
-        let measurement = shape_leaf_text(engine, tc, wid, curr_hash, &ts);
+        let measurement = shape_leaf_text(engine, wid, curr_hash, &ts);
         if query.includes(LenReq::MinContent) {
             range.min = range
                 .min
@@ -278,15 +278,13 @@ fn leaf<const RANGE: bool>(
 
 fn shape_leaf_text(
     engine: &mut LayoutEngine,
-    tc: &TextCtx<'_>,
     wid: WidgetId,
     curr_hash: ContentHash,
     ts: &TextShapeInput<'_>,
 ) -> TextMeasurement {
     engine
-        .text_reuse
+        .text
         .prepare_run(
-            tc.shaper,
             TextRunIdentity {
                 widget_id: wid,
                 ordinal: ts.ordinal,

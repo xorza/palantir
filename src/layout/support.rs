@@ -16,19 +16,15 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight, TextShaper};
+use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 /// Read-only context every layout method threads through the
-/// measure / arrange / intrinsic recursion. Bundles the text shaper
-/// with the record-pass text-byte arena (the byte slice that a
-/// recorded `ShapeRecord::Text::text` span resolves against).
-/// Single parameter slot instead of `(text_bytes: &str, text:
-/// &TextShaper)` everywhere keeps driver signatures readable.
+/// measure / arrange / intrinsic recursion. Holds the record-pass text-byte
+/// arena that a recorded `ShapeRecord::Text::text` span resolves against.
 #[derive(Copy, Clone)]
 pub(crate) struct TextCtx<'a> {
     pub(crate) bytes: &'a str,
-    pub(crate) shaper: &'a TextShaper,
 }
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by

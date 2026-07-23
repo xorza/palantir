@@ -4,8 +4,8 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
 use crate::text::{
-    FontFamily, FontWeight, LineFit, ShapeParams, TextMeasurement, TextReuseCache, TextRunIdentity,
-    TextShaper,
+    FontFamily, FontWeight, LineFit, ShapeParams, TextMeasurement, TextRunIdentity, TextShaper,
+    TextSystem,
 };
 use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
@@ -15,8 +15,7 @@ const WIDTHS_PER_BATCH: u32 = 256;
 
 #[derive(Debug)]
 struct BenchState {
-    shaper: TextShaper,
-    reuse: TextReuseCache,
+    text: TextSystem,
 }
 
 fn params(width: f32) -> ShapeParams {
@@ -31,15 +30,14 @@ fn params(width: f32) -> ShapeParams {
 }
 
 fn measure_truncated_width(
-    shaper: &TextShaper,
-    reuse: &mut TextReuseCache,
+    text_system: &mut TextSystem,
     identity: TextRunIdentity,
     text: &str,
     text_hash: u64,
     params: ShapeParams,
 ) -> TextMeasurement {
-    let prepared = reuse
-        .prepare_run(shaper, identity, text, text_hash, params)
+    let prepared = text_system
+        .prepare_run(identity, text, text_hash, params)
         .unwrap();
     let target = params
         .max_width_px
@@ -63,12 +61,10 @@ pub fn bench(c: &mut Criterion) {
         authoring_hash: ContentHash(text_hash),
     };
     c.bench_function("text_shape/ellipsis_reuse_hit", |b| {
-        let shaper = TextShaper::with_bundled_fonts();
-        let mut reuse = TextReuseCache::default();
+        let mut text_system = TextSystem::new(TextShaper::with_bundled_fonts());
         let shape_params = params(80.0);
         measure_truncated_width(
-            &shaper,
-            &mut reuse,
+            &mut text_system,
             reuse_identity,
             TEXT,
             text_hash,
@@ -76,8 +72,7 @@ pub fn bench(c: &mut Criterion) {
         );
         b.iter(|| {
             black_box(measure_truncated_width(
-                &shaper,
-                &mut reuse,
+                &mut text_system,
                 reuse_identity,
                 TEXT,
                 text_hash,
@@ -94,23 +89,14 @@ pub fn bench(c: &mut Criterion) {
     c.bench_function("text_shape/ellipsis_width_churn", |b| {
         b.iter_batched(
             || {
-                let shaper = TextShaper::with_bundled_fonts();
-                let mut reuse = TextReuseCache::default();
-                measure_truncated_width(
-                    &shaper,
-                    &mut reuse,
-                    churn_identity,
-                    TEXT,
-                    text_hash,
-                    params(39.75),
-                );
-                BenchState { shaper, reuse }
+                let mut text = TextSystem::new(TextShaper::with_bundled_fonts());
+                measure_truncated_width(&mut text, churn_identity, TEXT, text_hash, params(39.75));
+                BenchState { text }
             },
             |mut state| {
                 for i in 0..WIDTHS_PER_BATCH {
                     let measured = measure_truncated_width(
-                        &state.shaper,
-                        &mut state.reuse,
+                        &mut state.text,
                         churn_identity,
                         TEXT,
                         text_hash,

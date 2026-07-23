@@ -176,30 +176,21 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &ui.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     let min_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MinContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &ui.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     let max_h = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         node,
         Axis::Y,
         LenReq::MaxContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &ui.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
 
     assert!(
@@ -429,20 +420,14 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &ui.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     let min_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MinContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &ui.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     assert!(
         (min_w - max_w).abs() <= 0.5,
@@ -500,10 +485,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &probe.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     assert!(label_full > 0.0);
 
@@ -567,10 +549,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx {
-            bytes: &text_bytes,
-            shaper: &probe.resources.text,
-        },
+        &TextCtx { bytes: &text_bytes },
     );
     assert!(label_full > 0.0);
 
@@ -859,7 +838,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same
 /// node has both runs shaped (`text_spans[node].len == 2`) at distinct
-/// `TextCacheKey`s (no `TextReuseCache` collision). Replaces the
+/// `TextCacheKey`s (no identity-reuse collision). Replaces the
 /// old "one ShapeRecord::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
