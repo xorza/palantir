@@ -284,17 +284,6 @@ impl Tree {
         *cascade_static = ContentHash(cascade_static_hasher.finish());
     }
 
-    /// `NodeId` the next [`Self::open_node`] call will assign — i.e.
-    /// `records.len() as u32` wrapped. Lets callers (notably
-    /// `Forest::open_node`) reserve the id ahead of the push so
-    /// `SeenIds::record` can stash it for collision lookup before
-    /// `node` is moved into the tree.
-    pub(crate) fn peek_next_id(&self) -> NodeId {
-        // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
-        // arena ceiling), which `open_node` asserts for this same id.
-        NodeId(self.records.len() as u32)
-    }
-
     pub(crate) fn push_grid_def(
         &mut self,
         rows: &[Track],
@@ -320,12 +309,8 @@ impl Tree {
     /// Push a node as a child of the currently-open node (or as a new
     /// root if `scratch.open_frames` is empty) and make it the new tip.
     /// Root mints stamp `scratch.pending_placement` onto the new
-    /// `RootSlot`; child opens don't read it.
-    ///
-    /// `new_id` is the pre-reserved id `Forest::open_node` already
-    /// computed via [`Self::peek_next_id`] to build the `SeenIds`
-    /// endpoint. Threading it through avoids recomputing
-    /// `records.len()` twice per node.
+    /// `RootSlot`; child opens don't read it. The assigned `NodeId` is
+    /// the return value — the tree is the sole id authority.
     ///
     /// `chrome` is `None` for nodes without a background paint;
     /// `ClipMode::Rounded` always downgrades to `Rect` in that case
@@ -339,16 +324,13 @@ impl Tree {
     pub(crate) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
-        new_id: NodeId,
         widget_id: WidgetId,
         mut node: Node,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
-        debug_assert_eq!(
-            new_id.0 as usize,
-            self.records.len(),
-            "Tree::open_node received a NodeId that doesn't match the next slot",
-        );
+        // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
+        // arena ceiling), which asserts for this same id below.
+        let new_id = NodeId(self.records.len() as u32);
 
         if matches!(node.clip, Some(ClipMode::Rounded)) {
             let radius_zero = chrome.is_none_or(|c| c.bg.corners.approx_zero());

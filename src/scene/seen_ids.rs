@@ -89,8 +89,8 @@ pub(crate) struct SeenIds {
     /// progress through `raw_id.with(1)`, `.with(2)`, etc.; explicitly
     /// occupied candidates are skipped. Cleared each frame in
     /// [`Self::pre_record`]. Independent of the `(layer, node)` of the
-    /// actual record, so `Ui::widget` gives the right id without peeking
-    /// at `Tree::peek_next_id`.
+    /// actual record, so `Ui::widget` resolves the right id before any
+    /// node exists.
     counters: FxHashMap<WidgetId, u32>,
     /// `final_id → Endpoint` of every widget actually opened this
     /// frame. Populated by [`Self::record_endpoint`] from

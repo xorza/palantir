@@ -131,9 +131,9 @@ impl Forest {
     /// upstream by [`crate::Ui::widget`] (which calls
     /// `SeenIds::resolve` eagerly so the returned id matches what the
     /// tree, cascade, and `response_for` see). This function takes
-    /// the id verbatim, records the endpoint via
-    /// `SeenIds::record_endpoint` (also emitting any pending explicit
-    /// collision pair), and opens the node in the active tree.
+    /// the id verbatim, opens the node in the active tree, and records
+    /// the endpoint the tree assigned via `SeenIds::record_endpoint`
+    /// (also emitting any pending explicit collision pair).
     ///
     /// `chrome` is `Some(Background { .. })` for nodes with a background
     /// paint and `None` otherwise. The `Background` is borrowed (not
@@ -148,7 +148,15 @@ impl Forest {
         chrome: Option<&Background>,
     ) {
         let layer = self.current_layer();
-        let node_id = self.trees[layer].peek_next_id();
+        let chrome = chrome.map(|bg| ChromeInput {
+            bg,
+            store: &self.record_store,
+        });
+        // Disjoint borrow: record storage, `trees`, and `scratch` are separate
+        // fields, so all three can be borrowed for the same call.
+        let tree = &mut self.trees[layer];
+        let scratch = &mut self.scratch[layer];
+        let node_id = tree.open_node(scratch, widget_id, node, chrome);
         let endpoint = Endpoint {
             layer,
             node: node_id,
@@ -158,15 +166,6 @@ impl Forest {
         {
             self.report_explicit_collision(first, second);
         }
-        let chrome = chrome.map(|bg| ChromeInput {
-            bg,
-            store: &self.record_store,
-        });
-        // Disjoint borrow: record storage, `trees`, and `scratch` are separate
-        // fields, so all three can be borrowed for the same call.
-        let tree = &mut self.trees[layer];
-        let scratch = &mut self.scratch[layer];
-        tree.open_node(scratch, node_id, widget_id, node, chrome);
     }
 
     /// Outlined from [`Self::open_node`]: the `tracing::error!` expansion

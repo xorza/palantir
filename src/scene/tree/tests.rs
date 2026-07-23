@@ -8,11 +8,10 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::Command;
 use crate::scene::layer::Layer;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Configure;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::scene::tree::recording::{Placement, RecordingScratch};
+use crate::scene::tree::recording::Placement;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::RectShape;
@@ -20,19 +19,6 @@ use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
-
-#[test]
-#[should_panic(expected = "Tree::open_node received a NodeId that doesn't match the next slot")]
-fn open_node_rejects_non_next_id() {
-    let mut tree = Tree::default();
-    tree.open_node(
-        &mut RecordingScratch::default(),
-        NodeId(1),
-        WidgetId::from_hash("wrong-slot"),
-        Node::leaf(),
-        None,
-    );
-}
 
 #[test]
 fn shapes_attached_to_button_node() {

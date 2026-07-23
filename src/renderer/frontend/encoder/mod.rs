@@ -258,9 +258,9 @@ fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut RenderCmd
     for record in &forest.collisions {
         for ep in [record.first, record.second] {
             let rects = &layout[ep.layer].rect;
-            // Both endpoints come from `Forest::open_node`'s
-            // `peek_next_id` and are always opened, so arrange produced
-            // a rect for each — the index can't actually exceed `rects`.
+            // Both endpoints carry the `NodeId` `Tree::open_node`
+            // assigned, so arrange produced a rect for each — the
+            // index can't actually exceed `rects`.
             // Assert the invariant in dev; keep the skip as a release
             // safety net so a logic slip degrades to a missing overlay
             // (cosmetic) rather than a panic in the paint path.
