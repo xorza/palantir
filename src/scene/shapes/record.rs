@@ -230,7 +230,7 @@ pub(crate) enum ShapeRecord {
     /// positioning rules, but the fill paints the complement of the rounded
     /// shape (the corner wedges out to the rect edge) while the interior stays
     /// transparent; the stroke keeps its inner-edge annulus. Lowered from
-    /// [`crate::shape::Shape::WindowedRect`]; the encoder routes it to
+    /// [`crate::shape::Shape::windowed_rect`]; the encoder routes it to
     /// `draw_rect_window`, which tags the payload's `FillKind` with the window
     /// bit — downstream it rides the ordinary `DrawRect` path.
     WindowedRect {

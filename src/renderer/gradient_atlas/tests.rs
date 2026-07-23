@@ -1,4 +1,6 @@
-use crate::primitives::brush::{GradientStops, Interp, LinearGradient, Stop};
+use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::color::ColorU8;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
@@ -112,13 +114,12 @@ fn endpoints_match_stops_exactly() {
 /// 1, not stop 1 and stop 2. Catches bracketing logic.
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
-    let g = LinearGradient::three_stop(
-        0.0,
-        ColorU8::rgb(0, 0, 0),   // stop at 0.0
-        ColorU8::rgb(255, 0, 0), // stop at 0.5
-        ColorU8::rgb(0, 0, 255), // stop at 1.0
-    )
-    .with_interp(Interp::Linear);
+    let g = LinearGradient::builder(0.0)
+        .stop(0.0, ColorU8::rgb(0, 0, 0))
+        .stop(0.5, ColorU8::rgb(255, 0, 0))
+        .stop(1.0, ColorU8::rgb(0, 0, 255))
+        .with_interp(Interp::Linear)
+        .build();
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
     // Texel at i=64 ≈ t=0.251 → halfway between stops 0 and 1.

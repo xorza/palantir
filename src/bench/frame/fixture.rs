@@ -3,9 +3,8 @@
 //! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapStack/Scroll),
 //! every public widget (Panel/Frame/Button/Text/Grid/Scroll/Checkbox/
 //! RadioButton/Switch/Slider/DragValue/ComboBox/ProgressBar/
-//! Separator/TextEdit/Tooltip/Popup), every `Shape` variant
-//! (RoundedRect / Line / Polyline / CubicBezier / QuadraticBezier /
-//! Mesh / Text), every `Brush` variant (Solid / Linear / Radial /
+//! Separator/TextEdit/Tooltip/Popup), every authoring shape family
+//! (Rect / Curve / Polyline / Mesh / Text), every `Brush` variant (Solid / Linear / Radial /
 //! Conic), and the popup/tooltip layers.
 
 use std::f32::consts::FRAC_PI_2;
@@ -16,7 +15,11 @@ use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
-use crate::primitives::brush::{Brush, ConicGradient, LinearGradient, RadialGradient, Stop};
+use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::conic::ConicGradient;
+use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::radial::RadialGradient;
+use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::mesh::Mesh;
@@ -25,8 +28,9 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::element::Configure;
+use crate::shape::Shape;
+use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::shape::{PolylineColors, Shape};
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::button::Button;
@@ -499,53 +503,52 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
 }
 
 fn add_shape_gallery(ui: &mut Ui) {
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(Rect::new(4.0, 6.0, 60.0, 30.0)),
-        corners: Corners::all(6.0),
-        fill: Color::rgb(0.85, 0.30, 0.30).into(),
-        stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 1.0),
-    });
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(Rect::new(4.0, 42.0, 60.0, 30.0)),
-        corners: Corners::all(6.0),
-        fill: Brush::Linear(LinearGradient::two_stop(
-            FRAC_PI_2,
-            ColorU8::hex(0x1a1a2e),
-            ColorU8::hex(0x4c5cdb),
-        )),
-        stroke: Stroke::ZERO,
-    });
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(Rect::new(4.0, 78.0, 60.0, 30.0)),
-        corners: Corners::all(6.0),
-        fill: Brush::Radial(RadialGradient::two_stop_centered(
-            ColorU8::hex(0xfacc15),
-            ColorU8::hex(0x1a1a2e),
-        )),
-        stroke: Stroke::ZERO,
-    });
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(Rect::new(70.0, 6.0, 60.0, 30.0)),
-        corners: Corners::all(6.0),
-        fill: Brush::Conic(ConicGradient::new(
-            glam::Vec2::splat(0.5),
-            0.0,
-            [
-                Stop::new(0.0, ColorU8::hex(0xff5e44)),
-                Stop::new(0.5, ColorU8::hex(0x46c46c)),
-                Stop::new(1.0, ColorU8::hex(0x4c5cdb)),
-            ],
-        )),
-        stroke: Stroke::ZERO,
-    });
+    ui.add_shape(
+        Shape::rect(Rect::new(4.0, 6.0, 60.0, 30.0))
+            .corners(6.0)
+            .fill(Color::rgb(0.85, 0.30, 0.30))
+            .stroke(Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 1.0)),
+    );
+    ui.add_shape(
+        Shape::rect(Rect::new(4.0, 42.0, 60.0, 30.0))
+            .corners(6.0)
+            .fill(
+                LinearGradient::builder(FRAC_PI_2)
+                    .stop(0.0, ColorU8::hex(0x1a1a2e))
+                    .stop(1.0, ColorU8::hex(0x4c5cdb)),
+            ),
+    );
+    ui.add_shape(
+        Shape::rect(Rect::new(4.0, 78.0, 60.0, 30.0))
+            .corners(6.0)
+            .fill(RadialGradient::two_stop_centered(
+                ColorU8::hex(0xfacc15),
+                ColorU8::hex(0x1a1a2e),
+            )),
+    );
+    ui.add_shape(
+        Shape::rect(Rect::new(70.0, 6.0, 60.0, 30.0))
+            .corners(6.0)
+            .fill(ConicGradient::new(
+                glam::Vec2::splat(0.5),
+                0.0,
+                [
+                    Stop::new(0.0, ColorU8::hex(0xff5e44)),
+                    Stop::new(0.5, ColorU8::hex(0x46c46c)),
+                    Stop::new(1.0, ColorU8::hex(0x4c5cdb)),
+                ],
+            )),
+    );
 
-    ui.add_shape(Shape::Line {
-        a: glam::Vec2::new(140.0, 12.0),
-        b: glam::Vec2::new(240.0, 36.0),
-        width: 3.0,
-        brush: Color::rgb(0.2, 0.9, 1.0).into(),
-        cap: LineCap::Round,
-    });
+    ui.add_shape(
+        Shape::line(
+            glam::Vec2::new(140.0, 12.0),
+            glam::Vec2::new(240.0, 36.0),
+            3.0,
+        )
+        .brush(Color::rgb(0.2, 0.9, 1.0))
+        .cap(LineCap::Round),
+    );
     let zigzag: [glam::Vec2; 5] = [
         glam::Vec2::new(140.0, 48.0),
         glam::Vec2::new(170.0, 70.0),
@@ -560,31 +563,31 @@ fn add_shape_gallery(ui: &mut Ui) {
         Color::rgb(0.2, 0.6, 1.0),
         Color::rgb(0.8, 0.4, 1.0),
     ];
-    ui.add_shape(Shape::Polyline {
-        points: &zigzag,
-        colors: PolylineColors::PerPoint(&zigzag_cols),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Round,
-    });
+    ui.add_shape(
+        Shape::polyline(&zigzag, PolylineColors::PerPoint(&zigzag_cols), 4.0).join(LineJoin::Round),
+    );
 
-    ui.add_shape(Shape::CubicBezier {
-        p0: glam::Vec2::new(250.0, 30.0),
-        p1: glam::Vec2::new(280.0, -10.0),
-        p2: glam::Vec2::new(340.0, -10.0),
-        p3: glam::Vec2::new(370.0, 30.0),
-        width: 5.0,
-        brush: Color::rgb(0.4, 1.0, 0.6).into(),
-        cap: LineCap::Round,
-    });
-    ui.add_shape(Shape::QuadraticBezier {
-        p0: glam::Vec2::new(250.0, 70.0),
-        p1: glam::Vec2::new(310.0, 30.0),
-        p2: glam::Vec2::new(370.0, 70.0),
-        width: 4.0,
-        brush: Color::rgb(1.0, 0.85, 0.2).into(),
-        cap: LineCap::Square,
-    });
+    ui.add_shape(
+        Shape::cubic_bezier(
+            glam::Vec2::new(250.0, 30.0),
+            glam::Vec2::new(280.0, -10.0),
+            glam::Vec2::new(340.0, -10.0),
+            glam::Vec2::new(370.0, 30.0),
+            5.0,
+        )
+        .brush(Color::rgb(0.4, 1.0, 0.6))
+        .cap(LineCap::Round),
+    );
+    ui.add_shape(
+        Shape::quadratic_bezier(
+            glam::Vec2::new(250.0, 70.0),
+            glam::Vec2::new(310.0, 30.0),
+            glam::Vec2::new(370.0, 70.0),
+            4.0,
+        )
+        .brush(Color::rgb(1.0, 0.85, 0.2))
+        .cap(LineCap::Square),
+    );
 
     use std::sync::OnceLock;
     static MESH_PTR: OnceLock<usize> = OnceLock::new();
@@ -598,9 +601,5 @@ fn add_shape_gallery(ui: &mut Ui) {
             Box::into_raw(Box::new(m)) as usize
         }) as *const Mesh)
     };
-    ui.add_shape(Shape::Mesh {
-        mesh,
-        local_rect: None,
-        tint: Color::WHITE,
-    });
+    ui.add_shape(Shape::mesh(mesh));
 }

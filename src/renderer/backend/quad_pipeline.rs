@@ -2,7 +2,7 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use crate::primitives::brush::Spread;
+use crate::primitives::brush::gradient::Spread;
 use crate::primitives::color::ColorF16;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::span::Span;

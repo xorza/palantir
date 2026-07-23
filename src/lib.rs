@@ -77,10 +77,12 @@ pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;
-pub use primitives::brush::{
-    Brush, ConicGradient, CurveBrush, GradientStops, Interp, LinearGradient, RadialGradient,
-    Spread, Stop,
-};
+pub use primitives::brush::gradient::conic::{ConicGradient, ConicGradientBuilder};
+pub use primitives::brush::gradient::linear::{LinearGradient, LinearGradientBuilder};
+pub use primitives::brush::gradient::radial::{RadialGradient, RadialGradientBuilder};
+pub use primitives::brush::gradient::stops::{GradientStops, Stop};
+pub use primitives::brush::gradient::{Interp, Spread};
+pub use primitives::brush::{Brush, CurveBrush};
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
@@ -108,8 +110,15 @@ pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::{ImageHandle, RegisterImageError};
+pub use shape::Shape;
+pub use shape::curve::CurveShape;
+pub use shape::image::ImageShape;
+pub use shape::mesh::MeshShape;
+pub use shape::polyline::{PolylineColors, PolylineShape};
+pub use shape::rect::RectShape;
+pub use shape::shadow::ShadowShape;
 pub use shape::style::{LineCap, LineJoin};
-pub use shape::{PolylineColors, Shape};
+pub use shape::triangle::TriangleShape;
 pub use text::cosmic::CosmicMeasure;
 pub use text::wrap::TextWrap;
 pub use text::{

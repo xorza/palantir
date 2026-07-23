@@ -1,8 +1,9 @@
 use crate::input::sense::Sense;
 use crate::primitives::interned_str::TextInput;
 use crate::scene::element::{Configure, ConfigureElement, Element};
+use crate::shape::Shape;
+use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::shape::{PolylineColors, Shape};
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};

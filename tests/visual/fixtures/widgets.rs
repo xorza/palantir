@@ -87,7 +87,7 @@ fn frame_linear_gradient_matches_golden() {
     assert_matches_golden("frame_linear_gradient", &img, Tolerance::default());
 }
 
-/// Pin: `Shape::RoundedRect { fill: Brush::Linear(...) }` lowered
+/// Pin: `Shape::rect(rect).fill(LinearGradient::builder(...))` lowered
 /// through `Tree::add_shape` → `ShapeRecord::RoundedRect { fill:
 /// Brush, .. }` paints correctly. Slice-2 step 6 unblocks this — prior
 /// to the widening, the lowering called `as_solid().expect(...)` and
@@ -101,16 +101,15 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
             .padding(20.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 180.0, 100.0)),
-                    corners: Corners::all(12.0),
-                    fill: Brush::Linear(LinearGradient::two_stop(
-                        0.0,
-                        ColorU8::hex(0xff5e44),
-                        ColorU8::hex(0xfacc15),
-                    )),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 180.0, 100.0))
+                        .corners(12.0)
+                        .fill(LinearGradient::two_stop(
+                            0.0,
+                            ColorU8::hex(0xff5e44),
+                            ColorU8::hex(0xfacc15),
+                        )),
+                );
             });
     });
     assert_matches_golden(
@@ -120,7 +119,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
     );
 }
 
-/// Pin the `Shape::WindowedRect` inverted-fill path end-to-end: bright
+/// Pin the `Shape::windowed_rect` inverted-fill path end-to-end: bright
 /// gradient content drawn as a plain unclipped rect, the windowed rect
 /// over it filling the corner wedges with the scene background and
 /// stroking the boundary — the cheap stand-in for rounded-corner
@@ -137,22 +136,17 @@ fn windowed_rect_masks_corners_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 let card = Rect::new(0.0, 0.0, 180.0, 100.0);
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(card),
-                    corners: Corners::ZERO,
-                    fill: Brush::Linear(LinearGradient::two_stop(
-                        0.0,
-                        ColorU8::hex(0xff5e44),
-                        ColorU8::hex(0xfacc15),
-                    )),
-                    stroke: Stroke::ZERO,
-                });
-                ui.add_shape(Shape::WindowedRect {
-                    local_rect: Some(card),
-                    corners: Corners::all(20.0),
-                    fill: DARK_BG.into(),
-                    stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
-                });
+                ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
+                    0.0,
+                    ColorU8::hex(0xff5e44),
+                    ColorU8::hex(0xfacc15),
+                )));
+                ui.add_shape(
+                    Shape::windowed_rect(card)
+                        .corners(20.0)
+                        .fill(DARK_BG)
+                        .stroke(Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0)),
+                );
             });
     });
     assert_matches_golden("windowed_rect_masks_corners", &img, Tolerance::default());
@@ -215,7 +209,13 @@ fn showcase_gradients_tab_matches_golden() {
                         Frame::new()
                             .id_salt("threestop")
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(LinearGradient::three_stop(0.0, red, yellow, green)))
+                            .background(cell(
+                                LinearGradient::builder(0.0)
+                                    .stop(0.0, red)
+                                    .stop(0.5, yellow)
+                                    .stop(1.0, green)
+                                    .build(),
+                            ))
                             .show(ui);
                         Panel::vstack()
                             .id_salt("spread")
@@ -518,12 +518,9 @@ fn interleaved_shapes_paint_in_record_order() {
             .size((Sizing::FILL, Sizing::FILL))
             .padding(0.0)
             .show(ui, |ui| {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 30.0, 60.0)),
-                    corners: Corners::default(),
-                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+                );
                 Frame::new()
                     .id_salt("cyan")
                     .background(Background {
@@ -532,12 +529,9 @@ fn interleaved_shapes_paint_in_record_order() {
                     })
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(30.0, 0.0, 60.0, 60.0)),
-                    corners: Corners::default(),
-                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0)).fill(Color::rgb(0.0, 1.0, 0.0)),
+                );
                 Frame::new()
                     .id_salt("yellow")
                     .background(Background {
@@ -546,18 +540,15 @@ fn interleaved_shapes_paint_in_record_order() {
                     })
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(90.0, 0.0, 60.0, 60.0)),
-                    corners: Corners::default(),
-                    fill: Color::rgb(0.2, 0.4, 1.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0)).fill(Color::rgb(0.2, 0.4, 1.0)),
+                );
             });
     });
     assert_matches_golden("interleaved_shapes_paint_order", &img, Tolerance::default());
 }
 
-/// Pin: `Shape::Line` paints a fringe-AA stroke. A diagonal 4-px
+/// Pin: `Shape::line` paints a fringe-AA stroke. A diagonal 4-px
 /// cyan line across a dark frame exercises the curve cmd →
 /// composer → GPU stroke pipeline end-to-end. The AA fade is the
 /// load-bearing visual signal — a non-AA stroke path would produce
@@ -571,13 +562,10 @@ fn line_diagonal_aa_matches_golden() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(10.0, 10.0),
-                    b: Vec2::new(150.0, 110.0),
-                    width: 4.0,
-                    brush: Color::rgb(0.2, 0.9, 1.0).into(),
-                    cap: LineCap::Butt,
-                });
+                ui.add_shape(
+                    Shape::line(Vec2::new(10.0, 10.0), Vec2::new(150.0, 110.0), 4.0)
+                        .brush(Color::rgb(0.2, 0.9, 1.0)),
+                );
                 // Hairlines at sub-pixel width — should appear dim
                 // (coverage-faded) rather than vanish or look identical
                 // to the 4 px stroke. Two alignments pin the trapezoid
@@ -587,13 +575,10 @@ fn line_diagonal_aa_matches_golden() {
                 // equal total energy, so brightness doesn't pulse as a
                 // hairline drifts across alignments.
                 for y in [80.0, 40.5] {
-                    ui.add_shape(Shape::Line {
-                        a: Vec2::new(10.0, y),
-                        b: Vec2::new(150.0, y),
-                        width: 0.4,
-                        brush: Color::rgb(1.0, 1.0, 1.0).into(),
-                        cap: LineCap::Butt,
-                    });
+                    ui.add_shape(
+                        Shape::line(Vec2::new(10.0, y), Vec2::new(150.0, y), 0.4)
+                            .brush(Color::rgb(1.0, 1.0, 1.0)),
+                    );
                 }
             });
     });
@@ -627,13 +612,7 @@ fn polyline_gradient_matches_golden() {
                     Color::rgb(0.2, 1.0, 0.4),
                     Color::rgb(0.2, 0.6, 1.0),
                 ];
-                ui.add_shape(Shape::Polyline {
-                    points: &pts,
-                    colors: PolylineColors::PerPoint(&cols),
-                    width: 5.0,
-                    cap: LineCap::Butt,
-                    join: LineJoin::Miter,
-                });
+                ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 5.0));
             });
     });
     assert_matches_golden("polyline_gradient", &img, Tolerance::default());
@@ -661,25 +640,13 @@ fn polyline_bevel_join_matches_golden() {
                     Vec2::new(60.0, 60.0),
                     Vec2::new(105.0, 30.0),
                 ];
-                ui.add_shape(Shape::Polyline {
-                    points: &shallow,
-                    colors: PolylineColors::Single(cyan),
-                    width: 5.0,
-                    cap: LineCap::Butt,
-                    join: LineJoin::Miter,
-                });
+                ui.add_shape(Shape::polyline(&shallow, PolylineColors::Single(cyan), 5.0));
                 let sharp = [
                     Vec2::new(15.0, 100.0),
                     Vec2::new(80.0, 115.0),
                     Vec2::new(20.0, 130.0),
                 ];
-                ui.add_shape(Shape::Polyline {
-                    points: &sharp,
-                    colors: PolylineColors::Single(cyan),
-                    width: 5.0,
-                    cap: LineCap::Butt,
-                    join: LineJoin::Miter,
-                });
+                ui.add_shape(Shape::polyline(&sharp, PolylineColors::Single(cyan), 5.0));
             });
     });
     assert_matches_golden("polyline_bevel_join", &img, Tolerance::default());
@@ -703,13 +670,11 @@ fn polyline_round_caps_match_golden() {
                     (70.0, LineCap::Square, Color::rgb(0.4, 1.0, 0.4)),
                     (110.0, LineCap::Round, Color::rgb(0.4, 0.6, 1.0)),
                 ] {
-                    ui.add_shape(Shape::Line {
-                        a: Vec2::new(40.0, y),
-                        b: Vec2::new(140.0, y),
-                        width: 10.0,
-                        brush: color.into(),
-                        cap,
-                    });
+                    ui.add_shape(
+                        Shape::line(Vec2::new(40.0, y), Vec2::new(140.0, y), 10.0)
+                            .brush(color)
+                            .cap(cap),
+                    );
                 }
             });
     });
@@ -741,13 +706,9 @@ fn polyline_round_join_matches_golden() {
                         Vec2::new(90.0, y),
                         Vec2::new(160.0, y + 40.0),
                     ];
-                    ui.add_shape(Shape::Polyline {
-                        points: &pts,
-                        colors: PolylineColors::Single(cyan),
-                        width: 8.0,
-                        cap: LineCap::Butt,
-                        join,
-                    });
+                    ui.add_shape(
+                        Shape::polyline(&pts, PolylineColors::Single(cyan), 8.0).join(join),
+                    );
                 }
             });
     });
@@ -785,13 +746,14 @@ fn polyline_translucent_joins_have_uniform_coverage() {
                         Vec2::new(90.0, y - 25.0),
                         Vec2::new(160.0, y),
                     ];
-                    ui.add_shape(Shape::Polyline {
-                        points: &pts,
-                        colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
-                        width: 14.0,
-                        cap: LineCap::Butt,
-                        join: *join,
-                    });
+                    ui.add_shape(
+                        Shape::polyline(
+                            &pts,
+                            PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+                            14.0,
+                        )
+                        .join(*join),
+                    );
                 }
             });
     });
@@ -840,20 +802,15 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(1.0, 0.0, 1.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0)).fill(Color::rgb(1.0, 0.0, 1.0)),
+                );
                 let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
-                ui.add_shape(Shape::Polyline {
-                    points: &pts,
-                    colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
-                    width: 24.0,
-                    cap: LineCap::Butt,
-                    join: LineJoin::Miter,
-                });
+                ui.add_shape(Shape::polyline(
+                    &pts,
+                    PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+                    24.0,
+                ));
             });
     });
     // Sample the stroke's center (x=60, y=60). RgbaImage is
@@ -873,7 +830,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
 }
 
 /// Pin the native GPU curve pipeline end-to-end: encoder lowers
-/// `Shape::CubicBezier` to `ShapeRecord::Curve`, composer batches into
+/// `Shape::cubic_bezier` to `ShapeRecord::Curve`, composer batches into
 /// one `CurveBatch`, `CurvePipeline` issues a single
 /// `pass.draw_indexed(0..96, ..)` per scissor group. Three cubic curves with
 /// Butt / Square / Round caps, identical shape and width — the only
@@ -899,26 +856,30 @@ fn curve_caps_match_golden() {
                 .enumerate()
                 {
                     let dy = 20.0 + i as f32 * 55.0;
-                    ui.add_shape(Shape::CubicBezier {
-                        p0: Vec2::new(30.0, dy + 40.0),
-                        p1: Vec2::new(60.0, dy - 10.0),
-                        p2: Vec2::new(140.0, dy - 10.0),
-                        p3: Vec2::new(170.0, dy + 40.0),
-                        width: 8.0,
-                        brush: (*color).into(),
-                        cap: *cap,
-                    });
+                    ui.add_shape(
+                        Shape::cubic_bezier(
+                            Vec2::new(30.0, dy + 40.0),
+                            Vec2::new(60.0, dy - 10.0),
+                            Vec2::new(140.0, dy - 10.0),
+                            Vec2::new(170.0, dy + 40.0),
+                            8.0,
+                        )
+                        .brush(*color)
+                        .cap(*cap),
+                    );
                 }
                 // Quadratic curve at the bottom — exercises the
                 // q→cubic promotion path.
-                ui.add_shape(Shape::QuadraticBezier {
-                    p0: Vec2::new(30.0, 215.0),
-                    p1: Vec2::new(100.0, 170.0),
-                    p2: Vec2::new(170.0, 215.0),
-                    width: 4.0,
-                    brush: Color::rgb(1.0, 0.85, 0.2).into(),
-                    cap: LineCap::Round,
-                });
+                ui.add_shape(
+                    Shape::quadratic_bezier(
+                        Vec2::new(30.0, 215.0),
+                        Vec2::new(100.0, 170.0),
+                        Vec2::new(170.0, 215.0),
+                        4.0,
+                    )
+                    .brush(Color::rgb(1.0, 0.85, 0.2))
+                    .cap(LineCap::Round),
+                );
             });
     });
     assert_matches_golden("curve_caps", &img, Tolerance::default());
@@ -938,41 +899,46 @@ fn triangle_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 // Top-left: sharp solid fill.
-                ui.add_shape(Shape::Triangle {
-                    a: Vec2::new(20.0, 100.0),
-                    b: Vec2::new(65.0, 15.0),
-                    c: Vec2::new(110.0, 100.0),
-                    radius: 0.0,
-                    fill: Color::rgb(1.0, 0.4, 0.4),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::triangle(
+                        Vec2::new(20.0, 100.0),
+                        Vec2::new(65.0, 15.0),
+                        Vec2::new(110.0, 100.0),
+                    )
+                    .fill(Color::rgb(1.0, 0.4, 0.4)),
+                );
                 // Top-right: rounded solid fill.
-                ui.add_shape(Shape::Triangle {
-                    a: Vec2::new(130.0, 100.0),
-                    b: Vec2::new(175.0, 15.0),
-                    c: Vec2::new(220.0, 100.0),
-                    radius: 12.0,
-                    fill: Color::rgb(0.4, 1.0, 0.5),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::triangle(
+                        Vec2::new(130.0, 100.0),
+                        Vec2::new(175.0, 15.0),
+                        Vec2::new(220.0, 100.0),
+                    )
+                    .radius(12.0_f32)
+                    .fill(Color::rgb(0.4, 1.0, 0.5)),
+                );
                 // Bottom-left: rounded fill + inner-edge stroke.
-                ui.add_shape(Shape::Triangle {
-                    a: Vec2::new(20.0, 220.0),
-                    b: Vec2::new(65.0, 135.0),
-                    c: Vec2::new(110.0, 220.0),
-                    radius: 8.0,
-                    fill: Color::rgb(0.2, 0.5, 1.0),
-                    stroke: Stroke::solid(Color::WHITE, 3.0),
-                });
+                ui.add_shape(
+                    Shape::triangle(
+                        Vec2::new(20.0, 220.0),
+                        Vec2::new(65.0, 135.0),
+                        Vec2::new(110.0, 220.0),
+                    )
+                    .radius(8.0_f32)
+                    .fill(Color::rgb(0.2, 0.5, 1.0))
+                    .stroke(Stroke::solid(Color::WHITE, 3.0)),
+                );
                 // Bottom-right: stroke-only (transparent fill), CW winding.
-                ui.add_shape(Shape::Triangle {
-                    a: Vec2::new(220.0, 220.0),
-                    b: Vec2::new(175.0, 135.0),
-                    c: Vec2::new(130.0, 220.0),
-                    radius: 6.0,
-                    fill: Color::TRANSPARENT,
-                    stroke: Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0),
-                });
+                ui.add_shape(
+                    Shape::triangle(
+                        Vec2::new(220.0, 220.0),
+                        Vec2::new(175.0, 135.0),
+                        Vec2::new(130.0, 220.0),
+                    )
+                    .radius(6.0_f32)
+                    .fill(Color::TRANSPARENT)
+                    .stroke(Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0)),
+                );
             });
     });
     assert_matches_golden("triangle", &img, Tolerance::default());
@@ -1027,7 +993,7 @@ fn toggle_switch_states_matches_golden() {
     assert_matches_golden("toggle_switch_states", &img, Tolerance::default());
 }
 
-/// Pin: `Shape::Arc` renders natively on the GPU curve pipeline. A
+/// Pin: `Shape::arc` renders natively on the GPU curve pipeline. A
 /// full ±2π circle closes seamlessly under Butt caps (no seam pixel
 /// at angle 0); a 3/4-sweep gradient arc fades along its sweep and
 /// terminates in a round head cap. Regressions in the arc basis

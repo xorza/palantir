@@ -1,6 +1,7 @@
 //! Shared cross-frame handle for CPU gradient registration and flushing.
 
-use crate::primitives::brush::{GradientStops, Interp};
+use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::{CpuGradientAtlas, FlushedRows};
 use std::cell::RefCell;

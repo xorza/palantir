@@ -4,7 +4,9 @@ use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
-use crate::primitives::brush::{FillAxis, GradientStops, Interp, Spread, Stop};
+use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
+use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::{ColorF16, ColorU8};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::shadow::Shadow;
@@ -185,52 +187,39 @@ fn baseline_draw_rect_count_cases() {
 }
 
 /// Pin: the encoder iterates ALL shape variants in the background phase,
-/// not just `Text`. Custom widgets pushing `Shape::RoundedRect` /
-/// `Shape::Line` via `ui.add_shape` should still emit draw cmds; degenerate
+/// not just `Text`. Custom widgets pushing `Shape::rect` /
+/// `Shape::line` via `ui.add_shape` should still emit draw cmds; degenerate
 /// `Line` variants are filtered at `add_shape` time.
 #[test]
 fn manually_pushed_shapes_emit_expected_cmds() {
-    use crate::primitives::corners::Corners;
     use crate::shape::Shape;
-    use crate::shape::style::LineCap;
 
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                local_rect: None,
-                corners: Corners::all(4.0),
-                fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                stroke: Stroke::ZERO,
-            });
-            ui.add_shape(Shape::WindowedRect {
-                local_rect: None,
-                corners: Corners::all(6.0),
-                fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                stroke: Stroke::ZERO,
-            });
-            ui.add_shape(Shape::Line {
-                a: Vec2::new(0.0, 0.0),
-                b: Vec2::new(20.0, 0.0),
-                width: 2.0,
-                brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                cap: LineCap::Butt,
-            });
+            ui.add_shape(
+                Shape::owner_rect()
+                    .corners(4.0)
+                    .fill(Color::rgb(1.0, 0.0, 0.0)),
+            );
+            ui.add_shape(
+                Shape::owner_windowed_rect()
+                    .corners(6.0)
+                    .fill(Color::rgb(0.0, 1.0, 0.0)),
+            );
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(20.0, 0.0), 2.0)
+                    .brush(Color::rgb(1.0, 0.0, 0.0)),
+            );
             // Degenerate variants: filtered before reaching the buffer.
-            ui.add_shape(Shape::Line {
-                a: Vec2::new(0.0, 0.0),
-                b: Vec2::new(10.0, 10.0),
-                width: 0.0,
-                brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                cap: LineCap::Butt,
-            });
-            ui.add_shape(Shape::Line {
-                a: Vec2::new(0.0, 0.0),
-                b: Vec2::new(10.0, 10.0),
-                width: 2.0,
-                brush: Color::TRANSPARENT.into(),
-                cap: LineCap::Butt,
-            });
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 0.0)
+                    .brush(Color::rgb(1.0, 0.0, 0.0)),
+            );
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 2.0)
+                    .brush(Color::TRANSPARENT),
+            );
             Frame::new()
                 .id(WidgetId::from_hash("host"))
                 .size(50.0)
@@ -286,7 +275,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 #[test]
 fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::Shadow;
-    use crate::primitives::corners::Corners;
+
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::payload::DrawShadowPayload;
     use crate::shape::Shape;
@@ -294,28 +283,28 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            ui.add_shape(Shape::Shadow {
-                local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
-                corners: Corners::all(4.0),
-                shadow: Shadow {
+            ui.add_shape(
+                Shape::shadow(Shadow {
                     color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -1.0,
                     inset: false,
-                },
-            });
-            ui.add_shape(Shape::Shadow {
-                local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
-                corners: Corners::all(4.0),
-                shadow: Shadow {
+                })
+                .at(Rect::new(10.0, 20.0, 30.0, 40.0))
+                .corners(4.0),
+            );
+            ui.add_shape(
+                Shape::shadow(Shadow {
                     color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -2.0,
                     inset: true,
-                },
-            });
+                })
+                .at(Rect::new(10.0, 20.0, 30.0, 40.0))
+                .corners(4.0),
+            );
             Frame::new()
                 .id(WidgetId::from_hash("host"))
                 .size(50.0)
@@ -978,7 +967,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
 #[test]
 fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::display::Display;
-    use crate::primitives::corners::Corners;
+
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use std::time::Duration;
@@ -1016,12 +1005,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                             .size(20.0)
                             .show(ui, |ui| {
                                 ui.add_shape_animated(
-                                    Shape::RoundedRect {
-                                        local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
-                                        corners: Corners::ZERO,
-                                        fill: Color::WHITE.into(),
-                                        stroke: Stroke::ZERO,
-                                    },
+                                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0)).fill(Color::WHITE),
                                     PaintAnim::BlinkOpacity {
                                         half_period: HALF,
                                         started_at,
@@ -1216,8 +1200,9 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
 fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
     use crate::scene::tree::paint_anims::PaintAnim;
-    use crate::shape::style::{LineCap, LineJoin};
-    use crate::shape::{PolylineColors, Shape};
+
+    use crate::shape::Shape;
+    use crate::shape::polyline::PolylineColors;
     use std::time::Duration;
 
     let mut ui = Ui::for_test();
@@ -1231,13 +1216,11 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .show(ui, |ui| {
                     ui.add_shape_animated(
-                        Shape::Polyline {
-                            points: &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                            colors: PolylineColors::Single(Color::rgb(1.0, 0.0, 0.0)),
-                            width: 1.0,
-                            cap: LineCap::Butt,
-                            join: LineJoin::Miter,
-                        },
+                        Shape::polyline(
+                            &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
+                            PolylineColors::Single(Color::rgb(1.0, 0.0, 0.0)),
+                            1.0,
+                        ),
                         PaintAnim::Spin {
                             speed: 1.0,
                             started_at: Duration::ZERO,
@@ -1274,7 +1257,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
 }
 
 /// Same rotation-safety contract for the GPU-arc path: a spun
-/// `Shape::Arc` ships the rotation-invariant square centred on the
+/// `Shape::arc` ships the rotation-invariant square centred on the
 /// owner-box centre plus the sampled rotation, while the geometry
 /// lanes stay owner-local and unrotated — the composer applies the
 /// spin at compose time (center about `bbox.center()`, angles by
@@ -1339,7 +1322,6 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
 /// `transformed_panel_chrome_stays_in_parent_space` below.
 #[test]
 fn transformed_panel_applies_transform_to_direct_shapes() {
-    use crate::primitives::corners::Corners;
     use crate::shape::Shape;
 
     let shape_color = Color::rgb(0.2, 0.6, 0.9);
@@ -1359,12 +1341,11 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                 .size(Sizing::fixed(300.0))
                 .transform(xform)
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect::new(0.0, 0.0, 30.0, 30.0)),
-                        corners: Corners::all(0.0),
-                        fill: shape_color.into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 30.0, 30.0))
+                            .corners(0.0)
+                            .fill(shape_color),
+                    );
                     Frame::new()
                         .id(WidgetId::from_hash("child"))
                         .position((50.0, 60.0))

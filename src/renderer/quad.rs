@@ -3,7 +3,7 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::brush::FillAxis;
+use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};

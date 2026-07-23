@@ -1,7 +1,7 @@
 //! Typed command discriminants and Pod payload records.
 
 use crate::primitives::approx::noop_f32;
-use crate::primitives::brush::FillAxis;
+use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::{
     color::{Color, ColorF16},

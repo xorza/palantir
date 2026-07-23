@@ -1,5 +1,4 @@
 use crate::input::sense::Sense;
-use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
 use crate::scene::element::{Configure, ConfigureElement, Element};
@@ -88,11 +87,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
                 if selected {
                     let dot_size = pip_size - 2.0 * dot_inset;
                     let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
-                    ui.add_shape(
-                        Shape::rect(dot)
-                            .corners(Corners::all(dot_size * 0.5))
-                            .fill(indicator),
-                    );
+                    ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
                 }
             },
         )

@@ -15,8 +15,9 @@ use crate::app::test_support::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
-use crate::shape::style::{LineCap, LineJoin};
-use crate::shape::{PolylineColors, Shape};
+use crate::shape::Shape;
+use crate::shape::polyline::PolylineColors;
+use crate::shape::style::LineJoin;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
@@ -160,15 +161,16 @@ fn record_cubics(ui: &mut Ui, phase: bool) {
     for row in 0..GRID {
         for col in 0..GRID {
             let origin = Vec2::new(col as f32 * CELL, row as f32 * CELL);
-            ui.add_shape(Shape::CubicBezier {
-                p0: origin + Vec2::new(2.0, 8.0),
-                p1: origin + Vec2::new(5.0, 5.5 + wobble),
-                p2: origin + Vec2::new(11.0, 10.5),
-                p3: origin + Vec2::new(14.0, 8.0),
-                width: 2.0,
-                brush: color.into(),
-                cap: LineCap::Butt,
-            });
+            ui.add_shape(
+                Shape::cubic_bezier(
+                    origin + Vec2::new(2.0, 8.0),
+                    origin + Vec2::new(5.0, 5.5 + wobble),
+                    origin + Vec2::new(11.0, 10.5),
+                    origin + Vec2::new(14.0, 8.0),
+                    2.0,
+                )
+                .brush(color),
+            );
         }
     }
 }
@@ -184,13 +186,9 @@ fn record_joins(ui: &mut Ui, phase: bool) {
                 origin + Vec2::new(8.0, 4.0 + wobble),
                 origin + Vec2::new(13.5, 11.5),
             ];
-            ui.add_shape(Shape::Polyline {
-                points: &points,
-                colors: PolylineColors::Single(color),
-                width: 3.0,
-                cap: LineCap::Butt,
-                join: LineJoin::Round,
-            });
+            ui.add_shape(
+                Shape::polyline(&points, PolylineColors::Single(color), 3.0).join(LineJoin::Round),
+            );
         }
     }
 }

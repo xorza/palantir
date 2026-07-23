@@ -27,14 +27,12 @@ fn strip_pane(
         .position(glam::Vec2::new(x, 0.0))
         .size((Sizing::fixed(size.x), Sizing::fixed(size.y)))
         .show(ui, |ui| {
-            ui.add_shape(Shape::Image {
-                handle: handle.clone(),
-                local_rect: None,
-                fit: ImageFit::Fill,
-                min_filter,
-                mag_filter,
-                tint: Color::WHITE,
-            });
+            ui.add_shape(
+                Shape::image(handle.clone())
+                    .fit(ImageFit::Fill)
+                    .min_filter(min_filter)
+                    .mag_filter(mag_filter),
+            );
         });
 }
 

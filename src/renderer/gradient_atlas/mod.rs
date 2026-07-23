@@ -38,7 +38,8 @@
 //!   uniform; CSS Color 4 default.
 
 use crate::common::hash::Hasher as FxHasher;
-use crate::primitives::brush::{GradientStops, Interp};
+use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};

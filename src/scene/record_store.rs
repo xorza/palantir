@@ -16,7 +16,9 @@
 //! [`Forest`]: crate::scene::Forest
 
 use crate::common::hash::hash_str;
-use crate::primitives::brush::{FillAxis, GradientStops, Interp};
+use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::brush::gradient::Interp;
+use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::color::ColorU8;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::interned_str::{InternedStr, RecordedText, TextArena};
@@ -253,7 +255,9 @@ impl RecordStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::brush::{FillAxis, GradientStops, Interp, Spread, Stop};
+    use crate::primitives::brush::gradient::FillAxis;
+    use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
+    use crate::primitives::brush::gradient::{Interp, Spread};
     use crate::primitives::color::ColorU8;
     use crate::primitives::fill_wire::FillKind;
     use crate::scene::record_store::{

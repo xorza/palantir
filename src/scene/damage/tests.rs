@@ -135,13 +135,11 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
             // path from any `cascade_input` change.
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(120.0, 120.0),
-                    b: Vec2::new(180.0, 180.0),
-                    width: 2.0,
-                    brush: BLUE.into(),
-                    cap: LineCap::Round,
-                });
+                ui.add_shape(
+                    Shape::line(Vec2::new(120.0, 120.0), Vec2::new(180.0, 180.0), 2.0)
+                        .brush(BLUE)
+                        .cap(LineCap::Round),
+                );
                 for i in 0..n_children {
                     Frame::new()
                         .id(WidgetId::from_hash(("child", i)))
@@ -404,13 +402,11 @@ fn shape_crossing_child_boundary_is_redamaged() {
     const FAR_PROBE: Rect = Rect::new(64.0, 39.0, 2.0, 2.0);
 
     let line = |ui: &mut Ui| {
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(10.0, 40.0),
-            b: Vec2::new(70.0, 40.0),
-            width: 4.0,
-            brush: BLUE.into(),
-            cap: LineCap::Round,
-        });
+        ui.add_shape(
+            Shape::line(Vec2::new(10.0, 40.0), Vec2::new(70.0, 40.0), 4.0)
+                .brush(BLUE)
+                .cap(LineCap::Round),
+        );
     };
     let child = |ui: &mut Ui| {
         Frame::new()
@@ -477,13 +473,11 @@ fn overlapping_direct_shape_swap_is_redamaged() {
     // Coincident lines, so the overlap is the whole strip.
     const PROBE: Rect = Rect::new(38.0, 29.0, 2.0, 2.0);
     let line = |ui: &mut Ui, color: Color| {
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(10.0, 30.0),
-            b: Vec2::new(70.0, 30.0),
-            width: 8.0,
-            brush: color.into(),
-            cap: LineCap::Round,
-        });
+        ui.add_shape(
+            Shape::line(Vec2::new(10.0, 30.0), Vec2::new(70.0, 30.0), 8.0)
+                .brush(color)
+                .cap(LineCap::Round),
+        );
     };
     let canvas = |ui: &mut Ui, first: Color, second: Color| {
         Panel::canvas()
@@ -540,13 +534,11 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                 if with_b {
                     node(ui, "b", CHILD_B);
                 }
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(10.0, 100.0),
-                    b: Vec2::new(70.0, 100.0),
-                    width: 4.0,
-                    brush: RED.into(),
-                    cap: LineCap::Round,
-                });
+                ui.add_shape(
+                    Shape::line(Vec2::new(10.0, 100.0), Vec2::new(70.0, 100.0), 4.0)
+                        .brush(RED)
+                        .cap(LineCap::Round),
+                );
             });
     };
     let mut ui = Ui::for_test();
@@ -595,13 +587,11 @@ fn rekeying_a_child_damages_only_the_child() {
                         ..Default::default()
                     })
                     .show(ui);
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(10.0, 100.0),
-                    b: Vec2::new(70.0, 100.0),
-                    width: 4.0,
-                    brush: RED.into(),
-                    cap: LineCap::Round,
-                });
+                ui.add_shape(
+                    Shape::line(Vec2::new(10.0, 100.0), Vec2::new(70.0, 100.0), 4.0)
+                        .brush(RED)
+                        .cap(LineCap::Round),
+                );
             });
     };
     let mut ui = Ui::for_test();
@@ -1234,8 +1224,7 @@ fn transform_animation_keeps_far_positions_split() {
 #[test]
 fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_damage() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
+
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
         ui.run_at(UVec2::new(100, 100), |ui| {
@@ -1261,12 +1250,10 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                                     // the clipped paint rect
                                     // saturates and stays invariant
                                     // under small `dx` translates.
-                                    ui.add_shape(Shape::RoundedRect {
-                                        local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
-                                        corners: Corners::ZERO,
-                                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                                        stroke: Stroke::default(),
-                                    });
+                                    ui.add_shape(
+                                        Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
+                                            .fill(Color::rgb(1.0, 0.0, 0.0)),
+                                    );
                                 });
                         });
                 });
@@ -1299,8 +1286,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
 #[test]
 fn pan_with_invariant_clipped_paint_rect_stays_partial() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
+
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
         ui.run_at(UVec2::new(100, 100), |ui| {
@@ -1318,12 +1304,10 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                                 .id(WidgetId::from_hash("inner"))
                                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                                 .show(ui, |ui| {
-                                    ui.add_shape(Shape::RoundedRect {
-                                        local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
-                                        corners: Corners::ZERO,
-                                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                                        stroke: Stroke::default(),
-                                    });
+                                    ui.add_shape(
+                                        Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
+                                            .fill(Color::rgb(1.0, 0.0, 0.0)),
+                                    );
                                 });
                         });
                 });
@@ -1358,8 +1342,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 #[test]
 fn self_transform_shift_damages_direct_shapes() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
+
     let mut ui = Ui::for_test();
     let build = |dx: f32, ui: &mut Ui| {
         ui.run_at(UVec2::new(200, 200), |ui| {
@@ -1375,12 +1358,10 @@ fn self_transform_shift_damages_direct_shapes() {
                             // Direct shape on the transformed panel —
                             // mirrors how darkroom adds connection
                             // beziers on the inner canvas.
-                            ui.add_shape(Shape::RoundedRect {
-                                local_rect: Some(Rect::new(40.0, 40.0, 30.0, 30.0)),
-                                corners: Corners::ZERO,
-                                fill: Color::rgb(0.2, 0.6, 0.9).into(),
-                                stroke: Stroke::default(),
-                            });
+                            ui.add_shape(
+                                Shape::rect(Rect::new(40.0, 40.0, 30.0, 30.0))
+                                    .fill(Color::rgb(0.2, 0.6, 0.9)),
+                            );
                         });
                 });
         });
@@ -2190,7 +2171,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     use crate::Shadow;
-    use crate::primitives::corners::Corners;
+
     use crate::shape::Shape;
 
     let frame_size = 50.0;
@@ -2207,17 +2188,16 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                     ..Default::default()
                 })
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::Shadow {
-                        local_rect: None,
-                        corners: Corners::all(0.0),
-                        shadow: Shadow {
+                    ui.add_shape(
+                        Shape::shadow(Shadow {
                             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                             offset: Vec2::new(12.0, -7.0),
                             blur: 8.0,
                             spread: 2.0,
                             inset: false,
-                        },
-                    });
+                        })
+                        .corners(0.0),
+                    );
                 });
         }),
         ("chrome", |ui| {
@@ -2285,7 +2265,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
 #[test]
 fn shadow_overhang_inside_clipped_parent_is_clamped() {
     use crate::Shadow;
-    use crate::primitives::corners::Corners;
+
     use crate::shape::Shape;
 
     let viewport = 60.0;
@@ -2311,17 +2291,16 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                                     ..Default::default()
                                 })
                                 .show(ui, |ui| {
-                                    ui.add_shape(Shape::Shadow {
-                                        local_rect: None,
-                                        corners: Corners::all(0.0),
-                                        shadow: Shadow {
+                                    ui.add_shape(
+                                        Shape::shadow(Shadow {
                                             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                                             offset: Vec2::ZERO,
                                             blur,
                                             spread: 0.0,
                                             inset: false,
-                                        },
-                                    });
+                                        })
+                                        .corners(0.0),
+                                    );
                                 });
                         });
                 });
@@ -2487,20 +2466,14 @@ fn node_snapshot_decomposition_matches_cascade() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(0.0, 0.0),
-                    b: Vec2::new(10.0, 10.0),
-                    width: 1.0,
-                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(20.0, 20.0),
-                    b: Vec2::new(30.0, 30.0),
-                    width: 1.0,
-                    brush: Color::rgb(0.0, 1.0, 0.0).into(),
-                    cap: LineCap::Butt,
-                });
+                ui.add_shape(
+                    Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 1.0)
+                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                );
+                ui.add_shape(
+                    Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0), 1.0)
+                        .brush(Color::rgb(0.0, 1.0, 0.0)),
+                );
             });
     });
 
@@ -2541,20 +2514,14 @@ fn node_snapshot_decomposition_matches_cascade() {
     // shape). The unchanged "multi" subtree-skips and contributes
     // nothing, so the buffer holds exactly the newcomer's rows.
     let two_lines = |ui: &mut Ui| {
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(0.0, 0.0),
-            b: Vec2::new(10.0, 10.0),
-            width: 1.0,
-            brush: Color::rgb(1.0, 0.0, 0.0).into(),
-            cap: LineCap::Butt,
-        });
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(20.0, 20.0),
-            b: Vec2::new(30.0, 30.0),
-            width: 1.0,
-            brush: Color::rgb(0.0, 1.0, 0.0).into(),
-            cap: LineCap::Butt,
-        });
+        ui.add_shape(
+            Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 1.0)
+                .brush(Color::rgb(1.0, 0.0, 0.0)),
+        );
+        ui.add_shape(
+            Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0), 1.0)
+                .brush(Color::rgb(0.0, 1.0, 0.0)),
+        );
     };
     frame(&mut ui, |ui| {
         Panel::hstack()
@@ -2596,8 +2563,7 @@ fn node_snapshot_decomposition_matches_cascade() {
 #[test]
 fn per_shape_damage_only_pushes_changed_shapes() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
+
     // Two stable shapes (drawn at fixed coords) + one shape whose
     // endpoint shifts between frames. Frame N records all three;
     // frame N+1 shifts only the third — the diff must push exactly
@@ -2612,26 +2578,18 @@ fn per_shape_damage_only_pushes_changed_shapes() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 20.0, 10.0)),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                    stroke: Stroke::ZERO,
-                });
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(60.0, 0.0, 20.0, 10.0)),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 10.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+                );
+                ui.add_shape(
+                    Shape::rect(Rect::new(60.0, 0.0, 20.0, 10.0)).fill(Color::rgb(0.0, 1.0, 0.0)),
+                );
                 // The moving shape, far from the other two, so its
                 // bbox doesn't merge with theirs in the damage region.
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, moving_y, 20.0, 10.0)),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, moving_y, 20.0, 10.0))
+                        .fill(Color::rgb(0.0, 0.0, 1.0)),
+                );
             });
     };
 
@@ -2746,8 +2704,6 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
 #[test]
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
 
     let mut ui = Ui::for_test();
     let build = |include_middle: bool, ui: &mut Ui| {
@@ -2755,26 +2711,18 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+                );
                 if include_middle {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect::new(60.0, 0.0, 20.0, 20.0)),
-                        corners: Corners::ZERO,
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(
+                        Shape::rect(Rect::new(60.0, 0.0, 20.0, 20.0))
+                            .fill(Color::rgb(0.0, 1.0, 0.0)),
+                    );
                 }
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(Rect::new(120.0, 0.0, 20.0, 20.0)),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(
+                    Shape::rect(Rect::new(120.0, 0.0, 20.0, 20.0)).fill(Color::rgb(0.0, 0.0, 1.0)),
+                );
             });
     };
 
@@ -2830,8 +2778,6 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 #[test]
 fn shape_added_in_middle_damages_only_new() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
 
     let mut ui = Ui::for_test();
     let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);
@@ -2842,26 +2788,11 @@ fn shape_added_in_middle_damages_only_new() {
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(red_rect),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(Shape::rect(red_rect).fill(Color::rgb(1.0, 0.0, 0.0)));
                 if include_middle {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(green_rect),
-                        corners: Corners::ZERO,
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(Shape::rect(green_rect).fill(Color::rgb(0.0, 1.0, 0.0)));
                 }
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(blue_rect),
-                    corners: Corners::ZERO,
-                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
-                    stroke: Stroke::ZERO,
-                });
+                ui.add_shape(Shape::rect(blue_rect).fill(Color::rgb(0.0, 0.0, 1.0)));
             });
     };
 
@@ -3094,8 +3025,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 #[test]
 fn direct_shape_on_clipped_node_clips_to_own_mask() {
     use crate::Shape;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
+
     use crate::scene::layer::Layer;
     // WindowDriver panel: 80×40, padding 4 each side via background. The
     // direct shape extends to x=400 (well past 80). After the cascade
@@ -3114,12 +3044,10 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
                 })
                 .clip_rect()
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect::new(0.0, 0.0, 400.0, 20.0)),
-                        corners: Corners::ZERO,
-                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                        stroke: Stroke::ZERO,
-                    });
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 400.0, 20.0))
+                            .fill(Color::rgb(1.0, 0.0, 0.0)),
+                    );
                 });
         });
     };
@@ -3175,13 +3103,11 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
             p = p.hidden();
         }
         p.show(ui, |ui| {
-            ui.add_shape(Shape::Line {
-                a: Vec2::new(5.0, 10.0),
-                b: Vec2::new(20.0, 10.0),
-                width: 2.0,
-                brush: color.into(),
-                cap: LineCap::Round,
-            });
+            ui.add_shape(
+                Shape::line(Vec2::new(5.0, 10.0), Vec2::new(20.0, 10.0), 2.0)
+                    .brush(color)
+                    .cap(LineCap::Round),
+            );
         });
     };
     let mut ui = Ui::for_test();
@@ -3268,13 +3194,11 @@ fn front_insert_damages_only_the_new_shape() {
     const NEW_PROBE: Rect = Rect::new(150.0, 149.0, 2.0, 2.0);
     const OLD_PROBE: Rect = Rect::new(30.0, 19.0, 2.0, 2.0);
     let line = |ui: &mut Ui, y: f32| {
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(10.0, y),
-            b: Vec2::new(70.0, y),
-            width: 2.0,
-            brush: BLUE.into(),
-            cap: LineCap::Round,
-        });
+        ui.add_shape(
+            Shape::line(Vec2::new(10.0, y), Vec2::new(70.0, y), 2.0)
+                .brush(BLUE)
+                .cap(LineCap::Round),
+        );
     };
     let build = |ui: &mut Ui, with_front: bool| {
         Panel::canvas()
@@ -3282,13 +3206,11 @@ fn front_insert_damages_only_the_new_shape() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if with_front {
-                    ui.add_shape(Shape::Line {
-                        a: Vec2::new(140.0, 150.0),
-                        b: Vec2::new(170.0, 150.0),
-                        width: 2.0,
-                        brush: RED.into(),
-                        cap: LineCap::Round,
-                    });
+                    ui.add_shape(
+                        Shape::line(Vec2::new(140.0, 150.0), Vec2::new(170.0, 150.0), 2.0)
+                            .brush(RED)
+                            .cap(LineCap::Round),
+                    );
                 }
                 line(ui, 20.0);
                 line(ui, 30.0);

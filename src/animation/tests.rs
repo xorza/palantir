@@ -1134,7 +1134,8 @@ fn spring_snap_fields_carry_target_immediately() {
 #[test]
 fn gradient_snap_clears_only_its_background_velocity() {
     use crate::primitives::background::Background;
-    use crate::primitives::brush::{Brush, LinearGradient};
+    use crate::primitives::brush::Brush;
+    use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::corners::Corners;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
@@ -1192,7 +1193,8 @@ fn gradient_snap_clears_only_its_background_velocity() {
 #[test]
 fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     use crate::primitives::background::Background;
-    use crate::primitives::brush::{Brush, RadialGradient};
+    use crate::primitives::brush::Brush;
+    use crate::primitives::brush::gradient::radial::RadialGradient;
     use crate::widgets::theme::text_style::TextStyle;
     use crate::widgets::theme::widget_look::AnimatedLook;
 

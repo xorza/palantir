@@ -2,12 +2,12 @@
 //! rounding via `SDF - radius`, inner-edge strokes), `Shape::Mesh`
 //! (raw per-vertex geometry incl. a 5k-vertex stress grid exercising
 //! the alloc-free claim and the index-buffer growth path), and
-//! `Shape::WindowedRect` (inverted-fill corner mask — the cheap
+//! `Shape::windowed_rect` (inverted-fill corner mask — the cheap
 //! stand-in for rounded-corner clipping).
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use aperture::{Brush, Color, ColorU8, Corners, LinearGradient, Mesh, Shape, Stroke, Ui};
+use aperture::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui};
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -48,7 +48,7 @@ fn rounded(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
             .fill(Color::rgb(0.4, 1.0, 0.5))
-            .radius(12.0),
+            .radius(12.0_f32),
     );
 }
 
@@ -58,7 +58,7 @@ fn stroked(ui: &mut Ui) {
         Shape::triangle(A, B, C)
             .fill(Color::rgb(0.2, 0.5, 1.0))
             .stroke(Stroke::solid(Color::WHITE, 3.0))
-            .radius(10.0),
+            .radius(10.0_f32),
     );
 }
 
@@ -67,7 +67,7 @@ fn outline(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
             .stroke(Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0))
-            .radius(8.0),
+            .radius(8.0_f32),
     );
 }
 
@@ -93,35 +93,32 @@ fn radii(ui: &mut Ui) {
 /// rect; the windowed rect on top fills the corner wedges with the cell
 /// background and strokes the boundary — visually a rounded-clipped card.
 fn window_mask(ui: &mut Ui) {
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: None,
-        corners: Corners::ZERO,
-        fill: Brush::Linear(LinearGradient::two_stop(
-            FRAC_PI_2,
-            ColorU8::hex(0x1a1a2e),
-            ColorU8::hex(0x4c5cdb),
-        )),
-        stroke: Stroke::ZERO,
-    });
-    ui.add_shape(Shape::WindowedRect {
-        local_rect: None,
-        corners: Corners::all(18.0),
-        // Matches `support::panel_bg` so the wedges vanish into the cell.
-        fill: Color::hex(0x252525).into(),
-        stroke: Stroke::solid(Color::rgb(0.65, 0.8, 1.0), 2.0),
-    });
+    ui.add_shape(
+        Shape::owner_rect().fill(
+            LinearGradient::builder(FRAC_PI_2)
+                .stop(0.0, ColorU8::hex(0x1a1a2e))
+                .stop(1.0, ColorU8::hex(0x4c5cdb)),
+        ),
+    );
+    // Matches `support::panel_bg` so the wedges vanish into the cell.
+    ui.add_shape(
+        Shape::owner_windowed_rect()
+            .corners(18.0)
+            .fill(Color::hex(0x252525))
+            .stroke(Stroke::solid(Color::rgb(0.65, 0.8, 1.0), 2.0)),
+    );
 }
 
 /// Translucent fill exposes the geometry: the fill covers only the
 /// corner wedges outside the rounded boundary, the stroke hugs the
 /// boundary's inner edge, and the window interior stays untouched.
 fn window_anatomy(ui: &mut Ui) {
-    ui.add_shape(Shape::WindowedRect {
-        local_rect: None,
-        corners: Corners::all(28.0),
-        fill: Color::rgba(1.0, 0.6, 0.3, 0.75).into(),
-        stroke: Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 4.0),
-    });
+    ui.add_shape(
+        Shape::owner_windowed_rect()
+            .corners(28.0)
+            .fill(Color::rgba(1.0, 0.6, 0.3, 0.75))
+            .stroke(Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 4.0)),
+    );
 }
 
 fn mesh_triangle(ui: &mut Ui) {

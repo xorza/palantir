@@ -1,6 +1,6 @@
 use crate::display::Display;
 use crate::primitives::approx::{EPS, noop_f32};
-use crate::primitives::brush::FillAxis;
+use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
@@ -868,7 +868,7 @@ impl Composer {
                     // control-polygon length. Polygon length bounds
                     // arc length from above — slight overshoot, but
                     // never undershoots → no faceting from too-coarse
-                    // sampling. Near-straight cubics (`Shape::Line`
+                    // sampling. Near-straight cubics (`Shape::line`
                     // lowers as one; graph wires often relax to one)
                     // short-circuit to a single instance: every chord
                     // of a flat curve lies on the segment, so the 16
