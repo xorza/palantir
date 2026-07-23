@@ -165,7 +165,7 @@ pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
-pub use widgets::{InnerResponse, Response, ResponseSnapshot};
+pub use widgets::{InnerResponse, Response, ResponseSnapshot, Widget};
 pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowToken};
 
 #[cfg(test)]
@@ -202,7 +202,6 @@ mod hot_struct_sizes {
     use crate::scene::tree::extras::ExtrasIdx;
     use crate::scene::tree::node::NodeRecord;
     use crate::text::TextCacheKey;
-    use crate::widgets::WidgetEntry;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -215,6 +214,7 @@ mod hot_struct_sizes {
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
     use crate::widgets::theme::widget_look::AnimatedLook;
+    use crate::widgets::{Widget, WidgetEntry};
 
     /// Single source of truth for the per-frame hot-struct inventory.
     /// Each entry is `Type => "name": expected_size / expected_align`.
@@ -273,7 +273,7 @@ mod hot_struct_sizes {
         ExtrasIdx => "scene::ExtrasIdx": 6 / 2,
         BoundsExtras => "scene::BoundsExtras": 32 / 4,
         PanelExtras => "scene::PanelExtras": 20 / 4,
-        Element => "scene::Element": 104 / 8,
+        Element => "scene::Element": 120 / 8,
         // Per-shape / per-chrome paint records + lowered fill forms.
         ShapeRecord => "scene::ShapeRecord": 88 / 8,
         RecordedText => "shapes::RecordedText": 16 / 8,
@@ -286,17 +286,17 @@ mod hot_struct_sizes {
         Background => "primitives::Background": 124 / 4,
         Brush => "primitives::Brush": 60 / 4,
         Span => "layout::Span": 8 / 4,
-        Button<'static> => "widgets::Button": 144 / 8,
-        Checkbox<'static> => "widgets::Checkbox": 144 / 8,
-        Switch<'static> => "widgets::Switch": 144 / 8,
-        ComboBox<'static> => "widgets::ComboBox": 136 / 8,
-        DragValue<'static> => "widgets::DragValue": 184 / 8,
-        RadioButton<'static, u8> => "widgets::RadioButton<u8>": 152 / 8,
-        TextEdit<'static> => "widgets::TextEdit": 168 / 8,
-        Text<'static> => "widgets::Text": 144 / 8,
-        Slider<'static> => "widgets::Slider": 136 / 8,
-        ProgressBar<'static> => "widgets::ProgressBar": 120 / 8,
-        Splitter<'static> => "widgets::Splitter": 128 / 8,
+        Button<'static> => "widgets::Button": 160 / 8,
+        Checkbox<'static> => "widgets::Checkbox": 160 / 8,
+        Switch<'static> => "widgets::Switch": 160 / 8,
+        ComboBox<'static> => "widgets::ComboBox": 152 / 8,
+        DragValue<'static> => "widgets::DragValue": 200 / 8,
+        RadioButton<'static, u8> => "widgets::RadioButton<u8>": 168 / 8,
+        TextEdit<'static> => "widgets::TextEdit": 184 / 8,
+        Text<'static> => "widgets::Text": 160 / 8,
+        Slider<'static> => "widgets::Slider": 152 / 8,
+        ProgressBar<'static> => "widgets::ProgressBar": 136 / 8,
+        Splitter<'static> => "widgets::Splitter": 144 / 8,
         // Layout / text outputs.
         ShapedText => "layout::ShapedText": 32 / 8,
         TextCacheKey => "text::TextCacheKey": 24 / 8,
@@ -310,7 +310,8 @@ mod hot_struct_sizes {
         HitRow => "cascade::HitRow": 16 / 8,
         Paint => "cascade::Paint": 24 / 8,
         ResponseState => "input::ResponseState": 136 / 4,
-        WidgetEntry => "widgets::WidgetEntry": 152 / 8,
+        Widget => "widgets::Widget": 128 / 8,
+        WidgetEntry => "widgets::WidgetEntry": 272 / 8,
         TargetDeltas => "input::TargetDeltas": 32 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,

@@ -56,7 +56,7 @@ impl GpuView {
     #[track_caller]
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
         let mut element = Element::leaf();
-        element.size = (Sizing::fill(1.0), Sizing::fill(1.0)).into();
+        element.size = Some((Sizing::fill(1.0), Sizing::fill(1.0)).into());
         Self {
             element,
             paint,
@@ -89,9 +89,9 @@ impl GpuView {
             paint,
             repaint,
         } = self;
-        let entry = enter_widget(ui, &element);
-        let id = entry.id;
-        ui.node(id, element, None, |ui| {
+        let entry = enter_widget(ui, element);
+        let id = entry.widget.id();
+        entry.widget.node(ui, None, |ui| {
             ui.gpu_view(id, paint, repaint);
         });
         entry.into_response(ui)

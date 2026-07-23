@@ -218,8 +218,8 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     let margin = style.margin();
     let anim = style.anim();
     let look_target = style.pick(state).clone();
-    element.padding = element.configured().padding().unwrap_or(padding);
-    element.margin = element.configured().margin().unwrap_or(margin);
+    element.padding.get_or_insert(padding);
+    element.margin.get_or_insert(margin);
     look_target.animate(ui, id, &fallback_text, anim)
 }
 

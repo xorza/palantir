@@ -56,7 +56,7 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, &self.element);
+        let entry = enter_widget(ui, self.element);
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {
             *self.value = !*self.value;
@@ -68,23 +68,16 @@ impl<'a> Checkbox<'a> {
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;
 
-        toggle_row(
-            ui,
-            entry,
-            self.element,
-            chrome,
-            self.label,
-            |ui, box_size| {
-                if checked {
-                    let pts = check_pts(box_size);
-                    ui.add_shape(
-                        Shape::polyline(&pts, PolylineColors::Single(indicator), indicator_stroke)
-                            .cap(LineCap::Round)
-                            .join(LineJoin::Round),
-                    );
-                }
-            },
-        )
+        toggle_row(ui, entry, chrome, self.label, |ui, box_size| {
+            if checked {
+                let pts = check_pts(box_size);
+                ui.add_shape(
+                    Shape::polyline(&pts, PolylineColors::Single(indicator), indicator_stroke)
+                        .cap(LineCap::Round)
+                        .join(LineJoin::Round),
+                );
+            }
+        })
     }
 }
 

@@ -48,7 +48,7 @@ pub(crate) struct Forest {
     /// rolled over by `Ui::finalize_frame` (which fans `ids.removed`
     /// out to per-widget caches). Lives on `Forest` so any path that
     /// reaches `open_node` — including direct callers that bypass
-    /// `Ui::node` — gets the same collision check.
+    /// `Widget::node` — gets the same collision check.
     pub(crate) ids: SeenIds,
     /// Explicit-id collisions recorded this frame — each carries the
     /// first-occurrence and disambiguated nodes (with their layers).
@@ -128,17 +128,17 @@ impl Forest {
     }
 
     /// Open a node whose id has already been resolved + disambiguated
-    /// upstream by [`crate::Ui::widget_id`] (which calls
+    /// upstream by [`crate::Ui::widget`] (which calls
     /// `SeenIds::resolve` eagerly so the returned id matches what the
     /// tree, cascade, and `response_for` see). This function takes
-    /// `widget_id` verbatim, records the endpoint via
+    /// the id verbatim, records the endpoint via
     /// `SeenIds::record_endpoint` (also emitting any pending explicit
     /// collision pair), and opens the node in the active tree.
     ///
     /// `chrome` is `Some(Background { .. })` for nodes with a background
     /// paint and `None` otherwise. The `Background` is borrowed (not
     /// owned) so its 168 B don't get copied through the
-    /// `Ui::node → here → Tree::open_node →
+    /// `Widget::node → here → Tree::open_node →
     /// shapes::lower::background` chain on every chromed widget.
     #[inline]
     pub(crate) fn open_node(
@@ -327,7 +327,7 @@ impl Forest {
     }
 
     /// `WidgetId` of the innermost open node in the active layer — the
-    /// parent context auto/salted ids resolve against (`Ui::widget_id`)
+    /// parent context auto/salted ids resolve against (`Ui::widget`)
     /// — or `None` at the top of a layer with no node open yet.
     #[inline]
     pub(crate) fn current_parent_id(&self) -> Option<WidgetId> {

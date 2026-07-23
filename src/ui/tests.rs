@@ -663,9 +663,8 @@ fn shared_cache_eviction_restores_idle_windows_paint_only_text() {
 
     fn idle_body(ui: &mut Ui) {
         let mut element = Element::leaf();
-        element.size = (Sizing::fixed(160.0), Sizing::fixed(30.0)).into();
-        let id = ui.widget_id(&element);
-        ui.node(id, element, None, |ui| {
+        element.size = Some((Sizing::fixed(160.0), Sizing::fixed(30.0)).into());
+        ui.widget(element).node(ui, None, |ui| {
             let text = ui.intern("idle interned window text");
             ui.add_shape_animated(
                 Shape::Text {

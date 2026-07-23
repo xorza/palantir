@@ -4,7 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::{Response, enter_widget};
@@ -59,8 +59,8 @@ impl<'a> Slider<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, &self.element);
-        let id = entry.id;
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
         let state = &entry.state;
 
         let theme = self.style.unwrap_or(&ui.theme.slider);
@@ -91,14 +91,13 @@ impl<'a> Slider<'a> {
         let rail_bg = Background::rounded(rail_color, pill);
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
-        let mut element = self.element;
-        element.size = element
-            .configured()
-            .size()
-            .unwrap_or((Sizing::FILL, Sizing::fixed(knob)).into());
+        let element = &mut entry.widget.element;
+        element
+            .size
+            .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
         element.child_align = Align::v(VAlign::Center);
 
-        ui.node(id, element, None, |ui| {
+        entry.widget.node(ui, None, |ui| {
             rail_leaf(
                 ui,
                 id.with("fill"),
@@ -126,17 +125,15 @@ impl Configure for Slider<'_> {
 }
 
 fn rail_leaf(ui: &mut Ui, id: WidgetId, w: Sizing, h: f32, bg: &Background) {
-    let mut el = Element::leaf();
-    el.salt = Salt::Verbatim(id);
-    el.size = (w, Sizing::fixed(h)).into();
-    ui.node(id, el, Some(bg), |_| {});
+    let el = Element::leaf().id(id).size((w, Sizing::fixed(h)));
+    ui.widget(el).node(ui, Some(bg), |_| {});
 }
 
 fn knob_leaf(ui: &mut Ui, id: WidgetId, size: f32, bg: &Background) {
-    let mut el = Element::leaf();
-    el.salt = Salt::Verbatim(id);
-    el.size = (Sizing::fixed(size), Sizing::fixed(size)).into();
-    ui.node(id, el, Some(bg), |_| {});
+    let el = Element::leaf()
+        .id(id)
+        .size((Sizing::fixed(size), Sizing::fixed(size)));
+    ui.widget(el).node(ui, Some(bg), |_| {});
 }
 
 /// Fraction (0..1) of the way from `min` to `max` that `value` sits.

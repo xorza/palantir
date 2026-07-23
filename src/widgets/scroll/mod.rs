@@ -13,7 +13,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::{InnerResponse, Response};
@@ -283,20 +283,19 @@ fn push_bar_nodes(
     theme: &ScrollbarTheme,
 ) {
     let radius = Corners::all(theme.radius);
-    let mut track = Element::leaf();
-    track.salt = Salt::Verbatim(track_id);
-    track.size = (
-        Sizing::fixed(plan.track_rect.size.w),
-        Sizing::fixed(plan.track_rect.size.h),
-    )
-        .into();
-    track.position = plan.track_rect.min;
-    track.flags.set_sense(Sense::CLICK);
+    let track = Element::leaf()
+        .id(track_id)
+        .size((
+            Sizing::fixed(plan.track_rect.size.w),
+            Sizing::fixed(plan.track_rect.size.h),
+        ))
+        .position(plan.track_rect.min)
+        .sense(Sense::CLICK);
     if !theme.track.is_noop() {
         let chrome = Background::rounded(theme.track, radius);
-        ui.node(track_id, track, Some(&chrome), |_| {});
+        ui.widget(track).node(ui, Some(&chrome), |_| {});
     } else {
-        ui.node(track_id, track, None, |_| {});
+        ui.widget(track).node(ui, None, |_| {});
     }
 
     let fill = if resp.left.drag.delta().is_some() || resp.pressed() {
@@ -306,17 +305,16 @@ fn push_bar_nodes(
     } else {
         theme.thumb
     };
-    let mut thumb = Element::leaf();
-    thumb.salt = Salt::Verbatim(thumb_id);
-    thumb.size = (
-        Sizing::fixed(plan.thumb_rect.size.w),
-        Sizing::fixed(plan.thumb_rect.size.h),
-    )
-        .into();
-    thumb.position = plan.thumb_rect.min;
-    thumb.flags.set_sense(Sense::DRAG);
+    let thumb = Element::leaf()
+        .id(thumb_id)
+        .size((
+            Sizing::fixed(plan.thumb_rect.size.w),
+            Sizing::fixed(plan.thumb_rect.size.h),
+        ))
+        .position(plan.thumb_rect.min)
+        .sense(Sense::DRAG);
     let chrome = Background::rounded(fill, radius);
-    ui.node(thumb_id, thumb, Some(&chrome), |_| {});
+    ui.widget(thumb).node(ui, Some(&chrome), |_| {});
 }
 
 /// How the scrollbars relate to the content area on the pan axes.
@@ -361,11 +359,12 @@ struct ScrollWrappers {
 /// `Scroll::show` patches the remaining inner fields it computes per
 /// frame (`salt`, the reservation `margin`, layout fit flags,
 /// `clip` — read off `flags` before this runs — and the pan
-/// `transform`).
+/// `transform`). The user salt stays on the `Widget` resolved in
+/// `Scroll::show`; neither wrapper carries it.
 fn scroll_wrappers(element: Element) -> ScrollWrappers {
     let scroll_spec = element.scroll_spec();
     let Element {
-        salt,
+        salt: _,
         mode: _,
         size,
         min_size,
@@ -385,7 +384,6 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
     } = element;
 
     let mut outer = Element::zstack();
-    outer.salt = salt;
     outer.size = size;
     outer.min_size = min_size;
     outer.max_size = max_size;
@@ -401,7 +399,7 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
     let mut inner = Element::scroll(scroll_spec);
     // Inner fills the outer wrapper; the outer carries the user's
     // `Sizing` and drives the actual size.
-    inner.size = (Sizing::FILL, Sizing::FILL).into();
+    inner.size = Some((Sizing::FILL, Sizing::FILL).into());
     inner.padding = padding;
     inner.gaps = gaps;
     inner.justify = justify;
@@ -467,7 +465,7 @@ impl Scroll {
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
-        element.flags.set_clip(ClipMode::Rect);
+        element.clip = Some(ClipMode::Rect);
         Self {
             element,
             zoom: None,
@@ -533,7 +531,8 @@ impl Scroll {
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        let id = ui.widget_id(&self.element);
+        let mut widget = ui.widget(self.element);
+        let id = widget.id();
         let pan = self.element.scroll_spec().pan_mask();
         if self.zoom.is_some() {
             debug_assert!(
@@ -640,7 +639,7 @@ impl Scroll {
                 let bl = bar_layout(
                     row,
                     pan,
-                    self.element.padding,
+                    self.element.padding.unwrap_or(Spacing::ZERO),
                     &responses.theme,
                     self.bar_mode,
                 );
@@ -771,16 +770,15 @@ impl Scroll {
         // extent, so the scroll sizes to content like any other `Hug`
         // widget (bounded by `max_size`/available, scrolling past the
         // cap); `Fill`/`Fixed` keep the content-independent viewport.
-        let user = self.element.size;
+        let user = self.element.size.unwrap_or_default();
         let fit = glam::BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
         inner.set_scroll_spec(self.element.scroll_spec().with_fit(fit));
-        inner.salt = Salt::Verbatim(scroll_id);
-        inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
+        let mut inner = inner.id(scroll_id);
+        inner.margin = Some(Spacing::new(0.0, 0.0, reserve_y, reserve_x));
         let inner_chrome = self.chrome;
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
         // can replace it with rounded clipping or no clipping.
-        let user_clip = self.element.flags.clip_mode();
-        inner.flags.set_clip(user_clip);
+        inner.clip = self.element.clip;
         // Raw pan/zoom — cascade anchors the scale at the inner's own
         // `layout_rect.min` (`TranslateScale::anchored_at`), so we
         // don't pre-bake the origin compensation. Translation is just
@@ -790,8 +788,9 @@ impl Scroll {
             inner.transform = TranslateScale::new(-offset, zoom);
         }
 
-        let inner_value = ui.node(id, outer, None, |ui| {
-            let inner_value = ui.node(scroll_id, inner, inner_chrome.as_ref(), body);
+        widget.element = outer;
+        let inner_value = widget.node(ui, None, |ui| {
+            let inner_value = ui.widget(inner).node(ui, inner_chrome.as_ref(), body);
             // Bar overlay: Canvas sibling of inner, Fill on both axes
             // → covers outer's full rect. Tracks attach as shapes on
             // the overlay (paint first); thumbs are Sense::DRAG leaves
@@ -801,11 +800,10 @@ impl Scroll {
                 .bars
                 .filter(|bars| bars.plans.vertical.is_some() || bars.plans.horizontal.is_some())
             {
-                let bars_id = scroll_id.with("__bars");
-                let mut overlay = Element::canvas();
-                overlay.salt = Salt::Verbatim(bars_id);
-                overlay.size = (Sizing::FILL, Sizing::FILL).into();
-                ui.node(bars_id, overlay, None, |ui| {
+                let overlay = Element::canvas()
+                    .id(scroll_id.with("__bars"))
+                    .size((Sizing::FILL, Sizing::FILL));
+                ui.widget(overlay).node(ui, None, |ui| {
                     if let Some(p) = bars.plans.vertical {
                         push_bar_nodes(
                             ui,

@@ -71,17 +71,21 @@ impl<'a> Button<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut element = self.element;
-        let entry = enter_widget(ui, &element);
-        let id = entry.id;
-        let look = resolve_look(ui, id, &mut element, &entry.state, self.style, |t| {
-            &t.button
-        });
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
+        let look = resolve_look(
+            ui,
+            id,
+            &mut entry.widget.element,
+            &entry.state,
+            self.style,
+            |t| &t.button,
+        );
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        ui.node(id, element, Some(&look.background), |ui| {
+        entry.widget.node(ui, Some(&look.background), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(Shape::Text {

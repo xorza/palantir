@@ -2,7 +2,7 @@ use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
-use crate::widgets::{InnerResponse, Response, resolve_container_chrome};
+use crate::widgets::{InnerResponse, resolve_container_chrome};
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
@@ -55,7 +55,7 @@ impl Panel {
     /// that scales/pans *with* the body, nest one panel deep: put the
     /// transform on the outer panel and the chrome on its child.
     pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.element.set_transform(t);
+        self.element.transform = t;
         self
     }
 
@@ -79,11 +79,11 @@ impl Panel {
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
-        let id = ui.widget_id(&element);
-        let inner = ui.node(id, element, chrome.as_ref(), body);
+        let widget = ui.widget(element);
+        let inner = widget.node(ui, chrome.as_ref(), body);
         InnerResponse {
             // Decorative: skip eager `response_for`.
-            response: Response::lazy(id, ui),
+            response: widget.response(ui),
             inner,
         }
     }

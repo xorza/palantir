@@ -47,38 +47,100 @@ pub(crate) fn resolve_container_chrome(
     theme_clip: ClipMode,
 ) -> Option<Background> {
     let chrome = explicit.or_else(|| theme_bg.cloned());
-    let clip = element.configured().clip().unwrap_or(theme_clip);
-    element.flags.set_clip(clip);
+    element.clip.get_or_insert(theme_clip);
     chrome
 }
 
+/// A widget whose [`WidgetId`] has been resolved for this frame, paired
+/// with the [`Element`] that id was resolved from — what [`Ui::widget`]
+/// returns. This is the authoring primitive for widgets that need their
+/// id *before* their node records: read last frame's interaction via
+/// [`Ui::response_for`], pick themed chrome, mutate [`Self::element`],
+/// derive child ids with `widget.id().with("child")` — then record with
+/// [`Self::node`].
+///
+/// The id is read-only: it is the disambiguated identity the tree,
+/// cascade, and `response_for` will see, and rebinding it would desync
+/// them. The element stays open for mutation until `node` consumes it.
+///
+/// Record exactly once: resolution reserved this frame's occurrence
+/// slot for the id and [`Self::node`] claims it. The type is `Copy`
+/// (both halves are), so the compiler won't stop a second `node` call —
+/// the frame will, with a duplicate-endpoint panic.
+#[derive(Clone, Copy, Debug)]
+#[must_use = "record the widget with Widget::node"]
+pub struct Widget {
+    id: WidgetId,
+    pub element: Element,
+}
+
+impl Widget {
+    pub(crate) fn new(id: WidgetId, element: Element) -> Self {
+        Self { id, element }
+    }
+
+    /// The resolved, frame-disambiguated id — key for
+    /// [`Ui::response_for`] / [`Ui::state_mut`] / [`Ui::animate`] and
+    /// for deriving child ids via [`WidgetId::with`].
+    #[inline]
+    pub fn id(&self) -> WidgetId {
+        self.id
+    }
+
+    /// Open this widget's node, run its body, and close it.
+    ///
+    /// `chrome` is `None` for the common layout-only / text-leaf /
+    /// chrome-less path and `Some(bg)` when the widget paints a
+    /// background — container widgets resolve an explicit-or-theme
+    /// `Option<Background>` and pass `chrome.as_ref()`. Taken as
+    /// `Option<&Background>` (an 8-byte niche-encoded pointer, not the
+    /// 168 B `Background` by value) so the chrome travels as one pointer
+    /// per hop down `Forest::open_node` → `Tree::open_node` →
+    /// `shapes::lower::background`, and the no-chrome path is just a
+    /// perfectly-predicted `None` branch.
+    pub fn node<R>(
+        self,
+        ui: &mut Ui,
+        chrome: Option<&Background>,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        ui.node(self.id, self.element, chrome, body)
+    }
+
+    /// Lazy [`Response`] for this widget — the return value of choice
+    /// for decorative widgets that never probed their state themselves.
+    pub fn response<'a>(&self, ui: &'a Ui) -> Response<'a> {
+        Response::lazy(self.id, ui)
+    }
+}
+
 /// Per-frame entry probe shared by interactive widgets
-/// (`Button`/`Checkbox`/`RadioButton`): resolve the element's stable
-/// [`WidgetId`] and probe its response exactly once. `state` has
+/// (`Button`/`Checkbox`/`RadioButton`): resolve the element into a
+/// [`Widget`] and probe its response exactly once. `state` has
 /// `Element::disabled` OR-ed in for same-frame visuals and interaction;
 /// [`Self::into_response`] restores the cascade snapshot's original
 /// disabled bit for the returned [`Response::eager`].
 #[derive(Debug)]
 pub(crate) struct WidgetEntry {
-    id: WidgetId,
-    state: ResponseState,
+    pub(crate) widget: Widget,
+    pub(crate) state: ResponseState,
     raw_disabled: bool,
 }
 
 impl WidgetEntry {
     fn into_response(mut self, ui: &Ui) -> Response<'_> {
         self.state.disabled = self.raw_disabled;
-        Response::eager(self.id, ui, self.state)
+        Response::eager(self.widget.id(), ui, self.state)
     }
 }
 
-pub(crate) fn enter_widget(ui: &mut Ui, element: &Element) -> WidgetEntry {
-    let id = ui.widget_id(element);
-    let mut state = ui.response_for(id);
+pub(crate) fn enter_widget(ui: &mut Ui, element: Element) -> WidgetEntry {
+    let widget = ui.widget(element);
+    let mut state = ui.response_for(widget.id());
     let raw_disabled = state.disabled;
-    state.disabled |= element.flags.is_disabled();
+    state.disabled |= widget.element.flags.is_disabled();
     WidgetEntry {
-        id,
+        widget,
         state,
         raw_disabled,
     }
@@ -122,9 +184,10 @@ impl<'a> Response<'a> {
     /// Empty-cache constructor — the first deref triggers
     /// `response_for`. Used by widgets that don't otherwise consume
     /// the response state during `.show()` (decorative widgets:
-    /// Text, Frame, Panel, Grid).
+    /// Text, Frame, Panel, Grid). External widget authors reach this
+    /// through [`Widget::response`].
     #[inline]
-    pub fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
+    pub(crate) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
             id,
             ui,

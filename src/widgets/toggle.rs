@@ -4,7 +4,7 @@ use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, Element, Salt};
+use crate::scene::element::{Configure, Element};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -52,18 +52,18 @@ impl ToggleChrome {
 /// gap / cross-centering, the `Fixed×Fixed` box leaf with its chrome,
 /// the label leaf — lives here.
 ///
-/// `element` is the row's `HStack` (sense + salt already set).
-/// `paint_indicator` runs inside the box leaf — it receives the box
-/// side length and is responsible for its own checked/selected gate.
+/// The row `HStack` element (sense + salt already set) rides in
+/// `entry.widget`. `paint_indicator` runs inside the box leaf — it
+/// receives the box side length and is responsible for its own
+/// checked/selected gate.
 pub(crate) fn toggle_row<'ui, 'text>(
     ui: &'ui mut Ui,
-    entry: WidgetEntry,
-    mut element: Element,
+    mut entry: WidgetEntry,
     chrome: ToggleChrome,
     label: TextInput<'text>,
     paint_indicator: impl FnOnce(&mut Ui, f32),
 ) -> Response<'ui> {
-    let id = entry.id;
+    let id = entry.widget.id();
     let box_size = chrome.box_size;
     let fallback_text = ui.theme.text.clone();
     let mut look = chrome
@@ -73,15 +73,14 @@ pub(crate) fn toggle_row<'ui, 'text>(
         look.background.corners = Corners::all(box_size * 0.5);
     }
 
-    element.gaps.set_gap(chrome.row_gap);
-    element.child_align = Align::v(VAlign::Center);
+    entry.widget.element.gaps.set_gap(chrome.row_gap);
+    entry.widget.element.child_align = Align::v(VAlign::Center);
 
-    ui.node(id, element, None, |ui| {
-        let box_id = id.with("box");
-        let mut box_elem = Element::leaf();
-        box_elem.salt = Salt::Verbatim(box_id);
-        box_elem.size = (Sizing::fixed(box_size), Sizing::fixed(box_size)).into();
-        ui.node(box_id, box_elem, Some(&look.background), |ui| {
+    entry.widget.node(ui, None, |ui| {
+        let box_elem = Element::leaf()
+            .id(id.with("box"))
+            .size((Sizing::fixed(box_size), Sizing::fixed(box_size)));
+        ui.widget(box_elem).node(ui, Some(&look.background), |ui| {
             paint_indicator(ui, box_size)
         });
 

@@ -189,7 +189,7 @@ impl<'a> TextEdit<'a> {
         // rect so a `Fixed`-sized editor with long content doesn't
         // bleed over its neighbours. Chrome (background) draws before
         // the clip, so the editor's surround still paints normally.
-        element.flags.set_clip(ClipMode::Rect);
+        element.clip = Some(ClipMode::Rect);
         // `Element::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
         // `.padding(...)`. Same renderer semantics as before; the
@@ -261,7 +261,8 @@ impl<'a> TextEdit<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
-        let id = ui.widget_id(&self.element);
+        let mut widget = ui.widget(self.element);
+        let id = widget.id();
         let mut is_focused = ui.input.focused == Some(id);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
@@ -303,7 +304,8 @@ impl<'a> TextEdit<'a> {
                 was_focused
             };
             let chrome = look.background;
-            ui.node(id, self.element, Some(&chrome), |_| {});
+            widget.element = self.element;
+            widget.node(ui, Some(&chrome), |_| {});
             let state = ui.response_for(id);
             return TextEditResponse {
                 response: Response::eager(id, ui, state),
@@ -328,7 +330,13 @@ impl<'a> TextEdit<'a> {
         } else {
             look.background.stroke.width
         };
-        let padding = Spacing::from_array(self.element.padding.as_array().map(|v| v + stroke_w));
+        let padding = Spacing::from_array(
+            self.element
+                .padding
+                .unwrap()
+                .as_array()
+                .map(|v| v + stroke_w),
+        );
         // Reserve a caret-width sliver at the trailing edge of every
         // line so a caret sitting at end-of-line on right/center-
         // aligned text stays inside the clip. The shaper's per-line
@@ -521,9 +529,10 @@ impl<'a> TextEdit<'a> {
         // wrap target already gives them height per line.
         let mut element = self.element;
         if !self.multiline {
+            let min_size = element.min_size.get_or_insert(Size::ZERO);
             let row_min_h = ctx.line_height_px + ctx.padding.vert();
-            if element.min_size.h < row_min_h {
-                element.min_size.h = row_min_h;
+            if min_size.h < row_min_h {
+                min_size.h = row_min_h;
             }
             // A `Hug`-width single-line editor sizes to the glyph bbox,
             // but `update_scroll` keeps a caret-width sliver past the
@@ -534,7 +543,7 @@ impl<'a> TextEdit<'a> {
             // Fold that reservation (the trailing sliver + the caret quad
             // itself) into the desired width so Hug accounts for it.
             // `Fixed`/`Fill` editors are meant to scroll, so leave them.
-            if element.size.w().is_hug() {
+            if element.size.unwrap_or_default().w().is_hug() {
                 let measure_str: &str = if self.text.is_empty() {
                     self.placeholder.as_ref()
                 } else {
@@ -550,8 +559,9 @@ impl<'a> TextEdit<'a> {
                     .size
                     .w;
                 let reserved = reserve_w + ctx.padding.horiz() + 2.0 * caret_room;
-                if element.min_size.w < reserved {
-                    element.min_size.w = reserved;
+                let min_size = element.min_size.get_or_insert(Size::ZERO);
+                if min_size.w < reserved {
+                    min_size.w = reserved;
                 }
             }
         }
@@ -569,7 +579,8 @@ impl<'a> TextEdit<'a> {
                 .text
                 .selection_rects(text_ptr, range, ctx.params(), selection_rects);
         }
-        ui.node(id, element, Some(&chrome), |ui| {
+        widget.element = element;
+        widget.node(ui, Some(&chrome), |ui| {
             let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash.

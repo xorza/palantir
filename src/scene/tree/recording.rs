@@ -18,7 +18,7 @@ use crate::scene::tree::node::NodeId;
 /// bits, so inherited state is available during recording without a
 /// tree walk. The node's resolved `WidgetId` is read on demand via
 /// `records.id[node.idx()]` at the one site that needs it
-/// (`Ui::widget_id`).
+/// (`Ui::widget`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,

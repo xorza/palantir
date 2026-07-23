@@ -67,8 +67,8 @@ impl Separator {
         } else {
             (Sizing::fixed(t), Sizing::HUG).into()
         };
-        if self.element.configured().size().is_none() {
-            self.element.size = default_size;
+        if self.element.size.is_none() {
+            self.element.size = Some(default_size);
             self.element.align = if self.horizontal {
                 Align::h(HAlign::Stretch)
             } else {
@@ -76,10 +76,10 @@ impl Separator {
             };
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
-        let id = ui.widget_id(&self.element);
-        ui.node(id, self.element, Some(&chrome), |_| {});
+        let widget = ui.widget(self.element);
+        widget.node(ui, Some(&chrome), |_| {});
         // Decorative: skip the eager `response_for` probe.
-        Response::lazy(id, ui)
+        widget.response(ui)
     }
 }
 

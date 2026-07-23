@@ -5,7 +5,7 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -59,8 +59,8 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, &self.element);
-        let id = entry.id;
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {
             *self.value = !*self.value;
@@ -97,20 +97,18 @@ impl<'a> Switch<'a> {
         let knob_x = ui.animate(knob_id, "x", target_x, anim);
         let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
 
-        let mut element = self.element;
-        element.gaps.set_gap(row_gap);
-        element.child_align = Align::v(VAlign::Center);
-        ui.node(id, element, None, |ui| {
-            let track_id = id.with("track");
-            let mut track = Element::canvas();
-            track.salt = Salt::Verbatim(track_id);
-            track.size = (Sizing::fixed(geom.track_w), Sizing::fixed(track_h)).into();
-            ui.node(track_id, track, Some(&look.background), |ui| {
-                let mut knob = Element::leaf();
-                knob.salt = Salt::Verbatim(knob_id);
-                knob.size = (Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)).into();
-                knob.position = Vec2::new(knob_x, geom.knob_y);
-                ui.node(knob_id, knob, Some(&knob_bg), |_| {});
+        entry.widget.element.gaps.set_gap(row_gap);
+        entry.widget.element.child_align = Align::v(VAlign::Center);
+        entry.widget.node(ui, None, |ui| {
+            let track = Element::canvas()
+                .id(id.with("track"))
+                .size((Sizing::fixed(geom.track_w), Sizing::fixed(track_h)));
+            ui.widget(track).node(ui, Some(&look.background), |ui| {
+                let knob = Element::leaf()
+                    .id(knob_id)
+                    .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
+                    .position(Vec2::new(knob_x, geom.knob_y));
+                ui.widget(knob).node(ui, Some(&knob_bg), |_| {});
             });
 
             if !label.is_empty() {

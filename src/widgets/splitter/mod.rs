@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, enter_widget};
@@ -69,8 +69,8 @@ impl<'a> Splitter<'a> {
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         // The clipped root contains the grab overlay's overhang within the splitter.
         let mut element = Element::grid();
-        element.size = (Sizing::FILL, Sizing::FILL).into();
-        element.flags.set_clip(ClipMode::Rect);
+        element.size = Some((Sizing::FILL, Sizing::FILL).into());
+        element.clip = Some(ClipMode::Rect);
         Self {
             element,
             ratio,
@@ -99,8 +99,8 @@ impl<'a> Splitter<'a> {
         ui: &'u mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> Response<'u> {
-        let entry = enter_widget(ui, &self.element);
-        let id = entry.id;
+        let mut entry = enter_widget(ui, self.element);
+        let id = entry.widget.id();
         let state = &entry.state;
 
         let theme = self.style.unwrap_or(&ui.theme.splitter);
@@ -184,35 +184,33 @@ impl<'a> Splitter<'a> {
         ];
         let cross_tracks = [Track::fill()];
         let layer = ui.forest.current_layer();
-        let mut element = self.element;
         let grid_def_id = match axis {
             Axis::X => ui.forest.trees[layer].push_grid_def(&cross_tracks, &main_tracks, 0.0, 0.0),
             Axis::Y => ui.forest.trees[layer].push_grid_def(&main_tracks, &cross_tracks, 0.0, 0.0),
         };
-        element.set_grid_def(grid_def_id);
-        ui.node(id, element, None, |ui| {
+        entry.widget.element.set_grid_def(grid_def_id);
+        entry.widget.node(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
-            let rule_id = id.with("rule");
-            let mut rule = Element::leaf();
-            rule.salt = Salt::Verbatim(rule_id);
-            rule.size = (Sizing::FILL, Sizing::FILL).into();
+            let mut rule = Element::leaf()
+                .id(id.with("rule"))
+                .size((Sizing::FILL, Sizing::FILL));
             set_main_cell(&mut rule, axis, 1);
-            ui.node(rule_id, rule, Some(&rule_bg), |_| {});
+            ui.widget(rule).node(ui, Some(&rule_bg), |_| {});
 
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
             let inset = (rule_thickness - thickness) * 0.5;
-            let mut bar = Element::leaf();
-            bar.salt = Salt::Verbatim(divider_id);
-            bar.flags.set_sense(Sense::DRAG);
-            bar.size = (Sizing::FILL, Sizing::FILL).into();
-            bar.margin = match axis {
+            let mut bar = Element::leaf()
+                .id(divider_id)
+                .sense(Sense::DRAG)
+                .size((Sizing::FILL, Sizing::FILL));
+            bar.margin = Some(match axis {
                 Axis::X => (inset, 0.0, inset, 0.0).into(),
                 Axis::Y => (0.0, inset, 0.0, inset).into(),
-            };
+            });
             set_main_cell(&mut bar, axis, 1);
-            ui.node(divider_id, bar, Some(&bar_bg), |_| {});
+            ui.widget(bar).node(ui, Some(&bar_bg), |_| {});
         });
 
         entry.into_response(ui)
@@ -227,12 +225,12 @@ impl Configure for Splitter<'_> {
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
-    let mut el = Element::zstack();
-    el.salt = Salt::Verbatim(id);
-    el.size = (Sizing::FILL, Sizing::FILL).into();
-    el.flags.set_clip(ClipMode::Rect);
+    let mut el = Element::zstack()
+        .id(id)
+        .size((Sizing::FILL, Sizing::FILL))
+        .clip_rect();
     set_main_cell(&mut el, axis, main_cell);
-    ui.node(id, el, None, body)
+    ui.widget(el).node(ui, None, body)
 }
 
 fn set_main_cell(element: &mut Element, axis: Axis, main_cell: u16) {

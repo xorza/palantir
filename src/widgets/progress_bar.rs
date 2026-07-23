@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::scene::element::{Configure, ConfigureElement, Element, Salt};
+use crate::scene::element::{Configure, ConfigureElement, Element};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
@@ -44,30 +44,28 @@ impl<'a> ProgressBar<'a> {
         let radius = Corners::all(height * 0.5);
 
         let mut element = self.element;
-        element.size = element
-            .configured()
-            .size()
-            .unwrap_or((Sizing::FILL, Sizing::fixed(height)).into());
+        element
+            .size
+            .get_or_insert((Sizing::FILL, Sizing::fixed(height)).into());
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
 
-        let id = ui.widget_id(&element);
-        ui.node(id, element, Some(&track), |ui| {
-            let fill_id = id.with("fill");
-            let mut fill_el = Element::leaf();
-            fill_el.salt = Salt::Verbatim(fill_id);
-            fill_el.size = (Sizing::share(fill), Sizing::FILL).into();
-            ui.node(fill_id, fill_el, Some(&fill_bg), |_| {});
+        let widget = ui.widget(element);
+        let id = widget.id();
+        widget.node(ui, Some(&track), |ui| {
+            let fill_el = Element::leaf()
+                .id(id.with("fill"))
+                .size((Sizing::share(fill), Sizing::FILL));
+            ui.widget(fill_el).node(ui, Some(&fill_bg), |_| {});
 
             // Remainder spacer — its `Fill` weight pushes the fill to the
             // correct fraction of the track width.
-            let rest_id = id.with("rest");
-            let mut rest = Element::leaf();
-            rest.salt = Salt::Verbatim(rest_id);
-            rest.size = (Sizing::share(spacer), Sizing::FILL).into();
-            ui.node(rest_id, rest, None, |_| {});
+            let rest = Element::leaf()
+                .id(id.with("rest"))
+                .size((Sizing::share(spacer), Sizing::FILL));
+            ui.widget(rest).node(ui, None, |_| {});
         });
-        Response::lazy(id, ui)
+        widget.response(ui)
     }
 }
 

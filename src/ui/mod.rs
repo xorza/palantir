@@ -46,6 +46,7 @@ use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, 
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
+use crate::widgets::Widget;
 use crate::widgets::theme::Theme;
 use crate::window::{
     CursorIcon, PendingWindow, WindowConfig, WindowFrameState, WindowGeometry, WindowRequests,
@@ -360,10 +361,10 @@ impl Ui {
         // Fill matches the historical "root paints full surface"
         // behavior while letting user roots respect their own sizing.
         let mut viewport = Element::zstack();
-        viewport.size = Sizing::FILL.into();
+        viewport.size = Some(Sizing::FILL.into());
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
-        // like any other parent-scoped id (see `widget_id`).
+        // like any other parent-scoped id (see `Ui::widget`).
         self.forest.open_node(WidgetId::VIEWPORT, viewport, None);
         {
             profiling::scope!("Ui::record_user");
@@ -854,60 +855,48 @@ impl Ui {
         self.forest.pop_layer();
     }
 
-    /// Resolve `element`'s stable [`WidgetId`] for this frame — the id the
-    /// matching [`Self::node`] call records into the tree. This is the
-    /// public entry a widget author calls first: resolve once, read
-    /// [`Self::response_for`] / per-widget [`Self::state_mut`] against the
-    /// returned id (theme picking off the prior frame, animation slots,
-    /// sub-id derivation), then hand the *same* id to [`Self::node`]. Every
-    /// built-in widget follows this resolve-once-then-`node` shape.
+    /// Resolve `element`'s stable [`WidgetId`] for this frame and hand
+    /// back the [`Widget`] pairing that id with the element. This is
+    /// the public entry a widget author calls first: read
+    /// [`Self::response_for`] / per-widget [`Self::state_mut`] against
+    /// `widget.id()` (theme picking off the prior frame, animation
+    /// slots, sub-id derivation), mutate `widget.element` as needed,
+    /// then record via [`Widget::node`]. Every built-in widget follows
+    /// this resolve-once-then-`node` shape; see
+    /// `examples/custom_widget.rs`.
     ///
-    /// The egui `make_persistent_id` analogue: an [`crate::Configure::id_salt`]
-    /// salt *and* a `#[track_caller]` auto id both resolve to
-    /// `parent.with(id)` (so identity tracks tree position, not global
-    /// record order, keeping per-site state stable across frames and
-    /// sibling reorders); only an explicit `.id(id)` resolves verbatim.
-    /// Parent context is the most-recently-opened node in the current layer
-    /// — `Layer::Main`'s synthetic viewport counts as a parent with a
-    /// frame-stable id, so widgets get stable ids with no layer carve-out.
-    ///
-    /// **Eagerly disambiguates** via `SeenIds`: a salt colliding with a
-    /// sibling already recorded this frame is bumped to a fresh occurrence
-    /// slot, so the returned id matches what the tree, cascade, and
+    /// Resolution is the egui `make_persistent_id` analogue: an
+    /// [`crate::Configure::id_salt`] salt *and* a `#[track_caller]`
+    /// auto id both resolve to `parent.with(id)` (so identity tracks
+    /// tree position, not global record order, keeping per-site state
+    /// stable across frames and sibling reorders); only an explicit
+    /// `.id(id)` resolves verbatim. Parent context is the
+    /// most-recently-opened node in the current layer — `Layer::Main`'s
+    /// synthetic viewport counts as a parent with a frame-stable id, so
+    /// widgets get stable ids with no layer carve-out. `SeenIds`
+    /// **eagerly disambiguates**: a salt colliding with a sibling
+    /// already recorded this frame is bumped to a fresh occurrence
+    /// slot, so the resolved id matches what the tree, cascade, and
     /// `response_for` will see.
     ///
-    /// **Contract**: follow with exactly one [`Self::node`] opening a node
-    /// with this id — the `SeenIds` slot reserved here pairs with the next
-    /// opened node, so resolving twice without an intervening `node` drifts
-    /// the occurrence counter. Child nodes built with an explicit
-    /// `.id(parent.with("x"))` carry a verbatim id and may pass it straight
-    /// to `node` without a second resolve.
-    #[inline]
-    pub fn widget_id(&mut self, element: &Element) -> WidgetId {
+    /// **Record exactly once**: the resolution reserves this frame's
+    /// occurrence slot for the id, and the matching [`Widget::node`]
+    /// call claims it. Dropping the `Widget` without recording leaves
+    /// the slot dangling (a second same-salt widget this frame would
+    /// reuse the id); recording twice panics.
+    #[must_use = "record the widget with Widget::node"]
+    pub fn widget(&mut self, element: Element) -> Widget {
         let salt = element.salt;
         let raw_id = salt.resolve(self.forest.current_parent_id());
-        self.forest.ids.resolve(raw_id, salt.is_explicit())
+        let id = self.forest.ids.resolve(raw_id, salt.is_explicit());
+        Widget::new(id, element)
     }
 
-    /// Open a node, optionally with paint chrome, run its body, and
-    /// close it. `chrome` is `None` for the common layout-only / text-
-    /// leaf / chrome-less path and `Some(bg)` when the widget paints a
-    /// background — container widgets resolve an explicit-or-theme
-    /// `Option<Background>` and pass `chrome.as_ref()`. Taken as
-    /// `Option<&Background>` (an 8-byte niche-encoded pointer, not the
-    /// 168 B `Background` by value) so the chrome travels as one pointer
-    /// per hop down `Forest::open_node` → `Tree::open_node` →
-    /// `shapes::lower::background`, and the no-chrome path is just a
-    /// perfectly-predicted `None` branch.
-    ///
-    /// `id` must be the [`Self::widget_id`] resolution of `element.salt`
-    /// (or, for a child built with an explicit `.id(parent.with("x"))`,
-    /// that verbatim id). Disambiguation already happened there, so this
-    /// is the final id verbatim — no further `SeenIds` work here.
-    ///
-    /// Public so library users can author their own widgets — see
-    /// `examples/custom_widget.rs`.
-    pub fn node<R>(
+    /// Open a node under the id [`Self::widget`] resolved, run its
+    /// body, and close it — the recording half of [`Widget::node`],
+    /// its only caller. The id is final; no further `SeenIds` work
+    /// here.
+    pub(crate) fn node<R>(
         &mut self,
         id: WidgetId,
         element: Element,

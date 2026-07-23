@@ -2905,7 +2905,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::primitives::size::Size;
-    use crate::scene::element::{Element, Salt};
+    use crate::scene::element::Element;
     use crate::shape::Shape;
     use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
@@ -2922,9 +2922,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
             .id(WidgetId::from_hash("root"))
             .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
             .show(ui, |ui| {
-                let mut element = Element::leaf();
-                element.salt = Salt::Verbatim(leaf_id);
-                ui.node(leaf_id, element, None, |ui| {
+                let element = Element::leaf().id(leaf_id);
+                ui.widget(element).node(ui, None, |ui| {
                     let text = ui.intern(text);
                     ui.add_shape(Shape::Text {
                         local_origin: Some(ORIGIN),

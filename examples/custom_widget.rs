@@ -7,8 +7,8 @@
 //!
 //! * `Element` constructors + the `Configure` builder (implemented for `Element`
 //!   itself) — construct and configure layout nodes.
-//! * `Ui::widget_id` — resolve a stable [`WidgetId`] once per widget.
-//! * `Ui::node` — open a node, run its body, close it.
+//! * `Ui::widget` — resolve a stable id once per widget, into a `Widget`.
+//! * `Widget::node` — open the widget's node, run its body, close it.
 //! * `Ui::response_for` — read last frame's interaction (hover/click/…).
 //! * `Ui::add_shape` — paint custom geometry (the ± glyphs).
 //! * `WidgetId::with` — key child nodes off the parent id.
@@ -63,10 +63,12 @@ impl<'a> Stepper<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        // 1) Resolve the container id once, then read last frame's
-        //    interaction for the two buttons (keyed off it) and apply
-        //    clicks *before* recording — so the new value paints this frame.
-        let id = ui.widget_id(&self.element);
+        // 1) Resolve the container into a `Widget` once, then read last
+        //    frame's interaction for the two buttons (keyed off its id)
+        //    and apply clicks *before* recording — so the new value
+        //    paints this frame.
+        let widget = ui.widget(self.element);
+        let id = widget.id();
         let minus_id = id.with("minus");
         let plus_id = id.with("plus");
         let minus = ui.response_for(minus_id);
@@ -83,7 +85,7 @@ impl<'a> Stepper<'a> {
         let label = ui.intern(self.value.to_string());
 
         // 2) Open the container and record its three children.
-        ui.node(id, self.element, None, |ui| {
+        widget.node(ui, None, |ui| {
             step_button(ui, minus_id, minus, Glyph::Minus);
             Text::new(label)
                 .id(id.with("value"))
@@ -94,7 +96,7 @@ impl<'a> Stepper<'a> {
 
         // 3) Hand back a Response for the container so callers can chain
         //    `.hovered` etc.; the `&mut i32` mutation is the real effect.
-        Response::lazy(id, ui)
+        widget.response(ui)
     }
 }
 
@@ -112,8 +114,8 @@ enum Glyph {
 }
 
 /// One 24×24 button leaf: state-driven chrome plus a glyph painted with
-/// `Ui::add_shape`. `id` is an explicit child id (`parent.with(...)`), so
-/// it goes straight to `node` — no `widget_id` round-trip needed.
+/// `Ui::add_shape`. `id` is an explicit child id (`parent.with(...)`)
+/// set via `.id(...)`, so the element resolves to it verbatim.
 fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     let fill = if state.pressed() {
         Color::rgb_u8(0x3a, 0x3a, 0x52)
@@ -132,7 +134,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
         .id(id)
         .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
         .sense(Sense::CLICK);
-    ui.node(id, el, Some(&chrome), |ui| {
+    ui.widget(el).node(ui, Some(&chrome), |ui| {
         // Glyphs in node-local coordinates (0..24 on each axis). A
         // horizontal bar is the minus; the plus adds a vertical bar.
         let horiz = [Vec2::new(7.0, 12.0), Vec2::new(17.0, 12.0)];
