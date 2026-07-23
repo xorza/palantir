@@ -56,7 +56,7 @@ impl LayoutEngine {
         node: NodeId,
         axis: Axis,
         req: LenReq,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
     ) -> f32;
 
     pub(crate) fn intrinsic_range(
@@ -64,7 +64,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         axis: Axis,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
     ) -> IntrinsicRange;
 }
 ```

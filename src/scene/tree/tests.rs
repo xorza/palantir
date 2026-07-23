@@ -1008,7 +1008,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     let _cmds = ui.encode_cmds();
 
     let payloads = ui.forest.record_store.payloads.borrow();
-    let bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     let main_tree = &ui.forest.trees[Layer::Main];
     let popup_tree = &ui.forest.trees[Layer::Popup];
 
@@ -1017,7 +1017,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [outer_span.start as usize..(outer_span.start + outer_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.resolve(&bytes).text),
+            ShapeRecord::Text { text, .. } => Some(text.resolve(&interned_text).text),
             _ => None,
         })
         .collect();
@@ -1028,7 +1028,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [popup_root_span.start as usize..(popup_root_span.start + popup_root_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.resolve(&bytes).text),
+            ShapeRecord::Text { text, .. } => Some(text.resolve(&interned_text).text),
             _ => None,
         })
         .collect();

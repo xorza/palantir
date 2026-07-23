@@ -3,7 +3,6 @@ use crate::Ui;
 use crate::WidgetId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::{chat_message, two_hug_cols_with_wrap};
-use crate::layout::support::TextCtx;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
@@ -170,27 +169,27 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         two_hug_cols_with_wrap(ui, PARAGRAPH)
     });
     let payloads = ui.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
     let min_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MinContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
     let max_h = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         node,
         Axis::Y,
         LenReq::MaxContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
 
     assert!(
@@ -414,20 +413,20 @@ fn nonwrapping_text_minconent_equals_full_width() {
             .node()
     });
     let payloads = ui.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     let max_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
     let min_w = ui.layout_engine.intrinsic(
         &ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MinContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
     assert!(
         (min_w - max_w).abs() <= 0.5,
@@ -479,13 +478,13 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
     let probe_label = probe.run_at_value(UVec2::new(2000, 400), |ui| build(ui).1);
     let payloads = probe.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
     assert!(label_full > 0.0);
 
@@ -543,13 +542,13 @@ fn two_hug_cols_default_label_hugs_full_width() {
     let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
     let probe_label = probe.run_at_value(UVec2::new(2000, 400), build);
     let payloads = probe.forest.record_store.payloads.borrow();
-    let text_bytes = payloads.text_bytes();
+    let interned_text = payloads.interned_text();
     let label_full = probe.layout_engine.intrinsic(
         &probe.forest.trees[Layer::Main],
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &TextCtx { bytes: &text_bytes },
+        &interned_text,
     );
     assert!(label_full > 0.0);
 

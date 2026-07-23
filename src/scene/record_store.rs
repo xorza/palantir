@@ -21,7 +21,7 @@ use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::color::ColorU8;
 use crate::primitives::fill_wire::FillKind;
-use crate::primitives::interned_str::{InternedStr, RecordedText, TextArena};
+use crate::primitives::interned_str::{InternedStr, InternedText, RecordedText, TextArena};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::span::Span;
 use glam::Vec2;
@@ -151,8 +151,10 @@ struct TextStore {
 }
 
 impl RecordPayloads {
-    pub(crate) fn text_bytes(&self) -> Ref<'_, str> {
-        self.text.bytes()
+    pub(crate) fn interned_text(&self) -> InternedText<'_> {
+        InternedText {
+            bytes: self.text.bytes(),
+        }
     }
 }
 
@@ -246,7 +248,7 @@ impl RecordStore {
 
     /// Normalize user-facing text into storage owned by this record pass.
     /// Handles from another arena are copied once so every recorded span
-    /// resolves against `RecordPayloads::text_bytes`.
+    /// resolves against `RecordPayloads::interned_text`.
     pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
         let payloads = self.payloads.borrow();
         payloads.text.record(text)

@@ -3,9 +3,10 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
-    JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, weighted_share,
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, weighted_share,
     zero_subtree,
 };
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
@@ -159,7 +160,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     axis: Axis,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
     let gap = tree.panel(node).gaps.gap();
@@ -197,13 +198,19 @@ pub(crate) fn measure(
         axis,
         gap,
         |layout, c| {
-            let d = layout.measure(tree, c, axis.compose_size(main_avail, cross_avail), tc, out);
+            let d = layout.measure(
+                tree,
+                c,
+                axis.compose_size(main_avail, cross_avail),
+                interned_text,
+                out,
+            );
             max_cross = max_cross.max(axis.cross(d));
             axis.main(d)
         },
         |layout, c| {
             if main_finite {
-                layout.intrinsic(tree, c, axis, LenReq::MinContent, tc)
+                layout.intrinsic(tree, c, axis, LenReq::MinContent, interned_text)
             } else {
                 0.0
             }
@@ -260,7 +267,7 @@ pub(crate) fn measure(
             tree,
             entry.node,
             axis.compose_size(fill_avail, cross_avail),
-            tc,
+            interned_text,
             out,
         );
         fill_main += axis.main(desired);
@@ -391,15 +398,15 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     main_axis: Axis,
     query_axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     if main_axis != query_axis {
-        return children_max_intrinsic(layout, tree, node, query_axis, query, tc);
+        return children_max_intrinsic(layout, tree, node, query_axis, query, interned_text);
     }
     let mut range = IntrinsicRange::ZERO;
     let mut count = 0_usize;
     for c in tree.active_children(node) {
-        let child = query.child(layout, tree, c, query_axis, tc);
+        let child = query.child(layout, tree, c, query_axis, interned_text);
         if query.includes(LenReq::MinContent) {
             range.min += child.min;
         }

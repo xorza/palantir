@@ -9,6 +9,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::node::columns::{BoundsExtras, LayoutCore};
 use crate::scene::shapes::record::ShapeRecord;
@@ -18,14 +19,6 @@ use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
-
-/// Read-only context every layout method threads through the
-/// measure / arrange / intrinsic recursion. Holds the record-pass text-byte
-/// arena that a recorded `ShapeRecord::Text::text` span resolves against.
-#[derive(Copy, Clone)]
-pub(crate) struct TextCtx<'a> {
-    pub(crate) bytes: &'a str,
-}
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`] and [`container_text_shapes`]; named so the fields
@@ -56,7 +49,7 @@ pub(crate) struct TextShapeInput<'a> {
 /// on which shape variants contribute to size.
 pub(crate) fn leaf_text_shapes<'a>(
     tree: &'a Tree,
-    tc: &TextCtx<'a>,
+    interned_text: &'a InternedText<'_>,
     node: NodeId,
 ) -> impl Iterator<Item = TextShapeInput<'a>> {
     // Direct slice into `tree.shapes` for `node`. Leaves have no children,
@@ -70,14 +63,14 @@ pub(crate) fn leaf_text_shapes<'a>(
     let span = tree.records.shape_span()[node.idx()];
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
-    text_shape_inputs(tree.shapes.records[lo..hi].iter(), tc.bytes)
+    text_shape_inputs(tree.shapes.records[lo..hi].iter(), interned_text)
 }
 
 /// Iterate the direct text shapes on a container, skipping text belonging to
 /// descendant nodes while preserving this node's within-owner record order.
 pub(crate) fn container_text_shapes<'a>(
     tree: &'a Tree,
-    tc: &TextCtx<'a>,
+    interned_text: &'a InternedText<'_>,
     node: NodeId,
 ) -> impl Iterator<Item = TextShapeInput<'a>> {
     text_shape_inputs(
@@ -85,17 +78,17 @@ pub(crate) fn container_text_shapes<'a>(
             TreeItem::ShapeRecord(_, shape) => Some(shape),
             TreeItem::Child(_) => None,
         }),
-        tc.bytes,
+        interned_text,
     )
 }
 
 fn text_shape_inputs<'a>(
     shapes: impl Iterator<Item = &'a ShapeRecord> + 'a,
-    bytes: &'a str,
+    interned_text: &'a InternedText<'_>,
 ) -> impl Iterator<Item = TextShapeInput<'a>> + 'a {
     let mut ordinal = 0;
     shapes.filter_map(move |shape| {
-        let input = text_shape_input(shape, bytes, ordinal)?;
+        let input = text_shape_input(shape, interned_text, ordinal)?;
         ordinal += 1;
         Some(input)
     })
@@ -103,7 +96,7 @@ fn text_shape_inputs<'a>(
 
 fn text_shape_input<'a>(
     shape: &'a ShapeRecord,
-    bytes: &'a str,
+    interned_text: &'a InternedText<'_>,
     ordinal: usize,
 ) -> Option<TextShapeInput<'a>> {
     match shape {
@@ -117,7 +110,7 @@ fn text_shape_input<'a>(
             align,
             ..
         } => {
-            let resolved = text.resolve(bytes);
+            let resolved = text.resolve(interned_text);
             Some(TextShapeInput {
                 ordinal: checked_text_ordinal(ordinal),
                 text: resolved.text,
@@ -232,11 +225,11 @@ pub(crate) fn children_max_intrinsic<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let mut range = IntrinsicRange::ZERO;
     for c in tree.active_children(node) {
-        let child = query.child(layout, tree, c, axis, tc);
+        let child = query.child(layout, tree, c, axis, interned_text);
         if query.includes(LenReq::MinContent) {
             range.min = range.min.max(child.min);
         }
@@ -256,12 +249,12 @@ pub(crate) fn children_max_intrinsic_offset<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     mut offset: impl FnMut(&Tree, NodeId) -> f32,
 ) -> IntrinsicRange {
     let mut range = IntrinsicRange::ZERO;
     for c in tree.active_children(node) {
-        let child = query.child(layout, tree, c, axis, tc);
+        let child = query.child(layout, tree, c, axis, interned_text);
         let child_offset = offset(tree, c);
         if query.includes(LenReq::MinContent) {
             range.min = range.min.max(child.min + child_offset);
@@ -324,7 +317,7 @@ pub(crate) fn measure_per_axis_hug(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
@@ -352,7 +345,7 @@ pub(crate) fn measure_per_axis_hug(
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.active_children(node) {
-        let d = layout.measure(tree, c, child_avail, tc, out);
+        let d = layout.measure(tree, c, child_avail, interned_text, out);
         let cont = contrib(tree, c, d);
         max_w = max_w.max(cont.w);
         max_h = max_h.max(cont.h);

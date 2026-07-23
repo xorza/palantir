@@ -20,7 +20,6 @@ use crate::input::subscriptions::{KeyboardSense, PointerSense};
 use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::support::TextCtx;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
@@ -385,15 +384,14 @@ impl Ui {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
         let payloads = self.forest.record_store.payloads.borrow();
-        let text_bytes = payloads.text_bytes();
-        let tc = TextCtx { bytes: &text_bytes };
+        let interned_text = payloads.interned_text();
         self.layout_engine.run(
             &self.forest,
-            &tc,
+            &interned_text,
             self.display.logical_rect(),
             &mut self.layout,
         );
-        drop(text_bytes);
+        drop(interned_text);
         drop(payloads);
         // O5 stage 0: skip the cascade when nothing feeding it changed.
         // The cascade is a pure function of subtree authoring + arranged

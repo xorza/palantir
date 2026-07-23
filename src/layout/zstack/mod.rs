@@ -3,10 +3,11 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
-    AxisAlignPair, TextCtx, arrange_axis, children_max_intrinsic, measure_per_axis_hug,
-    resolved_axis_align, zero_subtree,
+    AxisAlignPair, arrange_axis, children_max_intrinsic, measure_per_axis_hug, resolved_axis_align,
+    zero_subtree,
 };
 use crate::layout::types::layout_mode::LayoutMode;
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
@@ -21,9 +22,9 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     node: NodeId,
     axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
-    children_max_intrinsic(layout, tree, node, axis, query, tc)
+    children_max_intrinsic(layout, tree, node, axis, query, interned_text)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -43,10 +44,18 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
-    measure_per_axis_hug(layout, tree, node, inner_avail, tc, out, |_, _, d| d)
+    measure_per_axis_hug(
+        layout,
+        tree,
+        node,
+        inner_avail,
+        interned_text,
+        out,
+        |_, _, d| d,
+    )
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and

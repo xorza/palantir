@@ -658,11 +658,11 @@ mod per_line {
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
         let payloads = ui.forest.record_store.payloads.borrow();
-        let bytes = payloads.text_bytes();
+        let interned_text = payloads.interned_text();
         let tree = &ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => {
-                Some((*align, text.resolve(&bytes).text.to_owned()))
+                Some((*align, text.resolve(&interned_text).text.to_owned()))
             }
             _ => None,
         });

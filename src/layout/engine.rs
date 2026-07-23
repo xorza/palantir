@@ -7,7 +7,7 @@ use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
-    AxisCtx, TextCtx, TextShapeInput, arrange_axis, container_text_shapes, leaf_text_shapes,
+    AxisCtx, TextShapeInput, arrange_axis, container_text_shapes, leaf_text_shapes,
     resolve_axis_size, zero_subtree,
 };
 use crate::layout::types::align::{AxisAlign, HAlign};
@@ -16,6 +16,7 @@ use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
     LayerLayout, Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
 };
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
@@ -354,7 +355,7 @@ impl LayoutEngine {
         node: NodeId,
         axis: Axis,
         req: LenReq,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
     ) -> f32 {
         let slot = req.slot(axis);
         let idx = node.idx();
@@ -374,7 +375,14 @@ impl LayoutEngine {
         {
             self.scratch.intrinsic_computes += 1;
         }
-        let computed = intrinsic::compute(self, tree, node, axis, IntrinsicQuery::single(req), tc);
+        let computed = intrinsic::compute(
+            self,
+            tree,
+            node,
+            axis,
+            IntrinsicQuery::single(req),
+            interned_text,
+        );
         let value = match req {
             LenReq::MinContent => computed.min,
             LenReq::MaxContent => computed.max,
@@ -392,7 +400,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         axis: Axis,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
         let min_slot = LenReq::MinContent.slot(axis);
         let max_slot = LenReq::MaxContent.slot(axis);
@@ -435,9 +443,9 @@ impl LayoutEngine {
         // query. Preserve that work instead of traversing both sides again.
         if min_missing != max_missing {
             if min_missing {
-                range.min = self.intrinsic(tree, node, axis, LenReq::MinContent, tc);
+                range.min = self.intrinsic(tree, node, axis, LenReq::MinContent, interned_text);
             } else {
-                range.max = self.intrinsic(tree, node, axis, LenReq::MaxContent, tc);
+                range.max = self.intrinsic(tree, node, axis, LenReq::MaxContent, interned_text);
             }
             return range;
         }
@@ -446,7 +454,14 @@ impl LayoutEngine {
         {
             self.scratch.intrinsic_computes += 1;
         }
-        let computed = intrinsic::compute(self, tree, node, axis, IntrinsicQuery::range(), tc);
+        let computed = intrinsic::compute(
+            self,
+            tree,
+            node,
+            axis,
+            IntrinsicQuery::range(),
+            interned_text,
+        );
         range.min = computed.min;
         self.scratch.intrinsics[idx][min_slot] = computed.min;
         range.max = computed.max;
@@ -462,7 +477,7 @@ impl LayoutEngine {
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
         surface: Rect,
         out: &mut Layout,
     ) {
@@ -495,7 +510,7 @@ impl LayoutEngine {
                 } else {
                     slot.placement.available(surface)
                 };
-                let desired = self.measure(tree, root, available, tc, layer_out);
+                let desired = self.measure(tree, root, available, interned_text, layer_out);
                 let root_layout = tree.records.layout()[root.idx()];
                 let bounds = tree.bounds(root);
                 let size = Size::new(
@@ -554,7 +569,7 @@ impl LayoutEngine {
                     tree,
                     node,
                     available_w,
-                    container_text_shapes(tree, tc, node),
+                    container_text_shapes(tree, interned_text, node),
                     layer_out,
                 );
             }
@@ -576,7 +591,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available: Size,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
         out: &mut LayerLayout,
     ) -> Size {
         let layout = tree.records.layout()[node.idx()];
@@ -640,12 +655,12 @@ impl LayoutEngine {
             if layout.size.w().fixed_value().is_some() {
                 0.0
             } else {
-                self.intrinsic(tree, node, Axis::X, LenReq::MinContent, tc)
+                self.intrinsic(tree, node, Axis::X, LenReq::MinContent, interned_text)
             },
             if layout.size.h().fixed_value().is_some() {
                 0.0
             } else {
-                self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, tc)
+                self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, interned_text)
             },
         );
 
@@ -659,7 +674,9 @@ impl LayoutEngine {
             intrinsic_min,
             min_size,
             max_size,
-            |inner_avail| self.measure_dispatch(tree, node, layout, inner_avail, tc, out),
+            |inner_avail| {
+                self.measure_dispatch(tree, node, layout, inner_avail, interned_text, out)
+            },
         );
 
         self.scratch.desired[node.idx()] = desired;
@@ -680,14 +697,14 @@ impl LayoutEngine {
     /// `grid`) is a free module exporting three `pub(crate) fn`s,
     /// matched into here and into [`Self::arrange`] / `intrinsic::compute`:
     ///
-    /// - `measure(layout, tree, node, [variant_payload,] inner_avail, tc) -> Size`
+    /// - `measure(layout, tree, node, [variant_payload,] inner_avail, interned_text) -> Size`
     ///   — bottom-up. Recurses into children via `layout.measure(...)`.
     ///   Returns the driver's content size (pre-padding/margin/clamp;
     ///   the caller in [`Self::measure`] folds those in).
     /// - `arrange(layout, tree, node, [variant_payload,] inner)`
     ///   — top-down. Assigns each child a final rect and recurses via
     ///   `layout.arrange(...)`.
-    /// - `intrinsic(layout, tree, node, [variant_payload,] axis, req, tc) -> f32`
+    /// - `intrinsic(layout, tree, node, [variant_payload,] axis, req, interned_text) -> f32`
     ///   — pure on-demand query. Used by `grid::measure` Phase-1 column
     ///   resolution and `stack::measure` Fill min-content floor.
     ///
@@ -713,7 +730,7 @@ impl LayoutEngine {
         node: NodeId,
         layout: LayoutCore,
         inner_avail: Size,
-        tc: &TextCtx<'_>,
+        interned_text: &InternedText<'_>,
         out: &mut LayerLayout,
     ) -> Size {
         match LayoutMode::from(layout.meta) {
@@ -721,26 +738,46 @@ impl LayoutEngine {
                 tree,
                 node,
                 inner_avail.w,
-                leaf_text_shapes(tree, tc, node),
+                leaf_text_shapes(tree, interned_text, node),
                 out,
             ),
-            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, tc, out),
-            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, tc, out),
+            LayoutMode::HStack => {
+                stack::measure(self, tree, node, inner_avail, Axis::X, interned_text, out)
+            }
+            LayoutMode::VStack => {
+                stack::measure(self, tree, node, inner_avail, Axis::Y, interned_text, out)
+            }
             LayoutMode::WrapHStack => {
-                wrapstack::measure(self, tree, node, inner_avail, Axis::X, tc, out)
+                wrapstack::measure(self, tree, node, inner_avail, Axis::X, interned_text, out)
             }
             LayoutMode::WrapVStack => {
-                wrapstack::measure(self, tree, node, inner_avail, Axis::Y, tc, out)
+                wrapstack::measure(self, tree, node, inner_avail, Axis::Y, interned_text, out)
             }
-            LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, tc, out),
-            LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, tc, out),
-            LayoutMode::Grid(grid_def_id) => {
-                grid::measure(self, tree, node, grid_def_id, inner_avail, tc, out)
+            LayoutMode::ZStack => {
+                zstack::measure(self, tree, node, inner_avail, interned_text, out)
             }
+            LayoutMode::Canvas => {
+                canvas::measure(self, tree, node, inner_avail, interned_text, out)
+            }
+            LayoutMode::Grid(grid_def_id) => grid::measure(
+                self,
+                tree,
+                node,
+                grid_def_id,
+                inner_avail,
+                interned_text,
+                out,
+            ),
             // Scroll viewport. INF-axis measure of children.
-            LayoutMode::Scroll(scroll_spec) => {
-                scroll::measure(self, tree, node, inner_avail, scroll_spec, tc, out)
-            }
+            LayoutMode::Scroll(scroll_spec) => scroll::measure(
+                self,
+                tree,
+                node,
+                inner_avail,
+                scroll_spec,
+                interned_text,
+                out,
+            ),
         }
     }
 

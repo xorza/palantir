@@ -18,8 +18,9 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
-    JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
@@ -115,7 +116,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     axis: Axis,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
     let panel = tree.panel(node);
@@ -142,7 +143,7 @@ pub(crate) fn measure(
             tree,
             c,
             axis.compose_size(f32::INFINITY, cross_avail),
-            tc,
+            interned_text,
             out,
         );
         let pack = child_pack(axis, d);
@@ -309,19 +310,19 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     main_axis: Axis,
     query_axis: Axis,
     query: IntrinsicQuery<RANGE>,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     if main_axis != query_axis {
         // Cross-axis approximation: max child intrinsic on cross. Real
         // wrapped cross depends on resolved main width — height-given-
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
-        return children_max_intrinsic(layout, tree, node, query_axis, query, tc);
+        return children_max_intrinsic(layout, tree, node, query_axis, query, interned_text);
     }
     let mut range = IntrinsicRange::ZERO;
     let mut count = 0_usize;
     for c in tree.active_children(node) {
-        let child = query.child(layout, tree, c, query_axis, tc);
+        let child = query.child(layout, tree, c, query_axis, interned_text);
         if query.includes(LenReq::MinContent) {
             range.min = range.min.max(child.min);
         }

@@ -6,9 +6,9 @@ use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::stack;
-use crate::layout::support::TextCtx;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::zstack;
+use crate::primitives::interned_str::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::scene::tree::Tree;
@@ -24,7 +24,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     spec: ScrollSpec,
-    tc: &TextCtx<'_>,
+    interned_text: &InternedText<'_>,
     out: &mut LayerLayout,
 ) -> Size {
     let pan = spec.pan_mask();
@@ -34,11 +34,11 @@ pub(crate) fn measure(
         if pan.y { f32::INFINITY } else { inner_avail.h },
     );
     let raw = if pan.x && pan.y {
-        zstack::measure(layout, tree, node, child_avail, tc, out)
+        zstack::measure(layout, tree, node, child_avail, interned_text, out)
     } else if pan.y {
-        stack::measure(layout, tree, node, child_avail, Axis::Y, tc, out)
+        stack::measure(layout, tree, node, child_avail, Axis::Y, interned_text, out)
     } else {
-        stack::measure(layout, tree, node, child_avail, Axis::X, tc, out)
+        stack::measure(layout, tree, node, child_avail, Axis::X, interned_text, out)
     };
 
     out.scroll_content[node.idx()] = raw;

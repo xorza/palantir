@@ -45,6 +45,13 @@ pub(crate) struct TextArena {
     pub(crate) bytes: RefCell<String>,
 }
 
+/// Borrow of the complete record-pass text arena. Recorded text spans resolve
+/// against this value while its borrow guard keeps the arena immutable.
+#[derive(Debug)]
+pub(crate) struct InternedText<'a> {
+    pub(crate) bytes: Ref<'a, str>,
+}
+
 /// Text stored on a [`ShapeRecord`](crate::scene::shapes::record::ShapeRecord).
 /// Its span always addresses the active record store because lowering rebases
 /// handles from any other arena before constructing this value.
@@ -115,11 +122,11 @@ impl RecordedText {
     }
 
     /// Resolve the paired recorded bytes and content hash. The span is
-    /// guaranteed to target `text_bytes` by `RecordStore::record_text`.
+    /// guaranteed to target `interned_text` by `RecordStore::record_text`.
     #[inline]
-    pub(crate) fn resolve<'a>(&'a self, text_bytes: &'a str) -> ResolvedText<'a> {
-        let text =
-            &text_bytes[self.span.start as usize..(self.span.start + self.span.len) as usize];
+    pub(crate) fn resolve<'a>(&self, interned_text: &'a InternedText<'_>) -> ResolvedText<'a> {
+        let text = &interned_text.bytes
+            [self.span.start as usize..(self.span.start + self.span.len) as usize];
         ResolvedText {
             text,
             hash: self.hash,
