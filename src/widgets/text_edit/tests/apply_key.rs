@@ -90,7 +90,7 @@ fn apply_key_cases() {
     ];
     for (label, input, caret_in, key, want_str, want_caret) in cases {
         let mut s = String::from(*input);
-        let mut state = TextEditState {
+        let mut state = EditState {
             caret: *caret_in,
             ..Default::default()
         };
@@ -224,14 +224,18 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
 
     for case in cases {
         let mut text = String::from(case.replacement);
-        let mut state = TextEditState {
+        let mut state = EditState {
             caret: case.caret,
             selection: case.selection,
+            ..Default::default()
+        };
+        let mut view = ViewState {
             drag_anchor: case.drag_anchor,
             ..Default::default()
         };
 
         state.normalize(&text);
+        view.normalize(&text);
         assert_eq!(
             state.caret, case.repaired_caret,
             "{}: repair caret",
@@ -243,7 +247,7 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
             case.label,
         );
         assert_eq!(
-            state.drag_anchor, case.repaired_drag_anchor,
+            view.drag_anchor, case.repaired_drag_anchor,
             "{}: repair drag anchor",
             case.label,
         );
@@ -281,15 +285,15 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
 }
 
 /// Type one char via the real (cap-aware) `apply_key`.
-fn type_char(s: &mut String, state: &mut TextEditState, c: char, max: Option<usize>) {
-    Editor::new(s, state, false, max).apply_key(press(Key::Char(c)));
+fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>) {
+    apply_editor_key(&mut Editor::new(s, state, false, max), press(Key::Char(c)));
 }
 
 #[test]
 fn max_chars_caps_typed_input() {
     // Cap at 3: the first three land, the fourth is dropped.
     let mut s = String::new();
-    let mut state = TextEditState::default();
+    let mut state = EditState::default();
     for c in "abcd".chars() {
         type_char(&mut s, &mut state, c, Some(3));
     }
@@ -315,7 +319,7 @@ fn max_chars_caps_typed_input() {
 fn max_chars_counts_chars_not_bytes() {
     // Multi-byte chars: the cap is 3 scalar values, not 3 bytes.
     let mut s = String::new();
-    let mut state = TextEditState::default();
+    let mut state = EditState::default();
     for c in "éééé".chars() {
         type_char(&mut s, &mut state, c, Some(3));
     }
@@ -326,7 +330,7 @@ fn max_chars_counts_chars_not_bytes() {
 #[test]
 fn escape_with_selection_does_not_blur() {
     let mut s = String::from("hello");
-    let mut state = TextEditState {
+    let mut state = EditState {
         caret: 4,
         selection: Some(1),
         ..Default::default()

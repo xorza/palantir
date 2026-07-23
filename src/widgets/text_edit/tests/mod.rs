@@ -1,28 +1,29 @@
-use crate::widgets::text_edit::model::{
-    Editor, KeyOutcome, TextEditState, next_grapheme_boundary, next_word_boundary,
-    prev_grapheme_boundary, prev_word_boundary, word_range_at,
+use crate::widgets::text_edit::TextEditState;
+use crate::widgets::text_edit::input::{
+    KeyOutcome, apply_key as apply_editor_key, dispatch_action,
 };
+use crate::widgets::text_edit::model::{
+    EditState, Editor, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
+    prev_word_boundary, word_range_at,
+};
+use crate::widgets::text_edit::view::ViewState;
 
-/// Test wrapper: routes one keypress through `dispatch_shortcut`
-/// (clipboard / undo / select-all) then falls through to single-line
-/// `apply_key`. Menu-intercept gating is exercised end-to-end via the
-/// integration tests instead. Returns whether the key asked to blur.
-fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
+fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     let clipboard = Clipboard::default();
     apply_key_with_clipboard(text, state, kp, &clipboard)
 }
 
 fn apply_key_with_clipboard(
     text: &mut String,
-    state: &mut TextEditState,
+    state: &mut EditState,
     kp: KeyPress,
     clipboard: &Clipboard,
 ) -> bool {
     let mut ed = Editor::new(text, state, false, None);
-    if ed.dispatch_shortcut(kp, false, clipboard) {
+    if dispatch_action(&mut ed, kp, false, clipboard) {
         return false;
     }
-    ed.apply_key(kp) == KeyOutcome::Blur
+    apply_editor_key(&mut ed, kp) == KeyOutcome::Blur
 }
 use crate::Spacing;
 use crate::Ui;

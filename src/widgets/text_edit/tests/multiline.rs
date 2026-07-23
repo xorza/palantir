@@ -10,7 +10,7 @@ fn multiline_enter_inserts_newline() {
     ui.request_focus(Some(ed_id));
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
-        st.caret = 3;
+        st.edit.caret = 3;
     }
     ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
     ui.on_input(InputEvent::KeyDown {
@@ -21,7 +21,7 @@ fn multiline_enter_inserts_newline() {
     ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.caret, 4);
+    assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
     ui.on_input(InputEvent::KeyDown {
@@ -36,9 +36,9 @@ fn multiline_enter_inserts_newline() {
 #[test]
 fn single_line_enter_does_not_insert_newline() {
     let mut text = String::from("abc");
-    let mut state = TextEditState {
+    let mut state = EditState {
         caret: 3,
-        ..TextEditState::default()
+        ..EditState::default()
     };
     apply_key(&mut text, &mut state, press(Key::Enter));
     assert_eq!(text, "abc", "single-line Enter is ignored");
@@ -73,7 +73,7 @@ fn multiline_paste_keeps_newlines() {
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.caret, buf.len());
+    assert_eq!(st.edit.caret, buf.len());
 }
 
 /// Selection across hard breaks via Shift+Down: anchor at start,
@@ -88,7 +88,7 @@ fn multiline_selection_crosses_newline() {
     // Caret on line 1, column 3.
     {
         let st = ui.state_mut::<TextEditState>(ed_id);
-        st.caret = 3;
+        st.edit.caret = 3;
     }
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     ui.on_input(InputEvent::KeyDown {
@@ -105,15 +105,15 @@ fn multiline_selection_crosses_newline() {
     ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(
-        st.selection.is_some(),
+        st.edit.selection.is_some(),
         "shift+down across newline establishes a selection",
     );
     // Anchor stays at 3, caret jumped past the \n (byte 6) onto the
     // second line.
-    assert_eq!(st.selection, Some(3));
+    assert_eq!(st.edit.selection, Some(3));
     assert!(
-        st.caret > 6 && st.caret <= buf.len(),
+        st.edit.caret > 6 && st.edit.caret <= buf.len(),
         "caret landed on line 2 (byte > 6), got {}",
-        st.caret,
+        st.edit.caret,
     );
 }

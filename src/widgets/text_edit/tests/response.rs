@@ -97,6 +97,28 @@ fn reports_lost_focus_on_blur() {
     assert!(frame(&mut ui, &mut buf).lost, "lost focus this frame");
 }
 
+#[test]
+fn escape_reports_lost_focus_on_the_blur_frame() {
+    let mut ui = Ui::for_test_at_text(SMALL);
+    let id = WidgetId::from_hash(EDITOR);
+    let mut buf = String::new();
+
+    ui.request_focus(Some(id));
+    let _ = frame(&mut ui, &mut buf);
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Escape,
+        repeat: false,
+        physical: Key::Other,
+    });
+    let escaped = frame(&mut ui, &mut buf);
+    assert!(escaped.lost, "Escape reports the focus edge immediately");
+    assert!(ui.focused_id().is_none());
+    assert!(
+        !frame(&mut ui, &mut buf).lost,
+        "the edge is not repeated next frame",
+    );
+}
+
 /// A same-length overwrite (select the buffer, type a replacement) must
 /// still report `changed` — the signal comes from the mutation choke
 /// points, not a length delta ("a" → "b" keeps len 1).

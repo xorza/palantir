@@ -39,15 +39,15 @@ fn double_and_triple_click_select_word_and_all() {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     frame_at(&mut ui, 0.0, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.caret, 3, "single click places the caret");
-    assert_eq!(st.selection, None);
+    assert_eq!(st.edit.caret, 3, "single click places the caret");
+    assert_eq!(st.edit.selection, None);
 
     // Click 2 at same pos, well inside the window → double press,
     // selects word at byte 3 → "hello".
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     frame_at(&mut ui, 0.1, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.sel_range(), Some(0..5), "double click selects word");
+    assert_eq!(st.edit.sel_range(), Some(0..5), "double click selects word");
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     frame_at(&mut ui, 0.1, |ui| body(ui, &mut buf));
 
@@ -56,7 +56,7 @@ fn double_and_triple_click_select_word_and_all() {
     frame_at(&mut ui, 0.2, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(
-        st.sel_range(),
+        st.edit.sel_range(),
         Some(0..buf.len()),
         "triple click selects all"
     );
@@ -70,6 +70,9 @@ fn double_and_triple_click_select_word_and_all() {
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     frame_at(&mut ui, 5.0, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.caret, 3, "pause resets the run to a single click");
-    assert_eq!(st.selection, None, "no selection after the reset press");
+    assert_eq!(st.edit.caret, 3, "pause resets the run to a single click");
+    assert_eq!(
+        st.edit.selection, None,
+        "no selection after the reset press"
+    );
 }

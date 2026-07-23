@@ -275,7 +275,7 @@ fn click_compensates_for_right_align() {
     frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let id = WidgetId::from_hash("align-ed");
-    let caret = ui.state_mut::<TextEditState>(id).caret;
+    let caret = ui.state_mut::<TextEditState>(id).edit.caret;
     assert!(
         (1..=2).contains(&caret),
         "click on right-aligned glyph 'b' must land near byte 1 (got {caret})",
@@ -832,7 +832,7 @@ mod per_line {
         ui.run_at(UVec2::new(800, 200), &mut record);
         // Caret at end of "short" (byte 5): under right-align the
         // caret should sit far from the left edge.
-        ui.state_mut::<TextEditState>(id).caret = 5;
+        ui.state_mut::<TextEditState>(id).edit.caret = 5;
         ui.run_at(UVec2::new(800, 200), &mut record);
         // Ask the shaper directly for the caret position the widget
         // would have seen this frame. wrap target = inner width =
