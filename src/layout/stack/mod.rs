@@ -281,7 +281,6 @@ pub(crate) fn arrange(
 ) {
     let panel = tree.panel(node);
     let (gap, justify, parent_child_align) = (panel.gaps.gap(), panel.justify, panel.child_align);
-    let self_outer = out.rect[node.idx()].size;
 
     // WPF Stretch semantics: `Fill` (the Stretch hint) reports content
     // size at measure-time (so a Hug ancestor doesn't balloon to its
@@ -376,7 +375,7 @@ pub(crate) fn arrange(
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
-        layout.arrange(tree, c, self_outer, child_rect, out);
+        layout.arrange(tree, c, child_rect, out);
         cursor += main_size;
     }
     layout.scratch.stack_fill.pool.truncate(fill_start);

@@ -2101,10 +2101,9 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
 /// shapes); if a future input stops being folded in, a frame toggling
 /// it would wrongly skip the cascade and paint stale. One arm per
 /// attribute class — each toggles a single attribute and asserts the
-/// skip is busted. The scroll offset/zoom class lives in `scroll_states`
-/// (not `subtree_hash`) and is folded into the fingerprint explicitly;
-/// it's pinned separately by
-/// `widgets::tests::scroll::cascade_skip_busts_on_scroll_offset_change`.
+/// skip is busted. Scroll offset and zoom are authored transforms and
+/// are pinned separately by
+/// `widgets::scroll::tests::cascade_skip_busts_on_scroll_offset_change`.
 #[test]
 fn cascade_fingerprint_covers_authoring_input_classes() {
     use crate::layout::types::clip_mode::ClipMode;

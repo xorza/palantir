@@ -12,7 +12,6 @@ use crate::scene::Forest;
 
 use crate::common::content_hash::ContentHash;
 use crate::input::sense::Sense;
-use crate::layout::scroll::ScrollStates;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx;
 use crate::primitives::size::Size;
@@ -581,19 +580,13 @@ impl CascadesEngine {
 /// - every root's `subtree_hash`, which already captures all cascade
 ///   authoring — transforms (`PanelExtras`), clip/disabled/focusable
 ///   (`attrs`), visibility, shapes, chrome;
-/// - scroll `offset`/`zoom`, the one cross-frame arrange input that
-///   lives in `LayoutEngine.scroll_states`, not in `subtree_hash`.
 ///
 /// Lives here, beside the walk it mirrors, on purpose: the skip is
 /// only sound while this enumeration covers every input `run_tree`
 /// (and the arrange pass feeding it) consumes. Adding a cascade input
 /// without folding it here silently reuses stale cascades — keep the
 /// two in one review's field of view.
-pub(crate) fn cascade_fingerprint(
-    forest: &Forest,
-    scroll_states: &ScrollStates,
-    display: Display,
-) -> u64 {
+pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display) -> u64 {
     let mut h = Hasher::new();
     h.write_u32(display.physical.x);
     h.write_u32(display.physical.y);
@@ -634,16 +627,7 @@ pub(crate) fn cascade_fingerprint(
             }
         }
     }
-    // XOR fold so map iteration order doesn't matter.
-    let mut scroll_fold = 0u64;
-    for (wid, st) in scroll_states.iter() {
-        let mut sh = Hasher::new();
-        sh.write_u64(wid.0);
-        approx::hash_visual_vec2(st.offset, &mut sh);
-        approx::hash_visual_f32(st.zoom - 1.0, &mut sh);
-        scroll_fold ^= sh.finish();
-    }
-    h.finish() ^ scroll_fold
+    h.finish()
 }
 
 /// Finalize one stack frame: write the rolled-up

@@ -666,7 +666,6 @@ fn arrange_inner(
 
     let parent_child_align = tree.panel(node).child_align;
     let layouts = tree.records.layout();
-    let self_outer = out.rect[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -696,7 +695,7 @@ fn arrange_inner(
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, self_outer, child_rect, out);
+        layout.arrange(tree, c, child_rect, out);
     }
 }
 

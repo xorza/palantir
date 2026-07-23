@@ -80,7 +80,6 @@ mod unit {
     use crate::display::Display;
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
-    use crate::layout::scroll::ScrollLayoutState;
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
@@ -211,10 +210,6 @@ mod unit {
             self.on_input(InputEvent::PointerMoved(pos));
             self.on_input(InputEvent::PointerPressed(PointerButton::Right));
             self.on_input(InputEvent::PointerReleased(PointerButton::Right));
-        }
-
-        pub(crate) fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
-            self.layout_engine.scroll_states.entry(id).or_default()
         }
 
         pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
