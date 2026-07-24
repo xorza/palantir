@@ -352,9 +352,9 @@ impl CosmicMeasure {
     }
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
-    /// char-precise: the cached unbounded shape gives per-glyph advances, we
-    /// cut at the last glyph whose trailing edge fits, then shape the
-    /// (possibly truncated) prefix on one **natural** line — unbounded, no
+    /// cluster-precise: the cached unbounded shape gives per-glyph advances,
+    /// [`fitting_prefix`] cuts after the last fully paid-for cluster, then we
+    /// shape the (possibly truncated) prefix on one **natural** line — no
     /// per-line align. The committed width only decides the cut; the encoder
     /// positions/aligns the single line, so the measured extent is the glyph
     /// width, not `w` (binding to `w` + center align would inflate a
@@ -411,25 +411,16 @@ impl CosmicMeasure {
         } else {
             let mut cut = 0usize;
             if let Some(run) = probe.layout_runs().next() {
-                // Glyphs arrive in visual order, so `g.x` follows the
-                // reading direction rather than the logical prefix — an RTL
-                // run's first glyph sits at the *right* edge, and its
-                // trailing edges descend. Walk them in logical order
-                // summing advances instead, so `text[..cut]` is the prefix
-                // that fits whichever way the run reads.
-                let order = &mut self.logical_order;
-                order.clear();
-                order.extend(0..run.glyphs.len() as u32);
-                order.sort_unstable_by_key(|&i| run.glyphs[i as usize].start);
-                let mut used = 0.0_f32;
-                for &i in order.iter() {
-                    let g = &run.glyphs[i as usize];
-                    used += g.w;
-                    if used > avail {
-                        break;
-                    }
-                    cut = g.end;
-                }
+                cut = fitting_prefix(
+                    run.glyphs.len(),
+                    |i| ClusterGlyph {
+                        start: run.glyphs[i].start,
+                        end: run.glyphs[i].end,
+                        advance: run.glyphs[i].w,
+                    },
+                    &mut self.logical_order,
+                    avail,
+                );
             }
             self.truncate_scratch.clear();
             self.truncate_scratch
@@ -575,6 +566,58 @@ impl CosmicMeasure {
         }
         debug_assert_eq!(self.cache.len(), max_keep);
     }
+}
+
+/// One shaped glyph reduced to what the truncation cut reads: the source
+/// bytes it covers and the advance it costs.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ClusterGlyph {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) advance: f32,
+}
+
+/// Longest logical byte prefix of `count` shaped glyphs whose advances sum
+/// within `avail`. `order` is retained scratch, refilled with the glyph
+/// indices sorted into logical order; `glyph` reads one glyph by its
+/// original (visual-order) index.
+///
+/// Glyphs arrive in visual order, so a glyph's `x` follows the reading
+/// direction rather than the logical prefix — an RTL run's first glyph sits
+/// at the *right* edge and its trailing edges descend. Summing advances in
+/// logical order instead makes `text[..cut]` the prefix that fits whichever
+/// way the run reads.
+///
+/// One grapheme cluster can shape to several glyphs sharing a byte range
+/// (flag and ZWJ emoji, Indic conjuncts), so the prefix only advances past a
+/// cluster once every glyph covering it is paid for. Committing mid-cluster
+/// would claim bytes whose advance the budget never covered, and the prefix
+/// would reshape wider than `avail`.
+pub(crate) fn fitting_prefix(
+    count: usize,
+    glyph: impl Fn(usize) -> ClusterGlyph,
+    order: &mut Vec<u32>,
+    avail: f32,
+) -> usize {
+    order.clear();
+    order.extend(0..count as u32);
+    order.sort_unstable_by_key(|&i| glyph(i as usize).start);
+    let mut cut = 0usize;
+    let mut used = 0.0_f32;
+    for (pos, &i) in order.iter().enumerate() {
+        let g = glyph(i as usize);
+        used += g.advance;
+        if used > avail {
+            break;
+        }
+        let cluster_paid = order
+            .get(pos + 1)
+            .is_none_or(|&next| glyph(next as usize).start >= g.end);
+        if cluster_paid {
+            cut = g.end;
+        }
+    }
+    cut
 }
 
 /// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is
