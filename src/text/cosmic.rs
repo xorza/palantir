@@ -26,14 +26,15 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::text::key::TextShapeKey;
-use crate::text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, PlacedGlyph, RunPlacement};
+use crate::text::render::{
+    GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
+};
 use crate::text::wrap::LineFit;
 use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest};
 use cosmic_text::{
-    Align as CosmicAlign, Attrs, Buffer, CacheKey, CacheKeyFlags, Family, FontSystem, Metrics,
-    Shaping, SubpixelBin, SwashCache, SwashContent, Weight, fontdb,
+    Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
+    SwashCache, SwashContent, Weight, fontdb,
 };
-use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -270,37 +271,6 @@ impl CosmicMeasure {
             data: image.data,
         })
     }
-}
-
-/// Opaque per-glyph rasterization identity: cosmic's `CacheKey` (font,
-/// glyph id, scaled size, subpixel bins, flags) behind a newtype so the
-/// renderer's atlas can key on it without seeing cosmic types.
-/// Constructed and consumed only in this module.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct GlyphRasterKey(CacheKey);
-
-/// Split a physical-px origin into its integer part plus cosmic's
-/// packed 4-bin subpixel remainder — the exact binning
-/// `LayoutGlyph::physical` folds into each glyph's raster key, so the
-/// renderer's encoded-run identity can't drift from cosmic's.
-pub(crate) fn subpixel_origin(origin: Vec2) -> SubpixelOrigin {
-    let (x, x_bin) = SubpixelBin::new(origin.x);
-    let (y, y_bin) = SubpixelBin::new(origin.y);
-    SubpixelOrigin {
-        x,
-        y,
-        bins: ((x_bin as u8) << 2) | (y_bin as u8),
-    }
-}
-
-/// [`subpixel_origin`]'s named result.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct SubpixelOrigin {
-    pub(crate) x: i32,
-    pub(crate) y: i32,
-    /// Bits 0-1: `y_bin`; bits 2-3: `x_bin` (cosmic's four subpixel
-    /// bins, 2 bits each).
-    pub(crate) bins: u8,
 }
 
 impl Default for CosmicMeasure {
@@ -713,22 +683,6 @@ fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
 #[cfg(test)]
 mod test_support {
     use super::*;
-
-    impl GlyphRasterKey {
-        /// Distinct dummy keys for the renderer's atlas tests — the
-        /// only way to mint one outside a real glyph walk.
-        pub(crate) fn for_test(glyph_id: u16) -> Self {
-            Self(CacheKey {
-                font_id: fontdb::ID::dummy(),
-                glyph_id,
-                font_size_bits: 14.0_f32.to_bits(),
-                x_bin: SubpixelBin::Zero,
-                y_bin: SubpixelBin::Zero,
-                font_weight: Weight::NORMAL,
-                flags: CacheKeyFlags::empty(),
-            })
-        }
-    }
 
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) struct RecyclePoolStats {

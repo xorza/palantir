@@ -27,10 +27,10 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::text::TextShapeRequest;
-use crate::text::cosmic::CosmicMeasure;
-use crate::text::cosmic::{self, GlyphRasterKey};
 use crate::text::key::TextShapeKey;
-use crate::text::render::{GlyphImageKind, PlacedGlyph, RunPlacement};
+use crate::text::render::{
+    self, GlyphImageKind, GlyphRasterKey, PlacedGlyph, RunPlacement, TextRenderSession,
+};
 use rustc_hash::FxHashMap;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
@@ -48,7 +48,7 @@ use crate::renderer::backend::text::{ContentType, GlyphInstance};
 /// cosmic never emits a per-glyph `color_opt`. If per-span colours are
 /// ever added, fold a colour-span fingerprint into this key *first*, or
 /// the cache will serve a stale run's baked colours. The assertion in
-/// `CosmicMeasure::extract_glyphs`'s glyph loop is the tripwire for
+/// `TextRenderSession::extract_glyphs`'s glyph loop is the tripwire for
 /// that invariant.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct EncodedKey {
@@ -149,7 +149,7 @@ impl EncodedCache {
 pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
     let scale = frame_scale * r.scale;
     let area_color: u32 = bytemuck::cast(r.color);
-    let sub = cosmic::subpixel_origin(r.origin);
+    let sub = render::subpixel_origin(r.origin);
     EncodedRunKey {
         key: EncodedKey {
             text: r.text.key,
@@ -245,7 +245,7 @@ impl TextEncoder {
     pub(crate) fn encode_run(
         &mut self,
         device: &wgpu::Device,
-        session: &mut CosmicMeasure,
+        session: &mut TextRenderSession<'_>,
         request: TextShapeRequest<'_>,
         placement: RunPlacement,
         run_key: EncodedRunKey,
@@ -342,11 +342,11 @@ pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
 /// iterated, so it may borrow only the disjoint atlas field.
 fn rasterize_and_insert(
     device: &wgpu::Device,
-    session: &mut CosmicMeasure,
+    session: &mut TextRenderSession<'_>,
     atlas: &mut GlyphAtlas,
     key: GlyphRasterKey,
 ) -> Option<u32> {
-    let image = session.rasterize_glyph(key)?;
+    let image = session.rasterize(key)?;
     let content = match image.kind {
         GlyphImageKind::Color => ContentType::Color,
         GlyphImageKind::Mask => ContentType::Mask,
