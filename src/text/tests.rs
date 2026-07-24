@@ -2,7 +2,7 @@ use crate::common::hash::hash_str;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
-use crate::text::cosmic::CosmicMeasure;
+use crate::text::cosmic::{self, ClusterGlyph, CosmicMeasure};
 use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
@@ -1723,6 +1723,113 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
         elided.key, wrapped.key,
         "elision and wrap must key distinct cache slots at the same width",
     );
+}
+
+#[test]
+fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
+    // Hand-built glyph runs, so the cut is checked against arithmetic
+    // rather than against whatever the installed fonts happen to measure.
+    // Each entry is (start, end, advance) in *visual* order.
+    type Run = &'static [(usize, usize, f32)];
+    // "abc", 10 px per glyph, LTR: visual order is logical order.
+    const LTR: Run = &[(0, 1, 10.0), (1, 2, 10.0), (2, 3, 10.0)];
+    // The same three glyphs read right-to-left: the logically-first glyph
+    // is emitted last. A cut driven by visual order would keep the wrong
+    // end of the run.
+    const RTL: Run = &[(2, 3, 10.0), (1, 2, 10.0), (0, 1, 10.0)];
+    // "a🇺🇸": one cluster (bytes 1..9) shaping to two 10 px glyphs. Paying
+    // for one of them must not commit the whole cluster's bytes.
+    const CLUSTER: Run = &[(0, 1, 10.0), (1, 9, 10.0), (1, 9, 10.0)];
+    // "á" decomposed: a zero-width mark glyph sharing the base's cluster
+    // costs nothing, so it must not hold the cut back.
+    const MARK: Run = &[(0, 3, 10.0), (0, 3, 0.0), (3, 4, 10.0)];
+
+    let mut order = Vec::new();
+    for (run, avail, expected, why) in [
+        (LTR, 0.0, 0, "no budget keeps nothing"),
+        (LTR, 9.9, 0, "a glyph is all-or-nothing"),
+        (LTR, 10.0, 1, "an exact fit is a fit"),
+        (LTR, 25.0, 2, "the third glyph would overrun"),
+        (LTR, 30.0, 3, "the whole run fits"),
+        (LTR, 1000.0, 3, "surplus budget keeps the whole run"),
+        (
+            RTL,
+            10.0,
+            1,
+            "RTL keeps the logical prefix, not the visual one",
+        ),
+        (RTL, 25.0, 2, "RTL cut tracks logical order"),
+        (RTL, 30.0, 3, "the whole RTL run fits"),
+        (CLUSTER, 10.0, 1, "one glyph of the cluster is unaffordable"),
+        (
+            CLUSTER,
+            25.0,
+            1,
+            "25 px pays for only one of the two cluster glyphs",
+        ),
+        (CLUSTER, 30.0, 9, "30 px pays for the whole cluster"),
+        (MARK, 10.0, 3, "a zero-width mark rides along with its base"),
+        (MARK, 20.0, 4, "the following glyph is affordable too"),
+    ] {
+        let cut = cosmic::fitting_prefix(
+            run.len(),
+            |i| ClusterGlyph {
+                start: run[i].0,
+                end: run[i].1,
+                advance: run[i].2,
+            },
+            &mut order,
+            avail,
+        );
+        assert_eq!(cut, expected, "avail={avail}: {why}");
+    }
+}
+
+#[test]
+fn ellipsis_never_measures_wider_than_its_budget() {
+    // A cut that commits a cluster's bytes after paying for only some of
+    // its glyphs reshapes wider than the budget it was cut against. Flag
+    // and ZWJ emoji are the reachable multi-glyph clusters; they resolve
+    // through system fallback, so the bound — never the exact width — is
+    // what holds on every machine.
+    let base = TestShape {
+        font_size_px: 16.0,
+        line_height_px: lh(16.0),
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+    for text in [
+        "flag \u{1f1fa}\u{1f1f8} emoji \u{1f600} run",
+        "\u{1f469}\u{200d}\u{1f469}\u{200d}\u{1f467} family emoji",
+    ] {
+        for family in [FontFamily::Sans, FontFamily::Mono] {
+            for fit in [LineFit::Clip, LineFit::Ellipsis] {
+                let mut c = CosmicMeasure::with_bundled_fonts();
+                for width_px in 0..=160 {
+                    let width = width_px as f32;
+                    let m = measure_truncated(
+                        &mut c,
+                        text,
+                        TestShape {
+                            max_width_px: Some(width),
+                            family,
+                            ..base
+                        },
+                        fit,
+                    );
+                    // Widths are whole pixels and `size.w` is ceil'd, so a
+                    // run that fits its budget cannot round past it.
+                    assert!(
+                        m.size.w <= width,
+                        "{family:?} {fit:?} {text:?}: measured {} against budget {width}",
+                        m.size.w,
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
