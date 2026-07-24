@@ -1,0 +1,206 @@
+//! Canonical shaped-run identity: shaping parameters quantized into a
+//! stable, purely integral cache key, plus the width-bounded [`LineFit`]
+//! vocabulary the key discriminates on.
+
+use crate::layout::types::align::HAlign;
+use crate::primitives::approx::EPS;
+use crate::primitives::num::F32Ext;
+use crate::text::{FontFamily, FontWeight};
+
+pub(crate) const TEXT_METRICS_ERROR: &str =
+    "font size and line height must be finite and above the UI epsilon";
+
+pub(crate) fn text_metrics_valid(font_size_px: f32, line_height_px: f32) -> bool {
+    font_size_px.is_finite()
+        && font_size_px > EPS
+        && line_height_px.is_finite()
+        && line_height_px > EPS
+}
+
+/// Canonical shaping parameters and stable shaped-buffer identity. Layout
+/// derives it from `ShapeRecord::Text`; the encoder carries it through the
+/// composer so the renderer can restore the matching buffer without rehashing
+/// or reconstructing a second parameter representation.
+///
+/// Three quantized fields rather than one collapsed `u64` so the renderer
+/// can also reuse the size/width components if it wants to (e.g. group runs
+/// by size for atlas bin reuse). [`TextShapeKey::INVALID`] is the sentinel
+/// returned by the mono fallback — the renderer treats it as "drop this run".
+#[repr(C)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct TextShapeKey {
+    /// 64-bit hash of the source string. `0` for the invalid sentinel.
+    pub(crate) text_hash: u64,
+    /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
+    /// visible difference and keeps the key purely integral.
+    pub(crate) size_q: u32,
+    /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
+    pub(crate) max_w_q: u32,
+    /// `line_height_px * 64`, rounded. Two `ShapeRecord::Text` runs at the
+    /// same font-size but different leading produce different shaped
+    /// buffers (different `Metrics::new`), so the key has to discriminate.
+    pub(crate) lh_q: u32,
+    /// [`FontFamily`] discriminant. Two runs with identical text/size
+    /// but different families produce different shaped buffers, so the
+    /// key has to discriminate. `u8` because `FontFamily` is `#[repr(u8)]`.
+    pub(crate) family_q: u8,
+    /// [`FontWeight`] discriminant. Two runs with identical text/size/
+    /// family but different weight shape against different physical faces
+    /// (Regular vs Bold), so the key has to discriminate.
+    pub(crate) weight_q: u8,
+    /// [`HAlign`] discriminant for per-line text alignment. Cosmic
+    /// shapes the buffer with line-internal x offsets that depend on
+    /// the per-line align, so two runs with identical text/size but
+    /// different halign produce different shaped buffers and the key
+    /// has to discriminate. `0` (`HAlign::Auto`) means "no per-line
+    /// alignment" and matches the previous behaviour.
+    pub(crate) halign_q: u8,
+    /// [`LineFit`] discriminant. Truncating fits bake different source text
+    /// into the shaped buffer at the same width, so fit is independent cache
+    /// identity rather than part of the text-content hash. This occupies the
+    /// former trailing padding byte, keeping the key at 24 bytes.
+    pub(crate) fit_q: u8,
+}
+
+const MAX_W_NONE: u32 = u32::MAX;
+
+impl TextShapeKey {
+    /// Sentinel returned by the mono fallback. Real keys always carry a
+    /// nonzero text hash, so that field alone tags validity.
+    pub(crate) const INVALID: Self = Self {
+        text_hash: 0,
+        size_q: 0,
+        max_w_q: 0,
+        lh_q: 0,
+        family_q: 0,
+        weight_q: 0,
+        halign_q: 0,
+        fit_q: 0,
+    };
+
+    pub(crate) const fn is_invalid(self) -> bool {
+        self.text_hash == 0
+    }
+
+    pub(crate) fn unbounded(
+        text_hash: u64,
+        font_size_px: f32,
+        line_height_px: f32,
+        family: FontFamily,
+        weight: FontWeight,
+    ) -> Option<Self> {
+        if !text_metrics_valid(font_size_px, line_height_px) {
+            return None;
+        }
+        Some(Self {
+            text_hash: text_hash.max(1),
+            size_q: quantize_metric(font_size_px),
+            max_w_q: MAX_W_NONE,
+            lh_q: quantize_metric(line_height_px),
+            family_q: family as u8,
+            weight_q: weight as u8,
+            halign_q: HAlign::Auto as u8,
+            fit_q: LineFit::Wrap as u8,
+        })
+    }
+
+    pub(crate) fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Option<Self> {
+        if !max_width_px.is_finite() || max_width_px < 0.0 {
+            return None;
+        }
+        Some(Self {
+            max_w_q: quantize_width(max_width_px).min(MAX_W_NONE - 1),
+            halign_q: match fit {
+                LineFit::Wrap => halign as u8,
+                LineFit::Clip | LineFit::Ellipsis => HAlign::Auto as u8,
+            },
+            fit_q: fit as u8,
+            ..self
+        })
+    }
+
+    pub(crate) fn unbounded_version(self) -> Self {
+        Self {
+            max_w_q: MAX_W_NONE,
+            halign_q: HAlign::Auto as u8,
+            fit_q: LineFit::Wrap as u8,
+            ..self
+        }
+    }
+
+    pub(crate) fn font_size_px(self) -> f32 {
+        dequantize(self.size_q)
+    }
+
+    pub(crate) fn line_height_px(self) -> f32 {
+        dequantize(self.lh_q)
+    }
+
+    pub(crate) fn max_width_px(self) -> Option<f32> {
+        (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
+    }
+
+    pub(crate) fn family(self) -> FontFamily {
+        match self.family_q {
+            0 => FontFamily::Sans,
+            1 => FontFamily::Mono,
+            other => panic!("invalid FontFamily discriminant in TextShapeKey: {other}"),
+        }
+    }
+
+    pub(crate) fn weight(self) -> FontWeight {
+        match self.weight_q {
+            0 => FontWeight::Regular,
+            1 => FontWeight::Bold,
+            other => panic!("invalid FontWeight discriminant in TextShapeKey: {other}"),
+        }
+    }
+
+    pub(crate) fn halign(self) -> HAlign {
+        match self.halign_q {
+            0 => HAlign::Auto,
+            1 => HAlign::Left,
+            2 => HAlign::Center,
+            3 => HAlign::Right,
+            4 => HAlign::Stretch,
+            other => panic!("invalid HAlign discriminant in TextShapeKey: {other}"),
+        }
+    }
+
+    pub(crate) fn fit(self) -> LineFit {
+        match self.fit_q {
+            0 => LineFit::Wrap,
+            1 => LineFit::Clip,
+            2 => LineFit::Ellipsis,
+            other => panic!("invalid LineFit discriminant in TextShapeKey: {other}"),
+        }
+    }
+}
+
+fn quantize_width(value: f32) -> u32 {
+    (value.max(0.0) * 64.0).fast_round() as u32
+}
+
+fn quantize_metric(value: f32) -> u32 {
+    quantize_width(value).max(1)
+}
+
+fn dequantize(value: u32) -> f32 {
+    value as f32 / 64.0
+}
+
+/// How a width-bounded text run handles overflow. Maps from the public
+/// [`crate::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
+/// the unbounded path). Resolved by
+/// [`TextSystem::shape`](crate::text::system::TextSystem::shape) and
+/// folded into the shape cache key.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum LineFit {
+    /// Multi-line reflow at the target width.
+    Wrap = 0,
+    /// One line, hard-cut to the target width with no marker.
+    Clip = 1,
+    /// One line, cut to the target width with a trailing `…`.
+    Ellipsis = 2,
+}
