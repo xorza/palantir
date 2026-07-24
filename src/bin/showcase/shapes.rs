@@ -88,7 +88,7 @@ fn radii(ui: &mut Ui) {
     }
 }
 
-/// The headline `WindowedRect` use case: fake rounded-corner clipping
+/// The headline windowed-rect use case: fake rounded-corner clipping
 /// without a stencil pass. The gradient "content" is a plain unclipped
 /// rect; the windowed rect on top fills the corner wedges with the cell
 /// background and strokes the boundary — visually a rounded-clipped card.

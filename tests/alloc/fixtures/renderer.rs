@@ -1,7 +1,7 @@
 //! Fixtures that target the renderer frontend (encode + compose).
 //! Every existing widget fixture already drives `Frontend::build`, but
 //! at a tiny shape count — these scale up shape counts and exercise
-//! the non-`RoundedRect` shape variants (`Polyline`, `Mesh`) so a
+//! the non-rectangle shape variants (`Polyline`, `Mesh`) so a
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
 use crate::harness::audit_steady_state;

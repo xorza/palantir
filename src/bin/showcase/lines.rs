@@ -168,7 +168,7 @@ fn gradient_cubic(ui: &mut Ui) {
 
 fn gradient_multistop(ui: &mut Ui) {
     // Three-stop rainbow gradient. Same atlas + bake path as
-    // RoundedRect linear fills.
+    // Rounded-rect linear fills.
     let brush = LinearGradient::new(
         0.0,
         [

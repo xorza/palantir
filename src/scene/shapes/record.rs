@@ -9,6 +9,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
+use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::text_in_rect;
 use crate::text::wrap::TextWrap;
@@ -36,23 +37,26 @@ impl ColorMode {
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
 /// keys (which write the discriminant into the hash) stay stable
-/// across variant reordering. Reorder freely — the on-disk tag
-/// follows the `= N`, not the source order. Adding a variant forces
-/// the [`Self::tag`] match and the [`Hash`] match to grow; pick the
-/// next free number.
+/// across variant reordering. Reorder freely — the hash tag follows
+/// the `= N`, not the source order. Adding a variant forces the
+/// [`Self::tag`] and
+/// [`compute_record_hash`](crate::scene::shapes::hash::compute_record_hash)
+/// matches to grow; pick the next free number.
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
-    /// Filled/stroked rounded rectangle. With `local_rect = None` it covers
-    /// the owner node's full arranged rect (position/size come from layout).
-    /// With `local_rect = Some(r)` it paints `r` at owner-relative coords —
-    /// `r.min = (0, 0)` is the owner's top-left. The sub-rect form paints in
-    /// the slot it was pushed in (interleaved with children via the slot
-    /// mechanism — see `Tree::add_shape`), still under the owner's clip but
-    /// outside its pan transform. Used for scrollbar tracks/thumbs (pushed
-    /// after body content → slot N) and TextEdit carets (pushed after the
-    /// Text shape on a leaf → slot 0, after the Text in record order).
-    RoundedRect {
+    /// Filled/stroked rounded rectangle or inverse window, selected by `kind`.
+    /// With `local_rect = None` it covers the owner node's full arranged rect
+    /// (position/size come from layout). With `local_rect = Some(r)` it paints
+    /// `r` at owner-relative coords — `r.min = (0, 0)` is the owner's
+    /// top-left. The sub-rect form paints in the slot it was pushed in
+    /// (interleaved with children via the slot mechanism — see
+    /// `Tree::add_shape`), still under the owner's clip but outside its pan
+    /// transform. Used for scrollbar tracks/thumbs (pushed after body content
+    /// → slot N) and TextEdit carets (pushed after the Text shape on a leaf →
+    /// slot 0, after the Text in record order).
+    Rect {
+        kind: RectKind,
         local_rect: Option<Rect>,
         corners: Corners,
         fill: ShapeBrush,
@@ -200,7 +204,7 @@ pub(crate) enum ShapeRecord {
         fill: ShapeBrush,
         /// Pre-computed content hash of `fill` when it's a gradient,
         /// `0` for solid — same context-free-hash trick as
-        /// [`ShapeRecord::RoundedRect.fill_grad_hash`].
+        /// [`ShapeRecord::Rect.fill_grad_hash`].
         fill_grad_hash: u64,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by
@@ -226,21 +230,6 @@ pub(crate) enum ShapeRecord {
         stroke: ShapeStroke,
         bbox: Rect,
     } = 8,
-    /// Inverse-fill sibling of [`ShapeRecord::RoundedRect`]: same fields, same
-    /// positioning rules, but the fill paints the complement of the rounded
-    /// shape (the corner wedges out to the rect edge) while the interior stays
-    /// transparent; the stroke keeps its inner-edge annulus. Lowered from
-    /// [`crate::shape::Shape::windowed_rect`]; the encoder routes it to
-    /// `draw_rect_window`, which tags the payload's `FillKind` with the window
-    /// bit — downstream it rides the ordinary `DrawRect` path.
-    WindowedRect {
-        local_rect: Option<Rect>,
-        corners: Corners,
-        fill: ShapeBrush,
-        stroke: ShapeStroke,
-        /// See [`ShapeRecord::RoundedRect.fill_grad_hash`].
-        fill_grad_hash: u64,
-    } = 9,
     /// Native GPU circular arc — the exact-circle sibling of
     /// [`ShapeRecord::Curve`], sharing its pipeline, cap model, and
     /// gradient-along-t sampling. `center` is owner-local; `a0`/`a1`
@@ -356,12 +345,12 @@ impl ShapeRecord {
                     size: bbox.size,
                 }
             }
-            ShapeRecord::RoundedRect { local_rect, .. }
-            | ShapeRecord::WindowedRect { local_rect, .. }
-            | ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            }),
+            ShapeRecord::Rect { local_rect, .. } | ShapeRecord::Image { local_rect, .. } => {
+                local_rect.unwrap_or(Rect {
+                    min: Vec2::ZERO,
+                    size: owner_size,
+                })
+            }
             // Always paints the owner's full arranged rect.
             ShapeRecord::GpuView { .. } => Rect {
                 min: Vec2::ZERO,
@@ -376,13 +365,14 @@ impl ShapeRecord {
         }
     }
 
-    /// Stable on-disk tag. Used as the discriminant byte in the
-    /// `Hash` impl, which feeds subtree hashes / cache keys. The
+    /// Stable hash tag. Used as the discriminant byte in
+    /// [`crate::scene::shapes::hash::compute_record_hash`], which feeds
+    /// subtree hashes / cache keys. The
     /// values match the `= N` annotations on the variants — never
     /// edit one without the other.
     pub(crate) const fn tag(&self) -> u8 {
         match self {
-            ShapeRecord::RoundedRect { .. } => 0,
+            ShapeRecord::Rect { .. } => 0,
             ShapeRecord::Polyline { .. } => 1,
             ShapeRecord::Text { .. } => 2,
             ShapeRecord::Mesh { .. } => 3,
@@ -391,7 +381,6 @@ impl ShapeRecord {
             ShapeRecord::Curve { .. } => 6,
             ShapeRecord::GpuView { .. } => 7,
             ShapeRecord::Triangle { .. } => 8,
-            ShapeRecord::WindowedRect { .. } => 9,
             ShapeRecord::Arc { .. } => 10,
         }
     }
@@ -556,22 +545,23 @@ mod tests {
         );
     }
 
-    /// Same authoring fields, different shape kind: swapping a
-    /// `RoundedRect` for a `WindowedRect` inverts the painted region,
-    /// so a hash collision would make damage diff skip the repaint.
-    /// The tag byte written first in the hash schedule is the guard.
+    /// Same rectangle payload, different paint kind: switching to a
+    /// windowed rect inverts the painted region, so a hash collision
+    /// would make damage diff skip the repaint.
     #[test]
     fn windowed_rect_hash_differs_from_rounded_rect() {
         let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
         let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 2.0));
-        let rounded = ShapeRecord::RoundedRect {
+        let rounded = ShapeRecord::Rect {
+            kind: RectKind::Rounded,
             local_rect: None,
             corners: Corners::all(8.0),
             fill,
             stroke,
             fill_grad_hash: 0,
         };
-        let windowed = ShapeRecord::WindowedRect {
+        let windowed = ShapeRecord::Rect {
+            kind: RectKind::Windowed,
             local_rect: None,
             corners: Corners::all(8.0),
             fill,

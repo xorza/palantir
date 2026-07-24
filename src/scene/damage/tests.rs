@@ -3017,7 +3017,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 /// the damage region driving the scissor pass was over-large,
 /// inflating the partial-redraw quad to the unclipped text bbox.
 ///
-/// This test fakes the scenario with a `RoundedRect` shape extending
+/// This test fakes the scenario with a rounded-rect shape extending
 /// past the host's clip on the right edge; pre-fix the per-shape rect
 /// captures the full 400-px-wide shape, post-fix it's clipped to the
 /// host's deflated mask.

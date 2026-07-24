@@ -388,7 +388,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // Composer's actual painted quad. Surface scale = 1, so physical px
     // == logical px and the rect compares directly. The transparent
     // viewport / hstack / canvas chrome emit no quads — the child
-    // RoundedRect is the only one.
+    // A rounded rect is the only one.
     let mut frontend = Frontend::for_test();
     frontend.build(
         ui.frame_scene(),

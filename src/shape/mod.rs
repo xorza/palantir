@@ -38,12 +38,12 @@ use std::f32::consts::TAU;
 pub enum Shape<'a> {
     Rect(RectShape),
     /// Filled/stroked triangle with optional corner rounding, drawn as an
-    /// analytic SDF on the shared quad pipeline (a sibling of `RoundedRect` —
+    /// analytic SDF on the shared quad pipeline (a sibling of rounded rects —
     /// no tessellation, crisp AA at any zoom, rounded corners = `SDF - radius`).
     /// `a`/`b`/`c` are the corner points in owner-local coords; `radius`
     /// rounds all three corners uniformly (`0.0` = sharp). The solid `fill`
     /// fits the reused quad instance lanes; `stroke` sits on the inner edge
-    /// like `RoundedRect`'s.
+    /// like a rounded rect's.
     Triangle(TriangleShape),
     /// Stroked line, Bézier, or circular arc.
     Curve(CurveShape),

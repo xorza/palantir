@@ -1,3 +1,4 @@
+use crate::shape::rect::RectKind;
 use crate::{scene::tree::node::NodeId, widgets::text_edit::tests::*};
 
 #[test]
@@ -333,7 +334,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
 #[test]
 fn no_selection_paints_no_highlight_rect() {
     // Focused TextEdit with no selection paints exactly one
-    // RoundedRect (the caret). No selection wash.
+    // rounded rect (the caret). No selection wash.
     use crate::scene::shapes::record::ShapeRecord;
 
     let mut ui = ui_at_no_cosmic(NARROW);
@@ -357,14 +358,22 @@ fn no_selection_paints_no_highlight_rect() {
 
     let rects: usize = ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
-        .filter(|s| matches!(s, ShapeRecord::RoundedRect { .. }))
+        .filter(|s| {
+            matches!(
+                s,
+                ShapeRecord::Rect {
+                    kind: RectKind::Rounded,
+                    ..
+                }
+            )
+        })
         .count();
     assert_eq!(rects, 1, "only caret should paint without selection");
 }
 
 #[test]
 fn shift_end_paints_selection_highlight() {
-    // Programmatic Shift+End extends to len; expect a RoundedRect for
+    // Programmatic Shift+End extends to len; expect a rounded rect for
     // the selection wash, painted *before* the caret rect.
     use crate::scene::shapes::record::ShapeRecord;
 
@@ -405,7 +414,8 @@ fn shift_end_paints_selection_highlight() {
     let rects: Vec<_> = ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
         .filter_map(|s| match s {
-            ShapeRecord::RoundedRect {
+            ShapeRecord::Rect {
+                kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
             } => Some(*r),
@@ -529,7 +539,8 @@ fn line_height_override_changes_caret_rect_height() {
         ui.forest.trees[Layer::Main]
             .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
-                ShapeRecord::RoundedRect {
+                ShapeRecord::Rect {
+                    kind: RectKind::Rounded,
                     local_rect: Some(rect),
                     ..
                 } => Some(rect.size.h),

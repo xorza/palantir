@@ -8,6 +8,7 @@ fn caret_blinks_on_and_off_while_focused() {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::iter::{TreeItem, TreeItems};
     use crate::scene::tree::node::NodeId;
+    use crate::shape::rect::RectKind;
     use std::time::Duration;
 
     fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
@@ -24,7 +25,7 @@ fn caret_blinks_on_and_off_while_focused() {
     }
 
     fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
-        // Caret is the only RoundedRect with `local_rect: Some(...)` on
+        // Caret is the only rounded rect with `local_rect: Some(...)` on
         // a freshly focused, empty, unselected editor — `Background`
         // routes through `chrome` (no shape), selection wash is absent
         // without a selection. Post-`PaintAnim`-migration the rect is
@@ -42,7 +43,8 @@ fn caret_blinks_on_and_off_while_focused() {
             .any(|(idx, s)| {
                 let is_caret = matches!(
                     s,
-                    ShapeRecord::RoundedRect {
+                    ShapeRecord::Rect {
+                        kind: RectKind::Rounded,
                         local_rect: Some(_),
                         ..
                     }
