@@ -2260,17 +2260,16 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     );
 }
 
-/// The ellipsis-advance memo is keyed on quantized size, so a continuous
-/// font-size zoom over ellipsized text would grow it without bound. Drive
-/// far more distinct sizes than the cap and assert it stays bounded (the
-/// clear-on-overflow path), while still returning correct widths.
+/// A continuous font-size zoom over ellipsized text mints a distinct
+/// quantized size every frame, so the ellipsis reservation is recomputed
+/// throughout. Drive a long sweep of sizes through one budget and assert
+/// every one still lands inside it.
 #[test]
-fn ellipsis_cache_bounded_under_size_churn() {
-    use crate::text::cosmic::ELLIPSIS_CACHE_CAP;
-
+fn ellipsis_stays_within_budget_under_size_churn() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let long = "the quick brown fox jumps over the lazy dog";
-    for i in 0..(ELLIPSIS_CACHE_CAP * 2 + 5) {
+    let width = 60.0;
+    for i in 0..261 {
         // Distinct quantized size each iteration (0.1px steps × 64 ≥ 1).
         let fs = 8.0 + i as f32 * 0.1;
         let r = measure_truncated(
@@ -2279,20 +2278,19 @@ fn ellipsis_cache_bounded_under_size_churn() {
             TestShape {
                 font_size_px: fs,
                 line_height_px: lh(fs),
-                max_width_px: Some(60.0),
+                max_width_px: Some(width),
                 family: FontFamily::Sans,
                 weight: FontWeight::Regular,
                 halign: HAlign::Left,
             },
             LineFit::Ellipsis,
         );
-        assert!(r.size.w <= 61.0, "still truncates to budget at size {fs}");
+        assert!(
+            r.size.w <= width,
+            "size {fs} measured {} against budget {width}",
+            r.size.w,
+        );
     }
-    assert!(
-        c.ellipsis_cache_len() <= ELLIPSIS_CACHE_CAP,
-        "ellipsis cache must stay bounded ({} > cap {ELLIPSIS_CACHE_CAP})",
-        c.ellipsis_cache_len(),
-    );
 }
 
 /// Inputs that quantize to one key must shape from that key's canonical
