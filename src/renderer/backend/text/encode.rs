@@ -10,7 +10,7 @@
 //!   positions, no shaper session, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
 //! - **Cache miss**: extracts the run's glyph placements through the
-//!   shaper's [`TextRenderSession`], touches/inserts atlas slots, emits
+//!   shaper's render-session lease, touches/inserts atlas slots, emits
 //!   to `out`, and populates the cache entry with the origin-relative
 //!   templates so the next frame at the same `(key, scale, bins,
 //!   color)` lands on the fast path. Runs whose lines were y-culled
@@ -27,9 +27,10 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::text::TextShapeRequest;
+use crate::text::cosmic::CosmicMeasure;
 use crate::text::cosmic::{self, GlyphRasterKey};
 use crate::text::key::TextShapeKey;
-use crate::text::render::{GlyphImageKind, PlacedGlyph, RunPlacement, TextRenderSession};
+use crate::text::render::{GlyphImageKind, PlacedGlyph, RunPlacement};
 use rustc_hash::FxHashMap;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
@@ -244,7 +245,7 @@ impl TextEncoder {
     pub(crate) fn encode_run(
         &mut self,
         device: &wgpu::Device,
-        session: &mut TextRenderSession<'_>,
+        session: &mut CosmicMeasure,
         request: TextShapeRequest<'_>,
         placement: RunPlacement,
         run_key: EncodedRunKey,
@@ -341,11 +342,11 @@ pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
 /// iterated, so it may borrow only the disjoint atlas field.
 fn rasterize_and_insert(
     device: &wgpu::Device,
-    session: &mut TextRenderSession<'_>,
+    session: &mut CosmicMeasure,
     atlas: &mut GlyphAtlas,
     key: GlyphRasterKey,
 ) -> Option<u32> {
-    let image = session.rasterize(key)?;
+    let image = session.rasterize_glyph(key)?;
     let content = match image.kind {
         GlyphImageKind::Color => ContentType::Color,
         GlyphImageKind::Mask => ContentType::Mask,

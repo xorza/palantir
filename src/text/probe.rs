@@ -59,19 +59,18 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     /// right edge, and an offset interior to a ligature or Indic cluster
     /// interpolates across the cluster instead of jumping to its far end.
     pub(crate) fn cursor_xy(&self, byte_offset: usize) -> CursorPos {
-        let font_size_px = self.request.key.font_size_px();
         let line_height_px = self.request.key.line_height_px();
         let max_width_px = self.request.key.max_width_px();
         let halign = self.request.key.halign();
         let target = cursor_from_byte(self.request.text, byte_offset);
         let Some(buffer) = self.buffer() else {
-            let x = if self.request.text.is_empty() {
-                empty_line_x(max_width_px, halign)
-            } else {
-                mono::caret_x_single_line(self.request.text, byte_offset, font_size_px)
-            };
             return CursorPos {
-                x,
+                x: mono::caret_x(
+                    self.request.text,
+                    byte_offset,
+                    self.request.key.font_size_px(),
+                    empty_line_x(max_width_px, halign),
+                ),
                 y_top: 0.0,
                 line_height: line_height_px,
             };
@@ -130,9 +129,11 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             return;
         }
         let Some(buffer) = self.buffer() else {
+            // No shaped buffer to wash: mono lays the band out 1D, and
+            // empty text collapses it to nothing.
             let font_size_px = self.request.key.font_size_px();
-            let x0 = mono::caret_x_single_line(self.request.text, range.start, font_size_px);
-            let x1 = mono::caret_x_single_line(self.request.text, range.end, font_size_px);
+            let x0 = mono::caret_x(self.request.text, range.start, font_size_px, 0.0);
+            let x1 = mono::caret_x(self.request.text, range.end, font_size_px, 0.0);
             out.push(Rect::new(
                 x0,
                 0.0,

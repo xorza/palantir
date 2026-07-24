@@ -4,10 +4,10 @@
 //!
 //! - [`CosmicMeasure`] — real shaping via `cosmic-text`, with a per-key
 //!   shaped-buffer cache. The wgpu backend replays these buffers through
-//!   [`render::TextRenderSession`]. Each render run carries its record-local
+//!   [`render`]. Each render run carries its record-local
 //!   source span so an encoded-cache miss can restore an evicted shaped
 //!   buffer. The only production backend.
-//! - `mono::test_support::measure` — deterministic placeholder metric behind
+//! - [`mono::test_support::measure`] — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry
 //!   [`TextShapeKey::INVALID`] and the renderer drops them. Lets the engine
@@ -19,7 +19,7 @@
 //!
 //! There's no `TextMeasure` trait: the render path needs `CosmicMeasure`'s
 //! shaped buffers + font system (leased cosmic-free through
-//! [`render::TextRenderSession`]), which the mono fallback cannot provide,
+//! [`render`]), which the mono fallback cannot provide,
 //! so a trait would just be a downcast in disguise.
 //!
 //! Module layout: this file owns the shared vocabulary ([`FontFamily`],
@@ -27,7 +27,6 @@
 //! [`TextShaper`] coordinator; [`key`] the quantized cache identity;
 //! [`system`] the per-window reuse slots; [`probe`] read-only
 //! caret / hit-test / selection geometry; [`render`] the cosmic-free
-//! render-side boundary; [`mono`] the headless fallback;
 //! [`cosmic`] real shaping; [`wrap`] the wrap-policy vocabulary.
 
 use crate::common::hash;
@@ -36,7 +35,6 @@ use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::key::TextShapeKey;
 use crate::text::probe::TextLayoutProbe;
-use crate::text::render::TextRenderSession;
 use crate::text::wrap::LineFit;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
@@ -251,13 +249,13 @@ impl TextShaper {
     /// glyph extraction (restoring evicted buffers on the way) and
     /// rasterization, all in aperture-native terms — see
     /// [`crate::text::render`].
-    pub(crate) fn render_session(&self) -> TextRenderSession<'_> {
-        TextRenderSession::new(RefMut::map(self.inner.borrow_mut(), |inner| {
+    pub(crate) fn render_session(&self) -> RefMut<'_, CosmicMeasure> {
+        RefMut::map(self.inner.borrow_mut(), |inner| {
             inner
                 .cosmic
                 .as_mut()
                 .expect("text render sessions require a cosmic text shaper")
-        }))
+        })
     }
 }
 
