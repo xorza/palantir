@@ -46,12 +46,6 @@ use std::sync::Arc;
 const INTER: &[u8] = include_bytes!("../../assets/fonts/Inter-VariableFont_opsz,wght.ttf");
 const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf");
 
-/// Cap on [`CosmicMeasure::ellipsis_cache`] entries. The cache keys on
-/// `(quantized size, family, weight)` — a handful in normal use, but
-/// unbounded under a continuous font-size zoom. Cleared wholesale past
-/// this; a miss is one cheap "…" shape, so the occasional reset is
-/// negligible.
-pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
 const RECYCLE_POOL_CAP: usize = 128;
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
@@ -130,11 +124,13 @@ pub(crate) struct CosmicMeasure {
     /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
     /// line, shaping, and layout allocations when the buffer is reset.
     recycle_pool: Vec<Buffer>,
-    /// Trailing advance of "…" per `(quantized font size, family, weight)`.
-    /// The ellipsis width is constant for a given size + face, so this turns
-    /// the per-truncation ellipsis reshape into a map lookup (one shape
-    /// per distinct size+family+weight, ever).
-    ellipsis_cache: FxHashMap<(u32, u8, u8), f32>,
+    /// Trailing advance of "…" for the most recent face.
+    ///
+    /// One slot, not a map: a frame draws its ellipsized labels in one or
+    /// two text styles, so this hits nearly always, and a miss is a single
+    /// glyph through a recycled buffer. Nothing to bound, evict, or clear —
+    /// the slot is simply overwritten.
+    ellipsis: Option<EllipsisMemo>,
     /// Retained scratch for the truncated string
     /// [`Self::measure_truncated`] builds on a miss (cut prefix +
     /// optional `…`). Misses are the hot case — a continuous width drag
@@ -172,7 +168,7 @@ impl CosmicMeasure {
             use_gen: 0,
             evict_scratch: Vec::new(),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
-            ellipsis_cache: FxHashMap::default(),
+            ellipsis: None,
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
             logical_order: Vec::new(),
@@ -392,9 +388,8 @@ impl CosmicMeasure {
         let weight = key.weight();
         let attrs = attrs_for(family, weight);
         // Reserve the ellipsis width only when we'll append one; a plain
-        // clip cuts flush to the full available width. Resolved (from
-        // the memoized cache) before borrowing the probe, since the
-        // rare miss shapes "…" through `&mut self`.
+        // clip cuts flush to the full available width. Resolved before
+        // borrowing the probe, since shaping "…" needs `&mut self`.
         let mut append_ellipsis = false;
         let avail = if matches!(fit, LineFit::Ellipsis) {
             let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
@@ -498,11 +493,14 @@ impl CosmicMeasure {
         root
     }
 
-    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized per
-    /// `(quantized size, family, weight)`. The width is constant for a given
-    /// size + face, so this is a map lookup after the first shape. The
-    /// rare miss shapes into a temporary buffer so the cached unbounded
-    /// probe remains immutable.
+    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
+    /// the last face asked about.
+    ///
+    /// Only the *opening* budget: [`Self::measure_truncated`] verifies the
+    /// shaped result against the committed width either way, so a stale or
+    /// imprecise reservation costs retries, never correctness. What it buys
+    /// is measured — dropping the memo entirely costs ~29% on the
+    /// truncation-miss path (`text_shape/ellipsis_width_churn`).
     fn ellipsis_advance(
         &mut self,
         size_q: u32,
@@ -510,25 +508,24 @@ impl CosmicMeasure {
         family: FontFamily,
         weight: FontWeight,
     ) -> f32 {
-        let key = (size_q, family as u8, weight as u8);
-        if let Some(&w) = self.ellipsis_cache.get(&key) {
-            return w;
+        let want = EllipsisMemo {
+            size_q,
+            family_q: family as u8,
+            weight_q: weight as u8,
+            advance: 0.0,
+        };
+        if let Some(memo) = self.ellipsis
+            && memo.same_face(&want)
+        {
+            return memo.advance;
         }
         let mut buffer = self.acquire_buffer(metrics, None);
         buffer.set_text("…", &attrs_for(family, weight), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
-        let w = first_line_right(&buffer);
+        let advance = first_line_right(&buffer);
         recycle_buffer(&mut self.recycle_pool, buffer);
-        // Bounded: the key space is (discrete font sizes × families × weights)
-        // and normally tiny, but a continuous font-size zoom over ellipsized
-        // text mints a new quantized size each frame. Entries are trivially
-        // recomputable (one "…" shape), so clear wholesale on overflow
-        // rather than track recency.
-        if self.ellipsis_cache.len() >= ELLIPSIS_CACHE_CAP {
-            self.ellipsis_cache.clear();
-        }
-        self.ellipsis_cache.insert(key, w);
-        w
+        self.ellipsis = Some(EllipsisMemo { advance, ..want });
+        advance
     }
 
     /// Restore a missing shaped buffer from the retained source text and
@@ -598,6 +595,24 @@ impl CosmicMeasure {
             recycle_buffer(recycle_pool, entry.buffer);
         }
         debug_assert_eq!(self.cache.len(), max_keep);
+    }
+}
+
+/// Memoized trailing advance of "…" for one face.
+#[derive(Clone, Copy, Debug)]
+struct EllipsisMemo {
+    size_q: u32,
+    family_q: u8,
+    weight_q: u8,
+    advance: f32,
+}
+
+impl EllipsisMemo {
+    /// Whether both were shaped from the same face at the same size.
+    fn same_face(&self, other: &Self) -> bool {
+        self.size_q == other.size_q
+            && self.family_q == other.family_q
+            && self.weight_q == other.weight_q
     }
 }
 
@@ -783,12 +798,6 @@ mod test_support {
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {
             self.cache.len()
-        }
-
-        /// Number of memoized ellipsis advances. Reach-in for the
-        /// ellipsis-cache-bound test.
-        pub(crate) fn ellipsis_cache_len(&self) -> usize {
-            self.ellipsis_cache.len()
         }
 
         pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
