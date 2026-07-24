@@ -12,7 +12,7 @@
 //! line, shaping, and layout allocations.
 //!
 //! The render side never sees cosmic types: `TextShaper::render_session`
-//! lends a `text::render::TextRenderSession` whose
+//! lends a `RefMut<CosmicMeasure>` whose
 //! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`]
 //! translate shaped buffers into aperture-native placements and bitmaps;
 //! `text/mod.rs` documents why there's no `TextMeasure` trait.
@@ -99,14 +99,9 @@ struct CacheEntry {
     /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
     /// text backend can build a `TextArea` without reshaping.
     buffer: Buffer,
-    measured: Size,
-    /// Width of the widest unbreakable run, in logical px. Computed only
-    /// for unbounded entries; width-bounded entries store `0.0` — bounded
-    /// consumers derive floors from the unbounded root, so the per-cluster
-    /// word scan is skipped for them.
-    intrinsic_min: f32,
-    /// `true` when the shaped buffer laid out as one visual line.
-    single_line: bool,
+    /// What this buffer measured to. Stored whole rather than unpacked so
+    /// a cache hit hands back the same value the shaping miss returned.
+    measurement: TextMeasurement,
     /// Monotonic access generation at the last measure or encode-time
     /// touch. The LRU recency key for [`CosmicMeasure::end_frame_evict`].
     last_used: u64,
@@ -368,23 +363,22 @@ impl CosmicMeasure {
                 .is_none()
                 .then_some(&mut self.break_scratch),
         );
+        let measurement = TextMeasurement {
+            size: extent.size,
+            key,
+            intrinsic_min: extent.intrinsic_min,
+            single_line: extent.single_line,
+        };
         let last_used = self.next_use_gen();
         self.cache.insert(
             key,
             CacheEntry {
                 buffer,
-                measured: extent.size,
-                intrinsic_min: extent.intrinsic_min,
-                single_line: extent.single_line,
+                measurement,
                 last_used,
             },
         );
-        TextMeasurement {
-            size: extent.size,
-            key,
-            intrinsic_min: extent.intrinsic_min,
-            single_line: extent.single_line,
-        }
+        measurement
     }
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
@@ -489,26 +483,25 @@ impl CosmicMeasure {
         buffer.set_text(shaped_text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let measured = shaped_extent(&buffer, None).size;
-        let last_used = self.next_use_gen();
         // Truncated runs are one natural line by construction: the cut
-        // prefix comes from the unbounded probe's first layout run.
+        // prefix comes from the unbounded probe's first layout run, and a
+        // truncated run can shrink to nothing, so its floor is zero.
+        let measurement = TextMeasurement {
+            size: shaped_extent(&buffer, None).size,
+            key,
+            intrinsic_min: 0.0,
+            single_line: true,
+        };
+        let last_used = self.next_use_gen();
         self.cache.insert(
             key,
             CacheEntry {
                 buffer,
-                measured,
-                intrinsic_min: 0.0,
-                single_line: true,
+                measurement,
                 last_used,
             },
         );
-        TextMeasurement {
-            size: measured,
-            key,
-            intrinsic_min: 0.0,
-            single_line: true,
-        }
+        measurement
     }
 
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized per
@@ -573,12 +566,7 @@ impl CosmicMeasure {
         let now = self.next_use_gen();
         self.cache.get_mut(&key).map(|entry| {
             entry.last_used = now;
-            TextMeasurement {
-                size: entry.measured,
-                key,
-                intrinsic_min: entry.intrinsic_min,
-                single_line: entry.single_line,
-            }
+            entry.measurement
         })
     }
 

@@ -1,43 +1,93 @@
-//! Deterministic placeholder shaping behind the test/internals-only
-//! `TextShaper::test_mono`: every glyph is `font_size_px * 0.5` wide, so
-//! the engine can run in tests and headless tools without a font system.
-//! The gated [`test_support::measure`] carries the whole metric; only the
-//! 1D caret helpers below stay in production builds — the probe reuses
-//! them as its empty-text (invalid-key) path.
+//! Deterministic placeholder shaping for the mono fallback: every glyph is
+//! `font_size_px * 0.5` wide, so the engine can run in tests and headless
+//! tools without a font system. [`test_support::measure`] is the metric
+//! behind [`TextShaper::test_mono`](crate::text::TextShaper).
+//!
+//! [`caret_x`] and [`byte_at_x`] are the geometry [`probe`] falls back to
+//! when a layout has no shaped buffer, and they compile in every build:
+//! empty text is unshaped in production too, and it is answered here so
+//! the caller carries no `cfg`. Everything past that point — a *non-empty*
+//! run with no shaped buffer — exists only under the mono shaper, so the
+//! layout itself lives in the gated [`test_support`] and production builds
+//! reach an unreachable branch instead.
+//!
+//! [`probe`]: crate::text::probe
 
-/// Caret-x along a single-line mono layout (0.5×font_size per byte).
-/// Multi-line aware callers should go through `cursor_xy` instead —
-/// this is the cheap path for the mono fallback's degenerate single-
-/// line behaviour.
-pub(crate) fn caret_x_single_line(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
-    let clamped = byte_offset.min(text.len());
-    (clamped as f32) * font_size_px * 0.5
-}
-
-/// Inverse of [`caret_x_single_line`]. Picks the char boundary
-/// whose prefix-x is closest to `target_x` so click positioning on
-/// the mono fallback matches the rendered glyph layout exactly.
-pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
-    let mut best_off = 0usize;
-    let mut best_dist = target_x.abs();
-    for (i, ch) in text.char_indices() {
-        let next = i + ch.len_utf8();
-        let x = caret_x_single_line(text, next, font_size_px);
-        let d = (x - target_x).abs();
-        if d < best_dist {
-            best_dist = d;
-            best_off = next;
-        }
+/// Caret-x for a run with no shaped buffer. Empty text has no glyphs to
+/// walk in any build and takes `empty_x` — the caller's alignment-aware
+/// empty-line placement.
+pub(crate) fn caret_x(text: &str, byte_offset: usize, font_size_px: f32, empty_x: f32) -> f32 {
+    if text.is_empty() {
+        return empty_x;
     }
-    best_off
+    #[cfg(any(test, feature = "internals"))]
+    {
+        test_support::single_line_caret_x(text, byte_offset, font_size_px)
+    }
+    #[cfg(not(any(test, feature = "internals")))]
+    {
+        let _ = (byte_offset, font_size_px);
+        unreachable!("a non-empty run without a shaped buffer requires the mono shaper")
+    }
 }
 
+/// Byte offset nearest `target_x` for a run with no shaped buffer. Empty
+/// text has exactly one position.
+pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
+    // Outside the `cfg` deliberately: empty text is the one unshaped case
+    // production reaches, so it must be answered before the mono-only
+    // layout below is gated away.
+    if text.is_empty() {
+        return 0;
+    }
+    #[cfg(any(test, feature = "internals"))]
+    {
+        test_support::nearest_byte(text, target_x, font_size_px)
+    }
+    #[cfg(not(any(test, feature = "internals")))]
+    {
+        let _ = (target_x, font_size_px);
+        unreachable!("a non-empty run without a shaped buffer requires the mono shaper")
+    }
+}
+
+/// The mono layout itself. Only [`TextShaper::test_mono`] produces runs
+/// that reach it, so production builds compile none of this.
+///
+/// [`TextShaper::test_mono`]: crate::text::TextShaper
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     use crate::primitives::size::Size;
     use crate::text::key::TextShapeKey;
     use crate::text::wrap::LineFit;
     use crate::text::{TextMeasurement, TextShapeRequest};
+
+    /// Caret-x along a single-line mono layout (0.5×font_size per byte).
+    /// Multi-line aware callers should go through `cursor_xy` instead —
+    /// this is the cheap path for the mono fallback's degenerate single-
+    /// line behaviour.
+    pub(crate) fn single_line_caret_x(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
+        let clamped = byte_offset.min(text.len());
+        (clamped as f32) * font_size_px * 0.5
+    }
+
+    /// Inverse of [`single_line_caret_x`]. Picks the char boundary whose
+    /// prefix-x is closest to `target_x` so click positioning on the mono
+    /// fallback matches the rendered glyph layout exactly.
+    pub(crate) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usize {
+        let mut best_off = 0usize;
+        let mut best_dist = target_x.abs();
+        for (i, ch) in text.char_indices() {
+            let next = i + ch.len_utf8();
+            let x = single_line_caret_x(text, next, font_size_px);
+            let d = (x - target_x).abs();
+            if d < best_dist {
+                best_dist = d;
+                best_off = next;
+            }
+        }
+        best_off
+    }
 
     /// Deterministic placeholder metric behind `TextShaper::test_mono`.
     /// Every glyph is `font_size_px * 0.5` wide and the line uses

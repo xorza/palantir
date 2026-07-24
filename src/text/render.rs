@@ -1,47 +1,14 @@
-//! Render-side boundary over the shaper. The wgpu text backend consumes
-//! aperture-native glyph placements ([`PlacedGlyph`]) and bitmaps
-//! ([`GlyphImage`]) through a [`TextRenderSession`] — cosmic types
-//! (`Buffer`, `FontSystem`, `SwashCache`) never cross out of
-//! `src/text/`. The session holds the shaper's exclusive `RefCell`
-//! borrow for the duration of one batch's encoded-cache misses; the
-//! backend's all-hit fast path never opens one.
+//! Aperture-native vocabulary for the render side of the shaper: the wgpu
+//! text backend drives `CosmicMeasure` through these glyph placements
+//! ([`PlacedGlyph`]) and bitmaps ([`GlyphImage`]), so cosmic types
+//! (`Buffer`, `FontSystem`, `SwashCache`) never cross out of `src/text/`.
+//! `TextShaper::render_session` leases the measurer for the duration of
+//! one batch's encoded-cache misses; the backend's all-hit fast path
+//! never opens one.
 
 use crate::primitives::urect::URect;
-use crate::text::TextShapeRequest;
-use crate::text::cosmic::{CosmicMeasure, GlyphRasterKey};
+use crate::text::cosmic::GlyphRasterKey;
 use glam::Vec2;
-use std::cell::RefMut;
-
-/// Exclusive render-side lease on the shared shaper, minted by
-/// `TextShaper::render_session`. Narrows the surface to the two
-/// cosmic-free operations the text backend needs; dropping it releases
-/// the `RefCell` borrow.
-#[derive(Debug)]
-pub(crate) struct TextRenderSession<'a> {
-    cosmic: RefMut<'a, CosmicMeasure>,
-}
-
-impl<'a> TextRenderSession<'a> {
-    pub(crate) fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
-        Self { cosmic }
-    }
-
-    /// See [`CosmicMeasure::extract_glyphs`]. Returns whether any line
-    /// was y-culled (partial extractions must not be cached).
-    pub(crate) fn extract_glyphs(
-        &mut self,
-        request: TextShapeRequest<'_>,
-        placement: RunPlacement,
-        out: &mut Vec<PlacedGlyph>,
-    ) -> bool {
-        self.cosmic.extract_glyphs(request, placement, out)
-    }
-
-    /// See [`CosmicMeasure::rasterize_glyph`].
-    pub(crate) fn rasterize(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
-        self.cosmic.rasterize_glyph(key)
-    }
-}
 
 /// Physical-px placement of one text run, input to glyph extraction.
 #[derive(Clone, Copy, Debug)]
