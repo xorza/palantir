@@ -1320,6 +1320,22 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
         text.sweep_limit, 256,
         "a large immediate eviction must rebase the exponential ladder",
     );
+
+    let mut combined = TextSystem::default();
+    for ordinal in 0_u16..=256 {
+        combined
+            .prepare_run(identity_at(a, ordinal), "hi", params)
+            .unwrap();
+    }
+    combined.prepare_run(identity(b), "yo", params).unwrap();
+    combined.end_frame(&FxHashSet::from_iter([a]));
+    assert_eq!(
+        combined.entries.len(),
+        1,
+        "a pressure sweep and removed-widget cleanup must share one retain pass",
+    );
+    assert!(combined.has_entry(b, 0));
+    assert_eq!(combined.sweep_limit, 256);
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands
