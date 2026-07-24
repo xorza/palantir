@@ -123,9 +123,10 @@ pub enum FontWeight {
 /// `Self::test_mono`.
 #[derive(Clone, Debug)]
 pub struct TextShaper {
-    /// `pub(crate)` for [`test_support`] observability helpers. Direct
-    /// field access from inside the crate is fine; invariants live in
-    /// the mutating methods of `TextShaper`, not in encapsulation theater.
+    /// `pub(crate)` for [`test_support`] observability helpers and the
+    /// backend's "an encoded-cache hit must not borrow the shaper" test,
+    /// which holds this borrow across a frame. Production code goes
+    /// through the methods below.
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
@@ -238,6 +239,13 @@ impl TextShaper {
             inner.dispatch(request)
         };
         TextLayoutProbe::new(measurement, request, inner)
+    }
+
+    /// One cache-bypassing shaping dispatch. `TextSystem` calls this on a
+    /// reuse-slot miss; the shaper's own content cache may still hit, so
+    /// this is "no reuse slot", not "reshape".
+    pub(crate) fn dispatch(&self, request: TextShapeRequest<'_>) -> TextMeasurement {
+        self.inner.borrow_mut().dispatch(request)
     }
 
     /// Bounds the reconstructible cosmic buffer LRU. Called by
