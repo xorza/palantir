@@ -12,7 +12,7 @@
 //!   [`TextShapeKey::INVALID`] and the renderer drops them. Lets the engine
 //!   run in tests and headless tools without a font system.
 //! - [`TextSystem`](crate::text::system::TextSystem) — per-window text
-//!   coordinator. It owns identity reuse keyed by widget and within-widget
+//!   coordinator. It owns reuse slots keyed by widget and within-widget
 //!   text ordinal while referring to the app-global [`TextShaper`] shared
 //!   with the renderer.
 //!
@@ -23,7 +23,7 @@
 //! Module layout: this file owns the shared vocabulary ([`FontFamily`],
 //! [`FontWeight`], [`TextShapeRequest`], [`TextMeasurement`]) and the
 //! [`TextShaper`] coordinator; [`key`] the quantized cache identity;
-//! [`system`] the per-window identity reuse; [`probe`] read-only
+//! [`system`] the per-window reuse slots; [`probe`] read-only
 //! caret / hit-test / selection geometry; [`mono`] the headless fallback;
 //! [`cosmic`] real shaping; [`wrap`] the wrap-policy vocabulary.
 
@@ -102,7 +102,7 @@ pub enum FontWeight {
 
 /// Shared, cloneable text shaper. Holds an optional [`CosmicMeasure`] for
 /// real shaping (`None` ⇒ mono fallback) and a `measure_calls` counter for
-/// cache-effectiveness tests. Per-window widget identity reuse lives in
+/// cache-effectiveness tests. Per-window reuse slots live in
 /// the crate-internal `TextSystem`.
 ///
 /// Single-threaded by design (`Rc` inside); access is sequential —
@@ -141,7 +141,7 @@ pub(crate) struct ShaperInner {
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
     /// plus every bypass [`TextShaper::with_layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
-    /// dispatches, not reshapes. Identity-cache hits don't increment.
+    /// dispatches, not reshapes. Reuse-slot hits don't increment.
     /// Read by tests pinning reshape-skip behaviour via
     /// [`test_support::measure_calls`].
     measure_calls: u64,

@@ -1,4 +1,4 @@
-//! Per-window text coordinator: `(WidgetId, ordinal)` identity reuse and
+//! Per-window text coordinator: `(WidgetId, ordinal)` reuse slots and
 //! wrap-policy resolution over the app-global shared [`TextShaper`].
 
 use crate::layout::types::align::HAlign;
@@ -11,7 +11,7 @@ use crate::text::{TextMeasurement, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
 
-/// Per-window text coordinator. Identity reuse belongs to the window while
+/// Per-window text coordinator. Reuse slots belong to the window while
 /// shaped content buffers and the font system remain shared through
 /// [`TextShaper`]. Reuse rows are clock-swept under size pressure.
 #[derive(Debug)]
@@ -40,10 +40,13 @@ impl TextShapeResult {
     };
 }
 
-/// Per-window identity of one text run. The widget and ordinal select its
-/// reuse row; [`TextSystem`] derives validity from the shaping inputs.
+/// Per-window reuse-slot address of one text run: the widget plus its
+/// within-widget record-order ordinal select the row. A hint, not an
+/// identity — [`TextSystem::shape`] validates the stored key against the
+/// request, so a stale slot costs one refresh dispatch, never a wrong
+/// result.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TextRunIdentity {
+pub(crate) struct TextRunSlot {
     pub(crate) widget_id: WidgetId,
     pub(crate) ordinal: u16,
 }
@@ -84,14 +87,14 @@ impl TextSystem {
         }
     }
 
-    /// Shape one identity-cached text run. The unbounded measurement remains
+    /// Shape one slot-cached text run. The unbounded measurement remains
     /// the reuse root; bounded policies derive their target from it and cache
     /// the most recent resolved measurement in the same operation. Inlining
     /// lets each hot caller erase the result fields it does not consume.
     #[inline]
     pub(crate) fn shape(
         &mut self,
-        identity: TextRunIdentity,
+        slot: TextRunSlot,
         request: TextShapeRequest<'_>,
         wrap_policy: TextWrap,
         halign: HAlign,
@@ -112,7 +115,7 @@ impl TextSystem {
                 hot: true,
             }
         };
-        let entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
+        let entry = match self.entries.entry((slot.widget_id, slot.ordinal)) {
             Entry::Occupied(mut occupied) => {
                 if occupied.get().key != request.key {
                     occupied.insert(refresh());
@@ -272,14 +275,14 @@ pub(crate) mod test_support {
     use crate::primitives::widget_id::WidgetId;
     use crate::text::TextMeasurement;
     use crate::text::TextShaper;
-    use crate::text::system::{TextRunIdentity, TextSystem};
+    use crate::text::system::{TextRunSlot, TextSystem};
     use crate::text::test_support::TestShape;
     use crate::text::wrap::TextWrap;
 
     pub(crate) trait TextSystemTestExt {
         fn shape_run(
             &mut self,
-            identity: TextRunIdentity,
+            slot: TextRunSlot,
             text: &str,
             shape: TestShape,
             wrap_policy: TextWrap,
@@ -289,7 +292,7 @@ pub(crate) mod test_support {
     impl TextSystemTestExt for TextSystem {
         fn shape_run(
             &mut self,
-            identity: TextRunIdentity,
+            slot: TextRunSlot,
             text: &str,
             shape: TestShape,
             wrap_policy: TextWrap,
@@ -297,7 +300,7 @@ pub(crate) mod test_support {
             shape.unbounded_request(text).map(|request| {
                 TextSystem::shape(
                     self,
-                    identity,
+                    slot,
                     request,
                     wrap_policy,
                     shape.halign,
@@ -315,7 +318,7 @@ pub(crate) mod test_support {
     }
 
     impl TextSystem {
-        /// `true` iff an identity row exists for `(wid, ordinal)`.
+        /// `true` iff a reuse row exists for `(wid, ordinal)`.
         pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.entries.contains_key(&(wid, ordinal))
         }

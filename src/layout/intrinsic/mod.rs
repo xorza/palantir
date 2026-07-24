@@ -21,7 +21,7 @@ use crate::primitives::interned_str::InternedText;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::text::system::TextRunIdentity;
+use crate::text::system::TextRunSlot;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -260,7 +260,7 @@ fn leaf<const RANGE: bool>(
     let mut range = IntrinsicRange::ZERO;
     for ts in leaf_text_shapes(tree, interned_text, node) {
         let result = engine.text.shape(
-            TextRunIdentity {
+            TextRunSlot {
                 widget_id: wid,
                 ordinal: ts.ordinal,
             },

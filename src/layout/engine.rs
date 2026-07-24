@@ -29,7 +29,7 @@ use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
 use crate::text::TextShaper;
-use crate::text::system::{TextRunIdentity, TextSystem};
+use crate::text::system::{TextRunSlot, TextSystem};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of
@@ -113,7 +113,7 @@ impl LayoutScratch {
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `text` — per-window text shaping and identity reuse.
+/// - `text` — per-window text shaping and reuse slots.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
 ///
@@ -844,13 +844,13 @@ impl LayoutEngine {
         out: &mut LayerLayout,
     ) -> Size {
         let wid = tree.records.widget_id()[node.idx()];
-        let identity = TextRunIdentity {
+        let slot = TextRunSlot {
             widget_id: wid,
             ordinal: ts.ordinal,
         };
 
         let result = self.text.shape(
-            identity,
+            slot,
             ts.shape_request(),
             ts.wrap,
             ts.halign,
