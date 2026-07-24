@@ -11,7 +11,7 @@ use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::probe::{self, CursorPos, SelectionRects};
 use crate::text::wrap::{LineFit, TextWrap};
-use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest, TextShaper};
+use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
 use crate::ui::Ui;
 use crate::widgets::Widget;
 use crate::widgets::text_edit::model::EditState;
@@ -215,36 +215,28 @@ pub(crate) struct FinalGeometry {
     pub(crate) text_hash: u64,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct GeometryProbe {
-    measurement: TextMeasurement,
-    caret_pos: CursorPos,
-    text_hash: u64,
-}
-
 pub(crate) fn resolve_geometry(
     shaper: &TextShaper,
     input: GeometryInput<'_>,
     selection_rects: &mut SelectionRects,
 ) -> FinalGeometry {
     let mut layout = input.layout;
-    let probe = shaper.with_layout(layout.ctx.request(input.text), |probe| {
-        if let Some(selection) = input.selection {
-            probe.selection_rects(selection, selection_rects);
-        } else {
-            selection_rects.clear();
-        }
-        GeometryProbe {
-            measurement: probe.measurement,
-            caret_pos: probe.cursor_xy(input.caret),
-            text_hash: probe.request.key.text_hash,
-        }
-    });
+    let probe = shaper.layout(layout.ctx.request(input.text));
+    if let Some(selection) = input.selection {
+        probe.selection_rects(selection, selection_rects);
+    } else {
+        selection_rects.clear();
+    }
     let measurement = probe.measurement;
+    let caret_pos = probe.cursor_xy(input.caret);
+    let text_hash = probe.request.key.text_hash;
+    // The probe holds the shaper borrow; release it before the
+    // placeholder lease below.
+    drop(probe);
     let placeholder_measurement = if input.text.is_empty() && !input.placeholder.is_empty() {
-        shaper.with_layout(layout.ctx.request(input.placeholder), |probe| {
-            probe.measurement
-        })
+        shaper
+            .layout(layout.ctx.request(input.placeholder))
+            .measurement
     } else {
         measurement
     };
@@ -279,8 +271,8 @@ pub(crate) fn resolve_geometry(
     layout.display_width = placeholder_measurement.size.w;
     FinalGeometry {
         layout,
-        caret_pos: probe.caret_pos,
-        text_hash: probe.text_hash,
+        caret_pos,
+        text_hash,
     }
 }
 

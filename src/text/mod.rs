@@ -146,7 +146,7 @@ pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
-    /// plus every bypass [`TextShaper::with_layout`] call —
+    /// plus every bypass [`TextShaper::layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
     /// dispatches, not reshapes. Reuse-slot hits don't increment.
     /// Read by tests pinning reshape-skip behaviour via
@@ -225,32 +225,18 @@ impl TextShaper {
         }
     }
 
-    /// Shape `text` once and expose its measurement and geometry for the
-    /// duration of `body`.
-    pub(crate) fn with_layout<R>(
-        &self,
-        request: TextShapeRequest<'_>,
-        body: impl FnOnce(TextLayoutProbe<'_>) -> R,
-    ) -> R {
-        if request.text.is_empty() {
-            return body(TextLayoutProbe {
-                measurement: TextMeasurement::ZERO,
-                request,
-                buffer: None,
-            });
-        }
-
+    /// Shape `request` once and lease its measurement + geometry
+    /// queries. The probe holds the shaper's exclusive borrow until
+    /// dropped, so its buffer-backed queries stay coherent with the
+    /// measurement.
+    pub(crate) fn layout<'t>(&self, request: TextShapeRequest<'t>) -> TextLayoutProbe<'_, 't> {
         let mut inner = self.inner.borrow_mut();
-        let measurement = inner.dispatch(request);
-        let buffer = inner
-            .cosmic
-            .as_ref()
-            .and_then(|cosmic| cosmic.buffer_for(measurement.key));
-        body(TextLayoutProbe {
-            measurement,
-            request,
-            buffer,
-        })
+        let measurement = if request.text.is_empty() {
+            TextMeasurement::ZERO
+        } else {
+            inner.dispatch(request)
+        };
+        TextLayoutProbe::new(measurement, request, inner)
     }
 
     /// Bounds the reconstructible cosmic buffer LRU. Called by
@@ -399,9 +385,9 @@ pub(crate) mod test_support {
             &self,
             text: &str,
             shape: TestShape,
-            body: impl FnOnce(TextLayoutProbe<'_>) -> R,
+            body: impl FnOnce(TextLayoutProbe<'_, '_>) -> R,
         ) -> R {
-            self.with_layout(shape.request(text, LineFit::Wrap), body)
+            body(self.layout(shape.request(text, LineFit::Wrap)))
         }
 
         pub(crate) fn cursor_xy(

@@ -224,7 +224,7 @@ fn make_run(
         FontFamily::Sans,
         FontWeight::Regular,
     );
-    let measured = shaper.with_layout(request, |probe| probe.measurement);
+    let measured = shaper.layout(request).measurement;
     TextRun {
         key: measured.key,
         origin,
