@@ -601,14 +601,15 @@ impl CosmicMeasure {
     }
 }
 
-/// Trailing edge (`x + w` of the last glyph) of a shaped buffer's first
-/// layout run, or `0.0` when empty — the rendered width of one line. The
-/// per-run analogue inside [`shaped_extent`] takes the max across runs.
+/// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is
+/// its leftmost) of a shaped buffer's first layout run, or `0.0` when
+/// empty — the rendered width of one line. The per-run analogue inside
+/// [`shaped_extent`] takes the max across runs.
 fn first_line_right(buffer: &Buffer) -> f32 {
     buffer
         .layout_runs()
         .next()
-        .and_then(|r| r.glyphs.last().map(|g| g.x + g.w))
+        .and_then(|r| r.glyphs.iter().map(|g| g.x + g.w).reduce(f32::max))
         .unwrap_or(0.0)
 }
 
@@ -636,7 +637,14 @@ fn shaped_extent(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedExtent
         // the measured bbox encloses every rendered pixel — otherwise
         // the text backend clips right-aligned glyphs against an
         // undersized `TextBounds`.
-        let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
+        // Max, not the last glyph: an RTL run reads right-to-left, so its
+        // last glyph is the *leftmost* one.
+        let line_right = run
+            .glyphs
+            .iter()
+            .map(|g| g.x + g.w)
+            .reduce(f32::max)
+            .unwrap_or(run.line_w);
         max_w = max_w.max(line_right);
         total_h = total_h.max(run.line_top + run.line_height);
     }

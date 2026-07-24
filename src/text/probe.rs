@@ -51,6 +51,13 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     /// soft-wrap segment becomes a distinct visual line). Mono fallback /
     /// empty-text path collapses to a 1D layout — `y_top = 0`, `x` from a
     /// flat mono per-byte estimate — usable for tests / headless.
+    ///
+    /// Horizontal placement defers to `LayoutRun::cursor_position`, the
+    /// same geometry `Buffer::hit` inverts, so a hit-test → caret round
+    /// trip lands back where it started. It resolves the two cases a
+    /// glyph-start scan cannot: an RTL glyph carries the caret at its
+    /// right edge, and an offset interior to a ligature or Indic cluster
+    /// interpolates across the cluster instead of jumping to its far end.
     pub(crate) fn cursor_xy(&self, byte_offset: usize) -> CursorPos {
         let font_size_px = self.request.key.font_size_px();
         let line_height_px = self.request.key.line_height_px();
@@ -70,41 +77,37 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             };
         };
 
-        let mut last_in_line: Option<(f32, f32, f32)> = None;
+        let mut last_in_line: Option<CursorPos> = None;
         for run in buffer.layout_runs() {
             if run.line_i != target.line {
                 continue;
             }
-            let line_end_x = run
-                .glyphs
-                .last()
-                .map(|g| g.x + g.w)
-                .unwrap_or_else(|| empty_line_x(max_width_px, halign));
-            last_in_line = Some((line_end_x, run.line_top, run.line_height));
-            for glyph in run.glyphs {
-                if glyph.start == target.index {
-                    return CursorPos {
-                        x: glyph.x,
-                        y_top: run.line_top,
-                        line_height: run.line_height,
-                    };
-                }
-                if glyph.start < target.index && target.index < glyph.end {
-                    return CursorPos {
-                        x: glyph.x + glyph.w,
-                        y_top: run.line_top,
-                        line_height: run.line_height,
-                    };
-                }
+            // A glyphless visual line has nothing to hang the caret on and
+            // cosmic reports x = 0; place it where per-line align will put
+            // the first typed glyph instead.
+            let placed = if run.glyphs.is_empty() {
+                Some(empty_line_x(max_width_px, halign))
+            } else {
+                run.cursor_position(&target)
+            };
+            let x = placed.unwrap_or_else(|| run.glyphs.last().map_or(0.0, |g| g.x + g.w));
+            let pos = CursorPos {
+                x,
+                y_top: run.line_top,
+                line_height: run.line_height,
+            };
+            if placed.is_some() {
+                return pos;
             }
+            // Soft wrap splits one logical line across runs, so a miss here
+            // just means the offset belongs to a later run.
+            last_in_line = Some(pos);
         }
-        let (line_end_x, line_top, line_height) =
-            last_in_line.unwrap_or((0.0, 0.0, line_height_px));
-        CursorPos {
-            x: line_end_x,
-            y_top: line_top,
-            line_height,
-        }
+        last_in_line.unwrap_or(CursorPos {
+            x: 0.0,
+            y_top: 0.0,
+            line_height: line_height_px,
+        })
     }
 
     /// Pixel-position → byte-offset. Multi-line aware on the cosmic
