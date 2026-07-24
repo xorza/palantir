@@ -5,9 +5,8 @@ use crate::text::cosmic::CosmicMeasure;
 use crate::text::key::TextShapeKey;
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
-use crate::text::system::test_support::TextSystemTestExt;
 use crate::text::system::{self, TextRunSlot, TextSystem};
-use crate::text::test_support::{CosmicMeasureTestExt, TestShape, TextShaperTestExt};
+use crate::text::test_support::TestShape;
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
 use rustc_hash::FxHashSet;
@@ -62,7 +61,7 @@ fn measure_truncated(
             ..params
         },
     );
-    cosmic.measure_truncated(text, params, fit, unbounded.key)
+    cosmic.measure_with_fit(text, params, fit, unbounded.key)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -2087,7 +2086,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
                 ..params
             },
         );
-        let original = truncated.measure_truncated(text, params, fit, unbounded.key);
+        let original = truncated.measure_with_fit(text, params, fit, unbounded.key);
         let original_glyphs = glyph_positions(&truncated, original.key);
         truncated.end_frame_evict(0);
         assert!(truncated.buffer_for(original.key).is_none(), "fit: {fit:?}");
@@ -2104,7 +2103,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             truncated.buffer_for(unbounded.key).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
         );
-        let restored = truncated.measure_truncated(text, params, fit, unbounded.key);
+        let restored = truncated.measure_with_fit(text, params, fit, unbounded.key);
         assert_eq!(restored.size, original.size, "fit: {fit:?}");
         assert_eq!(
             restored.intrinsic_min, original.intrinsic_min,

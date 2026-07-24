@@ -349,7 +349,7 @@ fn selection_rects_offset_matches_text() {
 /// `dx_per_line = (line_width - line_w) * factor` where factor is
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
-    use crate::text::test_support::{CosmicMeasureTestExt, TestShape, TextShaperTestExt};
+    use crate::text::test_support::TestShape;
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};
