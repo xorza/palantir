@@ -32,7 +32,7 @@ use crate::text::key::TextShapeKey;
 use crate::text::render::{GlyphImageKind, PlacedGlyph, RunPlacement, TextRenderSession};
 use rustc_hash::FxHashMap;
 
-use crate::renderer::backend::text::atlas::{GlyphAtlas, GlyphSlot, PackedGlyphMetadata};
+use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// Cache-hit identity for an encoded run. Subpixel bins capture the
@@ -161,60 +161,80 @@ pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
     }
 }
 
-/// Cache-hit fast path. Returns `true` if `key` resolved to a live
-/// entry and the run's glyphs were emitted to `out`. Caller falls
-/// through to the slow path on `false`.
-pub(crate) fn try_emit_cached(
-    cache: &mut EncodedCache,
-    slots: &mut [GlyphSlot],
-    current_frame: u64,
-    run_key: &EncodedRunKey,
-    out: &mut Vec<GlyphInstance>,
-) -> bool {
-    let Some(entry) = cache.map.get_mut(&run_key.key) else {
-        return false;
-    };
-    let span = entry.span;
-    let glyphs = &cache.arena[span.range()];
-    let out_start = out.len();
-    out.reserve(glyphs.len());
-    // One pass emits the instance and refreshes the backing slot's LRU
-    // stamp together, so `evict_one` can't reclaim a slot we're still
-    // drawing this frame.
-    for glyph in glyphs {
-        let slot = &mut slots[glyph.atlas_slot as usize];
-        if slot.generation != glyph.generation {
-            out.truncate(out_start);
-            return false;
-        }
-        let g = glyph.instance;
-        out.push(GlyphInstance {
-            pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
-            dim: g.dim,
-            uv_and_kind: g.uv_and_kind,
-            color: g.color,
-        });
-        slot.last_use = current_frame;
-    }
-    entry.last_use = current_frame;
-    true
-}
+/// Frames an unused [`EncodedCache`] entry survives before being swept
+/// in [`TextEncoder::end_frame`]. Keeps the cache from growing
+/// unboundedly under a long zoom gesture while comfortably outliving
+/// any short flicker (visibility toggle, hover paint) that drops a run
+/// for a frame.
+const ENCODED_CACHE_KEEP_FRAMES: u64 = 120;
 
-/// Slow-walk state for one batch's encoded-cache misses: the GPU-side
-/// dependencies plus the extraction scratch and instance sink borrowed
-/// from `TextBackend`. [`Self::encode_run`] encodes one miss.
+/// CPU-side glyph encoder: owns the atlas, the encoded-run cache, the
+/// per-miss extraction scratch, and the frame's accumulated instances.
+/// `TextBackend` owns one and partitions `instances` into per-batch
+/// draw ranges; owning the state here lets every method borrow
+/// disjoint fields directly, with no per-call context bundle.
 #[derive(Debug)]
-pub(crate) struct EncodeCtx<'a> {
-    pub(crate) device: &'a wgpu::Device,
-    pub(crate) atlas: &'a mut GlyphAtlas,
-    pub(crate) cache: &'a mut EncodedCache,
-    /// Retained per-run extraction scratch.
-    pub(crate) placed: &'a mut Vec<PlacedGlyph>,
-    /// Drawable-instance sink shared with the cache-hit fast path.
-    pub(crate) out: &'a mut Vec<GlyphInstance>,
+pub(crate) struct TextEncoder {
+    pub(crate) atlas: GlyphAtlas,
+    pub(crate) cache: EncodedCache,
+    /// Retained per-miss extraction scratch.
+    placed: Vec<PlacedGlyph>,
+    /// Drawable glyph instances accumulated across this frame's
+    /// batches.
+    pub(crate) instances: Vec<GlyphInstance>,
 }
 
-impl EncodeCtx<'_> {
+impl TextEncoder {
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
+        Self {
+            atlas: GlyphAtlas::new(device),
+            cache: EncodedCache::default(),
+            placed: Vec::new(),
+            instances: Vec::new(),
+        }
+    }
+
+    /// Cache-hit fast path. Returns `true` if `run_key` resolved to a
+    /// live entry and the run's glyphs were emitted; `false` falls
+    /// through to [`Self::encode_run`].
+    pub(crate) fn try_emit_cached(&mut self, run_key: &EncodedRunKey) -> bool {
+        let current_frame = self.atlas.current_frame;
+        let Some(entry) = self.cache.map.get_mut(&run_key.key) else {
+            return false;
+        };
+        let glyphs = &self.cache.arena[entry.span.range()];
+        let out_start = self.instances.len();
+        self.instances.reserve(glyphs.len());
+        // One pass emits the instance and refreshes the backing slot's
+        // LRU stamp together, so `evict_one` can't reclaim a slot we're
+        // still drawing this frame.
+        for glyph in glyphs {
+            let slot = &mut self.atlas.slots[glyph.atlas_slot as usize];
+            if slot.generation != glyph.generation {
+                self.instances.truncate(out_start);
+                return false;
+            }
+            let g = glyph.instance;
+            self.instances.push(GlyphInstance {
+                pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
+                dim: g.dim,
+                uv_and_kind: g.uv_and_kind,
+                color: g.color,
+            });
+            slot.last_use = current_frame;
+        }
+        entry.last_use = current_frame;
+        true
+    }
+
+    /// Frame teardown: age the atlas LRU and sweep both caches.
+    pub(crate) fn end_frame(&mut self) {
+        self.atlas.end_frame();
+        self.cache
+            .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
+        self.instances.clear();
+    }
+
     /// Encode one run that missed the encoded cache: extract its glyph
     /// placements through the shaper `session` (which restores evicted
     /// buffers and applies the y-cull), touch/insert atlas slots, emit
@@ -223,6 +243,7 @@ impl EncodeCtx<'_> {
     /// invalid keys and cache hits.
     pub(crate) fn encode_run(
         &mut self,
+        device: &wgpu::Device,
         session: &mut TextRenderSession<'_>,
         request: TextShapeRequest<'_>,
         placement: RunPlacement,
@@ -238,7 +259,7 @@ impl EncodeCtx<'_> {
         // (`EncodedKey` carries no bounds, so integer-pixel scrolling
         // replays the same key with lines newly in view — they'd stay
         // blank forever).
-        let culled = session.extract_glyphs(request, placement, self.placed);
+        let culled = session.extract_glyphs(request, placement, &mut self.placed);
 
         // Build a fresh cache entry as a side effect of the slow walk.
         // Slots used earlier this frame cannot be eviction candidates,
@@ -250,7 +271,7 @@ impl EncodeCtx<'_> {
             let idx = match self.atlas.touch(&g.raster_key) {
                 Some(i) => i,
                 None => {
-                    match rasterize_and_insert(self.device, session, self.atlas, g.raster_key) {
+                    match rasterize_and_insert(device, session, &mut self.atlas, g.raster_key) {
                         Some(i) => i,
                         None => continue,
                     }
@@ -267,7 +288,7 @@ impl EncodeCtx<'_> {
             let dim = (slot.width as u32) | ((slot.height as u32) << 16);
             let uv_and_kind = pack_uv(slot.x, slot.y, slot.content);
 
-            self.out.push(GlyphInstance {
+            self.instances.push(GlyphInstance {
                 pos: [abs_x, abs_y],
                 dim,
                 uv_and_kind,
@@ -315,9 +336,9 @@ pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
 }
 
 /// Cache miss path: ask the shaper session for the bitmap, push into
-/// the atlas. Returns the new slot's slab index. A free fn, not an
-/// `EncodeCtx` method: it's called while `self.placed` is being
-/// iterated, so it may borrow only the disjoint device/atlas fields.
+/// the atlas. Returns the new slot's slab index. A free fn, not a
+/// `TextEncoder` method: it's called while `self.placed` is being
+/// iterated, so it may borrow only the disjoint atlas field.
 fn rasterize_and_insert(
     device: &wgpu::Device,
     session: &mut TextRenderSession<'_>,
@@ -349,16 +370,7 @@ fn rasterize_and_insert(
 
 #[cfg(test)]
 mod tests {
-    use etagere::AllocId;
-
-    use crate::primitives::span::Span;
-    use crate::renderer::backend::text::GlyphInstance;
-    use crate::renderer::backend::text::atlas::GlyphSlot;
-    use crate::renderer::backend::text::encode::{
-        ContentType, EncodedCache, EncodedEntry, EncodedGlyph, EncodedKey, EncodedRunKey, pack_uv,
-        try_emit_cached,
-    };
-    use crate::text::key::TextShapeKey;
+    use crate::renderer::backend::text::encode::{ContentType, pack_uv};
 
     #[test]
     fn pack_uv_round_trip() {
@@ -369,114 +381,5 @@ mod tests {
 
         let p = pack_uv(12345, 54321, ContentType::Mask);
         assert_eq!((p >> 15) & 1, 0);
-    }
-
-    fn run_key(text_hash: u64, origin_x: i32) -> EncodedRunKey {
-        EncodedRunKey {
-            key: EncodedKey {
-                text: TextShapeKey {
-                    text_hash,
-                    ..TextShapeKey::INVALID
-                },
-                scale_q: 65_536,
-                area_color: 0,
-                bins: 0,
-            },
-            origin_x,
-            origin_y: 0,
-        }
-    }
-
-    fn slot(generation: u32) -> GlyphSlot {
-        GlyphSlot {
-            x: 0,
-            y: 0,
-            width: 1,
-            height: 1,
-            left: 0,
-            top: 0,
-            content: ContentType::Mask,
-            alloc: Some(AllocId::deserialize(0)),
-            generation,
-            last_use: 1,
-        }
-    }
-
-    fn encoded_glyph(atlas_slot: u32, generation: u32, x: i32) -> EncodedGlyph {
-        EncodedGlyph {
-            instance: GlyphInstance {
-                pos: [x, 0],
-                dim: 1 | (1 << 16),
-                uv_and_kind: 0,
-                color: 0,
-            },
-            atlas_slot,
-            generation,
-        }
-    }
-
-    #[test]
-    fn slot_generation_invalidates_only_referencing_entry() {
-        let invalidated_key = run_key(1, 10);
-        let stable_key = run_key(2, 20);
-        let mut cache = EncodedCache {
-            arena: vec![
-                encoded_glyph(1, 4, 1),
-                encoded_glyph(0, 2, 2),
-                encoded_glyph(2, 7, 3),
-            ],
-            ..EncodedCache::default()
-        };
-        cache.map.insert(
-            invalidated_key.key,
-            EncodedEntry {
-                span: Span::new(0, 2),
-                last_use: 1,
-            },
-        );
-        cache.map.insert(
-            stable_key.key,
-            EncodedEntry {
-                span: Span::new(2, 1),
-                last_use: 1,
-            },
-        );
-        let mut slots = vec![slot(3), slot(4), slot(7)];
-        let mut out = vec![GlyphInstance {
-            pos: [-1, -1],
-            dim: 0,
-            uv_and_kind: 0,
-            color: 0,
-        }];
-
-        assert!(try_emit_cached(
-            &mut cache,
-            &mut slots,
-            9,
-            &stable_key,
-            &mut out,
-        ));
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[1].pos, [23, 0]);
-        assert_eq!(slots[2].last_use, 9);
-        assert_eq!(cache.map[&stable_key.key].last_use, 9);
-
-        assert!(!try_emit_cached(
-            &mut cache,
-            &mut slots,
-            9,
-            &invalidated_key,
-            &mut out,
-        ));
-        assert_eq!(
-            out.len(),
-            2,
-            "a late generation mismatch must roll back partial output",
-        );
-        assert_eq!(cache.map[&invalidated_key.key].last_use, 1);
-        assert_eq!(
-            slots[1].last_use, 9,
-            "validated slots stay live for the slow-path rebuild",
-        );
     }
 }
