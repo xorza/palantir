@@ -148,6 +148,10 @@ pub(crate) struct CosmicMeasure {
     /// Retained scratch for [`collect_break_offsets`], so the unbounded
     /// shape's segment scan allocates nothing per miss.
     break_scratch: Vec<u32>,
+    /// Retained scratch holding the truncation probe's glyph indices in
+    /// logical order — visual order is what the shaped run gives us, and
+    /// truncation needs the logical prefix.
+    logical_order: Vec<u32>,
 }
 
 impl CosmicMeasure {
@@ -174,6 +178,7 @@ impl CosmicMeasure {
             ellipsis_cache: FxHashMap::default(),
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
+            logical_order: Vec::new(),
         }
     }
 
@@ -442,8 +447,21 @@ impl CosmicMeasure {
         } else {
             let mut cut = 0usize;
             if let Some(run) = probe.layout_runs().next() {
-                for g in run.glyphs {
-                    if g.x + g.w > avail {
+                // Glyphs arrive in visual order, so `g.x` follows the
+                // reading direction rather than the logical prefix — an RTL
+                // run's first glyph sits at the *right* edge, and its
+                // trailing edges descend. Walk them in logical order
+                // summing advances instead, so `text[..cut]` is the prefix
+                // that fits whichever way the run reads.
+                let order = &mut self.logical_order;
+                order.clear();
+                order.extend(0..run.glyphs.len() as u32);
+                order.sort_unstable_by_key(|&i| run.glyphs[i as usize].start);
+                let mut used = 0.0_f32;
+                for &i in order.iter() {
+                    let g = &run.glyphs[i as usize];
+                    used += g.w;
+                    if used > avail {
                         break;
                     }
                     cut = g.end;

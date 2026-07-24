@@ -1726,6 +1726,70 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
 }
 
 #[test]
+fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
+    // The cut walks the cached unbounded shape's glyphs, which arrive in
+    // *visual* order. In an RTL run the logically-first glyph sits at the
+    // right edge and trailing edges descend, so a cut driven by `x + w`
+    // stops at the first glyph and drops the whole run.
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let unbounded = TestShape {
+        font_size_px: 16.0,
+        line_height_px: lh(16.0),
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+    let elide = |c: &mut CosmicMeasure, text: &str, width: f32| {
+        measure_truncated(
+            c,
+            text,
+            TestShape {
+                max_width_px: Some(width),
+                ..unbounded
+            },
+            LineFit::Ellipsis,
+        )
+        .size
+        .w
+    };
+
+    let rtl = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
+    let marker_only = c.measure("\u{2026}", unbounded).size.w;
+
+    // Room for the marker plus one glyph: something of the run must survive.
+    let one = elide(&mut c, rtl, 28.0);
+    assert!(
+        one > marker_only,
+        "an RTL run with room to spare must keep text, got {one} vs bare marker {marker_only}",
+    );
+
+    // Room for two: the survivors must be the logical prefix. The logical
+    // *suffix* is the wrong answer a visual-order cut reaches for, and
+    // Hebrew glyph advances differ enough to tell the two apart.
+    let two = elide(&mut c, rtl, 35.0);
+    let prefix = c.measure("\u{5e9}\u{5dc}\u{2026}", unbounded).size.w;
+    let suffix = c.measure("\u{5d5}\u{5dd}\u{2026}", unbounded).size.w;
+    assert!(
+        (two - prefix).abs() < 1.0,
+        "RTL elision must keep the leading characters: {two} vs prefix {prefix}",
+    );
+    assert!(
+        (two - suffix).abs() >= 1.0,
+        "prefix and suffix widths must differ for this to prove anything: {two} vs {suffix}",
+    );
+
+    // LTR is the control: same code path, and widening the box must reveal
+    // more of the run rather than less.
+    let narrow = elide(&mut c, "abcd", 20.0);
+    let wide = elide(&mut c, "abcd", 28.0);
+    assert!(
+        wide > narrow,
+        "a wider box must keep more of an LTR run: {wide} vs {narrow}",
+    );
+}
+
+#[test]
 fn cosmic_ellipsis_short_text_not_truncated() {
     // A label that already fits the cap is shaped whole — no spurious
     // ellipsis, width matches the natural measurement.
