@@ -41,6 +41,8 @@ fn measure_truncated_width(
 /// hash — is inside the loop on both sides, as layout rebuilds it
 /// each frame either way.
 fn bench_reuse_layer(c: &mut Criterion) {
+    bench_shared_content(c);
+
     let labels: Vec<String> = (0..REUSE_LAYER_LABELS)
         .map(|i| format!("Reuse layer probe label number {i}"))
         .collect();
@@ -131,6 +133,74 @@ fn bench_reuse_layer(c: &mut Criterion) {
                     HAlign::Left,
                     LineFit::Wrap,
                 )));
+            }
+        });
+    });
+}
+
+/// The two workloads that separate a per-widget reuse address from a
+/// content-addressed one, kept as the standing evidence for why the reuse
+/// map is keyed on `(WidgetId, ordinal)` rather than on `TextShapeKey`.
+///
+/// `shared_content` draws one repeated label — a table column of "Enabled" —
+/// across many widgets, where content addressing would collapse 64 rows into
+/// one. `contended_width` measures that same repeated label at two widths,
+/// which per-widget rows hold in separate wrap slots and a single shared row
+/// cannot. Content-keying was prototyped against both: it lost 46% and 170%
+/// respectively, and 37-43% on the plain hit paths, because a 24-byte
+/// `TextShapeKey` hash costs more than the row dedup saves.
+fn bench_shared_content(c: &mut Criterion) {
+    const REPEATED: &str = "Enabled";
+    const WRAP_W: f32 = 150.0;
+    let slots: Vec<TextRunSlot> = (0..REUSE_LAYER_LABELS)
+        .map(|i| TextRunSlot {
+            widget_id: WidgetId::from_hash("shared-content-bench"),
+            ordinal: i as u16,
+        })
+        .collect();
+    fn request() -> TextShapeRequest<'static> {
+        TextShapeRequest::unbounded(REPEATED, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
+    }
+
+    c.bench_function("text_shape/reuse_layer/shared_content_x64", |b| {
+        let mut text_system = TextSystem::new(TextShaper::new());
+        for slot in &slots {
+            text_system.measure(*slot, request(), TextWrap::Wrap, HAlign::Left, Some(WRAP_W));
+        }
+        b.iter(|| {
+            for slot in &slots {
+                black_box(text_system.measure(
+                    *slot,
+                    request(),
+                    TextWrap::Wrap,
+                    HAlign::Left,
+                    Some(WRAP_W),
+                ));
+            }
+        });
+    });
+
+    c.bench_function("text_shape/reuse_layer/contended_width_x64", |b| {
+        let mut text_system = TextSystem::new(TextShaper::new());
+        let widths = [WRAP_W, WRAP_W - 40.0];
+        for (i, slot) in slots.iter().enumerate() {
+            text_system.measure(
+                *slot,
+                request(),
+                TextWrap::Wrap,
+                HAlign::Left,
+                Some(widths[i % 2]),
+            );
+        }
+        b.iter(|| {
+            for (i, slot) in slots.iter().enumerate() {
+                black_box(text_system.measure(
+                    *slot,
+                    request(),
+                    TextWrap::Wrap,
+                    HAlign::Left,
+                    Some(widths[i % 2]),
+                ));
             }
         });
     });
