@@ -199,17 +199,26 @@ load-bearing rather than accidental.
 
 ## Open questions
 
-- [x] **Resolved: the mono fallback is a supported `internals`-gated mode, not a test
-  artifact.** `TextShaper::test_mono` is `pub` (`mod.rs:417`) and `OffscreenHost::shaper`
-  is a public builder accepting any shaper (`host/offscreen.rs:92`), so under the
-  `internals` feature an external consumer can legitimately run a headless offscreen
-  host on the mono metric. Two consequences for the Critical group above: the
-  `Option<CosmicMeasure>` axis is a feature rather than dead weight, and the duplicated
-  key in `TextReuseEntry` is the price of it — the reuse-layer tests themselves run on
-  the mono shaper (`TextSystem::default()`, `tests.rs:367`, `:438`, `:494`), and without
-  the separate key those rows would miss on every frame under mono, leaving the reuse
-  layer untestable. The duplication remains a real tax, but it is production paying
-  48 B/row for a gated mode, not an oversight.
+- [x] **Resolved: the mono fallback cannot be reached from a production build.**
+  `TextShaper::test_mono` lives inside the `#[cfg(any(test, feature = "internals"))]`
+  `test_support` mod (`mod.rs:419`) and is the sole `ShaperInner::new(None)` caller;
+  `internals` is not a default feature (`Cargo.toml:175`). Verified by compiling a
+  default-feature example that names it: `E0599: no associated function ... test_mono`,
+  while the same example builds under `--features internals`. So `ShaperInner.cosmic`
+  is unconditionally `Some` in a released binary and `OffscreenHost` cannot be driven
+  on placeholder metrics — the builder doc claiming otherwise
+  (`host/offscreen.rs:88-90`) was the only thing suggesting a supported production
+  mode, and has been corrected.
+
+  Two consequences for the Critical group above. The `Option<CosmicMeasure>` axis is
+  a compile-time-gated test/headless affordance, so its cost in production is the
+  unreachable branches alone, not a live code path. And the duplicated key in
+  `TextReuseEntry` is the price of testing through it: the reuse-layer tests run on
+  the mono shaper (`TextSystem::default()`, `tests.rs:367`, `:438`, `:494`), which
+  reports `INVALID`, so without the separate key those rows would miss every frame
+  and the layer would be untestable. Expressing "no `Option` in production" in the
+  type rather than the feature gate would need two cfg'd field definitions plus cfg'd
+  accessors — more code for a guarantee the gate already provides.
 
 - [ ] The reuse-layer benchmark cited at `system.rs:6-14` compares "slots" against
   "no slots". It does not isolate how much of that win survives once the duplicated
