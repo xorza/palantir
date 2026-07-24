@@ -815,7 +815,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
         };
         let mut expected = Vec::new();
         m.probe_layout(case.text, params, |layout| {
-            let buffer = layout.buffer.unwrap();
+            let buffer = layout.buffer_for_test().unwrap();
             let start = probe::cursor_from_byte(case.text, case.range.start);
             let end = probe::cursor_from_byte(case.text, case.range.end);
             for run in buffer.layout_runs() {

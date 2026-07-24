@@ -120,9 +120,8 @@ pub(crate) fn handle_input(
         let hit = ui
             .resources
             .text
-            .with_layout(ctx.request(ed.text), |probe| {
-                probe.byte_at_xy(local_x, if ctx.multiline { local_y } else { 0.0 })
-            });
+            .layout(ctx.request(ed.text))
+            .byte_at_xy(local_x, if ctx.multiline { local_y } else { 0.0 });
         if resp_state.left.press_count() > 0 {
             // Press rising edge — the input layer counts the
             // multi-press run (`press_count`: 1 = single, 2 = double,
@@ -276,20 +275,22 @@ fn resolve_vertical(
     up: bool,
     extend: bool,
 ) {
-    // One probe resolves both the caret position and the adjacent-line
-    // hit under a single shaper borrow and cache dispatch.
-    let target = shaper.with_layout(ctx.request(editor.text), |probe| {
+    // One probe lease resolves both the caret position and the
+    // adjacent-line hit under a single shaper borrow and cache dispatch.
+    let target = {
+        let probe = shaper.layout(ctx.request(editor.text));
         let pos = probe.cursor_xy(editor.state.caret);
         if up && pos.y_top <= 0.5 {
-            return 0;
-        }
-        let probe_y = if up {
-            pos.y_top - 1.0
+            0
         } else {
-            pos.y_top + pos.line_height + 1.0
-        };
-        probe.byte_at_xy(pos.x, probe_y)
-    });
+            let probe_y = if up {
+                pos.y_top - 1.0
+            } else {
+                pos.y_top + pos.line_height + 1.0
+            };
+            probe.byte_at_xy(pos.x, probe_y)
+        }
+    };
     editor.move_caret(target, extend);
 }
 

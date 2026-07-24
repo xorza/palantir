@@ -7,7 +7,8 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::text::mono;
-use crate::text::{TextMeasurement, TextShapeRequest};
+use crate::text::{ShaperInner, TextMeasurement, TextShapeRequest};
+use std::cell::RefMut;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Output buffer for [`TextLayoutProbe::selection_rects`]. Stores selections
@@ -16,15 +17,35 @@ use unicode_segmentation::UnicodeSegmentation;
 pub(crate) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
 pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_CAPACITY]>;
 
-/// One direct text layout exposed for several read-only geometry queries.
+/// One shaped text layout leased for read-only geometry queries,
+/// minted by `TextShaper::layout`. Holds the shaper's exclusive
+/// `RefCell` borrow until dropped — re-entering the shaper while a
+/// probe is alive is a logic error the `RefCell` catches at runtime.
 #[derive(Debug)]
-pub(crate) struct TextLayoutProbe<'a> {
+pub(crate) struct TextLayoutProbe<'s, 't> {
     pub(crate) measurement: TextMeasurement,
-    pub(crate) request: TextShapeRequest<'a>,
-    pub(crate) buffer: Option<&'a cosmic_text::Buffer>,
+    pub(crate) request: TextShapeRequest<'t>,
+    inner: RefMut<'s, ShaperInner>,
 }
 
-impl TextLayoutProbe<'_> {
+impl<'s, 't> TextLayoutProbe<'s, 't> {
+    pub(crate) fn new(
+        measurement: TextMeasurement,
+        request: TextShapeRequest<'t>,
+        inner: RefMut<'s, ShaperInner>,
+    ) -> Self {
+        Self {
+            measurement,
+            request,
+            inner,
+        }
+    }
+
+    /// Shaped buffer behind this layout; `None` on the mono fallback
+    /// and for empty text (`TextShapeKey::INVALID` keys).
+    fn buffer(&self) -> Option<&cosmic_text::Buffer> {
+        self.inner.cosmic.as_ref()?.buffer_for(self.measurement.key)
+    }
     /// (x, y_top, line_height) for the caret at `byte_offset`.
     /// Multi-line aware via cosmic-text layout runs (each `\n` and each
     /// soft-wrap segment becomes a distinct visual line). Mono fallback /
@@ -36,7 +57,7 @@ impl TextLayoutProbe<'_> {
         let max_width_px = self.request.key.max_width_px();
         let halign = self.request.key.halign();
         let target = cursor_from_byte(self.request.text, byte_offset);
-        let Some(buffer) = self.buffer else {
+        let Some(buffer) = self.buffer() else {
             let x = if self.request.text.is_empty() {
                 empty_line_x(max_width_px, halign)
             } else {
@@ -91,7 +112,7 @@ impl TextLayoutProbe<'_> {
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
     pub(crate) fn byte_at_xy(&self, x: f32, y: f32) -> usize {
-        match self.buffer {
+        match self.buffer() {
             Some(buffer) => buffer
                 .hit(x, y)
                 .map(|cursor| cursor_to_byte(self.request.text, cursor))
@@ -105,7 +126,7 @@ impl TextLayoutProbe<'_> {
         if range.is_empty() {
             return;
         }
-        let Some(buffer) = self.buffer else {
+        let Some(buffer) = self.buffer() else {
             let font_size_px = self.request.key.font_size_px();
             let x0 = mono::caret_x_single_line(self.request.text, range.start, font_size_px);
             let x1 = mono::caret_x_single_line(self.request.text, range.end, font_size_px);
@@ -251,4 +272,19 @@ pub(crate) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
         }
     };
     (line_start + cursor.index).min(text.len())
+}
+
+#[cfg(test)]
+mod test_support {
+    use crate::text::probe::TextLayoutProbe;
+
+    impl TextLayoutProbe<'_, '_> {
+        /// Raw shaped buffer, reach-in for the in-tree cross-checks
+        /// against cosmic's own geometry (`run.highlight`). Test-only
+        /// so production builds expose no cosmic types outside
+        /// `src/text/`.
+        pub(crate) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
+            self.buffer()
+        }
+    }
 }

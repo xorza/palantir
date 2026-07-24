@@ -426,7 +426,7 @@ mod test_support {
             FontFamily::Sans,
             FontWeight::Regular,
         );
-        let m = shaper.with_layout(request, |probe| probe.measurement);
+        let m = shaper.layout(request).measurement;
         TextRun {
             key: m.key,
             origin,
