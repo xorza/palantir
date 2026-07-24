@@ -14,7 +14,7 @@ use crate::layout::types::align::AxisAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
-    LayerLayout, Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
+    LayerLayout, Layout, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
 };
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::rect::Rect;
@@ -849,7 +849,7 @@ impl LayoutEngine {
             ordinal: ts.ordinal,
         };
 
-        let measurement = self.text.measure(
+        let shaped = self.text.measure(
             slot,
             ts.shape_request(),
             ts.wrap,
@@ -857,10 +857,7 @@ impl LayoutEngine {
             available_w.is_finite().then_some(available_w),
         );
 
-        out.text_shapes.push(ShapedText {
-            measured: measurement.size,
-            key: measurement.key,
-        });
-        ts.wrap.content_size(&measurement)
+        out.text_shapes.push(shaped);
+        ts.wrap.content_size(shaped.measured)
     }
 }

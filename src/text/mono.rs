@@ -58,9 +58,8 @@ pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
     use crate::primitives::size::Size;
-    use crate::text::key::TextShapeKey;
     use crate::text::wrap::LineFit;
-    use crate::text::{TextMeasurement, TextShapeRequest};
+    use crate::text::{TextRoot, TextShapeRequest};
 
     /// Caret-x along a single-line mono layout (0.5×font_size per byte).
     /// Multi-line aware callers should go through `cursor_xy` instead —
@@ -96,12 +95,13 @@ pub(crate) mod test_support {
     /// 8 px/char × 16 px line layout the engine was hard-coded to before text
     /// shaping landed, which is what existing layout tests pin.
     ///
-    /// Always returns [`TextShapeKey::INVALID`] — there's no shaped buffer to
-    /// look up, so the renderer drops these runs cleanly.
-    pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextMeasurement {
+    /// Mints no shaped buffer, so `TextSystem` reports
+    /// [`TextShapeKey::INVALID`] for every run measured this way and the
+    /// renderer drops them cleanly.
+    pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
         let text = request.text;
         if text.is_empty() {
-            return TextMeasurement::ZERO;
+            return TextRoot::ZERO;
         }
         let font_size_px = request.key.font_size_px();
         let line_height_px = request.key.line_height_px();
@@ -153,9 +153,8 @@ pub(crate) mod test_support {
             }
             longest as f32 * glyph_w
         };
-        TextMeasurement {
+        TextRoot {
             size,
-            key: TextShapeKey::INVALID,
             intrinsic_min,
             single_line,
         }

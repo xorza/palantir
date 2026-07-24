@@ -227,18 +227,16 @@ pub(crate) fn resolve_geometry(
     } else {
         selection_rects.clear();
     }
-    let measurement = probe.measurement;
+    let measured = probe.size;
     let caret_pos = probe.cursor_xy(input.caret);
     let text_hash = probe.request.key.text_hash;
     // The probe holds the shaper borrow; release it before the
     // placeholder lease below.
     drop(probe);
-    let placeholder_measurement = if input.text.is_empty() && !input.placeholder.is_empty() {
-        shaper
-            .layout(layout.ctx.request(input.placeholder))
-            .measurement
+    let placeholder_measured = if input.text.is_empty() && !input.placeholder.is_empty() {
+        shaper.layout(layout.ctx.request(input.placeholder)).size
     } else {
-        measurement
+        measured
     };
     let widget_align = if layout.ctx.multiline {
         Align::v(layout.text_align.valign())
@@ -265,10 +263,10 @@ pub(crate) fn resolve_geometry(
         )
         .min
     };
-    layout.ctx.block_offset = aligned(measurement.size);
-    layout.placeholder_offset = aligned(placeholder_measurement.size);
-    layout.content_width = measurement.size.w;
-    layout.display_width = placeholder_measurement.size.w;
+    layout.ctx.block_offset = aligned(measured);
+    layout.placeholder_offset = aligned(placeholder_measured);
+    layout.content_width = measured.w;
+    layout.display_width = placeholder_measured.w;
     FinalGeometry {
         layout,
         caret_pos,

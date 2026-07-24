@@ -259,15 +259,12 @@ fn leaf<const RANGE: bool>(
     let wid = tree.records.widget_id()[node.idx()];
     let mut range = IntrinsicRange::ZERO;
     for ts in leaf_text_shapes(tree, interned_text, node) {
-        let unbounded = engine.text.measure(
+        let unbounded = engine.text.root(
             TextRunSlot {
                 widget_id: wid,
                 ordinal: ts.ordinal,
             },
             ts.shape_request(),
-            ts.wrap,
-            ts.halign,
-            None,
         );
         if query.includes(LenReq::MinContent) {
             range.min = range.min.max(axis.main(ts.wrap.min_content(&unbounded)));

@@ -1,9 +1,10 @@
+use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap};
-use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest, TextShaper};
+use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
 use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
 
@@ -25,7 +26,7 @@ fn measure_truncated_width(
     slot: TextRunSlot,
     text: &str,
     width: f32,
-) -> TextMeasurement {
+) -> ShapedText {
     let request =
         TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular);
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
@@ -81,11 +82,11 @@ fn bench_reuse_layer(c: &mut Criterion) {
     c.bench_function("text_shape/reuse_layer/single_line_dispatch_x64", |b| {
         let shaper = TextShaper::new();
         for text in &labels {
-            shaper.dispatch(request_for(text));
+            shaper.shape_root(request_for(text));
         }
         b.iter(|| {
             for text in &labels {
-                black_box(shaper.dispatch(request_for(text)));
+                black_box(shaper.shape_root(request_for(text)));
             }
         });
     });
@@ -118,14 +119,18 @@ fn bench_reuse_layer(c: &mut Criterion) {
         let shaper = TextShaper::new();
         for text in &labels {
             let request = request_for(text);
-            shaper.dispatch(request);
-            shaper.dispatch(request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap));
+            shaper.shape_root(request);
+            shaper.shape_bounded(request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap));
         }
         b.iter(|| {
             for text in &labels {
                 let request = request_for(text);
-                black_box(shaper.dispatch(request));
-                black_box(shaper.dispatch(request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap)));
+                black_box(shaper.shape_root(request));
+                black_box(shaper.shape_bounded(request.bounded(
+                    WRAP_W,
+                    HAlign::Left,
+                    LineFit::Wrap,
+                )));
             }
         });
     });
@@ -176,7 +181,7 @@ pub fn bench(c: &mut Criterion) {
                         TEXT,
                         40.0 + i as f32 * 0.25,
                     );
-                    black_box(measured.size);
+                    black_box(measured.measured);
                 }
             },
             BatchSize::SmallInput,

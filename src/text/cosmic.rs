@@ -30,7 +30,7 @@ use crate::text::render::{
     GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
 };
 use crate::text::wrap::LineFit;
-use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest};
+use crate::text::{FontFamily, FontWeight, TextRoot, TextShapeRequest};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     SwashCache, SwashContent, Weight, fontdb,
@@ -100,9 +100,10 @@ struct CacheEntry {
     /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
     /// text backend can build a `TextArea` without reshaping.
     buffer: Buffer,
-    /// What this buffer measured to. Stored whole rather than unpacked so
-    /// a cache hit hands back the same value the shaping miss returned.
-    measurement: TextMeasurement,
+    /// What this buffer measured to. Bounded entries carry a zero floor
+    /// and a single-line flag describing the resolve, both inert — only
+    /// the unbounded root's copy is ever read back.
+    root: TextRoot,
     /// Monotonic access generation at the last measure or encode-time
     /// touch. The LRU recency key for [`CosmicMeasure::end_frame_evict`].
     last_used: u64,
@@ -291,16 +292,16 @@ impl std::fmt::Debug for CosmicMeasure {
 
 impl CosmicMeasure {
     #[profiling::function]
-    pub(crate) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+    pub(crate) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         match (request.key.fit(), request.key.max_width_px()) {
             (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
             _ => self.measure_wrapped(request),
         }
     }
 
-    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         if request.text.is_empty() {
-            return TextMeasurement::ZERO;
+            return TextRoot::ZERO;
         }
         let key = request.key;
         if let Some(hit) = self.cache_hit(key) {
@@ -333,9 +334,8 @@ impl CosmicMeasure {
                 .is_none()
                 .then_some(&mut self.break_scratch),
         );
-        let measurement = TextMeasurement {
+        let root = TextRoot {
             size: extent.size,
-            key,
             intrinsic_min: extent.intrinsic_min,
             single_line: extent.single_line,
         };
@@ -344,11 +344,11 @@ impl CosmicMeasure {
             key,
             CacheEntry {
                 buffer,
-                measurement,
+                root,
                 last_used,
             },
         );
-        measurement
+        root
     }
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
@@ -369,7 +369,7 @@ impl CosmicMeasure {
     /// cluster until it fits, so the measured extent never exceeds the
     /// committed width — the cut alone cannot guarantee that, since
     /// reshaping the prefix changes its shaping context.
-    fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+    fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         let key = request.key;
         let fit = key.fit();
         let width = key
@@ -380,7 +380,7 @@ impl CosmicMeasure {
             "measure_truncated requires Clip or Ellipsis",
         );
         if request.text.is_empty() {
-            return TextMeasurement::ZERO;
+            return TextRoot::ZERO;
         }
         if let Some(hit) = self.cache_hit(key) {
             return hit;
@@ -481,9 +481,8 @@ impl CosmicMeasure {
         // Truncated runs are one natural line by construction: the cut
         // prefix comes from the unbounded probe's first layout run, and a
         // truncated run can shrink to nothing, so its floor is zero.
-        let measurement = TextMeasurement {
+        let root = TextRoot {
             size,
-            key,
             intrinsic_min: 0.0,
             single_line: true,
         };
@@ -492,11 +491,11 @@ impl CosmicMeasure {
             key,
             CacheEntry {
                 buffer,
-                measurement,
+                root,
                 last_used,
             },
         );
-        measurement
+        root
     }
 
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized per
@@ -539,10 +538,10 @@ impl CosmicMeasure {
         if request.key.is_invalid() || self.cache_hit(request.key).is_some() {
             return;
         }
-        let result = self.shape(request);
-        assert_eq!(
-            result.key, request.key,
-            "restored text buffer did not reproduce its TextShapeKey",
+        self.shape(request);
+        assert!(
+            self.cache.contains_key(&request.key),
+            "restored text buffer did not land under its own TextShapeKey",
         );
     }
 
@@ -555,13 +554,13 @@ impl CosmicMeasure {
         next
     }
 
-    /// A cached entry's `TextMeasurement` for `key`, or `None` on a miss.
+    /// A cached entry's [`TextRoot`] for `key`, or `None` on a miss.
     /// Refreshes `last_used` for both layout-time hits and encoder ensures.
-    fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextMeasurement> {
+    fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextRoot> {
         let now = self.next_use_gen();
         self.cache.get_mut(&key).map(|entry| {
             entry.last_used = now;
-            entry.measurement
+            entry.root
         })
     }
 
