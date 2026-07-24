@@ -168,7 +168,7 @@ pub(crate) struct CursorPos {
 /// shaped buffer is missing (empty buffer / mono fallback) — without
 /// it, an empty right-aligned multi-line editor would paint its
 /// caret at `x = 0` instead of at the right edge.
-pub(crate) fn empty_line_x(max_width_px: Option<f32>, halign: HAlign) -> f32 {
+fn empty_line_x(max_width_px: Option<f32>, halign: HAlign) -> f32 {
     let Some(w) = max_width_px else { return 0.0 };
     match halign {
         HAlign::Center => w * 0.5,

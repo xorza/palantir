@@ -44,7 +44,6 @@ impl HostShared {
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;
-    use std::rc::Rc;
 
     use crate::diagnostics::DebugOverlayConfig;
     use crate::host::shared::HostShared;
@@ -72,7 +71,7 @@ mod tests {
         let ui = shared.resources.clone();
         let backend = shared.backend_resources();
 
-        assert!(Rc::ptr_eq(&ui.text.inner, &backend.text.inner));
+        assert!(ui.text.shares_cache_with(&backend.text));
         let rejected = ui
             .images
             .register(Image::from_rgba8(2, 1, vec![0; 8]))
