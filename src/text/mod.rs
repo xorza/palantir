@@ -28,6 +28,7 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::text::wrap::TextWrap;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
@@ -148,21 +149,6 @@ pub(crate) struct TextLayoutProbe<'a> {
     pub(crate) measurement: TextMeasurement,
     pub(crate) request: TextShapeRequest<'a>,
     buffer: Option<&'a cosmic_text::Buffer>,
-}
-
-/// One text run whose identity and unbounded shape have been validated
-/// against the current authoring inputs.
-#[derive(Debug)]
-pub(crate) struct PreparedTextRun<'a> {
-    pub(crate) unbounded: TextMeasurement,
-    request: TextShapeRequest<'a>,
-    state: Option<PreparedTextRunState<'a>>,
-}
-
-#[derive(Debug)]
-struct PreparedTextRunState<'a> {
-    shaper: &'a TextShaper,
-    entry: &'a mut TextReuseEntry,
 }
 
 /// Per-window identity of one text run. The widget and ordinal select its
@@ -320,21 +306,21 @@ impl TextSystem {
         }
     }
 
-    /// Prepare one identity-cached text run, refreshing its unbounded shape
-    /// and clearing its stale bounded result when any shaping input changes.
-    pub(crate) fn prepare<'a>(
-        &'a mut self,
+    /// Shape one identity-cached text run. The unbounded measurement remains
+    /// the reuse root; bounded policies derive their target from it and cache
+    /// the most recent resolved measurement in the same operation.
+    pub(crate) fn shape(
+        &mut self,
         identity: TextRunIdentity,
-        request: TextShapeRequest<'a>,
-    ) -> PreparedTextRun<'a> {
+        request: TextShapeRequest<'_>,
+        wrap_policy: TextWrap,
+        halign: HAlign,
+        available_width_px: Option<f32>,
+    ) -> TextMeasurement {
         let shaper = &self.shaper;
         let request = request.unbounded_version();
         if request.text.is_empty() {
-            return PreparedTextRun {
-                unbounded: TextMeasurement::ZERO,
-                request,
-                state: None,
-            };
+            return TextMeasurement::ZERO;
         }
 
         let refresh = || {
@@ -359,32 +345,28 @@ impl TextSystem {
             }
             Entry::Vacant(vacant) => vacant.insert(refresh()),
         };
-        PreparedTextRun {
-            unbounded: entry.unbounded,
-            request,
-            state: Some(PreparedTextRunState { shaper, entry }),
-        }
-    }
-}
-
-impl PreparedTextRun<'_> {
-    /// Shape this prepared run at a finite width. `fit` selects multiline
-    /// wrapping, hard single-line clipping, or ellipsis truncation.
-    pub(crate) fn shape_bounded(
-        self,
-        max_width_px: f32,
-        halign: HAlign,
-        fit: LineFit,
-    ) -> Option<TextMeasurement> {
-        let request = self.request.bounded(max_width_px, halign, fit)?;
-        let Some(state) = self.state else {
-            return Some(TextMeasurement::ZERO);
+        let Some(available_width_px) = available_width_px else {
+            return entry.unbounded;
         };
-        let PreparedTextRunState { shaper, entry } = state;
+        debug_assert!(available_width_px.is_finite());
+        let (target_width_px, fit) = match wrap_policy {
+            TextWrap::SingleLine | TextWrap::Scroll => return entry.unbounded,
+            TextWrap::Truncate => (available_width_px, LineFit::Clip),
+            TextWrap::Ellipsis => (available_width_px, LineFit::Ellipsis),
+            TextWrap::Wrap => (available_width_px, LineFit::Wrap),
+            TextWrap::WrapWithOverflow => (
+                available_width_px.max(entry.unbounded.intrinsic_min),
+                LineFit::Wrap,
+            ),
+        };
+        let target_width_px = wrap::canonical_wrap_width(target_width_px);
+        let request = request
+            .bounded(target_width_px, halign, fit)
+            .expect("canonical text wrap width must be valid");
         if let Some(wrap) = entry.wrap
             && wrap.key == request.key
         {
-            return Some(wrap.result);
+            return wrap.result;
         }
         let mut inner = shaper.inner.borrow_mut();
         let ShaperInner {
@@ -398,7 +380,7 @@ impl PreparedTextRun<'_> {
             key: request.key,
             result: measurement,
         });
-        Some(measurement)
+        measurement
     }
 }
 
@@ -1027,8 +1009,8 @@ struct WrapReuse {
 
 /// How a width-bounded text run handles overflow. Maps from the public
 /// [`crate::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
-/// the unbounded path). Threaded through `shape_bounded` → `dispatch` and
-/// folded into the shape cache key.
+/// the unbounded path). Resolved by [`TextSystem::shape`] and folded into
+/// the shape cache key.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LineFit {
@@ -1152,24 +1134,33 @@ pub(crate) mod test_support {
     }
 
     pub(crate) trait TextSystemTestExt {
-        fn prepare_run<'a>(
-            &'a mut self,
+        fn shape_run(
+            &mut self,
             identity: TextRunIdentity,
-            text: &'a str,
+            text: &str,
             shape: TestShape,
-        ) -> Option<PreparedTextRun<'a>>;
+            wrap_policy: TextWrap,
+        ) -> Option<TextMeasurement>;
     }
 
     impl TextSystemTestExt for TextSystem {
-        fn prepare_run<'a>(
-            &'a mut self,
+        fn shape_run(
+            &mut self,
             identity: TextRunIdentity,
-            text: &'a str,
+            text: &str,
             shape: TestShape,
-        ) -> Option<PreparedTextRun<'a>> {
-            shape
-                .unbounded_request(text)
-                .map(|request| TextSystem::prepare(self, identity, request))
+            wrap_policy: TextWrap,
+        ) -> Option<TextMeasurement> {
+            shape.unbounded_request(text).map(|request| {
+                TextSystem::shape(
+                    self,
+                    identity,
+                    request,
+                    wrap_policy,
+                    shape.halign,
+                    shape.max_width_px,
+                )
+            })
         }
     }
 

@@ -1,9 +1,10 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
+use crate::text::wrap::TextWrap;
 use crate::text::{
-    FontFamily, FontWeight, LineFit, TextMeasurement, TextRunIdentity, TextShapeRequest,
-    TextShaper, TextSystem,
+    FontFamily, FontWeight, TextMeasurement, TextRunIdentity, TextShapeRequest, TextShaper,
+    TextSystem,
 };
 use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
@@ -25,10 +26,13 @@ fn measure_truncated_width(
     let request =
         TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
             .unwrap();
-    text_system
-        .prepare(identity, request)
-        .shape_bounded(width, HAlign::Left, LineFit::Ellipsis)
-        .unwrap()
+    text_system.shape(
+        identity,
+        request,
+        TextWrap::Ellipsis,
+        HAlign::Left,
+        Some(width),
+    )
 }
 
 pub fn bench(c: &mut Criterion) {

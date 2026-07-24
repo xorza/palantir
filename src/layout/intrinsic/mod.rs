@@ -281,16 +281,16 @@ fn shape_leaf_text(
     wid: WidgetId,
     ts: &TextShapeInput<'_>,
 ) -> TextMeasurement {
-    engine
-        .text
-        .prepare(
-            TextRunIdentity {
-                widget_id: wid,
-                ordinal: ts.ordinal,
-            },
-            ts.shape_request(),
-        )
-        .unbounded
+    engine.text.shape(
+        TextRunIdentity {
+            widget_id: wid,
+            ordinal: ts.ordinal,
+        },
+        ts.shape_request(),
+        ts.wrap,
+        ts.halign,
+        None,
+    )
 }
 
 fn leaf_value(axis: Axis, req: LenReq, wrap: TextWrap, measurement: TextMeasurement) -> f32 {

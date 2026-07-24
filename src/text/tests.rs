@@ -357,7 +357,7 @@ fn cosmic_text_weight_distinguishes_key_and_metrics() {
 }
 
 #[test]
-fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
+fn identity_cache_is_keyed_by_actual_shaping_inputs() {
     let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
     let identity = identity(wid);
@@ -369,11 +369,15 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    let r1 = text.prepare_run(identity, "hi", compact).unwrap().unbounded;
+    let r1 = text
+        .shape_run(identity, "hi", compact, TextWrap::SingleLine)
+        .unwrap();
     let calls = text.shaper.measure_calls();
     assert_eq!(r1.size, Size::new(16.0, 16.0));
 
-    let same = text.prepare_run(identity, "hi", compact).unwrap().unbounded;
+    let same = text
+        .shape_run(identity, "hi", compact, TextWrap::SingleLine)
+        .unwrap();
     assert_eq!(same.size, r1.size);
     assert_eq!(same.key, r1.key);
     assert_eq!(same.intrinsic_min, r1.intrinsic_min);
@@ -384,7 +388,7 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
     );
 
     let quantized_same = text
-        .prepare_run(
+        .shape_run(
             identity,
             "hi",
             TestShape {
@@ -392,9 +396,9 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
                 line_height_px: 16.006,
                 ..compact
             },
+            TextWrap::SingleLine,
         )
-        .unwrap()
-        .unbounded;
+        .unwrap();
     assert_eq!(quantized_same.key, same.key);
     assert_eq!(quantized_same.size, same.size);
     assert_eq!(quantized_same.intrinsic_min, same.intrinsic_min);
@@ -405,16 +409,16 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
     );
 
     let r2 = text
-        .prepare_run(
+        .shape_run(
             identity,
             "hi",
             TestShape {
                 line_height_px: 24.0,
                 ..compact
             },
+            TextWrap::SingleLine,
         )
-        .unwrap()
-        .unbounded;
+        .unwrap();
     assert_eq!(r2.size, Size::new(16.0, 24.0));
     assert_eq!(
         text.shaper.measure_calls(),
@@ -423,9 +427,8 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
     );
 
     let different_text = text
-        .prepare_run(identity, "hello", compact)
-        .unwrap()
-        .unbounded;
+        .shape_run(identity, "hello", compact, TextWrap::SingleLine)
+        .unwrap();
     assert_eq!(different_text.size, Size::new(40.0, 16.0));
     assert_eq!(
         text.shaper.measure_calls(),
@@ -435,7 +438,7 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
 }
 
 #[test]
-fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
+fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
     let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
     let params = TestShape {
@@ -447,23 +450,42 @@ fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
         halign: HAlign::Auto,
     };
 
-    let old = text.prepare_run(identity(wid), "hi", params).unwrap();
-    assert_eq!(old.unbounded.size, Size::new(16.0, 16.0));
+    let old = text
+        .shape_run(identity(wid), "hi", params, TextWrap::SingleLine)
+        .unwrap();
+    assert_eq!(old.size, Size::new(16.0, 16.0));
     assert_eq!(
-        old.shape_bounded(32.0, HAlign::Auto, LineFit::Wrap)
-            .unwrap()
-            .size,
+        text.shape_run(
+            identity(wid),
+            "hi",
+            TestShape {
+                max_width_px: Some(32.0),
+                ..params
+            },
+            TextWrap::Wrap,
+        )
+        .unwrap()
+        .size,
         Size::new(16.0, 16.0),
     );
 
-    let current = text.prepare_run(identity(wid), "abcdefgh", params).unwrap();
-    assert_eq!(current.unbounded.size, Size::new(64.0, 16.0));
+    let current = text
+        .shape_run(identity(wid), "abcdefgh", params, TextWrap::SingleLine)
+        .unwrap();
+    assert_eq!(current.size, Size::new(64.0, 16.0));
     // Eight 8 px glyphs at 32 px fit four per line: 32 px × two 16 px lines.
     assert_eq!(
-        current
-            .shape_bounded(32.0, HAlign::Auto, LineFit::Wrap)
-            .unwrap()
-            .size,
+        text.shape_run(
+            identity(wid),
+            "abcdefgh",
+            TestShape {
+                max_width_px: Some(32.0),
+                ..params
+            },
+            TextWrap::Wrap,
+        )
+        .unwrap()
+        .size,
         Size::new(32.0, 32.0),
     );
 }
@@ -885,68 +907,39 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
 }
 
 #[test]
-fn prepared_run_rejects_invalid_inputs_before_dispatch() {
+fn identity_cache_rejects_invalid_metrics_before_dispatch() {
     use crate::primitives::approx::EPS;
 
     let shaper = TextShaper::with_bundled_fonts();
-    for (index, fit) in [LineFit::Wrap, LineFit::Clip, LineFit::Ellipsis]
-        .into_iter()
-        .enumerate()
-    {
-        let mut text = TextSystem::new(shaper.clone());
-        let widget_id = WidgetId::from_hash(("invalid metrics", index));
-        let identity = identity(widget_id);
-        let invalid_metrics = TestShape {
-            font_size_px: EPS * 0.5,
-            line_height_px: 16.0,
-            max_width_px: Some(40.0),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Center,
-        };
-        let calls = shaper.measure_calls();
+    let mut text = TextSystem::new(shaper.clone());
+    let widget_id = WidgetId::from_hash("invalid metrics");
+    let calls = shaper.measure_calls();
 
-        assert!(
-            text.prepare_run(identity, "hi", invalid_metrics).is_none(),
-            "fit={fit:?}",
-        );
-        assert!(
-            !text.has_entry(widget_id, 0),
-            "fit={fit:?}: invalid metrics entered the reuse cache",
-        );
-        assert_eq!(
-            shaper.measure_calls(),
-            calls,
-            "fit={fit:?}: invalid metrics reached a shaping dispatch",
-        );
-
-        let prepared = text
-            .prepare_run(
-                identity,
-                "hi",
-                TestShape {
-                    font_size_px: 16.0,
-                    line_height_px: 16.0,
-                    max_width_px: None,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Auto,
-                },
-            )
-            .unwrap();
-        let calls = shaper.measure_calls();
-        assert!(
-            prepared
-                .shape_bounded(f32::NAN, HAlign::Center, fit)
-                .is_none(),
-            "fit={fit:?}",
-        );
-        assert_eq!(
-            shaper.measure_calls(),
-            calls,
-            "fit={fit:?}: invalid width reached a shaping dispatch",
-        );
-    }
+    assert!(
+        text.shape_run(
+            identity(widget_id),
+            "hi",
+            TestShape {
+                font_size_px: EPS * 0.5,
+                line_height_px: 16.0,
+                max_width_px: Some(40.0),
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+                halign: HAlign::Center,
+            },
+            TextWrap::Ellipsis,
+        )
+        .is_none(),
+    );
+    assert!(
+        !text.has_entry(widget_id, 0),
+        "invalid metrics entered the reuse cache",
+    );
+    assert_eq!(
+        shaper.measure_calls(),
+        calls,
+        "invalid metrics reached a shaping dispatch",
+    );
 }
 
 #[test]
@@ -1181,7 +1174,7 @@ fn cache_key_collapses_halign_when_unbounded() {
 }
 
 #[test]
-fn prepared_bounded_cache_keys_width_and_halign() {
+fn bounded_identity_cache_keys_width_and_halign() {
     let m = TextShaper::with_bundled_fonts();
     let mut text = TextSystem::new(m.clone());
     let wid = WidgetId::from_hash("w");
@@ -1193,40 +1186,69 @@ fn prepared_bounded_cache_keys_width_and_halign() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    text.prepare_run(identity(wid), "hi", params).unwrap();
+    text.shape_run(identity(wid), "hi", params, TextWrap::SingleLine)
+        .unwrap();
     let baseline = m.measure_calls();
 
-    text.prepare_run(identity(wid), "hi", params)
-        .unwrap()
-        .shape_bounded(200.0, HAlign::Left, LineFit::Wrap)
-        .unwrap();
+    text.shape_run(
+        identity(wid),
+        "hi",
+        TestShape {
+            max_width_px: Some(200.0),
+            halign: HAlign::Left,
+            ..params
+        },
+        TextWrap::Wrap,
+    )
+    .unwrap();
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
 
-    text.prepare_run(identity(wid), "hi", params)
-        .unwrap()
-        .shape_bounded(200.0, HAlign::Left, LineFit::Wrap)
-        .unwrap();
+    text.shape_run(
+        identity(wid),
+        "hi",
+        TestShape {
+            max_width_px: Some(200.0),
+            halign: HAlign::Left,
+            ..params
+        },
+        TextWrap::Wrap,
+    )
+    .unwrap();
     assert_eq!(
         m.measure_calls(),
         after_left,
         "identical wrap call must hit cache"
     );
 
-    text.prepare_run(identity(wid), "hi", params)
-        .unwrap()
-        .shape_bounded(200.0, HAlign::Right, LineFit::Wrap)
-        .unwrap();
+    text.shape_run(
+        identity(wid),
+        "hi",
+        TestShape {
+            max_width_px: Some(200.0),
+            halign: HAlign::Right,
+            ..params
+        },
+        TextWrap::Wrap,
+    )
+    .unwrap();
     assert_eq!(
         m.measure_calls(),
         after_left + 1,
         "halign change at same target must bust wrap reuse",
     );
 
-    text.prepare_run(identity(wid), "hi", params)
-        .unwrap()
-        .shape_bounded(201.0, HAlign::Right, LineFit::Wrap)
-        .unwrap();
+    text.shape_run(
+        identity(wid),
+        "hi",
+        TestShape {
+            max_width_px: Some(201.0),
+            halign: HAlign::Right,
+            ..params
+        },
+        TextWrap::Wrap,
+    )
+    .unwrap();
     assert_eq!(
         m.measure_calls(),
         after_left + 2,
@@ -1257,7 +1279,7 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     };
 
     for ordinal in 0_u16..=256 {
-        text.prepare_run(identity_at(a, ordinal), "hi", params)
+        text.shape_run(identity_at(a, ordinal), "hi", params, TextWrap::SingleLine)
             .unwrap();
     }
     text.end_frame(&FxHashSet::default());
@@ -1268,9 +1290,10 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     );
     assert_eq!(text.sweep_limit, 512);
 
-    text.prepare_run(identity(a), "hi", params).unwrap();
+    text.shape_run(identity(a), "hi", params, TextWrap::SingleLine)
+        .unwrap();
     for ordinal in 257_u16..=512 {
-        text.prepare_run(identity_at(a, ordinal), "hi", params)
+        text.shape_run(identity_at(a, ordinal), "hi", params, TextWrap::SingleLine)
             .unwrap();
     }
     text.end_frame(&FxHashSet::default());
@@ -1292,7 +1315,8 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
         "257 survivors rebase to the next power-of-two rung",
     );
 
-    text.prepare_run(identity(b), "yo", params).unwrap();
+    text.shape_run(identity(b), "yo", params, TextWrap::SingleLine)
+        .unwrap();
     let removed = FxHashSet::from_iter([a]);
     text.end_frame(&removed);
     assert!(
@@ -1308,10 +1332,12 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     let mut combined = TextSystem::default();
     for ordinal in 0_u16..=256 {
         combined
-            .prepare_run(identity_at(a, ordinal), "hi", params)
+            .shape_run(identity_at(a, ordinal), "hi", params, TextWrap::SingleLine)
             .unwrap();
     }
-    combined.prepare_run(identity(b), "yo", params).unwrap();
+    combined
+        .shape_run(identity(b), "yo", params, TextWrap::SingleLine)
+        .unwrap();
     combined.end_frame(&FxHashSet::from_iter([a]));
     assert_eq!(
         combined.entries.len(),
