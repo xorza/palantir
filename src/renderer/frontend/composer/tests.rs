@@ -2977,7 +2977,7 @@ fn rect_inflated_round_trips_with_deflated_by_uniform() {
 fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
         |b, payloads| {
-            // Node label.
+            // First node label.
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             // A polyline far from everything closes the text batch
             // (curve-tier) without flushing the group, and doesn't
@@ -2995,27 +2995,46 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             );
             // Panel chrome quad, overlapping the (now closed-batch) label.
             draw(b, rect(0.0, 0.0, 100.0, 60.0));
+            // Repeat after the first closed batch has been indexed and
+            // flushed. The new pending tail must be discovered independently.
+            text(b, rect(0.0, 100.0, 100.0, 20.0));
+            polyline_cmd(
+                b,
+                payloads,
+                &[Vec2::new(0.0, 500.0), Vec2::new(50.0, 500.0)],
+                &[Color::WHITE],
+                ColorMode::Single,
+                1.0,
+                LineCap::Butt,
+                LineJoin::Miter,
+            );
+            draw(b, rect(0.0, 100.0, 100.0, 60.0));
         },
         &params(1.0, UVec2::new(600, 600)),
     );
-    // The label's batch must anchor strictly before the group holding the
-    // overlapping quad.
-    let tlg = buf.text_batches[0].last_group;
-    let qg = buf
-        .groups
-        .iter()
-        .enumerate()
-        .filter(|(_, g)| {
-            (g.quads.start..g.quads.start + g.quads.len)
-                .any(|qi| buf.quads[qi as usize].rect.min.y < 100.0)
-        })
-        .map(|(i, _)| i as u32)
-        .next()
-        .expect("panel quad group");
-    assert!(
-        tlg < qg,
-        "closed-batch text (last_group={tlg}) must paint before the overlapping quad (group={qg})",
-    );
+    assert_eq!(buf.text_batches.len(), 2);
+    assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 100, 20));
+    assert_eq!(buf.text_batches[1].scissor, URect::new(0, 100, 100, 20));
+    for (batch, quad_y) in buf.text_batches.iter().zip([0.0, 100.0]) {
+        let quad_group = buf
+            .groups
+            .iter()
+            .enumerate()
+            .find(|(_, group)| {
+                group
+                    .quads
+                    .range()
+                    .any(|qi| buf.quads[qi].rect.min.y == quad_y)
+            })
+            .map(|(i, _)| i as u32)
+            .expect("panel quad group");
+        assert!(
+            batch.last_group < quad_group,
+            "closed-batch text (last_group={}) must paint before the overlapping quad \
+             at y={quad_y} (group={quad_group})",
+            batch.last_group,
+        );
+    }
 }
 
 /// Clear fold: an opaque solid sharp unclipped quad covering the whole

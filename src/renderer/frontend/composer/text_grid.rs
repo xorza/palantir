@@ -74,7 +74,7 @@ pub(crate) struct TextRectGrid {
     /// [`Self::any_overlap`]: a query outside the union can't hit any
     /// rect, so the tile walk (scattered 32-byte bucket loads from a
     /// grid too big for L1) is skipped entirely. Zero-sized = empty.
-    union: URect,
+    pub(crate) union: URect,
 }
 
 impl TextRectGrid {
