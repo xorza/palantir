@@ -1,0 +1,53 @@
+# Text module simplification review
+
+The review covers every production file under `aperture/src/text` and traces the
+layout, record-store, `TextEdit`, and renderer consumers. Tests, benches,
+fixtures, and gated test-support code were excluded from the critique except
+where they prove that a production branch exists only to support them.
+
+The module currently carries several overlapping interpretations of text:
+Cosmic Text shapes glyphs, `probe.rs` reconstructs caret and selection
+semantics, `cosmic.rs` reconstructs truncation and line-breaking semantics, and
+`mono.rs` supplies a second shaping model that normal production cannot
+construct. The ownership path is similarly layered:
+
+```text
+RecordedText
+  -> TextShapeInput
+  -> TextSystem reuse map
+  -> TextShaper / ShaperInner
+  -> CosmicMeasure buffer cache
+  -> TextRenderSession
+  -> TextBackend
+```
+
+`TextEdit` bypasses `TextSystem` and enters through `TextShaper::layout`, while
+`TextSystem` bypasses the `TextShaper` surface and calls `ShaperInner::dispatch`
+directly. This makes the apparent layers poor guides to where policy and state
+actually live.
+
+## Critical: shaped-text geometry is interpreted incorrectly
+
+- [ ] **Multi-line selections highlight every source line outside the selected range.** `TextLayoutProbe::selection_rects` sends every layout run to `push_run_selection_rects`, but the helper treats `cursor_start.line != run.line_i` and `cursor_end.line != run.line_i` as sufficient inclusion tests. Any run before the start line or after the end line satisfies both inequalities, so even a selection confined to one middle line emits rectangles for all other lines; `TextEdit` then paints every emitted rectangle as selected (`aperture/src/text/probe.rs:124`, `aperture/src/text/probe.rs:141`, `aperture/src/text/probe.rs:226`, `aperture/src/text/probe.rs:234`, `aperture/src/widgets/text_edit/view.rs:344`).
+
+- [ ] **Caret and selection placement form a lossy geometry engine beside Cosmic Text's own hit-testing.** `cursor_xy` ignores glyph direction, always places a cluster start at `glyph.x`, and collapses every interior byte offset to `glyph.x + glyph.w`, while selection geometry divides each shaped glyph evenly among its graphemes; neither assumption preserves BiDi edges, ligature positions, or unequal grapheme advances. The inverse path delegates to Cosmic Text's `Buffer::hit`, so hit-test-to-caret round trips can disagree, and the resulting coordinates directly drive caret painting and vertical navigation (`aperture/src/text/probe.rs:84`, `aperture/src/text/probe.rs:92`, `aperture/src/text/probe.rs:114`, `aperture/src/text/probe.rs:226`, `aperture/src/text/probe.rs:228`, `aperture/src/text/probe.rs:231`, `aperture/src/widgets/text_edit/view.rs:224`, `aperture/src/widgets/text_edit/input.rs:281`).
+
+## High: parallel shaping policies duplicate incomplete text semantics
+
+- [ ] **The Clip/Ellipsis path is a second, partial layout engine layered over Cosmic Text.** `measure_truncated` restores an unbounded layout, walks visual glyphs to derive a logical byte prefix, trims and rebuilds source text in shared scratch, separately shapes and caches an ellipsis advance, then shapes and caches another buffer. This adds dedicated cache and scratch state plus roughly 130 lines of alternate layout policy; in BiDi runs, visual glyph iteration does not guarantee monotonically increasing `g.end` values, so the selected `request.text[..cut]` can be the wrong logical prefix, and the standalone ellipsis advance can differ after context-sensitive prefix-plus-ellipsis shaping (`aperture/src/text/cosmic.rs:137`, `aperture/src/text/cosmic.rs:141`, `aperture/src/text/cosmic.rs:148`, `aperture/src/text/cosmic.rs:391`, `aperture/src/text/cosmic.rs:407`, `aperture/src/text/cosmic.rs:417`, `aperture/src/text/cosmic.rs:436`, `aperture/src/text/cosmic.rs:442`, `aperture/src/text/cosmic.rs:445`, `aperture/src/text/cosmic.rs:458`, `aperture/src/text/cosmic.rs:494`).
+
+- [ ] **The intrinsic-width scan implements only a whitespace subset of the shaper's line-breaking rules.** `shaped_extent` accumulates every non-whitespace glyph into one unbreakable run and closes it only on all-whitespace clusters or hard line ends; `TextSystem` then uses that value as the hard width floor for `WrapWithOverflow`. Non-whitespace Unicode break opportunities such as CJK boundaries and breakable punctuation are therefore classified as one rigid word, overstating min-content width and preventing the documented word-boundary wrapping behavior (`aperture/src/text/cosmic.rs:620`, `aperture/src/text/cosmic.rs:640`, `aperture/src/text/cosmic.rs:642`, `aperture/src/text/cosmic.rs:647`, `aperture/src/text/system.rs:118`, `aperture/src/text/system.rs:120`, `aperture/src/text/wrap.rs:43`).
+
+- [ ] **A test/internals-only mono mode permeates the normal production text path.** The normal `TextShaper` constructor always installs `Some(CosmicMeasure)`, yet production state stores it as an `Option`, every dispatch branches into the 108-line mono implementation, probes carry separate mono caret/hit/selection branches, measurements require an invalid-key sentinel, and the renderer filters that sentinel. The only `None` construction is inside gated support, so normal production pays for two shaping and geometry semantics even though one state cannot occur (`aperture/src/text/mod.rs:145`, `aperture/src/text/mod.rs:160`, `aperture/src/text/mod.rs:217`, `aperture/src/text/mod.rs:280`, `aperture/src/text/mod.rs:321`, `aperture/src/text/mod.rs:408`, `aperture/src/text/mono.rs:20`, `aperture/src/text/probe.rs:60`, `aperture/src/text/probe.rs:115`, `aperture/src/text/probe.rs:129`, `aperture/src/renderer/backend/text/mod.rs:230`).
+
+## Medium: cache and render boundaries duplicate ownership without containing it
+
+- [ ] **`TextSystem` duplicates measurement ownership while bypassing the `TextShaper` abstraction it ostensibly coordinates.** `CosmicMeasure` already stores the complete measurement beside each content-keyed buffer, while `TextSystem` adds a per-window map containing another unbounded measurement, another bounded measurement, repeated keys, a hot bit, a sweep threshold, and removed-widget maintenance. Its miss paths reach through `TextShaper.inner` and invoke `ShaperInner::dispatch` directly, so the extra cache tier also exposes the shaper's borrow and dispatch internals instead of containing them; this leaves two cache policies and duplicate measurement residency to coordinate at frame finalization (`aperture/src/text/cosmic.rs:98`, `aperture/src/text/cosmic.rs:127`, `aperture/src/text/cosmic.rs:547`, `aperture/src/text/mod.rs:126`, `aperture/src/text/system.rs:18`, `aperture/src/text/system.rs:46`, `aperture/src/text/system.rs:83`, `aperture/src/text/system.rs:85`, `aperture/src/text/system.rs:127`, `aperture/src/text/system.rs:141`, `aperture/src/text/system.rs:149`).
+
+- [ ] **The render-session module adds forwarding declarations without establishing a dependency boundary.** `cosmic.rs` imports the renderer-facing placement and bitmap types and implements glyph extraction and rasterization, while `render.rs` imports `CosmicMeasure` and `GlyphRasterKey`, stores `RefMut<CosmicMeasure>`, and forwards both operations one-for-one. The backend still imports `text::cosmic` directly for raster keys and subpixel construction, so changes to the supposedly hidden Cosmic layer propagate through `cosmic.rs`, `render.rs`, the encoder, and the atlas despite the facade's duplicate surface (`aperture/src/text/cosmic.rs:29`, `aperture/src/text/cosmic.rs:195`, `aperture/src/text/cosmic.rs:252`, `aperture/src/text/render.rs:10`, `aperture/src/text/render.rs:20`, `aperture/src/text/render.rs:31`, `aperture/src/text/render.rs:41`, `aperture/src/renderer/backend/text/encode.rs:29`, `aperture/src/renderer/backend/text/atlas.rs:3`).
+
+- [ ] **Recorded text is hashed again after its canonical content hash has already been retained.** `RecordStore` hashes each recorded string and stores that hash with its source span in `RecordedText`; `ShapeRecord::Text` retains the pair and uses the hash for scene identity. Layout resolves only the bytes into `TextShapeInput`, discards the retained hash, and `TextShapeRequest::unbounded` scans the entire string again before every text-system lookup. Recorded text therefore pays redundant O(text length) work on shaping passes even though the exact content hash is already present upstream (`aperture/src/scene/record_store.rs:202`, `aperture/src/scene/record_store.rs:205`, `aperture/src/primitives/interned_str.rs:62`, `aperture/src/primitives/interned_str.rs:143`, `aperture/src/scene/shapes/record.rs:108`, `aperture/src/layout/support.rs:44`, `aperture/src/layout/support.rs:108`, `aperture/src/text/mod.rs:174`, `aperture/src/text/mod.rs:184`).
+
+- [ ] **Source bytes and the cache key claiming their hash remain loose fields across every render handoff.** `TextShapeRequest`, `DrawTextPayload`, and `TextRun` each carry source and key independently, and the backend manually reconstructs another request from them. Their coherence is checked only by a hot-path `debug_assert`; in release, a mismatched pair can reuse an unrelated cached buffer or insert the supplied bytes beneath the wrong key, poisoning later runs with the same identity (`aperture/src/text/mod.rs:133`, `aperture/src/text/cosmic.rs:195`, `aperture/src/text/cosmic.rs:202`, `aperture/src/text/cosmic.rs:329`, `aperture/src/renderer/frontend/cmd_buffer/payload.rs:274`, `aperture/src/renderer/render_buffer/text.rs:19`, `aperture/src/renderer/backend/text/mod.rs:238`).
+
+- [ ] **One `TextWrap` policy is interpreted through parallel truth tables across the wrap, cache, key, and shaping layers.** Each variant is independently classified for line fit, min-content, max-content, and resolved content size; `TextSystem` separately handles fitting truncation and `WrapWithOverflow`; `TextShapeKey` independently strips alignment for truncating modes; and `CosmicMeasure` dispatches again on the derived fit. The six public policies therefore depend on synchronized matches in four modules, so a policy change can leave shaping mode, intrinsic demand, cache identity, and committed size inconsistent without any boundary detecting the drift (`aperture/src/text/wrap.rs:58`, `aperture/src/text/wrap.rs:70`, `aperture/src/text/wrap.rs:83`, `aperture/src/text/wrap.rs:92`, `aperture/src/text/system.rs:102`, `aperture/src/text/system.rs:112`, `aperture/src/text/system.rs:118`, `aperture/src/text/key.rs:115`, `aperture/src/text/key.rs:119`, `aperture/src/text/cosmic.rs:322`).
