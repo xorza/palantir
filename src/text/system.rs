@@ -6,7 +6,6 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::key::TextShapeKey;
-use crate::text::wrap;
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{TextMeasurement, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -102,24 +101,10 @@ impl TextSystem {
         let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
             return unbounded;
         };
-        // A fitting single-line Clip/Ellipsis resolve shapes glyphs
-        // identical to the unbounded root (truncated shaping is
-        // halign-independent and single-line by construction), so the root
-        // stands in — no second shape, no second cache entry. Not valid for
-        // `Wrap` fits: cosmic bakes per-line halign offsets into wrapped
-        // buffers. `size.w` is ceil'd and the canonical width is integral,
-        // so this fit check matches the truncating path's exactly.
-        if matches!(fit, LineFit::Clip | LineFit::Ellipsis)
-            && unbounded.single_line
-            && unbounded.size.w <= wrap::canonical_wrap_width(width)
-        {
+        if fit.resolves_to_unbounded(&unbounded, width) {
             return unbounded;
         }
-        let width = match wrap_policy {
-            // Words wider than the committed width overflow rather than break.
-            TextWrap::WrapWithOverflow => width.max(unbounded.intrinsic_min),
-            _ => width,
-        };
+        let width = wrap_policy.target_width(width, &unbounded);
         resolve_bounded_measurement(shaper, entry, request, width, halign, fit)
     }
 }

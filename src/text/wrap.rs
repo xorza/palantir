@@ -25,6 +25,28 @@ pub(crate) enum LineFit {
     Ellipsis = 2,
 }
 
+impl LineFit {
+    /// Whether resolving this fit at `target_width_px` reproduces the
+    /// unbounded root, letting the caller skip the second shape and the
+    /// bounded cache entry it would mint.
+    ///
+    /// A fitting single-line truncation shapes glyphs identical to the
+    /// root — truncated shaping is halign-independent and single-line by
+    /// construction. Never true for [`Self::Wrap`]: cosmic bakes per-line
+    /// halign offsets into wrapped buffers. `size.w` is ceil'd and the
+    /// canonical width is integral, so this comparison matches the
+    /// truncating path's cut decision exactly.
+    pub(crate) fn resolves_to_unbounded(
+        self,
+        unbounded: &TextMeasurement,
+        target_width_px: f32,
+    ) -> bool {
+        matches!(self, LineFit::Clip | LineFit::Ellipsis)
+            && unbounded.single_line
+            && unbounded.size.w <= canonical_wrap_width(target_width_px)
+    }
+}
+
 /// Text shaping and overflow policy.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
@@ -84,7 +106,28 @@ impl TextWrap {
         match self {
             // Scroll's full run creates no width demand.
             TextWrap::Scroll => Size::new(0.0, unbounded.size.h),
-            _ => unbounded.size,
+            TextWrap::SingleLine
+            | TextWrap::Truncate
+            | TextWrap::Ellipsis
+            | TextWrap::Wrap
+            | TextWrap::WrapWithOverflow => unbounded.size,
+        }
+    }
+
+    /// Width a width-bounded shape actually targets under this policy,
+    /// given the committed `available_width_px`. Only
+    /// [`Self::WrapWithOverflow`] departs from the committed width: it
+    /// floors at the widest unbreakable segment so those segments
+    /// overflow rather than break — the same floor
+    /// [`Self::min_content`] demands.
+    pub(crate) fn target_width(self, available_width_px: f32, unbounded: &TextMeasurement) -> f32 {
+        match self {
+            TextWrap::WrapWithOverflow => available_width_px.max(unbounded.intrinsic_min),
+            TextWrap::SingleLine
+            | TextWrap::Scroll
+            | TextWrap::Truncate
+            | TextWrap::Ellipsis
+            | TextWrap::Wrap => available_width_px,
         }
     }
 
@@ -92,7 +135,11 @@ impl TextWrap {
     pub(crate) fn content_size(self, resolved: &TextMeasurement) -> Size {
         match self {
             TextWrap::Scroll => Size::new(0.0, resolved.size.h),
-            _ => resolved.size,
+            TextWrap::SingleLine
+            | TextWrap::Truncate
+            | TextWrap::Ellipsis
+            | TextWrap::Wrap
+            | TextWrap::WrapWithOverflow => resolved.size,
         }
     }
 }
@@ -101,7 +148,78 @@ impl TextWrap {
 mod tests {
     use crate::layout::cache::quantize_available;
     use crate::primitives::size::Size;
+    use crate::text::TextMeasurement;
     use crate::text::wrap;
+    use crate::text::wrap::{LineFit, TextWrap};
+
+    /// Unbounded root standing in for a shaped measurement — the only
+    /// input the bounded-shaping decisions read.
+    fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextMeasurement {
+        TextMeasurement {
+            size: Size::new(width_px, 16.0),
+            intrinsic_min,
+            single_line,
+            ..TextMeasurement::ZERO
+        }
+    }
+
+    #[test]
+    fn only_a_fitting_single_line_truncation_reuses_the_unbounded_root() {
+        // A truncating fit whose root already fits shapes identical
+        // glyphs, so the reshape and its cache entry are skipped. Wrap
+        // never qualifies (cosmic bakes per-line halign into the buffer),
+        // and neither does a root that already broke or overflows.
+        for (fit, single_line, target_width_px, expected) in [
+            (LineFit::Clip, true, 100.0, true),
+            (LineFit::Ellipsis, true, 100.0, true),
+            (LineFit::Wrap, true, 100.0, false),
+            (LineFit::Clip, false, 100.0, false),
+            (LineFit::Clip, true, 99.0, false),
+            // The comparison runs on the canonical (whole-px) wrap grid,
+            // so 99.6 rounds up to the root's 100 and fits; 99.4 does not.
+            (LineFit::Clip, true, 99.6, true),
+            (LineFit::Clip, true, 99.4, false),
+        ] {
+            assert_eq!(
+                fit.resolves_to_unbounded(&root(100.0, single_line, 0.0), target_width_px),
+                expected,
+                "{fit:?}, single_line={single_line}, width={target_width_px}",
+            );
+        }
+    }
+
+    #[test]
+    fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
+        // 40 px committed against a 60 px unbreakable segment: every
+        // policy but WrapWithOverflow shapes at the committed width and
+        // lets the segment break.
+        let narrow = root(200.0, false, 60.0);
+        for policy in [
+            TextWrap::SingleLine,
+            TextWrap::Scroll,
+            TextWrap::Truncate,
+            TextWrap::Ellipsis,
+            TextWrap::Wrap,
+        ] {
+            assert_eq!(policy.target_width(40.0, &narrow), 40.0, "{policy:?}");
+        }
+        assert_eq!(
+            TextWrap::WrapWithOverflow.target_width(40.0, &narrow),
+            60.0,
+            "the widest segment overflows instead of breaking",
+        );
+        assert_ne!(
+            TextWrap::WrapWithOverflow.target_width(40.0, &narrow),
+            TextWrap::Wrap.target_width(40.0, &narrow),
+        );
+        // A committed width already past the floor is used verbatim, so
+        // the policy only ever raises the target.
+        assert_eq!(
+            TextWrap::WrapWithOverflow.target_width(80.0, &narrow),
+            80.0,
+            "a width above the floor must pass through",
+        );
+    }
 
     #[test]
     fn wrap_target_matches_cache_grid() {
