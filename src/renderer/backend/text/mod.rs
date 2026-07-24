@@ -34,8 +34,8 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
+use crate::text::TextShaper;
 use crate::text::render::RunPlacement;
-use crate::text::{TextShapeRequest, TextShaper};
 
 use encode::{TextEncoder, encode_key_for};
 
@@ -227,8 +227,9 @@ impl TextBackend {
         // cracks the RefCell or hits cosmic.
         let mut session = None;
         for r in runs {
-            if r.key.is_invalid() {
-                // Mono fallback emits nothing; skip both paths.
+            if r.text.key.is_invalid() {
+                // Backstop: the encoder already drops runs with no shaped
+                // buffer, so nothing production-emitted reaches this.
                 continue;
             }
             let run_key = encode_key_for(r, scale);
@@ -239,10 +240,7 @@ impl TextBackend {
             self.encoder.encode_run(
                 ctx.device,
                 session,
-                TextShapeRequest {
-                    text: r.source.resolve(interned_text),
-                    key: r.key,
-                },
+                r.text.resolve_request(interned_text),
                 RunPlacement {
                     origin: r.origin,
                     scale: scale * r.scale,
@@ -403,6 +401,7 @@ mod test_support {
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextRun;
     use crate::scene::record_store::RecordStore;
+    use crate::text::key::ShapedTextRef;
     use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
     use glam::{UVec2, Vec2};
 
@@ -418,7 +417,7 @@ mod test_support {
         scale: f32,
         color: ColorU8,
     ) -> TextRun {
-        let source = store.record_text(store.intern_str(text)).source;
+        let recorded = store.record_text(store.intern_str(text));
         let request = TextShapeRequest::unbounded(
             text,
             font_size_px,
@@ -428,10 +427,9 @@ mod test_support {
         );
         let m = shaper.layout(request).measurement;
         TextRun {
-            key: m.key,
+            text: ShapedTextRef::new(m.key, &recorded),
             origin,
             bounds: URect::new(0, 0, viewport.x, viewport.y),
-            source,
             color,
             scale,
         }
@@ -563,7 +561,7 @@ mod gpu_regression {
         )];
         shaper.evict_cosmic_buffers(0);
         assert!(
-            !shaper.has_cosmic_buffer(runs[0].key),
+            !shaper.has_cosmic_buffer(runs[0].text.key),
             "fixture must start with an evicted shaped buffer",
         );
 
@@ -578,7 +576,7 @@ mod gpu_regression {
             &runs,
         );
         assert!(
-            shaper.has_cosmic_buffer(runs[0].key),
+            shaper.has_cosmic_buffer(runs[0].text.key),
             "an encoded-cache miss must restore its shaped buffer",
         );
         let arena_after_warmup = backend.encoder.cache.arena.len();

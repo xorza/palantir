@@ -19,7 +19,7 @@ use crate::renderer::texture_id::TextureId;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::key::TextShapeKey;
+use crate::text::key::{ShapedTextRef, TextShapeKey};
 use glam::{UVec2, Vec2};
 use std::cell::RefCell;
 use std::f32::consts::FRAC_PI_2;
@@ -56,9 +56,11 @@ fn text(buf: &mut RenderCmdBuffer, r: Rect) {
     buf.draw_text(
         r,
         Color::WHITE.into(),
-        TextShapeKey::INVALID,
-        TextSource {
-            span: Span::default(),
+        ShapedTextRef {
+            key: TextShapeKey::INVALID,
+            source: TextSource {
+                span: Span::default(),
+            },
         },
     );
 }

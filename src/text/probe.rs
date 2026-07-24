@@ -41,8 +41,8 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         }
     }
 
-    /// Shaped buffer behind this layout; `None` on the mono fallback
-    /// and for empty text (`TextShapeKey::INVALID` keys).
+    /// Shaped buffer behind this layout; `None` on the test-only mono
+    /// fallback and for empty text (`TextShapeKey::INVALID` keys).
     fn buffer(&self) -> Option<&cosmic_text::Buffer> {
         self.inner.cosmic.as_ref()?.buffer_for(self.measurement.key)
     }

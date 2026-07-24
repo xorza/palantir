@@ -151,7 +151,7 @@ pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
     let sub = cosmic::subpixel_origin(r.origin);
     EncodedRunKey {
         key: EncodedKey {
-            text: r.key,
+            text: r.text.key,
             scale_q: (scale * 65536.0).fast_round() as u32,
             area_color,
             bins: sub.bins,

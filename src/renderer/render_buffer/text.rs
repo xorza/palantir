@@ -1,17 +1,16 @@
 //! Shaped text records consumed by the native text backend.
 
 use crate::primitives::color::ColorU8;
-use crate::primitives::interned_str::TextSource;
 use crate::primitives::urect::URect;
-use crate::text::key::TextShapeKey;
+use crate::text::key::ShapedTextRef;
 use glam::Vec2;
 
-/// One shaped text run placed in physical-px space. The backend resolves its
-/// source bytes from the active record store and restores the buffer identified
-/// by [`TextShapeKey`] when the encoded glyph cache misses.
+/// One shaped text run placed in physical-px space. The backend resolves
+/// [`ShapedTextRef`] — source bytes from the active record store plus the
+/// shaped-buffer key — when the encoded glyph cache misses.
 ///
 /// **Layout**: fields ordered so the struct is `Pod` with no internal
-/// padding. `TextShapeKey` (24 B, align 8) leads so its alignment
+/// padding. `ShapedTextRef` (32 B, align 8) leads so its alignment
 /// requirement is satisfied without filler. Color stores **straight-alpha
 /// linear** bytes: the native text backend consumes linear and premultiplies
 /// at output (no sRGB roundtrip — matches the crate's colour contract), which
@@ -19,7 +18,7 @@ use glam::Vec2;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextRun {
-    pub(crate) key: TextShapeKey,
+    pub(crate) text: ShapedTextRef,
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
     /// Bounds for clipping (physical px) — the parent rect after transform &
@@ -30,7 +29,6 @@ pub(crate) struct TextRun {
     /// batch's bounds), which the composer's strict-bounds batching rule
     /// keeps no wider than any ancestor-clipped run's bounds.
     pub(crate) bounds: URect,
-    pub(crate) source: TextSource,
     pub(crate) color: ColorU8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time

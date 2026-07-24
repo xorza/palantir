@@ -1175,8 +1175,7 @@ impl Composer {
                         // the rest of the renderer's pipelines. No sRGB
                         // roundtrip.
                         color: t.color.into(),
-                        key: t.key,
-                        source: t.source,
+                        text: t.text,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 0.5% steps. Continuous
                         // zoom would otherwise mint a fresh glyph

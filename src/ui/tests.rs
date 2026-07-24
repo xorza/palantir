@@ -794,13 +794,13 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         .buffer
         .texts
         .iter()
-        .find(|run| run.key == idle_key)
+        .find(|run| run.text.key == idle_key)
         .copied()
         .expect("PaintOnly must emit the retained text run");
     let scene = idle.frame_scene();
     let interned_text = scene.payloads.interned_text();
     assert_eq!(
-        run.source.resolve(&interned_text),
+        run.text.source.resolve(&interned_text),
         "idle interned window text",
         "PaintOnly must retain the source needed for backend reconstruction",
     );

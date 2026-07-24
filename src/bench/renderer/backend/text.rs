@@ -53,6 +53,7 @@ use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::scene::record_store::RecordStore;
+use crate::text::key::ShapedTextRef;
 use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
 use criterion::Criterion;
 use glam::{UVec2, Vec2};
@@ -216,7 +217,7 @@ fn make_run(
     scale: f32,
     color: ColorU8,
 ) -> TextRun {
-    let source = store.record_text(store.intern_str(text)).source;
+    let recorded = store.record_text(store.intern_str(text));
     let request = TextShapeRequest::unbounded(
         text,
         font_size_px,
@@ -226,10 +227,9 @@ fn make_run(
     );
     let measured = shaper.layout(request).measurement;
     TextRun {
-        key: measured.key,
+        text: ShapedTextRef::new(measured.key, &recorded),
         origin,
         bounds: URect::new(0, 0, viewport.x, viewport.y),
-        source,
         color,
         scale,
     }

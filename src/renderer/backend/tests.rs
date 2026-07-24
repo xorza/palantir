@@ -15,7 +15,7 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::text::TextRun;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
-use crate::text::key::TextShapeKey;
+use crate::text::key::{ShapedTextRef, TextShapeKey};
 use glam::{UVec2, Vec2};
 
 /// "Simplified" view of the render schedule — strips bookkeeping
@@ -109,11 +109,13 @@ fn dummy_text() -> TextRun {
             w: 0,
             h: 0,
         },
-        source: TextSource {
-            span: Span::default(),
+        text: ShapedTextRef {
+            key: TextShapeKey::INVALID,
+            source: TextSource {
+                span: Span::default(),
+            },
         },
         color: ColorU8::WHITE,
-        key: TextShapeKey::INVALID,
         scale: 1.0,
     }
 }

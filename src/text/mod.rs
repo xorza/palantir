@@ -6,9 +6,9 @@
 //!   shaped-buffer cache. The wgpu backend replays these buffers through
 //!   [`render::TextRenderSession`]. Each render run carries its record-local
 //!   source span so an encoded-cache miss can restore an evicted shaped
-//!   buffer.
-//! - [`mono::measure`] — deterministic placeholder metric used when no
-//!   `CosmicMeasure` is installed. Every glyph is
+//!   buffer. The only production backend.
+//! - `mono::test_support::measure` — deterministic placeholder metric behind
+//!   the test/internals-only `TextShaper::test_mono`. Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry
 //!   [`TextShapeKey::INVALID`] and the renderer drops them. Lets the engine
 //!   run in tests and headless tools without a font system.
@@ -71,8 +71,8 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// Font family picker on [`crate::TextStyle`] and
 /// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the default
 /// proportional face); `Mono` resolves to bundled JetBrains Mono. Both
-/// ship inside `CosmicMeasure::with_bundled_fonts`; the mono-fallback
-/// shaper (when no `CosmicMeasure` is installed) ignores family entirely.
+/// ship inside `CosmicMeasure::with_bundled_fonts`; the test-only mono
+/// fallback ignores family entirely.
 /// Weight (Regular/Bold) is an independent axis — see [`FontWeight`].
 ///
 /// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
@@ -106,10 +106,10 @@ pub enum FontWeight {
     Bold = 1,
 }
 
-/// Shared, cloneable text shaper. Holds an optional `CosmicMeasure` for
-/// real shaping (`None` ⇒ mono fallback) plus a test/internals-only
-/// `measure_calls` counter for cache-effectiveness tests. Per-window reuse
-/// slots live in the crate-internal `TextSystem`.
+/// Shared, cloneable text shaper. Holds the `CosmicMeasure` used for all
+/// real shaping plus a test/internals-only `measure_calls` counter for
+/// cache-effectiveness tests. Per-window reuse slots live in the
+/// crate-internal `TextSystem`.
 ///
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
@@ -143,8 +143,10 @@ pub(crate) struct TextShapeRequest<'a> {
 /// [`TextShaper::render_session`].
 #[derive(Debug)]
 pub(crate) struct ShaperInner {
-    /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
-    cosmic: Option<CosmicMeasure>,
+    /// `None` ⇒ the test/internals-only mono fallback. `TextShaper::new`
+    /// always installs `Some`, and `TextShaper::test_mono` is the only
+    /// `None` construction, so production never observes it.
+    pub(crate) cosmic: Option<CosmicMeasure>,
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
     /// plus every bypass [`TextShaper::layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
@@ -157,7 +159,7 @@ pub(crate) struct ShaperInner {
 }
 
 impl ShaperInner {
-    fn with_cosmic(cosmic: Option<CosmicMeasure>) -> Self {
+    fn new(cosmic: Option<CosmicMeasure>) -> Self {
         Self {
             cosmic,
             #[cfg(any(test, feature = "internals"))]
@@ -219,7 +221,7 @@ impl TextShaper {
     /// shaped-buffer cache is shared across all clones of this handle.
     pub fn new() -> Self {
         Self {
-            inner: Rc::new(RefCell::new(ShaperInner::with_cosmic(Some(
+            inner: Rc::new(RefCell::new(ShaperInner::new(Some(
                 CosmicMeasure::with_bundled_fonts(),
             )))),
         }
@@ -263,15 +265,14 @@ impl ShaperInner {
     /// Bound the ordinary content cache. Layout and reuse entries may retain
     /// evicted keys because the encoder reconstructs every emitted run.
     fn end_frame(&mut self) {
-        let Some(cosmic) = self.cosmic.as_mut() else {
-            return;
-        };
-        cosmic.end_frame_evict(BUFFER_BUDGET);
+        if let Some(cosmic) = self.cosmic.as_mut() {
+            cosmic.end_frame_evict(BUFFER_BUDGET);
+        }
     }
 
-    /// Bypass-cache dispatch: cosmic if installed, mono otherwise. Test
-    /// builds tally it into `measure_calls` — cosmic may still hit its
-    /// shaped-buffer cache, so the counter tracks dispatches, not reshapes.
+    /// Bypass-cache dispatch. Test builds tally it into `measure_calls` —
+    /// cosmic may still hit its shaped-buffer cache, so the counter tracks
+    /// dispatches, not reshapes.
     pub(crate) fn dispatch(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
         #[cfg(any(test, feature = "internals"))]
         {
@@ -279,7 +280,12 @@ impl ShaperInner {
         }
         match self.cosmic.as_mut() {
             Some(cosmic) => cosmic.shape(request),
-            None => mono::measure(request),
+            #[cfg(any(test, feature = "internals"))]
+            None => mono::test_support::measure(request),
+            // The mono metric is gated out of production, and so is the
+            // only constructor that could put us here.
+            #[cfg(not(any(test, feature = "internals")))]
+            None => unreachable!("the mono fallback needs a test or internals build"),
         }
     }
 }
@@ -289,7 +295,7 @@ impl ShaperInner {
 pub(crate) struct TextMeasurement {
     pub(crate) size: Size,
     /// Identifier of the shaped buffer, or [`TextShapeKey::INVALID`] when no
-    /// shaping happened (mono fallback).
+    /// shaping happened — empty text, or the test-only mono fallback.
     pub(crate) key: TextShapeKey,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
@@ -407,7 +413,7 @@ pub(crate) mod test_support {
         /// tools — no font system, every glyph `font_size_px * 0.5` wide.
         pub fn test_mono() -> Self {
             Self {
-                inner: Rc::new(RefCell::new(ShaperInner::with_cosmic(None))),
+                inner: Rc::new(RefCell::new(ShaperInner::new(None))),
             }
         }
 
