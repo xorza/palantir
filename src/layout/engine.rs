@@ -10,7 +10,7 @@ use crate::layout::support::{
     AxisCtx, TextShapeInput, arrange_axis, container_text_shapes, leaf_text_shapes,
     resolve_axis_size, zero_subtree,
 };
-use crate::layout::types::align::{AxisAlign, HAlign};
+use crate::layout::types::align::AxisAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
@@ -29,7 +29,7 @@ use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::{TextWrap, canonical_wrap_width};
-use crate::text::{LineFit, ShapeParams, TextRunIdentity, TextShaper, TextSystem};
+use crate::text::{LineFit, TextRunIdentity, TextShaper, TextSystem};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of
@@ -849,21 +849,7 @@ impl LayoutEngine {
             ordinal: ts.ordinal,
         };
 
-        let prepared = self
-            .text
-            .prepare_run(
-                identity,
-                ts.text,
-                ShapeParams {
-                    font_size_px: ts.font_size_px,
-                    line_height_px: ts.line_height_px,
-                    max_width_px: None,
-                    family: ts.family,
-                    weight: ts.weight,
-                    halign: HAlign::Auto,
-                },
-            )
-            .expect("recorded text metrics were validated");
+        let prepared = self.text.prepare(identity, ts.shape_request());
         let unbounded = prepared.unbounded;
 
         // Re-shape through the width-bounded path for `Wrap` and the
@@ -906,7 +892,7 @@ impl LayoutEngine {
             let target = canonical_wrap_width(target);
             prepared
                 .shape_bounded(target, ts.halign, fit)
-                .expect("recorded text metrics and wrap width were validated")
+                .expect("recorded text wrap width was validated")
         } else {
             unbounded
         };
