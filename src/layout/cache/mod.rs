@@ -60,18 +60,9 @@ pub(crate) struct CaptureTreeInput<'a> {
 }
 
 #[inline]
-fn quantize_axis(v: f32) -> i32 {
-    if !v.is_finite() {
-        i32::MAX
-    } else {
-        v.fast_round() as i32
-    }
-}
-
-#[inline]
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
-    IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
+    IVec2::new(s.w.quantize_px(), s.h.quantize_px())
 }
 
 fn union_spans(a: Span, b: Span) -> Span {

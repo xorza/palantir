@@ -16,6 +16,16 @@ pub(crate) trait F32Ext {
     /// replaces; magnitudes ≥ 2^63 (unreachable for pixel coordinates)
     /// report `false`, which only forgoes a fast path.
     fn is_integral(&self) -> bool;
+
+    /// Snap to the whole-pixel grid that cache identities key on, as an
+    /// integer so the result can be compared and hashed exactly.
+    ///
+    /// One definition on purpose: a measure-cache `available_q` and a text
+    /// run's wrap width both quantize through here, and were they to land
+    /// on different grids a cached subtree could be blitted against a shape
+    /// measured at another width. Non-finite (an unbounded axis) saturates
+    /// rather than wrapping through the `as` cast.
+    fn quantize_px(self) -> i32;
 }
 
 impl F32Ext for f32 {
@@ -50,6 +60,15 @@ impl F32Ext for f32 {
     #[inline]
     fn is_integral(&self) -> bool {
         *self == (*self as i64 as f32)
+    }
+
+    #[inline]
+    fn quantize_px(self) -> i32 {
+        if self.is_finite() {
+            self.fast_round() as i32
+        } else {
+            i32::MAX
+        }
     }
 }
 
@@ -140,5 +159,34 @@ mod tests {
         // equality it replaces said true); only forgoes a fast path.
         assert!(!1e30.is_integral());
         assert!(!f32::INFINITY.is_integral());
+    }
+
+    #[test]
+    fn quantize_px_snaps_to_whole_pixels_and_saturates() {
+        // Half away from zero, matching `fast_round`, so the grid a cache
+        // key lands on is the same one a wrap width lands on.
+        for (v, expected) in [
+            (0.0_f32, 0),
+            (0.4, 0),
+            (0.5, 1),
+            (99.6, 100),
+            (100.1, 100),
+            (100.4, 100),
+            (100.6, 101),
+            (-0.4, 0),
+            (-0.6, -1),
+            (-100.5, -101),
+        ] {
+            assert_eq!(v.quantize_px(), expected, "v = {v}");
+        }
+        // Neighbouring inputs inside one pixel must collapse, adjacent
+        // pixels must not — that collapse is what makes the key stable
+        // under sub-pixel jitter during a resize drag.
+        assert_eq!(100.1_f32.quantize_px(), 100.4_f32.quantize_px());
+        assert_ne!(100.4_f32.quantize_px(), 100.6_f32.quantize_px());
+        // An unbounded axis saturates instead of wrapping through `as`.
+        assert_eq!(f32::INFINITY.quantize_px(), i32::MAX);
+        assert_eq!(f32::NEG_INFINITY.quantize_px(), i32::MAX);
+        assert_eq!(f32::NAN.quantize_px(), i32::MAX);
     }
 }

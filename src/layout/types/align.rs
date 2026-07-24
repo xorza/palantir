@@ -1,3 +1,6 @@
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
+
 /// Horizontal alignment of a child inside its parent's inner rect.
 ///
 /// `Auto` defers to the parent's `child_align` (if set) and then to the
@@ -159,4 +162,36 @@ impl VAlign {
             self
         }
     }
+}
+
+/// Position a `content` box of fixed size inside `outer` per `align`:
+/// `min` shifted by the alignment offset, `size` = `content` unchanged.
+///
+/// For content that cannot stretch, so `Auto`/`Stretch` collapse to start —
+/// matching arrange-axis placement for non-stretchable children — and
+/// overflow on an axis clamps that axis's offset to zero, pinning oversized
+/// content to the leading edge instead of letting it drift negative.
+///
+/// Coordinate-system agnostic: callers pass owner-local, screen-space, or
+/// zero-origin rects and read `.min` back as the bare offset. Text is the
+/// motivating consumer and needs one definition for all of them — glyphs,
+/// caret, and selection wash must shift by the same offset or the caret
+/// drifts off its glyph.
+pub(crate) fn align_in_rect(outer: Rect, content: Size, align: Align) -> Rect {
+    let dx = match align.halign() {
+        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
+        HAlign::Center => (outer.size.w - content.w) * 0.5,
+        HAlign::Right => outer.size.w - content.w,
+    };
+    let dy = match align.valign() {
+        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
+        VAlign::Center => (outer.size.h - content.h) * 0.5,
+        VAlign::Bottom => outer.size.h - content.h,
+    };
+    Rect::new(
+        outer.min.x + dx.max(0.0),
+        outer.min.y + dy.max(0.0),
+        content.w,
+        content.h,
+    )
 }

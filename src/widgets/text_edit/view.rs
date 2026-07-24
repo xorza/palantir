@@ -1,6 +1,6 @@
 //! TextEdit layout, viewport state, and shape recording.
 
-use crate::layout::types::align::{Align, HAlign};
+use crate::layout::types::align::{self, Align, HAlign};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
@@ -9,7 +9,7 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
-use crate::text::probe::{self, CursorPos, SelectionRects};
+use crate::text::probe::{CursorPos, SelectionRects};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
 use crate::ui::Ui;
@@ -258,7 +258,7 @@ pub(crate) fn resolve_geometry(
         size: align_size,
     };
     let aligned = |size: Size| {
-        probe::text_in_rect(
+        align::align_in_rect(
             containing,
             Size::new(size.w, size.h.max(layout.ctx.line_height_px)),
             widget_align,

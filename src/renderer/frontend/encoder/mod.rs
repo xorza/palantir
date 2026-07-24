@@ -1,3 +1,4 @@
+use crate::layout::types::align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx::noop_f32;
@@ -32,7 +33,6 @@ use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::shape::rect::RectKind;
 use crate::text::key::ShapedTextRef;
-use crate::text::probe;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -340,7 +340,7 @@ fn emit_one_shape(
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect
-            //   via `text_in_rect`.
+            //   via `align_in_rect`.
             // - `local_rect: Some(origin)` → widget owns positioning.
             //   Origin is `owner.min + origin`; bbox size is the
             //   shaped measurement. `align`'s placement axes are
@@ -351,7 +351,7 @@ fn emit_one_shape(
                 None => {
                     let padded =
                         owner_rect.deflated_by(ctx.tree.records.layout()[id.idx()].padding);
-                    probe::text_in_rect(padded, shaped.measured, *align)
+                    align::align_in_rect(padded, shaped.measured, *align)
                 }
                 Some(origin) => Rect {
                     min: owner_rect.min + *origin,
