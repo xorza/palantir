@@ -1,8 +1,9 @@
 //! Per-window text coordinator: `(WidgetId, ordinal)` reuse slots and
-//! wrap-policy resolution over the app-global shared [`TextShaper`].
+//! width-bounded fit resolution over the app-global shared [`TextShaper`].
+//! Layout consequences of a wrap policy (content/min/max sizes) are pure
+//! [`TextWrap`] methods over the measurements returned here.
 
 use crate::layout::types::align::HAlign;
-use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::key::{LineFit, TextShapeKey};
 use crate::text::wrap;
@@ -21,28 +22,9 @@ pub(crate) struct TextSystem {
     pub(crate) sweep_limit: usize,
 }
 
-/// Shaped-buffer measurement plus every layout consequence of one
-/// [`TextWrap`] policy.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct TextShapeResult {
-    pub(crate) measurement: TextMeasurement,
-    pub(crate) content_size: Size,
-    pub(crate) min_content: Size,
-    pub(crate) max_content: Size,
-}
-
-impl TextShapeResult {
-    const ZERO: Self = Self {
-        measurement: TextMeasurement::ZERO,
-        content_size: Size::ZERO,
-        min_content: Size::ZERO,
-        max_content: Size::ZERO,
-    };
-}
-
 /// Per-window reuse-slot address of one text run: the widget plus its
 /// within-widget record-order ordinal select the row. A hint, not an
-/// identity — [`TextSystem::shape`] validates the stored key against the
+/// identity — [`TextSystem::measure`] validates the stored key against the
 /// request, so a stale slot costs one refresh dispatch, never a wrong
 /// result.
 #[derive(Clone, Copy, Debug)]
@@ -87,23 +69,26 @@ impl TextSystem {
         }
     }
 
-    /// Shape one slot-cached text run. The unbounded measurement remains
-    /// the reuse root; bounded policies derive their target from it and cache
-    /// the most recent resolved measurement in the same operation. Inlining
-    /// lets each hot caller erase the result fields it does not consume.
+    /// Measure one slot-cached text run under `wrap_policy`. The unbounded
+    /// measurement is the reuse root; a committed width resolves the
+    /// policy's [`LineFit`] against it and caches the most recent bounded
+    /// measurement in the same operation. Without an available width (the
+    /// intrinsic path) — or for policies that never bind — the unbounded
+    /// root is returned directly. Content/min/max layout consequences are
+    /// pure [`TextWrap`] methods over the returned measurement.
     #[inline]
-    pub(crate) fn shape(
+    pub(crate) fn measure(
         &mut self,
         slot: TextRunSlot,
         request: TextShapeRequest<'_>,
         wrap_policy: TextWrap,
         halign: HAlign,
         available_width_px: Option<f32>,
-    ) -> TextShapeResult {
+    ) -> TextMeasurement {
         let shaper = &self.shaper;
         let request = request.unbounded_version();
         if request.text.is_empty() {
-            return TextShapeResult::ZERO;
+            return TextMeasurement::ZERO;
         }
 
         let refresh = || {
@@ -130,94 +115,15 @@ impl TextSystem {
             debug_assert!(width.is_finite());
         }
         let unbounded = entry.unbounded;
-        let zero_width = Size::new(0.0, unbounded.size.h);
-        match wrap_policy {
-            TextWrap::SingleLine => TextShapeResult {
-                measurement: unbounded,
-                content_size: unbounded.size,
-                min_content: unbounded.size,
-                max_content: unbounded.size,
-            },
-            // Scroll owns clipping and panning, so its full run creates no width demand.
-            TextWrap::Scroll => TextShapeResult {
-                measurement: unbounded,
-                content_size: zero_width,
-                min_content: zero_width,
-                max_content: zero_width,
-            },
-            TextWrap::Truncate => {
-                let measurement = available_width_px.map_or(unbounded, |width| {
-                    resolve_bounded_measurement(
-                        shaper,
-                        entry,
-                        request,
-                        width,
-                        halign,
-                        LineFit::Clip,
-                    )
-                });
-                TextShapeResult {
-                    measurement,
-                    content_size: measurement.size,
-                    min_content: zero_width,
-                    max_content: unbounded.size,
-                }
-            }
-            TextWrap::Ellipsis => {
-                let measurement = available_width_px.map_or(unbounded, |width| {
-                    resolve_bounded_measurement(
-                        shaper,
-                        entry,
-                        request,
-                        width,
-                        halign,
-                        LineFit::Ellipsis,
-                    )
-                });
-                TextShapeResult {
-                    measurement,
-                    content_size: measurement.size,
-                    min_content: zero_width,
-                    max_content: unbounded.size,
-                }
-            }
-            TextWrap::Wrap => {
-                let measurement = available_width_px.map_or(unbounded, |width| {
-                    resolve_bounded_measurement(
-                        shaper,
-                        entry,
-                        request,
-                        width,
-                        halign,
-                        LineFit::Wrap,
-                    )
-                });
-                TextShapeResult {
-                    measurement,
-                    content_size: measurement.size,
-                    min_content: zero_width,
-                    max_content: unbounded.size,
-                }
-            }
-            TextWrap::WrapWithOverflow => {
-                let measurement = available_width_px.map_or(unbounded, |width| {
-                    resolve_bounded_measurement(
-                        shaper,
-                        entry,
-                        request,
-                        width.max(unbounded.intrinsic_min),
-                        halign,
-                        LineFit::Wrap,
-                    )
-                });
-                TextShapeResult {
-                    measurement,
-                    content_size: measurement.size,
-                    min_content: Size::new(unbounded.intrinsic_min, unbounded.size.h),
-                    max_content: unbounded.size,
-                }
-            }
-        }
+        let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
+            return unbounded;
+        };
+        let width = match wrap_policy {
+            // Words wider than the committed width overflow rather than break.
+            TextWrap::WrapWithOverflow => width.max(unbounded.intrinsic_min),
+            _ => width,
+        };
+        resolve_bounded_measurement(shaper, entry, request, width, halign, fit)
     }
 }
 
@@ -298,7 +204,7 @@ pub(crate) mod test_support {
             wrap_policy: TextWrap,
         ) -> Option<TextMeasurement> {
             shape.unbounded_request(text).map(|request| {
-                TextSystem::shape(
+                TextSystem::measure(
                     self,
                     slot,
                     request,
@@ -306,7 +212,6 @@ pub(crate) mod test_support {
                     shape.halign,
                     shape.max_width_px,
                 )
-                .measurement
             })
         }
     }
