@@ -34,17 +34,10 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
-use crate::text::render::{PlacedGlyph, RunPlacement};
+use crate::text::render::RunPlacement;
 use crate::text::{TextShapeRequest, TextShaper};
 
-use atlas::GlyphAtlas;
-use encode::{EncodeCtx, EncodedCache, encode_key_for, try_emit_cached};
-
-/// Frames an unused `EncodedCache` entry survives before being swept
-/// in `post_record`. Keeps the cache from growing unboundedly under a
-/// long zoom gesture while comfortably outliving any short flicker
-/// (visibility toggle, hover paint) that drops a run for a frame.
-const ENCODED_CACHE_KEEP_FRAMES: u64 = 120;
+use encode::{TextEncoder, encode_key_for};
 
 /// One per-instance vertex record. 20 bytes, `Pod`.
 #[repr(C)]
@@ -96,7 +89,7 @@ impl ContentType {
 #[derive(Debug)]
 pub(crate) struct TextBackend {
     shaper: TextShaper,
-    atlas: GlyphAtlas,
+    encoder: TextEncoder,
 
     /// Text shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
@@ -114,17 +107,11 @@ pub(crate) struct TextBackend {
     /// `[color_atlas_size, mask_atlas_size]`, updated only when an atlas grows.
     atlas_px: [u32; 2],
 
-    /// Drawable glyph instances accumulated across this frame's batches.
-    pub(crate) instances: Vec<GlyphInstance>,
     vbuf: DynamicBuffer<GlyphInstance>,
 
-    /// Per-batch slice of `instances`; empty span = nothing to draw.
+    /// Per-batch slice of the encoder's `instances`; empty span =
+    /// nothing to draw.
     ranges: Vec<Span>,
-
-    encoded_cache: EncodedCache,
-    /// Per-miss extraction scratch (`PlacedGlyph`s from the shaper
-    /// session), retained across runs and frames.
-    placed: Vec<PlacedGlyph>,
 }
 
 impl TextBackend {
@@ -133,7 +120,7 @@ impl TextBackend {
     /// format by [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
-        let atlas = GlyphAtlas::new(device);
+        let encoder = TextEncoder::new(device);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("aperture.text.shader"),
@@ -162,7 +149,7 @@ impl TextBackend {
             ],
         });
 
-        let bindings = atlas.bindings();
+        let bindings = encoder.atlas.bindings();
         let atlas_px = bindings.atlas_px;
 
         let atlas_bg = build_atlas_bg(
@@ -177,17 +164,14 @@ impl TextBackend {
 
         Self {
             shaper,
-            atlas,
+            encoder,
             shader,
             atlas_bgl,
             atlas_bg,
             sampler,
             atlas_px,
-            instances: Vec::new(),
             vbuf,
             ranges: Vec::new(),
-            encoded_cache: EncodedCache::default(),
-            placed: Vec::new(),
         }
     }
 
@@ -236,45 +220,24 @@ impl TextBackend {
             self.ranges.len(),
             "text batches must be prepared once in contiguous order",
         );
-        let start = self.instances.len() as u32;
+        let start = self.encoder.instances.len() as u32;
 
         // One walk: hits emit straight to `instances`; misses encode
         // through the lazily-opened session. An all-hit frame never
         // cracks the RefCell or hits cosmic.
-        let Self {
-            shaper,
-            atlas,
-            instances,
-            encoded_cache,
-            placed,
-            ..
-        } = self;
-        let mut ectx = EncodeCtx {
-            device: ctx.device,
-            atlas,
-            cache: encoded_cache,
-            placed,
-            out: instances,
-        };
         let mut session = None;
-        let current_frame = ectx.atlas.current_frame;
         for r in runs {
             if r.key.is_invalid() {
                 // Mono fallback emits nothing; skip both paths.
                 continue;
             }
             let run_key = encode_key_for(r, scale);
-            if try_emit_cached(
-                ectx.cache,
-                &mut ectx.atlas.slots,
-                current_frame,
-                &run_key,
-                ectx.out,
-            ) {
+            if self.encoder.try_emit_cached(&run_key) {
                 continue;
             }
-            let session = session.get_or_insert_with(|| shaper.render_session());
-            ectx.encode_run(
+            let session = session.get_or_insert_with(|| self.shaper.render_session());
+            self.encoder.encode_run(
+                ctx.device,
                 session,
                 TextShapeRequest {
                     text: r.source.resolve(interned_text),
@@ -290,11 +253,11 @@ impl TextBackend {
         }
         drop(session);
 
-        let end = self.instances.len() as u32;
+        let end = self.encoder.instances.len() as u32;
 
         // Rebuild bind group if atlas grew during encode.
-        if self.atlas.bind_group_dirty {
-            let bindings = self.atlas.bindings();
+        if self.encoder.atlas.bind_group_dirty {
+            let bindings = self.encoder.atlas.bindings();
             self.atlas_bg = build_atlas_bg(
                 ctx.device,
                 &self.atlas_bgl,
@@ -303,7 +266,7 @@ impl TextBackend {
                 &self.sampler,
             );
             self.atlas_px = bindings.atlas_px;
-            self.atlas.bind_group_dirty = false;
+            self.encoder.atlas.bind_group_dirty = false;
         }
 
         self.ranges.push(Span::new(start, end - start));
@@ -320,8 +283,8 @@ impl TextBackend {
     /// re-upload happens at most once; batch `ranges` index into the
     /// shared buffer, so per-batch draws are unaffected.
     pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.vbuf.upload_instances(ctx, &self.instances);
-        self.atlas.flush_pending_uploads(ctx);
+        self.vbuf.upload_instances(ctx, &self.encoder.instances);
+        self.encoder.atlas.flush_pending_uploads(ctx);
     }
 
     pub(crate) fn render_batch<'a>(
@@ -354,13 +317,10 @@ impl TextBackend {
 
     pub(crate) fn post_record(&mut self) {
         if self.ranges.is_empty() {
-            debug_assert!(self.instances.is_empty());
+            debug_assert!(self.encoder.instances.is_empty());
             return;
         }
-        self.atlas.end_frame();
-        self.encoded_cache
-            .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
-        self.instances.clear();
+        self.encoder.end_frame();
         self.ranges.clear();
     }
 }
@@ -621,10 +581,10 @@ mod gpu_regression {
             shaper.has_cosmic_buffer(runs[0].key),
             "an encoded-cache miss must restore its shaped buffer",
         );
-        let arena_after_warmup = backend.encoded_cache.arena.len();
+        let arena_after_warmup = backend.encoder.cache.arena.len();
         backend.post_record();
         assert!(
-            !backend.atlas.cache.is_empty(),
+            !backend.encoder.atlas.cache.is_empty(),
             "warmup should have rasterized at least one glyph",
         );
 
@@ -642,12 +602,13 @@ mod gpu_regression {
         );
         drop(shaper_borrow);
 
-        let cf = backend.atlas.current_frame;
+        let cf = backend.encoder.atlas.current_frame;
         let stale: Vec<u64> = backend
+            .encoder
             .atlas
             .cache
             .values()
-            .map(|&i| backend.atlas.slots[i as usize].last_use)
+            .map(|&i| backend.encoder.atlas.slots[i as usize].last_use)
             .filter(|&lu| lu != cf)
             .collect();
         assert!(
@@ -656,17 +617,17 @@ mod gpu_regression {
         );
         // The refresh must have gone through the entry's *recorded*
         // slab indices — the exact path the hot loop writes.
-        for entry in backend.encoded_cache.map.values() {
-            for glyph in &backend.encoded_cache.arena[entry.span.range()] {
+        for entry in backend.encoder.cache.map.values() {
+            for glyph in &backend.encoder.cache.arena[entry.span.range()] {
                 let idx = glyph.atlas_slot;
                 assert_eq!(
-                    backend.atlas.slots[idx as usize].last_use, cf,
+                    backend.encoder.atlas.slots[idx as usize].last_use, cf,
                     "recorded slab index {idx} not refreshed on hit",
                 );
             }
         }
         assert_eq!(
-            backend.encoded_cache.arena.len(),
+            backend.encoder.cache.arena.len(),
             arena_after_warmup,
             "a pure cache-hit frame must not append a replacement span",
         );
@@ -683,7 +644,7 @@ mod gpu_regression {
             make_inner_run(
                 &store,
                 &shaper,
-                "AAAA",
+                "AB",
                 14.0,
                 14.0 * 1.2,
                 Vec2::new(20.0, 20.0),
@@ -712,29 +673,38 @@ mod gpu_regression {
             2.0,
             &runs,
         );
-        assert_eq!(backend.encoded_cache.map.len(), 2);
+        assert_eq!(backend.encoder.cache.map.len(), 2);
         backend.post_record();
 
         let entries: Vec<_> = backend
-            .encoded_cache
+            .encoder
+            .cache
             .map
             .iter()
             .map(|(&key, entry)| (key, entry.span))
             .collect();
-        let (invalidated_key, invalidated_span) = entries[0];
-        let invalidated_slot = backend.encoded_cache.arena[invalidated_span.range()][0].atlas_slot;
+        // Invalidate the two-glyph "AB" run through its *second* glyph:
+        // the cache-hit replay then validates and emits "A" before the
+        // mismatch, pinning the partial-output rollback rather than a
+        // first-glyph bail.
+        let (invalidated_key, invalidated_span) = entries
+            .iter()
+            .copied()
+            .find(|(_, span)| span.len == 2)
+            .expect("the two-glyph run must have a cached span");
+        let invalidated_slot = backend.encoder.cache.arena[invalidated_span.range()][1].atlas_slot;
         let (stable_key, stable_span) = entries
             .iter()
             .copied()
             .find(|(_, span)| {
-                backend.encoded_cache.arena[span.range()]
+                backend.encoder.cache.arena[span.range()]
                     .iter()
                     .all(|glyph| glyph.atlas_slot != invalidated_slot)
             })
             .expect("test runs must use disjoint atlas slots");
-        let arena_before = backend.encoded_cache.arena.len();
+        let arena_before = backend.encoder.cache.arena.len();
 
-        let slot = &mut backend.atlas.slots[invalidated_slot as usize];
+        let slot = &mut backend.encoder.atlas.slots[invalidated_slot as usize];
         slot.generation = slot
             .generation
             .checked_add(1)
@@ -750,10 +720,15 @@ mod gpu_regression {
         );
 
         assert_eq!(
-            backend.encoded_cache.map[&stable_key].span, stable_span,
+            backend.encoder.instances.len(),
+            6,
+            "the rolled-back hit must not leak its partially emitted glyphs",
+        );
+        assert_eq!(
+            backend.encoder.cache.map[&stable_key].span, stable_span,
             "a disjoint run must retain its encoded span",
         );
-        let replacement = backend.encoded_cache.map[&invalidated_key].span;
+        let replacement = backend.encoder.cache.map[&invalidated_key].span;
         assert_ne!(
             replacement, invalidated_span,
             "the run referencing the changed slot must be rebuilt",
@@ -763,7 +738,7 @@ mod gpu_regression {
             "the rebuilt run must append one replacement span",
         );
         assert_eq!(
-            backend.encoded_cache.arena[replacement.range()][0].generation,
+            backend.encoder.cache.arena[replacement.range()][1].generation,
             expected_generation,
             "the replacement must record the slot's new generation",
         );
@@ -838,16 +813,16 @@ mod gpu_regression {
 
         // Same text → same glyph count n per batch; ranges partition
         // the vec as [0..n] + [n..2n].
-        let n = backend.instances.len() / 2;
+        let n = backend.encoder.instances.len() / 2;
         assert!(n > 0, "'File' must emit glyphs");
         assert_eq!(backend.ranges[0], Span::new(0, n as u32));
         assert_eq!(backend.ranges[1], Span::new(n as u32, n as u32));
 
         let a: u32 = bytemuck::cast(color_a);
         let b: u32 = bytemuck::cast(color_b);
-        for (ga, gb) in backend.instances[..n]
+        for (ga, gb) in backend.encoder.instances[..n]
             .iter()
-            .zip(&backend.instances[n..2 * n])
+            .zip(&backend.encoder.instances[n..2 * n])
         {
             assert_eq!(ga.color, a);
             assert_eq!(gb.color, b);
@@ -899,12 +874,12 @@ mod gpu_regression {
             std::slice::from_ref(&run),
         );
         assert_eq!(
-            backend.instances.len(),
+            backend.encoder.instances.len(),
             3,
             "only line 0's 3 glyphs survive the cull"
         );
         assert!(
-            backend.encoded_cache.map.is_empty(),
+            backend.encoder.cache.map.is_empty(),
             "a culled encode must not become a cache template",
         );
         backend.post_record();
@@ -919,8 +894,8 @@ mod gpu_regression {
             1.0,
             std::slice::from_ref(&run),
         );
-        assert_eq!(backend.instances.len(), 3);
-        assert!(backend.encoded_cache.map.is_empty());
+        assert_eq!(backend.encoder.instances.len(), 3);
+        assert!(backend.encoder.cache.map.is_empty());
         backend.post_record();
 
         // Frame 3, unclipped: 3 lines * 3 glyphs = 9 instances, and
@@ -935,9 +910,9 @@ mod gpu_regression {
             1.0,
             std::slice::from_ref(&run),
         );
-        assert_eq!(backend.instances.len(), 9);
-        assert_eq!(backend.encoded_cache.map.len(), 1);
-        assert_eq!(backend.encoded_cache.arena.len(), 9);
+        assert_eq!(backend.encoder.instances.len(), 9);
+        assert_eq!(backend.encoder.cache.map.len(), 1);
+        assert_eq!(backend.encoder.cache.arena.len(), 9);
         backend.post_record();
 
         // Frame 4 replays the cached template: same 9 instances with
@@ -950,10 +925,10 @@ mod gpu_regression {
             1.0,
             std::slice::from_ref(&run),
         );
-        assert_eq!(backend.instances.len(), 9);
-        assert_eq!(backend.encoded_cache.map.len(), 1);
+        assert_eq!(backend.encoder.instances.len(), 9);
+        assert_eq!(backend.encoder.cache.map.len(), 1);
         assert_eq!(
-            backend.encoded_cache.arena.len(),
+            backend.encoder.cache.arena.len(),
             9,
             "a hit must not re-encode"
         );
@@ -981,10 +956,11 @@ mod gpu_regression {
             ColorU8::rgba(240, 240, 240, 255),
         )];
         let empties = |b: &TextBackend| {
-            b.atlas
+            b.encoder
+                .atlas
                 .cache
                 .values()
-                .filter(|&&i| b.atlas.slots[i as usize].alloc.is_none())
+                .filter(|&&i| b.encoder.atlas.slots[i as usize].alloc.is_none())
                 .count()
         };
 
@@ -997,7 +973,7 @@ mod gpu_regression {
             &runs,
         );
         assert!(
-            backend.instances.is_empty(),
+            backend.encoder.instances.is_empty(),
             "whitespace prepares a text batch without drawable glyphs",
         );
         assert_eq!(
@@ -1005,10 +981,10 @@ mod gpu_regression {
             1,
             "the space rasterizes to one zero-area entry"
         );
-        let first_frame = backend.atlas.current_frame;
+        let first_frame = backend.encoder.atlas.current_frame;
         backend.post_record();
         assert_eq!(
-            backend.atlas.current_frame,
+            backend.encoder.atlas.current_frame,
             first_frame + 1,
             "a prepared zero-instance batch must still advance cache aging",
         );
@@ -1024,7 +1000,7 @@ mod gpu_regression {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         let payloads = store.payloads.borrow();
         let interned_text = payloads.interned_text();
-        while backend.atlas.current_frame < 1024 {
+        while backend.encoder.atlas.current_frame < 1024 {
             let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, 1.0, 0, &[], &interned_text);
             backend.post_record();
