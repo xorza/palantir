@@ -360,9 +360,10 @@ struct ScrollWrappers {
 /// Split a user `Scroll` node into its outer/inner wrappers.
 ///
 /// **This routes every `Node` field that should survive on a
-/// `Scroll`** — the exhaustive destructure means adding a `ode`
-/// field fails to compile here, forcing the decision whether it lands
-/// on `outer` (sizing/placement) or `inner` (layout/panel knobs).
+/// `Scroll`** — the destructure below binds every field with no `..`, so
+/// adding one to `Node` fails to compile here, forcing the decision
+/// whether it lands on `outer` (sizing/placement) or `inner`
+/// (layout/panel knobs).
 /// `Scroll::show` patches the remaining inner fields it computes per
 /// frame (`salt`, the reservation `margin`, layout fit flags,
 /// `clip` — read off `flags` before this runs — and the pan
@@ -386,8 +387,13 @@ fn scroll_wrappers(node: Node) -> ScrollWrappers {
         grid,
         flags,
         visibility,
-        // Scroll owns its mode/transform, and no fallback runs after this split.
-        ..
+        // Re-derived by `Scroll::show` once the wrappers exist: it copies
+        // `clip` from the user node onto `inner` and replaces `transform`
+        // with the pan offset. Named rather than elided — a `..` here would
+        // let a newly added `Node` field vanish silently, which is exactly
+        // what this destructure exists to prevent.
+        clip: _,
+        transform: _,
     } = node;
 
     let mut outer = Node::zstack();
