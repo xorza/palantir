@@ -179,35 +179,6 @@ pub(crate) mod test_support {
     use crate::text::test_support::TestShape;
     use crate::text::wrap::TextWrap;
 
-    pub(crate) trait TextSystemTestExt {
-        fn shape_run(
-            &mut self,
-            slot: TextRunSlot,
-            text: &str,
-            shape: TestShape,
-            wrap_policy: TextWrap,
-        ) -> TextMeasurement;
-    }
-
-    impl TextSystemTestExt for TextSystem {
-        fn shape_run(
-            &mut self,
-            slot: TextRunSlot,
-            text: &str,
-            shape: TestShape,
-            wrap_policy: TextWrap,
-        ) -> TextMeasurement {
-            TextSystem::measure(
-                self,
-                slot,
-                shape.unbounded_request(text),
-                wrap_policy,
-                shape.halign,
-                shape.max_width_px,
-            )
-        }
-    }
-
     impl Default for TextSystem {
         fn default() -> Self {
             Self::new(TextShaper::test_mono())
@@ -215,6 +186,22 @@ pub(crate) mod test_support {
     }
 
     impl TextSystem {
+        pub(crate) fn shape_run(
+            &mut self,
+            slot: TextRunSlot,
+            text: &str,
+            shape: TestShape,
+            wrap_policy: TextWrap,
+        ) -> TextMeasurement {
+            self.measure(
+                slot,
+                shape.unbounded_request(text),
+                wrap_policy,
+                shape.halign,
+                shape.max_width_px,
+            )
+        }
+
         /// `true` iff a reuse row exists for `(wid, ordinal)`.
         pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.entries.contains_key(&(wid, ordinal))

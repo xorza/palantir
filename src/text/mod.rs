@@ -370,24 +370,14 @@ pub(crate) mod test_support {
         }
     }
 
-    pub(crate) trait CosmicMeasureTestExt {
-        fn measure(&mut self, text: &str, shape: TestShape) -> TextMeasurement;
-
-        fn measure_truncated(
-            &mut self,
-            text: &str,
-            shape: TestShape,
-            fit: LineFit,
-            unbounded_key: TextShapeKey,
-        ) -> TextMeasurement;
-    }
-
-    impl CosmicMeasureTestExt for CosmicMeasure {
-        fn measure(&mut self, text: &str, shape: TestShape) -> TextMeasurement {
-            CosmicMeasure::shape(self, shape.request(text, LineFit::Wrap))
+    impl CosmicMeasure {
+        pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TextMeasurement {
+            self.shape(shape.request(text, LineFit::Wrap))
         }
 
-        fn measure_truncated(
+        /// Truncating-fit measure. Named apart from the production
+        /// `measure_truncated` — inherent methods can't share a name.
+        pub(crate) fn measure_with_fit(
             &mut self,
             text: &str,
             shape: TestShape,
@@ -396,49 +386,37 @@ pub(crate) mod test_support {
         ) -> TextMeasurement {
             let request = shape.request(text, fit);
             debug_assert_eq!(request.key.unbounded_version(), unbounded_key);
-            CosmicMeasure::shape(self, request)
+            self.shape(request)
         }
     }
 
-    pub(crate) trait TextShaperTestExt {
-        fn measure(&self, text: &str, shape: TestShape) -> TextMeasurement;
-
-        fn probe_layout<R>(
-            &self,
-            text: &str,
-            shape: TestShape,
-            body: impl FnOnce(TextLayoutProbe<'_>) -> R,
-        ) -> R;
-
-        fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> CursorPos;
-
-        fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize;
-    }
-
-    impl TextShaperTestExt for TextShaper {
-        fn measure(&self, text: &str, shape: TestShape) -> TextMeasurement {
+    impl TextShaper {
+        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> TextMeasurement {
             self.probe_layout(text, shape, |probe| probe.measurement)
         }
 
-        fn probe_layout<R>(
+        pub(crate) fn probe_layout<R>(
             &self,
             text: &str,
             shape: TestShape,
             body: impl FnOnce(TextLayoutProbe<'_>) -> R,
         ) -> R {
-            TextShaper::with_layout(self, shape.request(text, LineFit::Wrap), body)
+            self.with_layout(shape.request(text, LineFit::Wrap), body)
         }
 
-        fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> CursorPos {
+        pub(crate) fn cursor_xy(
+            &self,
+            text: &str,
+            byte_offset: usize,
+            shape: TestShape,
+        ) -> CursorPos {
             self.probe_layout(text, shape, |probe| probe.cursor_xy(byte_offset))
         }
 
-        fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize {
+        pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize {
             self.probe_layout(text, shape, |probe| probe.byte_at_xy(x, y))
         }
-    }
 
-    impl TextShaper {
         /// Deterministic mono-fallback shaper for tests and headless
         /// tools — no font system, every glyph `font_size_px * 0.5` wide.
         pub fn test_mono() -> Self {

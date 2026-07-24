@@ -230,34 +230,25 @@ fn push_run_selection_rects(
 /// `line` = count of `\n` before the offset, `index` = bytes since
 /// the most recent `\n` (or start of text).
 pub(crate) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
-    let mut line = 0usize;
-    let mut line_start = 0usize;
-    for (i, byte) in text.as_bytes().iter().enumerate() {
-        if i >= byte_offset {
-            break;
-        }
-        if *byte == b'\n' {
-            line += 1;
-            line_start = i + 1;
-        }
-    }
-    cosmic_text::Cursor::new(line, byte_offset.saturating_sub(line_start))
+    let prefix = &text.as_bytes()[..byte_offset.min(text.len())];
+    let line = prefix.iter().filter(|&&b| b == b'\n').count();
+    let line_start = prefix
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map_or(0, |i| i + 1);
+    cosmic_text::Cursor::new(line, byte_offset - line_start)
 }
 
 /// Inverse of [`cursor_from_byte`]. Walks `text` to find the
 /// `line`-th `\n` and adds `cursor.index`.
 pub(crate) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
-    if cursor.line == 0 {
-        return cursor.index.min(text.len());
-    }
-    let mut line = 0usize;
-    for (i, byte) in text.as_bytes().iter().enumerate() {
-        if *byte == b'\n' {
-            line += 1;
-            if line == cursor.line {
-                return (i + 1 + cursor.index).min(text.len());
-            }
+    let line_start = if cursor.line == 0 {
+        0
+    } else {
+        match text.match_indices('\n').nth(cursor.line - 1) {
+            Some((i, _)) => i + 1,
+            None => return text.len(),
         }
-    }
-    text.len()
+    };
+    (line_start + cursor.index).min(text.len())
 }
