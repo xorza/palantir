@@ -27,7 +27,7 @@ impl HostShared {
     ) -> Self {
         Self {
             resources: UiResources::new(text, clipboard, max_texture_dimension_2d),
-            gradient_atlas: SharedGradientAtlas::default(),
+            gradient_atlas: SharedGradientAtlas::new(max_texture_dimension_2d),
         }
     }
 

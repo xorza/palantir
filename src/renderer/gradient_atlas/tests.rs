@@ -273,18 +273,19 @@ fn register_for(atlas: &mut CpuGradientAtlas, g: LinearGradient) -> LutRow {
     atlas.register_stops(&g.stops, g.interp)
 }
 
-fn assert_real_row(row: LutRow) {
+fn assert_real_row(atlas: &CpuGradientAtlas, row: LutRow) {
     assert!(
-        (1..ATLAS_ROWS).contains(&row.0),
-        "row {} must be in 1..ATLAS_ROWS",
+        (1..atlas.capacity()).contains(&row.0),
+        "row {} must be in 1..{}",
         row.0,
+        atlas.capacity(),
     );
 }
 
 /// Row 0 is reserved magenta. Created at construction; dirty list
 /// flags it so the first frame's GPU upload paints the fallback row.
 /// First real registration goes to row 1 (or wherever its hash lands
-/// in 1..ATLAS_ROWS).
+/// in 1..INITIAL_ATLAS_ROWS).
 #[test]
 fn row_zero_reserved_as_magenta_fallback() {
     let atlas = CpuGradientAtlas::default();
@@ -302,7 +303,7 @@ fn register_returns_nonzero_row_and_marks_dirty() {
     let mut atlas = CpuGradientAtlas::default();
     let g = distinct_grad(0.1);
     let row = atlas.register_stops(&g.stops, g.interp);
-    assert_real_row(row);
+    assert_real_row(&atlas, row);
     assert!(atlas.dirty.is_some(), "register must mark atlas dirty");
 }
 
@@ -342,7 +343,7 @@ fn register_hash_collision_confirms_exact_key() {
     assert_ne!(occupant_key, target_key);
 
     let target_hash = hash_lut(&target_key.stops, target_key.interp);
-    let colliding_row = 1 + (target_hash % u64::from(ATLAS_ROWS - 1)) as u32;
+    let colliding_row = 1 + (target_hash % u64::from(INITIAL_ATLAS_ROWS - 1)) as u32;
     atlas.rows[colliding_row as usize] = Some(GradientAtlasSlot {
         content_hash: target_hash,
         key: occupant_key.clone(),
@@ -382,7 +383,7 @@ fn register_distinct_gradients_get_distinct_rows() {
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let mut seen = HashSet::new();
-    for i in 0..(ATLAS_ROWS - 1) {
+    for i in 0..(INITIAL_ATLAS_ROWS - 1) {
         let g = distinct_grad(i as f32 * 0.01);
         let row = atlas.register_stops(&g.stops, g.interp);
         assert!(
@@ -390,27 +391,27 @@ fn register_many_distinct_gradients_all_unique_rows() {
             "row {} reused across distinct gradients",
             row.0,
         );
-        assert_real_row(row);
+        assert_real_row(&atlas, row);
     }
-    assert_eq!(seen.len(), ATLAS_ROWS as usize - 1);
+    assert_eq!(seen.len(), INITIAL_ATLAS_ROWS as usize - 1);
 }
 
 /// Filling all 255 real slots then registering one more (after a
 /// `flush`, i.e. in the next epoch) evicts the LRU row in
-/// 1..ATLAS_ROWS — never row 0 (magenta fallback). The new gradient
+/// 1..INITIAL_ATLAS_ROWS — never row 0 (magenta fallback). The new gradient
 /// ends up in the evicted slot; the previously resident row's
 /// content hash is gone, while a surviving gradient re-registers
 /// onto its exact original row (hit path).
 #[test]
 fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
     let mut atlas = CpuGradientAtlas::default();
-    let mut filled_rows: Vec<LutRow> = Vec::with_capacity((ATLAS_ROWS - 1) as usize);
-    for i in 0..(ATLAS_ROWS - 1) {
+    let mut filled_rows: Vec<LutRow> = Vec::with_capacity((INITIAL_ATLAS_ROWS - 1) as usize);
+    for i in 0..(INITIAL_ATLAS_ROWS - 1) {
         filled_rows.push(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
     }
     // Re-touch every gradient except index 0 so the very first
     // registration's row is unambiguously the LRU.
-    for i in 1..(ATLAS_ROWS - 1) {
+    for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
     }
     // Epoch boundary: everything above was registered "this frame"
@@ -435,37 +436,144 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
 
-/// 255 distinct registrations then a 256th in the SAME epoch must
-/// panic: every row's `LutRow` id is already captured in this
-/// frame's draw payloads, so evicting any would silently paint the
-/// wrong gradient — the capacity crash is the correct outcome.
+/// 255 distinct registrations then a 256th in the SAME epoch grows
+/// the atlas: every resident row's `LutRow` id is already captured in
+/// this frame's draw payloads, so evicting one would silently paint
+/// the wrong gradient. More distinct gradients than the table holds is
+/// legal content, so capacity doubles and the overflow gets its own
+/// row — no crash, no aliasing.
 #[test]
-#[should_panic(expected = "gradient atlas exhausted")]
-fn full_atlas_same_epoch_overflow_panics() {
+fn full_atlas_same_epoch_overflow_grows() {
     let mut atlas = CpuGradientAtlas::default();
-    for i in 0..(ATLAS_ROWS - 1) {
-        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    let mut rows = HashSet::new();
+    for i in 0..(INITIAL_ATLAS_ROWS - 1) {
+        rows.insert(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
     }
-    register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS);
+
+    let overflow = register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(
+        atlas.capacity(),
+        INITIAL_ATLAS_ROWS * 2,
+        "a full same-epoch table must double, not evict",
+    );
+    assert!(
+        rows.insert(overflow),
+        "row {} aliased a gradient this frame's draws already reference",
+        overflow.0,
+    );
+    assert_real_row(&atlas, overflow);
+    // Growth invalidates the backend's texture height, so the whole
+    // atlas — not just the new rows — must re-upload.
+    let flushed = atlas.flush().expect("growth must dirty the atlas");
+    assert_eq!(flushed.first_row, 0);
+    assert_eq!(flushed.total_rows, INITIAL_ATLAS_ROWS * 2);
+    assert_eq!(
+        flushed.bytes.len(),
+        (INITIAL_ATLAS_ROWS * 2) as usize * size_of::<LutRowTexels>(),
+    );
 }
 
 /// The hit path stamps the epoch too: re-registering all 255
 /// resident gradients after a flush re-protects every row, so a
-/// 256th distinct gradient in that same epoch must panic rather
-/// than evict a row whose id this frame's draws already hold.
+/// 256th distinct gradient in that same epoch grows rather than
+/// evicting a row whose id this frame's draws already hold. The
+/// re-registered gradients keep their original rows across growth.
 #[test]
-#[should_panic(expected = "gradient atlas exhausted")]
-fn full_atlas_all_hit_this_epoch_panics() {
+fn full_atlas_all_hit_this_epoch_grows() {
     let mut atlas = CpuGradientAtlas::default();
-    for i in 0..(ATLAS_ROWS - 1) {
-        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    let mut original = Vec::new();
+    for i in 0..(INITIAL_ATLAS_ROWS - 1) {
+        original.push(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
     }
     let _ = atlas.flush();
     // New epoch: every row re-registered via the hit path.
-    for i in 0..(ATLAS_ROWS - 1) {
+    for (i, row) in original.iter().enumerate() {
+        assert_eq!(
+            register_for(&mut atlas, distinct_grad(i as f32 * 0.01)),
+            *row,
+            "hit path must reuse the resident row",
+        );
+    }
+    let overflow = register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
+    assert!(
+        !original.contains(&overflow),
+        "row {} aliased an epoch-protected row",
+        overflow.0,
+    );
+}
+
+/// Growth is bounded by the device's texture-height cap. At the cap a
+/// full same-epoch table can neither evict nor grow, so the overflow
+/// paints the magenta fallback: loudly wrong for that one gradient,
+/// but it neither crashes nor repaints rows the frame's other draws
+/// already captured. `max_rows` below the initial capacity is raised
+/// to fit, so one doubling is all this atlas gets.
+#[test]
+fn growth_stops_at_max_rows_and_falls_back() {
+    let mut atlas = CpuGradientAtlas::new(INITIAL_ATLAS_ROWS * 2);
+    let mut rows = HashSet::new();
+    // Fill both the initial capacity and the one doubling available.
+    for i in 0..(INITIAL_ATLAS_ROWS * 2 - 1) {
+        rows.insert(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
+    }
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
+    assert_eq!(rows.len(), (INITIAL_ATLAS_ROWS * 2 - 1) as usize);
+
+    let overflow = register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(
+        overflow,
+        LutRow::FALLBACK,
+        "capped atlas must fall back to magenta, not evict a live row",
+    );
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2, "cap must hold");
+    // The fallback row is still magenta — the overflow never baked
+    // over it.
+    let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+    assert!(atlas.baked[0].iter().all(|&t| t == magenta));
+
+    // Next epoch: rows are evictable again, so the same gradient gets
+    // a real row instead of the fallback.
+    let _ = atlas.flush();
+    let recovered = register_for(&mut atlas, distinct_grad(9999.0));
+    assert_ne!(recovered, LutRow::FALLBACK);
+    assert_real_row(&atlas, recovered);
+}
+
+/// Rows resident before a growth keep their ids AND their baked
+/// content — this frame's draw payloads already hold those ids, so a
+/// row moving or being rewritten under them would repaint issued draws.
+///
+/// The probe modulus changes with the capacity, so re-registering a
+/// resident gradient afterwards may bake a *duplicate* into a second
+/// row (documented on `CpuGradientAtlas::grow`). That is a wasted row,
+/// never a wrong colour: both rows hold identical texels, and the
+/// stale copy falls out as the LRU victim later.
+#[test]
+fn growth_preserves_resident_row_content() {
+    let mut atlas = CpuGradientAtlas::default();
+    let pinned = distinct_grad(0.0);
+    let pinned_row = register_for(&mut atlas, pinned.clone());
+    let pinned_texels = atlas.baked[pinned_row.0 as usize];
+    for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
     }
+    // Same epoch throughout, so this forces growth.
     register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
+    assert_eq!(
+        atlas.baked[pinned_row.0 as usize], pinned_texels,
+        "growth must not disturb a row this frame's draws reference",
+    );
+    // Re-registering resolves to a row baked with the same content,
+    // whether that's the original or a post-growth duplicate.
+    let after = register_for(&mut atlas, pinned);
+    assert_real_row(&atlas, after);
+    assert_eq!(
+        atlas.baked[after.0 as usize], pinned_texels,
+        "a duplicate row must carry identical texels, not a different gradient",
+    );
 }
 
 /// Hit-path bumps the row stamp: a gradient registered first, then
@@ -477,7 +585,7 @@ fn register_hit_bumps_stamp_protecting_recent_content() {
     let pinned = distinct_grad(0.0);
     let pinned_row = register_for(&mut atlas, pinned.clone());
     // Fill 253 more rows.
-    for i in 1..(ATLAS_ROWS - 2) {
+    for i in 1..(INITIAL_ATLAS_ROWS - 2) {
         register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
     }
     // Re-touch the pinned gradient so its stamp is now the largest.
@@ -507,14 +615,14 @@ fn evicted_content_can_be_re_registered() {
     let _ = register_for(&mut atlas, first.clone());
     // Fill, cross the epoch boundary, then force eviction of `first`
     // (oldest stamp).
-    for i in 1..(ATLAS_ROWS - 1) {
+    for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
     }
     let _ = atlas.flush();
     register_for(&mut atlas, distinct_grad(9999.0));
     // Re-register `first` — must succeed and return a valid row.
     let reborn = register_for(&mut atlas, first);
-    assert_real_row(reborn);
+    assert_real_row(&atlas, reborn);
 }
 
 /// `flush` returns `Some(...)` once after a register, then `None`

@@ -17,8 +17,6 @@ var<immediate> imm: Immediates;
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
 
-const ATLAS_ROWS_F: f32 = /*{ATLAS_ROWS}*/;
-
 // Divide-by-zero guard on object-local axes (quad size, gradient
 // span, radial radius). Anything smaller than this rounds to "no
 // meaningful direction" — the gradient collapses to a fallback.
@@ -255,7 +253,10 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         return in.fill;
     }
     let t = apply_spread(t01, spread);
-    let v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
+    // Row count is queried, not baked in as a const: the atlas texture
+    // grows when one frame registers more distinct gradients than it
+    // holds, and a query keeps this pipeline valid across that resize.
+    let v = (f32(in.fill_lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
     return textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
 }
 

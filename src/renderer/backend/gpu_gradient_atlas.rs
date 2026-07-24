@@ -9,7 +9,6 @@
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
-use crate::renderer::gradient_atlas::ATLAS_ROWS;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 
@@ -33,21 +32,46 @@ const _: () = assert!(
 #[derive(Debug)]
 pub(crate) struct GpuGradientAtlas {
     cpu: SharedGradientAtlas,
-    /// LUT atlas texture. 256 cols × 256 rows of `Rgba16Float`
+    /// LUT atlas texture. 256 cols × N rows of `Rgba16Float`
     /// (linear, no sampler decode — the LUT bake stores linear-RGB
     /// directly via `From<Color> for ColorF16`, so the GPU sees
     /// ready-to-blend linear values; see `AGENTS.md` "Colour pipeline").
     /// f16 over 8-bit linear: dark gradient stops linearise to tiny
     /// values, and an 8-bit linear row crushes them onto a handful of
     /// levels (visible banding) — see `gradient_atlas` module docs.
-    /// Uploaded each dirty frame by [`Self::upload`].
+    /// Uploaded each dirty frame by [`Self::upload`], which also
+    /// replaces the texture when the CPU atlas grew past its height.
     texture: wgpu::Texture,
+    /// Retained for bind-group rebuilds after a texture replacement —
+    /// sampler state never varies with the atlas height.
+    sampler: wgpu::Sampler,
     /// Group-0 layout (gradient texture + sampler). Quad and curve build
     /// their pipeline layouts against this so they can share one bind
-    /// group at draw time.
+    /// group at draw time. Height-independent, so a grown atlas leaves
+    /// every pipeline built against it valid.
     pub(crate) bgl: wgpu::BindGroupLayout,
     /// Group-0 bind group, bound by both pipelines at draw time.
     pub(crate) bg: wgpu::BindGroup,
+}
+
+/// Allocate the LUT atlas texture at `rows` rows. The shaders read the
+/// height back with `textureDimensions` rather than a baked-in
+/// constant, so this is free to change across the device's lifetime.
+fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("aperture.gradient_atlas"),
+        size: wgpu::Extent3d {
+            width: LUT_ROW_TEXELS as u32,
+            height: rows,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
 }
 
 impl GpuGradientAtlas {
@@ -56,20 +80,7 @@ impl GpuGradientAtlas {
         // immediates (shared with every pipeline) — no bind-group slot.
         let bgl = texture_sampler_bgl(device, "aperture.gradient.bgl");
 
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("aperture.gradient_atlas"),
-            size: wgpu::Extent3d {
-                width: LUT_ROW_TEXELS as u32,
-                height: ATLAS_ROWS,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&Default::default());
         // Linear filter inside a row (smooth gradient interpolation).
         // Clamp addressing — spread modes (Pad/Repeat/Reflect) are
@@ -91,6 +102,7 @@ impl GpuGradientAtlas {
         Self {
             cpu,
             texture,
+            sampler,
             bgl,
             bg,
         }
@@ -105,15 +117,37 @@ impl GpuGradientAtlas {
     /// row moves 2 KB per frame instead of 512 KB (see the dirty-range
     /// note in `CpuGradientAtlas`). Called from `WgpuBackend::submit`
     /// before the render pass starts.
+    ///
+    /// A frame that registers more distinct gradients than the atlas
+    /// holds grows it, which reports a new `total_rows` here: the
+    /// texture and its bind group are replaced at the new height before
+    /// the upload. Growth dirties every row, so the replacement texture
+    /// is refilled in the same `write_texture`, and the pipelines stay
+    /// valid because they bind through the height-independent `bgl` and
+    /// read the height with `textureDimensions`.
     #[profiling::function]
-    pub(crate) fn upload(&self, ctx: &GpuCtx<'_>) {
-        self.cpu.flush_with(|rows| {
+    pub(crate) fn upload(&mut self, ctx: &GpuCtx<'_>) {
+        // Destructured so the resize below borrows the GPU-side fields
+        // while `flush_with` holds the CPU atlas.
+        let Self {
+            cpu,
+            texture,
+            sampler,
+            bgl,
+            bg,
+        } = self;
+        cpu.flush_with(|rows| {
+            if texture.height() != rows.total_rows {
+                *texture = create_texture(ctx.device, rows.total_rows);
+                let view = texture.create_view(&Default::default());
+                *bg = texture_bind_group(ctx.device, bgl, sampler, &view, "aperture.gradient.bg");
+            }
             // Whole rows by the `FlushedRows` contract, so this divides
             // exactly.
             let height = rows.bytes.len() as u32 / ROW_PITCH;
             ctx.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &self.texture,
+                    texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
                         x: 0,
