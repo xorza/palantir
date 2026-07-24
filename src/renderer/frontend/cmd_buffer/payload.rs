@@ -13,7 +13,7 @@ use crate::primitives::{
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::TextCacheKey;
+use crate::text::TextShapeKey;
 use strum::{EnumCount, EnumIter, FromRepr};
 
 #[repr(transparent)]
@@ -276,7 +276,7 @@ impl DrawShadowPayload {
 pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
     pub(crate) color: ColorF16,
-    pub(crate) key: TextCacheKey,
+    pub(crate) key: TextShapeKey,
     pub(crate) source: TextSource,
 }
 

@@ -837,7 +837,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same
 /// node has both runs shaped (`text_spans[node].len == 2`) at distinct
-/// `TextCacheKey`s (no identity-reuse collision). Replaces the
+/// `TextShapeKey`s (no identity-reuse collision). Replaces the
 /// old "one ShapeRecord::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
@@ -864,7 +864,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     );
     assert_ne!(
         first.key, second.key,
-        "different text inputs must produce distinct TextCacheKeys — \
+        "different text inputs must produce distinct TextShapeKeys — \
        a collision would mean the second shape clobbered the first's cache slot",
     );
 }
@@ -919,7 +919,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
 /// the per-frame buffer. Without correct rebase (e.g. forgetting
 /// `dest_start += text_shapes.len()` or storing global indices in
 /// the snapshot), frame 2 would either read from the wrong slot or
-/// see stale `TextCacheKey`s.
+/// see stale `TextShapeKey`s.
 #[test]
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
@@ -936,7 +936,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     assert_eq!(
         (f1_first.key, f1_second.key),
         (f2_first.key, f2_second.key),
-        "cache hit must replay the exact same TextCacheKeys per slot",
+        "cache hit must replay the exact same TextShapeKeys per slot",
     );
     assert!(
         (f1_first.measured.w - f2_first.measured.w).abs() < 0.01

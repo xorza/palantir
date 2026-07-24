@@ -2,7 +2,7 @@
 //!
 //! Two paths:
 //!
-//! - **Cache hit**: prior frames laid this exact `(TextCacheKey,
+//! - **Cache hit**: prior frames laid this exact `(TextShapeKey,
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
 //!   the resulting origin-relative `GlyphInstance` templates are stored
 //!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
@@ -27,7 +27,7 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextRun;
-use crate::text::TextCacheKey;
+use crate::text::TextShapeKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
@@ -60,7 +60,7 @@ pub(crate) struct ResolvedRun<'a> {
 /// in `encode_batch`'s glyph loop is the tripwire for that invariant.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct EncodedKey {
-    pub(crate) text: TextCacheKey,
+    pub(crate) text: TextShapeKey,
     /// `(scale * 65536).round() as u32`. 1/65536 px is below cosmic's
     /// 4-bin subpixel resolution, so distinct quantized scales are the
     /// only ones that produce distinct cosmic cache keys.
@@ -395,7 +395,7 @@ mod tests {
         ContentType, EncodedCache, EncodedEntry, EncodedGlyph, EncodedKey, EncodedRunKey, pack_uv,
         try_emit_cached,
     };
-    use crate::text::TextCacheKey;
+    use crate::text::TextShapeKey;
 
     #[test]
     fn pack_uv_round_trip() {
@@ -411,9 +411,9 @@ mod tests {
     fn run_key(text_hash: u64, origin_x: i32) -> EncodedRunKey {
         EncodedRunKey {
             key: EncodedKey {
-                text: TextCacheKey {
+                text: TextShapeKey {
                     text_hash,
-                    ..TextCacheKey::INVALID
+                    ..TextShapeKey::INVALID
                 },
                 scale_q: 65_536,
                 area_color: 0,

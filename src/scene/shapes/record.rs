@@ -117,7 +117,7 @@ pub(crate) enum ShapeRecord {
         /// shaper would re-resolve — means the shaper doesn't have to
         /// know about widget conventions, and two `ShapeRecord::Text` runs at
         /// the same font-size but different leading correctly produce
-        /// distinct cached shaped buffers (via [`TextCacheKey::lh_q`]).
+        /// distinct cached shaped buffers (via [`TextShapeKey::lh_q`]).
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,

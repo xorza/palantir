@@ -14,7 +14,7 @@
 //! permits a payload arena just under 1 GiB.
 //!
 //! Soundness: payload structs are `#[repr(C)]` aggregates of
-//! `f32`/`u32` (and one `u64` in `TextCacheKey`) tagged
+//! `f32`/`u32` (and one `u64` in `TextShapeKey`) tagged
 //! `bytemuck::Pod`, so the compiler proves they have no padding bytes.
 //! The arena is `Vec<u32>` (4-byte aligned). Pushes go through
 //! `bytemuck::cast_slice` (safe); reads go through
@@ -47,7 +47,7 @@ use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::ShapeStroke;
-use crate::text::TextCacheKey;
+use crate::text::TextShapeKey;
 
 pub(crate) mod payload;
 
@@ -274,7 +274,7 @@ impl RenderCmdBuffer {
         &mut self,
         rect: Rect,
         color: ColorF16,
-        key: TextCacheKey,
+        key: TextShapeKey,
         source: TextSource,
     ) {
         let payload = DrawTextPayload {
@@ -422,7 +422,7 @@ impl RenderCmdBuffer {
         debug_assert!(start + n_words <= self.data.len());
         let words = &self.data[start..start + n_words];
         // `pod_read_unaligned` so payloads with align >4 (e.g.
-        // `DrawTextPayload` via `TextCacheKey: u64`) work even though
+        // `DrawTextPayload` via `TextShapeKey: u64`) work even though
         // the arena is `Vec<u32>` (4-byte aligned).
         bytemuck::pod_read_unaligned(bytemuck::cast_slice(words))
     }

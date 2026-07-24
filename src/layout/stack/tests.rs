@@ -38,17 +38,18 @@ fn hstack_arranges_two_buttons_side_by_side() {
     let kids = ui.main_child_rects(root);
     assert_eq!(kids.len(), 2);
 
-    // "Hi" → 16w label + 24 padding + 2*1 stroke = 42w; height = 19.2 + 12 + 2 = 33.2.
+    // "Hi" → 16w label + 24 padding + 2×1 stroke = 42w. Canonical line
+    // height = round(19.2×64)/64 = 19.203125, so total height = 33.203125.
     let a = kids[0];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
     assert_eq!(a.size.w, 42.0);
-    assert_eq!(a.size.h, 33.2);
+    assert_eq!(a.size.h, 33.203_125);
 
     let b = kids[1];
     assert_eq!(b.min.x, 42.0);
     assert_eq!(b.size.w, 100.0);
-    assert_eq!(b.size.h, 33.2);
+    assert_eq!(b.size.h, 33.203_125);
 }
 
 #[test]

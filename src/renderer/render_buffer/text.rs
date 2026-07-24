@@ -3,15 +3,15 @@
 use crate::primitives::color::ColorU8;
 use crate::primitives::interned_str::TextSource;
 use crate::primitives::urect::URect;
-use crate::text::TextCacheKey;
+use crate::text::TextShapeKey;
 use glam::Vec2;
 
 /// One shaped text run placed in physical-px space. The backend resolves its
 /// source bytes from the active record store and restores the buffer identified
-/// by [`TextCacheKey`] when the encoded glyph cache misses.
+/// by [`TextShapeKey`] when the encoded glyph cache misses.
 ///
 /// **Layout**: fields ordered so the struct is `Pod` with no internal
-/// padding. `TextCacheKey` (24 B, align 8) leads so its alignment
+/// padding. `TextShapeKey` (24 B, align 8) leads so its alignment
 /// requirement is satisfied without filler. Color stores **straight-alpha
 /// linear** bytes: the native text backend consumes linear and premultiplies
 /// at output (no sRGB roundtrip — matches the crate's colour contract), which
@@ -19,7 +19,7 @@ use glam::Vec2;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextRun {
-    pub(crate) key: TextCacheKey,
+    pub(crate) key: TextShapeKey,
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
     /// Bounds for clipping (physical px) — the parent rect after transform &

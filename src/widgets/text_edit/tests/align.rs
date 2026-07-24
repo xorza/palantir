@@ -1,6 +1,7 @@
 //! Tests for `TextEdit::text_align` and the default alignment per
 //! mode. Mono fallback (`ui_at_no_cosmic`): 8 px / char @ 16 px font,
-//! `LINE_HEIGHT_MULT = 1.2` → line height 19.2 px. Editor is 280×40
+//! `LINE_HEIGHT_MULT = 1.2` → canonical line height
+//! `round(19.2 × 64) / 64 = 19.203125` px. Editor is 280×40
 //! with theme padding (5, 3) plus the 1.5 px chrome stroke that
 //! `Tree::open_node` folds into padding (mirrored by TextEdit so
 //! glyph/caret coords land on the encoder's clip rect). Stroke width
@@ -31,7 +32,7 @@ const CARET_W: f32 = 1.5;
 const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 267
 const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 31
 const ALIGN_W: f32 = INNER_W - CARET_W; // 265.5
-const LINE_H: f32 = 19.2; // 16 px font × 1.2 LINE_HEIGHT_MULT
+const LINE_H: f32 = 19.203_125;
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
 /// Drive one frame of a single-line editor at `text_align` + buffer +
@@ -119,8 +120,8 @@ fn shift_arrow_right(ui: &mut Ui) {
 #[test]
 fn single_line_default_is_left_vcenter() {
     // No `.text_align(...)` → mode default `Align::LEFT` (left +
-    // vcenter). With "abcd" (32×19.2) inside 270×34: dx = 0,
-    // dy = (34 − 19.2) / 2 = 7.4. Origin = padding + offset.
+    // vcenter). With "abcd" (32×19.203125) inside the inner rect,
+    // dx = 0 and dy = (inner height − line height) / 2.
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     let node = warmup_then(&mut ui, &mut buf, None, None);
@@ -136,11 +137,11 @@ fn single_line_text_align_table() {
     // Sweep every (HAlign × VAlign) combination on a single-line
     // editor with "abcd". Expected `(dx, dy)` per the encoder
     // convention — overflow clamps to zero, which doesn't fire here
-    // because 32×19.2 fits inside 268.5×34 (inner − caret reservation).
+    // because the text fits inside the inner rect minus caret reservation.
     let cx = (ALIGN_W - TEXT_W_4CH) * 0.5; // 118.25
     let rx = ALIGN_W - TEXT_W_4CH; // 236.5
-    let cy = (INNER_H - LINE_H) * 0.5; // 7.4
-    let by = INNER_H - LINE_H; // 14.8
+    let cy = (INNER_H - LINE_H) * 0.5;
+    let by = INNER_H - LINE_H;
     let cases: &[(Align, f32, f32, &str)] = &[
         (Align::TOP_LEFT, 0.0, 0.0, "TOP_LEFT"),
         (Align::TOP, cx, 0.0, "TOP"),
@@ -197,7 +198,7 @@ fn caret_tracks_aligned_text() {
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 233.5
-    let dy = (INNER_H - LINE_H) * 0.5; // 5.9
+    let dy = (INNER_H - LINE_H) * 0.5;
     assert!((t.x - (PAD_L + dx)).abs() < 1e-3, "text.x = {}", t.x);
     assert!(
         (c.x - (PAD_L + dx + TEXT_W_4CH)).abs() < 1e-3,
@@ -228,7 +229,8 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let node = frame(&mut ui, &mut buf, None, None);
     let (_, caret_origin) = shape_origins(&ui, node);
     let c = caret_origin.expect("focused empty editor still paints caret");
-    let dy = (INNER_H - LINE_H) * 0.5;
+    let authored_line_height = 16.0 * crate::text::LINE_HEIGHT_MULT;
+    let dy = (INNER_H - authored_line_height) * 0.5;
     assert!((c.x - PAD_L).abs() < 1e-3, "caret.x = {}", c.x);
     assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
 }
@@ -341,7 +343,7 @@ fn selection_rects_offset_matches_text() {
 /// `dx_per_line = (line_width - line_w) * factor` where factor is
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
-    use crate::text::ShapeParams;
+    use crate::text::test_support::{CosmicMeasureTestExt, TestShape, TextShaperTestExt};
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};
@@ -370,7 +372,7 @@ mod per_line {
             .cursor_xy(
                 text,
                 2,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
@@ -386,7 +388,7 @@ mod per_line {
             .cursor_xy(
                 text,
                 2,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
@@ -402,7 +404,7 @@ mod per_line {
             .cursor_xy(
                 text,
                 2,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
@@ -443,7 +445,7 @@ mod per_line {
         let l = c
             .measure(
                 "hi",
-                ShapeParams {
+                TestShape {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: Some(100.0),
@@ -456,7 +458,7 @@ mod per_line {
         let r = c
             .measure(
                 "hi",
-                ShapeParams {
+                TestShape {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: Some(100.0),
@@ -477,7 +479,7 @@ mod per_line {
     fn unbounded_halign_collapses_to_auto_in_key() {
         // Without a wrap target cosmic can't apply per-line align,
         // so every halign value at `max_width_px = None` shapes the
-        // same buffer. `key_for` collapses `halign_q` to `Auto`'s
+        // same buffer. Key construction collapses `halign_q` to `Auto`'s
         // discriminant on that path so single-line callers don't
         // pay an N-way cache split for identical glyph positions.
         use crate::text::cosmic::CosmicMeasure;
@@ -485,7 +487,7 @@ mod per_line {
         let left = c
             .measure(
                 "hi",
-                ShapeParams {
+                TestShape {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: None,
@@ -498,7 +500,7 @@ mod per_line {
         let right = c
             .measure(
                 "hi",
-                ShapeParams {
+                TestShape {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: None,
@@ -691,7 +693,7 @@ mod per_line {
 
     /// Regression: an empty multi-line buffer with right-align must
     /// place the caret at the right edge of the wrap target, not at
-    /// x = 0. Empty text returns `TextCacheKey::INVALID` and the
+    /// x = 0. Empty text returns `TextShapeKey::INVALID` and the
     /// shaper's empty-layout fallback must still honor halign; it
     /// historically ignored halign — caret pinned to the left while
     /// the user expects it to anchor where typed text will appear.
@@ -707,7 +709,7 @@ mod per_line {
             .cursor_xy(
                 "",
                 0,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
@@ -723,7 +725,7 @@ mod per_line {
             .cursor_xy(
                 "",
                 0,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
@@ -739,7 +741,7 @@ mod per_line {
             .cursor_xy(
                 "",
                 0,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
@@ -778,7 +780,7 @@ mod per_line {
         let wrap = 290.0_f32;
         let aligned = c.measure(
             "hi\nyo",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 19.2,
                 max_width_px: Some(wrap),
@@ -836,7 +838,7 @@ mod per_line {
             .cursor_xy(
                 &buf,
                 5,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(290.0),

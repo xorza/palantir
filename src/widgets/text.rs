@@ -104,7 +104,7 @@ impl<'a> Text<'a> {
         let color = style.color;
         let family = style.family;
         let weight = self.weight.unwrap_or(style.weight);
-        let metrics_valid = style.metrics().is_some();
+        let metrics_valid = style.metrics_valid();
         let font_size_px = style.font_size_px;
         let line_height_px = style.line_height_for(font_size_px);
         let widget = ui.widget(self.node);

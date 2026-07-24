@@ -19,7 +19,7 @@ use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::layer::Layer;
 use crate::scene::layer::PerLayer;
 use crate::scene::tree::Tree;
-use crate::text::TextCacheKey;
+use crate::text::TextShapeKey;
 use std::ops::{Index, IndexMut};
 
 /// Per-layer layout output — the SoA columns the encoder + hit-index
@@ -71,7 +71,7 @@ impl IndexMut<Layer> for Layout {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedText {
     pub measured: Size,
-    pub key: TextCacheKey,
+    pub key: TextShapeKey,
 }
 
 impl LayerLayout {

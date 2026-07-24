@@ -121,9 +121,7 @@ pub use shape::style::{LineCap, LineJoin};
 pub use shape::triangle::TriangleShape;
 pub use text::cosmic::CosmicMeasure;
 pub use text::wrap::TextWrap;
-pub use text::{
-    FontFamily, FontWeight, ShapeParams, ShapeParamsError, TextMeasurement, TextShaper,
-};
+pub use text::{FontFamily, FontWeight, TextShaper};
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 pub use ui::keyboard_capture::KeyboardCapture;
@@ -202,7 +200,7 @@ mod hot_struct_sizes {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::extras::ExtrasIdx;
     use crate::scene::tree::node::NodeRecord;
-    use crate::text::TextCacheKey;
+    use crate::text::TextShapeKey;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -300,7 +298,7 @@ mod hot_struct_sizes {
         Splitter<'static> => "widgets::Splitter": 144 / 8,
         // Layout / text outputs.
         ShapedText => "layout::ShapedText": 32 / 8,
-        TextCacheKey => "text::TextCacheKey": 24 / 8,
+        TextShapeKey => "text::TextShapeKey": 24 / 8,
         // Cross-frame animation rows.
         AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 472 / 8,
         // Cross-frame hash keys.
