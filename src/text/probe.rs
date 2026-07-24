@@ -213,6 +213,13 @@ fn push_run_selection_rects(
     cursor_end: cosmic_text::Cursor,
     out: &mut SelectionRects,
 ) {
+    // The per-grapheme test below (ported from `LayoutRun::highlight`) treats a
+    // run whose line differs from both cursors as fully selected, so runs on
+    // lines outside the selected range must be rejected up front — the same
+    // guard cosmic-text's editor applies before calling `highlight`.
+    if run.line_i < cursor_start.line || run.line_i > cursor_end.line {
+        return;
+    }
     let mut selected: Option<(f32, f32)> = None;
     let mut flush = |selected: &mut Option<(f32, f32)>| {
         if let Some((min_x, max_x)) = selected.take() {

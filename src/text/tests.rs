@@ -791,6 +791,20 @@ fn selection_rects_match_cosmic_highlight_spans() {
             range: 0..11,
             max_width_px: None,
         },
+        // "def" only — lines before AND after the range must emit nothing.
+        Case {
+            label: "middle_line_only",
+            text: "abc\ndef\nghi",
+            range: 4..7,
+            max_width_px: None,
+        },
+        // "ef\ng" — spans lines 1–2, line 0 must emit nothing.
+        Case {
+            label: "tail_span",
+            text: "abc\ndef\nghi",
+            range: 5..9,
+            max_width_px: None,
+        },
         Case {
             label: "mixed_bidi",
             text: "abc אבג def",
@@ -819,6 +833,12 @@ fn selection_rects_match_cosmic_highlight_spans() {
             let start = probe::cursor_from_byte(case.text, case.range.start);
             let end = probe::cursor_from_byte(case.text, case.range.end);
             for run in buffer.layout_runs() {
+                // Raw `highlight` marks any run whose line differs from both
+                // cursors as fully selected; cosmic's editor guards it with
+                // this line-range check, so the oracle must too.
+                if run.line_i < start.line || run.line_i > end.line {
+                    continue;
+                }
                 expected.extend(
                     run.highlight(start, end)
                         .map(|(x, w)| Rect::new(x, run.line_top, w, run.line_height)),
@@ -836,6 +856,26 @@ fn selection_rects_match_cosmic_highlight_spans() {
             "case: {}",
             case.label
         );
+        // Independent of the oracle (which shares the line-range guard):
+        // hand-computed placement for the partial-range cases — the three
+        // unwrapped source lines sit at y = 0, lh, 2·lh.
+        let lh = 16.0 * LINE_HEIGHT_MULT;
+        let ys: Vec<f32> = actual.iter().map(|r| r.min.y).collect();
+        match case.label {
+            "middle_line_only" => {
+                assert_eq!(ys.len(), 1, "one rect for the middle line, got {ys:?}");
+                assert!((ys[0] - lh).abs() < 0.5, "rect sits on line 1, got {ys:?}");
+            }
+            "tail_span" => {
+                assert_eq!(ys.len(), 2, "one rect per selected line, got {ys:?}");
+                assert!((ys[0] - lh).abs() < 0.5, "first rect on line 1, got {ys:?}");
+                assert!(
+                    (ys[1] - 2.0 * lh).abs() < 0.5,
+                    "second rect on line 2, got {ys:?}"
+                );
+            }
+            _ => {}
+        }
     }
 }
 
