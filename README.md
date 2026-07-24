@@ -90,6 +90,7 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 ```rust
 use aperture::{
     App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
+    WinitHostError,
 };
 
 struct Counter { clicks: u32 }
@@ -111,11 +112,11 @@ impl App for Counter {
     }
 }
 
-fn main() {
+fn main() -> Result<(), WinitHostError> {
     WinitHost::builder(WindowToken(0))
         .title("counter")
-        .build(|_ui, _host| Counter { clicks: 0 })
-        .run();
+        .build(|_ui, _host| Counter { clicks: 0 })?
+        .run()
 }
 ```
 

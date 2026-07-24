@@ -60,6 +60,7 @@ pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
     config::WinitHostConfig,
+    error::WinitHostError,
     handle::{HostHandle, UserEvent},
 };
 pub use input::InputEvent;

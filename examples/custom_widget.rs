@@ -19,7 +19,7 @@
 use aperture::{
     Align, App, Background, Color, Configure, ConfigureNode, Corners, HostHandle, LineCap,
     LineJoin, Node, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing,
-    Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost,
+    Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost, WinitHostError,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
@@ -193,9 +193,9 @@ impl App for Demo {
     }
 }
 
-fn main() {
+fn main() -> Result<(), WinitHostError> {
     WinitHost::builder(WindowToken(0))
         .title("custom widget")
-        .build(Demo::new)
-        .run();
+        .build(Demo::new)?
+        .run()
 }

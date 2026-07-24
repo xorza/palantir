@@ -78,7 +78,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("debug", debug::build),
 ];
 
-fn main() {
+fn main() -> Result<(), aperture::WinitHostError> {
     use tracing_subscriber::EnvFilter;
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -88,8 +88,8 @@ fn main() {
 
     WinitHost::builder(MAIN_WINDOW)
         .title("aperture showcase")
-        .build(State::new)
-        .run();
+        .build(State::new)?
+        .run()
 }
 
 impl State {
