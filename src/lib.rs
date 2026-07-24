@@ -200,7 +200,7 @@ mod hot_struct_sizes {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::extras::ExtrasIdx;
     use crate::scene::tree::node::NodeRecord;
-    use crate::text::TextShapeKey;
+    use crate::text::{TextShapeKey, TextShapeResult};
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -299,6 +299,7 @@ mod hot_struct_sizes {
         // Layout / text outputs.
         ShapedText => "layout::ShapedText": 32 / 8,
         TextShapeKey => "text::TextShapeKey": 24 / 8,
+        TextShapeResult => "text::TextShapeResult": 64 / 8,
         // Cross-frame animation rows.
         AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 472 / 8,
         // Cross-frame hash keys.

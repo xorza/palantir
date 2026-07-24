@@ -7,6 +7,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::text::wrap::TextWrap;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;
 

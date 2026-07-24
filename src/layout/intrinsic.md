@@ -92,11 +92,10 @@ before delegating content sizing to the driver.
 ## Per-driver behavior
 
 - **Leaf.** `intrinsic.rs::leaf` walks the node's shapes. `Shape::Text`
-  contributes via `TextSystem::prepare` (reached through the
-  `LayoutEngine`) — cosmic returns both `intrinsic_min` and natural width from
-  one unbounded shape, cached on the cosmic side. Other shapes contribute
-  zero (they paint relative to the owner's arranged rect, they don't
-  drive size).
+  contributes via `TextSystem::shape` (reached through the `LayoutEngine`) —
+  one cached unbounded shape supplies the policy-resolved min-content and
+  max-content sizes. Other shapes contribute zero (they paint relative to the
+  owner's arranged rect, they don't drive size).
 - **HStack / VStack on main axis.** Sum of children's intrinsic on that
   axis + `(n-1) * gap`.
 - **HStack / VStack on cross axis.** Max of children's intrinsic on

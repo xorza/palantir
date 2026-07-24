@@ -143,6 +143,25 @@ pub(crate) struct TextSystem {
     sweep_limit: usize,
 }
 
+/// Shaped-buffer measurement plus every layout consequence of one
+/// [`TextWrap`] policy.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TextShapeResult {
+    pub(crate) measurement: TextMeasurement,
+    pub(crate) content_size: Size,
+    pub(crate) min_content: Size,
+    pub(crate) max_content: Size,
+}
+
+impl TextShapeResult {
+    const ZERO: Self = Self {
+        measurement: TextMeasurement::ZERO,
+        content_size: Size::ZERO,
+        min_content: Size::ZERO,
+        max_content: Size::ZERO,
+    };
+}
+
 /// One direct text layout exposed for several read-only geometry queries.
 #[derive(Debug)]
 pub(crate) struct TextLayoutProbe<'a> {
@@ -308,7 +327,9 @@ impl TextSystem {
 
     /// Shape one identity-cached text run. The unbounded measurement remains
     /// the reuse root; bounded policies derive their target from it and cache
-    /// the most recent resolved measurement in the same operation.
+    /// the most recent resolved measurement in the same operation. Inlining
+    /// lets each hot caller erase the result fields it does not consume.
+    #[inline]
     pub(crate) fn shape(
         &mut self,
         identity: TextRunIdentity,
@@ -316,11 +337,11 @@ impl TextSystem {
         wrap_policy: TextWrap,
         halign: HAlign,
         available_width_px: Option<f32>,
-    ) -> TextMeasurement {
+    ) -> TextShapeResult {
         let shaper = &self.shaper;
         let request = request.unbounded_version();
         if request.text.is_empty() {
-            return TextMeasurement::ZERO;
+            return TextShapeResult::ZERO;
         }
 
         let refresh = || {
@@ -345,43 +366,131 @@ impl TextSystem {
             }
             Entry::Vacant(vacant) => vacant.insert(refresh()),
         };
-        let Some(available_width_px) = available_width_px else {
-            return entry.unbounded;
-        };
-        debug_assert!(available_width_px.is_finite());
-        let (target_width_px, fit) = match wrap_policy {
-            TextWrap::SingleLine | TextWrap::Scroll => return entry.unbounded,
-            TextWrap::Truncate => (available_width_px, LineFit::Clip),
-            TextWrap::Ellipsis => (available_width_px, LineFit::Ellipsis),
-            TextWrap::Wrap => (available_width_px, LineFit::Wrap),
-            TextWrap::WrapWithOverflow => (
-                available_width_px.max(entry.unbounded.intrinsic_min),
-                LineFit::Wrap,
-            ),
-        };
-        let target_width_px = wrap::canonical_wrap_width(target_width_px);
-        let request = request
-            .bounded(target_width_px, halign, fit)
-            .expect("canonical text wrap width must be valid");
-        if let Some(wrap) = entry.wrap
-            && wrap.key == request.key
-        {
-            return wrap.result;
+        if let Some(width) = available_width_px {
+            debug_assert!(width.is_finite());
         }
-        let mut inner = shaper.inner.borrow_mut();
-        let ShaperInner {
-            cosmic,
-            measure_calls,
-            ..
-        } = &mut *inner;
-        *measure_calls += 1;
-        let measurement = dispatch(cosmic, request);
-        entry.wrap = Some(WrapReuse {
-            key: request.key,
-            result: measurement,
-        });
-        measurement
+        let unbounded = entry.unbounded;
+        let zero_width = Size::new(0.0, unbounded.size.h);
+        match wrap_policy {
+            TextWrap::SingleLine => TextShapeResult {
+                measurement: unbounded,
+                content_size: unbounded.size,
+                min_content: unbounded.size,
+                max_content: unbounded.size,
+            },
+            // Scroll owns clipping and panning, so its full run creates no width demand.
+            TextWrap::Scroll => TextShapeResult {
+                measurement: unbounded,
+                content_size: zero_width,
+                min_content: zero_width,
+                max_content: zero_width,
+            },
+            TextWrap::Truncate => {
+                let measurement = available_width_px.map_or(unbounded, |width| {
+                    resolve_bounded_measurement(
+                        shaper,
+                        entry,
+                        request,
+                        width,
+                        halign,
+                        LineFit::Clip,
+                    )
+                });
+                TextShapeResult {
+                    measurement,
+                    content_size: measurement.size,
+                    min_content: zero_width,
+                    max_content: unbounded.size,
+                }
+            }
+            TextWrap::Ellipsis => {
+                let measurement = available_width_px.map_or(unbounded, |width| {
+                    resolve_bounded_measurement(
+                        shaper,
+                        entry,
+                        request,
+                        width,
+                        halign,
+                        LineFit::Ellipsis,
+                    )
+                });
+                TextShapeResult {
+                    measurement,
+                    content_size: measurement.size,
+                    min_content: zero_width,
+                    max_content: unbounded.size,
+                }
+            }
+            TextWrap::Wrap => {
+                let measurement = available_width_px.map_or(unbounded, |width| {
+                    resolve_bounded_measurement(
+                        shaper,
+                        entry,
+                        request,
+                        width,
+                        halign,
+                        LineFit::Wrap,
+                    )
+                });
+                TextShapeResult {
+                    measurement,
+                    content_size: measurement.size,
+                    min_content: zero_width,
+                    max_content: unbounded.size,
+                }
+            }
+            TextWrap::WrapWithOverflow => {
+                let measurement = available_width_px.map_or(unbounded, |width| {
+                    resolve_bounded_measurement(
+                        shaper,
+                        entry,
+                        request,
+                        width.max(unbounded.intrinsic_min),
+                        halign,
+                        LineFit::Wrap,
+                    )
+                });
+                TextShapeResult {
+                    measurement,
+                    content_size: measurement.size,
+                    min_content: Size::new(unbounded.intrinsic_min, unbounded.size.h),
+                    max_content: unbounded.size,
+                }
+            }
+        }
     }
+}
+
+fn resolve_bounded_measurement(
+    shaper: &TextShaper,
+    entry: &mut TextReuseEntry,
+    request: TextShapeRequest<'_>,
+    target_width_px: f32,
+    halign: HAlign,
+    fit: LineFit,
+) -> TextMeasurement {
+    let target_width_px = wrap::canonical_wrap_width(target_width_px);
+    let request = request
+        .bounded(target_width_px, halign, fit)
+        .expect("canonical text wrap width must be valid");
+    if let Some(wrap) = entry.wrap
+        && wrap.key == request.key
+    {
+        return wrap.result;
+    }
+    let mut inner = shaper.inner.borrow_mut();
+    let ShaperInner {
+        cosmic,
+        measure_calls,
+        ..
+    } = &mut *inner;
+    *measure_calls += 1;
+    let measurement = dispatch(cosmic, request);
+    entry.wrap = Some(WrapReuse {
+        key: request.key,
+        result: measurement,
+    });
+    measurement
 }
 
 impl TextShaper {
@@ -1160,6 +1269,7 @@ pub(crate) mod test_support {
                     shape.halign,
                     shape.max_width_px,
                 )
+                .measurement
             })
         }
     }

@@ -14,16 +14,14 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::support::{AxisCtx, TextShapeInput, leaf_text_shapes, resolve_axis_size};
+use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::interned_str::InternedText;
-use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::text::wrap::TextWrap;
-use crate::text::{TextMeasurement, TextRunIdentity};
+use crate::text::TextRunIdentity;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -261,51 +259,24 @@ fn leaf<const RANGE: bool>(
     let wid = tree.records.widget_id()[node.idx()];
     let mut range = IntrinsicRange::ZERO;
     for ts in leaf_text_shapes(tree, interned_text, node) {
-        let measurement = shape_leaf_text(engine, wid, &ts);
+        let result = engine.text.shape(
+            TextRunIdentity {
+                widget_id: wid,
+                ordinal: ts.ordinal,
+            },
+            ts.shape_request(),
+            ts.wrap,
+            ts.halign,
+            None,
+        );
         if query.includes(LenReq::MinContent) {
-            range.min = range
-                .min
-                .max(leaf_value(axis, LenReq::MinContent, ts.wrap, measurement));
+            range.min = range.min.max(axis.main(result.min_content));
         }
         if query.includes(LenReq::MaxContent) {
-            range.max = range
-                .max
-                .max(leaf_value(axis, LenReq::MaxContent, ts.wrap, measurement));
+            range.max = range.max.max(axis.main(result.max_content));
         }
     }
     range
-}
-
-fn shape_leaf_text(
-    engine: &mut LayoutEngine,
-    wid: WidgetId,
-    ts: &TextShapeInput<'_>,
-) -> TextMeasurement {
-    engine.text.shape(
-        TextRunIdentity {
-            widget_id: wid,
-            ordinal: ts.ordinal,
-        },
-        ts.shape_request(),
-        ts.wrap,
-        ts.halign,
-        None,
-    )
-}
-
-fn leaf_value(axis: Axis, req: LenReq, wrap: TextWrap, measurement: TextMeasurement) -> f32 {
-    match (axis, req) {
-        (Axis::X, LenReq::MinContent) => match wrap {
-            TextWrap::WrapWithOverflow => measurement.intrinsic_min,
-            TextWrap::SingleLine => measurement.size.w,
-            TextWrap::Wrap | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Scroll => 0.0,
-        },
-        (Axis::X, LenReq::MaxContent) => match wrap {
-            TextWrap::Scroll => 0.0,
-            _ => measurement.size.w,
-        },
-        (Axis::Y, _) => measurement.size.h,
-    }
 }
 
 #[cfg(test)]
