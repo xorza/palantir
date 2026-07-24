@@ -1661,7 +1661,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     use crate::renderer::frontend::cmd_buffer::Command;
     use crate::renderer::frontend::encoder;
-    use crate::renderer::gradient_atlas::ATLAS_ROWS;
+    use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::shape::Shape;
     use crate::text::TextShaper;
@@ -1705,7 +1705,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     b.run_at_without_baseline(SURFACE, |ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
-            for index in 0..ATLAS_ROWS - 1 {
+            for index in 0..INITIAL_ATLAS_ROWS - 1 {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
                     LinearGradient::two_stop(
                         0.0,
@@ -1721,7 +1721,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     });
     let b_rows: HashSet<LutRow> = rows(&b, &atlas).into_iter().collect();
-    assert_eq!(b_rows.len(), (ATLAS_ROWS - 1) as usize);
+    assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     atlas.flush_with(|_| ());
 

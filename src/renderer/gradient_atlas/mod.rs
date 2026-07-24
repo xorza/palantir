@@ -48,11 +48,22 @@ use std::hash::{Hash, Hasher};
 pub(crate) mod bake;
 pub(crate) mod handle;
 
-/// Number of rows in the LUT atlas texture. One row per distinct
+/// Rows the LUT atlas texture starts with. One row per distinct
 /// gradient currently in use. Row 0 is reserved as a debug-magenta
 /// fallback (so a `fill_lut_row = 0` from a bug paints obviously
-/// wrong); real registrations occupy rows 1..ATLAS_ROWS.
-pub(crate) const ATLAS_ROWS: u32 = 256;
+/// wrong); real registrations occupy rows 1..capacity.
+///
+/// The atlas doubles from here (up to the device's
+/// `max_texture_dimension_2d`) when one frame registers more distinct
+/// gradients than fit — see [`CpuGradientAtlas::grow`]. 256 rows is
+/// 512 KB, and no realistic UI frame exceeds it, so growth is a
+/// pathological-content escape hatch rather than a normal path.
+pub(crate) const INITIAL_ATLAS_ROWS: u32 = 256;
+
+/// Growth ceiling when no device limit is known (deviceless tests and
+/// benches). 2048 is wgpu's downlevel `max_texture_dimension_2d`
+/// floor, so it can't exceed a real adapter's cap.
+pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 
 /// Exact bake identity shared by every gradient variant.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,35 +89,44 @@ struct GradientAtlasSlot {
 /// texture each frame by draining [`Self::flush`].
 ///
 /// Row 0 is reserved as a magenta-fill fallback and never evicted.
-/// Slots 1..ATLAS_ROWS are content-hashed and linear-probed. When the
+/// Slots `1..capacity` are content-hashed and linear-probed. When the
 /// table is full and the requested content isn't already resident, the
 /// LRU row (smallest `last_used`) is evicted and re-baked in place —
 /// excluding rows registered since the last flush, whose `LutRow` ids
 /// this frame's draws already captured (see [`Self::lru_victim`]).
+/// When *every* row is exempt the atlas [grows](Self::grow) instead,
+/// so a frame authoring more distinct gradients than the table holds
+/// is valid content rather than a failure.
 #[derive(Debug)]
 pub(crate) struct CpuGradientAtlas {
     /// Exact bake key plus its probe hash per occupied row. Equality
     /// confirmation keeps a true hash collision from aliasing another
     /// gradient's baked row. Row 0 stays `None` because probing scans
-    /// only `1..ATLAS_ROWS`; `baked[0]` carries the fallback payload.
-    rows: [Option<GradientAtlasSlot>; ATLAS_ROWS as usize],
+    /// only `1..capacity`; `baked[0]` carries the fallback payload.
+    rows: Vec<Option<GradientAtlasSlot>>,
     /// Baked LUT row bytes, indexed by row id. Row 0's contents are
-    /// the magenta-fallback fill. Storage is a single 512 KB heap
-    /// allocation — `Vec<LutRowTexels>` is contiguous, so casting to
-    /// `&[u8]` for the GPU upload is a free reinterpret.
+    /// the magenta-fallback fill. Storage is a single heap allocation
+    /// (512 KB at the initial capacity) — `Vec<LutRowTexels>` is
+    /// contiguous, so casting to `&[u8]` for the GPU upload is a free
+    /// reinterpret.
     baked: Vec<LutRowTexels>,
     /// Per-row "last touched" timestamp. Bumped on every `register_stops`
     /// hit and on bake. The LRU victim is the row with the smallest
     /// stamp; row 0 is excluded. `u64` so wrap is unreachable in any
     /// realistic workload (a `u32` at 60 fps × 200 registers/frame
     /// rolls over in ~10 years and silently mis-evicts on wrap).
-    last_used: [u64; ATLAS_ROWS as usize],
+    last_used: Vec<u64>,
     /// Per-row: the [`Self::epoch`] the row was last registered in.
     /// [`Self::lru_victim`] refuses rows stamped with the *current*
     /// epoch — their `LutRow` ids are already captured in this frame's
     /// lowered draw payloads, so re-baking one would silently repaint
     /// those draws with the wrong gradient after the end-of-frame upload.
-    row_epoch: [u64; ATLAS_ROWS as usize],
+    row_epoch: Vec<u64>,
+    /// Hard row ceiling: the device's `max_texture_dimension_2d`, since
+    /// the atlas is one texture row per gradient. Registrations past a
+    /// full table at this capacity paint the magenta fallback (see
+    /// [`Self::register_stops`]).
+    max_rows: u32,
     /// Monotonic register counter. Each `register_stops` call bumps
     /// it and stamps the touched row, so within a single frame later
     /// registers are "newer" than earlier ones (fine — eviction needs
@@ -145,15 +165,31 @@ struct DirtyRows {
 pub(crate) struct FlushedRows<'a> {
     pub(crate) first_row: u32,
     pub(crate) bytes: &'a [u8],
+    /// The atlas's current row count. The backend recreates its texture
+    /// when this differs from the live one — [`CpuGradientAtlas::grow`]
+    /// dirties every row, so the upload that reports a new height also
+    /// refills the replacement texture.
+    pub(crate) total_rows: u32,
 }
 
 impl Default for CpuGradientAtlas {
     fn default() -> Self {
+        Self::new(DEFAULT_MAX_ATLAS_ROWS)
+    }
+}
+
+impl CpuGradientAtlas {
+    /// Atlas capped at `max_rows` rows (the device's
+    /// `max_texture_dimension_2d`). Starts at [`INITIAL_ATLAS_ROWS`];
+    /// a cap below that would make the initial allocation itself
+    /// illegal, so it is raised to fit.
+    pub(crate) fn new(max_rows: u32) -> Self {
         let mut atlas = Self {
-            rows: std::array::from_fn(|_| None),
-            baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]; ATLAS_ROWS as usize],
-            last_used: [0; ATLAS_ROWS as usize],
-            row_epoch: [0; ATLAS_ROWS as usize],
+            rows: (0..INITIAL_ATLAS_ROWS).map(|_| None).collect(),
+            baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]; INITIAL_ATLAS_ROWS as usize],
+            last_used: vec![0; INITIAL_ATLAS_ROWS as usize],
+            row_epoch: vec![0; INITIAL_ATLAS_ROWS as usize],
+            max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             clock: 0,
             epoch: 0,
             dirty: None,
@@ -161,9 +197,14 @@ impl Default for CpuGradientAtlas {
         atlas.init_row_zero_magenta();
         atlas
     }
-}
 
-impl CpuGradientAtlas {
+    /// Rows currently allocated, including the reserved row 0. The four
+    /// per-row columns are resized together in [`Self::grow`], so
+    /// `baked` speaks for all of them.
+    pub(crate) fn capacity(&self) -> u32 {
+        self.baked.len() as u32
+    }
+
     /// Fill row 0 with bright magenta (sRGB `#ff00ff`, full alpha). Any
     /// quad whose `fill_lut_row = 0` paints this — visible at a glance,
     /// catches "registered with the atlas but the resulting row id
@@ -173,7 +214,7 @@ impl CpuGradientAtlas {
         // #ff00ff on write, so the fallback reads as bright magenta.
         let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
         self.baked[0].fill(magenta);
-        // No `rows[0]` sentinel: the probe range is `1..ATLAS_ROWS`,
+        // No `rows[0]` sentinel: the probe range is `1..capacity`,
         // so row 0 is unreachable regardless of what hash a real
         // gradient produces.
         //
@@ -187,40 +228,101 @@ impl CpuGradientAtlas {
     /// interp)`. Variant-agnostic: linear/radial/conic gradients with
     /// matching stops + interp share one row (the geometry differs in
     /// per-fragment `t`, but the LUT only depends on the colour-stop
-    /// sequence). Returns the row id in `1..ATLAS_ROWS`.
+    /// sequence). Returns the row id in `1..capacity`.
     ///
     /// Bumps the per-row LRU stamp on every call so eviction picks the
     /// least-recently-touched row when the table is full.
+    ///
+    /// Three escalating arms once the table fills: evict an
+    /// unreferenced row, else [grow](Self::grow) the atlas, else — only
+    /// at the device's texture-height cap — return
+    /// [`LutRow::FALLBACK`]. That last arm paints the debug magenta
+    /// row: loudly wrong for the overflowing gradients, but it neither
+    /// crashes nor corrupts the rows this frame's other draws already
+    /// captured.
     pub(crate) fn register_stops(&mut self, stops: &GradientStops, interp: Interp) -> LutRow {
         self.clock = self.clock.wrapping_add(1);
         let content_hash = hash_lut(stops, interp);
-        // Probe starting at `1 + (hash mod 255)` so row 0 is never
-        // claimed by a real gradient. Two passes: first look for a
-        // match or an empty slot; if neither exists, evict the LRU
-        // row (single linear scan over rows 1..ATLAS_ROWS).
-        let base = (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
-        for offset in 0..(ATLAS_ROWS - 1) {
-            let row = 1 + (base + offset) % (ATLAS_ROWS - 1);
-            match self.rows[row as usize].as_ref() {
-                Some(slot)
-                    if slot.content_hash == content_hash && slot.key.matches(stops, interp) =>
-                {
-                    // Hit: bump the LRU stamp and mark the row as
-                    // referenced this epoch — its `LutRow` id is now in
-                    // a draw payload, so it must not be evicted before
-                    // the upload.
-                    self.last_used[row as usize] = self.clock;
-                    self.row_epoch[row as usize] = self.epoch;
-                    return LutRow(row);
+        loop {
+            // Probe starting at `1 + (hash mod usable)` so row 0 is
+            // never claimed by a real gradient. Two passes: first look
+            // for a match or an empty slot; if neither exists, evict the
+            // LRU row (single linear scan over rows 1..capacity).
+            let usable = self.capacity() - 1;
+            let base = (content_hash % u64::from(usable)) as u32;
+            for offset in 0..usable {
+                let row = 1 + (base + offset) % usable;
+                match self.rows[row as usize].as_ref() {
+                    Some(slot)
+                        if slot.content_hash == content_hash && slot.key.matches(stops, interp) =>
+                    {
+                        // Hit: bump the LRU stamp and mark the row as
+                        // referenced this epoch — its `LutRow` id is now in
+                        // a draw payload, so it must not be evicted before
+                        // the upload.
+                        self.last_used[row as usize] = self.clock;
+                        self.row_epoch[row as usize] = self.epoch;
+                        return LutRow(row);
+                    }
+                    None => return self.claim_row(row, content_hash, stops, interp),
+                    _ => continue,
                 }
-                None => return self.claim_row(row, content_hash, stops, interp),
-                _ => continue,
+            }
+            // Atlas full: evict the LRU row not referenced this epoch. Row 0
+            // (magenta fallback) is permanent — the scan starts at 1.
+            if let Some(victim) = self.lru_victim() {
+                return self.claim_row(victim, content_hash, stops, interp);
+            }
+            // Every row is spoken for by this frame's draws. Grow and
+            // re-probe: the grown table has empty rows, so the next
+            // pass claims one and the loop runs at most twice per
+            // doubling.
+            if !self.grow() {
+                return LutRow::FALLBACK;
             }
         }
-        // Atlas full: evict the LRU row not referenced this epoch. Row 0
-        // (magenta fallback) is permanent — the scan starts at 1.
-        let victim = self.lru_victim();
-        self.claim_row(victim, content_hash, stops, interp)
+    }
+
+    /// Double the row count (capped at [`Self::max_rows`]), reporting
+    /// whether the atlas actually grew.
+    ///
+    /// Resident rows keep their ids — they must, since this frame's
+    /// draw payloads already hold them — but the probe modulus changes
+    /// with the capacity, so a resident gradient whose probe base moves
+    /// can be baked into a *second* row later. That costs a duplicate
+    /// bake, never a wrong colour, and self-heals: the stale copy stops
+    /// being touched and falls out as the LRU victim. Rehashing the
+    /// table instead is impossible here by construction — growth
+    /// happens precisely when every row is pinned in place.
+    fn grow(&mut self) -> bool {
+        let capacity = self.capacity();
+        let grown = capacity.saturating_mul(2).min(self.max_rows);
+        if grown <= capacity {
+            return false;
+        }
+        self.rows.resize_with(grown as usize, || None);
+        self.baked
+            .resize(grown as usize, [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]);
+        self.last_used.resize(grown as usize, 0);
+        self.row_epoch.resize(grown as usize, 0);
+        // The backend replaces its texture at the new height and wgpu
+        // zero-initializes the replacement, so every row — not just the
+        // new ones — has to re-upload.
+        self.dirty = Some(DirtyRows {
+            first: 0,
+            last: grown - 1,
+        });
+        // The fixed-size arrays this replaced made equal lengths a type
+        // invariant; four independent resizes make it a convention, and
+        // `capacity` reads only `baked`. Cold path — growth happens at
+        // most once per doubling.
+        debug_assert!(
+            self.rows.len() == self.baked.len()
+                && self.last_used.len() == self.baked.len()
+                && self.row_epoch.len() == self.baked.len(),
+            "per-row columns must resize together",
+        );
+        true
     }
 
     /// Bake `(stops, interp)` into `row` and take over the slot: content
@@ -262,40 +364,32 @@ impl CpuGradientAtlas {
         });
     }
 
-    /// Scan rows 1..ATLAS_ROWS for the smallest `last_used` stamp among
+    /// Scan rows `1..capacity` for the smallest `last_used` stamp among
     /// rows *not* registered in the current epoch — those rows' `LutRow`
     /// ids are already captured in this frame's draw payloads, so
     /// re-baking one would make those draws sample the wrong gradient
-    /// after the end-of-frame upload. Always returns a row id ≥ 1 (row 0,
+    /// after the end-of-frame upload. Any returned row id is ≥ 1 (row 0,
     /// the magenta fallback, is permanent).
     ///
-    /// Panics when every row was registered this epoch: that's more
-    /// distinct gradients in one frame than the atlas holds, and evicting
-    /// any of them silently paints wrong colors — crash on the logic
-    /// error instead.
-    fn lru_victim(&self) -> u32 {
+    /// `None` when every row was registered this epoch: more distinct
+    /// gradients in one frame than the atlas holds. That's legal content,
+    /// so the caller grows the atlas rather than evicting a row this
+    /// frame still needs.
+    fn lru_victim(&self) -> Option<u32> {
         let epoch = self.epoch;
-        // 0 doubles as "no evictable row": row 0 is never a candidate.
-        let mut best_row: u32 = 0;
+        let mut best: Option<u32> = None;
         let mut best_stamp = u64::MAX;
-        for row in 1..ATLAS_ROWS {
+        for row in 1..self.capacity() {
             if self.row_epoch[row as usize] == epoch {
                 continue;
             }
             let s = self.last_used[row as usize];
             if s < best_stamp {
                 best_stamp = s;
-                best_row = row;
+                best = Some(row);
             }
         }
-        assert!(
-            best_row != 0,
-            "gradient atlas exhausted: more than {} distinct gradients registered in \
-             one frame — every LUT row is already referenced by this frame's draws, \
-             so evicting any would silently paint the wrong gradient",
-            ATLAS_ROWS - 1,
-        );
-        best_row
+        best
     }
 
     /// If any row changed since the last flush, return the contiguous
@@ -309,10 +403,12 @@ impl CpuGradientAtlas {
     pub(crate) fn flush(&mut self) -> Option<FlushedRows<'_>> {
         self.epoch = self.epoch.wrapping_add(1);
         let dirty = self.dirty.take()?;
+        let total_rows = self.capacity();
         let rows = &self.baked[dirty.first as usize..=dirty.last as usize];
         Some(FlushedRows {
             first_row: dirty.first,
             bytes: bytemuck::cast_slice(rows),
+            total_rows,
         })
     }
 }

@@ -6,6 +6,7 @@
 mod damage;
 mod format_change;
 mod gpu_view;
+mod gradient;
 mod hidpi;
 mod image;
 mod layout;

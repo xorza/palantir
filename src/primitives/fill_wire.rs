@@ -121,7 +121,8 @@ impl FillKind {
 
 /// Index into the gradient LUT atlas texture. `LutRow(0)` is the
 /// magenta debug fallback (so a stray default value paints obviously
-/// wrong); real registrations occupy `1..ATLAS_ROWS`. Newtype keeps
+/// wrong); real registrations occupy `1..capacity`, where the atlas
+/// grows on demand rather than holding a fixed row count. Newtype keeps
 /// the atlas-row identifier from being silently swapped with another
 /// `u32` field on `Quad`.
 #[repr(transparent)]

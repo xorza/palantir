@@ -20,7 +20,6 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
-use crate::renderer::gradient_atlas::ATLAS_ROWS;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
     CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,
@@ -72,7 +71,6 @@ impl CurvePipeline {
         let wgsl = specialize(
             include_str!("curve.wgsl"),
             &[
-                ShaderConstant::float("ATLAS_ROWS", ATLAS_ROWS as f32),
                 ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
                 ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
                 ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),

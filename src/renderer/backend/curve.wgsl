@@ -62,7 +62,6 @@ var<immediate> imm: Immediates;
 // `t` is already in [0, 1] by construction, so spread is a no-op.
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
-const ATLAS_ROWS_F: f32 = /*{ATLAS_ROWS}*/;
 
 // `SEGMENTS_PER_INSTANCE` is substituted at shader-module construction
 // from the Rust const of the same name (see `curve_pipeline.rs`). Don't
@@ -143,9 +142,11 @@ struct VsOut {
     @location(3) color: vec4<f32>,
     // `FLAG_*` bits (+ join metric in bits 4..6).
     @location(4) @interpolate(flat) flags: u32,
-    // Gradient LUT row pre-resolved to the atlas `v` coordinate;
-    // ignored without `FLAG_LINEAR_FILL`.
-    @location(5) @interpolate(flat) lut_v: f32,
+    // Gradient LUT atlas row; ignored without `FLAG_LINEAR_FILL`.
+    // Carried as the row rather than a resolved `v` because deriving
+    // `v` needs the atlas height, and that query has to run in the
+    // fragment stage — the gradient bind group is fragment-visible only.
+    @location(5) @interpolate(flat) lut_row: u32,
     // Per-vertex curve parameter `t` ∈ [0, 1] for LUT sampling. The
     // hardware lerps it across the strip cross-section, which is
     // correct: each strip cross-section corresponds to a single `t`,
@@ -241,7 +242,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 
     var out: VsOut;
     out.half_w = half_w;
-    out.lut_v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
+    out.lut_row = in.fill_lut_row;
     out.offset = 0.0;
     out.cap_t = 0.0;
     out.curve_t = 0.0;
@@ -414,8 +415,12 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     var rgba = in.color;
     if ((in.flags & FLAG_LINEAR_FILL) != 0u) {
         // `curve_t` is in [0, 1] by construction and the sampler is
-        // clamp-to-edge, so no explicit clamp.
-        rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, in.lut_v));
+        // clamp-to-edge, so no explicit clamp. Row count is queried,
+        // not baked in as a const: the atlas texture grows when one
+        // frame registers more distinct gradients than it holds, and a
+        // query keeps this pipeline valid across that resize.
+        let lut_v = (f32(in.lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
+        rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
     }
     let a = rgba.a * coverage;
     return vec4<f32>(rgba.rgb * a, a);
