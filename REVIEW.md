@@ -2,15 +2,13 @@
 
 ## Executive summary
 
-The highest-impact risks are at public input boundaries. Invalid offscreen scale factors reach release rendering with only a debug assertion, and non-finite pointer or scroll input can enter retained interaction state. These paths let invalid caller or platform data poison layout and persistent interaction geometry.
+The highest-impact remaining risk is at the public input boundary. Non-finite pointer or scroll input can enter retained interaction state, letting malformed caller or platform data poison persistent interaction geometry.
 
 The main simplification opportunities are narrower but repeated across hot subsystems. Text validation loses its proof between recording and layout, editor-only geometry occupies the shared shaping/cache module, DragValue represents one interaction as two independently stored latches, and rounded/windowed rectangles carry parallel retained payloads through lowering and encoding.
 
 Release hot paths also retain invariant checks and test instrumentation, while the opt-in frame overlay allocates strings before copying them into the existing text arena. Lower-priority findings cover duplicated widget/input vocabulary, unused public surface, overly broad dependency features, and architecture documentation that no longer matches the storage layout.
 
 ## High: public boundaries can crash or poison retained state
-
-- [ ] **Offscreen display scale validation disappears in release builds.** `OffscreenHost::frame_offscreen` accepts an arbitrary `f32` scale factor and passes it directly into `Display::from_physical` (`src/host/offscreen.rs:151-172`, `src/host/offscreen.rs:182-204`); `Display` stores the value unchanged and divides physical dimensions by it (`src/display.rs:56-74`). The only frame-boundary guard is a `debug_assert!` that does not reject positive infinity even in debug and is removed entirely in release (`src/ui/mod.rs:163-184`). Zero, negative, infinite, or NaN caller input can consequently feed infinite or NaN geometry into layout, damage, composition, and raster scaling.
 
 - [ ] **Pointer and scroll events accept non-finite coordinates into persistent interaction state.** The public `InputEvent` documents and carries raw `Vec2` values for pointer and both scroll variants (`src/input/mod.rs:154-185`), but ingress rejects only invalid `Zoom` factors (`src/input/mod.rs:527-550`). Pointer positions are retained and used for drag-distance and hit-test calculations, while scroll vectors are accumulated without validation (`src/input/mod.rs:546-575`, `src/input/mod.rs:675-697`). A non-finite scroll component then survives the widget boundary and is written into retained offsets because `NaN != 0.0` and clamping preserves NaN (`src/widgets/scroll/mod.rs:561-591`, `src/widgets/scroll/state.rs:106-128`). One malformed event can therefore strand hover/capture routing or permanently poison a scroll viewport.
 

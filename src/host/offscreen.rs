@@ -19,24 +19,45 @@ use std::num::NonZeroU32;
 
 use glam::UVec2;
 
+use crate::FrameReport;
 use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::gpu_stats::GpuPassStats;
+use crate::display::{self, Display};
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, WindowDriver};
+use crate::primitives::approx::EPS;
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{WindowFrameState, WindowToken};
-use crate::{Display, FrameReport};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct OffscreenTarget {
     physical: UVec2,
     format: wgpu::TextureFormat,
 }
+
+/// An offscreen frame was given a non-finite or near-zero display scale.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InvalidScaleFactorError {
+    /// The rejected logical-to-physical conversion factor.
+    pub scale_factor: f32,
+}
+
+impl std::fmt::Display for InvalidScaleFactorError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "offscreen scale factor must be finite and at least {EPS}, got {}",
+            self.scale_factor
+        )
+    }
+}
+
+impl std::error::Error for InvalidScaleFactorError {}
 
 /// One shared renderer + one `WindowDriver`, rendering to a texture instead of
 /// a surface. The offscreen analogue of `WinitHost`.
@@ -155,12 +176,17 @@ impl OffscreenHost {
     /// the same once-only update and replayable record semantics as
     /// [`crate::WinitHost`]. Window open/close requests recorded by the app are
     /// discarded after rendering.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InvalidScaleFactorError`] before changing host or application
+    /// state when `scale_factor` is non-finite or less than `1e-4`.
     pub fn frame_offscreen<T: App>(
         &mut self,
         target: &wgpu::Texture,
         scale_factor: f32,
         app: &mut T,
-    ) -> FrameReport {
+    ) -> Result<FrameReport, InvalidScaleFactorError> {
         render_frame(
             &mut self.driver,
             &mut self.frontend,
@@ -187,7 +213,9 @@ fn render_frame<T: App>(
     target: &wgpu::Texture,
     scale_factor: f32,
     app: &mut T,
-) -> FrameReport {
+) -> Result<FrameReport, InvalidScaleFactorError> {
+    validate_scale_factor(scale_factor)?;
+
     let size = target.size();
     let target_state = OffscreenTarget {
         physical: UVec2::new(size.width, size.height),
@@ -203,7 +231,15 @@ fn render_frame<T: App>(
     let CpuFrame { report, mode } = driver.cpu_frame(frontend, display, app);
     driver.render_to_texture(&frontend.buffer, backend, target, mode);
     discard_window_output(driver);
-    report
+    Ok(report)
+}
+
+fn validate_scale_factor(scale_factor: f32) -> Result<(), InvalidScaleFactorError> {
+    if display::scale_factor_is_valid(scale_factor) {
+        Ok(())
+    } else {
+        Err(InvalidScaleFactorError { scale_factor })
+    }
 }
 
 fn note_target(current: &mut Option<OffscreenTarget>, target: OffscreenTarget) -> bool {
@@ -247,7 +283,7 @@ pub(crate) mod test_support {
 
     use crate::app::test_support::RecordApp;
     use crate::host::clock::Clock;
-    use crate::host::offscreen::{self, OffscreenHost, OffscreenTarget};
+    use crate::host::offscreen::{self, InvalidScaleFactorError, OffscreenHost, OffscreenTarget};
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::renderer::backend::{BackendConfig, WgpuBackend};
@@ -328,7 +364,7 @@ pub(crate) mod test_support {
             target: &wgpu::Texture,
             scale_factor: f32,
             record: impl FnMut(&mut Ui),
-        ) {
+        ) -> Result<(), InvalidScaleFactorError> {
             let mut app = RecordApp::new(record);
             offscreen::render_frame(
                 &mut self.windows[window],
@@ -338,7 +374,8 @@ pub(crate) mod test_support {
                 target,
                 scale_factor,
                 &mut app,
-            );
+            )
+            .map(|_| ())
         }
     }
 }
@@ -352,9 +389,13 @@ mod tests {
     use crate::Display;
     use crate::app::App;
     use crate::host::clock::FixedClock;
-    use crate::host::offscreen::{OffscreenTarget, discard_window_output, note_target};
+    use crate::host::offscreen::{
+        InvalidScaleFactorError, OffscreenTarget, discard_window_output, note_target,
+        validate_scale_factor,
+    };
     use crate::host::shared::HostShared;
     use crate::host::window_driver::WindowDriver;
+    use crate::primitives::approx::EPS;
     use crate::renderer::frontend::Frontend;
     use crate::text::TextShaper;
     use crate::ui::Ui;
@@ -399,6 +440,32 @@ mod tests {
         assert_eq!(current, Some(resized));
         assert!(note_target(&mut current, reformatted));
         assert_eq!(current, Some(reformatted));
+    }
+
+    #[test]
+    fn scale_validation_rejects_invalid_values_and_accepts_boundary() {
+        for scale_factor in [
+            0.0,
+            -1.0,
+            EPS / 2.0,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+        ] {
+            let error = validate_scale_factor(scale_factor).unwrap_err();
+            assert_eq!(error.scale_factor.to_bits(), scale_factor.to_bits());
+        }
+
+        assert_eq!(validate_scale_factor(EPS), Ok(()));
+        assert_eq!(validate_scale_factor(1.0), Ok(()));
+        assert_eq!(
+            validate_scale_factor(0.0),
+            Err(InvalidScaleFactorError { scale_factor: 0.0 })
+        );
+        assert_eq!(
+            InvalidScaleFactorError { scale_factor: 0.0 }.to_string(),
+            "offscreen scale factor must be finite and at least 0.0001, got 0"
+        );
     }
 
     #[test]

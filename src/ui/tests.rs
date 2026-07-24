@@ -414,7 +414,7 @@ fn empty_then_populated_frame() {
 
 /// Pin: `Ui::frame` panics if `display.scale_factor` is below `EPS`.
 #[test]
-#[should_panic(expected = "Display::scale_factor must be ≥ EPSILON")]
+#[should_panic(expected = "Display::scale_factor must be finite and ≥ EPSILON")]
 fn frame_rejects_zero_scale_factor() {
     let mut ui = Ui::for_test();
     let _ = ui.record_test_frame_without_baseline(
