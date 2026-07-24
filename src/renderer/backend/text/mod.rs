@@ -34,15 +34,11 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
-use crate::text::cosmic::RenderSplit;
+use crate::text::render::{PlacedGlyph, RunPlacement};
 use crate::text::{TextShapeRequest, TextShaper};
-use cosmic_text::SwashCache;
 
 use atlas::GlyphAtlas;
-use encode::{
-    EncodeCtx, EncodedCache, EncodedRunKey, ResolvedRun, encode_batch, encode_key_for,
-    try_emit_cached,
-};
+use encode::{EncodeCtx, EncodedCache, EncodedRunKey, MissRun, encode_key_for, try_emit_cached};
 
 /// Frames an unused `EncodedCache` entry survives before being swept
 /// in `post_record`. Keeps the cache from growing unboundedly under a
@@ -97,9 +93,9 @@ impl ContentType {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct TextBackend {
     shaper: TextShaper,
-    swash_cache: SwashCache,
     atlas: GlyphAtlas,
 
     /// Text shader module — format-independent; [`Self::build_variants`]
@@ -131,24 +127,15 @@ pub(crate) struct TextBackend {
     /// pass 2 doesn't repeat `encode_key_for`. Retained across calls
     /// so an all-hit frame stays alloc-free.
     misses: Vec<MissEntry>,
+    /// Per-run extraction scratch for pass 2 (`PlacedGlyph`s from the
+    /// shaper session), retained across runs and frames.
+    placed: Vec<PlacedGlyph>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct MissEntry {
     run_idx: u32,
     run_key: EncodedRunKey,
-}
-
-// Manual: `TextShaper` (whose `ShaperInner` holds `CosmicMeasure`)
-// isn't `Debug`.
-impl std::fmt::Debug for TextBackend {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TextBackend")
-            .field("atlas", &self.atlas)
-            .field("atlas_px", &self.atlas_px)
-            .field("instances", &self.instances.len())
-            .finish_non_exhaustive()
-    }
 }
 
 impl TextBackend {
@@ -201,7 +188,6 @@ impl TextBackend {
 
         Self {
             shaper,
-            swash_cache: SwashCache::new(),
             atlas,
             shader,
             atlas_bgl,
@@ -213,6 +199,7 @@ impl TextBackend {
             ranges: Vec::new(),
             encoded_cache: EncodedCache::default(),
             misses: Vec::new(),
+            placed: Vec::new(),
         }
     }
 
@@ -243,9 +230,10 @@ impl TextBackend {
         )
     }
 
-    /// Append-mode prepare. Encoded-cache hits bypass shaping; misses restore
-    /// and borrow their cosmic buffers in one shaper transaction before
-    /// emitting instances. Rebinds the atlas bind group if it grew.
+    /// Append-mode prepare. Encoded-cache hits bypass shaping; misses
+    /// extract and rasterize their glyphs through one exclusive shaper
+    /// session before emitting instances. Rebinds the atlas bind group
+    /// if it grew.
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
@@ -294,50 +282,37 @@ impl TextBackend {
         if !self.misses.is_empty() {
             let Self {
                 shaper,
-                swash_cache,
                 atlas,
                 instances,
                 encoded_cache,
                 misses,
+                placed,
                 ..
             } = self;
-            let requests = misses.iter().map(|miss| {
+            let miss_runs = misses.iter().map(|miss| {
                 let run = &runs[miss.run_idx as usize];
-                TextShapeRequest {
-                    text: run.source.resolve(interned_text),
-                    key: run.key,
+                MissRun {
+                    request: TextShapeRequest {
+                        text: run.source.resolve(interned_text),
+                        key: run.key,
+                    },
+                    placement: RunPlacement {
+                        origin: run.origin,
+                        scale: scale * run.scale,
+                        bounds: run.bounds,
+                    },
+                    run_key: miss.run_key,
                 }
             });
-            shaper.with_render_buffers(requests, |split| {
-                let RenderSplit {
-                    font_system,
-                    lookup,
-                } = split;
-
-                let resolved = misses.iter().map(|m| {
-                    let r = &runs[m.run_idx as usize];
-                    let buffer = lookup
-                        .get(r.key)
-                        .expect("TextShaper did not prepare a requested render buffer");
-                    ResolvedRun {
-                        buffer,
-                        origin: r.origin,
-                        bounds: r.bounds,
-                        scale: scale * r.scale,
-                        color: r.color,
-                        run_key: m.run_key,
-                    }
-                });
-
-                let mut ectx = EncodeCtx {
-                    device: ctx.device,
-                    font_system,
-                    swash_cache,
-                    atlas,
-                    cache: encoded_cache,
-                };
-                encode_batch(&mut ectx, resolved, instances);
-            });
+            let mut session = shaper.render_session();
+            let mut ectx = EncodeCtx {
+                device: ctx.device,
+                atlas,
+                cache: encoded_cache,
+                placed,
+                out: instances,
+            };
+            ectx.encode_batch(&mut session, miss_runs);
         }
 
         let end = self.instances.len() as u32;

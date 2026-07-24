@@ -11,25 +11,30 @@
 //! bounded recycle pool so later misses retain Cosmic Text's internal
 //! line, shaping, and layout allocations.
 //!
-//! The render side reaches the cached `Buffer`s and the `FontSystem`
-//! through [`CosmicMeasure::split_for_render`] (via
-//! `TextShaper::with_render_buffers`) — a disjoint borrow, not a trait
-//! object; `text/mod.rs` documents why there's no `TextMeasure` trait.
+//! The render side never sees cosmic types: `TextShaper::render_session`
+//! lends a `text::render::TextRenderSession` whose
+//! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`]
+//! translate shaped buffers into aperture-native placements and bitmaps;
+//! `text/mod.rs` documents why there's no `TextMeasure` trait.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
 //! text rather than storing the full string), but at typical UI scales the
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
+use crate::common::hash;
 use crate::layout::types::align::HAlign;
+use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::text::key::TextShapeKey;
+use crate::text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, PlacedGlyph, RunPlacement};
 use crate::text::wrap::LineFit;
 use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest};
 use cosmic_text::{
-    Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
-    Weight, fontdb,
+    Align as CosmicAlign, Attrs, Buffer, CacheKey, CacheKeyFlags, Family, FontSystem, Metrics,
+    Shaping, SubpixelBin, SwashCache, SwashContent, Weight, fontdb,
 };
+use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -114,9 +119,11 @@ struct CacheEntry {
 /// Per-call font family + weight selection comes from [`FontFamily`] /
 /// [`FontWeight`] on each measurement; internal named lookups resolve against
 /// the bundled set.
-#[derive(Debug)]
 pub(crate) struct CosmicMeasure {
     font_system: FontSystem,
+    /// Swash rasterization context for [`Self::rasterize_glyph`]. Used
+    /// uncached — the renderer's glyph atlas is the real bitmap cache.
+    swash_cache: SwashCache,
     cache: FxHashMap<TextShapeKey, CacheEntry>,
     /// Monotonic cache-access counter. Unique recency values let eviction
     /// retain exactly the configured number of most-recent entries.
@@ -157,6 +164,7 @@ impl CosmicMeasure {
         let font_system = FontSystem::new_with_fonts(sources);
         Self {
             font_system,
+            swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
             use_gen: 0,
             evict_scratch: Vec::new(),
@@ -170,46 +178,142 @@ impl CosmicMeasure {
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextShapeKey::INVALID`].
     pub(crate) fn buffer_for(&self, key: TextShapeKey) -> Option<&Buffer> {
-        BufferLookup { cache: &self.cache }.get(key)
-    }
-
-    /// Split borrow: `font_system` + `lookup`. Glyphon's `prepare` needs
-    /// `&mut FontSystem` while we iterate `RenderBuffer.text_runs` and look
-    /// up buffers — borrowck won't let us hand out a `&mut FontSystem` and
-    /// call `buffer_for` simultaneously through `&mut self`. This method
-    /// hands out the disjoint pieces.
-    pub(crate) fn split_for_render(&mut self) -> RenderSplit<'_> {
-        RenderSplit {
-            font_system: &mut self.font_system,
-            lookup: BufferLookup { cache: &self.cache },
-        }
-    }
-}
-
-/// Disjoint borrow handed out by [`CosmicMeasure::split_for_render`].
-pub(crate) struct RenderSplit<'a> {
-    pub font_system: &'a mut FontSystem,
-    pub lookup: BufferLookup<'a>,
-}
-
-/// Read-only view into the buffer cache. Constructed by
-/// [`CosmicMeasure::split_for_render`]; held alongside a `&mut FontSystem`.
-pub(crate) struct BufferLookup<'a> {
-    cache: &'a FxHashMap<TextShapeKey, CacheEntry>,
-}
-
-impl<'a> BufferLookup<'a> {
-    pub(crate) fn get(&self, key: TextShapeKey) -> Option<&'a Buffer> {
         if key.is_invalid() {
             return None;
         }
         self.cache.get(&key).map(|e| &e.buffer)
     }
+
+    /// Resolve `request` to aperture-native glyph placements for the
+    /// renderer. Restores the shaped buffer if evicted (truncated runs
+    /// restore their unbounded probe internally), walks its layout runs,
+    /// y-culls whole lines against `placement.bounds`, and rewrites
+    /// `out` with one [`PlacedGlyph`] per surviving glyph. Returns
+    /// whether any line was culled — such partial extractions must not
+    /// become renderer cache templates (its encoded key carries no
+    /// bounds).
+    pub(crate) fn extract_glyphs(
+        &mut self,
+        request: TextShapeRequest<'_>,
+        placement: RunPlacement,
+        out: &mut Vec<PlacedGlyph>,
+    ) -> bool {
+        debug_assert!(!request.key.is_invalid());
+        debug_assert_eq!(hash::hash_str(request.text), request.key.text_hash);
+        self.ensure_buffer(request);
+        let buffer = self
+            .buffer_for(request.key)
+            .expect("ensure_buffer must restore the requested render buffer");
+
+        out.clear();
+        let RunPlacement {
+            origin,
+            scale,
+            bounds,
+        } = placement;
+        let bounds_top = bounds.y as f32;
+        let bounds_bot = (bounds.y + bounds.h) as f32;
+        let mut culled = false;
+        for run in buffer.layout_runs() {
+            if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
+                culled = true;
+                continue;
+            }
+            if run.line_top * scale + origin.y > bounds_bot {
+                culled = true;
+                break;
+            }
+            let line_y_px = (run.line_y * scale).fast_round() as i32;
+            for glyph in run.glyphs.iter() {
+                // The renderer caches encoded runs on one uniform area
+                // colour — correct only while cosmic never produces a
+                // per-glyph override ([`attrs_for`] sets no per-span
+                // colour). If this fires, per-span colour was added
+                // without folding a colour fingerprint into the
+                // renderer's `EncodedKey`.
+                debug_assert!(
+                    glyph.color_opt.is_none(),
+                    "per-glyph colour override requires folding colour into EncodedKey",
+                );
+                let physical = glyph.physical((origin.x, origin.y), scale);
+                out.push(PlacedGlyph {
+                    raster_key: GlyphRasterKey(physical.cache_key),
+                    x: physical.x,
+                    y: line_y_px + physical.y,
+                });
+            }
+        }
+        culled
+    }
+
+    /// Rasterize one glyph via swash, uncached on the cosmic side — the
+    /// renderer's atlas is the real cache. `None` when swash cannot
+    /// produce an image for the key (e.g. a glyph the face lacks).
+    pub(crate) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
+        let image = self
+            .swash_cache
+            .get_image_uncached(&mut self.font_system, key.0)?;
+        let kind = match image.content {
+            SwashContent::Color => GlyphImageKind::Color,
+            SwashContent::Mask | SwashContent::SubpixelMask => GlyphImageKind::Mask,
+        };
+        Some(GlyphImage {
+            kind,
+            placement: GlyphPlacement {
+                left: image.placement.left,
+                top: image.placement.top,
+                width: image.placement.width,
+                height: image.placement.height,
+            },
+            data: image.data,
+        })
+    }
+}
+
+/// Opaque per-glyph rasterization identity: cosmic's `CacheKey` (font,
+/// glyph id, scaled size, subpixel bins, flags) behind a newtype so the
+/// renderer's atlas can key on it without seeing cosmic types.
+/// Constructed and consumed only in this module.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) struct GlyphRasterKey(CacheKey);
+
+/// Split a physical-px origin into its integer part plus cosmic's
+/// packed 4-bin subpixel remainder — the exact binning
+/// `LayoutGlyph::physical` folds into each glyph's raster key, so the
+/// renderer's encoded-run identity can't drift from cosmic's.
+pub(crate) fn subpixel_origin(origin: Vec2) -> SubpixelOrigin {
+    let (x, x_bin) = SubpixelBin::new(origin.x);
+    let (y, y_bin) = SubpixelBin::new(origin.y);
+    SubpixelOrigin {
+        x,
+        y,
+        bins: ((x_bin as u8) << 2) | (y_bin as u8),
+    }
+}
+
+/// [`subpixel_origin`]'s named result.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SubpixelOrigin {
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    /// Bits 0-1: `y_bin`; bits 2-3: `x_bin` (cosmic's four subpixel
+    /// bins, 2 bits each).
+    pub(crate) bins: u8,
 }
 
 impl Default for CosmicMeasure {
     fn default() -> Self {
         Self::with_bundled_fonts()
+    }
+}
+
+// Manual: cosmic's `SwashCache` isn't `Debug`.
+impl std::fmt::Debug for CosmicMeasure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CosmicMeasure")
+            .field("cache", &self.cache.len())
+            .field("use_gen", &self.use_gen)
+            .finish_non_exhaustive()
     }
 }
 
@@ -561,6 +665,22 @@ fn shaped_extent(buffer: &Buffer, scan_intrinsic_min: bool) -> ShapedExtent {
 #[cfg(test)]
 mod test_support {
     use super::*;
+
+    impl GlyphRasterKey {
+        /// Distinct dummy keys for the renderer's atlas tests — the
+        /// only way to mint one outside a real glyph walk.
+        pub(crate) fn for_test(glyph_id: u16) -> Self {
+            Self(CacheKey {
+                font_id: fontdb::ID::dummy(),
+                glyph_id,
+                font_size_bits: 14.0_f32.to_bits(),
+                x_bin: SubpixelBin::Zero,
+                y_bin: SubpixelBin::Zero,
+                font_weight: Weight::NORMAL,
+                flags: CacheKeyFlags::empty(),
+            })
+        }
+    }
 
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) struct RecyclePoolStats {
