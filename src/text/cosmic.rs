@@ -364,6 +364,11 @@ impl CosmicMeasure {
     /// can't collide with the wrapped buffer — or the other truncation mode —
     /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
     /// to nothing.
+    ///
+    /// The shaped prefix is verified against `w` and retires a further
+    /// cluster until it fits, so the measured extent never exceeds the
+    /// committed width — the cut alone cannot guarantee that, since
+    /// reshaping the prefix changes its shaping context.
     fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
         let key = request.key;
         let fit = key.fit();
@@ -398,37 +403,14 @@ impl CosmicMeasure {
         } else {
             width
         };
-        let probe = &self
-            .cache
-            .get(&unbounded.key)
-            .expect("truncation requires the cached unbounded shape")
-            .buffer;
-        let line_w = first_line_right(probe);
-        let multiline = probe.layout_runs().nth(1).is_some();
-
-        let truncated = if line_w <= width && !multiline {
-            false
-        } else {
-            let mut cut = 0usize;
-            if let Some(run) = probe.layout_runs().next() {
-                cut = fitting_prefix(
-                    run.glyphs.len(),
-                    |i| ClusterGlyph {
-                        start: run.glyphs[i].start,
-                        end: run.glyphs[i].end,
-                        advance: run.glyphs[i].w,
-                    },
-                    &mut self.logical_order,
-                    avail,
-                );
-            }
-            self.truncate_scratch.clear();
-            self.truncate_scratch
-                .push_str(request.text[..cut].trim_end());
-            if append_ellipsis {
-                self.truncate_scratch.push('…');
-            }
-            true
+        let probe_key = unbounded.key;
+        let fits_whole = {
+            let probe = &self
+                .cache
+                .get(&probe_key)
+                .expect("truncation requires the cached unbounded shape")
+                .buffer;
+            first_line_right(probe) <= width && probe.layout_runs().nth(1).is_none()
         };
 
         // Shape unbounded on one line: the cut already fit it to `w`, and the
@@ -436,19 +418,71 @@ impl CosmicMeasure {
         // would measure the aligned glyph position, inflating a fits-anyway
         // label toward the box width.
         let mut buffer = self.acquire_buffer(metrics, None);
-        let shaped_text = if truncated {
-            self.truncate_scratch.as_str()
+        let size = if fits_whole {
+            // Re-shaping the identical text reproduces the probe, so this
+            // branch cannot overrun `width`.
+            buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            shaped_extent(&buffer, None).size
         } else {
-            request.text
+            // The cut spends advances measured in the *whole* run's shaping,
+            // but the prefix reshapes in its own context: a joining script's
+            // last letter is exposed at a new word end and takes a final form
+            // wider than the medial one the budget paid for. So verify the
+            // shaped result, and while it overruns, retire one more cluster.
+            // `max_end` makes every retry strictly shorter, so the sequence
+            // bottoms out at the empty prefix.
+            let mut max_end = usize::MAX;
+            loop {
+                let cut = {
+                    let probe = &self
+                        .cache
+                        .get(&probe_key)
+                        .expect("truncation requires the cached unbounded shape")
+                        .buffer;
+                    match probe.layout_runs().next() {
+                        Some(run) => fitting_prefix(
+                            run.glyphs.len(),
+                            |i| ClusterGlyph {
+                                start: run.glyphs[i].start,
+                                end: run.glyphs[i].end,
+                                advance: run.glyphs[i].w,
+                            },
+                            &mut self.logical_order,
+                            avail,
+                            max_end,
+                        ),
+                        None => 0,
+                    }
+                };
+                self.truncate_scratch.clear();
+                self.truncate_scratch
+                    .push_str(request.text[..cut].trim_end());
+                if append_ellipsis {
+                    self.truncate_scratch.push('…');
+                }
+                // `set_text` resets the buffer in place, so a retry reuses
+                // the line, shaping, and layout allocations it just filled.
+                buffer.set_text(
+                    self.truncate_scratch.as_str(),
+                    &attrs,
+                    Shaping::Advanced,
+                    None,
+                );
+                buffer.shape_until_scroll(&mut self.font_system, false);
+                let size = shaped_extent(&buffer, None).size;
+                if size.w <= width || cut == 0 {
+                    break size;
+                }
+                max_end = cut;
+            }
         };
-        buffer.set_text(shaped_text, &attrs, Shaping::Advanced, None);
-        buffer.shape_until_scroll(&mut self.font_system, false);
 
         // Truncated runs are one natural line by construction: the cut
         // prefix comes from the unbounded probe's first layout run, and a
         // truncated run can shrink to nothing, so its floor is zero.
         let measurement = TextMeasurement {
-            size: shaped_extent(&buffer, None).size,
+            size,
             key,
             intrinsic_min: 0.0,
             single_line: true,
@@ -578,9 +612,14 @@ pub(crate) struct ClusterGlyph {
 }
 
 /// Longest logical byte prefix of `count` shaped glyphs whose advances sum
-/// within `avail`. `order` is retained scratch, refilled with the glyph
-/// indices sorted into logical order; `glyph` reads one glyph by its
-/// original (visual-order) index.
+/// within `avail` and stay below `max_end`. `order` is retained scratch,
+/// refilled with the glyph indices sorted into logical order; `glyph` reads
+/// one glyph by its original (visual-order) index.
+///
+/// The result is always strictly below `max_end`, so passing the previous
+/// answer retires at least one more cluster — that is what makes
+/// [`CosmicMeasure::measure_truncated`]'s back-off terminate. Pass
+/// `usize::MAX` for an unbounded first cut.
 ///
 /// Glyphs arrive in visual order, so a glyph's `x` follows the reading
 /// direction rather than the logical prefix — an RTL run's first glyph sits
@@ -598,6 +637,7 @@ pub(crate) fn fitting_prefix(
     glyph: impl Fn(usize) -> ClusterGlyph,
     order: &mut Vec<u32>,
     avail: f32,
+    max_end: usize,
 ) -> usize {
     order.clear();
     order.extend(0..count as u32);
@@ -606,6 +646,11 @@ pub(crate) fn fitting_prefix(
     let mut used = 0.0_f32;
     for (pos, &i) in order.iter().enumerate() {
         let g = glyph(i as usize);
+        // Ends are non-decreasing in logical order, so once one reaches the
+        // bound no later glyph can be committed either.
+        if g.end >= max_end {
+            break;
+        }
         used += g.advance;
         if used > avail {
             break;

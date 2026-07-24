@@ -1744,32 +1744,61 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
     // costs nothing, so it must not hold the cut back.
     const MARK: Run = &[(0, 3, 10.0), (0, 3, 0.0), (3, 4, 10.0)];
 
+    const ANY: usize = usize::MAX;
     let mut order = Vec::new();
-    for (run, avail, expected, why) in [
-        (LTR, 0.0, 0, "no budget keeps nothing"),
-        (LTR, 9.9, 0, "a glyph is all-or-nothing"),
-        (LTR, 10.0, 1, "an exact fit is a fit"),
-        (LTR, 25.0, 2, "the third glyph would overrun"),
-        (LTR, 30.0, 3, "the whole run fits"),
-        (LTR, 1000.0, 3, "surplus budget keeps the whole run"),
+    for (run, avail, max_end, expected, why) in [
+        (LTR, 0.0, ANY, 0, "no budget keeps nothing"),
+        (LTR, 9.9, ANY, 0, "a glyph is all-or-nothing"),
+        (LTR, 10.0, ANY, 1, "an exact fit is a fit"),
+        (LTR, 25.0, ANY, 2, "the third glyph would overrun"),
+        (LTR, 30.0, ANY, 3, "the whole run fits"),
+        (LTR, 1000.0, ANY, 3, "surplus budget keeps the whole run"),
         (
             RTL,
             10.0,
+            ANY,
             1,
             "RTL keeps the logical prefix, not the visual one",
         ),
-        (RTL, 25.0, 2, "RTL cut tracks logical order"),
-        (RTL, 30.0, 3, "the whole RTL run fits"),
-        (CLUSTER, 10.0, 1, "one glyph of the cluster is unaffordable"),
+        (RTL, 25.0, ANY, 2, "RTL cut tracks logical order"),
+        (RTL, 30.0, ANY, 3, "the whole RTL run fits"),
+        (
+            CLUSTER,
+            10.0,
+            ANY,
+            1,
+            "one glyph of the cluster is unaffordable",
+        ),
         (
             CLUSTER,
             25.0,
+            ANY,
             1,
             "25 px pays for only one of the two cluster glyphs",
         ),
-        (CLUSTER, 30.0, 9, "30 px pays for the whole cluster"),
-        (MARK, 10.0, 3, "a zero-width mark rides along with its base"),
-        (MARK, 20.0, 4, "the following glyph is affordable too"),
+        (CLUSTER, 30.0, ANY, 9, "30 px pays for the whole cluster"),
+        (
+            MARK,
+            10.0,
+            ANY,
+            3,
+            "a zero-width mark rides along with its base",
+        ),
+        (MARK, 20.0, ANY, 4, "the following glyph is affordable too"),
+        // `max_end` drives the back-off: feeding back the previous answer
+        // must retire at least one more cluster, all the way to nothing.
+        (LTR, 1000.0, 3, 2, "the bound retires the last glyph"),
+        (LTR, 1000.0, 2, 1, "and the one before it"),
+        (LTR, 1000.0, 1, 0, "and the last one standing"),
+        (LTR, 1000.0, 0, 0, "an exhausted bound stays at nothing"),
+        (RTL, 1000.0, 3, 2, "the bound reads logical order too"),
+        (
+            CLUSTER,
+            1000.0,
+            9,
+            1,
+            "backing off a cluster retires all of its glyphs",
+        ),
     ] {
         let cut = cosmic::fitting_prefix(
             run.len(),
@@ -1780,18 +1809,28 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
             },
             &mut order,
             avail,
+            max_end,
         );
-        assert_eq!(cut, expected, "avail={avail}: {why}");
+        assert_eq!(cut, expected, "avail={avail} max_end={max_end}: {why}");
+        // Every bounded cut falls strictly below its bound, so feeding the
+        // previous answer back always makes progress — that is what makes
+        // the back-off terminate. Zero is the floor it terminates *at*: the
+        // production loop stops on an empty cut and never re-bounds by it.
+        assert!(
+            max_end == ANY || max_end == 0 || cut < max_end,
+            "a bounded cut must fall strictly below its bound",
+        );
     }
 }
 
 #[test]
 fn ellipsis_never_measures_wider_than_its_budget() {
-    // A cut that commits a cluster's bytes after paying for only some of
-    // its glyphs reshapes wider than the budget it was cut against. Flag
-    // and ZWJ emoji are the reachable multi-glyph clusters; they resolve
-    // through system fallback, so the bound — never the exact width — is
-    // what holds on every machine.
+    // Two ways a cut overruns the budget it was measured against: paying
+    // for only some of a cluster's glyphs while committing all of its bytes
+    // (flag and ZWJ emoji), and reshaping a prefix whose last letter changes
+    // form once it lands at a word end (Arabic medial → final). Both resolve
+    // through fonts this crate does not bundle, so the bound — never an exact
+    // width — is what holds on every machine.
     let base = TestShape {
         font_size_px: 16.0,
         line_height_px: lh(16.0),
@@ -1803,6 +1842,8 @@ fn ellipsis_never_measures_wider_than_its_budget() {
     for text in [
         "flag \u{1f1fa}\u{1f1f8} emoji \u{1f600} run",
         "\u{1f469}\u{200d}\u{1f469}\u{200d}\u{1f467} family emoji",
+        "\u{627}\u{644}\u{633}\u{644}\u{627}\u{645} \u{639}\u{644}\u{64a}\u{643}\u{645}",
+        "\u{645}\u{631}\u{62d}\u{628}\u{627} \u{628}\u{627}\u{644}\u{639}\u{627}\u{644}\u{645}",
     ] {
         for family in [FontFamily::Sans, FontFamily::Mono] {
             for fit in [LineFit::Clip, LineFit::Ellipsis] {
