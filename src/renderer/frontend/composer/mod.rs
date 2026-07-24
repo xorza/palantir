@@ -103,14 +103,6 @@ struct ClipFrame {
     chain: Span,
 }
 
-/// One closed-but-not-yet-indexed text batch: its run span in `out.texts`
-/// plus the union AABB of those runs' bounds.
-#[derive(Clone, Copy, Debug)]
-struct PendingClosedBatch {
-    texts: Span,
-    union: URect,
-}
-
 #[derive(Debug, Default)]
 struct PolylineScratch {
     points: Vec<Vec2>,
@@ -119,13 +111,14 @@ struct PolylineScratch {
 }
 
 /// Allocation-owning state for text batching. The open grid may span groups;
-/// the closed grid and pending list are cleared at each group boundary.
+/// the closed grid and pending cursor reset at each group boundary.
 #[derive(Debug, Default)]
 struct BatchState {
     open: Option<OpenBatch>,
     open_grid: TextRectGrid,
     closed_grid: TextRectGrid,
-    pending: Vec<PendingClosedBatch>,
+    /// First finalized text batch not yet indexed in `closed_grid`.
+    pending_batch_cursor: usize,
 }
 
 /// Per-kind slice cursors for the in-flight group. Each field marks
@@ -159,13 +152,9 @@ struct OpenBatch {
     /// in-flight group's eventual index is `out.groups.len()`).
     /// Tells the schedule where to emit the merged render step.
     last_group: u32,
-    /// Union AABB of every rect in the batch state's open grid for this
-    /// batch. The first reject for a new quad's overlap test — O(1)
-    /// before falling through to the grid lookup.
-    text_union: URect,
     /// `true` once a "strict" run has joined this batch — one whose
     /// ancestor clip cuts its full unclipped extent in X. The batch's
-    /// GPU scissor (= `text_union`) must then stay equal to that
+    /// GPU scissor (= `open_grid.union`) must then stay equal to that
     /// strict bound; subsequent runs can only join if their `bounds`
     /// match exactly. Otherwise the merged scissor would let the
     /// strict run's glyphs paint past their intended clip (the text
@@ -251,28 +240,22 @@ impl Composer {
         // The open-batch grid is NOT cleared here — it spans groups with
         // its (still-open) batch.
         self.batch.closed_grid.clear();
-        self.batch.pending.clear();
+        self.batch.pending_batch_cursor = out.text_batches.len();
     }
 
     /// Finalize the open text batch (if any): push a [`TextBatch`]
     /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
     /// batch is active. Called at batch-split events — rounded-clip
     /// change, a higher-kind append, or a strict-bounds mismatch. The
-    /// batch also lands on the batch state's pending list (group-scoped,
-    /// cleared in `flush`) so a later quad still flushes for text in an
-    /// already-closed batch that shares this group — the grid fill is
-    /// deferred to [`Self::closed_hit`].
+    /// finalized output remains pending for the group-scoped closed
+    /// check, so a later quad still flushes for already-closed text that
+    /// shares this group. The grid fill is deferred to [`Self::closed_hit`].
     fn close_batch(&mut self, out: &mut RenderBuffer) {
         let Some(b) = self.batch.open.take() else {
             return;
         };
         let texts_end = out.texts.len() as u32;
-        // Record the batch for the group-scoped closed check, then
-        // reset the open-batch grid for the next batch.
-        self.batch.pending.push(PendingClosedBatch {
-            texts: (b.texts_start..texts_end).into(),
-            union: b.text_union,
-        });
+        let scissor = self.batch.open_grid.union;
         self.batch.open_grid.clear();
         // Invariants the schedule cursor relies on: batches are pushed
         // in walk order so `last_group` is monotonically non-decreasing
@@ -292,13 +275,13 @@ impl Composer {
         out.text_batches.push(TextBatch {
             texts: (b.texts_start..texts_end).into(),
             last_group: b.last_group,
-            // `text_union` is already in physical pixels and clamped
+            // `scissor` is already in physical pixels and clamped
             // to every contributing run's clip-stack-narrowed bounds.
             // Hand it through as the GPU scissor for this batch — the
             // schedule was previously widening to the full viewport
             // here and relying on per-run shader clipping that the
             // inlined text backend doesn't actually implement.
-            scissor: b.text_union,
+            scissor,
             // Every close site runs before `current_chain` can change
             // (set_clip closes ahead of the update), so this is the
             // chain all the batch's runs were recorded under.
@@ -314,7 +297,6 @@ impl Composer {
         let b = self.batch.open.get_or_insert(OpenBatch {
             texts_start: out.texts.len() as u32,
             last_group: 0,
-            text_union: URect::default(),
             strict: false,
         });
         b.last_group = out.groups.len() as u32;
@@ -386,9 +368,9 @@ impl Composer {
     /// internal union AABB, so no caller-side pre-reject is needed.
     fn quad_forces_flush(&mut self, overlap: URect, out: &mut RenderBuffer) {
         // Text painted in (or scheduled after) this group sits in two
-        // places: the open batch (`text_grid`, spans groups with its
+        // places: the open batch (`open_grid`, spans groups with its
         // batch) and batches already closed within this group
-        // (`closed_text_grid`). A quad overlapping either would be painted
+        // (`closed_grid`). A quad overlapping either would be painted
         // *under* that text by the backend's quads→text order, so flush so
         // the text renders first.
         //
@@ -406,25 +388,23 @@ impl Composer {
     }
 
     /// `true` if `q` overlaps text of a batch closed within the
-    /// in-flight group. Batches land on the batch state's pending list as
-    /// span + union at close time (O(1)); the first query whose `q`
-    /// hits a pending union drains *all* pending batches into
-    /// the closed grid and every later query is a grid
-    /// lookup. Groups nothing probes near closed text never pay the
-    /// per-rect fill.
+    /// in-flight group. Finalized batches remain pending in
+    /// `out.text_batches`; the first query whose `q` hits a pending
+    /// batch scissor drains every pending batch into the closed grid.
+    /// Later queries use the grid, and groups nothing probes near
+    /// closed text never pay the per-rect fill.
     fn closed_hit(&mut self, q: URect, out: &RenderBuffer) -> bool {
-        if !self.batch.pending.is_empty()
-            && self
-                .batch
-                .pending
-                .iter()
-                .any(|b| b.union.intersect(q).is_some())
+        let pending = &out.text_batches[self.batch.pending_batch_cursor..];
+        if pending
+            .iter()
+            .any(|batch| batch.scissor.intersect(q).is_some())
         {
-            for b in self.batch.pending.drain(..) {
-                for ti in b.texts.range() {
+            for batch in pending {
+                for ti in batch.texts.range() {
                     self.batch.closed_grid.push(out.texts[ti].bounds);
                 }
             }
+            self.batch.pending_batch_cursor = out.text_batches.len();
         }
         self.batch.closed_grid.any_overlap(q)
     }
@@ -1166,7 +1146,7 @@ impl Composer {
                     if self.any_higher_kind_overlap(bounds) {
                         self.flush(out);
                     }
-                    // Batch GPU scissor = `text_union` (union of every
+                    // Batch GPU scissor = `open_grid.union` (union of every
                     // run's `bounds` in the batch). The text shader has
                     // no per-instance clip, so a "strict" run — one
                     // whose ancestor clip cuts the unclipped extent —
@@ -1177,14 +1157,13 @@ impl Composer {
                     let new_strict = bounds != unclipped;
                     if let Some(b) = self.batch.open.as_ref()
                         && (b.strict || new_strict)
-                        && b.text_union != bounds
+                        && self.batch.open_grid.union != bounds
                     {
                         self.close_batch(out);
                     }
                     // open_batch must run BEFORE the text push so the
                     // batch's `texts_start` captures this run's index.
                     let b = self.open_batch(out);
-                    b.text_union = b.text_union.union(bounds);
                     b.strict |= new_strict;
                     out.texts.push(TextRun {
                         origin: phys_rect.min,
@@ -1239,7 +1218,7 @@ impl Composer {
     fn reset_group_scratch(&mut self, viewport_phys: UVec2) {
         self.batch.open_grid.start_frame(viewport_phys);
         self.batch.closed_grid.start_frame(viewport_phys);
-        self.batch.pending.clear();
+        self.batch.pending_batch_cursor = 0;
         self.higher_kinds.clear();
         self.cursors = GroupCursors::default();
         self.batch.open = None;
