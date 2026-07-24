@@ -491,6 +491,99 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
 }
 
 #[test]
+fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
+    #[derive(Clone, Copy, Debug)]
+    struct Case {
+        wrap: TextWrap,
+        measured: Size,
+        content: Size,
+        min_content: Size,
+        max_content: Size,
+    }
+
+    let mut text = TextSystem::default();
+    let widget_id = WidgetId::from_hash("wrap policy");
+    let cases = [
+        Case {
+            wrap: TextWrap::SingleLine,
+            measured: Size::new(56.0, 16.0),
+            content: Size::new(56.0, 16.0),
+            min_content: Size::new(56.0, 16.0),
+            max_content: Size::new(56.0, 16.0),
+        },
+        Case {
+            wrap: TextWrap::Scroll,
+            measured: Size::new(56.0, 16.0),
+            content: Size::new(0.0, 16.0),
+            min_content: Size::new(0.0, 16.0),
+            max_content: Size::new(0.0, 16.0),
+        },
+        Case {
+            wrap: TextWrap::Truncate,
+            measured: Size::new(24.0, 16.0),
+            content: Size::new(24.0, 16.0),
+            min_content: Size::new(0.0, 16.0),
+            max_content: Size::new(56.0, 16.0),
+        },
+        Case {
+            wrap: TextWrap::Ellipsis,
+            measured: Size::new(24.0, 16.0),
+            content: Size::new(24.0, 16.0),
+            min_content: Size::new(0.0, 16.0),
+            max_content: Size::new(56.0, 16.0),
+        },
+        Case {
+            wrap: TextWrap::Wrap,
+            measured: Size::new(24.0, 48.0),
+            content: Size::new(24.0, 48.0),
+            min_content: Size::new(0.0, 16.0),
+            max_content: Size::new(56.0, 16.0),
+        },
+        Case {
+            wrap: TextWrap::WrapWithOverflow,
+            measured: Size::new(32.0, 32.0),
+            content: Size::new(32.0, 32.0),
+            min_content: Size::new(32.0, 16.0),
+            max_content: Size::new(56.0, 16.0),
+        },
+    ];
+
+    for (ordinal, case) in cases.into_iter().enumerate() {
+        let request = TextShapeRequest::unbounded(
+            "aa bbbb",
+            16.0,
+            16.0,
+            FontFamily::Sans,
+            FontWeight::Regular,
+        )
+        .unwrap();
+        let result = text.shape(
+            identity_at(widget_id, ordinal as u16),
+            request,
+            case.wrap,
+            HAlign::Auto,
+            Some(24.0),
+        );
+        assert_eq!(result.measurement.size, case.measured, "{case:?}");
+        assert_eq!(result.content_size, case.content, "{case:?}");
+        assert_eq!(result.min_content, case.min_content, "{case:?}");
+        assert_eq!(result.max_content, case.max_content, "{case:?}");
+    }
+
+    let empty = text.shape(
+        identity_at(widget_id, cases.len() as u16),
+        TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular).unwrap(),
+        TextWrap::Ellipsis,
+        HAlign::Auto,
+        Some(24.0),
+    );
+    assert_eq!(empty.measurement.size, Size::ZERO);
+    assert_eq!(empty.content_size, Size::ZERO);
+    assert_eq!(empty.min_content, Size::ZERO);
+    assert_eq!(empty.max_content, Size::ZERO);
+}
+
+#[test]
 fn text_shape_key_validity_is_tagged_by_text_hash() {
     assert!(TextShapeKey::INVALID.is_invalid());
     let real = TextShapeKey {

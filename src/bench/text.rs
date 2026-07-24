@@ -26,13 +26,15 @@ fn measure_truncated_width(
     let request =
         TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
             .unwrap();
-    text_system.shape(
-        identity,
-        request,
-        TextWrap::Ellipsis,
-        HAlign::Left,
-        Some(width),
-    )
+    text_system
+        .shape(
+            identity,
+            request,
+            TextWrap::Ellipsis,
+            HAlign::Left,
+            Some(width),
+        )
+        .measurement
 }
 
 pub fn bench(c: &mut Criterion) {
