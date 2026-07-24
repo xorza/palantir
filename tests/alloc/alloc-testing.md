@@ -132,7 +132,7 @@ split across two files by what they stress.
   pins the hook's `overflow == new_overflow` early-exit.
 
 `fixtures/renderer.rs` — scale up shape counts + exercise the
-non-`RoundedRect` variants so an encode/compose `Vec::new()` can't slip
+non-rectangle variants so an encode/compose `Vec::new()` can't slip
 in unnoticed:
 
 - `many_rects_compose` — 16×16 `Frame` grid (256 quads); stresses

@@ -671,7 +671,7 @@ impl Composer {
                     // Covering AABB: the rounded shape (the SDF offsets the
                     // triangle outward by `radius` to round its corners) plus
                     // the ½px AA fringe. The stroke sits on the *inner* edge
-                    // (like `RoundedRect`), so it adds no outward reach.
+                    // (like a rounded rect), so it adds no outward reach.
                     let lo = a.min(b).min(c);
                     let hi = a.max(b).max(c);
                     let pad = radius_phys + 0.5;

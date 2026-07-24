@@ -131,7 +131,7 @@ fn curve_brush(store: &RecordStore, brush: &CurveBrush) -> LoweredBrush {
 }
 
 /// Lower a user-facing `Background` to a `ChromeRow`. Same gradient
-/// lowering as [`super::Shapes::add`] uses for `RoundedRect.fill`,
+/// lowering as [`super::Shapes::add`] uses for rectangle fills,
 /// so chrome and shape paints share one pool. Takes `bg` by
 /// reference — `Background` is 168 B and the recording chain
 /// threads it through 4 functions; the per-field reads below copy

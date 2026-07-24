@@ -112,7 +112,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a
 /// fill emits one DrawRect; an invisible Frame (no fill / stroke /
 /// shape) emits none — `ShapeRecord::is_noop` filters at `add_shape` time so
-/// the encoder sees no RoundedRect in the tree. Degenerate Backgrounds
+/// the encoder sees no rectangle record in the tree. Degenerate Backgrounds
 /// (transparent + no stroke) and clip-only Surfaces (`Surface::clip_rect`)
 /// also emit zero `DrawRect`s — the encoder's `bg.is_noop()` guard at
 /// chrome-paint time filters them.
@@ -236,11 +236,11 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .collect();
     assert!(
         rect_kinds.contains(&FillKind::SOLID),
-        "RoundedRect must emit a plain DrawRect, got kinds {rect_kinds:?}",
+        "rounded rect must emit a plain DrawRect, got kinds {rect_kinds:?}",
     );
     assert!(
         rect_kinds.contains(&FillKind::SOLID.with_window()),
-        "WindowedRect must emit a window-tagged DrawRect, got kinds {rect_kinds:?}",
+        "windowed rect must emit a window-tagged DrawRect, got kinds {rect_kinds:?}",
     );
     // A Line rides the GPU curve pipeline (degenerate cubic), so it
     // emits a DrawCurve — not a DrawPolyline — and never touches the

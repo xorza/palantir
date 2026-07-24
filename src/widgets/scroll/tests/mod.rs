@@ -763,6 +763,7 @@ mod bars {
     use crate::scene::node::Configure;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::node::NodeId;
+    use crate::shape::rect::RectKind;
     use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
@@ -907,7 +908,8 @@ mod bars {
             .filter(|s| {
                 matches!(
                     s,
-                    ShapeRecord::RoundedRect {
+                    ShapeRecord::Rect {
+                        kind: RectKind::Rounded,
                         local_rect: Some(_),
                         ..
                     }

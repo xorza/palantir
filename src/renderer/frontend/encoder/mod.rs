@@ -30,6 +30,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
+use crate::shape::rect::RectKind;
 use crate::text::text_in_rect;
 use std::time::Duration;
 
@@ -86,7 +87,7 @@ impl GradientResolver {
 
 /// Resolve a shape's owner-relative `local_rect` against the owner's
 /// arranged rect. `None` means "paint the owner's full rect"; `Some(lr)`
-/// offsets `lr` by the owner's origin. Shared by the `RoundedRect` /
+/// offsets `lr` by the owner's origin. Shared by the rectangle /
 /// `Image` arms so the offset convention can't drift.
 #[inline]
 fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
@@ -302,7 +303,8 @@ fn emit_one_shape(
         return;
     }
     match shape {
-        ShapeRecord::RoundedRect {
+        ShapeRecord::Rect {
+            kind,
             local_rect,
             corners,
             fill,
@@ -311,18 +313,10 @@ fn emit_one_shape(
         } => {
             let r = resolve_local_rect(owner_rect, *local_rect);
             let src = ctx.brush_source(*fill);
-            out.draw_rect(r, *corners, src, *stroke);
-        }
-        ShapeRecord::WindowedRect {
-            local_rect,
-            corners,
-            fill,
-            stroke,
-            ..
-        } => {
-            let r = resolve_local_rect(owner_rect, *local_rect);
-            let src = ctx.brush_source(*fill);
-            out.draw_rect_window(r, *corners, src, *stroke);
+            match kind {
+                RectKind::Rounded => out.draw_rect(r, *corners, src, *stroke),
+                RectKind::Windowed => out.draw_rect_window(r, *corners, src, *stroke),
+            }
         }
         ShapeRecord::Text {
             local_origin,

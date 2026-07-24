@@ -4,10 +4,13 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::shape::local_rect_paint_empty;
 
-#[derive(Clone, Copy, Debug)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum RectKind {
-    Rounded,
-    Windowed,
+    /// Fill inside the rounded boundary.
+    Rounded = 0,
+    /// Fill outside the rounded boundary, leaving its interior transparent.
+    Windowed = 1,
 }
 
 /// Filled and/or stroked rectangle.

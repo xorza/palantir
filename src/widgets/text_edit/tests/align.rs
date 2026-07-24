@@ -14,6 +14,7 @@ use crate::primitives::transform::TranslateScale;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node::NodeId;
+use crate::shape::rect::RectKind;
 use crate::widgets::text_edit::tests::*;
 
 const EDIT_W: f32 = 280.0;
@@ -81,10 +82,10 @@ fn warmup_then(
 
 /// `(text_origin, caret_origin)` from the leaf's shape stream. The
 /// paint order is selection-wash → text → caret, so the text shape
-/// is the only `Shape::Text` and the caret is the *last* `RoundedRect`
+/// is the only `Shape::Text` and the caret is the *last* rounded rect
 /// with a `local_rect` (selection rects come before the text; the
 /// caret comes after — for empty focused editors it's the only
-/// `RoundedRect` in the stream).
+/// rounded rect in the stream).
 fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
     let mut text_origin = None;
     let mut caret_origin = None;
@@ -94,7 +95,8 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
                 local_origin: Some(o),
                 ..
             } => text_origin = Some(*o),
-            ShapeRecord::RoundedRect {
+            ShapeRecord::Rect {
+                kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
             } => caret_origin = Some(glam::Vec2::new(r.min.x, r.min.y)),
@@ -320,11 +322,15 @@ fn selection_rects_offset_matches_text() {
     let node = frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
 
     // Selection wash is emitted *before* the text shape; pick the
-    // first RoundedRect with a `local_rect` in the leaf's stream.
+    // first rounded rect with a `local_rect` in the leaf's stream.
     let first_rounded = ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
-            ShapeRecord::RoundedRect { local_rect, .. } => *local_rect,
+            ShapeRecord::Rect {
+                kind: RectKind::Rounded,
+                local_rect,
+                ..
+            } => *local_rect,
             _ => None,
         });
     let r = first_rounded.expect("selection wash rect present");

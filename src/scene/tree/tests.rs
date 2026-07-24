@@ -14,7 +14,7 @@ use crate::scene::tree::node::NodeId;
 use crate::scene::tree::recording::Placement;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
-use crate::shape::rect::RectShape;
+use crate::shape::rect::{RectKind, RectShape};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -99,7 +99,8 @@ fn interleaved_shapes_record_correct_order() {
     let sizes: Vec<f32> = ui.forest.trees[Layer::Main]
         .shapes_of(p)
         .map(|s| match s {
-            ShapeRecord::RoundedRect {
+            ShapeRecord::Rect {
+                kind: RectKind::Rounded,
                 local_rect: Some(rect),
                 ..
             } => rect.size.w,
@@ -1046,7 +1047,8 @@ fn mid_recording_popup_keeps_trees_independent() {
     }
     fn marker_w(s: &ShapeRecord) -> u32 {
         match s {
-            ShapeRecord::RoundedRect {
+            ShapeRecord::Rect {
+                kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
             } => r.size.w as u32,

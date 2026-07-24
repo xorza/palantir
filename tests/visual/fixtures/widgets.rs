@@ -88,8 +88,8 @@ fn frame_linear_gradient_matches_golden() {
 }
 
 /// Pin: `Shape::rect(rect).fill(LinearGradient::builder(...))` lowered
-/// through `Tree::add_shape` → `ShapeRecord::RoundedRect { fill:
-/// Brush, .. }` paints correctly. Slice-2 step 6 unblocks this — prior
+/// through `Tree::add_shape` → `ShapeRecord::Rect { fill: Brush, .. }`
+/// paints correctly. Slice-2 step 6 unblocks this — prior
 /// to the widening, the lowering called `as_solid().expect(...)` and
 /// panicked on any non-solid brush.
 #[test]

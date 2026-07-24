@@ -14,7 +14,6 @@ use crate::scene::shapes::paint::ShapeStroke;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
 use crate::shape::curve::CurveGeometry;
-use crate::shape::rect::RectKind;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
 ///
@@ -78,21 +77,13 @@ impl Shapes {
         let record = match shape {
             Shape::Rect(shape) => {
                 let lowered = lower::brush(store, &shape.fill);
-                match shape.kind {
-                    RectKind::Rounded => ShapeRecord::RoundedRect {
-                        local_rect: shape.local_rect,
-                        corners: shape.corners,
-                        fill: lowered.brush,
-                        stroke: ShapeStroke::from(shape.stroke),
-                        fill_grad_hash: lowered.hash,
-                    },
-                    RectKind::Windowed => ShapeRecord::WindowedRect {
-                        local_rect: shape.local_rect,
-                        corners: shape.corners,
-                        fill: lowered.brush,
-                        stroke: ShapeStroke::from(shape.stroke),
-                        fill_grad_hash: lowered.hash,
-                    },
+                ShapeRecord::Rect {
+                    kind: shape.kind,
+                    local_rect: shape.local_rect,
+                    corners: shape.corners,
+                    fill: lowered.brush,
+                    stroke: ShapeStroke::from(shape.stroke),
+                    fill_grad_hash: lowered.hash,
                 }
             }
             Shape::Triangle(shape) => lower::triangle(
