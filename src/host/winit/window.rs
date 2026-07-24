@@ -104,7 +104,14 @@ impl Window {
         };
         self.driver.ui.window_requests.close_vetoed = false;
 
-        if self.occluded_at.is_some() {
+        // An occluded window skips its frame, except the one carrying a
+        // close request: `frame_output` below closes unless the app vetoed,
+        // and the only place a veto can happen is inside `App::update` /
+        // `App::record`. Skipping here would settle the close against a veto
+        // flag no application code was ever offered — a minimized document
+        // window would close straight past its "save changes?" prompt. The
+        // request is one-shot, so this costs at most one frame per close.
+        if self.occluded_at.is_some() && !self.close_requested {
             return frame_output(&mut self.driver, FramePresent::Idle);
         }
 
