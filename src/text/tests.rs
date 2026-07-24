@@ -652,10 +652,12 @@ fn cursor_xy_walks_with_the_paragraph_direction() {
         "an RTL line starts its caret at the right edge: {} vs width {line_right}",
         rtl[0],
     );
-    assert_eq!(
-        *rtl.last().unwrap(),
-        0.0,
-        "an RTL line ends its caret at the left edge",
+    // The leftmost glyph's x is a sum of f32 advances from real font metrics,
+    // so the end caret lands within rounding of 0, not exactly on it.
+    assert!(
+        rtl.last().unwrap().abs() < 0.01,
+        "an RTL line ends its caret at the left edge, got {}",
+        rtl.last().unwrap(),
     );
     // Direction is what separates the two, not merely text content.
     assert_ne!(ltr[0], rtl[0]);
