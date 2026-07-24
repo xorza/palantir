@@ -28,3 +28,34 @@ pub enum TextWrap {
     /// overflow rather than breaking.
     WrapWithOverflow,
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::layout::cache::quantize_available;
+    use crate::primitives::size::Size;
+    use crate::text::wrap;
+
+    #[test]
+    fn wrap_target_matches_cache_grid() {
+        assert_eq!(
+            wrap::canonical_wrap_width(100.1),
+            wrap::canonical_wrap_width(100.4),
+        );
+        assert_eq!(
+            wrap::canonical_wrap_width(99.6),
+            wrap::canonical_wrap_width(100.4),
+        );
+        assert_ne!(
+            wrap::canonical_wrap_width(100.4),
+            wrap::canonical_wrap_width(100.6),
+        );
+        for width in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
+            let cache_width = quantize_available(Size::new(width, 0.0)).x;
+            assert_eq!(
+                wrap::canonical_wrap_width(width) as i32,
+                cache_width,
+                "width={width}",
+            );
+        }
+    }
+}

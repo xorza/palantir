@@ -28,8 +28,8 @@ use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::text::wrap::{TextWrap, canonical_wrap_width};
-use crate::text::{LineFit, TextRunIdentity, TextShaper, TextSystem};
+use crate::text::wrap::TextWrap;
+use crate::text::{TextRunIdentity, TextShaper, TextSystem};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of
@@ -849,53 +849,13 @@ impl LayoutEngine {
             ordinal: ts.ordinal,
         };
 
-        let prepared = self.text.prepare(identity, ts.shape_request());
-        let unbounded = prepared.unbounded;
-
-        // Re-shape through the width-bounded path for `Wrap` and the
-        // single-line truncating modes against a finite width. For `Wrap`
-        // this is needed even when the content fits — the shaped buffer only
-        // carries per-line `BufferLine::set_align` when `max_width_px` is
-        // `Some`, and a multi-line buffer built without it has every visual
-        // line pinned at x = 0; without it an `\n`-separated paragraph that
-        // never wraps would render left-aligned while the widget's
-        // `cursor_xy` (always called with the wrap target) reads
-        // per-line-aligned coords from a different cached buffer. For
-        // `SingleLine`/`Ellipsis` it's the path that cuts the run to one
-        // line at the committed width.
-        let fit = match ts.wrap {
-            TextWrap::Wrap | TextWrap::WrapWithOverflow => LineFit::Wrap,
-            TextWrap::Ellipsis => LineFit::Ellipsis,
-            // `SingleLine`/`Scroll` never reach the bounded branch (excluded
-            // below); `Clip` is harmless as their fallthrough value.
-            TextWrap::Truncate | TextWrap::SingleLine | TextWrap::Scroll => LineFit::Clip,
-        };
-        let single_line = matches!(ts.wrap, TextWrap::Truncate | TextWrap::Ellipsis);
-        let bounded = matches!(
+        let result = self.text.shape(
+            identity,
+            ts.shape_request(),
             ts.wrap,
-            TextWrap::Wrap | TextWrap::WrapWithOverflow | TextWrap::Truncate | TextWrap::Ellipsis
-        ) && available_w.is_finite();
-
-        let result = if bounded {
-            // `WrapWithOverflow` floors the target at the longest word so
-            // cosmic never breaks mid-word; `Wrap` lets cosmic glyph-break
-            // when a word doesn't fit, so it takes the committed width
-            // verbatim. Single-line modes truncate freely.
-            let target = if single_line || matches!(ts.wrap, TextWrap::Wrap) {
-                available_w
-            } else {
-                available_w.max(unbounded.intrinsic_min)
-            };
-            // Shape at the quantized width, not raw `target`: the measure
-            // cache keys on the same 1px grid, so this keeps a cache hit
-            // from blitting text shaped for a sub-pixel-different target.
-            let target = canonical_wrap_width(target);
-            prepared
-                .shape_bounded(target, ts.halign, fit)
-                .expect("recorded text wrap width was validated")
-        } else {
-            unbounded
-        };
+            ts.halign,
+            available_w.is_finite().then_some(available_w),
+        );
 
         out.text_shapes.push(ShapedText {
             measured: result.size,
@@ -913,30 +873,6 @@ impl LayoutEngine {
         match ts.wrap {
             TextWrap::Scroll => Size::new(0.0, result.size.h),
             _ => result.size,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::layout::engine::*;
-
-    /// The wrap target must quantize to the same 1px grid the measure
-    /// cache keys on (`cache::quantize_available`), so a sub-pixel parent
-    /// jitter inside one `available_q` bucket reshapes text to the
-    /// identical width — a cache hit then can't blit text shaped for a
-    /// sub-pixel-different target. Trips if either grid changes alone.
-    #[test]
-    fn wrap_target_matches_cache_grid() {
-        // Sub-pixel jitter inside one 1px bucket → identical wrap target.
-        assert_eq!(canonical_wrap_width(100.1), canonical_wrap_width(100.4));
-        assert_eq!(canonical_wrap_width(99.6), canonical_wrap_width(100.4));
-        // Crossing a 1px boundary → different target.
-        assert_ne!(canonical_wrap_width(100.4), canonical_wrap_width(100.6));
-        // The wrap grid equals the cache's `available_q` rounding.
-        for w in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
-            let cache_w = quantize_available(Size::new(w, 0.0)).x;
-            assert_eq!(canonical_wrap_width(w) as i32, cache_w, "w={w}");
         }
     }
 }
