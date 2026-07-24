@@ -172,7 +172,7 @@ pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowToken};
 mod hot_struct_sizes {
     use crate::animation::AnimRow;
     use crate::common::content_hash::ContentHash;
-    use crate::input::{TargetDeltas, response::ResponseState};
+    use crate::input::{TargetScrollDelta, response::ResponseState};
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
@@ -313,7 +313,7 @@ mod hot_struct_sizes {
         ResponseState => "input::ResponseState": 136 / 4,
         Widget => "widgets::Widget": 128 / 8,
         WidgetEntry => "widgets::WidgetEntry": 272 / 8,
-        TargetDeltas => "input::TargetDeltas": 32 / 8,
+        TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,
         NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,
