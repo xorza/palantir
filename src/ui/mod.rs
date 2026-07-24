@@ -9,7 +9,7 @@ use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
-use crate::display::Display;
+use crate::display::{self, Display};
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -22,7 +22,6 @@ use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
@@ -178,8 +177,8 @@ impl Ui {
         // verts/indices, interned text spans). Clearing here would
         // leave dangling indices the encoder then dereferences.
         debug_assert!(
-            stamp.display.scale_factor >= EPS,
-            "Display::scale_factor must be ≥ EPSILON; got {}",
+            display::scale_factor_is_valid(stamp.display.scale_factor),
+            "Display::scale_factor must be finite and ≥ EPSILON; got {}",
             stamp.display.scale_factor,
         );
 

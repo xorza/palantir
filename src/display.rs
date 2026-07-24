@@ -1,6 +1,12 @@
+use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use glam::UVec2;
+
+#[inline]
+pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
+    scale_factor.is_finite() && scale_factor >= EPS
+}
 
 /// Display state for the current output: read by the renderer at
 /// submit time, by hosts computing the logical surface rect for
@@ -23,7 +29,8 @@ pub struct Display {
     /// to `wgpu::SurfaceConfiguration { width, height, .. }`.
     pub physical: UVec2,
     /// Logical→physical conversion factor (e.g. `2.0` on a 2× retina
-    /// display). Must be ≥ `approx::EPS`; `Ui::frame` asserts.
+    /// display). Must be finite and at least `approx::EPS`; host boundaries
+    /// validate external values and `Ui::frame` checks the internal invariant.
     pub scale_factor: f32,
     /// Whether the composer snaps painted geometry edges (quad rects,
     /// shadow rects, image rects, text bounds, clip scissors) to

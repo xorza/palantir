@@ -132,7 +132,8 @@ pub fn bench() {
     });
     let run = |host: &mut OffscreenHost, state: &mut FrameFixture| {
         host.ui().theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, &mut FixtureApp { state });
+        host.frame_offscreen(&target, SCALE, &mut FixtureApp { state })
+            .expect("valid benchmark scale factor");
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

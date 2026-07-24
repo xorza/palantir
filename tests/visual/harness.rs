@@ -96,7 +96,8 @@ impl Harness {
 
         self.host.ui().theme.window_clear = clear;
         self.host
-            .frame_offscreen(&target, scale, &mut RecordApp { record: scene });
+            .frame_offscreen(&target, scale, &mut RecordApp { record: scene })
+            .expect("valid visual-test scale factor");
 
         let mut img = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
@@ -170,10 +171,12 @@ impl TwoWindowHarness {
         mut scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         let target = make_target(&self.gpu.device, FORMAT, physical);
-        self.host.frame_offscreen(window, &target, scale, |ui| {
-            ui.theme.window_clear = clear;
-            scene(ui);
-        });
+        self.host
+            .frame_offscreen(window, &target, scale, |ui| {
+                ui.theme.window_clear = clear;
+                scene(ui);
+            })
+            .expect("valid visual-test scale factor");
         readback(&self.gpu.device, &self.gpu.queue, &target, physical)
     }
 }
