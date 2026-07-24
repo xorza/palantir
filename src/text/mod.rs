@@ -9,9 +9,10 @@
 //!   buffer. The only production backend.
 //! - [`mono::test_support::measure`] — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
-//!   `font_size_px * 0.5` wide; runs measured this way carry
-//!   [`TextShapeKey::INVALID`] and the renderer drops them. Lets the engine
-//!   run in tests and headless tools without a font system.
+//!   `font_size_px * 0.5` wide; it mints no shaped buffer, so `TextSystem`
+//!   reports [`TextShapeKey::INVALID`] for those runs and the renderer drops
+//!   them. Lets the engine run in tests and headless tools without a font
+//!   system.
 //! - [`TextSystem`](crate::text::system::TextSystem) — per-window text
 //!   coordinator. It owns reuse slots keyed by widget and within-widget
 //!   text ordinal while referring to the app-global [`TextShaper`] shared
@@ -23,7 +24,7 @@
 //! so a trait would just be a downcast in disguise.
 //!
 //! Module layout: this file owns the shared vocabulary ([`FontFamily`],
-//! [`FontWeight`], [`TextShapeRequest`], [`TextMeasurement`]) and the
+//! [`FontWeight`], [`TextShapeRequest`], [`TextRoot`]) and the
 //! [`TextShaper`] coordinator; [`key`] the quantized cache identity;
 //! [`system`] the per-window reuse slots; [`probe`] read-only
 //! caret / hit-test / selection geometry; [`render`] the cosmic-free
@@ -229,19 +230,41 @@ impl TextShaper {
     /// measurement.
     pub(crate) fn layout<'t>(&self, request: TextShapeRequest<'t>) -> TextLayoutProbe<'_, 't> {
         let mut inner = self.inner.borrow_mut();
-        let measurement = if request.text.is_empty() {
-            TextMeasurement::ZERO
+        let size = if request.text.is_empty() {
+            Size::ZERO
         } else {
-            inner.dispatch(request)
+            inner.dispatch(request).size
         };
-        TextLayoutProbe::new(measurement, request, inner)
+        TextLayoutProbe::new(size, request, inner)
     }
 
-    /// One cache-bypassing shaping dispatch. `TextSystem` calls this on a
+    /// Shape a run at its natural width. `TextSystem` calls this on a
     /// reuse-slot miss; the shaper's own content cache may still hit, so
     /// this is "no reuse slot", not "reshape".
-    pub(crate) fn dispatch(&self, request: TextShapeRequest<'_>) -> TextMeasurement {
+    pub(crate) fn shape_root(&self, request: TextShapeRequest<'_>) -> TextRoot {
+        debug_assert!(
+            request.key.max_width_px().is_none(),
+            "a root shape must be unbounded",
+        );
         self.inner.borrow_mut().dispatch(request)
+    }
+
+    /// Shape a run against a committed width. Only its extent survives —
+    /// a bounded shape has no wrapping floor of its own and its line count
+    /// describes the resolve, not the run.
+    pub(crate) fn shape_bounded(&self, request: TextShapeRequest<'_>) -> Size {
+        debug_assert!(
+            request.key.max_width_px().is_some(),
+            "a bounded shape needs a committed width",
+        );
+        self.inner.borrow_mut().dispatch(request).size
+    }
+
+    /// Whether this shaper produces shaped buffers the renderer can replay.
+    /// False only under the `internals`-gated mono metric, whose runs carry
+    /// [`TextShapeKey::INVALID`] so the encoder drops them.
+    pub(crate) fn shapes_buffers(&self) -> bool {
+        self.inner.borrow().cosmic.is_some()
     }
 
     /// Bounds the reconstructible cosmic buffer LRU. Called by
@@ -276,7 +299,7 @@ impl ShaperInner {
     /// Bypass-cache dispatch. Test builds tally it into `measure_calls` —
     /// cosmic may still hit its shaped-buffer cache, so the counter tracks
     /// dispatches, not reshapes.
-    pub(crate) fn dispatch(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+    fn dispatch(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         #[cfg(any(test, feature = "internals"))]
         {
             self.measure_calls += 1;
@@ -293,21 +316,20 @@ impl ShaperInner {
     }
 }
 
-/// Measurement of one text run, including its intrinsic wrapping floor.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct TextMeasurement {
+/// A run's *unbounded* shape — the root every wrap policy reasons from.
+///
+/// Carries the two facts only an unbounded shape can supply, which is why
+/// they live here and not on the width-resolved result: a bounded shape
+/// cannot report a wrapping floor it never scanned for, and its line count
+/// answers a different question. Nothing here identifies a shaped buffer;
+/// the buffer key is derived by [`TextSystem`](crate::text::system::TextSystem)
+/// from the request that produced it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TextRoot {
     pub(crate) size: Size,
-    /// Identifier of the shaped buffer, or [`TextShapeKey::INVALID`] when no
-    /// shaping happened — empty text, or the test-only mono fallback.
-    pub(crate) key: TextShapeKey,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
-    /// Meaningful only on unbounded measurements — every consumer
-    /// (`TextWrap::min_content`, the WrapWithOverflow width floor) derives
-    /// floors from the unbounded root, so cosmic skips the per-cluster
-    /// word scan for width-bounded shapes and reports `0.0` there. The
-    /// mono fallback's cheap byte scan reports its floor unconditionally.
     pub(crate) intrinsic_min: f32,
     /// `true` when the shaped result is one visual line. Gates
     /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
@@ -316,12 +338,10 @@ pub(crate) struct TextMeasurement {
     pub(crate) single_line: bool,
 }
 
-impl TextMeasurement {
-    /// Successful empty-text measurement. It has no shaped buffer for the
-    /// renderer to resolve.
+impl TextRoot {
+    /// Successful empty-text shape.
     pub(crate) const ZERO: Self = Self {
         size: Size::ZERO,
-        key: TextShapeKey::INVALID,
         intrinsic_min: 0.0,
         single_line: true,
     };
@@ -365,9 +385,45 @@ pub(crate) mod test_support {
         }
     }
 
+    /// Shaping result as the in-tree tests read it: a production
+    /// [`TextRoot`] plus the shaped-buffer key its request minted.
+    /// Production derives that key in
+    /// [`TextSystem`](crate::text::system::TextSystem) rather than carrying
+    /// it on the measurement, but tests assert on buffer identity, so the
+    /// helpers hand both back together.
+    #[derive(Clone, Copy, Debug)]
+    pub(crate) struct TestMeasure {
+        pub(crate) size: Size,
+        pub(crate) key: TextShapeKey,
+        pub(crate) intrinsic_min: f32,
+        pub(crate) single_line: bool,
+    }
+
+    impl TestMeasure {
+        fn new(root: TextRoot, key: TextShapeKey) -> Self {
+            Self {
+                size: root.size,
+                key,
+                intrinsic_min: root.intrinsic_min,
+                single_line: root.single_line,
+            }
+        }
+    }
+
     impl CosmicMeasure {
-        pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TextMeasurement {
-            self.shape(shape.request(text, LineFit::Wrap))
+        pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TestMeasure {
+            self.measure_with_fit_key(shape.request(text, LineFit::Wrap))
+        }
+
+        /// Shape `request` and pair the result with the key it shaped
+        /// under — invalid for empty text, which mints no buffer.
+        fn measure_with_fit_key(&mut self, request: TextShapeRequest<'_>) -> TestMeasure {
+            let key = if request.text.is_empty() {
+                TextShapeKey::INVALID
+            } else {
+                request.key
+            };
+            TestMeasure::new(self.shape(request), key)
         }
 
         /// Truncating-fit measure. Named apart from the production
@@ -378,16 +434,32 @@ pub(crate) mod test_support {
             shape: TestShape,
             fit: LineFit,
             unbounded_key: TextShapeKey,
-        ) -> TextMeasurement {
+        ) -> TestMeasure {
             let request = shape.request(text, fit);
             debug_assert_eq!(request.key.unbounded_version(), unbounded_key);
-            self.shape(request)
+            self.measure_with_fit_key(request)
         }
     }
 
     impl TextShaper {
-        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> TextMeasurement {
-            self.probe_layout(text, shape, |probe| probe.measurement)
+        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> TestMeasure {
+            let shapes_buffers = self.shapes_buffers();
+            self.probe_layout(text, shape, |probe| {
+                let key = if shapes_buffers && !probe.request.text.is_empty() {
+                    probe.request.key
+                } else {
+                    TextShapeKey::INVALID
+                };
+                // The probe keeps only the extent; the wrap floor and line
+                // count are the root's, so re-derive them for the tests
+                // that assert on them.
+                TestMeasure {
+                    size: probe.size,
+                    key,
+                    intrinsic_min: 0.0,
+                    single_line: true,
+                }
+            })
         }
 
         pub(crate) fn probe_layout<R>(

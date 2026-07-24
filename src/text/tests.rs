@@ -7,7 +7,7 @@ use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
 use crate::text::system::{self, TextRunSlot, TextSystem};
-use crate::text::test_support::TestShape;
+use crate::text::test_support::{TestMeasure, TestShape};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
 use rustc_hash::FxHashSet;
@@ -33,7 +33,7 @@ fn mono_shape(
     line_height_px: f32,
     max_width_px: Option<f32>,
     fit: LineFit,
-) -> TextMeasurement {
+) -> TestMeasure {
     let request = TextShapeRequest::unbounded(
         text,
         font_size_px,
@@ -45,7 +45,14 @@ fn mono_shape(
         Some(width) => request.bounded(width, HAlign::Auto, fit),
         None => request,
     };
-    mono::test_support::measure(request)
+    // Mono mints no shaped buffer, so every run it measures is invalid.
+    let root = mono::test_support::measure(request);
+    TestMeasure {
+        size: root.size,
+        key: TextShapeKey::INVALID,
+        intrinsic_min: root.intrinsic_min,
+        single_line: root.single_line,
+    }
 }
 
 fn measure_truncated(
@@ -53,7 +60,7 @@ fn measure_truncated(
     text: &str,
     params: TestShape,
     fit: LineFit,
-) -> TextMeasurement {
+) -> TestMeasure {
     let unbounded = cosmic.measure(
         text,
         TestShape {
@@ -547,10 +554,14 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             FontWeight::Regular,
         );
         let slot = slot_at(widget_id, ordinal as u16);
-        let unbounded = text.measure(slot, request, case.wrap, HAlign::Auto, None);
+        let unbounded = text.root(slot, request);
         let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
-        assert_eq!(resolved.size, case.measured, "{case:?}");
-        assert_eq!(case.wrap.content_size(&resolved), case.content, "{case:?}");
+        assert_eq!(resolved.measured, case.measured, "{case:?}");
+        assert_eq!(
+            case.wrap.content_size(resolved.measured),
+            case.content,
+            "{case:?}"
+        );
         assert_eq!(
             case.wrap.min_content(&unbounded),
             case.min_content,
@@ -570,10 +581,14 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         HAlign::Auto,
         Some(24.0),
     );
-    assert_eq!(empty.size, Size::ZERO);
-    assert_eq!(TextWrap::Ellipsis.content_size(&empty), Size::ZERO);
-    assert_eq!(TextWrap::Ellipsis.min_content(&empty), Size::ZERO);
-    assert_eq!(TextWrap::Ellipsis.max_content(&empty), Size::ZERO);
+    assert_eq!(empty.measured, Size::ZERO);
+    assert_eq!(TextWrap::Ellipsis.content_size(empty.measured), Size::ZERO);
+    let empty_root = text.root(
+        slot_at(widget_id, cases.len() as u16),
+        TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular),
+    );
+    assert_eq!(TextWrap::Ellipsis.min_content(&empty_root), Size::ZERO);
+    assert_eq!(TextWrap::Ellipsis.max_content(&empty_root), Size::ZERO);
 }
 
 #[test]

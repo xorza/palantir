@@ -225,9 +225,9 @@ fn make_run(
         FontFamily::Sans,
         FontWeight::Regular,
     );
-    let measured = shaper.layout(request).measurement;
+    shaper.layout(request);
     TextRun {
-        text: ShapedTextRef::new(measured.key, &recorded),
+        text: ShapedTextRef::new(request.key, &recorded),
         origin,
         bounds: URect::new(0, 0, viewport.x, viewport.y),
         color,

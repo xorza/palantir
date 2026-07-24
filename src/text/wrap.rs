@@ -1,6 +1,6 @@
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::text::TextMeasurement;
+use crate::text::TextRoot;
 
 /// Canonical width used by width-bounded cache identity
 /// ([`crate::text::key::TextShapeKey::bounded`]) and the fitting-truncate
@@ -42,11 +42,7 @@ impl LineFit {
     /// halign offsets into wrapped buffers. `size.w` is ceil'd and the
     /// canonical width is integral, so this comparison matches the
     /// truncating path's cut decision exactly.
-    pub(crate) fn resolves_to_unbounded(
-        self,
-        unbounded: &TextMeasurement,
-        target_width_px: f32,
-    ) -> bool {
+    pub(crate) fn resolves_to_unbounded(self, unbounded: &TextRoot, target_width_px: f32) -> bool {
         matches!(self, LineFit::Clip | LineFit::Ellipsis)
             && unbounded.single_line
             && unbounded.size.w <= canonical_wrap_width(target_width_px)
@@ -95,7 +91,7 @@ impl TextWrap {
     /// Min-content demand, from the `unbounded` root measurement
     /// (`TextSystem::measure` with no available width) — not a bounded
     /// resolve, whose height already reflects wrapping.
-    pub(crate) fn min_content(self, unbounded: &TextMeasurement) -> Size {
+    pub(crate) fn min_content(self, unbounded: &TextRoot) -> Size {
         match self {
             TextWrap::SingleLine => unbounded.size,
             // Scroll owns clipping and panning; truncating and wrapping
@@ -108,7 +104,7 @@ impl TextWrap {
     }
 
     /// Max-content demand, from the `unbounded` root measurement.
-    pub(crate) fn max_content(self, unbounded: &TextMeasurement) -> Size {
+    pub(crate) fn max_content(self, unbounded: &TextRoot) -> Size {
         match self {
             // Scroll's full run creates no width demand.
             TextWrap::Scroll => Size::new(0.0, unbounded.size.h),
@@ -126,7 +122,7 @@ impl TextWrap {
     /// floors at the widest unbreakable segment so those segments
     /// overflow rather than break — the same floor
     /// [`Self::min_content`] demands.
-    pub(crate) fn target_width(self, available_width_px: f32, unbounded: &TextMeasurement) -> f32 {
+    pub(crate) fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
             TextWrap::WrapWithOverflow => available_width_px.max(unbounded.intrinsic_min),
             TextWrap::SingleLine
@@ -137,15 +133,15 @@ impl TextWrap {
         }
     }
 
-    /// Layout content contribution of the `resolved` measurement.
-    pub(crate) fn content_size(self, resolved: &TextMeasurement) -> Size {
+    /// Layout content contribution of a width-`resolved` extent.
+    pub(crate) fn content_size(self, resolved: Size) -> Size {
         match self {
-            TextWrap::Scroll => Size::new(0.0, resolved.size.h),
+            TextWrap::Scroll => Size::new(0.0, resolved.h),
             TextWrap::SingleLine
             | TextWrap::Truncate
             | TextWrap::Ellipsis
             | TextWrap::Wrap
-            | TextWrap::WrapWithOverflow => resolved.size,
+            | TextWrap::WrapWithOverflow => resolved,
         }
     }
 }
@@ -154,18 +150,17 @@ impl TextWrap {
 mod tests {
     use crate::layout::cache::quantize_available;
     use crate::primitives::size::Size;
-    use crate::text::TextMeasurement;
+    use crate::text::TextRoot;
     use crate::text::wrap;
     use crate::text::wrap::{LineFit, TextWrap};
 
     /// Unbounded root standing in for a shaped measurement — the only
     /// input the bounded-shaping decisions read.
-    fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextMeasurement {
-        TextMeasurement {
+    fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextRoot {
+        TextRoot {
             size: Size::new(width_px, 16.0),
             intrinsic_min,
             single_line,
-            ..TextMeasurement::ZERO
         }
     }
 

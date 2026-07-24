@@ -425,9 +425,9 @@ mod test_support {
             FontFamily::Sans,
             FontWeight::Regular,
         );
-        let m = shaper.layout(request).measurement;
+        shaper.layout(request);
         TextRun {
-            text: ShapedTextRef::new(m.key, &recorded),
+            text: ShapedTextRef::new(request.key, &recorded),
             origin,
             bounds: URect::new(0, 0, viewport.x, viewport.y),
             color,

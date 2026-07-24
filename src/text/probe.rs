@@ -6,8 +6,9 @@
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::text::mono;
-use crate::text::{ShaperInner, TextMeasurement, TextShapeRequest};
+use crate::text::{ShaperInner, TextShapeRequest};
 use std::cell::RefMut;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -23,28 +24,29 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_
 /// probe is alive is a logic error the `RefCell` catches at runtime.
 #[derive(Debug)]
 pub(crate) struct TextLayoutProbe<'s, 't> {
-    pub(crate) measurement: TextMeasurement,
+    /// Extent of the shaped run. `Size::ZERO` for empty text.
+    pub(crate) size: Size,
     pub(crate) request: TextShapeRequest<'t>,
     inner: RefMut<'s, ShaperInner>,
 }
 
 impl<'s, 't> TextLayoutProbe<'s, 't> {
     pub(crate) fn new(
-        measurement: TextMeasurement,
+        size: Size,
         request: TextShapeRequest<'t>,
         inner: RefMut<'s, ShaperInner>,
     ) -> Self {
         Self {
-            measurement,
+            size,
             request,
             inner,
         }
     }
 
-    /// Shaped buffer behind this layout; `None` on the test-only mono
-    /// fallback and for empty text (`TextShapeKey::INVALID` keys).
+    /// Shaped buffer behind this layout; `None` on the gated mono metric
+    /// (no cosmic to ask) and for empty text (an unshaped request).
     fn buffer(&self) -> Option<&cosmic_text::Buffer> {
-        self.inner.cosmic.as_ref()?.buffer_for(self.measurement.key)
+        self.inner.cosmic.as_ref()?.buffer_for(self.request.key)
     }
     /// (x, y_top, line_height) for the caret at `byte_offset`.
     /// Multi-line aware via cosmic-text layout runs (each `\n` and each
