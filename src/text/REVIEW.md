@@ -199,11 +199,17 @@ load-bearing rather than accidental.
 
 ## Open questions
 
-- [ ] Does anything outside tests and benches construct `TextShaper::test_mono`, or is
-  the whole `Option<CosmicMeasure>` / `INVALID`-key-for-non-empty-text axis reachable
-  only from gated builds? `OffscreenHost` is the one plausible production caller and
-  is worth confirming either way, since it decides whether the fallback is a test
-  artifact or a supported headless mode.
+- [x] **Resolved: the mono fallback is a supported `internals`-gated mode, not a test
+  artifact.** `TextShaper::test_mono` is `pub` (`mod.rs:417`) and `OffscreenHost::shaper`
+  is a public builder accepting any shaper (`host/offscreen.rs:92`), so under the
+  `internals` feature an external consumer can legitimately run a headless offscreen
+  host on the mono metric. Two consequences for the Critical group above: the
+  `Option<CosmicMeasure>` axis is a feature rather than dead weight, and the duplicated
+  key in `TextReuseEntry` is the price of it — the reuse-layer tests themselves run on
+  the mono shaper (`TextSystem::default()`, `tests.rs:367`, `:438`, `:494`), and without
+  the separate key those rows would miss on every frame under mono, leaving the reuse
+  layer untestable. The duplication remains a real tax, but it is production paying
+  48 B/row for a gated mode, not an oversight.
 
 - [ ] The reuse-layer benchmark cited at `system.rs:6-14` compares "slots" against
   "no slots". It does not isolate how much of that win survives once the duplicated
