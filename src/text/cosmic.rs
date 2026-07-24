@@ -410,6 +410,18 @@ impl CosmicMeasure {
         let family = key.family();
         let weight = key.weight();
         let attrs = attrs_for(family, weight);
+        // Reserve the ellipsis width only when we'll append one; a plain
+        // clip cuts flush to the full available width. Resolved (from
+        // the memoized cache) before borrowing the probe, since the
+        // rare miss shapes "…" through `&mut self`.
+        let mut append_ellipsis = false;
+        let avail = if matches!(fit, LineFit::Ellipsis) {
+            let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
+            append_ellipsis = ellipsis_w <= width;
+            (width - ellipsis_w).max(0.0)
+        } else {
+            width
+        };
         let probe = &self
             .cache
             .get(&unbounded.key)
@@ -421,22 +433,7 @@ impl CosmicMeasure {
         let truncated = if line_w <= width && !multiline {
             false
         } else {
-            // Reserve the ellipsis width only when we'll append one; a plain
-            // clip cuts flush to the full available width.
-            let mut append_ellipsis = false;
-            let avail = if matches!(fit, LineFit::Ellipsis) {
-                let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
-                append_ellipsis = ellipsis_w <= width;
-                (width - ellipsis_w).max(0.0)
-            } else {
-                width
-            };
             let mut cut = 0usize;
-            let probe = &self
-                .cache
-                .get(&unbounded.key)
-                .expect("unbounded shape disappeared during truncation")
-                .buffer;
             if let Some(run) = probe.layout_runs().next() {
                 for g in run.glyphs {
                     if g.x + g.w > avail {

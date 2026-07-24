@@ -35,18 +35,6 @@ use rustc_hash::FxHashMap;
 use crate::renderer::backend::text::atlas::{GlyphAtlas, GlyphSlot, PackedGlyphMetadata};
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
-/// One encoded-cache miss handed to [`EncodeCtx::encode_batch`]: the
-/// run's source text + canonical shaping key, its physical placement,
-/// and the cache identity to populate. The emit colour rides
-/// `run_key.key.area_color` — the same bytes baked into every cached
-/// template.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct MissRun<'a> {
-    pub(crate) request: TextShapeRequest<'a>,
-    pub(crate) placement: RunPlacement,
-    pub(crate) run_key: EncodedRunKey,
-}
-
 /// Cache-hit identity for an encoded run. Subpixel bins capture the
 /// fractional component of `origin` that cosmic folds into per-glyph
 /// `CacheKey`s (so different fractional origins produce different
@@ -214,7 +202,7 @@ pub(crate) fn try_emit_cached(
 
 /// Slow-walk state for one batch's encoded-cache misses: the GPU-side
 /// dependencies plus the extraction scratch and instance sink borrowed
-/// from `TextBackend`. [`Self::encode_batch`] drives the walk.
+/// from `TextBackend`. [`Self::encode_run`] encodes one miss.
 #[derive(Debug)]
 pub(crate) struct EncodeCtx<'a> {
     pub(crate) device: &'a wgpu::Device,
@@ -227,94 +215,93 @@ pub(crate) struct EncodeCtx<'a> {
 }
 
 impl EncodeCtx<'_> {
-    /// Walk one batch's runs that didn't hit the encoded cache: extract
-    /// their glyph placements through the shaper `session` (which
-    /// restores evicted buffers and applies the y-cull), touch/insert
-    /// atlas slots, emit `GlyphInstance`s and populate the encoded
-    /// cache as a side effect. Callers are expected to have already
-    /// filtered out invalid keys and cache hits.
-    pub(crate) fn encode_batch<'r>(
+    /// Encode one run that missed the encoded cache: extract its glyph
+    /// placements through the shaper `session` (which restores evicted
+    /// buffers and applies the y-cull), touch/insert atlas slots, emit
+    /// `GlyphInstance`s and populate the encoded cache as a side
+    /// effect. Callers are expected to have already filtered out
+    /// invalid keys and cache hits.
+    pub(crate) fn encode_run(
         &mut self,
         session: &mut TextRenderSession<'_>,
-        runs: impl IntoIterator<Item = MissRun<'r>>,
+        request: TextShapeRequest<'_>,
+        placement: RunPlacement,
+        run_key: EncodedRunKey,
     ) {
         let current_frame = self.atlas.current_frame;
-        for run in runs {
-            let run_key = run.run_key;
-            // The straight-linear cast of the run's colour — already
-            // baked into the cache identity, reused as the emit colour.
-            let color = run_key.key.area_color;
+        // The straight-linear cast of the run's colour — already baked
+        // into the cache identity, reused as the emit colour.
+        let color = run_key.key.area_color;
 
-            // `culled` records whether the extraction dropped any line:
-            // a truncated encode must not become a cache template
-            // (`EncodedKey` carries no bounds, so integer-pixel
-            // scrolling replays the same key with lines newly in view —
-            // they'd stay blank forever).
-            let culled = session.extract_glyphs(run.request, run.placement, self.placed);
+        // `culled` records whether the extraction dropped any line: a
+        // truncated encode must not become a cache template
+        // (`EncodedKey` carries no bounds, so integer-pixel scrolling
+        // replays the same key with lines newly in view — they'd stay
+        // blank forever).
+        let culled = session.extract_glyphs(request, placement, self.placed);
 
-            // Build a fresh cache entry as a side effect of the slow
-            // walk. Slots used earlier this frame cannot be eviction
-            // candidates, so an atlas eviction during the walk cannot
-            // invalidate a template already appended here.
-            let pending_start = self.cache.arena.len() as u32;
+        // Build a fresh cache entry as a side effect of the slow walk.
+        // Slots used earlier this frame cannot be eviction candidates,
+        // so an atlas eviction during the walk cannot invalidate a
+        // template already appended here.
+        let pending_start = self.cache.arena.len() as u32;
 
-            for g in self.placed.iter() {
-                let idx = match self.atlas.touch(&g.raster_key) {
-                    Some(i) => i,
-                    None => {
-                        match rasterize_and_insert(self.device, session, self.atlas, g.raster_key) {
-                            Some(i) => i,
-                            None => continue,
-                        }
+        for g in self.placed.iter() {
+            let idx = match self.atlas.touch(&g.raster_key) {
+                Some(i) => i,
+                None => {
+                    match rasterize_and_insert(self.device, session, self.atlas, g.raster_key) {
+                        Some(i) => i,
+                        None => continue,
                     }
-                };
-                let slot = self.atlas.slots[idx as usize];
-
-                if slot.alloc.is_none() {
-                    continue;
                 }
+            };
+            let slot = self.atlas.slots[idx as usize];
 
-                let abs_x = g.x + slot.left as i32;
-                let abs_y = g.y - slot.top as i32;
-                let dim = (slot.width as u32) | ((slot.height as u32) << 16);
-                let uv_and_kind = pack_uv(slot.x, slot.y, slot.content);
+            if slot.alloc.is_none() {
+                continue;
+            }
 
-                self.out.push(GlyphInstance {
-                    pos: [abs_x, abs_y],
+            let abs_x = g.x + slot.left as i32;
+            let abs_y = g.y - slot.top as i32;
+            let dim = (slot.width as u32) | ((slot.height as u32) << 16);
+            let uv_and_kind = pack_uv(slot.x, slot.y, slot.content);
+
+            self.out.push(GlyphInstance {
+                pos: [abs_x, abs_y],
+                dim,
+                uv_and_kind,
+                color,
+            });
+            self.cache.arena.push(EncodedGlyph {
+                instance: GlyphInstance {
+                    pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
                     dim,
                     uv_and_kind,
                     color,
-                });
-                self.cache.arena.push(EncodedGlyph {
-                    instance: GlyphInstance {
-                        pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
-                        dim,
-                        uv_and_kind,
-                        color,
-                    },
-                    atlas_slot: idx,
-                    generation: slot.generation,
-                });
-            }
+                },
+                atlas_slot: idx,
+                generation: slot.generation,
+            });
+        }
 
-            // Only cache full encodes. Pass 1 already filtered invalid
-            // keys; valid-key here is a precondition. Partially visible
-            // runs re-encode each frame; the reverse (a cached full
-            // template replayed under narrower bounds) is safe — the
-            // batch scissor is the real clip.
-            if !culled {
-                let span = Span::new(pending_start, self.cache.arena.len() as u32 - pending_start);
-                self.cache.map.insert(
-                    run_key.key,
-                    EncodedEntry {
-                        span,
-                        last_use: current_frame,
-                    },
-                );
-            } else {
-                // Roll back the partial entry truncated by the cull.
-                self.cache.arena.truncate(pending_start as usize);
-            }
+        // Only cache full encodes. The caller already filtered invalid
+        // keys; valid-key here is a precondition. Partially visible
+        // runs re-encode each frame; the reverse (a cached full
+        // template replayed under narrower bounds) is safe — the batch
+        // scissor is the real clip.
+        if !culled {
+            let span = Span::new(pending_start, self.cache.arena.len() as u32 - pending_start);
+            self.cache.map.insert(
+                run_key.key,
+                EncodedEntry {
+                    span,
+                    last_use: current_frame,
+                },
+            );
+        } else {
+            // Roll back the partial entry truncated by the cull.
+            self.cache.arena.truncate(pending_start as usize);
         }
     }
 }
