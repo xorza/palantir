@@ -43,6 +43,9 @@ strum = { version = "0.28", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 # Gradient stop arrays are part of the serialized public theme format.
 tinyvec = { version = "1.12", features = ["serde"] }
+# Same UAX #14 source cosmic-text splits its shape words on, so the
+# intrinsic-width scan agrees with the shaper about where a line can break.
+unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
 
 criterion = { version = "0.8", optional = true }
