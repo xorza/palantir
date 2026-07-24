@@ -15,7 +15,6 @@
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{AxisCtx, TextShapeInput, leaf_text_shapes, resolve_axis_size};
-use crate::layout::types::align::HAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::interned_str::InternedText;
@@ -24,7 +23,7 @@ use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::text::{ShapeParams, TextMeasurement, TextRunIdentity};
+use crate::text::{TextMeasurement, TextRunIdentity};
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -284,22 +283,13 @@ fn shape_leaf_text(
 ) -> TextMeasurement {
     engine
         .text
-        .prepare_run(
+        .prepare(
             TextRunIdentity {
                 widget_id: wid,
                 ordinal: ts.ordinal,
             },
-            ts.text,
-            ShapeParams {
-                font_size_px: ts.font_size_px,
-                line_height_px: ts.line_height_px,
-                max_width_px: None,
-                family: ts.family,
-                weight: ts.weight,
-                halign: HAlign::Auto,
-            },
+            ts.shape_request(),
         )
-        .expect("recorded text metrics were validated")
         .unbounded
 }
 
