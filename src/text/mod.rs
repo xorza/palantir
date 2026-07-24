@@ -134,11 +134,12 @@ pub(crate) struct TextBufferRequest<'a> {
 
 /// Per-window text coordinator. Identity reuse belongs to the window while
 /// shaped content buffers and the font system remain shared through
-/// [`TextShaper`].
+/// [`TextShaper`]. Reuse rows are clock-swept under size pressure.
 #[derive(Debug)]
 pub(crate) struct TextSystem {
     shaper: TextShaper,
     entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
+    sweep_limit: usize,
 }
 
 /// One direct text layout exposed for several read-only geometry queries.
@@ -196,6 +197,7 @@ pub(crate) struct ShaperInner {
 /// restore entries from retained text sources, so the cache needs no separate
 /// live-layout allowance.
 const BUFFER_BUDGET: usize = 2048;
+const MIN_REUSE_SWEEP_LIMIT: usize = 256;
 
 pub(crate) const TEXT_METRICS_ERROR: &str =
     "font size and line height must be finite and above the UI epsilon";
@@ -390,14 +392,21 @@ impl TextSystem {
         Self {
             shaper,
             entries: FxHashMap::default(),
+            sweep_limit: MIN_REUSE_SWEEP_LIMIT,
         }
     }
 
     pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
         self.shaper.end_frame();
-        if !removed.is_empty() {
-            self.entries
-                .retain(|(widget_id, _), _| !removed.contains(widget_id));
+        let previous_len = self.entries.len();
+        let sweep = previous_len > self.sweep_limit;
+        if sweep || !removed.is_empty() {
+            self.entries.retain(|(widget_id, _), entry| {
+                !removed.contains(widget_id) && (!sweep || std::mem::take(&mut entry.hot))
+            });
+        }
+        if sweep || self.entries.len() != previous_len {
+            self.sweep_limit = next_reuse_sweep_limit(self.entries.len());
         }
     }
 
@@ -438,12 +447,15 @@ impl TextSystem {
                 inputs,
                 unbounded,
                 wrap: None,
+                hot: true,
             }
         };
         let entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
             Entry::Occupied(mut occupied) => {
                 if occupied.get().inputs != inputs {
                     occupied.insert(refresh());
+                } else {
+                    occupied.get_mut().hot = true;
                 }
                 occupied.into_mut()
             }
@@ -1058,6 +1070,14 @@ struct TextReuseEntry {
     inputs: TextReuseInputs,
     unbounded: TextMeasurement,
     wrap: Option<WrapReuse>,
+    hot: bool,
+}
+
+fn next_reuse_sweep_limit(len: usize) -> usize {
+    len.saturating_add(1)
+        .checked_next_power_of_two()
+        .unwrap_or(usize::MAX)
+        .max(MIN_REUSE_SWEEP_LIMIT)
 }
 
 /// One cached width-bounded result — the most-recent validated width,

@@ -10,10 +10,11 @@ fn lh(font_size: f32) -> f32 {
 }
 
 fn identity(widget_id: WidgetId) -> TextRunIdentity {
-    TextRunIdentity {
-        widget_id,
-        ordinal: 0,
-    }
+    identity_at(widget_id, 0)
+}
+
+fn identity_at(widget_id: WidgetId, ordinal: u16) -> TextRunIdentity {
+    TextRunIdentity { widget_id, ordinal }
 }
 
 fn measure_truncated(
@@ -1250,44 +1251,75 @@ fn prepared_bounded_cache_keys_width_and_halign() {
 }
 
 #[test]
-fn end_frame_evicts_removed_reuse_entries() {
+fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
+    for (len, expected) in [(0, 256), (255, 256), (256, 512), (257, 512), (512, 1024)] {
+        assert_eq!(
+            next_reuse_sweep_limit(len),
+            expected,
+            "next ladder rung for cache size {len}",
+        );
+    }
+
     let mut text = TextSystem::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    text.prepare_run(
-        identity(a),
-        "hi",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    )
-    .unwrap();
-    text.prepare_run(
-        identity(b),
-        "yo",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    )
-    .unwrap();
-    assert!(text.has_entry(a, 0));
-    assert!(text.has_entry(b, 0));
-    let removed: FxHashSet<WidgetId> = FxHashSet::from_iter([a]);
-    text.end_frame(&removed);
-    assert!(!text.has_entry(a, 0), "removed widget's entry evicted");
-    assert!(text.has_entry(b, 0), "surviving widget's entry kept");
+    let params = ShapeParams {
+        font_size_px: 16.0,
+        line_height_px: 16.0,
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+
+    for ordinal in 0_u16..=256 {
+        text.prepare_run(identity_at(a, ordinal), "hi", params)
+            .unwrap();
+    }
     text.end_frame(&FxHashSet::default());
-    assert!(text.has_entry(b, 0));
+    assert_eq!(
+        text.entries.len(),
+        257,
+        "the first threshold sweep keeps entries created in its hot interval",
+    );
+    assert_eq!(text.sweep_limit, 512);
+
+    text.prepare_run(identity(a), "hi", params).unwrap();
+    for ordinal in 257_u16..=512 {
+        text.prepare_run(identity_at(a, ordinal), "hi", params)
+            .unwrap();
+    }
+    text.end_frame(&FxHashSet::default());
+    assert_eq!(
+        text.entries.len(),
+        257,
+        "one reused row plus 256 new rows must survive the second sweep",
+    );
+    assert!(text.has_entry(a, 0), "hot existing row must survive");
+    assert!(!text.has_entry(a, 1), "cold prior row must be evicted");
+    assert!(
+        !text.has_entry(a, 256),
+        "last cold prior row must be evicted"
+    );
+    assert!(text.has_entry(a, 257), "new row must survive");
+    assert!(text.has_entry(a, 512), "last new row must survive");
+    assert_eq!(
+        text.sweep_limit, 512,
+        "257 survivors rebase to the next power-of-two rung",
+    );
+
+    text.prepare_run(identity(b), "yo", params).unwrap();
+    let removed = FxHashSet::from_iter([a]);
+    text.end_frame(&removed);
+    assert!(
+        !text.has_entry(a, 0),
+        "removed widgets must evict immediately below the sweep threshold",
+    );
+    assert!(text.has_entry(b, 0), "unrelated rows must remain");
+    assert_eq!(
+        text.sweep_limit, 256,
+        "a large immediate eviction must rebase the exponential ladder",
+    );
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands

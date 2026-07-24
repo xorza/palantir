@@ -23,7 +23,7 @@ borrow.
 
 - [x] **No API owned the complete identity-to-render-buffer transaction.** `TextSystem` owns window-local identity rows and their lifecycle together with a clone of the shared `TextShaper`. Render runs retain their record-local source span, and the backend hands all encoded-cache misses to `TextShaper::with_render_buffers`; that one method restores the requested buffers and exposes them to the renderer without an intermediate availability promise. The frontend no longer knows about reconstruction, and encoded-cache hits avoid the shaper borrow entirely.
 
-- [ ] **Reuse rows for vanished text ordinals remain indefinitely while their widget survives.** Rows are keyed by `(WidgetId, u16)`, but maintenance removes entries only when the whole `WidgetId` appears in the removed-widget set (`src/text/mod.rs:145`, `src/text/mod.rs:453`). An immediate-mode widget whose number of direct text shapes falls from many runs to a few leaves every higher ordinal resident; repeated peaks on stable widget IDs retain the maximum historical row count rather than the current text-run set, wasting memory for the lifetime of those widgets.
+- [x] **Reuse rows for vanished text ordinals remain indefinitely while their widget survives.** Each identity row now carries a hot bit set by actual `TextSystem` use. When the map grows past its current power-of-two sweep limit, frame finalization removes cold rows, clears surviving hot bits, and rebases the limit to the next exponential rung above the survivor count. This bounds stale ordinal growth without a per-frame map scan or recorded-tree liveness metadata; whole vanished widgets still evict immediately.
 
 ## Medium: reuse granularity and public surface add avoidable cost
 
