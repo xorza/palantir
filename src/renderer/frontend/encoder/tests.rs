@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
+use crate::layout::types::align;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::brush::gradient::FillAxis;
@@ -26,7 +27,6 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::record_store::{GradientId, RecordedGradient};
 use crate::scene::shapes::paint::ShapeBrush;
-use crate::text::probe;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -781,28 +781,28 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     assert_eq!(cascades.entries.sense()[child.idx()], Sense::NONE);
 }
 
-/// `text_in_rect` math: glyph bbox positioned inside the leaf's arranged
+/// `align_in_rect` math: glyph bbox positioned inside the leaf's arranged
 /// rect. Auto/center/right-bottom shift the origin; oversize content
 /// clamps to top-left so it doesn't clip on the wrong side.
 #[test]
-fn text_in_rect_cases() {
+fn align_in_rect_cases() {
     let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
     let measured = Size::new(80.0, 16.0);
 
-    let r = probe::text_in_rect(leaf, measured, Align::CENTER);
+    let r = align::align_in_rect(leaf, measured, Align::CENTER);
     assert_eq!((r.min.x, r.min.y), (70.0, 32.0));
     assert_eq!((r.size.w, r.size.h), (80.0, 16.0));
 
-    let r = probe::text_in_rect(leaf, measured, Align::default());
+    let r = align::align_in_rect(leaf, measured, Align::default());
     assert_eq!((r.min.x, r.min.y), (10.0, 20.0));
 
-    let r = probe::text_in_rect(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
+    let r = align::align_in_rect(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
     assert_eq!((r.min.x, r.min.y), (10.0 + 120.0, 20.0 + 24.0));
 
     // Negative-slack guard: oversize text clamps to top-left.
     let small = Rect::new(0.0, 0.0, 50.0, 10.0);
     let oversize = Size::new(80.0, 16.0);
-    let r = probe::text_in_rect(small, oversize, Align::CENTER);
+    let r = align::align_in_rect(small, oversize, Align::CENTER);
     assert_eq!((r.min.x, r.min.y), (0.0, 0.0));
 }
 

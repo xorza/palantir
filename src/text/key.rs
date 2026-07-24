@@ -37,6 +37,12 @@ pub(crate) struct TextShapeKey {
     /// visible difference and keeps the key purely integral.
     pub(crate) size_q: u32,
     /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
+    ///
+    /// Unlike its 1/64-px neighbours this carries only whole pixels:
+    /// [`Self::bounded`] snaps the width to the measure cache's grid via
+    /// [`wrap::canonical_wrap_width`] first, so the value is always a
+    /// multiple of 64. The scale is kept so all three quantized fields
+    /// dequantize the same way, not because the precision is reachable.
     pub(crate) max_w_q: u32,
     /// `line_height_px * 64`, rounded. Two `ShapeRecord::Text` runs at the
     /// same font-size but different leading produce different shaped

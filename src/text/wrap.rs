@@ -5,9 +5,15 @@ use crate::text::TextMeasurement;
 /// Canonical width used by width-bounded cache identity
 /// ([`crate::text::key::TextShapeKey::bounded`]) and the fitting-truncate
 /// check in `TextSystem::measure`.
+///
+/// Snapped with [`F32Ext::quantize_px`], the same grid the measure cache
+/// keys `available_q` on — the two must agree or a cached subtree could be
+/// blitted against a shape measured at another width. All this adds is the
+/// clamp: an over-constrained layout can commit a negative width, which the
+/// cache would assert on.
 #[inline]
 pub(crate) fn canonical_wrap_width(width: f32) -> f32 {
-    width.max(0.0).fast_round()
+    width.max(0.0).quantize_px() as f32
 }
 
 /// How a width-bounded text run handles overflow. Maps from the public
@@ -242,6 +248,12 @@ mod tests {
                 cache_width,
                 "width={width}",
             );
+        }
+        // The wrap width adds one rule on top of the shared grid: an
+        // over-constrained layout can commit a negative width, which the
+        // cache would assert on, so it clamps to zero here first.
+        for width in [-0.4_f32, -1.0, -1e9] {
+            assert_eq!(wrap::canonical_wrap_width(width), 0.0, "width={width}");
         }
     }
 }

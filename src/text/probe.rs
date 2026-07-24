@@ -1,11 +1,11 @@
 //! Read-only geometry over one shaped text layout: caret placement,
-//! pixel hit-testing, selection rects, and aligned placement of a
-//! measured block inside its leaf rect. Consumed by `TextEdit`, the
-//! cascade, and the encoder — never by the shaping hot path.
+//! pixel hit-testing, and selection rects. Consumed by `TextEdit` —
+//! never by the shaping hot path. Placing a measured block inside its
+//! leaf rect is plain box alignment with no text state, so it lives with
+//! `Align` as [`crate::layout::types::align::align_in_rect`].
 
-use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use crate::text::mono;
 use crate::text::{ShaperInner, TextMeasurement, TextShapeRequest};
 use std::cell::RefMut;
@@ -175,39 +175,6 @@ fn empty_line_x(max_width_px: Option<f32>, halign: HAlign) -> f32 {
         HAlign::Right => w,
         HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
     }
-}
-
-/// Position a measured text block inside `leaf` per `align`: `min`
-/// shifted by the alignment offset, `size` = the measured bbox (the
-/// composer takes `min` as the glyph origin and `size` as the clip
-/// bounds). Glyphs don't stretch, so `Auto`/`Stretch` collapse to
-/// start — matches arrange-axis placement for non-stretchable content — and
-/// overflow on an axis clamps that axis's offset to zero so oversized
-/// text pins to the leading edge.
-///
-/// Coordinate-system agnostic: the cascade and encoder pass
-/// owner-local / screen-space leaf rects; `TextEdit` passes a
-/// zero-origin rect and reads `.min` back as the bare offset for its
-/// caret/selection math. One definition for all of them — glyphs,
-/// caret, and selection wash must shift by the same offset or the
-/// caret drifts off its glyph.
-pub(crate) fn text_in_rect(leaf: Rect, measured: Size, align: Align) -> Rect {
-    let dx = match align.halign() {
-        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
-        HAlign::Center => (leaf.size.w - measured.w) * 0.5,
-        HAlign::Right => leaf.size.w - measured.w,
-    };
-    let dy = match align.valign() {
-        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
-        VAlign::Center => (leaf.size.h - measured.h) * 0.5,
-        VAlign::Bottom => leaf.size.h - measured.h,
-    };
-    Rect::new(
-        leaf.min.x + dx.max(0.0),
-        leaf.min.y + dy.max(0.0),
-        measured.w,
-        measured.h,
-    )
 }
 
 // `LayoutRun::highlight` builds a temporary `Vec` per run, so stream its spans directly.

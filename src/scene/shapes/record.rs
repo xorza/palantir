@@ -1,4 +1,4 @@
-use crate::layout::types::align::Align;
+use crate::layout::types::align::{self, Align};
 use crate::primitives::color::ColorF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageFilter, ImageFit};
@@ -11,7 +11,6 @@ use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::probe;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
@@ -389,7 +388,7 @@ impl ShapeRecord {
 /// Tight owner-local paint bbox of a [`ShapeRecord::Text`], using the
 /// shaped extent the measure pass already computed (lives in
 /// `LayerLayout::text_shapes`). The encoder applies the same formula
-/// in screen space — `text_in_rect` is the sole source so cascade
+/// in screen space — `align_in_rect` is the sole source so cascade
 /// damage rects and encoder draw rects can't drift.
 ///
 /// **Damage inflation lives in cascade** (`scene::cascade`), not here —
@@ -404,7 +403,7 @@ impl ShapeRecord {
 /// - `local_origin: Some(origin)` ⇒ widget owns positioning; rect is
 ///   `origin + measured`.
 /// - `local_origin: None` ⇒ encoder owns positioning via
-///   [`crate::text::probe::text_in_rect`] against the owner's padded inner
+///   [`crate::layout::types::align::align_in_rect`] against the owner's padded inner
 ///   rect.
 pub(crate) fn text_paint_bbox_local(
     local_origin: Option<Vec2>,
@@ -423,7 +422,7 @@ pub(crate) fn text_paint_bbox_local(
                 min: Vec2::ZERO,
                 size: owner_size,
             };
-            probe::text_in_rect(owner_local.deflated_by(padding), measured, align)
+            align::align_in_rect(owner_local.deflated_by(padding), measured, align)
         }
     }
 }
