@@ -39,21 +39,30 @@ RecordedText -> TextShapeInput -> TextSystem reuse map -> TextShaper
              -> TextRenderSession -> TextBackend
 ```
 
-## High: two entry points into shaping, with different caching behaviour
+## Withdrawn: "TextEdit bypasses the reuse layer"
 
-- [ ] **`TextEdit` enters shaping through `TextShaper::layout` and never touches the
-  per-window reuse layer.** Layout and intrinsic sizing go through
-  `TextSystem::measure` (`layout/engine.rs:852`, `layout/intrinsic/mod.rs:262`),
-  which owns the `(WidgetId, ordinal)` reuse slot and the width-bounded fit
-  resolution. `TextEdit` instead calls `TextShaper::layout` at four sites
-  (`widgets/text_edit/view.rs:224`, `widgets/text_edit/view.rs:238`,
-  `widgets/text_edit/input.rs:123`, `widgets/text_edit/input.rs:281`), which dispatches
-  straight into `ShaperInner` (`mod.rs:239`). The module documents a measured win for
-  the reuse layer — 0.92 µs against 1.24/2.33 µs for 64 steady-state runs
-  (`system.rs:6-14`) — so the most shaping-intensive widget in the crate is on the
-  path that benchmark argues against. The two entry points also differ in what they
-  return (`TextMeasurement` vs. a `TextLayoutProbe` holding the shaper's exclusive
-  borrow), so the split is not a thin convenience wrapper but two distinct contracts.
+An earlier revision listed the two shaping entry points as a High finding, on the
+grounds that `TextEdit` calls `TextShaper::layout` (`widgets/text_edit/view.rs:224`,
+`view.rs:238`, `input.rs:123`, `input.rs:281`) rather than `TextSystem::measure`,
+against a benchmark showing 0.92 µs versus 2.33 µs for the reuse layer
+(`system.rs:6-14`). That reasoning does not hold and the item is withdrawn:
+
+- The benchmark's 2.33 µs figure is the *wrapped* case, where a run costs two
+  dispatches a frame — the unbounded root plus the width resolve — which the module
+  doc states outright (`system.rs:11-14`). `ShapeCtx::request`
+  (`widgets/text_edit/view.rs:119-131`) builds the final key directly, so `TextEdit`
+  pays one dispatch. The mechanism the win comes from is absent on its path.
+- All four sites need geometry (`cursor_xy`, `byte_at_xy`, `selection_rects`), not a
+  size. `TextSystem::measure` returns a `TextMeasurement`; the probe is the point.
+- The probe resolves the shaped buffer by key regardless (`probe.rs:47`). A reuse slot
+  would trade one hashmap lookup for another and leave that one in place.
+- `TextSystem` is owned by `LayoutEngine`, while `TextEdit` runs during record/input
+  holding only `ui.resources.text`. Routing it through the reuse layer would mean
+  exposing per-window layout state to widget code — widening API, not narrowing it.
+
+The two entry points do differ in contract (`TextMeasurement` versus a
+`TextLayoutProbe` holding the shaper's exclusive borrow), but that difference is
+load-bearing rather than accidental.
 
 ## Critical: the test-only mono fallback shapes production types
 
@@ -198,5 +207,13 @@ RecordedText -> TextShapeInput -> TextSystem reuse map -> TextShaper
 
 - [ ] The reuse-layer benchmark cited at `system.rs:6-14` compares "slots" against
   "no slots". It does not isolate how much of that win survives once the duplicated
-  keys and the two unread fields leave the row — nor whether it still holds for
-  `TextEdit`, which does not use the layer at all.
+  keys and the two unread fields leave the row.
+
+- [ ] `TextShaper::dispatch` and `TextSystem::shaper` remain `pub(crate)` with no
+  production reader outside `src/text/`; both are reached only by `src/bench/text.rs`
+  and the in-tree tests. The same is true of `ELLIPSIS_CACHE_CAP`, `ClusterGlyph`,
+  `fitting_prefix` (`cosmic.rs`), `next_reuse_sweep_limit` (`system.rs`), and
+  `cursor_from_byte` / `cursor_to_byte` (`probe.rs`), each of which is widened past
+  its production need because the in-tree test module is a *sibling* of the file that
+  declares it, not a descendant. Whether that is worth restructuring depends on
+  whether `src/text/tests.rs` should be split per-file alongside its subjects.

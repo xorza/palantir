@@ -123,11 +123,7 @@ pub enum FontWeight {
 /// `Self::test_mono`.
 #[derive(Clone, Debug)]
 pub struct TextShaper {
-    /// `pub(crate)` for [`test_support`] observability helpers and the
-    /// backend's "an encoded-cache hit must not borrow the shaper" test,
-    /// which holds this borrow across a frame. Production code goes
-    /// through the methods below.
-    pub(crate) inner: Rc<RefCell<ShaperInner>>,
+    inner: Rc<RefCell<ShaperInner>>,
 }
 
 /// Source text paired with its canonical shaping parameters.
@@ -250,7 +246,7 @@ impl TextShaper {
 
     /// Bounds the reconstructible cosmic buffer LRU. Called by
     /// `TextSystem::end_frame`; no-op on the mono fallback.
-    pub(crate) fn end_frame(&self) {
+    fn end_frame(&self) {
         self.inner.borrow_mut().end_frame();
     }
 
@@ -424,6 +420,22 @@ pub(crate) mod test_support {
             }
         }
 
+        /// Whether both handles front the same shaped-buffer cache — the
+        /// `HostShared` contract that a window's recorder and the backend
+        /// never shape into separate caches.
+        pub(crate) fn shares_cache_with(&self, other: &Self) -> bool {
+            Rc::ptr_eq(&self.inner, &other.inner)
+        }
+
+        /// Hold the shaper's exclusive borrow for the caller's scope, so
+        /// the backend can prove an encoded-cache hit never reaches for
+        /// the shaper: anything that did would panic on the live borrow.
+        pub(crate) fn hold_borrow(&self) -> ShaperLease<'_> {
+            ShaperLease {
+                _inner: self.inner.borrow_mut(),
+            }
+        }
+
         /// Total cache-miss `measure` dispatches.
         pub(crate) fn measure_calls(&self) -> u64 {
             self.inner.borrow().measure_calls
@@ -445,6 +457,12 @@ pub(crate) mod test_support {
                 .expect("cosmic buffer eviction requires a cosmic text shaper")
                 .end_frame_evict(max_keep);
         }
+    }
+
+    /// Live exclusive borrow minted by [`TextShaper::hold_borrow`].
+    #[derive(Debug)]
+    pub(crate) struct ShaperLease<'a> {
+        _inner: RefMut<'a, ShaperInner>,
     }
 }
 

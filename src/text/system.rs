@@ -26,8 +26,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 #[derive(Debug)]
 pub(crate) struct TextSystem {
     pub(crate) shaper: TextShaper,
-    pub(crate) entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
-    pub(crate) sweep_limit: usize,
+    entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
+    sweep_limit: usize,
 }
 
 /// Per-window reuse-slot address of one text run: the widget plus its
@@ -200,6 +200,16 @@ pub(crate) mod test_support {
         /// `true` iff a reuse row exists for `(wid, ordinal)`.
         pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.entries.contains_key(&(wid, ordinal))
+        }
+
+        /// Live reuse rows, for the sweep-bound tests.
+        pub(crate) fn entry_count(&self) -> usize {
+            self.entries.len()
+        }
+
+        /// Row count the next `end_frame` sweeps at.
+        pub(crate) fn sweep_limit(&self) -> usize {
+            self.sweep_limit
         }
     }
 }

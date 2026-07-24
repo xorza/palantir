@@ -1521,11 +1521,11 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     }
     text.end_frame(&FxHashSet::default());
     assert_eq!(
-        text.entries.len(),
+        text.entry_count(),
         257,
         "the first threshold sweep keeps entries created in its hot interval",
     );
-    assert_eq!(text.sweep_limit, 512);
+    assert_eq!(text.sweep_limit(), 512);
 
     text.shape_run(slot(a), "hi", params, TextWrap::SingleLine);
     for ordinal in 257_u16..=512 {
@@ -1533,7 +1533,7 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     }
     text.end_frame(&FxHashSet::default());
     assert_eq!(
-        text.entries.len(),
+        text.entry_count(),
         257,
         "one reused row plus 256 new rows must survive the second sweep",
     );
@@ -1546,7 +1546,8 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     assert!(text.has_entry(a, 257), "new row must survive");
     assert!(text.has_entry(a, 512), "last new row must survive");
     assert_eq!(
-        text.sweep_limit, 512,
+        text.sweep_limit(),
+        512,
         "257 survivors rebase to the next power-of-two rung",
     );
 
@@ -1559,7 +1560,8 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     );
     assert!(text.has_entry(b, 0), "unrelated rows must remain");
     assert_eq!(
-        text.sweep_limit, 256,
+        text.sweep_limit(),
+        256,
         "a large immediate eviction must rebase the exponential ladder",
     );
 
@@ -1570,12 +1572,12 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     combined.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
     combined.end_frame(&FxHashSet::from_iter([a]));
     assert_eq!(
-        combined.entries.len(),
+        combined.entry_count(),
         1,
         "a pressure sweep and removed-widget cleanup must share one retain pass",
     );
     assert!(combined.has_entry(b, 0));
-    assert_eq!(combined.sweep_limit, 256);
+    assert_eq!(combined.sweep_limit(), 256);
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands

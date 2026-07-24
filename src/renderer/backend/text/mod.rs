@@ -589,7 +589,7 @@ mod gpu_regression {
         // Frame 2: same run → encoded-cache hit (no cosmic walk, no new
         // rasterization). The hit must still bump every slot's
         // last_use to the now-current frame.
-        let shaper_borrow = shaper.inner.borrow_mut();
+        let shaper_borrow = shaper.hold_borrow();
         run_one_frame(
             &gpu.lease.device,
             &gpu.queue,
