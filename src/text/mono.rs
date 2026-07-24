@@ -32,23 +32,26 @@ pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextMeasurement {
     // it overcounts, but mono is not a production path.
     let total_chars = text.len() as f32;
     let unbroken_w = total_chars * glyph_w;
-    let single_line = matches!(fit, LineFit::Clip | LineFit::Ellipsis);
+    let truncating_fit = matches!(fit, LineFit::Clip | LineFit::Ellipsis);
 
-    let size = match max_width_px {
-        None => Size::new(unbroken_w, line_h),
-        Some(max) if max >= unbroken_w => Size::new(unbroken_w, line_h),
+    let (size, single_line) = match max_width_px {
+        None => (Size::new(unbroken_w, line_h), true),
+        Some(max) if max >= unbroken_w => (Size::new(unbroken_w, line_h), true),
         // Clip/ellipsis is one line capped at the available width.
-        Some(max) if single_line => Size::new(max, line_h),
+        Some(max) if truncating_fit => (Size::new(max, line_h), true),
         Some(max) => {
             let chars_per_line = (max / glyph_w).floor().max(1.0);
             let lines = (total_chars / chars_per_line).ceil().max(1.0);
-            Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h)
+            (
+                Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h),
+                lines <= 1.0,
+            )
         }
     };
     // A truncated run shrinks to nothing — zero floor. Otherwise mono has
     // no real word boundaries, so fall back to "the longest run of
     // non-space bytes" as the wrap floor.
-    let intrinsic_min = if single_line {
+    let intrinsic_min = if truncating_fit {
         0.0
     } else {
         let mut longest = 0u32;
@@ -72,6 +75,7 @@ pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextMeasurement {
         size,
         key: TextShapeKey::INVALID,
         intrinsic_min,
+        single_line,
     }
 }
 

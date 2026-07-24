@@ -315,6 +315,11 @@ pub(crate) struct TextMeasurement {
     /// Equal to `size.w` for the mono fallback (no real word boundaries) and
     /// for single-word inputs.
     pub(crate) intrinsic_min: f32,
+    /// `true` when the shaped result is one visual line. Gates
+    /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
+    /// whose natural width fits the committed width needs no Clip/Ellipsis
+    /// resolve — the unbounded root stands in.
+    pub(crate) single_line: bool,
 }
 
 impl TextMeasurement {
@@ -324,6 +329,7 @@ impl TextMeasurement {
         size: Size::ZERO,
         key: TextShapeKey::INVALID,
         intrinsic_min: 0.0,
+        single_line: true,
     };
 }
 

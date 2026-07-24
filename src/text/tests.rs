@@ -1047,6 +1047,77 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
 }
 
 #[test]
+fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
+    let shaper = TextShaper::with_bundled_fonts();
+    let mut text = TextSystem::new(shaper.clone());
+    let wid = WidgetId::from_hash("fitting truncate");
+    let fitting = TestShape {
+        font_size_px: 16.0,
+        line_height_px: lh(16.0),
+        max_width_px: Some(200.0),
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Center,
+    };
+    let unbounded_shape = TestShape {
+        max_width_px: None,
+        halign: HAlign::Auto,
+        ..fitting
+    };
+
+    for (ordinal, wrap) in [(0u16, TextWrap::Truncate), (1, TextWrap::Ellipsis)] {
+        let run_slot = slot_at(wid, ordinal);
+        let fit = wrap.line_fit().unwrap();
+        let natural = text
+            .shape_run(run_slot, "ok", unbounded_shape, wrap)
+            .unwrap();
+        let calls = text.shaper.measure_calls();
+
+        let fitted = text.shape_run(run_slot, "ok", fitting, wrap).unwrap();
+        assert_eq!(
+            fitted.key, natural.key,
+            "a fitting {wrap:?} must reuse the unbounded root's identity",
+        );
+        assert_eq!(fitted.size, natural.size);
+        assert_eq!(fitted.intrinsic_min, natural.intrinsic_min);
+        assert_eq!(
+            text.shaper.measure_calls(),
+            calls,
+            "a fitting {wrap:?} must not dispatch a second shape",
+        );
+        let bounded_key = fitting.request("ok", fit).unwrap().key;
+        assert!(
+            !text.shaper.has_cosmic_buffer(bounded_key),
+            "a fitting {wrap:?} must not mint a bounded cache entry",
+        );
+
+        // Over-wide text still resolves through the truncating path.
+        let narrow = TestShape {
+            max_width_px: Some(20.0),
+            ..fitting
+        };
+        let truncated = text
+            .shape_run(run_slot, "wider than twenty", narrow, wrap)
+            .unwrap();
+        assert_ne!(truncated.key, truncated.key.unbounded_version());
+        assert_eq!(truncated.key.fit_q, fit as u8);
+        assert!(truncated.size.w <= 20.0);
+    }
+
+    // A multi-line source collapses to its first line under Clip/Ellipsis,
+    // so the unbounded root cannot stand in even when its widest line fits.
+    let multiline = text
+        .shape_run(slot_at(wid, 2), "a\nb", fitting, TextWrap::Ellipsis)
+        .unwrap();
+    let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).unwrap().key;
+    assert_eq!(
+        multiline.key, bounded_key,
+        "multi-line text must resolve through the truncating path",
+    );
+    assert_eq!(multiline.size.h, lh(16.0).ceil());
+}
+
+#[test]
 fn bounded_width_requires_a_finite_nonnegative_value() {
     let base = TestShape {
         font_size_px: 16.0,

@@ -118,6 +118,19 @@ impl TextSystem {
         let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
             return unbounded;
         };
+        // A fitting single-line Clip/Ellipsis resolve shapes glyphs
+        // identical to the unbounded root (truncated shaping is
+        // halign-independent and single-line by construction), so the root
+        // stands in — no second shape, no second cache entry. Not valid for
+        // `Wrap` fits: cosmic bakes per-line halign offsets into wrapped
+        // buffers. `size.w` is ceil'd and the canonical width is integral,
+        // so this fit check matches the truncating path's exactly.
+        if matches!(fit, LineFit::Clip | LineFit::Ellipsis)
+            && unbounded.single_line
+            && unbounded.size.w <= wrap::canonical_wrap_width(width)
+        {
+            return unbounded;
+        }
         let width = match wrap_policy {
             // Words wider than the committed width overflow rather than break.
             TextWrap::WrapWithOverflow => width.max(unbounded.intrinsic_min),
