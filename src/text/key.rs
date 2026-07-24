@@ -190,10 +190,11 @@ fn dequantize(value: u32) -> f32 {
 }
 
 /// How a width-bounded text run handles overflow. Maps from the public
-/// [`crate::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
-/// the unbounded path). Resolved by
-/// [`TextSystem::shape`](crate::text::system::TextSystem::shape) and
-/// folded into the shape cache key.
+/// [`crate::TextWrap`] via
+/// [`TextWrap::line_fit`](crate::text::wrap::TextWrap::line_fit)
+/// (`SingleLine`/`Scroll` stay on the unbounded path); folded into the
+/// shape cache key by
+/// [`TextSystem::measure`](crate::text::system::TextSystem::measure).
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LineFit {

@@ -849,7 +849,7 @@ impl LayoutEngine {
             ordinal: ts.ordinal,
         };
 
-        let result = self.text.shape(
+        let measurement = self.text.measure(
             slot,
             ts.shape_request(),
             ts.wrap,
@@ -858,9 +858,9 @@ impl LayoutEngine {
         );
 
         out.text_shapes.push(ShapedText {
-            measured: result.measurement.size,
-            key: result.measurement.key,
+            measured: measurement.size,
+            key: measurement.key,
         });
-        result.content_size
+        ts.wrap.content_size(&measurement)
     }
 }

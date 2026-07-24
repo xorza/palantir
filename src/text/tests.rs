@@ -564,30 +564,34 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             FontWeight::Regular,
         )
         .unwrap();
-        let result = text.shape(
-            slot_at(widget_id, ordinal as u16),
-            request,
-            case.wrap,
-            HAlign::Auto,
-            Some(24.0),
+        let slot = slot_at(widget_id, ordinal as u16);
+        let unbounded = text.measure(slot, request, case.wrap, HAlign::Auto, None);
+        let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
+        assert_eq!(resolved.size, case.measured, "{case:?}");
+        assert_eq!(case.wrap.content_size(&resolved), case.content, "{case:?}");
+        assert_eq!(
+            case.wrap.min_content(&unbounded),
+            case.min_content,
+            "{case:?}"
         );
-        assert_eq!(result.measurement.size, case.measured, "{case:?}");
-        assert_eq!(result.content_size, case.content, "{case:?}");
-        assert_eq!(result.min_content, case.min_content, "{case:?}");
-        assert_eq!(result.max_content, case.max_content, "{case:?}");
+        assert_eq!(
+            case.wrap.max_content(&unbounded),
+            case.max_content,
+            "{case:?}"
+        );
     }
 
-    let empty = text.shape(
+    let empty = text.measure(
         slot_at(widget_id, cases.len() as u16),
         TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular).unwrap(),
         TextWrap::Ellipsis,
         HAlign::Auto,
         Some(24.0),
     );
-    assert_eq!(empty.measurement.size, Size::ZERO);
-    assert_eq!(empty.content_size, Size::ZERO);
-    assert_eq!(empty.min_content, Size::ZERO);
-    assert_eq!(empty.max_content, Size::ZERO);
+    assert_eq!(empty.size, Size::ZERO);
+    assert_eq!(TextWrap::Ellipsis.content_size(&empty), Size::ZERO);
+    assert_eq!(TextWrap::Ellipsis.min_content(&empty), Size::ZERO);
+    assert_eq!(TextWrap::Ellipsis.max_content(&empty), Size::ZERO);
 }
 
 #[test]
