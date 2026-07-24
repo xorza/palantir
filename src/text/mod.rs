@@ -399,13 +399,24 @@ impl TextSystem {
     pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
         self.shaper.end_frame();
         let previous_len = self.entries.len();
-        let sweep = previous_len > self.sweep_limit;
-        if sweep || !removed.is_empty() {
-            self.entries.retain(|(widget_id, _), entry| {
-                !removed.contains(widget_id) && (!sweep || std::mem::take(&mut entry.hot))
-            });
+        if previous_len > self.sweep_limit {
+            if removed.is_empty() {
+                self.entries
+                    .retain(|_, entry| std::mem::take(&mut entry.hot));
+            } else {
+                self.entries.retain(|(widget_id, _), entry| {
+                    !removed.contains(widget_id) && std::mem::take(&mut entry.hot)
+                });
+            }
+            self.sweep_limit = next_reuse_sweep_limit(self.entries.len());
+            return;
         }
-        if sweep || self.entries.len() != previous_len {
+        if removed.is_empty() {
+            return;
+        }
+        self.entries
+            .retain(|(widget_id, _), _| !removed.contains(widget_id));
+        if self.entries.len() != previous_len {
             self.sweep_limit = next_reuse_sweep_limit(self.entries.len());
         }
     }
