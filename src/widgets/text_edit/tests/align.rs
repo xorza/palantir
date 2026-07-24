@@ -349,6 +349,7 @@ fn selection_rects_offset_matches_text() {
 /// `dx_per_line = (line_width - line_w) * factor` where factor is
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
+    use crate::text::TextShaper;
     use crate::text::test_support::TestShape;
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;
@@ -446,8 +447,7 @@ mod per_line {
         // Cosmic shapes a different buffer for each per-line align.
         // The cache key must reflect that so two simultaneous lookups
         // (e.g. caret then selection) can't pick up the wrong buffer.
-        use crate::text::cosmic::CosmicMeasure;
-        let mut c = CosmicMeasure::with_bundled_fonts();
+        let c = TextShaper::new();
         let l = c
             .measure(
                 "hi",
@@ -488,8 +488,7 @@ mod per_line {
         // same buffer. Key construction collapses `halign_q` to `Auto`'s
         // discriminant on that path so single-line callers don't
         // pay an N-way cache split for identical glyph positions.
-        use crate::text::cosmic::CosmicMeasure;
-        let mut c = CosmicMeasure::with_bundled_fonts();
+        let c = TextShaper::new();
         let left = c
             .measure(
                 "hi",
@@ -781,8 +780,7 @@ mod per_line {
     /// every right-aligned glyph is clipped — the user sees nothing.
     #[test]
     fn measured_width_encloses_aligned_glyphs() {
-        use crate::text::cosmic::CosmicMeasure;
-        let mut c = CosmicMeasure::with_bundled_fonts();
+        let c = TextShaper::new();
         let wrap = 290.0_f32;
         let aligned = c.measure(
             "hi\nyo",

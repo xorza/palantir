@@ -1,7 +1,6 @@
 //! Glyph atlas: one struct for both mask + color content.
 
-use crate::text::cosmic::GlyphRasterKey;
-use crate::text::render::GlyphPlacement;
+use crate::text::render::{GlyphPlacement, GlyphRasterKey};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;

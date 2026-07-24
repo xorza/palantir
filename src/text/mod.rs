@@ -35,11 +35,12 @@ use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::key::TextShapeKey;
 use crate::text::probe::TextLayoutProbe;
+use crate::text::render::TextRenderSession;
 use crate::text::wrap::LineFit;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
-pub(crate) mod cosmic;
+mod cosmic;
 pub(crate) mod key;
 pub(crate) mod mono;
 pub(crate) mod probe;
@@ -249,13 +250,13 @@ impl TextShaper {
     /// glyph extraction (restoring evicted buffers on the way) and
     /// rasterization, all in aperture-native terms — see
     /// [`crate::text::render`].
-    pub(crate) fn render_session(&self) -> RefMut<'_, CosmicMeasure> {
-        RefMut::map(self.inner.borrow_mut(), |inner| {
+    pub(crate) fn render_session(&self) -> TextRenderSession<'_> {
+        TextRenderSession::new(RefMut::map(self.inner.borrow_mut(), |inner| {
             inner
                 .cosmic
                 .as_mut()
                 .expect("text render sessions require a cosmic text shaper")
-        })
+        }))
     }
 }
 
