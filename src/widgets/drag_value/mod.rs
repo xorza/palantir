@@ -118,34 +118,23 @@ impl<'a> From<&'a mut f64> for DragNum<'a> {
     }
 }
 
-/// Per-id scrub state captured when a left drag latches on the chip: the
-/// base `value` (so cumulative `drag_delta` offsets from a stable base
-/// rather than accumulating frame-to-frame rounding), the `speed` sampled
-/// at that instant (a value-derived speed must not shift mid-drag), and
-/// `last`, the most recent scrubbed result — the stop edge arrives after
-/// the drag state is gone, so the commit re-writes `last`. `armed` marks
-/// that the anchor belongs to the current gesture; a drag latched while
-/// the inline editor owned the id (text selection) never arms and must
-/// not scrub.
-#[derive(Debug, Default, Clone, Copy)]
-struct DragAnchor {
-    value: f64,
-    speed: f64,
-    last: f64,
-    armed: bool,
-}
-
-/// Text buffer for a [`DragValue`] in edit mode (see [`DragValue::editable`]).
-/// Seeded from the value when the editor is entered, edited by the inner
-/// `TextEdit`, and parsed back into the value each frame while focused.
-/// `editing` marks a pending draft: set while the editor owns the frame,
-/// resolved (committed or discarded) by the first chip frame after focus
-/// leaves — the chip never renders the inner `TextEdit`, so its
-/// `lost_focus` signal can't be observed there.
-#[derive(Debug, Default, Clone)]
-struct DragEdit {
-    buffer: String,
-    editing: bool,
+/// One mutually exclusive interaction per [`DragValue`] id. A scrub keeps
+/// its sampled base and speed so cumulative pointer travel remains stable;
+/// an edit keeps its draft after focus leaves until the chip can resolve it.
+#[derive(Debug, Default)]
+enum DragValueState {
+    #[default]
+    Idle,
+    Scrubbing {
+        value: f64,
+        speed: f64,
+        /// Last scrubbed result, retained because the stop edge no longer
+        /// carries drag distance and deferred callers re-seed the old value.
+        last: f64,
+    },
+    Editing {
+        buffer: String,
+    },
 }
 
 /// What [`DragValue::show`] returns: the widget's [`Response`] plus the
@@ -292,60 +281,61 @@ impl<'a> DragValue<'a> {
         let mut changed = false;
         let mut committed = false;
 
-        // A pending edit draft is resolved on the first chip frame after the
-        // editor (Escape / click-away — Enter commits inside show_editing):
-        // committed while the widget is still an enabled editor, otherwise
-        // discarded. The flag clears either way, so a draft stranded by a
-        // mid-edit `.editable(false)` or disable can never replay later as a
-        // phantom commit. The probe is read-only — idle chips get no state
-        // row.
-        if let Some(edit) = ui.try_state_mut::<DragEdit>(id)
-            && edit.editing
-        {
-            edit.editing = false;
-            if self.editable && !entry.state.disabled {
-                changed = self.value.parse_from(&edit.buffer, self.min, self.max);
-                committed = true;
-            }
-        }
-
         // Left-button scrub only — a right/middle drag is someone else's
         // gesture (context menu, canvas pan) and must neither write nor
         // commit. Capture the value + speed when the drag latches, then
         // offset by the cumulative travel each frame and commit
-        // (snap / round / clamp). The write is gated on `armed`: a drag
-        // latched while the editor owned this id (text selection) has no
-        // anchor for this gesture.
-        if entry.state.left.drag.started() {
-            *ui.state_mut::<DragAnchor>(id) = DragAnchor {
-                value: self.value.get(),
-                speed: self.speed,
-                last: self.value.get(),
-                armed: true,
-            };
-        }
-        if !entry.state.disabled
-            && let Some(delta) = entry.state.left.drag.delta()
-        {
-            let anchor = ui.state_mut::<DragAnchor>(id);
-            if anchor.armed {
-                let raw = anchor.value + delta.x as f64 * anchor.speed;
-                changed |= self
-                    .value
-                    .commit_drag(raw, self.decimals, self.min, self.max);
-                anchor.last = self.value.get();
+        // (snap / round / clamp). One state probe resolves a pending edit,
+        // begins a new scrub, and advances or finishes an existing scrub.
+        let drag_started = entry.state.left.drag.started();
+        let drag_delta = entry.state.left.drag.delta();
+        let drag_stopped = entry.state.left.drag.stopped();
+        let state = if drag_started {
+            Some(ui.state_mut::<DragValueState>(id))
+        } else {
+            ui.try_state_mut::<DragValueState>(id)
+        };
+        if let Some(state) = state {
+            // Escape / click-away reaches the chip with the edit draft still
+            // present. Resolve it while editable and enabled, otherwise drop
+            // it so a later focus cannot replay stale input.
+            if let DragValueState::Editing { buffer } = state {
+                if self.editable && !entry.state.disabled {
+                    changed = self.value.parse_from(buffer, self.min, self.max);
+                    committed = true;
+                }
+                *state = DragValueState::Idle;
             }
-        }
-        // The stop edge is the commit: the drag state is already gone on
-        // this frame, so `anchor.last` carries the final value — a
-        // commit-deferring caller re-seeds the stale pre-drag value every
-        // frame, including this one. Released while disabled, the gesture
-        // is dropped, not committed; disarming either way ends it.
-        if entry.state.left.drag.stopped() {
-            let anchor = ui.state_mut::<DragAnchor>(id);
-            if anchor.armed {
-                anchor.armed = false;
-                let last = anchor.last;
+
+            if drag_started {
+                let value = self.value.get();
+                *state = DragValueState::Scrubbing {
+                    value,
+                    speed: self.speed,
+                    last: value,
+                };
+            }
+
+            let mut stopped_at = None;
+            if let DragValueState::Scrubbing { value, speed, last } = state {
+                if !entry.state.disabled
+                    && let Some(delta) = drag_delta
+                {
+                    let raw = *value + delta.x as f64 * *speed;
+                    changed |= self
+                        .value
+                        .commit_drag(raw, self.decimals, self.min, self.max);
+                    *last = self.value.get();
+                }
+                if drag_stopped {
+                    stopped_at = Some(*last);
+                }
+            }
+            // The stop edge is the commit: the drag state is already gone on
+            // this frame, so `last` carries the final value. Released while
+            // disabled, the gesture is dropped instead.
+            if let Some(last) = stopped_at {
+                *state = DragValueState::Idle;
                 if !entry.state.disabled {
                     changed |= self
                         .value
@@ -402,7 +392,7 @@ impl<'a> DragValue<'a> {
     /// and same-styled as the chip (its box matches by theme, not by
     /// measuring the chip), parse the buffer back into the value each frame,
     /// and blur on Enter (Escape / click-away blur themselves; the chip path
-    /// resolves the pending draft next frame via `DragEdit::editing`).
+    /// resolves the pending [`DragValueState::Editing`] draft).
     fn show_editing(
         mut self,
         ui: &mut Ui,
@@ -422,24 +412,13 @@ impl<'a> DragValue<'a> {
         let sizes = self.node.size.unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
         let width = held_w.unwrap_or(sizes.w());
-        // Entry edge: seed the buffer from the current value — a click and a
-        // programmatic focus both get a fresh draft, never a previous
-        // session's stale text — and disarm any scrub anchor, so a drag that
-        // survives into (or latches during) edit mode can't later commit as
-        // a scrub over the typed value.
-        let edit = ui.state_mut::<DragEdit>(id);
-        let entering = !edit.editing;
-        if entering {
-            edit.editing = true;
-            edit.buffer = self.value.edit_string();
-        }
-        let mut buffer = std::mem::take(&mut edit.buffer);
-        if entering
-            && let Some(anchor) = ui.try_state_mut::<DragAnchor>(id)
-            && anchor.armed
-        {
-            anchor.armed = false;
-        }
+        // Entry replaces any scrub state atomically, so its later release
+        // cannot overwrite the typed result. Existing edit frames move the
+        // same String through TextEdit without allocating a new buffer.
+        let mut buffer = match std::mem::take(ui.state_mut::<DragValueState>(id)) {
+            DragValueState::Editing { buffer } => buffer,
+            DragValueState::Idle | DragValueState::Scrubbing { .. } => self.value.edit_string(),
+        };
         let submitted = {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
@@ -457,18 +436,18 @@ impl<'a> DragValue<'a> {
             resp.submitted
         };
         let changed = self.value.parse_from(&buffer, self.min, self.max);
-        let edit = ui.state_mut::<DragEdit>(id);
-        edit.buffer = buffer;
-        let mut committed = false;
+        *ui.state_mut::<DragValueState>(id) = if submitted {
+            DragValueState::Idle
+        } else {
+            DragValueState::Editing { buffer }
+        };
         if submitted {
-            edit.editing = false;
-            committed = true;
             ui.request_focus(None);
         }
         DragValueResponse {
             response: Response::lazy(id, ui),
             changed,
-            committed,
+            committed: submitted,
         }
     }
 }
