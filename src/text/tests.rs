@@ -1266,6 +1266,24 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
         hello.intrinsic_min,
         hello.size.w,
     );
+    // Width-bounded shapes skip the word scan and report a zero floor —
+    // every consumer derives it from the unbounded root instead.
+    let bounded = c.measure(
+        "hello world hi",
+        TestShape {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: Some(60.0),
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+    );
+    assert!(bounded.size.h > full.size.h, "60 px must force a wrap");
+    assert_eq!(
+        bounded.intrinsic_min, 0.0,
+        "bounded shapes must not pay the word scan",
+    );
 }
 
 #[test]

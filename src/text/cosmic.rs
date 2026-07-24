@@ -95,9 +95,10 @@ struct CacheEntry {
     /// text backend can build a `TextArea` without reshaping.
     buffer: Buffer,
     measured: Size,
-    /// Width of the widest unbreakable run, in logical px. Computed once on
-    /// insert from the unbounded shaping result and reused for every later
-    /// `measure` call that hits this entry.
+    /// Width of the widest unbreakable run, in logical px. Computed only
+    /// for unbounded entries; width-bounded entries store `0.0` — bounded
+    /// consumers derive floors from the unbounded root, so the per-cluster
+    /// word scan is skipped for them.
     intrinsic_min: f32,
     /// `true` when the shaped buffer laid out as one visual line.
     single_line: bool,
@@ -249,7 +250,7 @@ impl CosmicMeasure {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let extent = shaped_extent(&buffer);
+        let extent = shaped_extent(&buffer, key.max_width_px().is_none());
         let last_used = self.next_use_gen();
         self.cache.insert(
             key,
@@ -361,7 +362,7 @@ impl CosmicMeasure {
         buffer.set_text(shaped_text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let measured = shaped_extent(&buffer).size;
+        let measured = shaped_extent(&buffer, false).size;
         let last_used = self.next_use_gen();
         // Truncated runs are one natural line by construction: the cut
         // prefix comes from the unbounded probe's first layout run.
@@ -504,14 +505,17 @@ fn first_line_right(buffer: &Buffer) -> f32 {
 
 /// Measured extent of a shaped `buffer`: bounding size (ceil'd) plus the
 /// widest unbreakable run (longest word), the floor the wrap path uses
-/// when a parent commits a narrower width.
+/// when a parent commits a narrower width. The per-cluster word scan runs
+/// only when `scan_intrinsic_min` — bounded shapes skip the
+/// text-length-proportional walk (their floor comes from the unbounded
+/// root) and report `0.0`.
 struct ShapedExtent {
     size: Size,
     intrinsic_min: f32,
     single_line: bool,
 }
 
-fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
+fn shaped_extent(buffer: &Buffer, scan_intrinsic_min: bool) -> ShapedExtent {
     let mut max_w = 0.0_f32;
     let mut total_h = 0.0_f32;
     let mut intrinsic_min = 0.0_f32;
@@ -528,6 +532,9 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
         let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
         max_w = max_w.max(line_right);
         total_h = total_h.max(run.line_top + run.line_height);
+        if !scan_intrinsic_min {
+            continue;
+        }
         for g in run.glyphs {
             let cluster = &run.text[g.start..g.end];
             let is_break = cluster.chars().all(|c| c.is_whitespace());

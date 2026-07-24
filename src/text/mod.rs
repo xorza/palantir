@@ -312,8 +312,11 @@ pub(crate) struct TextMeasurement {
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
-    /// Equal to `size.w` for the mono fallback (no real word boundaries) and
-    /// for single-word inputs.
+    /// Meaningful only on unbounded measurements — every consumer
+    /// (`TextWrap::min_content`, the WrapWithOverflow width floor) derives
+    /// floors from the unbounded root, so cosmic skips the per-cluster
+    /// word scan for width-bounded shapes and reports `0.0` there. The
+    /// mono fallback's cheap byte scan reports its floor unconditionally.
     pub(crate) intrinsic_min: f32,
     /// `true` when the shaped result is one visual line. Gates
     /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
