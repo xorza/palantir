@@ -592,41 +592,73 @@ fn text_shape_key_validity_is_tagged_by_text_hash() {
 }
 
 #[test]
-fn cursor_xy_cosmic_path_is_monotonic_and_bounded() {
-    // With real shaping, caret-x at each byte boundary must be
-    // non-decreasing and approach the full-string width at the
-    // final offset. Exact pixel values depend on font metrics; we
-    // only pin the monotonicity invariant consumers rely on.
-    let m = TextShaper::new();
-    let s = "hello";
-    let widths: Vec<f32> = (0..=s.len())
-        .map(|i| {
-            m.cursor_xy(
-                s,
-                i,
-                TestShape {
-                    font_size_px: 16.0,
-                    line_height_px: 16.0 * LINE_HEIGHT_MULT,
-                    max_width_px: None,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Auto,
-                },
-            )
-            .x
-        })
-        .collect();
-    assert_eq!(widths[0], 0.0, "caret-x at offset 0 is zero");
-    for w in widths.windows(2) {
+fn cursor_xy_walks_with_the_paragraph_direction() {
+    // Caret-x at each byte boundary advances *with* the run's reading
+    // direction and stays inside the line. Exact pixel values depend on
+    // font metrics, so pin the invariants consumers rely on: monotonicity
+    // along the reading direction, and both endpoints on the correct edge.
+    let shaper = TextShaper::new();
+    let shape = TestShape {
+        font_size_px: 16.0,
+        line_height_px: 16.0 * LINE_HEIGHT_MULT,
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+    let carets = |text: &str| -> Vec<f32> {
+        (0..=text.len())
+            .map(|i| shaper.cursor_xy(text, i, shape).x)
+            .collect()
+    };
+
+    let ltr = carets("hello");
+    assert_eq!(ltr[0], 0.0, "an LTR line starts its caret at the left edge");
+    for w in ltr.windows(2) {
         assert!(
             w[1] >= w[0] - 0.01,
-            "caret-x must be non-decreasing, got {w:?}",
+            "LTR caret-x must be non-decreasing, got {ltr:?}",
         );
     }
     assert!(
-        widths[s.len()] > widths[0],
-        "non-empty string has positive width",
+        *ltr.last().unwrap() > ltr[0],
+        "a non-empty LTR run ends right of where it began",
     );
+
+    // Hebrew shapes right-to-left, so byte 0 sits at the *right* edge and
+    // the caret walks leftwards. A glyph-start scan would report each
+    // glyph's left edge instead, putting the caret a full character off
+    // and making the sequence oscillate rather than descend.
+    let rtl_text = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
+    let rtl = carets(rtl_text);
+    let line_right = shaper.measure(rtl_text, shape).size.w;
+    // The measured extent has to span every glyph rather than stop at the
+    // last one in the array, which in an RTL run is the leftmost — that
+    // would report a four-character run as one character wide and let the
+    // backend clip it.
+    let one_char = shaper.measure("\u{5e9}", shape).size.w;
+    assert!(
+        line_right > one_char * 2.0,
+        "an RTL run must measure its full extent: {line_right} vs one glyph {one_char}",
+    );
+    for w in rtl.windows(2) {
+        assert!(
+            w[1] <= w[0] + 0.01,
+            "RTL caret-x must be non-increasing, got {rtl:?}",
+        );
+    }
+    assert!(
+        (rtl[0] - line_right).abs() < 1.0,
+        "an RTL line starts its caret at the right edge: {} vs width {line_right}",
+        rtl[0],
+    );
+    assert_eq!(
+        *rtl.last().unwrap(),
+        0.0,
+        "an RTL line ends its caret at the left edge",
+    );
+    // Direction is what separates the two, not merely text content.
+    assert_ne!(ltr[0], rtl[0]);
 }
 
 #[test]
