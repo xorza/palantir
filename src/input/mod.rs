@@ -238,20 +238,16 @@ pub(crate) fn wheel_zoom_factor(step: f32, notches: f32) -> f32 {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TargetDeltas {
+pub(crate) struct TargetScrollDelta {
     target: WidgetId,
-    pixels: Vec2,
-    lines: Vec2,
-    zoom: f32,
+    delta: ScrollDelta,
 }
 
-impl TargetDeltas {
+impl TargetScrollDelta {
     fn new(target: WidgetId) -> Self {
         Self {
             target,
-            pixels: Vec2::ZERO,
-            lines: Vec2::ZERO,
-            zoom: 1.0,
+            delta: ScrollDelta::default(),
         }
     }
 }
@@ -275,7 +271,7 @@ pub(crate) struct InputState {
     /// Pixel, line, and pinch deltas accumulated by their event-time
     /// target. One row per touched [`WidgetId`]; capacity is retained
     /// when the rows are cleared in [`Self::drain_per_frame_queues`].
-    pub(crate) frame_target_deltas: Vec<TargetDeltas>,
+    pub(crate) frame_target_deltas: Vec<TargetScrollDelta>,
     /// Per-button press capture (active widget, press pos, drag latch,
     /// frame edges for `drag_started` and `clicked`). Indexed by
     /// [`PointerButton`] via [`PointerButton::idx`]. Independent per
@@ -466,22 +462,24 @@ impl InputState {
         self.take_action_flag()
     }
 
-    fn target_deltas(&self, target: WidgetId) -> Option<&TargetDeltas> {
+    fn target_scroll_delta(&self, target: WidgetId) -> Option<&ScrollDelta> {
         self.frame_target_deltas
             .iter()
             .find(|deltas| deltas.target == target)
+            .map(|deltas| &deltas.delta)
     }
 
-    fn target_deltas_mut(&mut self, target: WidgetId) -> &mut TargetDeltas {
+    fn target_scroll_delta_mut(&mut self, target: WidgetId) -> &mut ScrollDelta {
         if let Some(index) = self
             .frame_target_deltas
             .iter()
             .position(|deltas| deltas.target == target)
         {
-            return &mut self.frame_target_deltas[index];
+            return &mut self.frame_target_deltas[index].delta;
         }
-        self.frame_target_deltas.push(TargetDeltas::new(target));
-        self.frame_target_deltas.last_mut().unwrap()
+        self.frame_target_deltas
+            .push(TargetScrollDelta::new(target));
+        &mut self.frame_target_deltas.last_mut().unwrap().delta
     }
 
     #[inline]
@@ -675,7 +673,7 @@ impl InputState {
             InputEvent::ScrollPixels(d) => {
                 let target = self.scroll_target;
                 if let Some(target) = target {
-                    self.target_deltas_mut(target).pixels += d;
+                    self.target_scroll_delta_mut(target).pixels += d;
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
                     pos,
@@ -687,7 +685,7 @@ impl InputState {
             InputEvent::ScrollLines(d) => {
                 let target = self.scroll_target;
                 if let Some(target) = target {
-                    self.target_deltas_mut(target).lines += d;
+                    self.target_scroll_delta_mut(target).lines += d;
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
                     pos,
@@ -699,8 +697,8 @@ impl InputState {
             InputEvent::Zoom(f) => {
                 let target = self.pinch_target;
                 if let Some(target) = target {
-                    let deltas = self.target_deltas_mut(target);
-                    deltas.zoom = combine_zoom_factors(deltas.zoom, f);
+                    let delta = self.target_scroll_delta_mut(target);
+                    delta.zoom = combine_zoom_factors(delta.zoom, f);
                 }
                 let subbed = self.push_scroll_class(|pos| PointerEvent::Zoom { pos, factor: f });
                 target.is_some() || subbed
@@ -847,12 +845,7 @@ impl InputState {
     /// their events arrived. Widget policy decides how line deltas map
     /// to pixels and whether modifiers turn wheel input into zoom.
     pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> ScrollDelta {
-        self.target_deltas(id)
-            .map_or_else(ScrollDelta::default, |deltas| ScrollDelta {
-                pixels: deltas.pixels,
-                lines: deltas.lines,
-                zoom: deltas.zoom,
-            })
+        self.target_scroll_delta(id).copied().unwrap_or_default()
     }
 
     /// Snapshot into [`Self::frame_quiescent`] whether any widget can
