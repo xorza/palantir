@@ -145,6 +145,9 @@ pub(crate) struct CosmicMeasure {
     /// into a retained buffer keeps that path free of `String` allocs,
     /// while the unbounded probe itself comes from `cache`.
     truncate_scratch: String,
+    /// Retained scratch for [`collect_break_offsets`], so the unbounded
+    /// shape's segment scan allocates nothing per miss.
+    break_scratch: Vec<u32>,
 }
 
 impl CosmicMeasure {
@@ -170,6 +173,7 @@ impl CosmicMeasure {
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis_cache: FxHashMap::default(),
             truncate_scratch: String::new(),
+            break_scratch: Vec::new(),
         }
     }
 
@@ -353,7 +357,12 @@ impl CosmicMeasure {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let extent = shaped_extent(&buffer, key.max_width_px().is_none());
+        let extent = shaped_extent(
+            &buffer,
+            key.max_width_px()
+                .is_none()
+                .then_some(&mut self.break_scratch),
+        );
         let last_used = self.next_use_gen();
         self.cache.insert(
             key,
@@ -462,7 +471,7 @@ impl CosmicMeasure {
         buffer.set_text(shaped_text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let measured = shaped_extent(&buffer, false).size;
+        let measured = shaped_extent(&buffer, None).size;
         let last_used = self.next_use_gen();
         // Truncated runs are one natural line by construction: the cut
         // prefix comes from the unbounded probe's first layout run.
@@ -604,22 +613,20 @@ fn first_line_right(buffer: &Buffer) -> f32 {
 }
 
 /// Measured extent of a shaped `buffer`: bounding size (ceil'd) plus the
-/// widest unbreakable run (longest word), the floor the wrap path uses
-/// when a parent commits a narrower width. The per-cluster word scan runs
-/// only when `scan_intrinsic_min` — bounded shapes skip the
-/// text-length-proportional walk (their floor comes from the unbounded
-/// root) and report `0.0`.
+/// widest unbreakable segment, the floor the wrap path uses when a parent
+/// commits a narrower width. Passing `breaks` opts into the
+/// text-length-proportional segment scan (it doubles as that scan's
+/// scratch); bounded shapes pass `None` — their floor comes from the
+/// unbounded root — and report `0.0`.
 struct ShapedExtent {
     size: Size,
     intrinsic_min: f32,
     single_line: bool,
 }
 
-fn shaped_extent(buffer: &Buffer, scan_intrinsic_min: bool) -> ShapedExtent {
+fn shaped_extent(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedExtent {
     let mut max_w = 0.0_f32;
     let mut total_h = 0.0_f32;
-    let mut intrinsic_min = 0.0_f32;
-    let mut current_word_w = 0.0_f32;
     let mut runs = 0usize;
     for run in buffer.layout_runs() {
         runs += 1;
@@ -632,29 +639,61 @@ fn shaped_extent(buffer: &Buffer, scan_intrinsic_min: bool) -> ShapedExtent {
         let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
         max_w = max_w.max(line_right);
         total_h = total_h.max(run.line_top + run.line_height);
-        if !scan_intrinsic_min {
-            continue;
-        }
-        for g in run.glyphs {
-            let cluster = &run.text[g.start..g.end];
-            let is_break = cluster.chars().all(|c| c.is_whitespace());
-            if is_break {
-                intrinsic_min = intrinsic_min.max(current_word_w);
-                current_word_w = 0.0;
-            } else {
-                current_word_w += g.w;
-            }
-        }
-        // Hard line break (\n) terminates a run — also closes any
-        // in-progress word.
-        intrinsic_min = intrinsic_min.max(current_word_w);
-        current_word_w = 0.0;
     }
     ShapedExtent {
         size: Size::new(max_w.ceil(), total_h.ceil()),
-        intrinsic_min,
+        intrinsic_min: breaks.map_or(0.0, |breaks| intrinsic_min_width(buffer, breaks)),
         single_line: runs <= 1,
     }
+}
+
+/// Byte offsets in `text` that start a new unbreakable segment, i.e. the
+/// UAX #14 opportunities minus the terminal one at `text.len()`, which
+/// ends the text rather than opening a segment.
+///
+/// Same source cosmic-text splits its shape words on
+/// (`cosmic-text/src/shape.rs`), so the wrap floor this feeds cannot
+/// claim a segment the shaper would happily break.
+fn collect_break_offsets(text: &str, out: &mut Vec<u32>) {
+    out.clear();
+    out.extend(
+        unicode_linebreak::linebreaks(text)
+            .map(|(offset, _)| offset)
+            .filter(|&offset| offset < text.len())
+            .map(|offset| offset as u32),
+    );
+}
+
+/// Width of the widest segment no line break can split — the min-content
+/// width. Trailing whitespace is excluded because UAX #14 places its
+/// break opportunity *after* a space, so a space always ends its segment
+/// and hangs rather than widening it; interior non-breaking whitespace
+/// (U+00A0 and friends) opens no opportunity and so counts in full.
+fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
+    let mut intrinsic_min = 0.0_f32;
+    for run in buffer.layout_runs() {
+        collect_break_offsets(run.text, breaks);
+        let mut segment_w = 0.0_f32;
+        let mut trailing_ws_w = 0.0_f32;
+        for g in run.glyphs {
+            // Glyphs arrive in visual order, but a segment's glyphs stay
+            // contiguous within a level run, so entering a new segment
+            // closes the previous one whichever way the run reads.
+            if breaks.binary_search(&(g.start as u32)).is_ok() {
+                intrinsic_min = intrinsic_min.max(segment_w);
+                segment_w = 0.0;
+                trailing_ws_w = 0.0;
+            }
+            if run.text[g.start..g.end].chars().all(char::is_whitespace) {
+                trailing_ws_w += g.w;
+            } else {
+                segment_w += trailing_ws_w + g.w;
+                trailing_ws_w = 0.0;
+            }
+        }
+        intrinsic_min = intrinsic_min.max(segment_w);
+    }
+    intrinsic_min
 }
 
 #[cfg(test)]

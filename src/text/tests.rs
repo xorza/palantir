@@ -1216,106 +1216,91 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
 }
 
 #[test]
-fn cosmic_intrinsic_min_tracks_longest_word() {
-    // `intrinsic_min` = width of the widest unbreakable run. For a
-    // multi-word string, it must (a) be strictly positive, (b) be
-    // strictly less than the unbroken total (multiple words present),
-    // and (c) match the standalone measurement of the longest word
-    // within shaping tolerance — that's the wrap floor downstream
-    // layout pins as the "can't break below this" guarantee.
+fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
+    // `intrinsic_min` is the wrap floor: the width of the widest segment
+    // no line break can split. Break opportunities are UAX #14's — the
+    // same ones cosmic-text splits its shape words on — so the floor has
+    // to track punctuation and script boundaries, not just whitespace.
     let mut c = CosmicMeasure::with_bundled_fonts();
-    let full = c.measure(
-        "hello world hi",
-        TestShape {
-            font_size_px: 16.0,
-            line_height_px: 16.0 * LINE_HEIGHT_MULT,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
-    let hello = c.measure(
-        "hello",
-        TestShape {
-            font_size_px: 16.0,
-            line_height_px: 16.0 * LINE_HEIGHT_MULT,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
-    let world = c.measure(
-        "world",
-        TestShape {
-            font_size_px: 16.0,
-            line_height_px: 16.0 * LINE_HEIGHT_MULT,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
-    let hi = c.measure(
-        "hi",
-        TestShape {
-            font_size_px: 16.0,
-            line_height_px: 16.0 * LINE_HEIGHT_MULT,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        },
-    );
-    let longest_w = hello.size.w.max(world.size.w).max(hi.size.w);
+    let shape = TestShape {
+        font_size_px: 16.0,
+        line_height_px: 16.0 * LINE_HEIGHT_MULT,
+        max_width_px: None,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        halign: HAlign::Auto,
+    };
+
+    // (run, the widest segment its floor must land on)
+    for (text, widest) in [
+        // "world" outweighs "hello" in Inter — `w` is the wider glyph.
+        ("hello world hi", "world"),
+        // A hyphen opens a break after itself, so the floor is the
+        // prefix *including* it, not the whole token.
+        ("aaa-bbb", "aaa-"),
+        // Trailing punctuation binds to the word it follows.
+        ("aaa, bbb", "aaa,"),
+        // No whitespace anywhere: every ideograph is its own segment, so
+        // a CJK paragraph must floor at one glyph rather than one line.
+        (
+            "\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{30c6}\u{30ad}\u{30b9}\u{30c8}",
+            "\u{65e5}",
+        ),
+    ] {
+        let full = c.measure(text, shape);
+        let segment = c.measure(widest, shape);
+        assert!(
+            full.intrinsic_min < full.size.w,
+            "{text:?} must break somewhere: floor {} vs total width {}",
+            full.intrinsic_min,
+            full.size.w,
+        );
+        // Kerning across a break can shift the in-run segment width a
+        // little against its standalone measurement, so allow ±15%.
+        let rel_err = (full.intrinsic_min - segment.intrinsic_min).abs() / segment.intrinsic_min;
+        assert!(
+            rel_err < 0.15,
+            "{text:?} floor ({}) must be the width of {widest:?} ({}), rel_err = {rel_err}",
+            full.intrinsic_min,
+            segment.intrinsic_min,
+        );
+    }
+
+    // A no-break space opens no opportunity, so it neither splits its run
+    // nor hangs — its own advance counts toward the segment.
+    let nbsp = c.measure("aaa\u{a0}bbb", shape);
     assert!(
-        full.intrinsic_min > hi.size.w,
-        "must exceed the shortest word"
+        (nbsp.intrinsic_min - nbsp.size.w).abs() < 2.0,
+        "no-break space must keep one segment: floor {} vs width {}",
+        nbsp.intrinsic_min,
+        nbsp.size.w,
     );
-    assert!(
-        full.intrinsic_min < full.size.w,
-        "multi-word intrinsic_min ({}) must be < total width ({})",
-        full.intrinsic_min,
-        full.size.w,
-    );
-    // Within shaping tolerance — kerning around space glyphs can
-    // shift the in-run word width a couple of px vs the standalone
-    // measurement, so allow ±10%.
-    let rel_err = (full.intrinsic_min - longest_w).abs() / longest_w;
-    assert!(
-        rel_err < 0.15,
-        "intrinsic_min ({}) must ≈ longest-word width ({}), rel_err = {}",
-        full.intrinsic_min,
-        longest_w,
-        rel_err,
-    );
-    // Single-word input: intrinsic_min ≈ size.w. size.w is the
-    // last glyph's (x + w) ceil'd; intrinsic_min sums glyph widths.
-    // The two differ by sub-pixel kerning / ceil rounding — allow 2 px.
+
+    // Single-segment input: intrinsic_min ≈ size.w. size.w is the last
+    // glyph's (x + w) ceil'd; intrinsic_min sums glyph widths. The two
+    // differ by sub-pixel kerning / ceil rounding — allow 2 px.
+    let hello = c.measure("hello", shape);
     assert!(
         (hello.intrinsic_min - hello.size.w).abs() < 2.0,
-        "single-word: intrinsic_min ({}) ≈ size.w ({})",
+        "single word: intrinsic_min ({}) ≈ size.w ({})",
         hello.intrinsic_min,
         hello.size.w,
     );
-    // Width-bounded shapes skip the word scan and report a zero floor —
+
+    // Width-bounded shapes skip the segment scan and report a zero floor —
     // every consumer derives it from the unbounded root instead.
+    let full = c.measure("hello world hi", shape);
     let bounded = c.measure(
         "hello world hi",
         TestShape {
-            font_size_px: 16.0,
-            line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: Some(60.0),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
+            ..shape
         },
     );
     assert!(bounded.size.h > full.size.h, "60 px must force a wrap");
     assert_eq!(
         bounded.intrinsic_min, 0.0,
-        "bounded shapes must not pay the word scan",
+        "bounded shapes must not pay the segment scan",
     );
 }
 
