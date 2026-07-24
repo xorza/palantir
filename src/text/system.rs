@@ -10,7 +10,6 @@ use crate::text::wrap;
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{TextMeasurement, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::hash_map::Entry;
 
 /// Per-window text coordinator. Reuse slots belong to the window while
 /// shaped content buffers and the font system remain shared through
@@ -47,24 +46,14 @@ impl TextSystem {
     pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
         self.shaper.end_frame();
         let previous_len = self.entries.len();
-        if previous_len > self.sweep_limit {
-            if removed.is_empty() {
-                self.entries
-                    .retain(|_, entry| std::mem::take(&mut entry.hot));
-            } else {
-                self.entries.retain(|(widget_id, _), entry| {
-                    !removed.contains(widget_id) && std::mem::take(&mut entry.hot)
-                });
-            }
-            self.sweep_limit = next_reuse_sweep_limit(self.entries.len());
+        let sweep = previous_len > self.sweep_limit;
+        if !sweep && removed.is_empty() {
             return;
         }
-        if removed.is_empty() {
-            return;
-        }
-        self.entries
-            .retain(|(widget_id, _), _| !removed.contains(widget_id));
-        if self.entries.len() != previous_len {
+        self.entries.retain(|(widget_id, _), entry| {
+            !removed.contains(widget_id) && (!sweep || std::mem::take(&mut entry.hot))
+        });
+        if sweep || self.entries.len() != previous_len {
             self.sweep_limit = next_reuse_sweep_limit(self.entries.len());
         }
     }
@@ -91,26 +80,21 @@ impl TextSystem {
             return TextMeasurement::ZERO;
         }
 
-        let refresh = || {
-            let unbounded = shaper.inner.borrow_mut().dispatch(request);
-            TextReuseEntry {
-                key: request.key,
-                unbounded,
-                wrap: None,
-                hot: true,
-            }
+        let refresh = || TextReuseEntry {
+            key: request.key,
+            unbounded: shaper.inner.borrow_mut().dispatch(request),
+            wrap: None,
+            hot: true,
         };
-        let entry = match self.entries.entry((slot.widget_id, slot.ordinal)) {
-            Entry::Occupied(mut occupied) => {
-                if occupied.get().key != request.key {
-                    occupied.insert(refresh());
-                } else {
-                    occupied.get_mut().hot = true;
-                }
-                occupied.into_mut()
-            }
-            Entry::Vacant(vacant) => vacant.insert(refresh()),
-        };
+        let entry = self
+            .entries
+            .entry((slot.widget_id, slot.ordinal))
+            .or_insert_with(&refresh);
+        if entry.key != request.key {
+            *entry = refresh();
+        } else {
+            entry.hot = true;
+        }
         if let Some(width) = available_width_px {
             debug_assert!(width.is_finite());
         }

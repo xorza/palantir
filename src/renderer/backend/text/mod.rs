@@ -38,7 +38,7 @@ use crate::text::render::{PlacedGlyph, RunPlacement};
 use crate::text::{TextShapeRequest, TextShaper};
 
 use atlas::GlyphAtlas;
-use encode::{EncodeCtx, EncodedCache, EncodedRunKey, MissRun, encode_key_for, try_emit_cached};
+use encode::{EncodeCtx, EncodedCache, encode_key_for, try_emit_cached};
 
 /// Frames an unused `EncodedCache` entry survives before being swept
 /// in `post_record`. Keeps the cache from growing unboundedly under a
@@ -122,20 +122,9 @@ pub(crate) struct TextBackend {
     ranges: Vec<Span>,
 
     encoded_cache: EncodedCache,
-    /// Misses found in `prepare_batch`'s pass 1. Each entry pins the
-    /// run index plus the already-computed cache key + origin so
-    /// pass 2 doesn't repeat `encode_key_for`. Retained across calls
-    /// so an all-hit frame stays alloc-free.
-    misses: Vec<MissEntry>,
-    /// Per-run extraction scratch for pass 2 (`PlacedGlyph`s from the
-    /// shaper session), retained across runs and frames.
+    /// Per-miss extraction scratch (`PlacedGlyph`s from the shaper
+    /// session), retained across runs and frames.
     placed: Vec<PlacedGlyph>,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct MissEntry {
-    run_idx: u32,
-    run_key: EncodedRunKey,
 }
 
 impl TextBackend {
@@ -198,7 +187,6 @@ impl TextBackend {
             vbuf,
             ranges: Vec::new(),
             encoded_cache: EncodedCache::default(),
-            misses: Vec::new(),
             placed: Vec::new(),
         }
     }
@@ -230,10 +218,10 @@ impl TextBackend {
         )
     }
 
-    /// Append-mode prepare. Encoded-cache hits bypass shaping; misses
-    /// extract and rasterize their glyphs through one exclusive shaper
-    /// session before emitting instances. Rebinds the atlas bind group
-    /// if it grew.
+    /// Append-mode prepare. Encoded-cache hits bypass shaping; the
+    /// first miss opens the exclusive shaper session, and each miss
+    /// extracts and rasterizes its glyphs in place. Rebinds the atlas
+    /// bind group if it grew.
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
@@ -250,70 +238,57 @@ impl TextBackend {
         );
         let start = self.instances.len() as u32;
 
-        // Pass 1: walk every run, emit encoded-cache hits straight to
-        // `instances`, collect miss entries (carrying their already-
-        // computed key + origin so pass 2 doesn't re-derive). An
-        // all-hit frame never cracks the
-        // RefCell or hits cosmic.
-        self.misses.clear();
-        let current_frame = self.atlas.current_frame;
-        for (i, r) in runs.iter().enumerate() {
+        // One walk: hits emit straight to `instances`; misses encode
+        // through the lazily-opened session. An all-hit frame never
+        // cracks the RefCell or hits cosmic.
+        let Self {
+            shaper,
+            atlas,
+            instances,
+            encoded_cache,
+            placed,
+            ..
+        } = self;
+        let mut ectx = EncodeCtx {
+            device: ctx.device,
+            atlas,
+            cache: encoded_cache,
+            placed,
+            out: instances,
+        };
+        let mut session = None;
+        let current_frame = ectx.atlas.current_frame;
+        for r in runs {
             if r.key.is_invalid() {
                 // Mono fallback emits nothing; skip both paths.
                 continue;
             }
             let run_key = encode_key_for(r, scale);
             if try_emit_cached(
-                &mut self.encoded_cache,
-                &mut self.atlas.slots,
+                ectx.cache,
+                &mut ectx.atlas.slots,
                 current_frame,
                 &run_key,
-                &mut self.instances,
+                ectx.out,
             ) {
                 continue;
             }
-            self.misses.push(MissEntry {
-                run_idx: i as u32,
+            let session = session.get_or_insert_with(|| shaper.render_session());
+            ectx.encode_run(
+                session,
+                TextShapeRequest {
+                    text: r.source.resolve(interned_text),
+                    key: r.key,
+                },
+                RunPlacement {
+                    origin: r.origin,
+                    scale: scale * r.scale,
+                    bounds: r.bounds,
+                },
                 run_key,
-            });
+            );
         }
-
-        // Pass 2: shape only the misses.
-        if !self.misses.is_empty() {
-            let Self {
-                shaper,
-                atlas,
-                instances,
-                encoded_cache,
-                misses,
-                placed,
-                ..
-            } = self;
-            let miss_runs = misses.iter().map(|miss| {
-                let run = &runs[miss.run_idx as usize];
-                MissRun {
-                    request: TextShapeRequest {
-                        text: run.source.resolve(interned_text),
-                        key: run.key,
-                    },
-                    placement: RunPlacement {
-                        origin: run.origin,
-                        scale: scale * run.scale,
-                        bounds: run.bounds,
-                    },
-                    run_key: miss.run_key,
-                }
-            });
-            let mut session = shaper.render_session();
-            let mut ectx = EncodeCtx {
-                device: ctx.device,
-                atlas,
-                cache: encoded_cache,
-                placed,
-                out: instances,
-            };
-            ectx.encode_batch(&mut session, miss_runs);
-        }
+        drop(session);
 
         let end = self.instances.len() as u32;
 
