@@ -9,7 +9,7 @@
 //! - [`mono_measure`] — deterministic placeholder metric used when no
 //!   `CosmicMeasure` is installed. Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry
-//!   [`TextCacheKey::INVALID`] and the renderer drops them. Lets the engine
+//!   [`TextShapeKey::INVALID`] and the renderer drops them. Lets the engine
 //!   run in tests and headless tools without a font system.
 //! - [`TextSystem`] — per-window text coordinator. It owns identity reuse
 //!   keyed by widget and within-widget text ordinal while referring to the
@@ -24,13 +24,13 @@
 use crate::common::hash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::approx::EPS;
+use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
-use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -72,7 +72,7 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_
 /// Weight (Regular/Bold) is an independent axis — see [`FontWeight`].
 ///
 /// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
-/// `TextCacheKey::family_q` and the `ShapeRecord::Text` hash byte
+/// `TextShapeKey::family_q` and the `ShapeRecord::Text` hash byte
 /// stay stable across variant reordering.
 #[repr(u8)]
 #[derive(
@@ -90,7 +90,7 @@ pub enum FontFamily {
 /// for Inter, an instantiated `wght` for the variable JetBrains
 /// Mono) via cosmic-text's `Attrs::weight`.
 ///
-/// `#[repr(u8)]` pins the tag for `TextCacheKey::weight_q` and the
+/// `#[repr(u8)]` pins the tag for `TextShapeKey::weight_q` and the
 /// `ShapeRecord::Text` hash byte.
 #[repr(u8)]
 #[derive(
@@ -125,11 +125,11 @@ pub struct TextShaper {
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
-/// Source text paired with the shaped-buffer key the renderer requires.
+/// Source text paired with its canonical shaping parameters.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TextBufferRequest<'a> {
+pub(crate) struct TextShapeRequest<'a> {
     pub(crate) text: &'a str,
-    pub(crate) key: TextCacheKey,
+    pub(crate) key: TextShapeKey,
 }
 
 /// Per-window text coordinator. Identity reuse belongs to the window while
@@ -146,10 +146,8 @@ pub(crate) struct TextSystem {
 #[derive(Debug)]
 pub(crate) struct TextLayoutProbe<'a> {
     pub(crate) measurement: TextMeasurement,
-    pub(crate) text_hash: u64,
+    pub(crate) request: TextShapeRequest<'a>,
     buffer: Option<&'a cosmic_text::Buffer>,
-    text: &'a str,
-    params: ValidatedShapeParams,
 }
 
 /// One text run whose identity and unbounded shape have been validated
@@ -157,14 +155,13 @@ pub(crate) struct TextLayoutProbe<'a> {
 #[derive(Debug)]
 pub(crate) struct PreparedTextRun<'a> {
     pub(crate) unbounded: TextMeasurement,
-    params: ValidatedShapeParams,
+    request: TextShapeRequest<'a>,
     state: Option<PreparedTextRunState<'a>>,
 }
 
 #[derive(Debug)]
 struct PreparedTextRunState<'a> {
     shaper: &'a TextShaper,
-    text: &'a str,
     entry: &'a mut TextReuseEntry,
 }
 
@@ -185,7 +182,7 @@ pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
     /// Total shaping dispatches: [`TextSystem`] reuse misses plus every
-    /// bypass [`TextShaper::measure`] or [`TextShaper::probe_layout`] call —
+    /// bypass [`TextShaper::with_layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
     /// dispatches, not reshapes. Identity-cache hits don't increment.
     /// Read by tests pinning reshape-skip behaviour via
@@ -202,113 +199,44 @@ const MIN_REUSE_SWEEP_LIMIT: usize = 256;
 pub(crate) const TEXT_METRICS_ERROR: &str =
     "font size and line height must be finite and above the UI epsilon";
 
-/// Shaper-ready font metrics. Construction is the sole boundary that admits
-/// raw runtime/theme values into text measurement.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TextMetrics {
-    font_size_px: f32,
-    line_height_px: f32,
+pub(crate) fn text_metrics_valid(font_size_px: f32, line_height_px: f32) -> bool {
+    font_size_px.is_finite()
+        && font_size_px > EPS
+        && line_height_px.is_finite()
+        && line_height_px > EPS
 }
 
-impl TextMetrics {
-    pub(crate) fn new(font_size_px: f32, line_height_px: f32) -> Result<Self, ShapeParamsError> {
-        if !font_size_px.is_finite() || font_size_px <= EPS {
-            return Err(ShapeParamsError::InvalidFontSize);
-        }
-        if !line_height_px.is_finite() || line_height_px <= EPS {
-            return Err(ShapeParamsError::InvalidLineHeight);
-        }
-        Ok(Self {
+impl<'a> TextShapeRequest<'a> {
+    pub(crate) fn unbounded(
+        text: &'a str,
+        font_size_px: f32,
+        line_height_px: f32,
+        family: FontFamily,
+        weight: FontWeight,
+    ) -> Option<Self> {
+        TextShapeKey::unbounded(
+            hash::hash_str(text),
             font_size_px,
             line_height_px,
+            family,
+            weight,
+        )
+        .map(|key| Self { text, key })
+    }
+
+    pub(crate) fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Option<Self> {
+        self.key.bounded(max_width_px, halign, fit).map(|key| Self {
+            text: self.text,
+            key,
         })
     }
 
-    pub(crate) fn from_size_and_multiplier(
-        font_size_px: f32,
-        line_height_mult: f32,
-    ) -> Result<Self, ShapeParamsError> {
-        Self::new(font_size_px, font_size_px * line_height_mult)
+    pub(crate) fn unbounded_version(self) -> Self {
+        Self {
+            text: self.text,
+            key: self.key.unbounded_version(),
+        }
     }
-}
-
-/// Why raw [`ShapeParams`] could not enter text shaping.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShapeParamsError {
-    /// `font_size_px` was non-finite or no larger than the UI epsilon.
-    InvalidFontSize,
-    /// `line_height_px` was non-finite or no larger than the UI epsilon.
-    InvalidLineHeight,
-    /// `max_width_px` was negative or non-finite.
-    InvalidMaxWidth,
-}
-
-impl Display for ShapeParamsError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let message = match self {
-            Self::InvalidFontSize => "font size must be finite and above the UI epsilon",
-            Self::InvalidLineHeight => "line height must be finite and above the UI epsilon",
-            Self::InvalidMaxWidth => "maximum width must be finite and non-negative",
-        };
-        f.write_str(message)
-    }
-}
-
-impl std::error::Error for ShapeParamsError {}
-
-/// Fully validated parameters passed to the mono and cosmic implementations.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ValidatedShapeParams {
-    raw: ShapeParams,
-    metrics: TextMetrics,
-}
-
-impl ValidatedShapeParams {
-    fn unbounded(mut self) -> Self {
-        self.raw.max_width_px = None;
-        self.raw.halign = HAlign::Auto;
-        self
-    }
-
-    fn bounded(mut self, max_width_px: f32, halign: HAlign) -> Result<Self, ShapeParamsError> {
-        validate_max_width(Some(max_width_px))?;
-        self.raw.max_width_px = Some(max_width_px);
-        self.raw.halign = halign;
-        Ok(self)
-    }
-}
-
-/// Bundled text-shaping parameters, threaded through the `TextShaper` /
-/// `CosmicMeasure` query surface so every call carries one value instead
-/// of the same loose args (font metrics + wrap width + family + weight +
-/// per-line alignment). `max_width_px` is a finite, non-negative
-/// wrap/truncation width; `None` is the sole unbounded representation.
-/// [`TextShaper::measure`] reports invalid metrics or widths as a
-/// [`ShapeParamsError`]. `halign` aligns each line inside a bounded width
-/// (ignored by the text system's unbounded shape).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeParams {
-    pub font_size_px: f32,
-    pub line_height_px: f32,
-    pub max_width_px: Option<f32>,
-    pub family: FontFamily,
-    pub weight: FontWeight,
-    pub halign: HAlign,
-}
-
-impl ShapeParams {
-    pub(crate) fn validated(self) -> Result<ValidatedShapeParams, ShapeParamsError> {
-        let metrics = TextMetrics::new(self.font_size_px, self.line_height_px)?;
-        validate_max_width(self.max_width_px)?;
-        Ok(ValidatedShapeParams { metrics, raw: self })
-    }
-}
-
-fn validate_max_width(max_width_px: Option<f32>) -> Result<(), ShapeParamsError> {
-    if max_width_px.is_some_and(|width| !width.is_finite() || width < 0.0) {
-        return Err(ShapeParamsError::InvalidMaxWidth);
-    }
-    Ok(())
 }
 
 impl TextShaper {
@@ -328,62 +256,33 @@ impl TextShaper {
         Self::with_cosmic(CosmicMeasure::with_bundled_fonts())
     }
 
-    /// Shape-record `text` and return its measurement. Bypasses the per-widget
-    /// reuse cache — direct dispatch to cosmic (if installed) or mono.
-    /// Used by shape and probing paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ShapeParamsError`] before shaping or touching either cache
-    /// when the metrics or bounded width are malformed.
-    pub fn measure(
-        &self,
-        text: &str,
-        params: ShapeParams,
-    ) -> Result<TextMeasurement, ShapeParamsError> {
-        let params = params.validated()?;
-        if text.is_empty() {
-            return Ok(TextMeasurement::ZERO);
-        }
-        let mut inner = self.inner.borrow_mut();
-        inner.measure_calls += 1;
-        Ok(inner.dispatch_direct(text, hash::hash_str(text), params))
-    }
-
     /// Shape `text` once and expose its measurement and geometry for the
     /// duration of `body`.
-    pub(crate) fn probe_layout<R>(
+    pub(crate) fn with_layout<R>(
         &self,
-        text: &str,
-        params: ShapeParams,
+        request: TextShapeRequest<'_>,
         body: impl FnOnce(TextLayoutProbe<'_>) -> R,
-    ) -> Result<R, ShapeParamsError> {
-        let params = params.validated()?;
-        let text_hash = hash::hash_str(text);
-        if text.is_empty() {
-            return Ok(body(TextLayoutProbe {
+    ) -> R {
+        if request.text.is_empty() {
+            return body(TextLayoutProbe {
                 measurement: TextMeasurement::ZERO,
-                text_hash,
+                request,
                 buffer: None,
-                text,
-                params,
-            }));
+            });
         }
 
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
-        let measurement = inner.dispatch_direct(text, text_hash, params);
+        let measurement = inner.dispatch_direct(request);
         let buffer = inner
             .cosmic
             .as_ref()
             .and_then(|cosmic| cosmic.buffer_for(measurement.key));
-        Ok(body(TextLayoutProbe {
+        body(TextLayoutProbe {
             measurement,
-            text_hash,
+            request,
             buffer,
-            text,
-            params,
-        }))
+        })
     }
 }
 
@@ -423,39 +322,27 @@ impl TextSystem {
 
     /// Prepare one identity-cached text run, refreshing its unbounded shape
     /// and clearing its stale bounded result when any shaping input changes.
-    pub(crate) fn prepare_run<'a>(
+    pub(crate) fn prepare<'a>(
         &'a mut self,
         identity: TextRunIdentity,
-        text: &'a str,
-        params: ShapeParams,
-    ) -> Result<PreparedTextRun<'a>, ShapeParamsError> {
+        request: TextShapeRequest<'a>,
+    ) -> PreparedTextRun<'a> {
         let shaper = &self.shaper;
-        let params = params.validated()?.unbounded();
-        let inputs = TextReuseInputs {
-            text_hash: hash::hash_str(text),
-            params,
-        };
-        if text.is_empty() {
-            return Ok(PreparedTextRun {
+        let request = request.unbounded_version();
+        if request.text.is_empty() {
+            return PreparedTextRun {
                 unbounded: TextMeasurement::ZERO,
-                params,
+                request,
                 state: None,
-            });
+            };
         }
 
         let refresh = || {
             let mut inner = shaper.inner.borrow_mut();
             inner.measure_calls += 1;
-            let unbounded = dispatch(
-                &mut inner.cosmic,
-                text,
-                inputs.text_hash,
-                params,
-                LineFit::Wrap,
-                TextCacheKey::INVALID,
-            );
+            let unbounded = dispatch(&mut inner.cosmic, request);
             TextReuseEntry {
-                inputs,
+                key: request.key,
                 unbounded,
                 wrap: None,
                 hot: true,
@@ -463,7 +350,7 @@ impl TextSystem {
         };
         let entry = match self.entries.entry((identity.widget_id, identity.ordinal)) {
             Entry::Occupied(mut occupied) => {
-                if occupied.get().inputs != inputs {
+                if occupied.get().key != request.key {
                     occupied.insert(refresh());
                 } else {
                     occupied.get_mut().hot = true;
@@ -472,15 +359,11 @@ impl TextSystem {
             }
             Entry::Vacant(vacant) => vacant.insert(refresh()),
         };
-        Ok(PreparedTextRun {
+        PreparedTextRun {
             unbounded: entry.unbounded,
-            params,
-            state: Some(PreparedTextRunState {
-                shaper,
-                text,
-                entry,
-            }),
-        })
+            request,
+            state: Some(PreparedTextRunState { shaper, entry }),
+        }
     }
 }
 
@@ -492,49 +375,30 @@ impl PreparedTextRun<'_> {
         max_width_px: f32,
         halign: HAlign,
         fit: LineFit,
-    ) -> Result<TextMeasurement, ShapeParamsError> {
-        let params = self.params;
+    ) -> Option<TextMeasurement> {
+        let request = self.request.bounded(max_width_px, halign, fit)?;
         let Some(state) = self.state else {
-            params.bounded(max_width_px, halign)?;
-            return Ok(TextMeasurement::ZERO);
+            return Some(TextMeasurement::ZERO);
         };
-        let PreparedTextRunState {
-            shaper,
-            text,
-            entry,
-        } = state;
-        // A hit proves the stored width passed validation when it was shaped.
-        if let Some(w) = entry.wrap
-            && w.max_width_px == max_width_px
-            && w.halign == halign
-            && w.fit == fit
+        let PreparedTextRunState { shaper, entry } = state;
+        if let Some(wrap) = entry.wrap
+            && wrap.key == request.key
         {
-            return Ok(w.result);
+            return Some(wrap.result);
         }
-        let params = params.bounded(max_width_px, halign)?;
         let mut inner = shaper.inner.borrow_mut();
         let ShaperInner {
             cosmic,
             measure_calls,
             ..
         } = &mut *inner;
-        let unbounded_key = entry.unbounded.key;
         *measure_calls += 1;
-        let m = dispatch(
-            cosmic,
-            text,
-            unbounded_key.text_hash,
-            params,
-            fit,
-            unbounded_key,
-        );
+        let measurement = dispatch(cosmic, request);
         entry.wrap = Some(WrapReuse {
-            max_width_px,
-            halign,
-            fit,
-            result: m,
+            key: request.key,
+            result: measurement,
         });
-        Ok(m)
+        Some(measurement)
     }
 }
 
@@ -546,23 +410,20 @@ impl TextShaper {
     /// distinct visual line). Mono fallback / empty-text path
     /// collapses to a 1D layout — `y_top = 0`, `x` from a flat mono
     /// per-byte estimate — usable for tests / headless.
-    pub(crate) fn cursor_xy(
+    pub(crate) fn cursor_position(
         &self,
-        text: &str,
+        request: TextShapeRequest<'_>,
         byte_offset: usize,
-        params: ShapeParams,
     ) -> CursorPos {
-        self.probe_layout(text, params, |layout| layout.cursor_xy(byte_offset))
-            .unwrap_or(CursorPos::INVALID)
+        self.with_layout(request, |layout| layout.cursor_xy(byte_offset))
     }
 
     /// Pixel-position → byte-offset. Multi-line aware on the cosmic
     /// path via `Buffer::hit`. Mono / empty-text falls back to a 1D
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
-    pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, params: ShapeParams) -> usize {
-        self.probe_layout(text, params, |layout| layout.byte_at_xy(x, y))
-            .unwrap_or(0)
+    pub(crate) fn hit_test(&self, request: TextShapeRequest<'_>, x: f32, y: f32) -> usize {
+        self.with_layout(request, |layout| layout.byte_at_xy(x, y))
     }
 
     /// Bounds the reconstructible cosmic buffer LRU. Called by
@@ -575,7 +436,7 @@ impl TextShaper {
     /// lookup to the renderer under the same exclusive shaper borrow.
     pub(crate) fn with_render_buffers<'a, R>(
         &self,
-        requests: impl IntoIterator<Item = TextBufferRequest<'a>>,
+        requests: impl IntoIterator<Item = TextShapeRequest<'a>>,
         body: impl FnOnce(RenderSplit<'_>) -> R,
     ) -> R {
         let mut inner = self.inner.borrow_mut();
@@ -586,7 +447,7 @@ impl TextShaper {
         for request in requests {
             debug_assert!(!request.key.is_invalid());
             debug_assert_eq!(hash::hash_str(request.text), request.key.text_hash);
-            cosmic.ensure_buffer(request.text, request.key);
+            cosmic.ensure_buffer(request);
         }
         body(cosmic.split_for_render())
     }
@@ -594,16 +455,16 @@ impl TextShaper {
 
 impl TextLayoutProbe<'_> {
     pub(crate) fn cursor_xy(&self, byte_offset: usize) -> CursorPos {
-        let font_size_px = self.params.metrics.font_size_px;
-        let line_height_px = self.params.metrics.line_height_px;
-        let max_width_px = self.params.raw.max_width_px;
-        let halign = self.params.raw.halign;
-        let target = cursor_from_byte(self.text, byte_offset);
+        let font_size_px = self.request.key.font_size_px();
+        let line_height_px = self.request.key.line_height_px();
+        let max_width_px = self.request.key.max_width_px();
+        let halign = self.request.key.halign();
+        let target = cursor_from_byte(self.request.text, byte_offset);
         let Some(buffer) = self.buffer else {
-            let x = if self.text.is_empty() {
+            let x = if self.request.text.is_empty() {
                 empty_line_x(max_width_px, halign)
             } else {
-                caret_x_mono_single_line(self.text, byte_offset, font_size_px)
+                caret_x_mono_single_line(self.request.text, byte_offset, font_size_px)
             };
             return CursorPos {
                 x,
@@ -653,9 +514,9 @@ impl TextLayoutProbe<'_> {
         match self.buffer {
             Some(buffer) => buffer
                 .hit(x, y)
-                .map(|cursor| cursor_to_byte(self.text, cursor))
-                .unwrap_or(self.text.len()),
-            None => mono_byte_at_x(self.text, x, self.params.metrics.font_size_px),
+                .map(|cursor| cursor_to_byte(self.request.text, cursor))
+                .unwrap_or(self.request.text.len()),
+            None => mono_byte_at_x(self.request.text, x, self.request.key.font_size_px()),
         }
     }
 
@@ -665,19 +526,19 @@ impl TextLayoutProbe<'_> {
             return;
         }
         let Some(buffer) = self.buffer else {
-            let font_size_px = self.params.metrics.font_size_px;
-            let x0 = caret_x_mono_single_line(self.text, range.start, font_size_px);
-            let x1 = caret_x_mono_single_line(self.text, range.end, font_size_px);
+            let font_size_px = self.request.key.font_size_px();
+            let x0 = caret_x_mono_single_line(self.request.text, range.start, font_size_px);
+            let x1 = caret_x_mono_single_line(self.request.text, range.end, font_size_px);
             out.push(Rect::new(
                 x0,
                 0.0,
                 x1 - x0,
-                self.params.metrics.line_height_px,
+                self.request.key.line_height_px(),
             ));
             return;
         };
-        let start = cursor_from_byte(self.text, range.start);
-        let end = cursor_from_byte(self.text, range.end);
+        let start = cursor_from_byte(self.request.text, range.start);
+        let end = cursor_from_byte(self.request.text, range.end);
         for run in buffer.layout_runs() {
             push_run_selection_rects(&run, start, end, out);
         }
@@ -694,15 +555,10 @@ impl ShaperInner {
         cosmic.end_frame_evict(BUFFER_BUDGET);
     }
 
-    fn dispatch_direct(
-        &mut self,
-        text: &str,
-        text_hash: u64,
-        params: ValidatedShapeParams,
-    ) -> TextMeasurement {
+    fn dispatch_direct(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
         match self.cosmic.as_mut() {
-            Some(c) => c.measure_hashed_validated(text, text_hash, params),
-            None => mono_measure(text, params.metrics, params.raw.max_width_px, LineFit::Wrap),
+            Some(cosmic) => cosmic.shape(request),
+            None => mono_measure(request),
         }
     }
 }
@@ -710,76 +566,61 @@ impl ShaperInner {
 /// Bypass-cache dispatch: cosmic if installed, mono otherwise. The caller
 /// owns reuse accounting, so shaping and map-entry mutation can borrow
 /// disjoint `ShaperInner` fields.
-fn dispatch(
-    cosmic: &mut Option<CosmicMeasure>,
-    text: &str,
-    text_hash: u64,
-    params: ValidatedShapeParams,
-    fit: LineFit,
-    unbounded_key: TextCacheKey,
-) -> TextMeasurement {
-    let max_width_px = params.raw.max_width_px;
+fn dispatch(cosmic: &mut Option<CosmicMeasure>, request: TextShapeRequest<'_>) -> TextMeasurement {
     match cosmic.as_mut() {
-        // Truncation needs a finite width to cut against; without one
-        // it's just an unbounded single line, so fall through to the
-        // plain measure.
-        Some(c) => match (fit, max_width_px) {
-            (LineFit::Ellipsis | LineFit::Clip, Some(_)) => {
-                c.measure_truncated_validated(text, params, fit, unbounded_key)
-            }
-            _ => c.measure_hashed_validated(text, text_hash, params),
-        },
-        // Mono fallback is single-line; cosmic per-line align
-        // can't be applied so `halign` is unused here.
-        None => mono_measure(text, params.metrics, params.raw.max_width_px, fit),
+        Some(cosmic) => cosmic.shape(request),
+        None => mono_measure(request),
     }
 }
 
-/// Stable identifier for a shaped text run, computed at authoring time so
-/// `ShapeRecord::Text` can carry it through the encoder/composer and the renderer
-/// can look up the matching shaped buffer without rehashing.
+/// Canonical shaping parameters and stable shaped-buffer identity. Layout
+/// derives it from `ShapeRecord::Text`; the encoder carries it through the
+/// composer so the renderer can restore the matching buffer without rehashing
+/// or reconstructing a second parameter representation.
 ///
 /// Three quantized fields rather than one collapsed `u64` so the renderer
 /// can also reuse the size/width components if it wants to (e.g. group runs
-/// by size for atlas bin reuse). [`TextCacheKey::INVALID`] is the sentinel
+/// by size for atlas bin reuse). [`TextShapeKey::INVALID`] is the sentinel
 /// returned by the mono fallback — the renderer treats it as "drop this run".
 #[repr(C)]
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct TextCacheKey {
+pub(crate) struct TextShapeKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
-    pub text_hash: u64,
+    pub(crate) text_hash: u64,
     /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
     /// visible difference and keeps the key purely integral.
-    pub size_q: u32,
+    pub(crate) size_q: u32,
     /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
-    pub max_w_q: u32,
+    pub(crate) max_w_q: u32,
     /// `line_height_px * 64`, rounded. Two `ShapeRecord::Text` runs at the
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
-    pub lh_q: u32,
+    pub(crate) lh_q: u32,
     /// [`FontFamily`] discriminant. Two runs with identical text/size
     /// but different families produce different shaped buffers, so the
     /// key has to discriminate. `u8` because `FontFamily` is `#[repr(u8)]`.
-    pub family_q: u8,
+    pub(crate) family_q: u8,
     /// [`FontWeight`] discriminant. Two runs with identical text/size/
     /// family but different weight shape against different physical faces
     /// (Regular vs Bold), so the key has to discriminate.
-    pub weight_q: u8,
+    pub(crate) weight_q: u8,
     /// [`HAlign`] discriminant for per-line text alignment. Cosmic
     /// shapes the buffer with line-internal x offsets that depend on
     /// the per-line align, so two runs with identical text/size but
     /// different halign produce different shaped buffers and the key
     /// has to discriminate. `0` (`HAlign::Auto`) means "no per-line
     /// alignment" and matches the previous behaviour.
-    pub halign_q: u8,
+    pub(crate) halign_q: u8,
     /// [`LineFit`] discriminant. Truncating fits bake different source text
     /// into the shaped buffer at the same width, so fit is independent cache
     /// identity rather than part of the text-content hash. This occupies the
     /// former trailing padding byte, keeping the key at 24 bytes.
-    pub fit_q: u8,
+    pub(crate) fit_q: u8,
 }
 
-impl TextCacheKey {
+const MAX_W_NONE: u32 = u32::MAX;
+
+impl TextShapeKey {
     /// Sentinel returned by the mono fallback. Real keys always carry a
     /// nonzero text hash, so that field alone tags validity.
     pub(crate) const INVALID: Self = Self {
@@ -796,56 +637,157 @@ impl TextCacheKey {
     pub(crate) const fn is_invalid(self) -> bool {
         self.text_hash == 0
     }
+
+    fn unbounded(
+        text_hash: u64,
+        font_size_px: f32,
+        line_height_px: f32,
+        family: FontFamily,
+        weight: FontWeight,
+    ) -> Option<Self> {
+        if !text_metrics_valid(font_size_px, line_height_px) {
+            return None;
+        }
+        Some(Self {
+            text_hash: text_hash.max(1),
+            size_q: quantize_metric(font_size_px),
+            max_w_q: MAX_W_NONE,
+            lh_q: quantize_metric(line_height_px),
+            family_q: family as u8,
+            weight_q: weight as u8,
+            halign_q: HAlign::Auto as u8,
+            fit_q: LineFit::Wrap as u8,
+        })
+    }
+
+    fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Option<Self> {
+        if !max_width_px.is_finite() || max_width_px < 0.0 {
+            return None;
+        }
+        Some(Self {
+            max_w_q: quantize_width(max_width_px).min(MAX_W_NONE - 1),
+            halign_q: match fit {
+                LineFit::Wrap => halign as u8,
+                LineFit::Clip | LineFit::Ellipsis => HAlign::Auto as u8,
+            },
+            fit_q: fit as u8,
+            ..self
+        })
+    }
+
+    pub(crate) fn unbounded_version(self) -> Self {
+        Self {
+            max_w_q: MAX_W_NONE,
+            halign_q: HAlign::Auto as u8,
+            fit_q: LineFit::Wrap as u8,
+            ..self
+        }
+    }
+
+    pub(crate) fn font_size_px(self) -> f32 {
+        dequantize(self.size_q)
+    }
+
+    pub(crate) fn line_height_px(self) -> f32 {
+        dequantize(self.lh_q)
+    }
+
+    pub(crate) fn max_width_px(self) -> Option<f32> {
+        (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
+    }
+
+    pub(crate) fn family(self) -> FontFamily {
+        match self.family_q {
+            0 => FontFamily::Sans,
+            1 => FontFamily::Mono,
+            other => panic!("invalid FontFamily discriminant in TextShapeKey: {other}"),
+        }
+    }
+
+    pub(crate) fn weight(self) -> FontWeight {
+        match self.weight_q {
+            0 => FontWeight::Regular,
+            1 => FontWeight::Bold,
+            other => panic!("invalid FontWeight discriminant in TextShapeKey: {other}"),
+        }
+    }
+
+    pub(crate) fn halign(self) -> HAlign {
+        match self.halign_q {
+            0 => HAlign::Auto,
+            1 => HAlign::Left,
+            2 => HAlign::Center,
+            3 => HAlign::Right,
+            4 => HAlign::Stretch,
+            other => panic!("invalid HAlign discriminant in TextShapeKey: {other}"),
+        }
+    }
+
+    pub(crate) fn fit(self) -> LineFit {
+        match self.fit_q {
+            0 => LineFit::Wrap,
+            1 => LineFit::Clip,
+            2 => LineFit::Ellipsis,
+            other => panic!("invalid LineFit discriminant in TextShapeKey: {other}"),
+        }
+    }
+}
+
+fn quantize_width(value: f32) -> u32 {
+    (value.max(0.0) * 64.0).fast_round() as u32
+}
+
+fn quantize_metric(value: f32) -> u32 {
+    quantize_width(value).max(1)
+}
+
+fn dequantize(value: u32) -> f32 {
+    value as f32 / 64.0
 }
 
 /// Measurement of one text run, including its intrinsic wrapping floor.
 #[derive(Clone, Copy, Debug)]
-pub struct TextMeasurement {
-    pub size: Size,
-    /// Identifier of the shaped buffer, or [`TextCacheKey::INVALID`] when no
-    /// shaping happened (mono fallback). Crate-internal — the renderer's
-    /// cache key, not part of the public measurement result.
-    pub(crate) key: TextCacheKey,
+pub(crate) struct TextMeasurement {
+    pub(crate) size: Size,
+    /// Identifier of the shaped buffer, or [`TextShapeKey::INVALID`] when no
+    /// shaping happened (mono fallback).
+    pub(crate) key: TextShapeKey,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
     /// Equal to `size.w` for the mono fallback (no real word boundaries) and
     /// for single-word inputs.
-    pub intrinsic_min: f32,
+    pub(crate) intrinsic_min: f32,
 }
 
 impl TextMeasurement {
     /// Successful empty-text measurement. It has no shaped buffer for the
     /// renderer to resolve.
-    pub const ZERO: Self = Self {
+    pub(crate) const ZERO: Self = Self {
         size: Size::ZERO,
-        key: TextCacheKey::INVALID,
+        key: TextShapeKey::INVALID,
         intrinsic_min: 0.0,
     };
 }
 
 /// Deterministic placeholder metric used when [`crate::Ui`] has no
 /// [`CosmicMeasure`] installed. Every glyph is `font_size_px * 0.5` wide and
-/// the line is `font_size_px` tall; wrapping is approximated by simple
+/// the line uses `line_height_px`; wrapping is approximated by simple
 /// character-count division. At the historical 16 px font size this is the
 /// 8 px/char × 16 px line layout the engine was hard-coded to before text
 /// shaping landed, which is what existing layout tests pin.
 ///
-/// Always returns [`TextCacheKey::INVALID`] — there's no shaped buffer to
+/// Always returns [`TextShapeKey::INVALID`] — there's no shaped buffer to
 /// look up, so the renderer drops these runs cleanly.
-fn mono_measure(
-    text: &str,
-    metrics: TextMetrics,
-    max_width_px: Option<f32>,
-    fit: LineFit,
-) -> TextMeasurement {
+fn mono_measure(request: TextShapeRequest<'_>) -> TextMeasurement {
+    let text = request.text;
     if text.is_empty() {
         return TextMeasurement::ZERO;
     }
-    let TextMetrics {
-        font_size_px,
-        line_height_px,
-    } = metrics;
+    let font_size_px = request.key.font_size_px();
+    let line_height_px = request.key.line_height_px();
+    let max_width_px = request.key.max_width_px();
+    let fit = request.key.fit();
     let glyph_w = font_size_px * 0.5;
     let line_h = line_height_px;
     // Mono is a deterministic stub — count one "char" per byte. Correct for
@@ -891,12 +833,12 @@ fn mono_measure(
     };
     TextMeasurement {
         size,
-        key: TextCacheKey::INVALID,
+        key: TextShapeKey::INVALID,
         intrinsic_min,
     }
 }
 
-/// Caret position returned by [`TextShaper::cursor_xy`]. Top-left in
+/// Caret position returned by [`TextShaper::cursor_position`]. Top-left in
 /// text-local pixels plus the visual line's height (so the renderer
 /// can size the caret rect to match the line cosmic-text laid out,
 /// not the requested `line_height_px` — they differ when font
@@ -906,14 +848,6 @@ pub(crate) struct CursorPos {
     pub(crate) x: f32,
     pub(crate) y_top: f32,
     pub(crate) line_height: f32,
-}
-
-impl CursorPos {
-    const INVALID: Self = Self {
-        x: 0.0,
-        y_top: 0.0,
-        line_height: 0.0,
-    };
 }
 
 /// Caret-x along a single-line mono layout (0.5×font_size per byte).
@@ -1068,17 +1002,10 @@ fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
     text.len()
 }
 
-/// Inputs that fully determine an unbounded shaping result.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct TextReuseInputs {
-    text_hash: u64,
-    params: ValidatedShapeParams,
-}
-
 /// Cached unbounded shape + most-recent wrap result.
 #[derive(Clone, Copy, Debug)]
 struct TextReuseEntry {
-    inputs: TextReuseInputs,
+    key: TextShapeKey,
     unbounded: TextMeasurement,
     wrap: Option<WrapReuse>,
     hot: bool,
@@ -1091,19 +1018,10 @@ fn next_reuse_sweep_limit(len: usize) -> usize {
         .max(MIN_REUSE_SWEEP_LIMIT)
 }
 
-/// One cached width-bounded result — the most-recent validated width,
-/// halign, and overflow mode, plus the `TextMeasurement` produced there.
+/// One cached width-bounded result.
 #[derive(Clone, Copy, Debug)]
 struct WrapReuse {
-    max_width_px: f32,
-    /// Cached halign. Cosmic's per-line align changes glyph positions
-    /// inside the shaped buffer, so changing halign invalidates this
-    /// slot even when the width is unchanged.
-    halign: HAlign,
-    /// Overflow mode. A widget that flips mode at the same call site
-    /// reshapes — each mode bakes a different buffer (and `Clip`/`Ellipsis`
-    /// a different truncated string) at the same target.
-    fit: LineFit,
+    key: TextShapeKey,
     result: TextMeasurement,
 }
 
@@ -1126,6 +1044,134 @@ pub(crate) enum LineFit {
 pub(crate) mod test_support {
     #![allow(dead_code)]
     use crate::text::*;
+
+    #[derive(Clone, Copy, Debug)]
+    pub(crate) struct TestShape {
+        pub(crate) font_size_px: f32,
+        pub(crate) line_height_px: f32,
+        pub(crate) max_width_px: Option<f32>,
+        pub(crate) family: FontFamily,
+        pub(crate) weight: FontWeight,
+        pub(crate) halign: HAlign,
+    }
+
+    impl TestShape {
+        fn unbounded_request<'a>(self, text: &'a str) -> Option<TextShapeRequest<'a>> {
+            TextShapeRequest::unbounded(
+                text,
+                self.font_size_px,
+                self.line_height_px,
+                self.family,
+                self.weight,
+            )
+        }
+
+        fn request<'a>(self, text: &'a str, fit: LineFit) -> Option<TextShapeRequest<'a>> {
+            let request = self.unbounded_request(text)?;
+            match self.max_width_px {
+                Some(width) => request.bounded(width, self.halign, fit),
+                None => Some(request),
+            }
+        }
+    }
+
+    pub(crate) trait CosmicMeasureTestExt {
+        fn measure(&mut self, text: &str, shape: TestShape) -> TextMeasurement;
+
+        fn measure_truncated(
+            &mut self,
+            text: &str,
+            shape: TestShape,
+            fit: LineFit,
+            unbounded_key: TextShapeKey,
+        ) -> TextMeasurement;
+    }
+
+    impl CosmicMeasureTestExt for CosmicMeasure {
+        fn measure(&mut self, text: &str, shape: TestShape) -> TextMeasurement {
+            CosmicMeasure::shape(self, shape.request(text, LineFit::Wrap).unwrap())
+        }
+
+        fn measure_truncated(
+            &mut self,
+            text: &str,
+            shape: TestShape,
+            fit: LineFit,
+            unbounded_key: TextShapeKey,
+        ) -> TextMeasurement {
+            let request = shape.request(text, fit).unwrap();
+            debug_assert_eq!(request.key.unbounded_version(), unbounded_key);
+            CosmicMeasure::shape(self, request)
+        }
+    }
+
+    pub(crate) trait TextShaperTestExt {
+        fn measure(&self, text: &str, shape: TestShape) -> Option<TextMeasurement>;
+
+        fn probe_layout<R>(
+            &self,
+            text: &str,
+            shape: TestShape,
+            body: impl FnOnce(TextLayoutProbe<'_>) -> R,
+        ) -> Option<R>;
+
+        fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> CursorPos;
+
+        fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize;
+    }
+
+    impl TextShaperTestExt for TextShaper {
+        fn measure(&self, text: &str, shape: TestShape) -> Option<TextMeasurement> {
+            shape
+                .request(text, LineFit::Wrap)
+                .map(|request| TextShaper::with_layout(self, request, |probe| probe.measurement))
+        }
+
+        fn probe_layout<R>(
+            &self,
+            text: &str,
+            shape: TestShape,
+            body: impl FnOnce(TextLayoutProbe<'_>) -> R,
+        ) -> Option<R> {
+            shape
+                .request(text, LineFit::Wrap)
+                .map(|request| TextShaper::with_layout(self, request, body))
+        }
+
+        fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> CursorPos {
+            TextShaper::cursor_position(
+                self,
+                shape.request(text, LineFit::Wrap).unwrap(),
+                byte_offset,
+            )
+        }
+
+        fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize {
+            TextShaper::hit_test(self, shape.request(text, LineFit::Wrap).unwrap(), x, y)
+        }
+    }
+
+    pub(crate) trait TextSystemTestExt {
+        fn prepare_run<'a>(
+            &'a mut self,
+            identity: TextRunIdentity,
+            text: &'a str,
+            shape: TestShape,
+        ) -> Option<PreparedTextRun<'a>>;
+    }
+
+    impl TextSystemTestExt for TextSystem {
+        fn prepare_run<'a>(
+            &'a mut self,
+            identity: TextRunIdentity,
+            text: &'a str,
+            shape: TestShape,
+        ) -> Option<PreparedTextRun<'a>> {
+            shape
+                .unbounded_request(text)
+                .map(|request| TextSystem::prepare(self, identity, request))
+        }
+    }
 
     impl Default for TextShaper {
         fn default() -> Self {
@@ -1154,7 +1200,7 @@ pub(crate) mod test_support {
             self.inner.borrow().measure_calls
         }
 
-        pub(crate) fn has_cosmic_buffer(&self, key: TextCacheKey) -> bool {
+        pub(crate) fn has_cosmic_buffer(&self, key: TextShapeKey) -> bool {
             self.inner
                 .borrow()
                 .cosmic

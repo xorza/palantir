@@ -35,7 +35,7 @@ use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant}
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::text::cosmic::RenderSplit;
-use crate::text::{TextBufferRequest, TextShaper};
+use crate::text::{TextShapeRequest, TextShaper};
 use cosmic_text::SwashCache;
 
 use atlas::GlyphAtlas;
@@ -303,7 +303,7 @@ impl TextBackend {
             } = self;
             let requests = misses.iter().map(|miss| {
                 let run = &runs[miss.run_idx as usize];
-                TextBufferRequest {
+                TextShapeRequest {
                     text: run.source.resolve(interned_text),
                     key: run.key,
                 }
@@ -489,12 +489,11 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
 
 #[cfg(all(test, feature = "internals"))]
 mod test_support {
-    use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextRun;
     use crate::scene::record_store::RecordStore;
-    use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
+    use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
     use glam::{UVec2, Vec2};
 
     #[allow(clippy::too_many_arguments)]
@@ -510,19 +509,15 @@ mod test_support {
         color: ColorU8,
     ) -> TextRun {
         let source = store.record_text(store.intern_str(text)).source;
-        let m = shaper
-            .measure(
-                text,
-                ShapeParams {
-                    font_size_px,
-                    line_height_px,
-                    max_width_px: None,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Auto,
-                },
-            )
-            .expect("test text metrics are valid");
+        let request = TextShapeRequest::unbounded(
+            text,
+            font_size_px,
+            line_height_px,
+            FontFamily::Sans,
+            FontWeight::Regular,
+        )
+        .expect("test text metrics are valid");
+        let m = shaper.with_layout(request, |probe| probe.measurement);
         TextRun {
             key: m.key,
             origin,
