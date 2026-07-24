@@ -258,6 +258,28 @@ impl<T> WinitRuntime<T> {
         Ok(())
     }
 
+    /// Tear down the window holding `token`; a no-op if none does.
+    ///
+    /// The render stream retires before the driver drops. Backend `GpuView`
+    /// eviction is owner-scoped — a submit only frees its own absent targets,
+    /// so another window idling a frame keeps its views — which leaves a
+    /// closed window's targets with no submit left to be absent from. Without
+    /// the explicit retirement every surviving window would hold them until
+    /// host shutdown.
+    fn close_window(&mut self, token: WindowToken) {
+        let Some(owner) = self
+            .windows
+            .values()
+            .find(|win| win.driver.token == token)
+            .map(|win| win.driver.render_owner)
+        else {
+            return;
+        };
+        self.windows.retain(|_, win| win.driver.token != token);
+        self.backend.retire_render_owner(owner);
+        self.shared.resources.windows.set_live(token, false);
+    }
+
     fn register_window(
         &mut self,
         window: Arc<WinitWindow>,
@@ -487,14 +509,7 @@ where
         // recreates the window instead of tripping `spawn_window`'s
         // duplicate-token guard and losing it.
         for token in commands.closes {
-            if runtime
-                .windows
-                .values()
-                .any(|win| win.driver.token == token)
-            {
-                runtime.windows.retain(|_, win| win.driver.token != token);
-                runtime.shared.resources.windows.set_live(token, false);
-            }
+            runtime.close_window(token);
         }
         for pw in commands.opens {
             runtime.spawn_window(event_loop, pw.token, pw.config)?;

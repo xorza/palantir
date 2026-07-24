@@ -1025,6 +1025,18 @@ impl WgpuBackend {
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 
+    /// Release every `GpuView` target owned by a render stream that has been
+    /// retired — the host calls this as a window closes.
+    ///
+    /// Necessary because per-submit eviction is owner-scoped: a submit only
+    /// frees its *own* absent targets, so that another window idling for a
+    /// frame does not lose its views. A closed window never submits again, so
+    /// without this its textures and bind groups would be held by every
+    /// surviving window until the host shuts down.
+    pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
+        self.image.retire_render_owner(owner);
+    }
+
     #[profiling::function]
     fn copy_backbuffer_into(
         &self,

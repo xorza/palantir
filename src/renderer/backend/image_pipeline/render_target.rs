@@ -87,6 +87,22 @@ impl GpuViewTargets {
         });
     }
 
+    /// Drop every target belonging to a render stream that will never submit
+    /// again, freeing its textures and bind groups.
+    ///
+    /// [`keep_target`] preserves foreign owners' entries on every submit, so
+    /// a closed window's targets would otherwise be held by the surviving
+    /// windows for the life of the host.
+    pub(crate) fn retire_owner(&mut self, owner: RenderOwnerId, textures: &mut ImageTextures) {
+        self.entries.retain(|id, target| {
+            let keep = target.owner != owner;
+            if !keep {
+                textures.bindings.remove(id);
+            }
+            keep
+        });
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn ensure(
         &mut self,
@@ -169,6 +185,11 @@ fn allocate(
     AllocatedTarget { view, bind_group }
 }
 
+/// Per-submit eviction: keep an entry unless the submitting owner skipped
+/// it this frame. Another owner's entries always survive, since an idle
+/// window is not evidence that its views are gone — which is exactly why a
+/// *closed* owner has to be retired explicitly through
+/// [`GpuViewTargets::retire_owner`], never having a submit to be absent from.
 fn keep_target(
     entry_owner: RenderOwnerId,
     entry_submit_epoch: u64,
@@ -199,6 +220,10 @@ mod tests {
 
     #[test]
     fn eviction_uses_current_submit_epoch_and_is_owner_scoped() {
+        // Note `2` (owner `b`) surviving every one of `a`'s submits below:
+        // a submit is never evidence about another stream's targets. That is
+        // what leaves a *closed* stream's targets unreachable by eviction and
+        // makes `GpuViewTargets::retire_owner` the only thing that frees them.
         let a = RenderOwnerId::reserve();
         let b = RenderOwnerId::reserve();
         let entries = [(1, a, 7), (3, a, 6), (2, b, 4)];

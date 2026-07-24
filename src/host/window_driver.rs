@@ -43,7 +43,7 @@ pub(crate) struct WindowDriver {
     pub(crate) ui: Ui,
     /// Stable submitter identity used by the shared backend to scope retained
     /// `GpuView` targets to this window.
-    render_owner: RenderOwnerId,
+    pub(crate) render_owner: RenderOwnerId,
     /// Persistent off-screen color target holding last frame's pixels for
     /// `LoadOp::Load` partial damage. Used by `BackbufferCopy` every frame and
     /// by `DirectAdaptive` for its small-partial path (paint the damage region,
