@@ -31,7 +31,7 @@ use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::shape::rect::RectKind;
-use crate::text::text_in_rect;
+use crate::text::probe;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -350,7 +350,7 @@ fn emit_one_shape(
                 None => {
                     let padded =
                         owner_rect.deflated_by(ctx.tree.records.layout()[id.idx()].padding);
-                    text_in_rect(padded, shaped.measured, *align)
+                    probe::text_in_rect(padded, shaped.measured, *align)
                 }
                 Some(origin) => Rect {
                     min: owner_rect.min + *origin,

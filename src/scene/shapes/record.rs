@@ -11,7 +11,7 @@ use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::text_in_rect;
+use crate::text::probe;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
@@ -404,7 +404,7 @@ impl ShapeRecord {
 /// - `local_origin: Some(origin)` ⇒ widget owns positioning; rect is
 ///   `origin + measured`.
 /// - `local_origin: None` ⇒ encoder owns positioning via
-///   [`crate::text::text_in_rect`] against the owner's padded inner
+///   [`crate::text::probe::text_in_rect`] against the owner's padded inner
 ///   rect.
 pub(crate) fn text_paint_bbox_local(
     local_origin: Option<Vec2>,
@@ -423,7 +423,7 @@ pub(crate) fn text_paint_bbox_local(
                 min: Vec2::ZERO,
                 size: owner_size,
             };
-            text_in_rect(owner_local.deflated_by(padding), measured, align)
+            probe::text_in_rect(owner_local.deflated_by(padding), measured, align)
         }
     }
 }

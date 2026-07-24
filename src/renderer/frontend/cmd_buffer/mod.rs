@@ -47,7 +47,7 @@ use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::ShapeStroke;
-use crate::text::TextShapeKey;
+use crate::text::key::TextShapeKey;
 
 pub(crate) mod payload;
 

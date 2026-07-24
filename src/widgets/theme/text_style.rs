@@ -1,5 +1,6 @@
 use crate::primitives::color::Color;
-use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT, text_metrics_valid};
+use crate::text::key;
+use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT};
 use crate::widgets::theme::palette::Palette;
 
 /// Default text-rendering inputs grouped together so apps can swap the
@@ -59,7 +60,7 @@ impl Default for TextStyle {
 
 impl TextStyle {
     pub(crate) fn metrics_valid(&self) -> bool {
-        text_metrics_valid(self.font_size_px, self.line_height_for(self.font_size_px))
+        key::text_metrics_valid(self.font_size_px, self.line_height_for(self.font_size_px))
     }
 
     /// Resolve the absolute line-height-in-px the shaper will use for

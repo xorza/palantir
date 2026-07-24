@@ -26,8 +26,9 @@ use crate::shape::rect::{RectKind, RectShape};
 use crate::shape::shadow::ShadowShape;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::triangle::TriangleShape;
+use crate::text::key;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight, text_metrics_valid};
+use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 use std::f32::consts::TAU;
 
@@ -316,7 +317,7 @@ impl Shape<'_> {
             } => {
                 text.is_empty()
                     || color.is_noop()
-                    || !text_metrics_valid(*font_size_px, *line_height_px)
+                    || !key::text_metrics_valid(*font_size_px, *line_height_px)
             }
             Shape::Mesh(shape) => shape.is_noop(),
             Shape::Image(shape) => shape.is_noop(),

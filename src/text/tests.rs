@@ -1,9 +1,16 @@
 use crate::common::hash::hash_str;
+use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::text::cosmic::CosmicMeasure;
-use crate::text::test_support::{
-    CosmicMeasureTestExt, TestShape, TextShaperTestExt, TextSystemTestExt,
-};
+use crate::text::key::{LineFit, TextShapeKey};
+use crate::text::mono;
+use crate::text::probe::{self, SelectionRects};
+use crate::text::system::test_support::TextSystemTestExt;
+use crate::text::system::{self, TextRunIdentity, TextSystem};
+use crate::text::test_support::{CosmicMeasureTestExt, TestShape, TextShaperTestExt};
+use crate::text::wrap::TextWrap;
 use crate::text::*;
+use rustc_hash::FxHashSet;
 
 /// Line-height equal to font size keeps the mono-fallback line
 /// height numerically equal to `font_size`, matching the legacy
@@ -39,7 +46,7 @@ fn mono_shape(
         Some(width) => request.bounded(width, HAlign::Auto, fit).unwrap(),
         None => request,
     };
-    mono_measure(request)
+    mono::measure(request)
 }
 
 fn measure_truncated(
@@ -826,8 +833,8 @@ fn selection_rects_match_cosmic_highlight_spans() {
         let mut expected = Vec::new();
         m.probe_layout(case.text, params, |layout| {
             let buffer = layout.buffer.unwrap();
-            let start = cursor_from_byte(case.text, case.range.start);
-            let end = cursor_from_byte(case.text, case.range.end);
+            let start = probe::cursor_from_byte(case.text, case.range.start);
+            let end = probe::cursor_from_byte(case.text, case.range.end);
             for run in buffer.layout_runs() {
                 expected.extend(
                     run.highlight(start, end)
@@ -858,20 +865,20 @@ fn cursor_byte_round_trip_multiline() {
     // 3-line string with varying line lengths.
     let text = "ab\ncde\nfg";
     for off in 0..=text.len() {
-        let cur = cursor_from_byte(text, off);
-        let back = cursor_to_byte(text, cur);
+        let cur = probe::cursor_from_byte(text, off);
+        let back = probe::cursor_to_byte(text, cur);
         assert_eq!(
             back, off,
             "round-trip failed at offset {off}, cursor={cur:?}"
         );
     }
     // Line counts: offsets 0..=2 → line 0; 3..=6 → line 1; 7..=9 → line 2.
-    assert_eq!(cursor_from_byte(text, 0).line, 0);
-    assert_eq!(cursor_from_byte(text, 2).line, 0);
-    assert_eq!(cursor_from_byte(text, 3).line, 1);
-    assert_eq!(cursor_from_byte(text, 6).line, 1);
-    assert_eq!(cursor_from_byte(text, 7).line, 2);
-    assert_eq!(cursor_from_byte(text, 9).line, 2);
+    assert_eq!(probe::cursor_from_byte(text, 0).line, 0);
+    assert_eq!(probe::cursor_from_byte(text, 2).line, 0);
+    assert_eq!(probe::cursor_from_byte(text, 3).line, 1);
+    assert_eq!(probe::cursor_from_byte(text, 6).line, 1);
+    assert_eq!(probe::cursor_from_byte(text, 7).line, 2);
+    assert_eq!(probe::cursor_from_byte(text, 9).line, 2);
 }
 
 #[test]
@@ -1353,7 +1360,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
 fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     for (len, expected) in [(0, 256), (255, 256), (256, 512), (257, 512), (512, 1024)] {
         assert_eq!(
-            next_reuse_sweep_limit(len),
+            system::next_reuse_sweep_limit(len),
             expected,
             "next ladder rung for cache size {len}",
         );

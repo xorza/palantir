@@ -201,7 +201,8 @@ mod hot_struct_sizes {
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::extras::ExtrasIdx;
     use crate::scene::tree::node::NodeRecord;
-    use crate::text::{TextShapeKey, TextShapeResult};
+    use crate::text::key::TextShapeKey;
+    use crate::text::system::TextShapeResult;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;

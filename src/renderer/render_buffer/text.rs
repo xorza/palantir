@@ -3,7 +3,7 @@
 use crate::primitives::color::ColorU8;
 use crate::primitives::interned_str::TextSource;
 use crate::primitives::urect::URect;
-use crate::text::TextShapeKey;
+use crate::text::key::TextShapeKey;
 use glam::Vec2;
 
 /// One shaped text run placed in physical-px space. The backend resolves its

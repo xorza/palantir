@@ -27,7 +27,7 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::text::TextRun;
-use crate::text::TextShapeKey;
+use crate::text::key::TextShapeKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
@@ -395,7 +395,7 @@ mod tests {
         ContentType, EncodedCache, EncodedEntry, EncodedGlyph, EncodedKey, EncodedRunKey, pack_uv,
         try_emit_cached,
     };
-    use crate::text::TextShapeKey;
+    use crate::text::key::TextShapeKey;
 
     #[test]
     fn pack_uv_round_trip() {

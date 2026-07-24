@@ -13,7 +13,7 @@ use crate::primitives::{
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::TextShapeKey;
+use crate::text::key::TextShapeKey;
 use strum::{EnumCount, EnumIter, FromRepr};
 
 #[repr(transparent)]

@@ -28,7 +28,8 @@ use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::text::{TextRunIdentity, TextShaper, TextSystem};
+use crate::text::TextShaper;
+use crate::text::system::{TextRunIdentity, TextSystem};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of

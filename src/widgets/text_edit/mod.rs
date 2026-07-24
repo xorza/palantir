@@ -12,7 +12,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::{Configure, ConfigureNode, Node};
-use crate::text::{SELECTION_RECTS_INLINE_CAPACITY, SelectionRects};
+use crate::text::probe::{SELECTION_RECTS_INLINE_CAPACITY, SelectionRects};
 use crate::ui::Ui;
 use crate::widgets::text_edit::input::{InputResult, handle_input};
 use crate::widgets::text_edit::menu::MenuResult;

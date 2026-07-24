@@ -117,7 +117,7 @@ fn theme_deserialization_rejects_invalid_text_scales() {
 
 #[test]
 fn theme_deserialization_rejects_invalid_text_metrics() {
-    use crate::text::TEXT_METRICS_ERROR;
+    use crate::text::key::TEXT_METRICS_ERROR;
 
     let valid = toml::to_string_pretty(&Theme::default()).expect("serialize default theme");
     let cases = [
