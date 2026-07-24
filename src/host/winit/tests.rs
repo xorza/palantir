@@ -2,7 +2,8 @@ use crate::Ui;
 use crate::app::App;
 use crate::display::Display;
 use crate::host::winit::config::WinitHostConfig;
-use crate::host::winit::{WinitHost, platform_icon};
+use crate::host::winit::error::WinitHostError;
+use crate::host::winit::{WinitHost, finish_run, platform_icon};
 use crate::input::InputEvent;
 use crate::primitives::image::Image;
 use crate::ui::frame::{FrameInput, FrameStamp, Wake, WakeReasons};
@@ -77,6 +78,27 @@ fn builder_retains_defaults_and_granular_overrides() {
 fn validated_window_icon_converts_to_the_platform_type() {
     let icon = Image::from_rgba8(2, 1, vec![255, 0, 0, 255, 0, 255, 0, 128]);
     let _ = platform_icon(&icon);
+}
+
+#[test]
+fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
+    assert!(finish_run(None, Ok(())).is_ok());
+
+    let loop_failure =
+        finish_run(None, Err(winit::error::EventLoopError::RecreationAttempt)).unwrap_err();
+    assert!(matches!(
+        loop_failure,
+        WinitHostError::RunEventLoop {
+            source: winit::error::EventLoopError::RecreationAttempt
+        }
+    ));
+
+    let host_failure = finish_run(
+        Some(WinitHostError::NoGpuBackend),
+        Err(winit::error::EventLoopError::RecreationAttempt),
+    )
+    .unwrap_err();
+    assert!(matches!(host_failure, WinitHostError::NoGpuBackend));
 }
 
 fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessing {

@@ -2,15 +2,13 @@
 
 ## Executive summary
 
-The highest-impact risks are at public host boundaries. Normal platform failures during Winit and GPU initialization abort the process, invalid offscreen scale factors reach release rendering with only a debug assertion, and non-finite pointer or scroll input can enter retained interaction state. These paths turn recoverable environment or input failures into crashes or persistent invalid geometry.
+The highest-impact risks are at public input boundaries. Invalid offscreen scale factors reach release rendering with only a debug assertion, and non-finite pointer or scroll input can enter retained interaction state. These paths let invalid caller or platform data poison layout and persistent interaction geometry.
 
 The main simplification opportunities are narrower but repeated across hot subsystems. Text validation loses its proof between recording and layout, editor-only geometry occupies the shared shaping/cache module, DragValue represents one interaction as two independently stored latches, and rounded/windowed rectangles carry parallel retained payloads through lowering and encoding.
 
 Release hot paths also retain invariant checks and test instrumentation, while the opt-in frame overlay allocates strings before copying them into the existing text arena. Lower-priority findings cover duplicated widget/input vocabulary, unused public surface, overly broad dependency features, and architecture documentation that no longer matches the storage layout.
 
 ## High: public boundaries can crash or poison retained state
-
-- [ ] **Expected Winit and GPU startup failures panic through the public host API.** `WinitHostBuilder::build` returns `WinitHost` directly but unwraps event-loop creation, and `WinitHost::run` unwraps the event-loop result (`src/host/winit/mod.rs:349-381`, `src/host/winit/mod.rs:408-412`). Runtime bootstrap and app-requested window creation likewise return no failure channel (`src/host/winit/mod.rs:177-220`, `src/host/winit/mod.rs:236-253`), while window, surface, adapter, device, and surface-format selection all use `expect` (`src/host/winit/mod.rs:502-525`, `src/host/winit/gpu.rs:46-99`, `src/host/winit/gpu.rs:125-133`, `src/host/winit/gpu.rs:144-175`). Missing adapters, device-request failures, unsupported displays, and ordinary OS window-creation failures therefore terminate the application instead of remaining expected host errors.
 
 - [ ] **Offscreen display scale validation disappears in release builds.** `OffscreenHost::frame_offscreen` accepts an arbitrary `f32` scale factor and passes it directly into `Display::from_physical` (`src/host/offscreen.rs:151-172`, `src/host/offscreen.rs:182-204`); `Display` stores the value unchanged and divides physical dimensions by it (`src/display.rs:56-74`). The only frame-boundary guard is a `debug_assert!` that does not reject positive infinity even in debug and is removed entirely in release (`src/ui/mod.rs:163-184`). Zero, negative, infinite, or NaN caller input can consequently feed infinite or NaN geometry into layout, damage, composition, and raster scaling.
 

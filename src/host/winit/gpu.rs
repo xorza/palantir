@@ -1,12 +1,18 @@
 //! Wgpu startup and the retained [`SurfaceManager`] used to create, configure,
 //! and present native-window surfaces.
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use glam::UVec2;
 use winit::window::{Window as WinitWindow, WindowId};
 
 use crate::host::winit::config::WinitHostConfig;
+use crate::host::winit::error::WinitHostError;
+
+const REQUIRED_IMMEDIATE_SIZE: u32 = 16;
+const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
+    wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_DST);
 
 /// Native-surface authority retained after startup. The cloned device/queue
 /// handles refer to the same GPU objects owned by `WgpuBackend`.
@@ -19,7 +25,7 @@ pub(crate) struct SurfaceManager {
     /// `max_texture_dimension_2d` granted at device creation — fixed for
     /// the device's lifetime, cached so the host's per-event resize clamp
     /// doesn't re-query `device.limits()`.
-    pub(crate) max_texture_dim: u32,
+    pub(crate) max_texture_dim: NonZeroU32,
     /// App-global presentation policy requested through `WinitHostConfig`.
     /// Each surface negotiates it against its own capabilities.
     requested_present_mode: wgpu::PresentMode,
@@ -43,15 +49,27 @@ pub(crate) struct GpuInit {
     pub(crate) first_surface: WindowSurface,
 }
 
+#[derive(Debug)]
+struct DeviceRequirements {
+    features: wgpu::Features,
+    limits: wgpu::Limits,
+}
+
 impl GpuInit {
     /// Pick the shared adapter/device and create the first native surface.
-    pub(crate) fn new(window: &Arc<WinitWindow>, cfg: &WinitHostConfig) -> Self {
+    pub(crate) fn new(
+        window: &Arc<WinitWindow>,
+        cfg: &WinitHostConfig,
+    ) -> Result<Self, WinitHostError> {
+        if wgpu::Instance::enabled_backend_features().is_empty() {
+            return Err(WinitHostError::NoGpuBackend);
+        }
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.flags = desc.flags.with_env();
         let instance = wgpu::Instance::new(desc);
         let surface = instance
             .create_surface(window.clone())
-            .expect("create surface");
+            .map_err(|source| WinitHostError::CreateSurface { source })?;
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: cfg.power_preference,
@@ -59,7 +77,7 @@ impl GpuInit {
             force_fallback_adapter: false,
             apply_limit_buckets: false,
         }))
-        .expect("request adapter");
+        .map_err(|source| WinitHostError::RequestAdapter { source })?;
 
         // Caller-driven opt-in via `WinitHostConfig::collect_gpu_stats`
         // — see field doc. When off, none of the timing-query features
@@ -78,27 +96,20 @@ impl GpuInit {
         } else {
             wgpu::Features::empty()
         };
-        // `IMMEDIATES` carries the text backend's atlas-size params
-        // (`renderer::backend::text::Params`) — register-mapped per-pass
-        // instead of a uniform buffer + bind group. Unconditionally
-        // required because every Metal/Vulkan/DX12 adapter exposes it
-        // (WebGPU-only adapters are off-target for aperture).
-        let required_features = (adapter.features() & timing_features) | wgpu::Features::IMMEDIATES;
-        let mut required_limits = wgpu::Limits::default().using_resolution(adapter.limits());
-        // 16 bytes covers `renderer::backend::text::Params` (vec2<u32>)
-        // with room for the WGSL 16-byte uniform-struct rounding.
-        required_limits.max_immediate_size = required_limits.max_immediate_size.max(16);
+        let requirements =
+            device_requirements(adapter.features(), adapter.limits(), timing_features)?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("aperture.device"),
-            required_features,
-            required_limits,
+            required_features: requirements.features,
+            required_limits: requirements.limits,
             experimental_features: wgpu::ExperimentalFeatures::default(),
             memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,
         }))
-        .expect("request device");
+        .map_err(|source| WinitHostError::RequestDevice { source })?;
 
-        let max_texture_dim = device.limits().max_texture_dimension_2d;
+        let max_texture_dim = NonZeroU32::new(device.limits().max_texture_dimension_2d)
+            .expect("device texture dimension limit is zero");
         let surfaces = SurfaceManager {
             instance,
             adapter,
@@ -112,23 +123,59 @@ impl GpuInit {
             surface,
             UVec2::new(size.width, size.height),
             window.id(),
-        );
-        Self {
+        )?;
+        Ok(Self {
             surfaces,
             device,
             queue,
             first_surface,
-        }
+        })
     }
+}
+
+fn device_requirements(
+    supported_features: wgpu::Features,
+    supported_limits: wgpu::Limits,
+    optional_features: wgpu::Features,
+) -> Result<DeviceRequirements, WinitHostError> {
+    let required = wgpu::Features::IMMEDIATES;
+    if !supported_features.contains(required) {
+        return Err(WinitHostError::MissingAdapterFeatures {
+            required,
+            supported: supported_features,
+        });
+    }
+
+    let features = required | (supported_features & optional_features);
+    let mut limits = wgpu::Limits::default().using_resolution(supported_limits.clone());
+    // This covers `renderer::backend::text::Params` (vec2<u32>) with
+    // WGSL's 16-byte uniform-struct rounding.
+    limits.max_immediate_size = limits.max_immediate_size.max(REQUIRED_IMMEDIATE_SIZE);
+    let mut failed_limit = None;
+    limits.check_limits_with_fail_fn(&supported_limits, true, |name, required, supported| {
+        failed_limit = Some(WinitHostError::UnsupportedAdapterLimit {
+            name,
+            required,
+            supported,
+        });
+    });
+    if let Some(error) = failed_limit {
+        return Err(error);
+    }
+
+    Ok(DeviceRequirements { features, limits })
 }
 
 impl SurfaceManager {
     /// Create a surface for an additional window against the selected adapter.
-    pub(crate) fn make_surface(&self, window: &Arc<WinitWindow>) -> WindowSurface {
+    pub(crate) fn make_surface(
+        &self,
+        window: &Arc<WinitWindow>,
+    ) -> Result<WindowSurface, WinitHostError> {
         let surface = self
             .instance
             .create_surface(window.clone())
-            .expect("create surface");
+            .map_err(|source| WinitHostError::CreateSurface { source })?;
         let size = window.inner_size();
         self.build_window_surface(surface, UVec2::new(size.width, size.height), window.id())
     }
@@ -151,51 +198,73 @@ impl SurfaceManager {
         surface: wgpu::Surface<'static>,
         size: UVec2,
         window_id: WindowId,
-    ) -> WindowSurface {
+    ) -> Result<WindowSurface, WinitHostError> {
         let caps = surface.get_capabilities(&self.adapter);
-        let present_mode = negotiate_present_mode(self.requested_present_mode, &caps.present_modes);
-        if present_mode != self.requested_present_mode {
+        let config = build_surface_config(
+            &caps,
+            size,
+            self.max_texture_dim,
+            self.requested_present_mode,
+        )?;
+        if config.present_mode != self.requested_present_mode {
             tracing::warn!(
                 ?window_id,
                 requested = ?self.requested_present_mode,
-                fallback = ?present_mode,
+                fallback = ?config.present_mode,
                 supported = ?caps.present_modes,
                 "requested present mode is unsupported by this surface"
             );
         }
-        // Color pipeline assumes an sRGB swapchain target — see the
-        // colour section of AGENTS.md. Non-sRGB would skip the GPU
-        // linear→sRGB encode and silently darken every paint.
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .expect("no sRGB-capable surface format");
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
-            format,
-            // Pinned to `Srgb` (not `Auto`) to state the colour contract in
-            // code: our `is_srgb()` format pick encodes linear→sRGB on write,
-            // so the swapchain must read its bytes as sRGB. Guaranteed valid —
-            // a non-fp16 format lists in `caps.formats` only when its `Auto`
-            // fallback (`Srgb`) is supported, so this can't fail configure.
-            color_space: wgpu::SurfaceColorSpace::Srgb,
-            width: size.x.max(1),
-            height: size.y.max(1),
-            present_mode,
-            alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
-                wgpu::CompositeAlphaMode::Opaque
-            } else {
-                caps.alpha_modes[0]
-            },
-            view_formats: vec![],
-            // Smallest swapchain: 1 frame of latency → double-buffered
-            // (two images), lowest input-to-photon latency.
-            desired_maximum_frame_latency: 1,
-        };
-        WindowSurface { surface, config }
+        Ok(WindowSurface { surface, config })
     }
+}
+
+fn build_surface_config(
+    caps: &wgpu::SurfaceCapabilities,
+    size: UVec2,
+    max_texture_dim: NonZeroU32,
+    requested_present_mode: wgpu::PresentMode,
+) -> Result<wgpu::SurfaceConfiguration, WinitHostError> {
+    if caps.formats.is_empty() || caps.present_modes.is_empty() || caps.alpha_modes.is_empty() {
+        return Err(WinitHostError::IncompatibleSurface);
+    }
+    if !caps.usages.contains(REQUIRED_SURFACE_USAGES) {
+        return Err(WinitHostError::MissingSurfaceUsages {
+            required: REQUIRED_SURFACE_USAGES,
+            supported: caps.usages,
+        });
+    }
+    // The color pipeline writes linear values and relies on an sRGB
+    // swapchain for the final encode.
+    let format = caps
+        .formats
+        .iter()
+        .copied()
+        .find(|format| {
+            format.is_srgb()
+                && caps
+                    .color_spaces(*format)
+                    .contains(wgpu::SurfaceColorSpaces::SRGB)
+        })
+        .ok_or(WinitHostError::MissingSrgbSurface)?;
+    let present_mode = negotiate_present_mode(requested_present_mode, &caps.present_modes);
+    let max_texture_dim = max_texture_dim.get();
+    Ok(wgpu::SurfaceConfiguration {
+        usage: REQUIRED_SURFACE_USAGES,
+        format,
+        color_space: wgpu::SurfaceColorSpace::Srgb,
+        width: size.x.clamp(1, max_texture_dim),
+        height: size.y.clamp(1, max_texture_dim),
+        present_mode,
+        alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+            wgpu::CompositeAlphaMode::Opaque
+        } else {
+            caps.alpha_modes[0]
+        },
+        view_formats: vec![],
+        // One frame of latency maps to a double-buffered swapchain.
+        desired_maximum_frame_latency: 1,
+    })
 }
 
 fn negotiate_present_mode(
@@ -212,9 +281,19 @@ fn negotiate_present_mode(
 
 #[cfg(test)]
 mod tests {
-    use wgpu::PresentMode;
+    use std::num::NonZeroU32;
 
-    use crate::host::winit::gpu::negotiate_present_mode;
+    use glam::UVec2;
+    use wgpu::{
+        CompositeAlphaMode, Features, PresentMode, SurfaceCapabilities, SurfaceColorSpaces,
+        SurfaceFormatCapabilities, TextureFormat, TextureUsages,
+    };
+
+    use crate::host::winit::error::WinitHostError;
+    use crate::host::winit::gpu::{
+        REQUIRED_IMMEDIATE_SIZE, REQUIRED_SURFACE_USAGES, build_surface_config,
+        device_requirements, negotiate_present_mode,
+    };
 
     #[derive(Debug)]
     struct PresentModeCase {
@@ -297,5 +376,146 @@ mod tests {
         assert_eq!(bootstrap_mode, PresentMode::Mailbox);
         assert_eq!(secondary_mode, PresentMode::AutoNoVsync);
         assert_ne!(bootstrap_mode, secondary_mode);
+    }
+
+    #[test]
+    fn device_requirements_validate_hard_capabilities_and_degrade_optional_features() {
+        let supported_limits = wgpu::Limits {
+            max_immediate_size: REQUIRED_IMMEDIATE_SIZE,
+            ..wgpu::Limits::default()
+        };
+        let supported_features = Features::IMMEDIATES | Features::TIMESTAMP_QUERY;
+        let optional = Features::TIMESTAMP_QUERY | Features::PIPELINE_STATISTICS_QUERY;
+
+        let requirements =
+            device_requirements(supported_features, supported_limits.clone(), optional).unwrap();
+        assert_eq!(
+            requirements.features,
+            Features::IMMEDIATES | Features::TIMESTAMP_QUERY
+        );
+        assert_eq!(
+            requirements.limits.max_immediate_size,
+            REQUIRED_IMMEDIATE_SIZE
+        );
+
+        let missing_feature =
+            device_requirements(Features::empty(), supported_limits.clone(), optional).unwrap_err();
+        assert!(matches!(
+            missing_feature,
+            WinitHostError::MissingAdapterFeatures {
+                required,
+                supported,
+            } if required == Features::IMMEDIATES && supported.is_empty()
+        ));
+
+        let mut insufficient_limits = supported_limits;
+        insufficient_limits.max_immediate_size = REQUIRED_IMMEDIATE_SIZE - 1;
+        let missing_limit =
+            device_requirements(Features::IMMEDIATES, insufficient_limits, Features::empty())
+                .unwrap_err();
+        assert!(matches!(
+            missing_limit,
+            WinitHostError::UnsupportedAdapterLimit {
+                name: "max_immediate_size",
+                required: 16,
+                supported: 15,
+            }
+        ));
+    }
+
+    fn compatible_caps() -> SurfaceCapabilities {
+        let format = TextureFormat::Bgra8UnormSrgb;
+        SurfaceCapabilities {
+            formats: vec![format],
+            format_capabilities: vec![SurfaceFormatCapabilities {
+                format,
+                color_spaces: SurfaceColorSpaces::SRGB,
+            }],
+            present_modes: vec![PresentMode::Fifo],
+            alpha_modes: vec![CompositeAlphaMode::Opaque],
+            usages: REQUIRED_SURFACE_USAGES,
+        }
+    }
+
+    #[test]
+    fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
+        let max_texture_dim = NonZeroU32::new(4096).unwrap();
+        let config = build_surface_config(
+            &compatible_caps(),
+            UVec2::new(0, u32::MAX),
+            max_texture_dim,
+            PresentMode::Mailbox,
+        )
+        .unwrap();
+
+        assert_eq!(config.usage, REQUIRED_SURFACE_USAGES);
+        assert_eq!(config.format, TextureFormat::Bgra8UnormSrgb);
+        assert_eq!(config.color_space, wgpu::SurfaceColorSpace::Srgb);
+        assert_eq!(config.width, 1);
+        assert_eq!(config.height, 4096);
+        assert_eq!(config.present_mode, PresentMode::AutoNoVsync);
+        assert_eq!(config.alpha_mode, CompositeAlphaMode::Opaque);
+        assert_eq!(config.desired_maximum_frame_latency, 1);
+    }
+
+    #[test]
+    fn surface_config_rejects_each_missing_hard_capability() {
+        let max_texture_dim = NonZeroU32::new(4096).unwrap();
+
+        let mut incompatible = compatible_caps();
+        incompatible.formats.clear();
+        assert!(matches!(
+            build_surface_config(
+                &incompatible,
+                UVec2::splat(100),
+                max_texture_dim,
+                PresentMode::Fifo,
+            ),
+            Err(WinitHostError::IncompatibleSurface)
+        ));
+
+        let mut no_alpha_mode = compatible_caps();
+        no_alpha_mode.alpha_modes.clear();
+        assert!(matches!(
+            build_surface_config(
+                &no_alpha_mode,
+                UVec2::splat(100),
+                max_texture_dim,
+                PresentMode::Fifo,
+            ),
+            Err(WinitHostError::IncompatibleSurface)
+        ));
+
+        let mut no_srgb = compatible_caps();
+        no_srgb.formats = vec![TextureFormat::Bgra8Unorm];
+        no_srgb.format_capabilities = vec![SurfaceFormatCapabilities {
+            format: TextureFormat::Bgra8Unorm,
+            color_spaces: SurfaceColorSpaces::SRGB,
+        }];
+        assert!(matches!(
+            build_surface_config(
+                &no_srgb,
+                UVec2::splat(100),
+                max_texture_dim,
+                PresentMode::Fifo,
+            ),
+            Err(WinitHostError::MissingSrgbSurface)
+        ));
+
+        let mut no_copy = compatible_caps();
+        no_copy.usages = TextureUsages::RENDER_ATTACHMENT;
+        assert!(matches!(
+            build_surface_config(
+                &no_copy,
+                UVec2::splat(100),
+                max_texture_dim,
+                PresentMode::Fifo,
+            ),
+            Err(WinitHostError::MissingSurfaceUsages {
+                required,
+                supported,
+            }) if required == REQUIRED_SURFACE_USAGES
+                && supported == TextureUsages::RENDER_ATTACHMENT
+        ));
     }
 }

@@ -26,8 +26,9 @@
 //! closes windows from inside `record` via [`Ui::open_window`] /
 //! [`Ui::close_window`].
 //!
-//! Submodules: [`config`] ([`WinitHostConfig`]), [`handle`]
-//! ([`HostHandle`] + [`UserEvent`]), and [`gpu`] (surface/device startup).
+//! Submodules: [`config`] ([`WinitHostConfig`]), [`error`]
+//! ([`WinitHostError`]), [`handle`] ([`HostHandle`] + [`UserEvent`]), and
+//! [`gpu`] (surface/device startup).
 //! The backend-agnostic window vocabulary ([`WindowToken`],
 //! [`WindowConfig`]) lives in [`crate::window`].
 //!
@@ -43,11 +44,12 @@
 //!     .build(|ui, _handle| {
 //!         ui.theme.button.anim = Some(AnimSpec::SPRING);
 //!         MyApp
-//!     })
-//!     .run();
+//!     })?
+//!     .run()?;
 //! ```
 
 pub(crate) mod config;
+pub(crate) mod error;
 pub(crate) mod gpu;
 pub(crate) mod handle;
 mod input;
@@ -55,7 +57,6 @@ mod window;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -72,6 +73,7 @@ use crate::diagnostics::DebugOverlayConfig;
 use crate::host::shared::HostShared;
 use crate::host::window_driver::WindowDriver;
 use crate::host::winit::config::WinitHostConfig;
+use crate::host::winit::error::WinitHostError;
 use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::window::{FramePresent, Window};
@@ -150,6 +152,7 @@ struct WinitRuntime<T> {
 enum HostPhase<T: 'static> {
     Bootstrap(Bootstrap<T>),
     Running(Box<WinitRuntime<T>>),
+    Failed(WinitHostError),
 }
 
 impl<T: 'static> std::fmt::Debug for Bootstrap<T> {
@@ -179,27 +182,20 @@ impl<T> WinitRuntime<T> {
         event_loop: &ActiveEventLoop,
         bootstrap: &mut Bootstrap<T>,
         handle: HostHandle<T>,
-    ) -> Self {
+    ) -> Result<Self, WinitHostError> {
         let token = bootstrap.token;
         let config = bootstrap.config.clone();
-        let create_app = bootstrap
-            .create_app
-            .take()
-            .expect("bootstrap app factory already consumed");
-        let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
-        let window = create_window(event_loop, &config.window);
+        let window = create_window(event_loop, token, &config.window)?;
         let GpuInit {
             surfaces,
             device,
             queue,
             first_surface,
-        } = GpuInit::new(&window, &config);
-        let max_texture_dimension_2d = NonZeroU32::new(surfaces.max_texture_dim)
-            .expect("device texture dimension limit is zero");
+        } = GpuInit::new(&window, &config)?;
         let shared = HostShared::with_clipboard(
             TextShaper::with_bundled_fonts(),
             window_clipboard(),
-            Some(max_texture_dimension_2d),
+            Some(surfaces.max_texture_dim),
         );
         let backend = WgpuBackend::new(
             device,
@@ -209,8 +205,16 @@ impl<T> WinitRuntime<T> {
                 collect_gpu_stats: config.collect_gpu_stats,
             },
         );
-        let frontend = Frontend::new(surfaces.max_texture_dim, shared.gradient_atlas.clone());
+        let frontend = Frontend::new(
+            surfaces.max_texture_dim.get(),
+            shared.gradient_atlas.clone(),
+        );
         let mut driver = WindowDriver::builder(token, &shared).build();
+        let create_app = bootstrap
+            .create_app
+            .take()
+            .expect("bootstrap app factory already consumed");
+        let pending_tasks = std::mem::take(&mut bootstrap.pending_tasks);
 
         shared.resources.windows.set_live(token, true);
         let mut app = create_app(&mut driver.ui, handle);
@@ -221,7 +225,7 @@ impl<T> WinitRuntime<T> {
         let id = window.id();
         let windows = HashMap::from([(id, Window::new(window, first_surface, driver))]);
         let observed_overlay = *shared.resources.diagnostics.overlay.borrow();
-        Self {
+        Ok(Self {
             app,
             surfaces,
             shared,
@@ -230,7 +234,7 @@ impl<T> WinitRuntime<T> {
             observed_overlay,
             windows,
             pending_commands: WindowCommands::default(),
-        }
+        })
     }
 
     fn spawn_window(
@@ -238,19 +242,20 @@ impl<T> WinitRuntime<T> {
         event_loop: &ActiveEventLoop,
         token: WindowToken,
         config: WindowConfig,
-    ) {
+    ) -> Result<(), WinitHostError> {
         if self
             .windows
             .values()
             .any(|state| state.driver.token == token)
         {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
-            return;
+            return Ok(());
         }
-        let window = create_window(event_loop, &config);
-        let surface = self.surfaces.make_surface(&window);
+        let window = create_window(event_loop, token, &config)?;
+        let surface = self.surfaces.make_surface(&window)?;
         let driver = WindowDriver::builder(token, &self.shared).build();
         self.register_window(window, surface, driver);
+        Ok(())
     }
 
     fn register_window(
@@ -273,6 +278,7 @@ impl<T: 'static> std::fmt::Debug for HostPhase<T> {
         match self {
             Self::Bootstrap(bootstrap) => f.debug_tuple("Bootstrap").field(bootstrap).finish(),
             Self::Running(runtime) => f.debug_tuple("Running").field(runtime).finish(),
+            Self::Failed(error) => f.debug_tuple("Failed").field(error).finish(),
         }
     }
 }
@@ -348,10 +354,14 @@ where
 
     /// Create the event loop and runtime host. `create_app` remains deferred
     /// until winit provides the first active event-loop callback and its `Ui`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when winit cannot create the event loop.
     pub fn build(
         self,
         create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static,
-    ) -> WinitHost<T> {
+    ) -> Result<WinitHost<T>, WinitHostError> {
         // EventLoop is built up front so `handle()` can hand out a proxy
         // before `run()` is called — that's the whole point of letting
         // threads spawn knowing where to send their pokes.
@@ -366,9 +376,11 @@ where
             use winit::platform::macos::EventLoopBuilderExtMacOS;
             event_loop_builder.with_default_menu(false);
         }
-        let event_loop = event_loop_builder.build().expect("event loop");
+        let event_loop = event_loop_builder
+            .build()
+            .map_err(|source| WinitHostError::CreateEventLoop { source })?;
         let proxy = event_loop.create_proxy();
-        WinitHost {
+        Ok(WinitHost {
             phase: HostPhase::Bootstrap(Bootstrap {
                 token: self.first_token,
                 config: self.config,
@@ -377,7 +389,7 @@ where
             }),
             event_loop: Some(event_loop),
             proxy,
-        }
+        })
     }
 }
 
@@ -405,10 +417,20 @@ where
         }
     }
 
-    /// Drive the (already-constructed) event loop to completion.
-    pub fn run(mut self) {
+    /// Drive the already-constructed event loop to completion.
+    ///
+    /// # Errors
+    ///
+    /// Returns event-loop failures and any window, surface, adapter, or device
+    /// failure encountered during deferred startup or secondary-window creation.
+    pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
-        event_loop.run_app(&mut self).expect("run app");
+        let event_loop_result = event_loop.run_app(&mut self);
+        let failure = match self.phase {
+            HostPhase::Failed(error) => Some(error),
+            HostPhase::Bootstrap(_) | HostPhase::Running(_) => None,
+        };
+        finish_run(failure, event_loop_result)
     }
 
     /// Find the window addressed by a caller token (linear scan — window
@@ -452,9 +474,12 @@ where
     /// Requests are collected out of the per-window queues *first* so the
     /// subsequent `create_window` inserts don't alias the map we're
     /// iterating.
-    fn drain_window_requests(&mut self, event_loop: &ActiveEventLoop) {
+    fn drain_window_requests(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+    ) -> Result<(), WinitHostError> {
         let HostPhase::Running(runtime) = &mut self.phase else {
-            return;
+            return Ok(());
         };
         let mut commands = WindowCommands::default();
         append_commands(&mut commands, &mut runtime.pending_commands);
@@ -472,13 +497,14 @@ where
             }
         }
         for pw in commands.opens {
-            runtime.spawn_window(event_loop, pw.token, pw.config);
+            runtime.spawn_window(event_loop, pw.token, pw.config)?;
         }
         if runtime.windows.is_empty() {
             // Every window closed (titlebar X or `close_window`) — nothing
             // left to drive.
             event_loop.exit();
         }
+        Ok(())
     }
 
     fn sync_diagnostics(&mut self) {
@@ -493,13 +519,32 @@ where
             }
         }
     }
+
+    fn fail(&mut self, event_loop: &ActiveEventLoop, error: WinitHostError) {
+        self.phase = HostPhase::Failed(error);
+        event_loop.exit();
+    }
+}
+
+fn finish_run(
+    failure: Option<WinitHostError>,
+    event_loop_result: Result<(), winit::error::EventLoopError>,
+) -> Result<(), WinitHostError> {
+    match failure {
+        Some(error) => Err(error),
+        None => event_loop_result.map_err(|source| WinitHostError::RunEventLoop { source }),
+    }
 }
 
 /// Build a winit `Window` from a [`WindowConfig`]. Free fn (not a
 /// method) so it borrows neither `self` nor the shared `Gpu`. Converts
 /// the backend-agnostic logical `UVec2` sizes into winit `LogicalSize`
 /// here so the winit type stays internal.
-fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<WinitWindow> {
+fn create_window(
+    event_loop: &ActiveEventLoop,
+    token: WindowToken,
+    cfg: &WindowConfig,
+) -> Result<Arc<WinitWindow>, WinitHostError> {
     let mut attrs = WinitWindow::default_attributes()
         .with_title(cfg.title.clone())
         .with_maximized(cfg.maximized);
@@ -521,7 +566,10 @@ fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<WinitW
     {
         attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));
     }
-    Arc::new(event_loop.create_window(attrs).expect("create window"))
+    event_loop
+        .create_window(attrs)
+        .map(Arc::new)
+        .map_err(|source| WinitHostError::CreateWindow { token, source })
 }
 
 fn platform_icon(icon: &Image) -> Icon {
@@ -564,6 +612,7 @@ where
                         }
                     }
                 }
+                HostPhase::Failed(_) => {}
             },
         }
     }
@@ -573,13 +622,18 @@ where
         let HostPhase::Bootstrap(bootstrap) = &mut self.phase else {
             return;
         };
-        let runtime = WinitRuntime::new(event_loop, bootstrap, handle);
-        self.phase = HostPhase::Running(Box::new(runtime));
+        match WinitRuntime::new(event_loop, bootstrap, handle) {
+            Ok(runtime) => self.phase = HostPhase::Running(Box::new(runtime)),
+            Err(error) => self.fail(event_loop, error),
+        }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Service in-frame window open/close requests before scheduling.
-        self.drain_window_requests(event_loop);
+        if let Err(error) = self.drain_window_requests(event_loop) {
+            self.fail(event_loop, error);
+            return;
+        }
         self.sync_diagnostics();
 
         // Fold every window's `FramePresent` into one `ControlFlow`. A
@@ -666,7 +720,7 @@ where
                 if let HostPhase::Running(runtime) = &mut self.phase
                     && let Some(win) = runtime.windows.get_mut(&id)
                 {
-                    let max = runtime.surfaces.max_texture_dim;
+                    let max = runtime.surfaces.max_texture_dim.get();
                     let w = new.width.clamp(1, max);
                     let h = new.height.clamp(1, max);
                     // Stash the new size only — `Window::frame`

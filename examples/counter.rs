@@ -1,5 +1,6 @@
 use aperture::{
     App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
+    WinitHostError,
 };
 
 struct Counter {
@@ -29,9 +30,9 @@ impl App for Counter {
     }
 }
 
-fn main() {
+fn main() -> Result<(), WinitHostError> {
     WinitHost::builder(WindowToken(0))
         .title("counter")
-        .build(Counter::new)
-        .run();
+        .build(Counter::new)?
+        .run()
 }
