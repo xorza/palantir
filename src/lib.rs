@@ -201,6 +201,7 @@ mod hot_struct_sizes {
     use crate::scene::tree::extras::ExtrasIdx;
     use crate::scene::tree::node::NodeRecord;
     use crate::text::key::TextShapeKey;
+    use crate::text::render::PlacedGlyph;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -334,6 +335,7 @@ mod hot_struct_sizes {
         ImageInstance => "renderer::ImageInstance": 40 / 4,
         MeshVertex => "primitives::MeshVertex": 12 / 4,
         GlyphInstance => "text::GlyphInstance": 20 / 4,
+        PlacedGlyph => "text::PlacedGlyph": 32 / 4,
         TextRun => "renderer::TextRun": 64 / 8,
     }
 }

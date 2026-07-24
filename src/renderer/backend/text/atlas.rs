@@ -1,6 +1,7 @@
 //! Glyph atlas: one struct for both mask + color content.
 
-use cosmic_text::{CacheKey, Placement};
+use crate::text::cosmic::GlyphRasterKey;
+use crate::text::render::GlyphPlacement;
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -47,10 +48,10 @@ impl PackedGlyphMetadata {
     }
 }
 
-impl TryFrom<&Placement> for PackedGlyphMetadata {
+impl TryFrom<&GlyphPlacement> for PackedGlyphMetadata {
     type Error = std::num::TryFromIntError;
 
-    fn try_from(placement: &Placement) -> Result<Self, Self::Error> {
+    fn try_from(placement: &GlyphPlacement) -> Result<Self, Self::Error> {
         Ok(Self {
             width: placement.width.try_into()?,
             height: placement.height.try_into()?,
@@ -112,7 +113,7 @@ pub(crate) struct GlyphAtlas {
     /// safe because every recorded index carries the slot generation
     /// that `evict_one` advances before making the index reusable.
     pub(crate) slots: Vec<GlyphSlot>,
-    pub(crate) cache: FxHashMap<CacheKey, u32>,
+    pub(crate) cache: FxHashMap<GlyphRasterKey, u32>,
     /// Slab indices freed by `evict_one` / the empty sweep, reused by
     /// the next `store`.
     free: Vec<u32>,
@@ -185,7 +186,7 @@ impl GlyphAtlas {
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its
     /// slab index (read the slot itself via `self.slots[idx]`).
-    pub(crate) fn touch(&mut self, key: &CacheKey) -> Option<u32> {
+    pub(crate) fn touch(&mut self, key: &GlyphRasterKey) -> Option<u32> {
         let &idx = self.cache.get(key)?;
         self.slots[idx as usize].last_use = self.current_frame;
         Some(idx)
@@ -201,7 +202,7 @@ impl GlyphAtlas {
     pub(crate) fn insert(
         &mut self,
         device: &wgpu::Device,
-        key: CacheKey,
+        key: GlyphRasterKey,
         content: ContentType,
         metadata: PackedGlyphMetadata,
         pixels: &[u8],
@@ -233,7 +234,7 @@ impl GlyphAtlas {
 
     /// Park `slot` in the slab (reusing a freed index when available)
     /// and map `key` to it.
-    fn store(&mut self, key: CacheKey, mut slot: GlyphSlot) -> u32 {
+    fn store(&mut self, key: GlyphRasterKey, mut slot: GlyphSlot) -> u32 {
         let idx = match self.free.pop() {
             Some(i) => {
                 slot.generation = self.slots[i as usize].generation;
@@ -386,7 +387,7 @@ impl GlyphAtlas {
     /// lookups still hit the cache and skip swash.
     pub(crate) fn insert_unallocated(
         &mut self,
-        key: CacheKey,
+        key: GlyphRasterKey,
         content: ContentType,
         metadata: PackedGlyphMetadata,
     ) -> u32 {
@@ -536,7 +537,7 @@ impl Side {
 /// record them, so returning one to `free` does not advance its
 /// generation.
 fn sweep_stale_unallocated(
-    cache: &mut FxHashMap<CacheKey, u32>,
+    cache: &mut FxHashMap<GlyphRasterKey, u32>,
     slots: &[GlyphSlot],
     free: &mut Vec<u32>,
     current_frame: u64,
@@ -556,11 +557,11 @@ fn sweep_stale_unallocated(
 }
 
 fn eviction_candidate(
-    cache: &FxHashMap<CacheKey, u32>,
+    cache: &FxHashMap<GlyphRasterKey, u32>,
     slots: &[GlyphSlot],
     target: ContentType,
     current_frame: u64,
-) -> Option<(CacheKey, u32)> {
+) -> Option<(GlyphRasterKey, u32)> {
     cache
         .iter()
         .filter_map(|(key, &idx)| {
@@ -598,18 +599,9 @@ fn make_texture(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmic_text::{CacheKeyFlags, SubpixelBin, fontdb};
 
-    fn key(glyph_id: u16) -> CacheKey {
-        CacheKey {
-            font_id: fontdb::ID::dummy(),
-            glyph_id,
-            font_size_bits: 14.0_f32.to_bits(),
-            x_bin: SubpixelBin::Zero,
-            y_bin: SubpixelBin::Zero,
-            font_weight: fontdb::Weight::NORMAL,
-            flags: CacheKeyFlags::empty(),
-        }
+    fn key(glyph_id: u16) -> GlyphRasterKey {
+        GlyphRasterKey::for_test(glyph_id)
     }
 
     fn slot(alloc: Option<AllocId>, last_use: u64) -> GlyphSlot {
@@ -629,7 +621,7 @@ mod tests {
 
     #[test]
     fn packed_glyph_metadata_checks_every_wire_boundary() {
-        let placement = |width, height, left, top| Placement {
+        let placement = |width, height, left, top| GlyphPlacement {
             left,
             top,
             width,
