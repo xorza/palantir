@@ -1,34 +1,46 @@
-# Text architecture and API review
+# Text system review
 
-The split between window-local identity reuse (`TextSystem`) and the
-app-global shaped-buffer cache (`TextShaper`) is sound: widget identities are
-not window-namespaced, while the cosmic-text buffers are safely shareable.
-The remaining structural problems are narrower ownership mismatches: global
-maintenance is window-driven, editor-only geometry occupies the shaping/cache
-root module, and validated metrics lose their proof before layout.
+The text system has two expensive sources of redundant work: fitting
+truncate/ellipsis runs are shaped and cached a second time, and every
+width-bounded wrap recomputes an intrinsic word-width value that no bounded
+consumer reads. The API also exposes more structure than it can configure:
+`CosmicMeasure` is public but opaque, `TextShaper` carries a production
+fallback state that production constructors cannot create, and
+`TextSystem::shape` combines shaping, wrap policy, desired size, and intrinsic
+size in one mode-dependent call.
 
-Current flow: layout converts raw `ShapeRecord` fields directly into a
-canonical `TextShapeRequest` and calls `TextSystem::shape` with the run identity,
-wrap policy, alignment, and optional available width. `TextSystem` owns the
-unbounded identity lookup, derives any bounded request after reading
-`intrinsic_min`, and returns the resolved glyph measurement, desired content
-size, min-content size, and max-content size as one `TextShapeResult`
-(`src/text/mod.rs:149`, `src/text/mod.rs:333`). Desired and intrinsic layout
-consume those values without interpreting `TextWrap`
-(`src/layout/engine.rs:851`, `src/layout/intrinsic/mod.rs:262`).
-`TextShapeKey` owns validation, quantization, normalization, and decoding;
-cosmic shaping and backend reconstruction consume the same `text + key` pair.
-`TextEdit` bypasses the identity cache and borrows the same global shaper
-directly for caret, hit-test, and selection geometry.
+The file boundaries do not match the responsibility boundaries. The
+cosmic-text integration is divided between `cosmic.rs` and editor geometry in
+`mod.rs`; public wrapping policy lives in `wrap.rs` while its shaping
+representation and most policy evaluation live near the end and middle of
+`mod.rs`. These splits leave `mod.rs` responsible for cache coordination,
+request/key encoding, fallback measurement, editor interaction geometry, text
+placement, and render-buffer access.
 
-## Medium: boundaries expose or own the wrong responsibilities
+## High: redundant shaping work
 
-- [ ] **The validated text-metrics invariant is discarded between recording and layout, forcing repeated validation in the trusted hot path.** `Shapes::add` drops every no-op shape before storage (`src/scene/shapes/mod.rs:71`), and text no-op detection already validates font size and line height (`src/shape/mod.rs:304`), yet `ShapeRecord` and `TextShapeInput` store those values as raw `f32`s again (`src/scene/shapes/record.rs:104`, `src/layout/support.rs:27`). `TextShapeInput::shape_request` must therefore call the fallible `TextShapeRequest::unbounded` constructor and immediately `expect` success for every text run (`src/layout/support.rs:45`), including both desired-size and intrinsic-size paths (`src/layout/engine.rs:853`, `src/layout/intrinsic/mod.rs:267`). Malformed metrics are correctly filtered at authoring, but the proof is lost before layout, so finite/epsilon checks and an impossible branch remain in the hot path.
+- [ ] **A truncate or ellipsis run that already fits is shaped twice and occupies two cache entries.** `TextSystem::shape` resolves a bounded measurement whenever either policy receives an available width, without checking the already-cached unbounded extent (`src/text/mod.rs:388`, `src/text/mod.rs:406`). `measure_truncated` then restores the unbounded buffer, proves that the complete line fits, but still acquires another buffer, sets the same source text, shapes it again, and inserts it under the bounded key (`src/text/cosmic.rs:298`, `src/text/cosmic.rs:312`, `src/text/cosmic.rs:352`, `src/text/cosmic.rs:363`). Fitting button labels and other default-truncate text therefore pay an extra cosmic-text shape on each new identity/width pair and consume twice the reconstructible-buffer budget.
 
-- [ ] **Editor-only caret, hit-test, and selection geometry occupies the shaping/cache root module.** `TextLayoutProbe`, `CursorPos`, `SelectionRects`, cursor conversion, mono hit-testing, and selection-rectangle construction account for the geometry block in `src/text/mod.rs` (`src/text/mod.rs:66`, `src/text/mod.rs:167`, `src/text/mod.rs:504`, `src/text/mod.rs:938`, `src/text/mod.rs:1002`, `src/text/mod.rs:1063`), but their only production consumer is `TextEdit` (`src/widgets/text_edit/view.rs:13`, `src/widgets/text_edit/input.rs:120`). This makes the generic text cache depend on editor interaction semantics and `unicode-segmentation` (`src/text/mod.rs:36`), while the root still mixes public vocabulary, cache ownership, shaping dispatch, editor geometry, placement, and fallback measurement.
+- [ ] **Every bounded wrapped shape scans all glyph clusters to recompute an intrinsic minimum that bounded consumers discard.** Both unbounded and width-bounded requests go through `measure_wrapped`, which always calls `shaped_extent` and stores its `intrinsic_min` (`src/text/cosmic.rs:215`, `src/text/cosmic.rs:251`). That calculation walks every glyph and every cluster character (`src/text/cosmic.rs:505`, `src/text/cosmic.rs:520`), but wrap overflow decisions and min-content reporting use only the previously cached unbounded measurement (`src/text/mod.rs:448`, `src/text/mod.rs:456`). A resize that produces fresh bounded keys repeats a text-length-proportional word scan whose result is never consumed.
 
-- [ ] **Window-local finalization owns maintenance of an app-global buffer cache.** Every `Ui::finalize_frame` calls its own `TextSystem::end_frame` (`src/ui/mod.rs:423`, `src/ui/mod.rs:426`), which immediately runs `TextShaper::end_frame` before sweeping the window-local identity rows (`src/text/mod.rs:303`); that shaper handle is clone-shared by every window and the backend (`src/host/window_driver.rs:222`, `src/host/shared.rs:36`). Global LRU maintenance is therefore scheduled according to each window's independent frame cadence and interleaved with local widget eviction, so the same global resource can be budgeted multiple times during one multi-window host cycle and its ownership remains split between layout and host/backend lifetimes.
+## Medium: API and ownership are broader than their capabilities
 
-## Low: avoidable hot-path work remains
+- [ ] **The public construction API exposes an opaque backend type without providing a distinct configuration capability.** `CosmicMeasure` is publicly exported and `TextShaper::with_cosmic` accepts it (`src/lib.rs:122`, `src/text/mod.rs:250`), but its fields are private and its only public construction paths both load the same bundled fonts (`src/text/cosmic.rs:115`, `src/text/cosmic.rs:150`, `src/text/cosmic.rs:207`). `OffscreenHost::builder` nevertheless requires callers to supply a `TextShaper` (`src/host/offscreen.rs:121`). External code must wire two public text implementation types even though it cannot use them to select a different font system or cache behavior, freezing internal cosmic-text ownership into the API without corresponding flexibility.
 
-- [ ] **Test-only dispatch accounting is stored and mutated in production shaping state.** `TextShaper::inner` is `pub(crate)` specifically for test observability, and `ShaperInner` unconditionally carries `measure_calls` (`src/text/mod.rs:122`, `src/text/mod.rs:186`); direct layout probes, identity refreshes, and bounded misses all increment it (`src/text/mod.rs:280`, `src/text/mod.rs:349`, `src/text/mod.rs:487`). Production text work pays the shared mutable-state write and carries a wider internal visibility boundary solely for cache-effectiveness tests.
+- [ ] **Production shaping state represents a no-cosmic fallback that production constructors cannot create.** `ShaperInner` stores `Option<CosmicMeasure>` and both dispatch paths branch to `mono_measure` on `None` (`src/text/mod.rs:186`, `src/text/mod.rs:649`, `src/text/mod.rs:660`), while the production constructors always install `Some(CosmicMeasure)` (`src/text/mod.rs:250`, `src/text/mod.rs:260`). The fallback measurement path and its invalid-buffer-key behavior remain part of the production coordinator (`src/text/mod.rs:873`, `src/text/mod.rs:925`), widening measurement and cache invariants around a runtime state that the production API cannot produce.
+
+- [ ] **Validated shaping inputs become fallible again at every consumer boundary.** Recorded text has already rejected invalid metrics before layout, yet `TextShapeRequest::unbounded` revalidates them and returns `Option` (`src/text/mod.rs:214`, `src/text/mod.rs:732`). Both layout and `TextEdit` immediately assert that failure is impossible (`src/layout/support.rs:45`, `src/widgets/text_edit/view.rs:121`), while the renderer bypasses the constructor and assembles the same type directly from retained text plus a key (`src/renderer/backend/text/mod.rs:304`). The request type neither carries the earlier validation proof nor enforces one construction path, so trusted paths retain repeated checks, `Option` plumbing, and manual invariant assertions.
+
+- [ ] **One `TextSystem::shape` contract combines cache lookup, shaping mode, desired size, and intrinsic sizing into a mode-dependent result.** The call accepts both an optional available width and a six-way public wrap policy, then returns measurement, content size, min-content, and max-content together (`src/text/mod.rs:146`, `src/text/mod.rs:333`). Desired layout consumes only the measurement/content pair (`src/layout/engine.rs:851`), while intrinsic layout passes no width and consumes only the min/max pair (`src/layout/intrinsic/mod.rs:262`). This broad contract makes the text cache own layout-policy consequences and produces five near-parallel result branches (`src/text/mod.rs:374`), increasing the amount of code and the number of fields that must remain coherent for callers with disjoint needs.
+
+- [ ] **Window-local finalization schedules maintenance of an app-global shaped-buffer cache.** Every `Ui::finalize_frame` invokes its window-owned `TextSystem::end_frame` (`src/ui/mod.rs:423`, `src/ui/mod.rs:426`), which immediately evicts from the clone-shared `TextShaper` before sweeping local identity rows (`src/text/mod.rs:303`). Each window receives a clone of the same host resource and the backend receives another clone (`src/host/window_driver.rs:222`, `src/host/shared.rs:34`). In a multi-window host, global LRU eviction therefore runs according to independent window frame cadence and can run multiple times within one host cycle, coupling global cache behavior to whichever window finalizes first.
+
+## Low: module boundaries and small hot-path duplication
+
+- [ ] **The cosmic-text backend boundary is split across `cosmic.rs` and the root module.** `CosmicMeasure` owns shaping and cached `Buffer`s, but `TextLayoutProbe` exposes a borrowed `cosmic_text::Buffer` back into `mod.rs` (`src/text/mod.rs:167`). The root then implements caret lookup, hit testing, selection spans, `LayoutRun` processing, and cosmic cursor conversion directly (`src/text/mod.rs:547`, `src/text/mod.rs:614`, `src/text/mod.rs:1002`, `src/text/mod.rs:1063`). These operations are consumed only by `TextEdit` (`src/widgets/text_edit/view.rs:229`, `src/widgets/text_edit/input.rs:120`), so changes to cosmic-text geometry APIs cross both text files while editor-specific Unicode and interaction logic enlarges the cache/coordinator root.
+
+- [ ] **Wrapping policy is fragmented between a small public module, an internal enum in the root, and duplicated call-site normalization.** `wrap.rs` defines `TextWrap` and canonical width rounding (`src/text/wrap.rs:5`, `src/text/wrap.rs:11`), while `LineFit` lives at the end of `mod.rs` and the six-way translation lives in `TextSystem::shape` (`src/text/mod.rs:1125`, `src/text/mod.rs:374`). Width canonicalization is applied separately before the bounded request in `TextSystem` and `TextEdit`, even though `TextShapeRequest::bounded` is the constructor that turns width into cache identity (`src/text/mod.rs:472`, `src/widgets/text_edit/view.rs:169`, `src/text/mod.rs:232`). The policy's vocabulary, cache encoding, normalization, and layout consequences are therefore spread across three responsibility areas and must stay synchronized manually.
+
+- [ ] **Vertical caret navigation performs two direct layout probes for the same text and request.** Moving up or down first calls `cursor_position`, then normally rebuilds the request and calls `hit_test` (`src/widgets/text_edit/input.rs:271`, `src/widgets/text_edit/input.rs:278`, `src/widgets/text_edit/input.rs:287`). Both wrappers independently enter `with_layout`, increment dispatch accounting, borrow the shared shaper, and perform a cosmic cache lookup (`src/text/mod.rs:266`, `src/text/mod.rs:504`, `src/text/mod.rs:516`). A single arrow-key action therefore repeats request hashing, key construction, shared-state borrowing, and cache dispatch for one unchanged buffer.
+
+- [ ] **Test-only dispatch accounting is stored and mutated in production shaping state.** `TextShaper::inner` is widened to `pub(crate)` specifically for observability, and `ShaperInner` unconditionally carries `measure_calls` (`src/text/mod.rs:126`, `src/text/mod.rs:195`). Direct probes, identity refreshes, and bounded misses all mutate it (`src/text/mod.rs:280`, `src/text/mod.rs:349`, `src/text/mod.rs:487`). Production text work pays an additional shared-state write across all three shaping paths, and test instrumentation contributes visibility and mutation responsibilities to the core shaper.
