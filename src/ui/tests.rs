@@ -534,7 +534,7 @@ fn prev_frame_updates_on_authoring_change() {
 }
 
 /// Per-`WidgetId` text reuse cache: an unchanged Text across frames
-/// must hit the identity cache and skip shaping. Covers
+/// must hit the reuse-slot cache and skip shaping. Covers
 /// single-line, wrapped, and grid-intrinsic-query paths.
 #[test]
 fn text_reshape_skipped_when_unchanged() {
@@ -696,7 +696,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert_eq!(
         a.resources.text.measure_calls(),
         after_b,
-        "window B must not overwrite window A's identity reuse row",
+        "window B must not overwrite window A's reuse row",
     );
 
     b.run_at(SURFACE, |ui| {
@@ -713,7 +713,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert_eq!(
         a.resources.text.measure_calls(),
         after_b_removal,
-        "window B removal must not evict window A's identity reuse row",
+        "window B removal must not evict window A's reuse row",
     );
     assert!(a.resources.text.has_cosmic_buffer(a_key));
     assert!(a.resources.text.has_cosmic_buffer(b_key));
