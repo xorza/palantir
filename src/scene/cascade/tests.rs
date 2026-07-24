@@ -656,6 +656,16 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .show(ui);
     }
 
+    fn nested_paint(ui: &mut Ui, color: Color) {
+        Panel::canvas()
+            .id(WidgetId::from_hash("paint-root"))
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("paint-parent"))
+                    .show(ui, |ui| colored_frame(ui, color));
+            });
+    }
+
     fn reparented(ui: &mut Ui, nested: bool) {
         Panel::canvas()
             .id(WidgetId::from_hash("reparent-root"))
@@ -752,6 +762,11 @@ fn incremental_matches_full_across_cascade_input_classes() {
         "paint-only",
         |ui| colored_frame(ui, Color::rgb(0.2, 0.4, 0.8)),
         |ui| colored_frame(ui, Color::rgb(0.8, 0.2, 0.4)),
+    );
+    assert_incremental_case(
+        "nested paint-only",
+        |ui| nested_paint(ui, Color::rgb(0.2, 0.4, 0.8)),
+        |ui| nested_paint(ui, Color::rgb(0.8, 0.2, 0.4)),
     );
     assert_incremental_case(
         "paint-row cardinality",

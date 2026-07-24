@@ -180,11 +180,12 @@ struct Frame {
     /// already been folded in. Each pop unions this into the new
     /// top frame so the rollup ripples upward to the root.
     subtree_paint_rect: Rect,
-    /// FxHasher state pre-populated with this frame's ancestor-derived
-    /// hash inputs (transform / clip / disabled / invisible). Cloned
-    /// once per descendant to seed `cascade_input` — descendants only
-    /// fold in their own `layout_rect`, avoiding a re-hash of the 32 B
-    /// ancestor prefix per node. See `finish_cascade_input`.
+    /// Full-rebuild FxHasher state pre-populated with this frame's
+    /// ancestor-derived hash inputs (transform / clip / disabled /
+    /// invisible). Cloned once per descendant to seed `cascade_input` —
+    /// descendants only fold in their own `layout_rect`, avoiding a
+    /// re-hash of the 32 B ancestor prefix per node. Incremental frames
+    /// carry an empty hasher because their retained inputs stay valid.
     cascade_prefix: Hasher,
 }
 
@@ -663,7 +664,11 @@ impl CascadesEngine {
         let widget_ids = tree.records.widget_id();
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
-        let root_prefix = build_cascade_prefix(TranslateScale::IDENTITY, None, false, false);
+        let root_prefix = if INCREMENTAL {
+            Hasher::new()
+        } else {
+            build_cascade_prefix(TranslateScale::IDENTITY, None, false, false)
+        };
 
         let mut i: u32 = 0;
         while i < n {
@@ -823,7 +828,8 @@ impl CascadesEngine {
                 // above; fold the seed straight into the parent accumulator
                 // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
                 // identity). Skips a per-leaf Frame push/pop and the 32 B
-                // prefix-hash work leaves could never hand to a child.
+                // full-rebuild prefix-hash work leaves could never hand to
+                // a child.
                 if let Some(parent) = self.stack.last_mut() {
                     parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
                 }
@@ -836,12 +842,11 @@ impl CascadesEngine {
                     subtree_end,
                     node_idx: iu,
                     subtree_paint_rect: subtree_seed,
-                    cascade_prefix: build_cascade_prefix(
-                        desc_transform,
-                        shape_clip,
-                        disabled,
-                        invisible,
-                    ),
+                    cascade_prefix: if INCREMENTAL {
+                        Hasher::new()
+                    } else {
+                        build_cascade_prefix(desc_transform, shape_clip, disabled, invisible)
+                    },
                 });
             }
             i += 1;
