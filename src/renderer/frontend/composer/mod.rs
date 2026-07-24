@@ -1357,7 +1357,7 @@ fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
 /// coarse steps + fewer atlas keys is the right trade.
 ///
 /// **Geometric note.** Measurement uses the unscaled `font_size_px`
-/// (`TextShaper::measure`) — only the paint-time scale is snapped. At a
+/// (text layout shaping) — only the paint-time scale is snapped. At a
 /// non-rung zoom level the rendered glyph block is up to `STEP/2`
 /// wider/narrower than the layout-space rect it nominally fills. The
 /// extra width is clipped at `TextRun.bounds`, and the cascade

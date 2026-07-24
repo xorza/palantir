@@ -549,9 +549,10 @@ fn line_height_override_changes_caret_rect_height() {
         },
         ..TextEditTheme::default()
     }));
+    let canonical_default: f32 = (16.0 * crate::text::LINE_HEIGHT_MULT * 64.0).round() / 64.0;
     assert!(
-        (default - 16.0 * crate::text::LINE_HEIGHT_MULT).abs() < 1e-5,
-        "default caret height = font_size * LINE_HEIGHT_MULT, got {default}",
+        (default - canonical_default).abs() < 1e-5,
+        "default caret height = canonical font_size * LINE_HEIGHT_MULT, got {default}",
     );
     assert!(
         (doubled - 32.0).abs() < 1e-5,

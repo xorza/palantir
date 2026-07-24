@@ -43,7 +43,6 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use crate::layout::types::align::HAlign;
 use crate::primitives::color::ColorU8;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::urect::URect;
@@ -54,7 +53,7 @@ use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::scene::record_store::RecordStore;
-use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
+use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
 use criterion::Criterion;
 use glam::{UVec2, Vec2};
 use pollster::FutureExt;
@@ -218,19 +217,15 @@ fn make_run(
     color: ColorU8,
 ) -> TextRun {
     let source = store.record_text(store.intern_str(text)).source;
-    let measured = shaper
-        .measure(
-            text,
-            ShapeParams {
-                font_size_px,
-                line_height_px,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        )
-        .expect("benchmark text metrics are valid");
+    let request = TextShapeRequest::unbounded(
+        text,
+        font_size_px,
+        line_height_px,
+        FontFamily::Sans,
+        FontWeight::Regular,
+    )
+    .expect("benchmark text metrics are valid");
+    let measured = shaper.with_layout(request, |probe| probe.measurement);
     TextRun {
         key: measured.key,
         origin,

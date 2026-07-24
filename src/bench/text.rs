@@ -2,8 +2,8 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
 use crate::text::{
-    FontFamily, FontWeight, LineFit, ShapeParams, TextMeasurement, TextRunIdentity, TextShaper,
-    TextSystem,
+    FontFamily, FontWeight, LineFit, TextMeasurement, TextRunIdentity, TextShapeRequest,
+    TextShaper, TextSystem,
 };
 use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
@@ -16,29 +16,18 @@ struct BenchState {
     text: TextSystem,
 }
 
-fn params(width: f32) -> ShapeParams {
-    ShapeParams {
-        font_size_px: 14.0,
-        line_height_px: 16.8,
-        max_width_px: Some(width),
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
-        halign: HAlign::Left,
-    }
-}
-
 fn measure_truncated_width(
     text_system: &mut TextSystem,
     identity: TextRunIdentity,
     text: &str,
-    params: ShapeParams,
+    width: f32,
 ) -> TextMeasurement {
-    let prepared = text_system.prepare_run(identity, text, params).unwrap();
-    let target = params
-        .max_width_px
-        .expect("truncation benchmark requires a finite width");
-    prepared
-        .shape_bounded(target, params.halign, LineFit::Ellipsis)
+    let request =
+        TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
+            .unwrap();
+    text_system
+        .prepare(identity, request)
+        .shape_bounded(width, HAlign::Left, LineFit::Ellipsis)
         .unwrap()
 }
 
@@ -55,14 +44,13 @@ pub fn bench(c: &mut Criterion) {
     };
     c.bench_function("text_shape/ellipsis_reuse_hit", |b| {
         let mut text_system = TextSystem::new(TextShaper::with_bundled_fonts());
-        let shape_params = params(80.0);
-        measure_truncated_width(&mut text_system, reuse_identity, TEXT, shape_params);
+        measure_truncated_width(&mut text_system, reuse_identity, TEXT, 80.0);
         b.iter(|| {
             black_box(measure_truncated_width(
                 &mut text_system,
                 reuse_identity,
                 TEXT,
-                shape_params,
+                80.0,
             ));
         });
     });
@@ -75,7 +63,7 @@ pub fn bench(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let mut text = TextSystem::new(TextShaper::with_bundled_fonts());
-                measure_truncated_width(&mut text, churn_identity, TEXT, params(39.75));
+                measure_truncated_width(&mut text, churn_identity, TEXT, 39.75);
                 BenchState { text }
             },
             |mut state| {
@@ -84,7 +72,7 @@ pub fn bench(c: &mut Criterion) {
                         &mut state.text,
                         churn_identity,
                         TEXT,
-                        params(40.0 + i as f32 * 0.25),
+                        40.0 + i as f32 * 0.25,
                     );
                     black_box(measured.size);
                 }

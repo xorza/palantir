@@ -534,7 +534,7 @@ fn prev_frame_updates_on_authoring_change() {
 }
 
 /// Per-`WidgetId` text reuse cache: an unchanged Text across frames
-/// must hit the cache and skip `TextShaper::measure`. Covers
+/// must hit the identity cache and skip shaping. Covers
 /// single-line, wrapped, and grid-intrinsic-query paths.
 #[test]
 fn text_reshape_skipped_when_unchanged() {

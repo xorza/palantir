@@ -188,7 +188,7 @@ impl<'a> TextEdit<'a> {
         let caret_width = style.caret_width;
         let selection_color = style.selection;
         let placeholder_color = style.placeholder;
-        if look.text.metrics().is_none() {
+        if !look.text.metrics_valid() {
             let was_focused = {
                 let state = ui.state_mut::<TextEditState>(id);
                 let was_focused = state.view.prev_focused;
