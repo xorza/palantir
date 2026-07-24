@@ -2,13 +2,13 @@ use crate::common::hash::hash_str;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::cosmic::CosmicMeasure;
-use crate::text::key::{LineFit, TextShapeKey};
+use crate::text::key::TextShapeKey;
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
 use crate::text::system::test_support::TextSystemTestExt;
 use crate::text::system::{self, TextRunSlot, TextSystem};
 use crate::text::test_support::{CosmicMeasureTestExt, TestShape, TextShaperTestExt};
-use crate::text::wrap::TextWrap;
+use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
 use rustc_hash::FxHashSet;
 
@@ -40,10 +40,9 @@ fn mono_shape(
         line_height_px,
         FontFamily::Sans,
         FontWeight::Regular,
-    )
-    .unwrap();
+    );
     let request = match max_width_px {
-        Some(width) => request.bounded(width, HAlign::Auto, fit).unwrap(),
+        Some(width) => request.bounded(width, HAlign::Auto, fit),
         None => request,
     };
     mono::measure(request)
@@ -168,7 +167,7 @@ fn cursor_xy_x_cases() {
         ("lh_independent_tall", "abc", 2, 16.0, 24.0, 16.0),
     ];
     for (label, text, offset, fs, lh_v, expected) in cases {
-        let m = TextShaper::default();
+        let m = TextShaper::test_mono();
         assert_eq!(
             m.cursor_xy(
                 text,
@@ -376,15 +375,11 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    let r1 = text
-        .shape_run(run_slot, "hi", compact, TextWrap::SingleLine)
-        .unwrap();
+    let r1 = text.shape_run(run_slot, "hi", compact, TextWrap::SingleLine);
     let calls = text.shaper.measure_calls();
     assert_eq!(r1.size, Size::new(16.0, 16.0));
 
-    let same = text
-        .shape_run(run_slot, "hi", compact, TextWrap::SingleLine)
-        .unwrap();
+    let same = text.shape_run(run_slot, "hi", compact, TextWrap::SingleLine);
     assert_eq!(same.size, r1.size);
     assert_eq!(same.key, r1.key);
     assert_eq!(same.intrinsic_min, r1.intrinsic_min);
@@ -394,18 +389,16 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
         "identical shaping inputs must reuse the row",
     );
 
-    let quantized_same = text
-        .shape_run(
-            run_slot,
-            "hi",
-            TestShape {
-                font_size_px: 16.006,
-                line_height_px: 16.006,
-                ..compact
-            },
-            TextWrap::SingleLine,
-        )
-        .unwrap();
+    let quantized_same = text.shape_run(
+        run_slot,
+        "hi",
+        TestShape {
+            font_size_px: 16.006,
+            line_height_px: 16.006,
+            ..compact
+        },
+        TextWrap::SingleLine,
+    );
     assert_eq!(quantized_same.key, same.key);
     assert_eq!(quantized_same.size, same.size);
     assert_eq!(quantized_same.intrinsic_min, same.intrinsic_min);
@@ -415,17 +408,15 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
         "raw values in the same 1/64 px bucket must reuse the canonical row",
     );
 
-    let r2 = text
-        .shape_run(
-            run_slot,
-            "hi",
-            TestShape {
-                line_height_px: 24.0,
-                ..compact
-            },
-            TextWrap::SingleLine,
-        )
-        .unwrap();
+    let r2 = text.shape_run(
+        run_slot,
+        "hi",
+        TestShape {
+            line_height_px: 24.0,
+            ..compact
+        },
+        TextWrap::SingleLine,
+    );
     assert_eq!(r2.size, Size::new(16.0, 24.0));
     assert_eq!(
         text.shaper.measure_calls(),
@@ -433,9 +424,7 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
         "metric changes must refresh the row",
     );
 
-    let different_text = text
-        .shape_run(run_slot, "hello", compact, TextWrap::SingleLine)
-        .unwrap();
+    let different_text = text.shape_run(run_slot, "hello", compact, TextWrap::SingleLine);
     assert_eq!(different_text.size, Size::new(40.0, 16.0));
     assert_eq!(
         text.shaper.measure_calls(),
@@ -457,9 +446,7 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
         halign: HAlign::Auto,
     };
 
-    let old = text
-        .shape_run(slot(wid), "hi", params, TextWrap::SingleLine)
-        .unwrap();
+    let old = text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
     assert_eq!(old.size, Size::new(16.0, 16.0));
     assert_eq!(
         text.shape_run(
@@ -471,14 +458,11 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
             },
             TextWrap::Wrap,
         )
-        .unwrap()
         .size,
         Size::new(16.0, 16.0),
     );
 
-    let current = text
-        .shape_run(slot(wid), "abcdefgh", params, TextWrap::SingleLine)
-        .unwrap();
+    let current = text.shape_run(slot(wid), "abcdefgh", params, TextWrap::SingleLine);
     assert_eq!(current.size, Size::new(64.0, 16.0));
     // Eight 8 px glyphs at 32 px fit four per line: 32 px × two 16 px lines.
     assert_eq!(
@@ -491,7 +475,6 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
             },
             TextWrap::Wrap,
         )
-        .unwrap()
         .size,
         Size::new(32.0, 32.0),
     );
@@ -562,8 +545,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             16.0,
             FontFamily::Sans,
             FontWeight::Regular,
-        )
-        .unwrap();
+        );
         let slot = slot_at(widget_id, ordinal as u16);
         let unbounded = text.measure(slot, request, case.wrap, HAlign::Auto, None);
         let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
@@ -583,7 +565,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
 
     let empty = text.measure(
         slot_at(widget_id, cases.len() as u16),
-        TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular).unwrap(),
+        TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular),
         TextWrap::Ellipsis,
         HAlign::Auto,
         Some(24.0),
@@ -615,7 +597,7 @@ fn cursor_xy_cosmic_path_is_monotonic_and_bounded() {
     // non-decreasing and approach the full-string width at the
     // final offset. Exact pixel values depend on font metrics; we
     // only pin the monotonicity invariant consumers rely on.
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let s = "hello";
     let widths: Vec<f32> = (0..=s.len())
         .map(|i| {
@@ -652,7 +634,7 @@ fn byte_at_xy_mono_fallback() {
     // Mono shaper: glyph_w = font_size * 0.5 = 8 px at 16 px font.
     // `byte_at_xy` ignores y on the mono path. Picks the boundary
     // whose prefix-x is closest to `target_x`.
-    let m = TextShaper::default();
+    let m = TextShaper::test_mono();
     let cases: &[(&str, f32, usize)] = &[
         ("origin", 0.0, 0),
         ("first_boundary", 8.0, 1),
@@ -682,7 +664,7 @@ fn byte_at_xy_mono_fallback() {
 fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
     // Real shaping: caret at the cursor_xy of byte i must hit-test
     // back to a byte close to i; widths sweep monotonically.
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let s = "hello";
     let fs = 16.0;
     let lh_v = fs * LINE_HEIGHT_MULT;
@@ -740,7 +722,7 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
 
 #[test]
 fn selection_rects_empty_range_is_noop() {
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let mut out: SelectionRects = SelectionRects::new();
     out.push(Rect::new(1.0, 2.0, 3.0, 4.0)); // pre-populate
     m.probe_layout(
@@ -757,8 +739,7 @@ fn selection_rects_empty_range_is_noop() {
             assert_eq!(layout.request.key.text_hash, hash_str("hello"));
             layout.selection_rects(5..5, &mut out);
         },
-    )
-    .unwrap();
+    );
     assert!(
         out.is_empty(),
         "empty range must clear out and emit nothing"
@@ -767,7 +748,7 @@ fn selection_rects_empty_range_is_noop() {
 
 #[test]
 fn selection_rects_single_line_emits_one_rect() {
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let mut out: SelectionRects = SelectionRects::new();
     m.probe_layout(
         "hello",
@@ -780,8 +761,7 @@ fn selection_rects_single_line_emits_one_rect() {
             halign: HAlign::Auto,
         },
         |layout| layout.selection_rects(1..4, &mut out),
-    )
-    .unwrap();
+    );
     assert_eq!(out.len(), 1, "single-line range → one rect");
     let r = out[0];
     assert!(r.size.w > 0.0, "rect has positive width");
@@ -804,7 +784,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
         max_width_px: Option<f32>,
     }
 
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let cases = [
         Case {
             label: "hard_breaks",
@@ -845,14 +825,12 @@ fn selection_rects_match_cosmic_highlight_spans() {
                         .map(|(x, w)| Rect::new(x, run.line_top, w, run.line_height)),
                 );
             }
-        })
-        .unwrap();
+        });
 
         let mut actual = SelectionRects::new();
         m.probe_layout(case.text, params, |layout| {
             layout.selection_rects(case.range, &mut actual);
-        })
-        .unwrap();
+        });
         assert_eq!(
             actual.as_slice(),
             expected.as_slice(),
@@ -890,7 +868,7 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
     // Two-line buffer: caret on line 1 must have y_top > caret on line 0,
     // and the delta must be ≈ line_height. Pins multi-line caret routing
     // through cosmic's layout_runs.
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let fs = 16.0;
     let lh_v = fs * LINE_HEIGHT_MULT;
     let p0 = m.cursor_xy(
@@ -949,29 +927,28 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     // no buffer was cached for the empty input.
     assert!(c.buffer_for(r.key).is_none());
 
-    let shaper = TextShaper::mono();
+    let shaper = TextShaper::test_mono();
     let calls = shaper.measure_calls();
-    let r = shaper
-        .measure(
-            "",
-            TestShape {
-                font_size_px: 16.0,
-                line_height_px: 16.0 * LINE_HEIGHT_MULT,
-                max_width_px: None,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Auto,
-            },
-        )
-        .expect("empty text has valid shaping parameters");
+    let r = shaper.measure(
+        "",
+        TestShape {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+    );
     assert_eq!(r.size, Size::ZERO);
     assert_eq!(r.intrinsic_min, 0.0);
     assert_eq!(shaper.measure_calls(), calls);
 }
 
 #[test]
-fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
+fn invalid_metrics_panic_before_any_shaping_dispatch() {
     use crate::primitives::approx::EPS;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
     let cases = [
         ("zero font", 0.0, 16.0),
@@ -987,8 +964,8 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
         ("NaN line height", 16.0, f32::NAN),
         ("infinite line height", 16.0, f32::INFINITY),
     ];
-    let mono = TextShaper::mono();
-    let cosmic = TextShaper::with_bundled_fonts();
+    let mono = TextShaper::test_mono();
+    let cosmic = TextShaper::new();
     for (label, font_size_px, line_height_px) in cases {
         let params = TestShape {
             font_size_px,
@@ -1000,7 +977,10 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
         };
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
-            assert!(shaper.measure("hi", params).is_none(), "{label}");
+            assert!(
+                catch_unwind(AssertUnwindSafe(|| shaper.measure("hi", params))).is_err(),
+                "{label}: invalid metrics must panic at request construction",
+            );
             assert_eq!(
                 shaper.measure_calls(),
                 calls,
@@ -1013,13 +993,14 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
 #[test]
 fn identity_cache_rejects_invalid_metrics_before_dispatch() {
     use crate::primitives::approx::EPS;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let shaper = TextShaper::with_bundled_fonts();
+    let shaper = TextShaper::new();
     let mut text = TextSystem::new(shaper.clone());
     let widget_id = WidgetId::from_hash("invalid metrics");
     let calls = shaper.measure_calls();
 
-    assert!(
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
         text.shape_run(
             slot(widget_id),
             "hi",
@@ -1033,7 +1014,11 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
             },
             TextWrap::Ellipsis,
         )
-        .is_none(),
+    }))
+    .is_err();
+    assert!(
+        panicked,
+        "invalid metrics must panic at request construction"
     );
     assert!(
         !text.has_entry(widget_id, 0),
@@ -1048,7 +1033,7 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
 
 #[test]
 fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
-    let shaper = TextShaper::with_bundled_fonts();
+    let shaper = TextShaper::new();
     let mut text = TextSystem::new(shaper.clone());
     let wid = WidgetId::from_hash("fitting truncate");
     let fitting = TestShape {
@@ -1068,12 +1053,10 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
     for (ordinal, wrap) in [(0u16, TextWrap::Truncate), (1, TextWrap::Ellipsis)] {
         let run_slot = slot_at(wid, ordinal);
         let fit = wrap.line_fit().unwrap();
-        let natural = text
-            .shape_run(run_slot, "ok", unbounded_shape, wrap)
-            .unwrap();
+        let natural = text.shape_run(run_slot, "ok", unbounded_shape, wrap);
         let calls = text.shaper.measure_calls();
 
-        let fitted = text.shape_run(run_slot, "ok", fitting, wrap).unwrap();
+        let fitted = text.shape_run(run_slot, "ok", fitting, wrap);
         assert_eq!(
             fitted.key, natural.key,
             "a fitting {wrap:?} must reuse the unbounded root's identity",
@@ -1085,7 +1068,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
             calls,
             "a fitting {wrap:?} must not dispatch a second shape",
         );
-        let bounded_key = fitting.request("ok", fit).unwrap().key;
+        let bounded_key = fitting.request("ok", fit).key;
         assert!(
             !text.shaper.has_cosmic_buffer(bounded_key),
             "a fitting {wrap:?} must not mint a bounded cache entry",
@@ -1096,9 +1079,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
             max_width_px: Some(20.0),
             ..fitting
         };
-        let truncated = text
-            .shape_run(run_slot, "wider than twenty", narrow, wrap)
-            .unwrap();
+        let truncated = text.shape_run(run_slot, "wider than twenty", narrow, wrap);
         assert_ne!(truncated.key, truncated.key.unbounded_version());
         assert_eq!(truncated.key.fit_q, fit as u8);
         assert!(truncated.size.w <= 20.0);
@@ -1106,10 +1087,8 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
 
     // A multi-line source collapses to its first line under Clip/Ellipsis,
     // so the unbounded root cannot stand in even when its widest line fits.
-    let multiline = text
-        .shape_run(slot_at(wid, 2), "a\nb", fitting, TextWrap::Ellipsis)
-        .unwrap();
-    let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).unwrap().key;
+    let multiline = text.shape_run(slot_at(wid, 2), "a\nb", fitting, TextWrap::Ellipsis);
+    let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).key;
     assert_eq!(
         multiline.key, bounded_key,
         "multi-line text must resolve through the truncating path",
@@ -1118,7 +1097,9 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
 }
 
 #[test]
-fn bounded_width_requires_a_finite_nonnegative_value() {
+fn bounded_width_canonicalizes_and_rejects_non_finite_values() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
     let base = TestShape {
         font_size_px: 16.0,
         line_height_px: 19.2,
@@ -1127,25 +1108,34 @@ fn bounded_width_requires_a_finite_nonnegative_value() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    let shaper = TextShaper::with_bundled_fonts();
+    let shaper = TextShaper::new();
+    let unbounded = shaper.measure("hi", base);
     assert!(
-        shaper.measure("hi", base).is_some(),
+        unbounded.key.max_width_px().is_none(),
         "None is the unbounded form",
     );
-    assert!(
-        shaper
-            .measure(
-                "hi",
-                TestShape {
-                    max_width_px: Some(0.0),
-                    ..base
-                },
-            )
-            .is_some(),
+    let zero = shaper.measure(
+        "hi",
+        TestShape {
+            max_width_px: Some(0.0),
+            ..base
+        },
+    );
+    assert_eq!(
+        zero.key.max_width_px(),
+        Some(0.0),
         "zero is a valid bounded width",
     );
+    // Negative widths (over-constrained layouts) clamp to the zero-width key.
+    let negative = shaper.measure(
+        "hi",
+        TestShape {
+            max_width_px: Some(-1.0),
+            ..base
+        },
+    );
+    assert_eq!(negative.key, zero.key);
     for (label, width) in [
-        ("negative", -1.0),
         ("NaN", f32::NAN),
         ("positive infinity", f32::INFINITY),
         ("negative infinity", f32::NEG_INFINITY),
@@ -1155,7 +1145,10 @@ fn bounded_width_requires_a_finite_nonnegative_value() {
             ..base
         };
         let calls = shaper.measure_calls();
-        assert!(shaper.measure("hi", params).is_none(), "{label}");
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| shaper.measure("hi", params))).is_err(),
+            "{label}: non-finite width must panic at request construction",
+        );
         assert_eq!(shaper.measure_calls(), calls, "{label}");
     }
 }
@@ -1368,7 +1361,7 @@ fn cache_key_collapses_halign_when_unbounded() {
 
 #[test]
 fn bounded_identity_cache_keys_width_and_halign() {
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let mut text = TextSystem::new(m.clone());
     let wid = WidgetId::from_hash("w");
     let params = TestShape {
@@ -1379,8 +1372,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine)
-        .unwrap();
+    text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
     let baseline = m.measure_calls();
 
     text.shape_run(
@@ -1392,8 +1384,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
             ..params
         },
         TextWrap::Wrap,
-    )
-    .unwrap();
+    );
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
 
@@ -1406,8 +1397,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
             ..params
         },
         TextWrap::Wrap,
-    )
-    .unwrap();
+    );
     assert_eq!(
         m.measure_calls(),
         after_left,
@@ -1423,8 +1413,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
             ..params
         },
         TextWrap::Wrap,
-    )
-    .unwrap();
+    );
     assert_eq!(
         m.measure_calls(),
         after_left + 1,
@@ -1440,8 +1429,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
             ..params
         },
         TextWrap::Wrap,
-    )
-    .unwrap();
+    );
     assert_eq!(
         m.measure_calls(),
         after_left + 2,
@@ -1472,8 +1460,7 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     };
 
     for ordinal in 0_u16..=256 {
-        text.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine)
-            .unwrap();
+        text.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine);
     }
     text.end_frame(&FxHashSet::default());
     assert_eq!(
@@ -1483,11 +1470,9 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     );
     assert_eq!(text.sweep_limit, 512);
 
-    text.shape_run(slot(a), "hi", params, TextWrap::SingleLine)
-        .unwrap();
+    text.shape_run(slot(a), "hi", params, TextWrap::SingleLine);
     for ordinal in 257_u16..=512 {
-        text.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine)
-            .unwrap();
+        text.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine);
     }
     text.end_frame(&FxHashSet::default());
     assert_eq!(
@@ -1508,8 +1493,7 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
         "257 survivors rebase to the next power-of-two rung",
     );
 
-    text.shape_run(slot(b), "yo", params, TextWrap::SingleLine)
-        .unwrap();
+    text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
     let removed = FxHashSet::from_iter([a]);
     text.end_frame(&removed);
     assert!(
@@ -1524,13 +1508,9 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
 
     let mut combined = TextSystem::default();
     for ordinal in 0_u16..=256 {
-        combined
-            .shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine)
-            .unwrap();
+        combined.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine);
     }
-    combined
-        .shape_run(slot(b), "yo", params, TextWrap::SingleLine)
-        .unwrap();
+    combined.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
     combined.end_frame(&FxHashSet::from_iter([a]));
     assert_eq!(
         combined.entries.len(),
@@ -1549,7 +1529,7 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
 /// putting the caret at the right edge of the wrap target.
 #[test]
 fn cursor_xy_on_empty_line_respects_right_align() {
-    let m = TextShaper::with_bundled_fonts();
+    let m = TextShaper::new();
     let text = "abc\n";
     let wrap = 200.0;
     let font = 16.0;

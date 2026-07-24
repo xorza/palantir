@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn frame_output_drains_commands_and_applies_close_veto() {
-        let shared = HostShared::new(TextShaper::default(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), None);
         let token = WindowToken(17);
         let mut driver = WindowDriver::builder(token, &shared).build();
         let opened = WindowToken(18);

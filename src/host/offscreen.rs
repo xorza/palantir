@@ -76,13 +76,24 @@ pub struct OffscreenHostBuilder {
     token: WindowToken,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    shaper: TextShaper,
+    /// `None` until [`Self::shaper`] overrides; resolved to the
+    /// bundled-fonts default lazily in [`Self::build`] so an override
+    /// never pays the font load.
+    shaper: Option<TextShaper>,
     collect_gpu_stats: bool,
     clock: Box<dyn Clock>,
     pixel_snap: bool,
 }
 
 impl OffscreenHostBuilder {
+    /// Replace the default bundled-fonts [`TextShaper`] — e.g. to share
+    /// one shaper's content cache across hosts, or to install the
+    /// test-only mono fallback.
+    pub fn shaper(mut self, shaper: TextShaper) -> Self {
+        self.shaper = Some(shaper);
+        self
+    }
+
     /// Opt into GPU timestamp and pipeline-statistics collection. The supplied
     /// device must have the corresponding wgpu features enabled.
     pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
@@ -109,7 +120,8 @@ impl OffscreenHostBuilder {
         let max_texture_dimension_2d =
             NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
                 .expect("device texture dimension limit is zero");
-        let shared = HostShared::new(self.shaper, Some(max_texture_dimension_2d));
+        let shaper = self.shaper.unwrap_or_default();
+        let shared = HostShared::new(shaper, Some(max_texture_dimension_2d));
         shared.resources.windows.set_live(self.token, true);
         let backend = WgpuBackend::new(
             self.device,
@@ -137,19 +149,19 @@ impl OffscreenHostBuilder {
 
 impl OffscreenHost {
     /// Start building an offscreen host whose single window is addressed by
-    /// `token`. GPU timing defaults off, the clock defaults to realtime, and
-    /// physical-pixel snapping defaults on.
+    /// `token`. The text shaper defaults to bundled fonts, GPU timing
+    /// defaults off, the clock defaults to realtime, and physical-pixel
+    /// snapping defaults on.
     pub fn builder(
         token: WindowToken,
         device: wgpu::Device,
         queue: wgpu::Queue,
-        shaper: TextShaper,
     ) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             token,
             device,
             queue,
-            shaper,
+            shaper: None,
             collect_gpu_stats: false,
             clock: Box::new(RealtimeClock::new()),
             pixel_snap: true,
@@ -470,7 +482,7 @@ mod tests {
 
     #[test]
     fn completion_discards_replayed_window_state_and_reuses_capacity() {
-        let shared = HostShared::new(TextShaper::default(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), None);
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut window = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))

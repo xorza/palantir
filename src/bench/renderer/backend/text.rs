@@ -223,8 +223,7 @@ fn make_run(
         line_height_px,
         FontFamily::Sans,
         FontWeight::Regular,
-    )
-    .expect("benchmark text metrics are valid");
+    );
     let measured = shaper.with_layout(request, |probe| probe.measurement);
     TextRun {
         key: measured.key,
@@ -373,7 +372,7 @@ fn run_batches(
 }
 
 fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
-    let shaper = TextShaper::with_bundled_fonts();
+    let shaper = TextShaper::new();
     let runs = build_runs(&shaper);
     let backend = BenchText::new(&g.device, FORMAT, shaper);
     // Viewport is no longer the text backend's concern — it reads

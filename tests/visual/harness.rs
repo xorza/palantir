@@ -32,7 +32,7 @@ thread_local! {
     /// we keep one per worker thread instead of globally. Fonts load
     /// once per thread; cargo test reuses workers across tests so the
     /// cost amortizes.
-    static COSMIC: TextShaper = TextShaper::with_bundled_fonts();
+    static COSMIC: TextShaper = TextShaper::new();
 }
 
 pub(crate) struct Harness {
@@ -60,7 +60,8 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::builder(WINDOW, gpu.device.clone(), gpu.queue.clone(), shaper)
+        let host = OffscreenHost::builder(WINDOW, gpu.device.clone(), gpu.queue.clone())
+            .shaper(shaper)
             .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO))
             .build();

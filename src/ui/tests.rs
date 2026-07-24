@@ -675,7 +675,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let shared = HostShared::new(TextShaper::with_bundled_fonts(), None);
+    let shared = HostShared::new(TextShaper::new(), None);
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
@@ -758,7 +758,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::with_bundled_fonts(), None);
+    let shared = HostShared::new(TextShaper::new(), None);
     let mut idle = Ui::new(shared.resources.clone());
     let mut active = Ui::new(shared.resources.clone());
     let display = Display::from_physical(SURFACE, 1.0);
@@ -1693,7 +1693,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::mono(), None);
+    let shared = HostShared::new(TextShaper::test_mono(), None);
     let atlas = shared.gradient_atlas.clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);

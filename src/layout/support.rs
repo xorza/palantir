@@ -50,7 +50,6 @@ impl<'a> TextShapeInput<'a> {
             self.family,
             self.weight,
         )
-        .expect("recorded text metrics were validated")
     }
 }
 

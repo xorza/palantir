@@ -55,7 +55,7 @@ impl Ui {
 
     pub fn for_test_text() -> Self {
         thread_local! {
-            static SHARED: TextShaper = TextShaper::with_bundled_fonts();
+            static SHARED: TextShaper = TextShaper::new();
         }
         let shared = HostShared::new(SHARED.with(Clone::clone), None);
         let mut ui = Self::new(shared.resources.clone());

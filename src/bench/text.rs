@@ -22,8 +22,7 @@ fn measure_truncated_width(
     width: f32,
 ) -> TextMeasurement {
     let request =
-        TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
-            .unwrap();
+        TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular);
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
 }
 
@@ -39,7 +38,7 @@ pub fn bench(c: &mut Criterion) {
         ordinal: 0,
     };
     c.bench_function("text_shape/ellipsis_reuse_hit", |b| {
-        let mut text_system = TextSystem::new(TextShaper::with_bundled_fonts());
+        let mut text_system = TextSystem::new(TextShaper::new());
         measure_truncated_width(&mut text_system, reuse_slot, TEXT, 80.0);
         b.iter(|| {
             black_box(measure_truncated_width(
@@ -58,7 +57,7 @@ pub fn bench(c: &mut Criterion) {
     c.bench_function("text_shape/ellipsis_width_churn", |b| {
         b.iter_batched(
             || {
-                let mut text = TextSystem::new(TextShaper::with_bundled_fonts());
+                let mut text = TextSystem::new(TextShaper::new());
                 measure_truncated_width(&mut text, churn_slot, TEXT, 39.75);
                 BenchState { text }
             },

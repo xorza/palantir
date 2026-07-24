@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn diagnostics_are_shared_across_capability_bundles() {
-        let shared = HostShared::new(TextShaper::default(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), None);
         let ui = shared.resources.clone();
         assert_eq!(
             *shared.resources.diagnostics.overlay.borrow(),
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn backend_and_ui_share_text_images_and_gpu_stats() {
-        let shared = HostShared::new(TextShaper::default(), Some(NonZeroU32::new(1).unwrap()));
+        let shared = HostShared::new(TextShaper::test_mono(), Some(NonZeroU32::new(1).unwrap()));
         let ui = shared.resources.clone();
         let backend = shared.backend_resources();
 
@@ -94,10 +94,10 @@ mod tests {
 
     #[test]
     fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
-        let first = HostShared::new(TextShaper::default(), None);
+        let first = HostShared::new(TextShaper::test_mono(), None);
         let first_window = first.resources.clone();
         let second_window = first.resources.clone();
-        let second = HostShared::new(TextShaper::default(), None).resources;
+        let second = HostShared::new(TextShaper::test_mono(), None).resources;
 
         first_window.clipboard.set("shared").unwrap();
 

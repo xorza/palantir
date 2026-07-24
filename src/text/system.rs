@@ -5,9 +5,9 @@
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
-use crate::text::key::{LineFit, TextShapeKey};
+use crate::text::key::TextShapeKey;
 use crate::text::wrap;
-use crate::text::wrap::TextWrap;
+use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{TextMeasurement, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
@@ -148,10 +148,7 @@ fn resolve_bounded_measurement(
     halign: HAlign,
     fit: LineFit,
 ) -> TextMeasurement {
-    let target_width_px = wrap::canonical_wrap_width(target_width_px);
-    let request = request
-        .bounded(target_width_px, halign, fit)
-        .expect("canonical text wrap width must be valid");
+    let request = request.bounded(target_width_px, halign, fit);
     if let Some(wrap) = entry.wrap
         && wrap.key == request.key
     {
@@ -205,7 +202,7 @@ pub(crate) mod test_support {
             text: &str,
             shape: TestShape,
             wrap_policy: TextWrap,
-        ) -> Option<TextMeasurement>;
+        ) -> TextMeasurement;
     }
 
     impl TextSystemTestExt for TextSystem {
@@ -215,23 +212,21 @@ pub(crate) mod test_support {
             text: &str,
             shape: TestShape,
             wrap_policy: TextWrap,
-        ) -> Option<TextMeasurement> {
-            shape.unbounded_request(text).map(|request| {
-                TextSystem::measure(
-                    self,
-                    slot,
-                    request,
-                    wrap_policy,
-                    shape.halign,
-                    shape.max_width_px,
-                )
-            })
+        ) -> TextMeasurement {
+            TextSystem::measure(
+                self,
+                slot,
+                shape.unbounded_request(text),
+                wrap_policy,
+                shape.halign,
+                shape.max_width_px,
+            )
         }
     }
 
     impl Default for TextSystem {
         fn default() -> Self {
-            Self::new(TextShaper::default())
+            Self::new(TextShaper::test_mono())
         }
     }
 

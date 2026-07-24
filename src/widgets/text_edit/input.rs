@@ -117,11 +117,12 @@ pub(crate) fn handle_input(
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
-        let hit = ui.resources.text.hit_test(
-            ctx.request(ed.text),
-            local_x,
-            if ctx.multiline { local_y } else { 0.0 },
-        );
+        let hit = ui
+            .resources
+            .text
+            .with_layout(ctx.request(ed.text), |probe| {
+                probe.byte_at_xy(local_x, if ctx.multiline { local_y } else { 0.0 })
+            });
         if resp_state.left.press_count() > 0 {
             // Press rising edge — the input layer counts the
             // multi-press run (`press_count`: 1 = single, 2 = double,
@@ -275,17 +276,20 @@ fn resolve_vertical(
     up: bool,
     extend: bool,
 ) {
-    let pos = shaper.cursor_position(ctx.request(editor.text), editor.state.caret);
-    let target = if up && pos.y_top <= 0.5 {
-        0
-    } else {
+    // One probe resolves both the caret position and the adjacent-line
+    // hit under a single shaper borrow and cache dispatch.
+    let target = shaper.with_layout(ctx.request(editor.text), |probe| {
+        let pos = probe.cursor_xy(editor.state.caret);
+        if up && pos.y_top <= 0.5 {
+            return 0;
+        }
         let probe_y = if up {
             pos.y_top - 1.0
         } else {
             pos.y_top + pos.line_height + 1.0
         };
-        shaper.hit_test(ctx.request(editor.text), pos.x, probe_y)
-    };
+        probe.byte_at_xy(pos.x, probe_y)
+    });
     editor.move_caret(target, extend);
 }
 

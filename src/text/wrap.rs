@@ -1,12 +1,28 @@
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::text::TextMeasurement;
-use crate::text::key::LineFit;
 
-/// Canonical width used by layout-time shaping and direct widget probes.
+/// Canonical width used by width-bounded cache identity
+/// ([`crate::text::key::TextShapeKey::bounded`]) and the fitting-truncate
+/// check in `TextSystem::measure`.
 #[inline]
 pub(crate) fn canonical_wrap_width(width: f32) -> f32 {
     width.max(0.0).fast_round()
+}
+
+/// How a width-bounded text run handles overflow. Maps from the public
+/// [`TextWrap`] via [`TextWrap::line_fit`] (`SingleLine`/`Scroll` stay on
+/// the unbounded path); folded into the shape cache key by
+/// [`TextSystem::measure`](crate::text::system::TextSystem::measure).
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum LineFit {
+    /// Multi-line reflow at the target width.
+    Wrap = 0,
+    /// One line, hard-cut to the target width with no marker.
+    Clip = 1,
+    /// One line, cut to the target width with a trailing `…`.
+    Ellipsis = 2,
 }
 
 /// Text shaping and overflow policy.

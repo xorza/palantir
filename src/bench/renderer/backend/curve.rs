@@ -18,7 +18,6 @@ use crate::primitives::color::Color;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::LineJoin;
-use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::window::WindowToken;
@@ -124,14 +123,9 @@ fn target(device: &wgpu::Device) -> wgpu::Texture {
 }
 
 fn host(gpu: &Gpu) -> OffscreenHost {
-    let mut host = OffscreenHost::builder(
-        WindowToken(0),
-        gpu.device.clone(),
-        gpu.queue.clone(),
-        TextShaper::with_bundled_fonts(),
-    )
-    .collect_gpu_stats(true)
-    .build();
+    let mut host = OffscreenHost::builder(WindowToken(0), gpu.device.clone(), gpu.queue.clone())
+        .collect_gpu_stats(true)
+        .build();
     host.ui().theme.panel_background = None;
     host
 }
