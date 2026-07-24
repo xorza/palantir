@@ -9,11 +9,10 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
+use crate::text::key::LineFit;
+use crate::text::probe::{self, CursorPos, SelectionRects};
 use crate::text::wrap::{TextWrap, canonical_wrap_width};
-use crate::text::{
-    CursorPos, FontFamily, FontWeight, LineFit, SelectionRects, TextMeasurement, TextShapeRequest,
-    TextShaper, text_in_rect,
-};
+use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest, TextShaper};
 use crate::ui::Ui;
 use crate::widgets::Widget;
 use crate::widgets::text_edit::model::EditState;
@@ -270,7 +269,7 @@ pub(crate) fn resolve_geometry(
         size: align_size,
     };
     let aligned = |size: Size| {
-        text_in_rect(
+        probe::text_in_rect(
             containing,
             Size::new(size.w, size.h.max(layout.ctx.line_height_px)),
             widget_align,

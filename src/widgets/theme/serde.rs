@@ -1,7 +1,8 @@
 use ::serde::de::Error as _;
 
 use crate::primitives::color::Color;
-use crate::text::{FontFamily, FontWeight, TEXT_METRICS_ERROR, text_metrics_valid};
+use crate::text::key::{self, TEXT_METRICS_ERROR};
+use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::{TEXT_SCALE_ERROR, text_scale_is_valid};
 
@@ -18,7 +19,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
     type Error = &'static str;
 
     fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
-        if !text_metrics_valid(
+        if !key::text_metrics_valid(
             style.font_size_px,
             style.font_size_px * style.line_height_mult,
         ) {

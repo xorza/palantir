@@ -1,11 +1,9 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
+use crate::text::system::{TextRunIdentity, TextSystem};
 use crate::text::wrap::TextWrap;
-use crate::text::{
-    FontFamily, FontWeight, TextMeasurement, TextRunIdentity, TextShapeRequest, TextShaper,
-    TextSystem,
-};
+use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest, TextShaper};
 use criterion::{BatchSize, Criterion};
 use std::hint::black_box;
 

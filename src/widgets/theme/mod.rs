@@ -27,7 +27,7 @@ use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
-use crate::text::text_metrics_valid;
+use crate::text::key;
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
@@ -146,7 +146,8 @@ impl Theme {
         let mut metrics_valid = true;
         self.for_each_text(|style| {
             let font_size_px = style.font_size_px * ratio;
-            metrics_valid &= text_metrics_valid(font_size_px, style.line_height_for(font_size_px));
+            metrics_valid &=
+                key::text_metrics_valid(font_size_px, style.line_height_for(font_size_px));
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(|t| t.font_size_px *= ratio);

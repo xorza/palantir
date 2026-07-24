@@ -26,7 +26,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::record_store::{GradientId, RecordedGradient};
 use crate::scene::shapes::paint::ShapeBrush;
-use crate::text::text_in_rect;
+use crate::text::probe;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -789,20 +789,20 @@ fn text_in_rect_cases() {
     let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
     let measured = Size::new(80.0, 16.0);
 
-    let r = text_in_rect(leaf, measured, Align::CENTER);
+    let r = probe::text_in_rect(leaf, measured, Align::CENTER);
     assert_eq!((r.min.x, r.min.y), (70.0, 32.0));
     assert_eq!((r.size.w, r.size.h), (80.0, 16.0));
 
-    let r = text_in_rect(leaf, measured, Align::default());
+    let r = probe::text_in_rect(leaf, measured, Align::default());
     assert_eq!((r.min.x, r.min.y), (10.0, 20.0));
 
-    let r = text_in_rect(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
+    let r = probe::text_in_rect(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
     assert_eq!((r.min.x, r.min.y), (10.0 + 120.0, 20.0 + 24.0));
 
     // Negative-slack guard: oversize text clamps to top-left.
     let small = Rect::new(0.0, 0.0, 50.0, 10.0);
     let oversize = Size::new(80.0, 16.0);
-    let r = text_in_rect(small, oversize, Align::CENTER);
+    let r = probe::text_in_rect(small, oversize, Align::CENTER);
     assert_eq!((r.min.x, r.min.y), (0.0, 0.0));
 }
 

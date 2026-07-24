@@ -23,9 +23,8 @@
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use crate::text::{
-    FontFamily, FontWeight, LineFit, TextMeasurement, TextShapeKey, TextShapeRequest,
-};
+use crate::text::key::{LineFit, TextShapeKey};
+use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     Weight, fontdb,

@@ -21,7 +21,7 @@ use crate::primitives::interned_str::InternedText;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
-use crate::text::TextRunIdentity;
+use crate::text::system::TextRunIdentity;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
