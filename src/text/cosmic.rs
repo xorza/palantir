@@ -99,6 +99,8 @@ struct CacheEntry {
     /// insert from the unbounded shaping result and reused for every later
     /// `measure` call that hits this entry.
     intrinsic_min: f32,
+    /// `true` when the shaped buffer laid out as one visual line.
+    single_line: bool,
     /// Monotonic access generation at the last measure or encode-time
     /// touch. The LRU recency key for [`CosmicMeasure::end_frame_evict`].
     last_used: u64,
@@ -255,6 +257,7 @@ impl CosmicMeasure {
                 buffer,
                 measured: extent.size,
                 intrinsic_min: extent.intrinsic_min,
+                single_line: extent.single_line,
                 last_used,
             },
         );
@@ -262,6 +265,7 @@ impl CosmicMeasure {
             size: extent.size,
             key,
             intrinsic_min: extent.intrinsic_min,
+            single_line: extent.single_line,
         }
     }
 
@@ -359,12 +363,15 @@ impl CosmicMeasure {
 
         let measured = shaped_extent(&buffer).size;
         let last_used = self.next_use_gen();
+        // Truncated runs are one natural line by construction: the cut
+        // prefix comes from the unbounded probe's first layout run.
         self.cache.insert(
             key,
             CacheEntry {
                 buffer,
                 measured,
                 intrinsic_min: 0.0,
+                single_line: true,
                 last_used,
             },
         );
@@ -372,6 +379,7 @@ impl CosmicMeasure {
             size: measured,
             key,
             intrinsic_min: 0.0,
+            single_line: true,
         }
     }
 
@@ -441,6 +449,7 @@ impl CosmicMeasure {
                 size: entry.measured,
                 key,
                 intrinsic_min: entry.intrinsic_min,
+                single_line: entry.single_line,
             }
         })
     }
@@ -499,6 +508,7 @@ fn first_line_right(buffer: &Buffer) -> f32 {
 struct ShapedExtent {
     size: Size,
     intrinsic_min: f32,
+    single_line: bool,
 }
 
 fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
@@ -506,7 +516,9 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
     let mut total_h = 0.0_f32;
     let mut intrinsic_min = 0.0_f32;
     let mut current_word_w = 0.0_f32;
+    let mut runs = 0usize;
     for run in buffer.layout_runs() {
+        runs += 1;
         // `line_w` is content width before per-line alignment; when
         // align shifts glyphs right, the glyph cluster's physical x
         // extends past `line_w`. Take the last glyph's trailing edge so
@@ -534,6 +546,7 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
     ShapedExtent {
         size: Size::new(max_w.ceil(), total_h.ceil()),
         intrinsic_min,
+        single_line: runs <= 1,
     }
 }
 
