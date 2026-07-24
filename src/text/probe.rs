@@ -25,6 +25,11 @@ pub(crate) struct TextLayoutProbe<'a> {
 }
 
 impl TextLayoutProbe<'_> {
+    /// (x, y_top, line_height) for the caret at `byte_offset`.
+    /// Multi-line aware via cosmic-text layout runs (each `\n` and each
+    /// soft-wrap segment becomes a distinct visual line). Mono fallback /
+    /// empty-text path collapses to a 1D layout — `y_top = 0`, `x` from a
+    /// flat mono per-byte estimate — usable for tests / headless.
     pub(crate) fn cursor_xy(&self, byte_offset: usize) -> CursorPos {
         let font_size_px = self.request.key.font_size_px();
         let line_height_px = self.request.key.line_height_px();
@@ -81,6 +86,10 @@ impl TextLayoutProbe<'_> {
         }
     }
 
+    /// Pixel-position → byte-offset. Multi-line aware on the cosmic
+    /// path via `Buffer::hit`. Mono / empty-text falls back to a 1D
+    /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
+    /// headless single-line click tests, ignores `y` entirely.
     pub(crate) fn byte_at_xy(&self, x: f32, y: f32) -> usize {
         match self.buffer {
             Some(buffer) => buffer
@@ -116,8 +125,7 @@ impl TextLayoutProbe<'_> {
     }
 }
 
-/// Caret position returned by
-/// [`TextShaper::cursor_position`](crate::text::TextShaper::cursor_position).
+/// Caret position returned by [`TextLayoutProbe::cursor_xy`].
 /// Top-left in text-local pixels plus the visual line's height (so the
 /// renderer can size the caret rect to match the line cosmic-text laid
 /// out, not the requested `line_height_px` — they differ when font

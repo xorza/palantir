@@ -9,9 +9,8 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
-use crate::text::key::LineFit;
 use crate::text::probe::{self, CursorPos, SelectionRects};
-use crate::text::wrap::{TextWrap, canonical_wrap_width};
+use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest, TextShaper};
 use crate::ui::Ui;
 use crate::widgets::Widget;
@@ -124,12 +123,9 @@ impl ShapeCtx {
             self.line_height_px,
             self.family,
             self.weight,
-        )
-        .expect("TextEdit metrics were validated");
+        );
         match self.wrap_target {
-            Some(width) => request
-                .bounded(width, self.halign, LineFit::Wrap)
-                .expect("TextEdit wrap target was validated"),
+            Some(width) => request.bounded(width, self.halign, LineFit::Wrap),
             None => request,
         }
     }
@@ -162,10 +158,11 @@ pub(crate) struct ResolvedLayout {
 
 pub(crate) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
     let caret_room = input.caret_width.max(0.0);
+    // Raw inner width; `TextShapeKey::bounded` owns the canonical rounding.
     let wrap_target = if input.multiline {
         input
             .response_rect
-            .map(|rect| canonical_wrap_width(rect.size.w - input.padding.horiz()))
+            .map(|rect| rect.size.w - input.padding.horiz())
     } else {
         None
     };

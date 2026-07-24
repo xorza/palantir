@@ -59,7 +59,6 @@ use crate::primitives::color::Color;
 use crate::renderer::backend::write_stats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
-use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::window::WindowToken;
@@ -160,14 +159,9 @@ fn gpu() -> &'static Gpu {
 /// the shared bench device with GPU instrumentation on. Every bench arm
 /// wants the same shape — bundled fonts and a timestamp-enabled device.
 fn bench_host(g: &Gpu) -> OffscreenHost {
-    OffscreenHost::builder(
-        WindowToken(0),
-        g.device.clone(),
-        g.queue.clone(),
-        TextShaper::with_bundled_fonts(),
-    )
-    .collect_gpu_stats(true)
-    .build()
+    OffscreenHost::builder(WindowToken(0), g.device.clone(), g.queue.clone())
+        .collect_gpu_stats(true)
+        .build()
 }
 
 fn frame_offscreen(

@@ -4,7 +4,8 @@
 //! tests and headless tools without a font system.
 
 use crate::primitives::size::Size;
-use crate::text::key::{LineFit, TextShapeKey};
+use crate::text::key::TextShapeKey;
+use crate::text::wrap::LineFit;
 use crate::text::{TextMeasurement, TextShapeRequest};
 
 /// Deterministic placeholder metric used when [`crate::Ui`] has no

@@ -193,7 +193,7 @@ impl<T> WinitRuntime<T> {
             first_surface,
         } = GpuInit::new(&window, &config)?;
         let shared = HostShared::with_clipboard(
-            TextShaper::with_bundled_fonts(),
+            TextShaper::new(),
             window_clipboard(),
             Some(surfaces.max_texture_dim),
         );

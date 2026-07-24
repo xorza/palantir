@@ -23,7 +23,8 @@
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use crate::text::key::{LineFit, TextShapeKey};
+use crate::text::key::TextShapeKey;
+use crate::text::wrap::LineFit;
 use crate::text::{FontFamily, FontWeight, TextMeasurement, TextShapeRequest};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
@@ -114,7 +115,7 @@ struct CacheEntry {
 /// [`FontWeight`] on each measurement; internal named lookups resolve against
 /// the bundled set.
 #[derive(Debug)]
-pub struct CosmicMeasure {
+pub(crate) struct CosmicMeasure {
     font_system: FontSystem,
     cache: FxHashMap<TextShapeKey, CacheEntry>,
     /// Monotonic cache-access counter. Unique recency values let eviction
@@ -149,7 +150,7 @@ impl CosmicMeasure {
     /// don't cover — so text metrics are *not* guaranteed identical
     /// across machines. Each measurement selects its [`FontFamily`] and
     /// [`FontWeight`].
-    pub fn with_bundled_fonts() -> Self {
+    pub(crate) fn with_bundled_fonts() -> Self {
         let sources = [INTER, JBMONO]
             .into_iter()
             .map(|b| fontdb::Source::Binary(Arc::new(b)));

@@ -515,8 +515,7 @@ mod test_support {
             line_height_px,
             FontFamily::Sans,
             FontWeight::Regular,
-        )
-        .expect("test text metrics are valid");
+        );
         let m = shaper.with_layout(request, |probe| probe.measurement);
         TextRun {
             key: m.key,
@@ -637,7 +636,7 @@ mod gpu_regression {
     #[test]
     fn cached_run_keeps_its_atlas_slots_live() {
         let gpu = test_gpu();
-        let shaper = TextShaper::with_bundled_fonts();
+        let shaper = TextShaper::new();
         let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
@@ -726,7 +725,7 @@ mod gpu_regression {
     #[test]
     fn slot_generation_invalidates_only_referencing_run() {
         let gpu = test_gpu();
-        let shaper = TextShaper::with_bundled_fonts();
+        let shaper = TextShaper::new();
         let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
@@ -830,7 +829,7 @@ mod gpu_regression {
     #[test]
     fn deferred_upload_keeps_batches_distinct() {
         let gpu = test_gpu();
-        let shaper = TextShaper::with_bundled_fonts();
+        let shaper = TextShaper::new();
         let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
@@ -917,7 +916,7 @@ mod gpu_regression {
     #[test]
     fn partially_culled_run_is_not_cached() {
         let gpu = test_gpu();
-        let shaper = TextShaper::with_bundled_fonts();
+        let shaper = TextShaper::new();
         let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
@@ -1016,7 +1015,7 @@ mod gpu_regression {
     #[test]
     fn swept_empty_glyph_reinserts() {
         let gpu = test_gpu();
-        let shaper = TextShaper::with_bundled_fonts();
+        let shaper = TextShaper::new();
         let store = RecordStore::default();
         let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 

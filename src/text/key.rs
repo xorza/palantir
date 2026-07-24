@@ -1,10 +1,10 @@
 //! Canonical shaped-run identity: shaping parameters quantized into a
-//! stable, purely integral cache key, plus the width-bounded [`LineFit`]
-//! vocabulary the key discriminates on.
+//! stable, purely integral cache key.
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::approx::EPS;
 use crate::primitives::num::F32Ext;
+use crate::text::wrap::{self, LineFit};
 use crate::text::{FontFamily, FontWeight};
 
 pub(crate) const TEXT_METRICS_ERROR: &str =
@@ -82,17 +82,21 @@ impl TextShapeKey {
         self.text_hash == 0
     }
 
+    /// Record time already rejected invalid metrics (`Shape::is_noop`,
+    /// theme validation), so reaching here with them is a logic error —
+    /// debug-asserted rather than re-validated on the shaping hot path.
     pub(crate) fn unbounded(
         text_hash: u64,
         font_size_px: f32,
         line_height_px: f32,
         family: FontFamily,
         weight: FontWeight,
-    ) -> Option<Self> {
-        if !text_metrics_valid(font_size_px, line_height_px) {
-            return None;
-        }
-        Some(Self {
+    ) -> Self {
+        debug_assert!(
+            text_metrics_valid(font_size_px, line_height_px),
+            "{TEXT_METRICS_ERROR}",
+        );
+        Self {
             text_hash: text_hash.max(1),
             size_q: quantize_metric(font_size_px),
             max_w_q: MAX_W_NONE,
@@ -101,22 +105,24 @@ impl TextShapeKey {
             weight_q: weight as u8,
             halign_q: HAlign::Auto as u8,
             fit_q: LineFit::Wrap as u8,
-        })
+        }
     }
 
-    pub(crate) fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Option<Self> {
-        if !max_width_px.is_finite() || max_width_px < 0.0 {
-            return None;
-        }
-        Some(Self {
-            max_w_q: quantize_width(max_width_px).min(MAX_W_NONE - 1),
+    /// Owns width normalization: the raw width canonicalizes to the whole-px
+    /// wrap grid here, so every construction path mints the same identity.
+    /// Negative widths (over-constrained layouts) clamp to zero; non-finite
+    /// widths are a logic error — callers gate on `is_finite`.
+    pub(crate) fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
+        debug_assert!(max_width_px.is_finite(), "text wrap width must be finite");
+        Self {
+            max_w_q: quantize_width(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
             halign_q: match fit {
                 LineFit::Wrap => halign as u8,
                 LineFit::Clip | LineFit::Ellipsis => HAlign::Auto as u8,
             },
             fit_q: fit as u8,
             ..self
-        })
+        }
     }
 
     pub(crate) fn unbounded_version(self) -> Self {
@@ -187,21 +193,4 @@ fn quantize_metric(value: f32) -> u32 {
 
 fn dequantize(value: u32) -> f32 {
     value as f32 / 64.0
-}
-
-/// How a width-bounded text run handles overflow. Maps from the public
-/// [`crate::TextWrap`] via
-/// [`TextWrap::line_fit`](crate::text::wrap::TextWrap::line_fit)
-/// (`SingleLine`/`Scroll` stay on the unbounded path); folded into the
-/// shape cache key by
-/// [`TextSystem::measure`](crate::text::system::TextSystem::measure).
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum LineFit {
-    /// Multi-line reflow at the target width.
-    Wrap = 0,
-    /// One line, hard-cut to the target width with no marker.
-    Clip = 1,
-    /// One line, cut to the target width with a trailing `…`.
-    Ellipsis = 2,
 }
