@@ -31,6 +31,7 @@ use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::shape::rect::RectKind;
+use crate::text::key::ShapedTextRef;
 use crate::text::probe;
 use std::time::Duration;
 
@@ -357,7 +358,7 @@ fn emit_one_shape(
                     size: shaped.measured,
                 },
             };
-            out.draw_text(rect, *color, shaped.key, text.source);
+            out.draw_text(rect, *color, ShapedTextRef::new(shaped.key, text));
         }
         ShapeRecord::Polyline {
             width,

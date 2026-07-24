@@ -3,6 +3,7 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
+use crate::common::hash;
 use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
@@ -16,6 +17,7 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
+use crate::text::key::TextShapeKey;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight, TextShapeRequest};
 use glam::Vec2;
@@ -27,6 +29,12 @@ use glam::Vec2;
 pub(crate) struct TextShapeInput<'a> {
     pub(crate) ordinal: u16,
     pub(crate) text: &'a str,
+    /// Content hash retained on the [`RecordedText`] at record time —
+    /// [`Self::shape_request`] reuses it so shaping passes don't rescan
+    /// the source bytes.
+    ///
+    /// [`RecordedText`]: crate::primitives::interned_str::RecordedText
+    pub(crate) text_hash: u64,
     pub(crate) font_size_px: f32,
     pub(crate) line_height_px: f32,
     pub(crate) wrap: TextWrap,
@@ -43,13 +51,21 @@ pub(crate) struct TextShapeInput<'a> {
 
 impl<'a> TextShapeInput<'a> {
     pub(crate) fn shape_request(&self) -> TextShapeRequest<'a> {
-        TextShapeRequest::unbounded(
-            self.text,
-            self.font_size_px,
-            self.line_height_px,
-            self.family,
-            self.weight,
-        )
+        debug_assert_eq!(
+            self.text_hash,
+            hash::hash_str(self.text),
+            "retained text hash out of sync with the resolved source bytes",
+        );
+        TextShapeRequest {
+            text: self.text,
+            key: TextShapeKey::unbounded(
+                self.text_hash,
+                self.font_size_px,
+                self.line_height_px,
+                self.family,
+                self.weight,
+            ),
+        }
     }
 }
 
@@ -123,6 +139,7 @@ fn text_shape_input<'a>(
         } => Some(TextShapeInput {
             ordinal: checked_text_ordinal(ordinal),
             text: text.resolve(interned_text),
+            text_hash: text.hash,
             font_size_px: *font_size_px,
             line_height_px: *line_height_px,
             wrap: *wrap,
@@ -450,7 +467,12 @@ pub(crate) fn cross_place(
 
 #[cfg(test)]
 mod tests {
-    use crate::layout::support::checked_text_ordinal;
+    use crate::common::hash;
+    use crate::layout::support::{TextShapeInput, checked_text_ordinal};
+    use crate::layout::types::align::HAlign;
+    use crate::text::key::TextShapeKey;
+    use crate::text::wrap::TextWrap;
+    use crate::text::{FontFamily, FontWeight};
 
     #[test]
     fn text_ordinal_covers_the_u16_domain_and_rejects_the_next_run() {
@@ -460,5 +482,37 @@ mod tests {
             std::panic::catch_unwind(|| checked_text_ordinal(usize::from(u16::MAX) + 1)).is_err(),
             "the 65537th direct text run must exceed the identity key",
         );
+    }
+
+    #[test]
+    fn shape_request_reuses_the_recorded_hash_and_rejects_stale_ones() {
+        let input = |text_hash| TextShapeInput {
+            ordinal: 0,
+            text: "hello",
+            text_hash,
+            font_size_px: 16.0,
+            line_height_px: 19.2,
+            wrap: TextWrap::SingleLine,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        };
+        let request = input(hash::hash_str("hello")).shape_request();
+        assert_eq!(request.text, "hello");
+        assert_eq!(
+            request.key,
+            TextShapeKey::unbounded(
+                hash::hash_str("hello"),
+                16.0,
+                19.2,
+                FontFamily::Sans,
+                FontWeight::Regular,
+            ),
+            "the retained hash must mint the same key re-hashing would",
+        );
+        // A retained hash that no longer matches the resolved bytes is a
+        // logic error the debug assert pins.
+        let stale = std::panic::catch_unwind(|| input(1).shape_request());
+        assert!(stale.is_err(), "stale retained hash must panic");
     }
 }

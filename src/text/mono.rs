@@ -1,84 +1,9 @@
-//! Deterministic placeholder shaping used when no
-//! [`CosmicMeasure`](crate::text::cosmic::CosmicMeasure) is installed:
-//! every glyph is `font_size_px * 0.5` wide, so the engine can run in
-//! tests and headless tools without a font system.
-
-use crate::primitives::size::Size;
-use crate::text::key::TextShapeKey;
-use crate::text::wrap::LineFit;
-use crate::text::{TextMeasurement, TextShapeRequest};
-
-/// Deterministic placeholder metric used when [`crate::Ui`] has no
-/// cosmic shaper installed. Every glyph is `font_size_px * 0.5` wide and
-/// the line uses `line_height_px`; wrapping is approximated by simple
-/// character-count division. At the historical 16 px font size this is the
-/// 8 px/char × 16 px line layout the engine was hard-coded to before text
-/// shaping landed, which is what existing layout tests pin.
-///
-/// Always returns [`TextShapeKey::INVALID`] — there's no shaped buffer to
-/// look up, so the renderer drops these runs cleanly.
-pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextMeasurement {
-    let text = request.text;
-    if text.is_empty() {
-        return TextMeasurement::ZERO;
-    }
-    let font_size_px = request.key.font_size_px();
-    let line_height_px = request.key.line_height_px();
-    let max_width_px = request.key.max_width_px();
-    let fit = request.key.fit();
-    let glyph_w = font_size_px * 0.5;
-    let line_h = line_height_px;
-    // Mono is a deterministic stub — count one "char" per byte. Correct for
-    // ASCII (which is what every test and bench uses); for multibyte input
-    // it overcounts, but mono is not a production path.
-    let total_chars = text.len() as f32;
-    let unbroken_w = total_chars * glyph_w;
-    let truncating_fit = matches!(fit, LineFit::Clip | LineFit::Ellipsis);
-
-    let (size, single_line) = match max_width_px {
-        None => (Size::new(unbroken_w, line_h), true),
-        Some(max) if max >= unbroken_w => (Size::new(unbroken_w, line_h), true),
-        // Clip/ellipsis is one line capped at the available width.
-        Some(max) if truncating_fit => (Size::new(max, line_h), true),
-        Some(max) => {
-            let chars_per_line = (max / glyph_w).floor().max(1.0);
-            let lines = (total_chars / chars_per_line).ceil().max(1.0);
-            (
-                Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h),
-                lines <= 1.0,
-            )
-        }
-    };
-    // A truncated run shrinks to nothing — zero floor. Otherwise mono has
-    // no real word boundaries, so fall back to "the longest run of
-    // non-space bytes" as the wrap floor.
-    let intrinsic_min = if truncating_fit {
-        0.0
-    } else {
-        let mut longest = 0u32;
-        let mut run = 0u32;
-        for &b in text.as_bytes() {
-            if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
-                if run > longest {
-                    longest = run;
-                }
-                run = 0;
-            } else {
-                run += 1;
-            }
-        }
-        if run > longest {
-            longest = run;
-        }
-        longest as f32 * glyph_w
-    };
-    TextMeasurement {
-        size,
-        key: TextShapeKey::INVALID,
-        intrinsic_min,
-        single_line,
-    }
-}
+//! Deterministic placeholder shaping behind the test/internals-only
+//! `TextShaper::test_mono`: every glyph is `font_size_px * 0.5` wide, so
+//! the engine can run in tests and headless tools without a font system.
+//! The gated [`test_support::measure`] carries the whole metric; only the
+//! 1D caret helpers below stay in production builds — the probe reuses
+//! them as its empty-text (invalid-key) path.
 
 /// Caret-x along a single-line mono layout (0.5×font_size per byte).
 /// Multi-line aware callers should go through `cursor_xy` instead —
@@ -105,4 +30,84 @@ pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
         }
     }
     best_off
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    use crate::primitives::size::Size;
+    use crate::text::key::TextShapeKey;
+    use crate::text::wrap::LineFit;
+    use crate::text::{TextMeasurement, TextShapeRequest};
+
+    /// Deterministic placeholder metric behind `TextShaper::test_mono`.
+    /// Every glyph is `font_size_px * 0.5` wide and the line uses
+    /// `line_height_px`; wrapping is approximated by simple
+    /// character-count division. At the historical 16 px font size this is the
+    /// 8 px/char × 16 px line layout the engine was hard-coded to before text
+    /// shaping landed, which is what existing layout tests pin.
+    ///
+    /// Always returns [`TextShapeKey::INVALID`] — there's no shaped buffer to
+    /// look up, so the renderer drops these runs cleanly.
+    pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextMeasurement {
+        let text = request.text;
+        if text.is_empty() {
+            return TextMeasurement::ZERO;
+        }
+        let font_size_px = request.key.font_size_px();
+        let line_height_px = request.key.line_height_px();
+        let max_width_px = request.key.max_width_px();
+        let fit = request.key.fit();
+        let glyph_w = font_size_px * 0.5;
+        let line_h = line_height_px;
+        // Mono is a deterministic stub — count one "char" per byte. Correct for
+        // ASCII (which is what every test and bench uses); for multibyte input
+        // it overcounts, but mono is not a production path.
+        let total_chars = text.len() as f32;
+        let unbroken_w = total_chars * glyph_w;
+        let truncating_fit = matches!(fit, LineFit::Clip | LineFit::Ellipsis);
+
+        let (size, single_line) = match max_width_px {
+            None => (Size::new(unbroken_w, line_h), true),
+            Some(max) if max >= unbroken_w => (Size::new(unbroken_w, line_h), true),
+            // Clip/ellipsis is one line capped at the available width.
+            Some(max) if truncating_fit => (Size::new(max, line_h), true),
+            Some(max) => {
+                let chars_per_line = (max / glyph_w).floor().max(1.0);
+                let lines = (total_chars / chars_per_line).ceil().max(1.0);
+                (
+                    Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h),
+                    lines <= 1.0,
+                )
+            }
+        };
+        // A truncated run shrinks to nothing — zero floor. Otherwise mono has
+        // no real word boundaries, so fall back to "the longest run of
+        // non-space bytes" as the wrap floor.
+        let intrinsic_min = if truncating_fit {
+            0.0
+        } else {
+            let mut longest = 0u32;
+            let mut run = 0u32;
+            for &b in text.as_bytes() {
+                if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+                    if run > longest {
+                        longest = run;
+                    }
+                    run = 0;
+                } else {
+                    run += 1;
+                }
+            }
+            if run > longest {
+                longest = run;
+            }
+            longest as f32 * glyph_w
+        };
+        TextMeasurement {
+            size,
+            key: TextShapeKey::INVALID,
+            intrinsic_min,
+            single_line,
+        }
+    }
 }

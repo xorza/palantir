@@ -1,8 +1,9 @@
 use crate::common::hash::hash_str;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::CosmicMeasure;
-use crate::text::key::TextShapeKey;
+use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
 use crate::text::system::{self, TextRunSlot, TextSystem};
@@ -44,7 +45,7 @@ fn mono_shape(
         Some(width) => request.bounded(width, HAlign::Auto, fit),
         None => request,
     };
-    mono::measure(request)
+    mono::test_support::measure(request)
 }
 
 fn measure_truncated(
@@ -2293,4 +2294,39 @@ fn end_frame_evict_is_noop_under_budget() {
     for k in &keys {
         assert!(c.buffer_for(*k).is_some(), "every rotation width retained");
     }
+}
+
+/// `ShapedTextRef` is the render-handoff pairing of a shaped-buffer key
+/// with its record-store source bytes: `new` pins the pairing against the
+/// recorded content hash, `resolve_request` restores the exact request.
+#[test]
+fn shaped_text_ref_resolves_the_recorded_pair_and_rejects_mismatches() {
+    let store = RecordStore::default();
+    let recorded = store.record_text(store.intern_str("hi"));
+    assert_eq!(recorded.hash, hash_str("hi"));
+    let key = TextShapeKey::unbounded(
+        recorded.hash,
+        16.0,
+        19.2,
+        FontFamily::Sans,
+        FontWeight::Regular,
+    );
+    let text_ref = ShapedTextRef::new(key, &recorded);
+    let other = store.record_text(store.intern_str("bye"));
+
+    {
+        let payloads = store.payloads.borrow();
+        let interned = payloads.interned_text();
+        let request = text_ref.resolve_request(&interned);
+        assert_eq!(request.text, "hi");
+        assert_eq!(request.key, key);
+    }
+
+    // Pairing a key with a different run's source bytes is the logic
+    // error the constructor's O(1) hash comparison pins.
+    let mismatch = std::panic::catch_unwind(|| ShapedTextRef::new(key, &other));
+    assert!(
+        mismatch.is_err(),
+        "mismatched key/source pairing must panic"
+    );
 }

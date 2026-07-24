@@ -714,7 +714,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         .encode_cmds()
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.key),
+            Command::DrawText(payload) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -789,7 +789,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         .encode_cmds()
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.key),
+            Command::DrawText(payload) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -821,7 +821,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         .encode_cmds()
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.key),
+            Command::DrawText(payload) => Some(payload.text.key),
             _ => None,
         })
         .collect();

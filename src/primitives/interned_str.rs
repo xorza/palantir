@@ -65,7 +65,10 @@ pub(crate) struct TextSource {
 #[derive(Clone, Debug)]
 pub(crate) struct RecordedText {
     pub(crate) source: TextSource,
-    hash: u64,
+    /// `hash_str` of the recorded bytes, computed once at record time.
+    /// Downstream consumers (scene identity, [`crate::text::key::TextShapeKey`])
+    /// reuse it instead of rescanning the text.
+    pub(crate) hash: u64,
 }
 
 impl InternedStr {

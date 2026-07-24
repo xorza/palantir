@@ -350,7 +350,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
             entries.push((
                 payload.rect.min.x,
                 payload.rect.min.y,
-                payload.key.text_hash,
+                payload.text.key.text_hash,
             ));
         }
     }

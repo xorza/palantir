@@ -362,7 +362,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         .expect("Text widget must emit a DrawText command");
     let scene = ui.frame_scene();
     let interned_text = scene.payloads.interned_text();
-    assert_eq!(payload.source.resolve(&interned_text), "hi");
+    assert_eq!(payload.text.source.resolve(&interned_text), "hi");
     assert!(
         !ui.resources.text.has_cosmic_buffer(key),
         "frontend encoding must not reconstruct an evicted text buffer",
@@ -395,7 +395,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         .expect("replayed text must still emit");
     let scene = ui.frame_scene();
     let interned_text = scene.payloads.interned_text();
-    assert_eq!(payload.source.resolve(&interned_text), "hi");
+    assert_eq!(payload.text.source.resolve(&interned_text), "hi");
     assert!(
         !ui.resources.text.has_cosmic_buffer(replayed_key),
         "frontend replay must leave reconstruction to an encoded-cache miss",

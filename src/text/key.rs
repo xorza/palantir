@@ -1,11 +1,13 @@
 //! Canonical shaped-run identity: shaping parameters quantized into a
 //! stable, purely integral cache key.
 
+use crate::common::hash;
 use crate::layout::types::align::HAlign;
 use crate::primitives::approx::EPS;
+use crate::primitives::interned_str::{InternedText, RecordedText, TextSource};
 use crate::primitives::num::F32Ext;
 use crate::text::wrap::{self, LineFit};
-use crate::text::{FontFamily, FontWeight};
+use crate::text::{FontFamily, FontWeight, TextShapeRequest};
 
 pub(crate) const TEXT_METRICS_ERROR: &str =
     "font size and line height must be finite and above the UI epsilon";
@@ -24,8 +26,8 @@ pub(crate) fn text_metrics_valid(font_size_px: f32, line_height_px: f32) -> bool
 ///
 /// Three quantized fields rather than one collapsed `u64` so the renderer
 /// can also reuse the size/width components if it wants to (e.g. group runs
-/// by size for atlas bin reuse). [`TextShapeKey::INVALID`] is the sentinel
-/// returned by the mono fallback — the renderer treats it as "drop this run".
+/// by size for atlas bin reuse). [`TextShapeKey::INVALID`] tags a measurement
+/// with no shaped buffer — the encoder drops those runs before paint.
 #[repr(C)]
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextShapeKey {
@@ -65,8 +67,10 @@ pub(crate) struct TextShapeKey {
 const MAX_W_NONE: u32 = u32::MAX;
 
 impl TextShapeKey {
-    /// Sentinel returned by the mono fallback. Real keys always carry a
-    /// nonzero text hash, so that field alone tags validity.
+    /// Sentinel for a measurement with no shaped buffer: empty text in
+    /// production, plus every run under the test-only mono fallback. Real
+    /// keys always carry a nonzero text hash, so that field alone tags
+    /// validity.
     pub(crate) const INVALID: Self = Self {
         text_hash: 0,
         size_q: 0,
@@ -179,6 +183,53 @@ impl TextShapeKey {
             1 => LineFit::Clip,
             2 => LineFit::Ellipsis,
             other => panic!("invalid LineFit discriminant in TextShapeKey: {other}"),
+        }
+    }
+}
+
+/// One shaped run's render-handoff identity: the shaped-buffer cache key
+/// plus the record-store span of the exact source bytes it hashes. Minted
+/// once by the encoder via [`Self::new`] (which checks the pairing against
+/// the recorded content hash) and carried as a unit through the command
+/// buffer, composer, and text backend so the key cannot drift from its
+/// bytes between layers; [`Self::resolve_request`] is the single place the
+/// pair turns back into a shaping request.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ShapedTextRef {
+    pub(crate) key: TextShapeKey,
+    pub(crate) source: TextSource,
+}
+
+impl ShapedTextRef {
+    /// Pair a measured cache key with the recorded source it was shaped
+    /// from. The O(1) hash comparison catches a mis-paired key/source at
+    /// the only place both sides are still individually known.
+    pub(crate) fn new(key: TextShapeKey, text: &RecordedText) -> Self {
+        debug_assert_eq!(
+            key.text_hash,
+            text.hash.max(1),
+            "shaped-text key paired with a different run's source bytes",
+        );
+        Self {
+            key,
+            source: text.source,
+        }
+    }
+
+    /// Resolve the retained bytes and rebuild the shaping request the
+    /// backend replays on an encoded-cache miss. Debug-checks that the
+    /// resolved bytes still hash to the key's content hash — the contract
+    /// that makes reusing a cached shaped buffer sound.
+    pub(crate) fn resolve_request<'a>(
+        self,
+        interned_text: &'a InternedText<'_>,
+    ) -> TextShapeRequest<'a> {
+        let text = self.source.resolve(interned_text);
+        debug_assert_eq!(hash::hash_str(text).max(1), self.key.text_hash);
+        TextShapeRequest {
+            text,
+            key: self.key,
         }
     }
 }

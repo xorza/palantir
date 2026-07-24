@@ -42,12 +42,11 @@
 
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::FillKind;
-use crate::primitives::interned_str::TextSource;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::ShapeStroke;
-use crate::text::key::TextShapeKey;
+use crate::text::key::ShapedTextRef;
 
 pub(crate) mod payload;
 
@@ -270,19 +269,8 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn draw_text(
-        &mut self,
-        rect: Rect,
-        color: ColorF16,
-        key: TextShapeKey,
-        source: TextSource,
-    ) {
-        let payload = DrawTextPayload {
-            rect,
-            color,
-            key,
-            source,
-        };
+    pub(crate) fn draw_text(&mut self, rect: Rect, color: ColorF16, text: ShapedTextRef) {
+        let payload = DrawTextPayload { rect, color, text };
         if payload.is_noop() {
             return;
         }

@@ -22,7 +22,6 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use crate::common::hash;
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
@@ -199,7 +198,6 @@ impl CosmicMeasure {
         out: &mut Vec<PlacedGlyph>,
     ) -> bool {
         debug_assert!(!request.key.is_invalid());
-        debug_assert_eq!(hash::hash_str(request.text), request.key.text_hash);
         self.ensure_buffer(request);
         let buffer = self
             .buffer_for(request.key)
