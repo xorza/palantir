@@ -1,5 +1,8 @@
 use crate::common::hash::hash_str;
 use crate::text::cosmic::CosmicMeasure;
+use crate::text::test_support::{
+    CosmicMeasureTestExt, TestShape, TextShaperTestExt, TextSystemTestExt,
+};
 use crate::text::*;
 
 /// Line-height equal to font size keeps the mono-fallback line
@@ -17,15 +20,37 @@ fn identity_at(widget_id: WidgetId, ordinal: u16) -> TextRunIdentity {
     TextRunIdentity { widget_id, ordinal }
 }
 
+fn mono_shape(
+    text: &str,
+    font_size_px: f32,
+    line_height_px: f32,
+    max_width_px: Option<f32>,
+    fit: LineFit,
+) -> TextMeasurement {
+    let request = TextShapeRequest::unbounded(
+        text,
+        font_size_px,
+        line_height_px,
+        FontFamily::Sans,
+        FontWeight::Regular,
+    )
+    .unwrap();
+    let request = match max_width_px {
+        Some(width) => request.bounded(width, HAlign::Auto, fit).unwrap(),
+        None => request,
+    };
+    mono_measure(request)
+}
+
 fn measure_truncated(
     cosmic: &mut CosmicMeasure,
     text: &str,
-    params: ShapeParams,
+    params: TestShape,
     fit: LineFit,
 ) -> TextMeasurement {
     let unbounded = cosmic.measure(
         text,
-        ShapeParams {
+        TestShape {
             max_width_px: None,
             halign: HAlign::Auto,
             ..params
@@ -44,7 +69,7 @@ struct GlyphPosition {
     end: usize,
 }
 
-fn glyph_positions(cosmic: &CosmicMeasure, key: TextCacheKey) -> Vec<GlyphPosition> {
+fn glyph_positions(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPosition> {
     cosmic
         .buffer_for(key)
         .expect("shaped buffer must exist")
@@ -109,24 +134,14 @@ fn mono_measure_cases() {
         ),
     ];
     for (label, text, fs, lh_v, max_w, expected) in cases {
-        let r = mono_measure(
-            text,
-            TextMetrics::new(*fs, *lh_v).unwrap(),
-            *max_w,
-            LineFit::Wrap,
-        );
+        let r = mono_shape(text, *fs, *lh_v, *max_w, LineFit::Wrap);
         assert_eq!(r.size, *expected, "case: {label}");
     }
     // Empty also produces the INVALID sentinel.
     assert!(
-        mono_measure(
-            "",
-            TextMetrics::new(16.0, lh(16.0)).unwrap(),
-            None,
-            LineFit::Wrap,
-        )
-        .key
-        .is_invalid()
+        mono_shape("", 16.0, lh(16.0), None, LineFit::Wrap)
+            .key
+            .is_invalid()
     );
 }
 
@@ -151,7 +166,7 @@ fn cursor_xy_x_cases() {
             m.cursor_xy(
                 text,
                 *offset,
-                ShapeParams {
+                TestShape {
                     font_size_px: *fs,
                     line_height_px: *lh_v,
                     max_width_px: None,
@@ -170,7 +185,7 @@ fn cursor_xy_x_cases() {
 #[test]
 fn cosmic_text_cache_key_distinguishes_line_height() {
     // Pin: at the same font-size, different leadings produce
-    // different TextCacheKeys. The renderer caches shaped buffers
+    // different TextShapeKeys. The renderer caches shaped buffers
     // by key — without this discrimination, a 16/19.2 buffer would
     // be returned for a request that wanted 16/24, mismatching the
     // measured rect against the rasterized glyphs.
@@ -178,7 +193,7 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
     let a = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0 * LINE_HEIGHT_MULT,
                 max_width_px: None,
@@ -191,7 +206,7 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
     let b = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 24.0,
                 max_width_px: None,
@@ -212,7 +227,7 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
     let a2 = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0 * LINE_HEIGHT_MULT,
                 max_width_px: None,
@@ -251,7 +266,7 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
 
     let sans = c.measure(
         "MMMM",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
@@ -262,7 +277,7 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
     );
     let mono = c.measure(
         "MMMM",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
@@ -303,7 +318,7 @@ fn cosmic_text_weight_distinguishes_key_and_metrics() {
     //    weights, so we assert equality there rather than a widening.
     let mut c = CosmicMeasure::with_bundled_fonts();
 
-    let params = |family, weight| ShapeParams {
+    let params = |family, weight| TestShape {
         font_size_px: 16.0,
         line_height_px: lh(16.0),
         max_width_px: None,
@@ -346,7 +361,7 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
     let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
     let identity = identity(wid);
-    let compact = ShapeParams {
+    let compact = TestShape {
         font_size_px: 16.0,
         line_height_px: 16.0,
         max_width_px: None,
@@ -368,11 +383,32 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
         "identical shaping inputs must reuse the row",
     );
 
+    let quantized_same = text
+        .prepare_run(
+            identity,
+            "hi",
+            TestShape {
+                font_size_px: 16.006,
+                line_height_px: 16.006,
+                ..compact
+            },
+        )
+        .unwrap()
+        .unbounded;
+    assert_eq!(quantized_same.key, same.key);
+    assert_eq!(quantized_same.size, same.size);
+    assert_eq!(quantized_same.intrinsic_min, same.intrinsic_min);
+    assert_eq!(
+        text.shaper.measure_calls(),
+        calls,
+        "raw values in the same 1/64 px bucket must reuse the canonical row",
+    );
+
     let r2 = text
         .prepare_run(
             identity,
             "hi",
-            ShapeParams {
+            TestShape {
                 line_height_px: 24.0,
                 ..compact
             },
@@ -402,7 +438,7 @@ fn prepared_run_cache_is_keyed_by_actual_shaping_inputs() {
 fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
     let mut text = TextSystem::default();
     let wid = WidgetId::from_hash("a");
-    let params = ShapeParams {
+    let params = TestShape {
         font_size_px: 16.0,
         line_height_px: 16.0,
         max_width_px: None,
@@ -433,16 +469,16 @@ fn prepared_run_refreshes_stale_unbounded_and_bounded_results() {
 }
 
 #[test]
-fn text_cache_key_validity_is_tagged_by_text_hash() {
-    assert!(TextCacheKey::INVALID.is_invalid());
-    let real = TextCacheKey {
+fn text_shape_key_validity_is_tagged_by_text_hash() {
+    assert!(TextShapeKey::INVALID.is_invalid());
+    let real = TextShapeKey {
         text_hash: 1,
-        ..TextCacheKey::INVALID
+        ..TextShapeKey::INVALID
     };
     assert!(!real.is_invalid());
-    let zero_hash = TextCacheKey {
+    let zero_hash = TextShapeKey {
         fit_q: LineFit::Ellipsis as u8,
-        ..TextCacheKey::INVALID
+        ..TextShapeKey::INVALID
     };
     assert!(zero_hash.is_invalid());
 }
@@ -460,7 +496,7 @@ fn cursor_xy_cosmic_path_is_monotonic_and_bounded() {
             m.cursor_xy(
                 s,
                 i,
-                ShapeParams {
+                TestShape {
                     font_size_px: 16.0,
                     line_height_px: 16.0 * LINE_HEIGHT_MULT,
                     max_width_px: None,
@@ -503,7 +539,7 @@ fn byte_at_xy_mono_fallback() {
             "hello",
             *x,
             0.0,
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
@@ -530,7 +566,7 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
                 .cursor_xy(
                     s,
                     i,
-                    ShapeParams {
+                    TestShape {
                         font_size_px: fs,
                         line_height_px: lh_v,
                         max_width_px: None,
@@ -544,7 +580,7 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
                 s,
                 x,
                 0.0,
-                ShapeParams {
+                TestShape {
                     font_size_px: fs,
                     line_height_px: lh_v,
                     max_width_px: None,
@@ -564,7 +600,7 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
         s,
         10_000.0,
         0.0,
-        ShapeParams {
+        TestShape {
             font_size_px: fs,
             line_height_px: lh_v,
             max_width_px: None,
@@ -583,7 +619,7 @@ fn selection_rects_empty_range_is_noop() {
     out.push(Rect::new(1.0, 2.0, 3.0, 4.0)); // pre-populate
     m.probe_layout(
         "hello",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -592,7 +628,7 @@ fn selection_rects_empty_range_is_noop() {
             halign: HAlign::Auto,
         },
         |layout| {
-            assert_eq!(layout.text_hash, hash_str("hello"));
+            assert_eq!(layout.request.key.text_hash, hash_str("hello"));
             layout.selection_rects(5..5, &mut out);
         },
     )
@@ -609,7 +645,7 @@ fn selection_rects_single_line_emits_one_rect() {
     let mut out: SelectionRects = SelectionRects::new();
     m.probe_layout(
         "hello",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -664,7 +700,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
         },
     ];
     for case in cases {
-        let params = ShapeParams {
+        let params = TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: case.max_width_px,
@@ -734,7 +770,7 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
     let p0 = m.cursor_xy(
         "abc\ndef",
         0,
-        ShapeParams {
+        TestShape {
             font_size_px: fs,
             line_height_px: lh_v,
             max_width_px: None,
@@ -746,7 +782,7 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
     let p1 = m.cursor_xy(
         "abc\ndef",
         4,
-        ShapeParams {
+        TestShape {
             font_size_px: fs,
             line_height_px: lh_v,
             max_width_px: None,
@@ -771,7 +807,7 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let r = c.measure(
         "",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -792,7 +828,7 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     let r = shaper
         .measure(
             "",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0 * LINE_HEIGHT_MULT,
                 max_width_px: None,
@@ -812,73 +848,23 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
     use crate::primitives::approx::EPS;
 
     let cases = [
-        ("zero font", 0.0, 16.0, ShapeParamsError::InvalidFontSize),
-        (
-            "negative font",
-            -1.0,
-            16.0,
-            ShapeParamsError::InvalidFontSize,
-        ),
-        (
-            "sub-epsilon font",
-            EPS * 0.5,
-            16.0,
-            ShapeParamsError::InvalidFontSize,
-        ),
-        ("epsilon font", EPS, 16.0, ShapeParamsError::InvalidFontSize),
-        (
-            "NaN font",
-            f32::NAN,
-            16.0,
-            ShapeParamsError::InvalidFontSize,
-        ),
-        (
-            "infinite font",
-            f32::INFINITY,
-            16.0,
-            ShapeParamsError::InvalidFontSize,
-        ),
-        (
-            "zero line height",
-            16.0,
-            0.0,
-            ShapeParamsError::InvalidLineHeight,
-        ),
-        (
-            "negative line height",
-            16.0,
-            -1.0,
-            ShapeParamsError::InvalidLineHeight,
-        ),
-        (
-            "sub-epsilon line height",
-            16.0,
-            EPS * 0.5,
-            ShapeParamsError::InvalidLineHeight,
-        ),
-        (
-            "epsilon line height",
-            16.0,
-            EPS,
-            ShapeParamsError::InvalidLineHeight,
-        ),
-        (
-            "NaN line height",
-            16.0,
-            f32::NAN,
-            ShapeParamsError::InvalidLineHeight,
-        ),
-        (
-            "infinite line height",
-            16.0,
-            f32::INFINITY,
-            ShapeParamsError::InvalidLineHeight,
-        ),
+        ("zero font", 0.0, 16.0),
+        ("negative font", -1.0, 16.0),
+        ("sub-epsilon font", EPS * 0.5, 16.0),
+        ("epsilon font", EPS, 16.0),
+        ("NaN font", f32::NAN, 16.0),
+        ("infinite font", f32::INFINITY, 16.0),
+        ("zero line height", 16.0, 0.0),
+        ("negative line height", 16.0, -1.0),
+        ("sub-epsilon line height", 16.0, EPS * 0.5),
+        ("epsilon line height", 16.0, EPS),
+        ("NaN line height", 16.0, f32::NAN),
+        ("infinite line height", 16.0, f32::INFINITY),
     ];
     let mono = TextShaper::mono();
     let cosmic = TextShaper::with_bundled_fonts();
-    for (label, font_size_px, line_height_px, expected_error) in cases {
-        let params = ShapeParams {
+    for (label, font_size_px, line_height_px) in cases {
+        let params = TestShape {
             font_size_px,
             line_height_px,
             max_width_px: None,
@@ -888,8 +874,7 @@ fn invalid_metrics_never_dispatch_or_enter_direct_shaping_caches() {
         };
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
-            let error = shaper.measure("hi", params).unwrap_err();
-            assert_eq!(error, expected_error, "{label}");
+            assert!(shaper.measure("hi", params).is_none(), "{label}");
             assert_eq!(
                 shaper.measure_calls(),
                 calls,
@@ -911,7 +896,7 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
         let mut text = TextSystem::new(shaper.clone());
         let widget_id = WidgetId::from_hash(("invalid metrics", index));
         let identity = identity(widget_id);
-        let invalid_metrics = ShapeParams {
+        let invalid_metrics = TestShape {
             font_size_px: EPS * 0.5,
             line_height_px: 16.0,
             max_width_px: Some(40.0),
@@ -921,10 +906,10 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
         };
         let calls = shaper.measure_calls();
 
-        let error = text
-            .prepare_run(identity, "hi", invalid_metrics)
-            .unwrap_err();
-        assert_eq!(error, ShapeParamsError::InvalidFontSize, "fit={fit:?}",);
+        assert!(
+            text.prepare_run(identity, "hi", invalid_metrics).is_none(),
+            "fit={fit:?}",
+        );
         assert!(
             !text.has_entry(widget_id, 0),
             "fit={fit:?}: invalid metrics entered the reuse cache",
@@ -939,7 +924,7 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
             .prepare_run(
                 identity,
                 "hi",
-                ShapeParams {
+                TestShape {
                     font_size_px: 16.0,
                     line_height_px: 16.0,
                     max_width_px: None,
@@ -950,10 +935,12 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
             )
             .unwrap();
         let calls = shaper.measure_calls();
-        let error = prepared
-            .shape_bounded(f32::NAN, HAlign::Center, fit)
-            .unwrap_err();
-        assert_eq!(error, ShapeParamsError::InvalidMaxWidth, "fit={fit:?}");
+        assert!(
+            prepared
+                .shape_bounded(f32::NAN, HAlign::Center, fit)
+                .is_none(),
+            "fit={fit:?}",
+        );
         assert_eq!(
             shaper.measure_calls(),
             calls,
@@ -964,7 +951,7 @@ fn prepared_run_rejects_invalid_inputs_before_dispatch() {
 
 #[test]
 fn bounded_width_requires_a_finite_nonnegative_value() {
-    let base = ShapeParams {
+    let base = TestShape {
         font_size_px: 16.0,
         line_height_px: 19.2,
         max_width_px: None,
@@ -972,14 +959,21 @@ fn bounded_width_requires_a_finite_nonnegative_value() {
         weight: FontWeight::Regular,
         halign: HAlign::Auto,
     };
-    assert!(base.validated().is_ok(), "None is the unbounded form");
+    let shaper = TextShaper::with_bundled_fonts();
     assert!(
-        ShapeParams {
-            max_width_px: Some(0.0),
-            ..base
-        }
-        .validated()
-        .is_ok(),
+        shaper.measure("hi", base).is_some(),
+        "None is the unbounded form",
+    );
+    assert!(
+        shaper
+            .measure(
+                "hi",
+                TestShape {
+                    max_width_px: Some(0.0),
+                    ..base
+                },
+            )
+            .is_some(),
         "zero is a valid bounded width",
     );
     for (label, width) in [
@@ -988,22 +982,12 @@ fn bounded_width_requires_a_finite_nonnegative_value() {
         ("positive infinity", f32::INFINITY),
         ("negative infinity", f32::NEG_INFINITY),
     ] {
-        let params = ShapeParams {
+        let params = TestShape {
             max_width_px: Some(width),
             ..base
         };
-        assert_eq!(
-            params.validated().unwrap_err(),
-            ShapeParamsError::InvalidMaxWidth,
-            "{label}",
-        );
-        let shaper = TextShaper::with_bundled_fonts();
         let calls = shaper.measure_calls();
-        assert_eq!(
-            shaper.measure("hi", params).unwrap_err(),
-            ShapeParamsError::InvalidMaxWidth,
-            "{label}",
-        );
+        assert!(shaper.measure("hi", params).is_none(), "{label}");
         assert_eq!(shaper.measure_calls(), calls, "{label}");
     }
 }
@@ -1015,7 +999,7 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     let mut cosmic = CosmicMeasure::with_bundled_fonts();
     let result = cosmic.measure(
         "x",
-        ShapeParams {
+        TestShape {
             font_size_px: EPS * 2.0,
             line_height_px: EPS * 2.0,
             max_width_px: None,
@@ -1041,7 +1025,7 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let full = c.measure(
         "hello world hi",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -1052,7 +1036,7 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
     );
     let hello = c.measure(
         "hello",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -1063,7 +1047,7 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
     );
     let world = c.measure(
         "world",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -1074,7 +1058,7 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
     );
     let hi = c.measure(
         "hi",
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
@@ -1118,7 +1102,7 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
 
 #[test]
 fn cache_key_collapses_halign_when_unbounded() {
-    // Optimization in `cosmic::key_for`: halign only affects shaped
+    // Key construction records halign only when it affects shaped
     // glyph positions when there's a wrap target, so without one the
     // key folds non-Auto halign down to Auto. Two unbounded measures
     // with different halign must therefore produce identical keys —
@@ -1127,7 +1111,7 @@ fn cache_key_collapses_halign_when_unbounded() {
     let auto = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
@@ -1140,7 +1124,7 @@ fn cache_key_collapses_halign_when_unbounded() {
     let right = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
@@ -1153,7 +1137,7 @@ fn cache_key_collapses_halign_when_unbounded() {
     let center = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
@@ -1170,7 +1154,7 @@ fn cache_key_collapses_halign_when_unbounded() {
     let auto_w = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: Some(200.0),
@@ -1183,7 +1167,7 @@ fn cache_key_collapses_halign_when_unbounded() {
     let right_w = c
         .measure(
             "hi",
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: Some(200.0),
@@ -1201,7 +1185,7 @@ fn prepared_bounded_cache_keys_width_and_halign() {
     let m = TextShaper::with_bundled_fonts();
     let mut text = TextSystem::new(m.clone());
     let wid = WidgetId::from_hash("w");
-    let params = ShapeParams {
+    let params = TestShape {
         font_size_px: 16.0,
         line_height_px: 16.0,
         max_width_px: None,
@@ -1263,7 +1247,7 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
     let mut text = TextSystem::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    let params = ShapeParams {
+    let params = TestShape {
         font_size_px: 16.0,
         line_height_px: 16.0,
         max_width_px: None,
@@ -1358,7 +1342,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     let pos = m.cursor_xy(
         text,
         text.len(),
-        ShapeParams {
+        TestShape {
             font_size_px: font,
             line_height_px: line_h,
             max_width_px: Some(wrap),
@@ -1379,7 +1363,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     let pos_left = m.cursor_xy(
         text,
         text.len(),
-        ShapeParams {
+        TestShape {
             font_size_px: font,
             line_height_px: line_h,
             max_width_px: Some(wrap),
@@ -1407,7 +1391,7 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     let elided = measure_truncated(
         &mut c,
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
@@ -1420,7 +1404,7 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     // Precondition: the natural single line genuinely overflows `w`.
     let full = c.measure(
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
@@ -1452,7 +1436,7 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     let zero_width = measure_truncated(
         &mut c,
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(0.0),
@@ -1470,7 +1454,7 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     // same width — they hold different strings, so distinct cache keys.
     let wrapped = c.measure(
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
@@ -1493,7 +1477,7 @@ fn cosmic_ellipsis_short_text_not_truncated() {
     let short = "ok";
     let natural = c.measure(
         short,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
@@ -1505,7 +1489,7 @@ fn cosmic_ellipsis_short_text_not_truncated() {
     let elided = measure_truncated(
         &mut c,
         short,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(200.0),
@@ -1535,7 +1519,7 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
     let cap = 400.0;
     let natural = c.measure(
         label,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
@@ -1548,7 +1532,7 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
         let m = measure_truncated(
             &mut c,
             label,
-            ShapeParams {
+            TestShape {
                 font_size_px: 16.0,
                 line_height_px: lh(16.0),
                 max_width_px: Some(cap),
@@ -1582,7 +1566,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     let w = 120.0;
     let full = c.measure(
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
@@ -1599,7 +1583,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     let clipped = measure_truncated(
         &mut c,
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
@@ -1629,7 +1613,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     let elided = measure_truncated(
         &mut c,
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
@@ -1642,7 +1626,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     // Clip, ellipsis, and wrap each bake a distinct buffer at the same width.
     let wrapped = c.measure(
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
@@ -1675,12 +1659,11 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     // counterpart instead grows height and keeps the longest-word floor.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
     let w = 40.0;
-    let metrics = TextMetrics::new(16.0, lh(16.0)).unwrap();
-    let elided = mono_measure(long, metrics, Some(w), LineFit::Ellipsis);
+    let elided = mono_shape(long, 16.0, lh(16.0), Some(w), LineFit::Ellipsis);
     assert_eq!(elided.size.w, w, "elided mono caps at the width");
     assert_eq!(elided.size.h, lh(16.0), "elided mono is one line");
     assert_eq!(elided.intrinsic_min, 0.0, "elided mono has zero floor");
-    let wrapped = mono_measure(long, metrics, Some(w), LineFit::Wrap);
+    let wrapped = mono_shape(long, 16.0, lh(16.0), Some(w), LineFit::Wrap);
     assert!(wrapped.size.h > lh(16.0), "wrap grows height across lines");
     assert!(
         wrapped.intrinsic_min > 0.0,
@@ -1701,7 +1684,7 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     let r_fresh = measure_truncated(
         &mut fresh,
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: fs,
             line_height_px: lh(fs),
             max_width_px: Some(w),
@@ -1718,7 +1701,7 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     measure_truncated(
         &mut reused,
         "a considerably longer string that grows the probe buffer capacity",
-        ShapeParams {
+        TestShape {
             font_size_px: 20.0,
             line_height_px: lh(20.0),
             max_width_px: Some(220.0),
@@ -1731,7 +1714,7 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     measure_truncated(
         &mut reused,
         "short",
-        ShapeParams {
+        TestShape {
             font_size_px: 10.0,
             line_height_px: lh(10.0),
             max_width_px: Some(30.0),
@@ -1744,7 +1727,7 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     let r_reused = measure_truncated(
         &mut reused,
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: fs,
             line_height_px: lh(fs),
             max_width_px: Some(w),
@@ -1768,7 +1751,7 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     // full unbounded shape (and fits within the width budget).
     let unbounded = fresh.measure(
         long,
-        ShapeParams {
+        TestShape {
             font_size_px: fs,
             line_height_px: lh(fs),
             max_width_px: None,
@@ -1806,7 +1789,7 @@ fn ellipsis_cache_bounded_under_size_churn() {
         let r = measure_truncated(
             &mut c,
             long,
-            ShapeParams {
+            TestShape {
                 font_size_px: fs,
                 line_height_px: lh(fs),
                 max_width_px: Some(60.0),
@@ -1831,7 +1814,7 @@ fn ellipsis_cache_bounded_under_size_churn() {
 #[test]
 fn quantized_key_shaping_is_insertion_order_independent() {
     let text = "canonical text wraps onto more than one aligned line";
-    let first = ShapeParams {
+    let first = TestShape {
         font_size_px: 16.001,
         line_height_px: 19.201,
         max_width_px: Some(101.001),
@@ -1839,7 +1822,7 @@ fn quantized_key_shaping_is_insertion_order_independent() {
         weight: FontWeight::Regular,
         halign: HAlign::Right,
     };
-    let second = ShapeParams {
+    let second = TestShape {
         font_size_px: 16.006,
         line_height_px: 19.206,
         max_width_px: Some(101.006),
@@ -1869,7 +1852,7 @@ fn quantized_key_shaping_is_insertion_order_independent() {
 #[test]
 fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let text = "restore this shaped buffer after ordinary LRU eviction";
-    let wrap_params = ShapeParams {
+    let wrap_params = TestShape {
         font_size_px: 15.003,
         line_height_px: 18.003,
         max_width_px: Some(96.003),
@@ -1882,7 +1865,10 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let original_glyphs = glyph_positions(&wrap, original.key);
     wrap.end_frame_evict(0);
     assert!(wrap.buffer_for(original.key).is_none());
-    wrap.ensure_buffer(text, original.key);
+    wrap.ensure_buffer(TextShapeRequest {
+        text,
+        key: original.key,
+    });
     let restored = wrap.measure(text, wrap_params);
     assert_eq!(restored.size, original.size);
     assert_eq!(restored.intrinsic_min, original.intrinsic_min);
@@ -1890,13 +1876,13 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
 
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
         let mut truncated = CosmicMeasure::with_bundled_fonts();
-        let params = ShapeParams {
+        let params = TestShape {
             max_width_px: Some(84.003),
             ..wrap_params
         };
         let unbounded = truncated.measure(
             text,
-            ShapeParams {
+            TestShape {
                 max_width_px: None,
                 halign: HAlign::Auto,
                 ..params
@@ -1911,7 +1897,10 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             "fit: {fit:?}",
         );
 
-        truncated.ensure_buffer(text, original.key);
+        truncated.ensure_buffer(TextShapeRequest {
+            text,
+            key: original.key,
+        });
         assert!(
             truncated.buffer_for(unbounded.key).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
@@ -1933,7 +1922,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
 #[test]
 fn recycled_buffer_matches_fresh_shape_at_new_width() {
     let text = "recycled cosmic buffers must reshape exactly across a new wrapping width";
-    let base = ShapeParams {
+    let base = TestShape {
         font_size_px: 15.0,
         line_height_px: 18.0,
         max_width_px: Some(180.0),
@@ -1946,7 +1935,7 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
     recycled.end_frame_evict(0);
     assert_eq!(recycled.recycle_pool_stats().len, 1);
 
-    let narrow = ShapeParams {
+    let narrow = TestShape {
         max_width_px: Some(72.0),
         ..base
     };
@@ -1977,7 +1966,7 @@ fn recycle_pool_retention_is_bounded() {
         for i in 0..pool.limit + 16 {
             c.measure(
                 "bounded recycle pool",
-                ShapeParams {
+                TestShape {
                     font_size_px: 14.0,
                     line_height_px: 18.0,
                     max_width_px: Some(40.0 + (round * (pool.limit + 16) + i) as f32),
@@ -2007,7 +1996,7 @@ fn end_frame_evict_retains_exact_most_recent_entries() {
         // stamped with that frame's generation.
         let r = c.measure(
             "hello world",
-            ShapeParams {
+            TestShape {
                 font_size_px: 14.0,
                 line_height_px: lh(18.0),
                 max_width_px: Some(40.0 + i as f32 * 5.0),
@@ -2020,7 +2009,10 @@ fn end_frame_evict_retains_exact_most_recent_entries() {
     }
     assert_eq!(c.cache_len(), 10, "ten distinct widths, ten buffers");
 
-    c.ensure_buffer("hello world", keys[0]);
+    c.ensure_buffer(TextShapeRequest {
+        text: "hello world",
+        key: keys[0],
+    });
     c.end_frame_evict(2);
 
     assert_eq!(c.cache_len(), 2, "eviction must enforce the exact budget");
@@ -2047,7 +2039,7 @@ fn end_frame_evict_is_noop_under_budget() {
     for i in 0..4u32 {
         let r = c.measure(
             "rotation",
-            ShapeParams {
+            TestShape {
                 font_size_px: 14.0,
                 line_height_px: lh(18.0),
                 max_width_px: Some(100.0 + i as f32 * 20.0),

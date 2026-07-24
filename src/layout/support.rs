@@ -17,7 +17,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
+use crate::text::{FontFamily, FontWeight, TextShapeRequest};
 use glam::Vec2;
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
@@ -35,10 +35,23 @@ pub(crate) struct TextShapeInput<'a> {
     /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
     /// bakes per-line offsets into the shaped buffer when wrap is on,
     /// so the layout pass has to thread this all the way down to
-    /// `shape_bounded` (and into `TextCacheKey`) — two shapes with
+    /// `shape_bounded` (and into `TextShapeKey`) — two shapes with
     /// identical text/size/wrap but different halign aren't
     /// interchangeable.
     pub(crate) halign: HAlign,
+}
+
+impl<'a> TextShapeInput<'a> {
+    pub(crate) fn shape_request(&self) -> TextShapeRequest<'a> {
+        TextShapeRequest::unbounded(
+            self.text,
+            self.font_size_px,
+            self.line_height_px,
+            self.family,
+            self.weight,
+        )
+        .expect("recorded text metrics were validated")
+    }
 }
 
 /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth for

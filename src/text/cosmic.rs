@@ -1,5 +1,5 @@
 //! Real text shaping via [`cosmic_text`]. Caches one shaped `Buffer`
-//! per [`TextCacheKey`] — every input that affects shaping (text hash,
+//! per [`TextShapeKey`] — every input that affects shaping (text hash,
 //! font size, wrap width, line height, family, weight, halign, fit) —
 //! so steady-state measurement is `HashMap` lookup only: no reshape,
 //! no allocation. The cache is bounded:
@@ -22,11 +22,9 @@
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
 use crate::layout::types::align::HAlign;
-use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::text::{
-    FontFamily, FontWeight, LineFit, ShapeParams, TextCacheKey, TextMeasurement,
-    ValidatedShapeParams,
+    FontFamily, FontWeight, LineFit, TextMeasurement, TextShapeKey, TextShapeRequest,
 };
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
@@ -43,8 +41,6 @@ use std::sync::Arc;
 const INTER: &[u8] = include_bytes!("../../assets/fonts/Inter-VariableFont_opsz,wght.ttf");
 const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf");
 
-const MAX_W_NONE: u32 = u32::MAX;
-
 /// Cap on [`CosmicMeasure::ellipsis_cache`] entries. The cache keys on
 /// `(quantized size, family, weight)` — a handful in normal use, but
 /// unbounded under a continuous font-size zoom. Cleared wholesale past
@@ -53,105 +49,9 @@ const MAX_W_NONE: u32 = u32::MAX;
 pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
 const RECYCLE_POOL_CAP: usize = 128;
 
-fn quantize_width(v: f32) -> u32 {
-    (v.max(0.0) * 64.0).fast_round() as u32
-}
-
-fn quantize_metric(v: f32) -> u32 {
-    // Values above EPS can still round to zero on the 1/64 px cache grid.
-    quantize_width(v).max(1)
-}
-
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
         pool.push(buffer);
-    }
-}
-
-fn dequantize(v: u32) -> f32 {
-    v as f32 / 64.0
-}
-
-fn key_for(text_hash: u64, params: ValidatedShapeParams, fit: LineFit) -> TextCacheKey {
-    let raw = params.raw;
-    let metrics = params.metrics;
-    // Avoid colliding with INVALID. Probability astronomically low; map zero
-    // to one so the renderer never silently drops a real run.
-    let text_hash = text_hash.max(1);
-    // Halign discriminates the key only when it feeds shaping: a
-    // finite wrap width under the `Wrap` fit, where cosmic bakes
-    // per-line offsets into the buffer. Unbounded shapes and the
-    // truncated single-line fits (`Clip`/`Ellipsis` shape with
-    // alignment `None` — the encoder owns placement) produce
-    // identical buffers for every halign, so fold `halign_q` to
-    // `Auto`'s discriminant (0) there — callers don't pay an N-way
-    // cache split for identical glyph positions.
-    let halign_q = match (raw.max_width_px, fit) {
-        (Some(_), LineFit::Wrap) => raw.halign as u8,
-        _ => HAlign::Auto as u8,
-    };
-    TextCacheKey {
-        text_hash,
-        size_q: quantize_metric(metrics.font_size_px),
-        max_w_q: raw
-            .max_width_px
-            // `u32::MAX` is the unbounded sentinel.
-            .map(|width| quantize_width(width).min(MAX_W_NONE - 1))
-            .unwrap_or(MAX_W_NONE),
-        lh_q: quantize_metric(metrics.line_height_px),
-        family_q: raw.family as u8,
-        weight_q: raw.weight as u8,
-        halign_q,
-        fit_q: fit as u8,
-    }
-}
-
-fn canonical_params(key: TextCacheKey) -> ValidatedShapeParams {
-    let family = match key.family_q {
-        0 => FontFamily::Sans,
-        1 => FontFamily::Mono,
-        other => panic!("invalid FontFamily discriminant in TextCacheKey: {other}"),
-    };
-    let weight = match key.weight_q {
-        0 => FontWeight::Regular,
-        1 => FontWeight::Bold,
-        other => panic!("invalid FontWeight discriminant in TextCacheKey: {other}"),
-    };
-    let halign = match key.halign_q {
-        0 => HAlign::Auto,
-        1 => HAlign::Left,
-        2 => HAlign::Center,
-        3 => HAlign::Right,
-        4 => HAlign::Stretch,
-        other => panic!("invalid HAlign discriminant in TextCacheKey: {other}"),
-    };
-    ShapeParams {
-        font_size_px: dequantize(key.size_q),
-        line_height_px: dequantize(key.lh_q),
-        max_width_px: (key.max_w_q != MAX_W_NONE).then(|| dequantize(key.max_w_q)),
-        family,
-        weight,
-        halign,
-    }
-    .validated()
-    .expect("valid text cache key must contain valid shaping parameters")
-}
-
-fn line_fit(key: TextCacheKey) -> LineFit {
-    match key.fit_q {
-        0 => LineFit::Wrap,
-        1 => LineFit::Clip,
-        2 => LineFit::Ellipsis,
-        other => panic!("invalid LineFit discriminant in TextCacheKey: {other}"),
-    }
-}
-
-fn unbounded_key(key: TextCacheKey) -> TextCacheKey {
-    TextCacheKey {
-        max_w_q: MAX_W_NONE,
-        halign_q: HAlign::Auto as u8,
-        fit_q: LineFit::Wrap as u8,
-        ..key
     }
 }
 
@@ -192,7 +92,7 @@ fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
 
 #[derive(Debug)]
 struct CacheEntry {
-    /// Shaped buffer. Looked up by [`TextCacheKey`] at render time so the
+    /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
     /// text backend can build a `TextArea` without reshaping.
     buffer: Buffer,
     measured: Size,
@@ -214,7 +114,7 @@ struct CacheEntry {
 #[derive(Debug)]
 pub struct CosmicMeasure {
     font_system: FontSystem,
-    cache: FxHashMap<TextCacheKey, CacheEntry>,
+    cache: FxHashMap<TextShapeKey, CacheEntry>,
     /// Monotonic cache-access counter. Unique recency values let eviction
     /// retain exactly the configured number of most-recent entries.
     use_gen: u64,
@@ -265,8 +165,8 @@ impl CosmicMeasure {
 
     /// Look up the shaped buffer for `key`. Returns `None` for keys that
     /// were never measured this `CosmicMeasure` instance — including
-    /// [`TextCacheKey::INVALID`].
-    pub(crate) fn buffer_for(&self, key: TextCacheKey) -> Option<&Buffer> {
+    /// [`TextShapeKey::INVALID`].
+    pub(crate) fn buffer_for(&self, key: TextShapeKey) -> Option<&Buffer> {
         BufferLookup { cache: &self.cache }.get(key)
     }
 
@@ -292,11 +192,11 @@ pub(crate) struct RenderSplit<'a> {
 /// Read-only view into the buffer cache. Constructed by
 /// [`CosmicMeasure::split_for_render`]; held alongside a `&mut FontSystem`.
 pub(crate) struct BufferLookup<'a> {
-    cache: &'a FxHashMap<TextCacheKey, CacheEntry>,
+    cache: &'a FxHashMap<TextShapeKey, CacheEntry>,
 }
 
 impl<'a> BufferLookup<'a> {
-    pub(crate) fn get(&self, key: TextCacheKey) -> Option<&'a Buffer> {
+    pub(crate) fn get(&self, key: TextShapeKey) -> Option<&'a Buffer> {
         if key.is_invalid() {
             return None;
         }
@@ -312,23 +212,24 @@ impl Default for CosmicMeasure {
 
 impl CosmicMeasure {
     #[profiling::function]
-    pub(crate) fn measure_hashed_validated(
-        &mut self,
-        text: &str,
-        text_hash: u64,
-        params: ValidatedShapeParams,
-    ) -> TextMeasurement {
-        if text.is_empty() {
+    pub(crate) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+        match (request.key.fit(), request.key.max_width_px()) {
+            (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
+            _ => self.measure_wrapped(request),
+        }
+    }
+
+    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+        if request.text.is_empty() {
             return TextMeasurement::ZERO;
         }
-        let key = key_for(text_hash, params, LineFit::Wrap);
+        let key = request.key;
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
-        let params = canonical_params(key);
 
-        let metrics = Metrics::new(params.metrics.font_size_px, params.metrics.line_height_px);
-        let mut buffer = self.acquire_buffer(metrics, params.raw.max_width_px);
+        let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
+        let mut buffer = self.acquire_buffer(metrics, key.max_width_px());
         // Per-line alignment travels through cosmic's `set_text`
         // `alignment` slot — that's the canonical entry point and
         // applies the align to every parsed buffer line in one
@@ -338,13 +239,10 @@ impl CosmicMeasure {
         // meaningful with a finite wrap target (cosmic uses it as the
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
-        let alignment = params
-            .raw
-            .max_width_px
-            .and_then(|_| cosmic_align(params.raw.halign));
+        let alignment = key.max_width_px().and_then(|_| cosmic_align(key.halign()));
         buffer.set_text(
-            text,
-            &attrs_for(params.raw.family, params.raw.weight),
+            request.text,
+            &attrs_for(key.family(), key.weight()),
             Shaping::Advanced,
             alignment,
         );
@@ -381,67 +279,53 @@ impl CosmicMeasure {
     /// can't collide with the wrapped buffer — or the other truncation mode —
     /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
     /// to nothing.
-    pub(crate) fn measure_truncated_validated(
-        &mut self,
-        text: &str,
-        params: ValidatedShapeParams,
-        fit: LineFit,
-        unbounded_key: TextCacheKey,
-    ) -> TextMeasurement {
-        let requested_w = params
-            .raw
-            .max_width_px
+    fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextMeasurement {
+        let key = request.key;
+        let fit = key.fit();
+        let width = key
+            .max_width_px()
             .expect("measure_truncated requires a finite width");
         debug_assert!(
             matches!(fit, LineFit::Clip | LineFit::Ellipsis),
             "measure_truncated requires Clip or Ellipsis",
         );
-        if text.is_empty() {
+        if request.text.is_empty() {
             return TextMeasurement::ZERO;
         }
-        let key = TextCacheKey {
-            max_w_q: quantize_width(requested_w).min(MAX_W_NONE - 1),
-            halign_q: HAlign::Auto as u8,
-            fit_q: fit as u8,
-            ..unbounded_key
-        };
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
-        self.ensure_buffer(text, unbounded_key);
-        let params = canonical_params(key);
-        let w = params
-            .raw
-            .max_width_px
-            .expect("truncated TextCacheKey requires a finite width");
-        let metrics = Metrics::new(params.metrics.font_size_px, params.metrics.line_height_px);
-        let attrs = attrs_for(params.raw.family, params.raw.weight);
+        let unbounded = request.unbounded_version();
+        self.ensure_buffer(unbounded);
+        let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
+        let family = key.family();
+        let weight = key.weight();
+        let attrs = attrs_for(family, weight);
         let probe = &self
             .cache
-            .get(&unbounded_key)
+            .get(&unbounded.key)
             .expect("truncation requires the cached unbounded shape")
             .buffer;
         let line_w = first_line_right(probe);
         let multiline = probe.layout_runs().nth(1).is_some();
 
-        let truncated = if line_w <= w && !multiline {
+        let truncated = if line_w <= width && !multiline {
             false
         } else {
             // Reserve the ellipsis width only when we'll append one; a plain
             // clip cuts flush to the full available width.
             let mut append_ellipsis = false;
             let avail = if matches!(fit, LineFit::Ellipsis) {
-                let ellipsis_w =
-                    self.ellipsis_advance(metrics, params.raw.family, params.raw.weight);
-                append_ellipsis = ellipsis_w <= w;
-                (w - ellipsis_w).max(0.0)
+                let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
+                append_ellipsis = ellipsis_w <= width;
+                (width - ellipsis_w).max(0.0)
             } else {
-                w
+                width
             };
             let mut cut = 0usize;
             let probe = &self
                 .cache
-                .get(&unbounded_key)
+                .get(&unbounded.key)
                 .expect("unbounded shape disappeared during truncation")
                 .buffer;
             if let Some(run) = probe.layout_runs().next() {
@@ -453,7 +337,8 @@ impl CosmicMeasure {
                 }
             }
             self.truncate_scratch.clear();
-            self.truncate_scratch.push_str(text[..cut].trim_end());
+            self.truncate_scratch
+                .push_str(request.text[..cut].trim_end());
             if append_ellipsis {
                 self.truncate_scratch.push('…');
             }
@@ -468,7 +353,7 @@ impl CosmicMeasure {
         let shaped_text = if truncated {
             self.truncate_scratch.as_str()
         } else {
-            text
+            request.text
         };
         buffer.set_text(shaped_text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
@@ -498,15 +383,12 @@ impl CosmicMeasure {
     /// probe remains immutable.
     fn ellipsis_advance(
         &mut self,
+        size_q: u32,
         metrics: Metrics,
         family: FontFamily,
         weight: FontWeight,
     ) -> f32 {
-        let key = (
-            quantize_metric(metrics.font_size),
-            family as u8,
-            weight as u8,
-        );
+        let key = (size_q, family as u8, weight as u8);
         if let Some(&w) = self.ellipsis_cache.get(&key) {
             return w;
         }
@@ -530,22 +412,14 @@ impl CosmicMeasure {
     /// Restore a missing shaped buffer from the retained source text and
     /// the canonical parameters encoded by `key`. Truncated runs restore
     /// their unbounded probe first; callers never manage that dependency.
-    pub(crate) fn ensure_buffer(&mut self, text: &str, key: TextCacheKey) {
-        if key.is_invalid() || self.cache_hit(key).is_some() {
+    pub(crate) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) {
+        if request.key.is_invalid() || self.cache_hit(request.key).is_some() {
             return;
         }
-        let result = match line_fit(key) {
-            LineFit::Wrap => {
-                self.measure_hashed_validated(text, key.text_hash, canonical_params(key))
-            }
-            fit @ (LineFit::Clip | LineFit::Ellipsis) => {
-                let unbounded = unbounded_key(key);
-                self.measure_truncated_validated(text, canonical_params(key), fit, unbounded)
-            }
-        };
+        let result = self.shape(request);
         assert_eq!(
-            result.key, key,
-            "restored text buffer did not reproduce its TextCacheKey",
+            result.key, request.key,
+            "restored text buffer did not reproduce its TextShapeKey",
         );
     }
 
@@ -560,7 +434,7 @@ impl CosmicMeasure {
 
     /// A cached entry's `TextMeasurement` for `key`, or `None` on a miss.
     /// Refreshes `last_used` for both layout-time hits and encoder ensures.
-    fn cache_hit(&mut self, key: TextCacheKey) -> Option<TextMeasurement> {
+    fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextMeasurement> {
         let now = self.next_use_gen();
         self.cache.get_mut(&key).map(|entry| {
             entry.last_used = now;
@@ -666,8 +540,6 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
 
 #[cfg(test)]
 mod test_support {
-    use crate::common::hash;
-
     use super::*;
 
     #[derive(Debug, PartialEq, Eq)]
@@ -678,22 +550,6 @@ mod test_support {
     }
 
     impl CosmicMeasure {
-        pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> TextMeasurement {
-            let params = params.validated().unwrap();
-            self.measure_hashed_validated(text, hash::hash_str(text), params)
-        }
-
-        pub(crate) fn measure_truncated(
-            &mut self,
-            text: &str,
-            params: ShapeParams,
-            fit: LineFit,
-            unbounded_key: TextCacheKey,
-        ) -> TextMeasurement {
-            let params = params.validated().unwrap();
-            self.measure_truncated_validated(text, params, fit, unbounded_key)
-        }
-
         /// Number of shaped buffers currently cached. Reach-in for the
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {

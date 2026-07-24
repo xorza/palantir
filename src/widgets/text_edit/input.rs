@@ -4,7 +4,7 @@ use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::primitives::widget_id::WidgetId;
-use crate::text::{ShapeParams, TextShaper};
+use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
@@ -117,11 +117,10 @@ pub(crate) fn handle_input(
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
-        let hit = ui.resources.text.byte_at_xy(
-            ed.text,
+        let hit = ui.resources.text.hit_test(
+            ctx.request(ed.text),
             local_x,
             if ctx.multiline { local_y } else { 0.0 },
-            ctx.params(),
         );
         if resp_state.left.press_count() > 0 {
             // Press rising edge — the input layer counts the
@@ -212,7 +211,7 @@ pub(crate) fn handle_input(
                 match apply_key(&mut ed, kp) {
                     KeyOutcome::Blur => blur = true,
                     KeyOutcome::Vertical { up, extend } => {
-                        resolve_vertical(&mut ed, &ui.resources.text, ctx.params(), up, extend);
+                        resolve_vertical(&mut ed, &ui.resources.text, ctx, up, extend);
                     }
                     KeyOutcome::None => {}
                 }
@@ -272,11 +271,11 @@ pub(crate) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
 fn resolve_vertical(
     editor: &mut Editor<'_>,
     shaper: &TextShaper,
-    params: ShapeParams,
+    ctx: &ShapeCtx,
     up: bool,
     extend: bool,
 ) {
-    let pos = shaper.cursor_xy(editor.text, editor.state.caret, params);
+    let pos = shaper.cursor_position(ctx.request(editor.text), editor.state.caret);
     let target = if up && pos.y_top <= 0.5 {
         0
     } else {
@@ -285,7 +284,7 @@ fn resolve_vertical(
         } else {
             pos.y_top + pos.line_height + 1.0
         };
-        shaper.byte_at_xy(editor.text, pos.x, probe_y, params)
+        shaper.hit_test(ctx.request(editor.text), pos.x, probe_y)
     };
     editor.move_caret(target, extend);
 }

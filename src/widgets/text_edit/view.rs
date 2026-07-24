@@ -11,7 +11,8 @@ use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::wrap::{TextWrap, canonical_wrap_width};
 use crate::text::{
-    CursorPos, FontFamily, FontWeight, SelectionRects, ShapeParams, TextShaper, text_in_rect,
+    CursorPos, FontFamily, FontWeight, LineFit, SelectionRects, TextMeasurement, TextShapeRequest,
+    TextShaper, text_in_rect,
 };
 use crate::ui::Ui;
 use crate::widgets::Widget;
@@ -117,14 +118,20 @@ pub(crate) struct ShapeCtx {
 }
 
 impl ShapeCtx {
-    pub(crate) fn params(&self) -> ShapeParams {
-        ShapeParams {
-            font_size_px: self.font_size,
-            line_height_px: self.line_height_px,
-            max_width_px: self.wrap_target,
-            family: self.family,
-            weight: self.weight,
-            halign: self.halign,
+    pub(crate) fn request<'a>(&self, text: &'a str) -> TextShapeRequest<'a> {
+        let request = TextShapeRequest::unbounded(
+            text,
+            self.font_size,
+            self.line_height_px,
+            self.family,
+            self.weight,
+        )
+        .expect("TextEdit metrics were validated");
+        match self.wrap_target {
+            Some(width) => request
+                .bounded(width, self.halign, LineFit::Wrap)
+                .expect("TextEdit wrap target was validated"),
+            None => request,
         }
     }
 }
@@ -214,7 +221,7 @@ pub(crate) struct FinalGeometry {
 
 #[derive(Clone, Copy, Debug)]
 struct GeometryProbe {
-    measurement: crate::text::TextMeasurement,
+    measurement: TextMeasurement,
     caret_pos: CursorPos,
     text_hash: u64,
 }
@@ -225,27 +232,23 @@ pub(crate) fn resolve_geometry(
     selection_rects: &mut SelectionRects,
 ) -> FinalGeometry {
     let mut layout = input.layout;
-    let probe = shaper
-        .probe_layout(input.text, layout.ctx.params(), |probe| {
-            if let Some(selection) = input.selection {
-                probe.selection_rects(selection, selection_rects);
-            } else {
-                selection_rects.clear();
-            }
-            GeometryProbe {
-                measurement: probe.measurement,
-                caret_pos: probe.cursor_xy(input.caret),
-                text_hash: probe.text_hash,
-            }
-        })
-        .expect("TextEdit metrics were validated");
+    let probe = shaper.with_layout(layout.ctx.request(input.text), |probe| {
+        if let Some(selection) = input.selection {
+            probe.selection_rects(selection, selection_rects);
+        } else {
+            selection_rects.clear();
+        }
+        GeometryProbe {
+            measurement: probe.measurement,
+            caret_pos: probe.cursor_xy(input.caret),
+            text_hash: probe.request.key.text_hash,
+        }
+    });
     let measurement = probe.measurement;
     let placeholder_measurement = if input.text.is_empty() && !input.placeholder.is_empty() {
-        shaper
-            .probe_layout(input.placeholder, layout.ctx.params(), |probe| {
-                probe.measurement
-            })
-            .expect("TextEdit metrics were validated")
+        shaper.with_layout(layout.ctx.request(input.placeholder), |probe| {
+            probe.measurement
+        })
     } else {
         measurement
     };
