@@ -13,9 +13,7 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
-use crate::renderer::backend::pipeline_utils::{
-    ColorVariantSpec, StencilVariant, texture_sampler_bgl,
-};
+use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::image::{ImageInstance, RenderTargetDraw};
 use crate::renderer::render_owner::RenderOwnerId;
@@ -28,18 +26,14 @@ pub(super) struct ImagePipeline {
     /// Image shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
-    /// Group 0 layout (per-image texture + sampler). Built once;
-    /// every cached bind group references it, and
-    /// [`Self::build_variants`] composes each format's pipeline layout
-    /// against it.
-    image_bgl: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-    /// `id → bind group` for every live registration's GPU texture. An
-    /// entry is inserted when the registry drains a pending upload, and
-    /// removed when the owning [`ImageHandle`](crate::ImageHandle) (and
-    /// all its clones) drops — the registry reports those ids via
-    /// `drain_dropped`. A `draw` for an absent id is skipped. Keyed by
-    /// [`TextureId`] (the registration id behind a handle).
+    /// `id → bind group` for every live registration's GPU texture,
+    /// together with the group 0 layout and sampler each one is built
+    /// against. An entry is inserted when the registry drains a pending
+    /// upload, and removed when the owning
+    /// [`ImageHandle`](crate::ImageHandle) (and all its clones) drops —
+    /// the registry reports those ids via `drain_dropped`. A `draw` for
+    /// an absent id is skipped. Keyed by [`TextureId`] (the registration
+    /// id behind a handle).
     ///
     /// Holds bind groups for **both** registered images and `GpuView`
     /// render targets (the id authority is shared, so no collision) —
@@ -54,8 +48,9 @@ pub(super) struct ImagePipeline {
 }
 
 impl ImagePipeline {
-    /// Format-independent image resources (shader, layout, sampler, GPU
-    /// texture cache). The pipelines are built by
+    /// Format-independent image resources: the shader here, and the
+    /// layout / sampler / texture cache inside [`ImageTextures`]. The
+    /// pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variant`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
@@ -64,30 +59,13 @@ impl ImagePipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
         });
 
-        let image_bgl = texture_sampler_bgl(device, "aperture.image.tex.bgl");
-
-        // Min/mag nearest filtering is a shader-side UV texel-center snap,
-        // keeping all filter combinations on one sampler and bind group.
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("aperture.image.sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
-
         let instance_buffer =
             DynamicBuffer::<ImageInstance>::vertex(device, "aperture.image.instances", 16);
 
         Self {
             instance_buffer,
             shader,
-            image_bgl,
-            sampler,
-            textures: ImageTextures::default(),
+            textures: ImageTextures::new(device),
             gpu_view_targets: GpuViewTargets::default(),
         }
     }
@@ -110,7 +88,7 @@ impl ImagePipeline {
                 stencil_label: "aperture.image.pipeline.stencil_test",
                 layout_label: "aperture.image.pl",
                 shader: &self.shader,
-                bind_group_layouts: &[Some(&self.image_bgl)],
+                bind_group_layouts: &[Some(&self.textures.bgl)],
                 vertex_buffers: &[Some(instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
@@ -131,8 +109,7 @@ impl ImagePipeline {
     /// free-then-upload (which would leak it into the cache un-owned).
     #[profiling::function]
     pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
-        self.textures
-            .drain_registry(ctx, images, &self.image_bgl, &self.sampler);
+        self.textures.drain_registry(ctx, images);
     }
 
     /// Paint every [`GpuView`](crate::widgets::gpu_view::GpuView) drawn this
@@ -161,15 +138,8 @@ impl ImagePipeline {
         owner: RenderOwnerId,
         now: Duration,
     ) {
-        self.gpu_view_targets.paint(
-            ctx,
-            frame_targets,
-            owner,
-            now,
-            &mut self.textures,
-            &self.image_bgl,
-            &self.sampler,
-        );
+        self.gpu_view_targets
+            .paint(ctx, frame_targets, owner, now, &mut self.textures);
     }
 
     /// Free every `GpuView` target owned by a retired render stream.

@@ -2,33 +2,73 @@
 
 use crate::primitives::image::Image;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::texture_bind_group;
+use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
 use crate::renderer::backend::queue::Queue;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id::TextureId;
 use rustc_hash::FxHashMap;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct ImageTextures {
     pub(super) bindings: FxHashMap<TextureId, wgpu::BindGroup>,
+    /// Group 0 layout (per-image texture + sampler). Built once; every
+    /// bind group in `bindings` references it, and
+    /// `ImagePipeline::build_variants` composes each format's pipeline
+    /// layout against it — the only consumer outside this file.
+    pub(super) bgl: wgpu::BindGroupLayout,
+    /// Shared by every image and `GpuView` target: min/mag nearest
+    /// filtering is a shader-side UV texel-center snap, so all filter
+    /// combinations ride one sampler and one bind group.
+    sampler: wgpu::Sampler,
 }
 
 impl ImageTextures {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
+        Self {
+            bindings: FxHashMap::default(),
+            bgl: texture_sampler_bgl(device, "aperture.image.tex.bgl"),
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("aperture.image.sampler"),
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+                ..Default::default()
+            }),
+        }
+    }
+
     #[profiling::function]
-    pub(super) fn drain_registry(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        images: &ImageRegistry,
-        layout: &wgpu::BindGroupLayout,
-        sampler: &wgpu::Sampler,
-    ) {
+    pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
+        // Destructured so the upload borrows `bgl`/`sampler` while the
+        // closure holds `bindings` mutably — disjoint fields, which
+        // `self.upload(..)` inside the closure could not express.
+        let Self {
+            bindings,
+            bgl,
+            sampler,
+        } = self;
         images.drain_pending(|id, image| {
-            let bind_group = upload(ctx.device, ctx.queue, layout, sampler, id, &image);
-            self.bindings.insert(id, bind_group);
+            let bind_group = upload(ctx.device, ctx.queue, bgl, sampler, id, &image);
+            bindings.insert(id, bind_group);
         });
         images.drain_dropped(|id| {
             self.bindings.remove(&id);
         });
+    }
+
+    /// Bind `view` against the shared layout + sampler. The `GpuView`
+    /// target allocator goes through here so target bind groups are
+    /// built exactly like image ones — `draw` cannot tell them apart.
+    pub(super) fn bind_group(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+        label: &str,
+    ) -> wgpu::BindGroup {
+        texture_bind_group(device, &self.bgl, &self.sampler, view, label)
     }
 }
 
