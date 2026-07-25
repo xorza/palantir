@@ -170,9 +170,19 @@ impl PaintSink for RecordedPaint {
 /// divergence by index and kind instead of dumping both call lists.
 pub(crate) fn assert_same_paint(left: &RecordedPaint, right: &RecordedPaint) {
     for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
+        // Compare rendered `Debug`, not `PartialEq`: the payloads are
+        // full of `f32`, and derived equality gets both float edge cases
+        // wrong here. `NaN != NaN` would fail two byte-identical frames
+        // (a NaN stroke width is a documented pass-through, not a noop),
+        // and `-0.0 == 0.0` would hide a sign-of-zero drift between
+        // them. `Debug` distinguishes signed zeros and prints `NaN` for
+        // every NaN, so it is the bitwise-shaped comparison this check
+        // wants — no fast path, since the `PartialEq` one would
+        // reintroduce the signed-zero hole.
+        let (ls, rs) = (format!("{l:?}"), format!("{r:?}"));
         assert!(
-            l == r,
-            "paint call {i} differs: {} vs {}\n  left:  {l:?}\n  right: {r:?}",
+            ls == rs,
+            "paint call {i} differs: {} vs {}\n  left:  {ls}\n  right: {rs}",
             l.kind(),
             r.kind(),
         );

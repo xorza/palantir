@@ -711,6 +711,33 @@ pub(crate) struct ComposeSession<'a> {
     current_transform: TranslateScale,
 }
 
+/// A draw's rect in the two forms every rect-shaped handler needs, from
+/// [`ComposeSession::scaled_rect`].
+#[derive(Debug)]
+struct ScaledRect {
+    /// Physical px — what the emitted instance carries.
+    phys: Rect,
+    /// Viewport-clamped integer bounds — what culling and the group's
+    /// overlap tracking test against.
+    urect: URect,
+}
+
+impl ComposeSession<'_> {
+    /// Apply the walk transform to a payload's logical rect, scale it to
+    /// physical px, and derive its integer bounds — the opening move of
+    /// `rect`, `shadow`, `image`, and `text`. Scaling happens once
+    /// because the cull bounds and the emitted instance share the
+    /// result, so a culled draw costs the same as an emitted one.
+    fn scaled_rect(&self, rect: Rect) -> ScaledRect {
+        let world = self.current_transform.apply_rect(rect);
+        let phys = world.scaled_by(self.display.scale_factor, self.display.pixel_snap);
+        ScaledRect {
+            phys,
+            urect: urect_from_phys(phys.min, phys.max(), self.display.physical),
+        }
+    }
+}
+
 impl Drop for ComposeSession<'_> {
     /// Close the trailing text batch and draw group.
     ///
@@ -813,14 +840,10 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn rect(&mut self, p: DrawRectPayload) {
-        let scale = self.display.scale_factor;
-        let snap = self.display.pixel_snap;
-        let viewport_phys = self.display.physical;
-        let world_rect = self.current_transform.apply_rect(p.rect);
-        // Scale to physical px once: the cull `URect` and the
-        // emitted quad share this rect (the cull needs the
-        // scaled bounds anyway, so a culled draw costs the same).
-        let phys_rect = world_rect.scaled_by(scale, snap);
+        let ScaledRect {
+            phys: phys_rect,
+            urect: quad_urect,
+        } = self.scaled_rect(p.rect);
         // Clear fold: an opaque solid sharp unclipped quad
         // covering the whole viewport paints exactly what
         // `LoadOp::Clear(fill)` would — every covered pixel
@@ -853,7 +876,6 @@ impl PaintSink for ComposeSession<'_> {
             self.out.clear_override = Some(p.fill.unpack());
             return;
         }
-        let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
         // Clip-cull: skip emitting the quad when it sits
         // entirely outside the active scissor. The GPU
         // would scissor it away anyway; this saves the
@@ -862,7 +884,7 @@ impl PaintSink for ComposeSession<'_> {
             return;
         }
         self.composer.quad_forces_flush(quad_urect, self.out);
-        let phys_scale = self.current_transform.scale * scale;
+        let phys_scale = self.current_transform.scale * self.display.scale_factor;
         let phys_radius = p.corners.scaled_by(phys_scale);
         let stroke_width_phys = p.stroke_width * phys_scale;
         // Fragment fast path: a solid, sharp, stroke-less
@@ -915,17 +937,15 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn shadow(&mut self, p: DrawShadowPayload) {
-        let scale = self.display.scale_factor;
-        let snap = self.display.pixel_snap;
-        let viewport_phys = self.display.physical;
-        let world_rect = self.current_transform.apply_rect(p.rect);
-        let phys_rect = world_rect.scaled_by(scale, snap);
-        let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
+        let ScaledRect {
+            phys: phys_rect,
+            urect: quad_urect,
+        } = self.scaled_rect(p.rect);
         if self.composer.cull_bounds(quad_urect) {
             return;
         }
         self.composer.quad_forces_flush(quad_urect, self.out);
-        let phys_scale = self.current_transform.scale * scale;
+        let phys_scale = self.current_transform.scale * self.display.scale_factor;
         let phys_radius = p.corners.scaled_by(phys_scale);
         // Live shadow parameters are logical-px scalars; scale
         // them so the shader's `local` coords line up.
@@ -1053,12 +1073,10 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn image(&mut self, p: DrawImagePayload, paint: Option<&GpuPaintRef>) {
-        let scale = self.display.scale_factor;
-        let snap = self.display.pixel_snap;
-        let viewport_phys = self.display.physical;
-        let world_rect = self.current_transform.apply_rect(p.rect);
-        let phys_rect = world_rect.scaled_by(scale, snap);
-        let image_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
+        let ScaledRect {
+            phys: phys_rect,
+            urect: image_urect,
+        } = self.scaled_rect(p.rect);
         // Clip-cull + batch-close: image sits above text in the
         // kind order (same as mesh), so a surviving draw closes
         // the open text batch first.
@@ -1091,6 +1109,7 @@ impl PaintSink for ComposeSession<'_> {
         // payload. The draw above already composites the result by
         // `id`.
         if let Some(paint) = paint {
+            let scale = self.display.scale_factor;
             let cap = i64::from(self.composer.max_texture_dim.get());
             let s = phys_rect.size;
             let downsample = (self.composer.max_texture_dim.get() as f32 / s.w.max(s.h)).min(1.0);
@@ -1437,13 +1456,10 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn text(&mut self, t: DrawTextPayload) {
-        let scale = self.display.scale_factor;
-        let snap = self.display.pixel_snap;
-        let viewport_phys = self.display.physical;
-        let world_rect = self.current_transform.apply_rect(t.rect);
-        // Scale once: `unclipped` (overlap/cull bounds) and the
-        // emitted run's `origin` both derive from this rect.
-        let phys_rect = world_rect.scaled_by(scale, snap);
+        let ScaledRect {
+            phys: phys_rect,
+            urect: unclipped,
+        } = self.scaled_rect(t.rect);
         // `bounds` feeds the batch GPU scissor (union of the
         // batch's runs — see the strict-bounds rule below) and
         // the backend's per-line y-cull; there is no per-glyph
@@ -1451,7 +1467,6 @@ impl PaintSink for ComposeSession<'_> {
         // ancestor `clip = true` panels actually clip glyphs;
         // an empty intersection means the run can't reach
         // pixels — skip the push entirely (cull).
-        let unclipped = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
         let bounds = match self.composer.clip_stack.last() {
             Some(parent) => unclipped.clamp_to(parent.scissor),
             None => unclipped,
