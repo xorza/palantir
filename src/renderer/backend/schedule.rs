@@ -566,8 +566,10 @@ fn emit_group_body(
     );
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+// `internals` only, not `any(test, …)`: the sole consumer is the
+// `schedule` benchmark, which that feature gates too.
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
     use super::*;
 
     /// What one schedule walk emitted: the step total plus the two

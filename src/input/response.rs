@@ -135,7 +135,7 @@ pub struct ButtonState {
     pub phase: ButtonPhase,
     /// Drag lifecycle (see [`Drag`]). At most one button's drag is
     /// live per widget: when several buttons are simultaneously
-    /// latched, the priority-first in [`PointerButton::all`] wins.
+    /// latched, the first in [`PointerButton`]'s declaration order wins.
     pub drag: Drag,
 }
 
@@ -297,7 +297,7 @@ impl ResponseState {
     /// button read the field directly (`state.left`, not
     /// `state.button(PointerButton::Left)`); reach for this only when
     /// the button is a variable (configurable gesture bindings, loops
-    /// over [`PointerButton::all`]).
+    /// over every [`PointerButton`]).
     #[inline]
     pub fn button(&self, button: PointerButton) -> &ButtonState {
         match button {

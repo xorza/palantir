@@ -11,7 +11,7 @@ pub(crate) mod pipeline_utils;
 mod quad_pipeline;
 pub(crate) mod queue;
 // `pub(crate)` only so the `schedule` benchmark can reach the gated
-// `test_support` harness; every item inside stays `pub(super)`.
+// `internals` harness; every item inside stays `pub(super)`.
 pub(crate) mod schedule;
 mod shader_template;
 mod stencil;
