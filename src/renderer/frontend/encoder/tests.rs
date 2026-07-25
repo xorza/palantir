@@ -553,8 +553,8 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
     );
 }
 
-/// Walk an encoder command stream and return the effective screen-space rect
-/// for each `DrawRect`, keyed by its fill colour.
+/// Walk a recorded paint stream and return the effective screen-space rect
+/// for each `Rect` call, keyed by its fill colour.
 fn screen_rects_by_fill(cmds: &RecordedPaint) -> Vec<(ColorF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();

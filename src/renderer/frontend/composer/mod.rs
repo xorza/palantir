@@ -340,17 +340,17 @@ impl Composer {
     fn enter_higher_kind(
         &mut self,
         tier: PaintTier,
-        scissor: URect,
+        bounds: URect,
         out: &mut RenderBuffer,
     ) -> bool {
-        if self.cull_bounds(scissor) {
+        if self.cull_bounds(bounds) {
             return false;
         }
         self.close_batch(out);
-        if self.higher_kinds.conflicts(tier, scissor) {
+        if self.higher_kinds.conflicts(tier, bounds) {
             self.flush(out);
         }
-        self.higher_kinds.push(tier, scissor);
+        self.higher_kinds.push(tier, bounds);
         true
     }
 
@@ -673,12 +673,12 @@ fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
-/// Physical-px scissor for a stroked shape's owner-local centerline
-/// `bbox`. Folds `origin` + the active transform into physical space,
+/// Physical-px painted bounds for a stroked shape's owner-local
+/// centerline `bbox`. Folds `origin` + the active transform into physical space,
 /// applies the shared stroke/cap/join/AA bound once, then clamps to the
 /// viewport. Shared by the curve and polyline paths so their cull and
 /// overlap bounds cannot drift.
-fn stroke_bbox_scissor(
+fn stroke_bbox_urect(
     xform: TranslateScale,
     bbox: Rect,
     origin: Vec2,
@@ -1092,8 +1092,8 @@ impl PaintSink for ComposeSession<'_> {
         });
         // A `GpuView` also needs its off-screen target painted:
         // list it with the used physical size + display/raster
-        // scales + app paint callback from the cmd buffer's side
-        // channel. The draw above already composites the result by
+        // scales + the app paint callback riding alongside the
+        // payload. The draw above already composites the result by
         // `id`.
         if let Some(paint) = paint {
             let cap = i64::from(self.composer.max_texture_dim.get());
@@ -1115,7 +1115,7 @@ impl PaintSink for ComposeSession<'_> {
         let display = self.display;
         let width_phys = p.width * self.current_transform.scale * scale;
         let cap = p.cap;
-        let bbox_scissor = stroke_bbox_scissor(
+        let bbox_urect = stroke_bbox_urect(
             self.current_transform,
             p.bbox,
             p.origin,
@@ -1129,7 +1129,7 @@ impl PaintSink for ComposeSession<'_> {
         // closes the open text batch first.
         if !self
             .composer
-            .enter_higher_kind(PaintTier::Curve, bbox_scissor, self.out)
+            .enter_higher_kind(PaintTier::Curve, bbox_urect, self.out)
         {
             return;
         }
@@ -1193,7 +1193,7 @@ impl PaintSink for ComposeSession<'_> {
         let display = self.display;
         let width_phys = p.width * self.current_transform.scale * scale;
         let cap = p.cap;
-        let bbox_scissor = stroke_bbox_scissor(
+        let bbox_urect = stroke_bbox_urect(
             self.current_transform,
             p.bbox,
             p.origin,
@@ -1204,7 +1204,7 @@ impl PaintSink for ComposeSession<'_> {
         );
         if !self
             .composer
-            .enter_higher_kind(PaintTier::Curve, bbox_scissor, self.out)
+            .enter_higher_kind(PaintTier::Curve, bbox_urect, self.out)
         {
             return;
         }
@@ -1270,7 +1270,7 @@ impl PaintSink for ComposeSession<'_> {
         // trims a pixel the stroke would reach, and it
         // short-circuits before transforming the full point
         // list — the win for long dense point runs.
-        let bbox_scissor = stroke_bbox_scissor(
+        let bbox_urect = stroke_bbox_urect(
             self.current_transform,
             p.bbox,
             p.origin,
@@ -1279,7 +1279,7 @@ impl PaintSink for ComposeSession<'_> {
             (p.points_len > 2).then_some(join),
             display,
         );
-        if self.composer.cull_bounds(bbox_scissor) {
+        if self.composer.cull_bounds(bbox_urect) {
             return;
         }
 
@@ -1343,7 +1343,7 @@ impl PaintSink for ComposeSession<'_> {
         // split the batch or the group.
         if !self
             .composer
-            .enter_higher_kind(PaintTier::Curve, bbox_scissor, self.out)
+            .enter_higher_kind(PaintTier::Curve, bbox_urect, self.out)
         {
             return;
         }

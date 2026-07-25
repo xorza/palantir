@@ -116,7 +116,7 @@ pub(crate) struct RecordStore {
 
 /// Payloads for one window's retained record. All bulk shape-geometry bytes
 /// live here until the next record pass and are read by every later phase via
-/// spans recorded on tree shape records and cmd-buffer payloads.
+/// spans recorded on tree shape records and the encoder's paint payloads.
 #[derive(Default, Debug)]
 pub(crate) struct RecordPayloads {
     /// User-supplied mesh geometry (`Shape::Mesh`), written at record

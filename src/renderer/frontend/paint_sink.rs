@@ -10,15 +10,18 @@
 //! lowered payload — one per paint operation, matching what the composer
 //! consumes. **Provided** methods are the encoder-facing surface: they
 //! own the no-op gates and the brush/stroke lowering, then call down.
-//! Keeping that half here rather than in either sink is what makes the
-//! no-op policy canonical — a gate can't drift between the two paths
-//! because there is only one copy of it.
+//! Keeping that half here rather than in either sink is what keeps the
+//! no-op policy single-copy — it can't drift between the two sinks
+//! because there is only one copy of it. It is not *unbypassable*: the
+//! required half is crate-visible, so `sink.rect(payload)` compiles
+//! anywhere and skips the gate. `RecordedPaint::replay` is the one
+//! place that does so, and only because its input already passed.
 //!
 //! ## Noop policy
 //!
 //! Every `draw_*` early-returns when its inputs would emit no visible
 //! pixels (transparent fill color, no-op stroke, no-op shadow tint).
-//! **This trait is the single canonical correctness gate** — callers
+//! **The provided half is the single canonical gate** — callers
 //! don't need to pre-check, and the encoder doesn't gate per branch.
 //! Upstream filters (`Shape::is_noop` at `Ui::add_shape`,
 //! whole-`Background::is_noop` at `Tree::open_node`) are performance
@@ -28,7 +31,7 @@
 //! Exception: [`PaintSink::draw_polyline`] doesn't gate on colour. Its
 //! colors live in spans (`PerSegment` can mix one solid stop with N
 //! transparent), and an O(n) read on every emit would dominate the
-//! per-cmd cost. Colour noops are caught by `Shape::Polyline::is_noop`
+//! per-call cost. Colour noops are caught by `Shape::Polyline::is_noop`
 //! at the authoring boundary instead; the payload's own `is_noop` still
 //! gates degenerate geometry (point count / width).
 //!

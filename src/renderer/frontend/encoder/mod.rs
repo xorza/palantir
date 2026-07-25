@@ -41,7 +41,7 @@ use std::time::Duration;
 /// after every layer's regular paint.
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
-/// Retained encoder state and its command output.
+/// Retained encoder state.
 #[derive(Debug)]
 pub(crate) struct Encoder {
     gradients: GradientResolver,
@@ -491,7 +491,7 @@ fn emit_one_shape<S: PaintSink>(
             // the active transform and derives the covering AABB. Solid
             // fill only — the reused quad lanes have no room for a gradient.
             // Stroke noop-normalization happens inside `draw_triangle`
-            // (the cmd buffer is the single canonical correctness gate).
+            // (`PaintSink`'s provided half is the single canonical gate).
             out.draw_triangle(owner_rect.min, [*a, *b, *c], *fill, *radius, *stroke);
         }
         ShapeRecord::Image {
@@ -643,16 +643,16 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
     }
 
     // Clip culling (skipping leaves outside the active ancestor
-    // clip) intentionally does NOT live in the encoder: cmd shape
-    // would depend on screen position, complicating downstream
-    // walks. The composer culls per-cmd at compose time instead.
-    // Damage filtering happens at subtree granularity above (early
+    // clip) intentionally does NOT live in the encoder: the scissor
+    // exists only in physical space on the composer, which culls each
+    // call as it arrives. Damage filtering happens at subtree
+    // granularity above (early
     // return when no rect intersects this node's screen rect); leaves
     // emit unconditionally once we're past that gate.
 
     // Skip Push/PopTransform when the transform is identity —
     // composing identity is a no-op, so emitting the pair just
-    // wastes two cmd slots and a `transform_stack` push/pop in the
+    // wastes two sink calls and a `transform_stack` push/pop in the
     // composer.
     //
     // Anchor the raw transform at the node's own `layout_rect.min`
@@ -671,7 +671,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
     // thing that stays in parent space, so a panel's `transform` acts
     // as a pure inner-content pan/zoom while its background remains
     // anchored. Single push/pop wraps the whole body; the composer
-    // handles per-cmd transform composition.
+    // handles per-call transform composition.
     if let Some(t) = transform {
         out.push_transform(t);
     }
@@ -746,7 +746,7 @@ fn emit_shadow<S: PaintSink>(
     out.draw_shadow(
         paint_rect,
         corners,
-        // LoweredShadow.color is `ColorF16` (the field); cmd-buffer
+        // LoweredShadow.color is `ColorF16` (the field); the payload
         // takes the packed form directly so the encoder doesn't
         // unpack-and-repack.
         shadow.color,
@@ -756,7 +756,7 @@ fn emit_shadow<S: PaintSink>(
 }
 
 /// Output of [`resolve_fit`]: the final paint rect + UV crop the
-/// encoder hands to the cmd buffer.
+/// encoder hands to the sink.
 #[derive(Debug)]
 struct Resolved {
     rect: Rect,

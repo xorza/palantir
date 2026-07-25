@@ -61,7 +61,7 @@ impl Shapes {
     /// gate: caller code can pass anything, the storage layer
     /// canonicalises. Saves the per-shape lowering cost (payload
     /// staging, mesh hashing, text shaping downstream) that the
-    /// cmd-buffer gate alone wouldn't.
+    /// emit-time gate alone wouldn't.
     /// Returns the index of the pushed `ShapeRecord` in `self.records`,
     /// or `None` if the shape was dropped as a no-op. Callers that want
     /// to attach side data keyed by shape-index (e.g. paint-anim

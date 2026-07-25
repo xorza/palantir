@@ -7,7 +7,7 @@ use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
-use crate::renderer::frontend::composer::{Composer, stroke_bbox_scissor};
+use crate::renderer::frontend::composer::{Composer, stroke_bbox_urect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
@@ -124,7 +124,7 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
 }
 
 #[test]
-fn stroke_bbox_scissor_applies_transform_dpi_and_style_once() {
+fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
     #[derive(Debug)]
     struct Case {
         scale: f32,
@@ -174,7 +174,7 @@ fn stroke_bbox_scissor_applies_transform_dpi_and_style_once() {
     let xform = TranslateScale::new(Vec2::new(3.0, 5.0), 1.5);
 
     for case in cases {
-        let actual = stroke_bbox_scissor(
+        let actual = stroke_bbox_urect(
             xform,
             rect(10.0, 20.0, 20.0, 10.0),
             Vec2::new(2.0, 4.0),
@@ -697,7 +697,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
 }
 
 /// A resolved linear gradient packs row + axis + kind into the
-/// cmd-buffer payload; composer pipes them through to the emitted Quad.
+/// paint payload; composer pipes them through to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::gradient::Spread;

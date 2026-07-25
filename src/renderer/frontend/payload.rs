@@ -29,7 +29,7 @@ pub(crate) struct ResolvedGradient {
     pub(crate) kind: FillKind,
 }
 
-/// Cmd-buffer brush input. `Solid` carries an 8-byte `ColorF16`;
+/// Lowered brush input. `Solid` carries an 8-byte `ColorF16`;
 /// `Gradient` carries the 16-byte atlas row + axis + kind resolved for
 /// this encode pass.
 #[derive(Clone, Copy, Debug)]
@@ -103,7 +103,7 @@ pub(crate) struct PushClipPayload {
 /// gradients (the atlas row supplies the colour). Storing as
 /// `ColorF16` (8 B linear-RGB) vs. 16 B `Color` saves 8 B per rect
 /// payload — the composer decodes via `Color::from(f16)` at `Quad`
-/// write time. `Pod` invariant: `repr(C)` + no padding.
+/// write time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
@@ -165,7 +165,7 @@ impl DrawTextPayload {
 
 /// Stroked polyline payload. `width` is logical px. Points + colors
 /// live in the window's [`RecordPayloads`] (`polyline_points` /
-/// `polyline_colors`) — the cmd buffer only carries the spans.
+/// `polyline_colors`) — the payload only carries the spans.
 /// `colors_len` is 1 (broadcast), `points_len` (per-point), or
 /// `points_len - 1` (per-segment), selected by `color_mode`.
 ///
@@ -203,7 +203,7 @@ impl DrawPolylinePayload {
     /// segments) or a non-paintable stroke width. **Does not** check
     /// color noop-ness: per-point / per-segment colours live in
     /// spans on the record store, and an O(n) read here would
-    /// dominate the per-cmd cost. Color noop is filtered at the
+    /// dominate the per-call cost. Color noop is filtered at the
     /// `Shape::Polyline::is_noop` authoring boundary instead. The
     /// bbox can legitimately be zero-area (horizontal / vertical
     /// line) and still paint stroke pixels, so it's not gated either.
@@ -214,7 +214,7 @@ impl DrawPolylinePayload {
 }
 
 /// Mesh draw payload. Vertex/index data lives in the window's
-/// [`RecordPayloads`] (`meshes`); the cmd buffer only carries the spans
+/// [`RecordPayloads`] (`meshes`); the payload only carries the spans
 /// (owner-local). The composer folds `origin` (owner-rect top-left)
 /// into the per-instance translate so the vertex stream stays
 /// content-stable across frames.
