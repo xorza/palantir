@@ -29,6 +29,7 @@ pub use crate::bench::renderer::backend::schedule::bench as schedule;
 pub use crate::bench::renderer::backend::text::bench as text_atlas;
 pub use crate::bench::renderer::frontend::composer::bench as composer;
 pub use crate::bench::renderer::frontend::gradient::bench as gradient;
+pub use crate::bench::renderer::frontend::text_grid::bench as text_grid;
 pub use crate::bench::scene::cascade::bench as cascade;
 pub use crate::bench::scene::damage::bench as damage;
 pub use crate::bench::scene::tree::paint_anims::bench as paint_anims;
