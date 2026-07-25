@@ -25,6 +25,7 @@ pub use crate::bench::input::bench as input;
 pub use crate::bench::layout::cache::bench as layout_caches;
 pub use crate::bench::renderer::backend::curve::bench as curve_pipeline;
 pub use crate::bench::renderer::backend::image::bench as image_pipeline;
+pub use crate::bench::renderer::backend::record::bench as record_pass;
 pub use crate::bench::renderer::backend::schedule::bench as schedule;
 pub use crate::bench::renderer::backend::text::bench as text_atlas;
 pub use crate::bench::renderer::frontend::composer::bench as composer;

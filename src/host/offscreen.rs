@@ -305,6 +305,7 @@ pub(crate) mod internals {
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::renderer::backend::{BackendConfig, WgpuBackend};
     use crate::renderer::frontend::Frontend;
+    use crate::renderer::render_buffer::RenderBuffer;
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::window::WindowToken;
@@ -315,6 +316,15 @@ pub(crate) mod internals {
         pub closes: usize,
         pub close_vetoed: bool,
         pub close_requested: bool,
+    }
+
+    /// Draw list the most recent [`OffscreenHost::frame_offscreen`]
+    /// composed. The `record_pass` benchmark replays the schedule over it
+    /// to report the exact step counts behind each timing — a number the
+    /// backend never publishes, because counting steps on the production
+    /// path would cost what the benchmark exists to measure.
+    pub(crate) fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
+        &host.frontend.buffer
     }
 
     pub fn offscreen_window_scratch(host: &OffscreenHost) -> OffscreenWindowScratch {

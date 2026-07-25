@@ -46,6 +46,7 @@ use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::record_store::RecordPayloads;
 use crate::text::TextShaper;
 use rustc_hash::FxHashMap;
+use std::time::Instant;
 use wgpu::util::StagingBelt;
 
 /// Size of the per-pipeline immediate (push-constant) region every
@@ -176,6 +177,16 @@ pub(crate) struct WgpuBackend {
     /// with one shared backend the published sample reflects the most recently
     /// submitted window.
     gpu_timings: Option<GpuTimings>,
+    /// The same shared handle `gpu_timings` publishes into. Held separately
+    /// because [`Self::run_main_pass`] publishes its host-side record time on
+    /// *every* submitted frame, including the ones where `gpu_timings` is
+    /// `None` — the host didn't opt into instrumentation, or the adapter has
+    /// no `TIMESTAMP_QUERY`. Unconditional rather than behind
+    /// [`BackendConfig`]: the measurement is two `Instant::now()` calls and
+    /// one `RefCell` write *per frame*, and making it opt-in would mean the
+    /// only way to read it is to also enable the in-pass timestamp writes
+    /// that perturb the very number it reports.
+    pass_stats: GpuPassStats,
 }
 
 impl WgpuBackend {
@@ -213,6 +224,7 @@ impl WgpuBackend {
         let queue = Queue::new(queue);
         let features = device.features();
         let timestamp_period = queue.get_timestamp_period();
+        let pass_stats = resources.gpu_pass_stats.clone();
         let gpu_timings = (config.collect_gpu_stats
             && features.contains(wgpu::Features::TIMESTAMP_QUERY)
             && timestamp_period > 0.0)
@@ -239,6 +251,7 @@ impl WgpuBackend {
             pipelines,
             images: resources.images,
             gpu_timings,
+            pass_stats,
         }
     }
 
@@ -692,6 +705,13 @@ impl WgpuBackend {
     /// `RepaintScissors::Full` runs one schedule walk with no damage
     /// scissor and clears the whole backbuffer. `Partial` loads the
     /// prior color and runs once per non-empty scissor.
+    ///
+    /// Host CPU time for the whole of this — pass open, every recorded
+    /// draw step, and the end-of-pass command replay that `pass`'s drop
+    /// runs — publishes to
+    /// [`GpuPassStats::last_main_pass_cpu_ms`]. It is the one frame cost
+    /// that scales with draw-step *count* rather than pixel count, so it
+    /// is the metric the `record_pass` benchmark reads.
     #[profiling::function]
     #[allow(clippy::too_many_arguments)]
     fn run_main_pass(
@@ -730,49 +750,58 @@ impl WgpuBackend {
         // `pass_begin` / `pass_end` so a single sequential timestamp
         // stream covers begin → midpoints → end without index gaps.
         let timestamp_writes = self.gpu_timings.as_ref().and_then(|t| t.pass_writes());
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("aperture.renderer.main.pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: color_view,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: load_op,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment,
-            timestamp_writes,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        if let Some(t) = &self.gpu_timings {
-            if t.inside_passes {
-                t.pass_begin(&mut pass);
+        let started = Instant::now();
+        // Scoped so `pass` drops — replaying its recorded commands into the
+        // encoder — inside the measured window rather than after it.
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("aperture.renderer.main.pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color_view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: load_op,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment,
+                timestamp_writes,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            if let Some(t) = &self.gpu_timings {
+                if t.inside_passes {
+                    t.pass_begin(&mut pass);
+                }
+                t.begin_pipeline_stats(&mut pass);
             }
-            t.begin_pipeline_stats(&mut pass);
-        }
-        match repaint_scissors {
-            RepaintScissors::Full => self.render_groups(fmt, &mut pass, buffer, None, use_stencil),
-            RepaintScissors::Partial(rects) => {
-                let rect_count = rects.iter().count();
-                for (i, r) in rects.iter().enumerate() {
-                    tracing::trace!(
-                        rect = i,
-                        of = rect_count,
-                        scissor = ?r,
-                        "wgpu_backend.submit.pass.partial_rect"
-                    );
-                    self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil);
+            match repaint_scissors {
+                RepaintScissors::Full => {
+                    self.render_groups(fmt, &mut pass, buffer, None, use_stencil)
+                }
+                RepaintScissors::Partial(rects) => {
+                    let rect_count = rects.iter().count();
+                    for (i, r) in rects.iter().enumerate() {
+                        tracing::trace!(
+                            rect = i,
+                            of = rect_count,
+                            scissor = ?r,
+                            "wgpu_backend.submit.pass.partial_rect"
+                        );
+                        self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil);
+                    }
+                }
+            }
+            if let Some(t) = &self.gpu_timings {
+                t.end_pipeline_stats(&mut pass);
+                if t.inside_passes {
+                    t.pass_end(&mut pass);
                 }
             }
         }
-        if let Some(t) = &self.gpu_timings {
-            t.end_pipeline_stats(&mut pass);
-            if t.inside_passes {
-                t.pass_end(&mut pass);
-            }
-        }
+        self.pass_stats
+            .record_main_pass_cpu_ns(started.elapsed().as_nanos() as u64);
     }
 
     /// Dispatch every step in the per-frame schedule
