@@ -12,7 +12,7 @@ use crate::text::TextRoot;
 /// clamp: an over-constrained layout can commit a negative width, which the
 /// cache would assert on.
 #[inline]
-pub(in crate::text) fn canonical_wrap_width(width: f32) -> f32 {
+pub(super) fn canonical_wrap_width(width: f32) -> f32 {
     width.max(0.0).quantize_px() as f32
 }
 
@@ -42,11 +42,7 @@ impl LineFit {
     /// halign offsets into wrapped buffers. `size.w` is ceil'd and the
     /// canonical width is integral, so this comparison matches the
     /// truncating path's cut decision exactly.
-    pub(in crate::text) fn resolves_to_unbounded(
-        self,
-        unbounded: &TextRoot,
-        target_width_px: f32,
-    ) -> bool {
+    pub(super) fn resolves_to_unbounded(self, unbounded: &TextRoot, target_width_px: f32) -> bool {
         matches!(self, LineFit::Clip | LineFit::Ellipsis)
             && unbounded.single_line
             && unbounded.size.w <= canonical_wrap_width(target_width_px)
@@ -83,7 +79,7 @@ pub enum TextWrap {
 impl TextWrap {
     /// Width-bounded shaping mode, or `None` for the policies that always
     /// keep the unbounded shape (`SingleLine`, `Scroll`).
-    pub(in crate::text) fn line_fit(self) -> Option<LineFit> {
+    pub(super) fn line_fit(self) -> Option<LineFit> {
         match self {
             TextWrap::SingleLine | TextWrap::Scroll => None,
             TextWrap::Truncate => Some(LineFit::Clip),
@@ -126,11 +122,7 @@ impl TextWrap {
     /// floors at the widest unbreakable segment so those segments
     /// overflow rather than break — the same floor
     /// [`Self::min_content`] demands.
-    pub(in crate::text) fn target_width(
-        self,
-        available_width_px: f32,
-        unbounded: &TextRoot,
-    ) -> f32 {
+    pub(super) fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
             TextWrap::WrapWithOverflow => available_width_px.max(unbounded.intrinsic_min),
             TextWrap::SingleLine

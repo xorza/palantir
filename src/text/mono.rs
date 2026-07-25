@@ -56,7 +56,7 @@ pub(super) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
 ///
 /// [`TextShaper::test_mono`]: crate::text::TextShaper
 #[cfg(any(test, feature = "internals"))]
-pub(in crate::text) mod internals {
+pub(super) mod internals {
     use crate::primitives::size::Size;
     use crate::text::wrap::LineFit;
     use crate::text::{TextRoot, TextShapeRequest};
@@ -98,7 +98,7 @@ pub(in crate::text) mod internals {
     /// Mints no shaped buffer, so `TextSystem` reports
     /// [`TextShapeKey::INVALID`] for every run measured this way and the
     /// renderer drops them cleanly.
-    pub(in crate::text) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
+    pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
         let text = request.text;
         if text.is_empty() {
             return TextRoot::ZERO;

@@ -285,7 +285,7 @@ impl Node {
     /// `Forest::open_node`) so `Node` itself never carries a
     /// resolved id.
     #[inline(always)]
-    pub(in crate::scene) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
+    pub(super) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
         NodeColumns {

@@ -184,11 +184,7 @@ impl LayoutCore {
     }
 
     #[inline]
-    pub(in crate::scene) fn hash_with_flags<H: std::hash::Hasher>(
-        &self,
-        flags: NodeFlags,
-        h: &mut H,
-    ) {
+    pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
@@ -270,10 +266,10 @@ const _: () = assert!(
 );
 
 #[derive(Debug)]
-pub(in crate::scene) struct NodeColumns {
-    pub(in crate::scene) widget_id: WidgetId,
-    pub(in crate::scene) layout: LayoutCore,
-    pub(in crate::scene) attrs: NodeFlags,
-    pub(in crate::scene) bounds: BoundsExtras,
-    pub(in crate::scene) panel: PanelExtras,
+pub(crate) struct NodeColumns {
+    pub(crate) widget_id: WidgetId,
+    pub(crate) layout: LayoutCore,
+    pub(crate) attrs: NodeFlags,
+    pub(crate) bounds: BoundsExtras,
+    pub(crate) panel: PanelExtras,
 }
