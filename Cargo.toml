@@ -132,6 +132,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "schedule"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "text_shape"
 harness = false
 required-features = ["internals"]
