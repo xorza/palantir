@@ -15,8 +15,8 @@ partly gated, then maintainability. Performance claims state whether they are
 | # | Item | Kind | Size | Status |
 | --- | --- | --- | --- | --- |
 | A1 | `run_on_main` silently drops owned work | Correctness | XS | **Shipped** |
-| A2 | Modal misses Escape under popup keyboard capture | Correctness | S | Verified open |
-| A3 | Popup capture resolves after popup bodies read events | Correctness | S | Verified open |
+| A2 | Modal misses Escape under popup keyboard capture | Correctness | S | **Shipped** |
+| A3 | Popup capture resolves after popup bodies read events | Correctness | S | Cross-layer fixed; same-layer needs D2 |
 | A4 | `DragValue` loses node configuration in edit mode | Correctness | S | Verified open |
 | B1 | Cascade preflight: O(N) verify, then unbounded re-work | Perf (derived) | M | Verified open |
 | B2 | `restore_after_cache_hit` is now the layout hot path | Perf (derived) | M | **New** — not in any source doc |
@@ -64,27 +64,50 @@ thread, and a message that names the *consequence* ("the scheduled work was not
 delivered") rather than just the cause, since "event loop exited" reads as
 routine shutdown.
 
-### A2. Modal keyboard ownership disagrees with layer ownership
+### A2. Modal keyboard ownership disagrees with layer ownership — **shipped**
 
-`src/widgets/modal.rs:100` still reads `ui.escape_pressed()` — the *uncaptured*
-keyboard stream. Any popup capture empties that stream (`src/input/mod.rs:428`),
-so a modal that paints above every popup and swallows pointer input through its
-backdrop can silently fail to dismiss on Escape.
+**Keyboard capture is now layer-ordered rather than exclusive.** An uncaptured
+read is blocked only by a capture at or above the reader's own layer, so a
+`Modal` (z 2) still sees Escape while a `Popup` (z 1) holds capture, and every
+layer at or below the owner stays silenced exactly as before. Layer
+discriminants are already const-asserted to match `PAINT_ORDER`, so the
+ordering is an `idx()` comparison. `Modal` now reads Escape *inside* its own
+layer scope and after its body records, so an overlay the body opens on the
+modal layer still wins Escape ahead of it.
 
-Modal must either preempt lower-layer keyboard capture or join one
-layer-ordered overlay keyboard policy. See D2 — the real fix probably lands
-there.
+**The obvious fix was a trap.** "Make `Modal` capture the keyboard" breaks every
+`TextEdit` inside a modal: `text_edit/input.rs` reads the *uncaptured* stream,
+so capture is already exclusive against text input. Layer-ordering the read
+policy fixes dismissal without touching that.
 
-### A3. Popup capture becomes authoritative after popup bodies read events
+Pinned at both levels: the policy in `input/tests/keyboard.rs` (a `Popup`
+capture is visible from `Modal` and `Tooltip`, invisible from `Popup` and
+`Main`), and end-to-end in `widgets/modal.rs` — Escape dismisses a modal with a
+capturing popup open, **plus a control with no popup**, because a modal alone
+has always dismissed and asserting only the popup case would not distinguish
+"layer ordering works" from "Escape works".
 
-`capture_keyboard` appends candidates (`src/input/mod.rs:443`) but
-`finish_record` picks the topmost owner only afterwards
-(`src/input/mod.rs:460`) — after every popup and context-menu body has already
-read captured keys. On any frame where the top popup appears, disappears, or
-reorders, a key can be delivered to the previous popup or to nobody.
+### A3. Popup capture becomes authoritative after popup bodies read events — **partly fixed**
 
-Resolve ownership before dispatching overlay key actions, or defer overlay
-keyboard consumption until the candidate stack is final.
+A2's layer ordering removes the **cross-layer** half: an overlay can no longer
+be silenced by capture on a layer below it, whenever ownership is resolved. The
+**same-layer** half stands. `capture_keyboard` still sets ownership eagerly when
+none is held and `finish_record` still resolves last-wins afterwards, so on a
+frame where the top popup appears, disappears, or reorders, a key can still go
+to the previous frame's owner.
+
+**Recorded so it is not re-attempted: resolving ownership live is wrong.**
+Recomputing "topmost candidate so far" on each `capture_keyboard` looks like the
+fix and is worse — with popups B then A recording in that order, B reads while it
+is topmost-so-far and A reads after displacing it, so *both* receive the key.
+The current stable-during-frame / resolve-at-end model is right; the defect is
+only that the starting value can be stale.
+
+That leaves the real fix as "resolve ownership before dispatching overlay key
+actions", which needs an explicit overlay z-order rather than record order —
+i.e. D2. There is also a residual double-delivery today: a `Modal` reading
+Escape and a `Popup` holding capture both see it, so both close. Strictly better
+than the modal being stuck, and it closes with the same D2 work.
 
 ### A4. `DragValue` loses node configuration in edit mode
 

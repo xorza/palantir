@@ -18,6 +18,7 @@ use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
+use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::time::Duration;
 use strum::EnumCount as _;
@@ -255,6 +256,29 @@ impl TargetScrollDelta {
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
+/// A keyboard-capture owner and the layer it recorded on.
+///
+/// The layer is what makes capture *ordered* rather than exclusive: an
+/// overlay painted above the capture owner is not blocked by it. Layer
+/// discriminants are the z-order (`Layer::PAINT_ORDER` is const-asserted
+/// to match them), so `idx()` comparison is the ordering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct KeyboardOwner {
+    layer: Layer,
+    id: WidgetId,
+}
+
+/// Who is asking for keyboard events.
+///
+/// `Owner` is a capture holder reading its own stream; `Uncaptured` is
+/// anything else, and carries the layer it is reading from so a capture
+/// below it cannot silence it.
+#[derive(Clone, Copy, Debug)]
+enum Reader {
+    Owner(WidgetId),
+    Uncaptured(Layer),
+}
+
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
@@ -309,10 +333,10 @@ pub(crate) struct InputState {
     /// separate from focus because opening a context menu must not move
     /// the caret focus it acts on, yet its shortcuts must not also reach
     /// that focused widget.
-    keyboard_capture: Option<WidgetId>,
+    keyboard_capture: Option<KeyboardOwner>,
     /// Capture stack rebuilt in popup record order. Capacity is retained
     /// so stable overlays stay allocation-free after their first frame.
-    keyboard_capture_candidates: Vec<WidgetId>,
+    keyboard_capture_candidates: Vec<KeyboardOwner>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when a routed event could drive a state mutation
@@ -409,38 +433,54 @@ impl InputState {
         self.subs.subscribe_key(shortcut);
     }
 
-    pub(crate) fn keyboard_events(&self) -> &[KeyboardEvent] {
-        self.keyboard_events_for(None)
+    pub(crate) fn keyboard_events(&self, reader: Layer) -> &[KeyboardEvent] {
+        self.keyboard_events_for(Reader::Uncaptured(reader))
     }
 
     pub(crate) fn captured_keyboard_events(&self, owner: WidgetId) -> &[KeyboardEvent] {
-        self.keyboard_events_for(Some(owner))
+        // The owner reads its own stream, so its layer is the capture's
+        // layer by construction — nothing to compare.
+        self.keyboard_events_for(Reader::Owner(owner))
     }
 
-    pub(crate) fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
-        self.key_pressed_for(None, shortcut)
+    pub(crate) fn key_pressed(&mut self, reader: Layer, shortcut: Shortcut) -> bool {
+        self.key_pressed_for(Reader::Uncaptured(reader), shortcut)
     }
 
     pub(crate) fn captured_key_pressed(&mut self, owner: WidgetId, shortcut: Shortcut) -> bool {
-        self.key_pressed_for(Some(owner), shortcut)
+        self.key_pressed_for(Reader::Owner(owner), shortcut)
     }
 
-    fn keyboard_events_for(&self, capture: Option<WidgetId>) -> &[KeyboardEvent] {
-        if self.keyboard_capture == capture {
+    /// Keyboard capture is **layer-ordered**, not exclusive.
+    ///
+    /// An uncaptured read is blocked only by a capture at or above the
+    /// reader's own layer. Without that comparison a `Popup` capture
+    /// empties the stream for everyone, including the `Modal` layer
+    /// painted above it — which is what left a modal unable to see its
+    /// own Escape while any popup was open.
+    fn keyboard_events_for(&self, reader: Reader) -> &[KeyboardEvent] {
+        let visible = match (self.keyboard_capture, reader) {
+            (Some(capture), Reader::Owner(id)) => capture.id == id,
+            (Some(capture), Reader::Uncaptured(layer)) => capture.layer.idx() < layer.idx(),
+            (None, Reader::Owner(_)) => false,
+            (None, Reader::Uncaptured(_)) => true,
+        };
+        if visible {
             &self.frame_keyboard_events
         } else {
             &[]
         }
     }
 
-    fn key_pressed_for(&mut self, capture: Option<WidgetId>, shortcut: Shortcut) -> bool {
+    fn key_pressed_for(&mut self, reader: Reader, shortcut: Shortcut) -> bool {
         self.subs.subscribe_key(shortcut);
-        self.keyboard_events_for(capture).iter().any(
+        self.keyboard_events_for(reader).iter().any(
             |event| matches!(event, KeyboardEvent::Down(keypress) if shortcut.matches(*keypress)),
         )
     }
 
-    pub(crate) fn capture_keyboard(&mut self, owner: WidgetId) {
+    pub(crate) fn capture_keyboard(&mut self, owner: WidgetId, layer: Layer) {
+        let owner = KeyboardOwner { layer, id: owner };
         self.keyboard_capture_candidates.push(owner);
         if self.keyboard_capture.is_none() {
             self.keyboard_capture = Some(owner);
@@ -451,7 +491,7 @@ impl InputState {
         if let Some(index) = self
             .keyboard_capture_candidates
             .iter()
-            .rposition(|candidate| *candidate == owner)
+            .rposition(|candidate| candidate.id == owner)
         {
             self.keyboard_capture_candidates.remove(index);
         }
