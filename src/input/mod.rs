@@ -256,12 +256,20 @@ impl TargetScrollDelta {
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
-/// A keyboard-capture owner and the layer it recorded on.
+/// A keyboard-capture owner and the layer its overlay *lives on*.
 ///
-/// The layer is what makes capture *ordered* rather than exclusive: an
-/// overlay painted above the capture owner is not blocked by it. Layer
-/// discriminants are the z-order (`Layer::PAINT_ORDER` is const-asserted
-/// to match them), so `idx()` comparison is the ordering.
+/// The layer does two jobs and both matter:
+///
+/// - **Ordering.** [`InputState::finish_record`] commits the topmost
+///   candidate, so a `Modal` beats a `Popup` no matter which recorded
+///   first. Record order only breaks ties within one layer.
+/// - **Blocking.** A reader is silenced only by a capture *strictly
+///   above* it, so the capturing overlay's own body — a `TextEdit`
+///   inside a popup, say — still reads the raw stream, while everything
+///   beneath the overlay is cut off.
+///
+/// Layer discriminants are the z-order (`Layer::PAINT_ORDER` is
+/// const-asserted to match them), so `idx()` comparison is the ordering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct KeyboardOwner {
     layer: Layer,
@@ -451,17 +459,21 @@ impl InputState {
         self.key_pressed_for(Reader::Owner(owner), shortcut)
     }
 
-    /// Keyboard capture is **layer-ordered**, not exclusive.
+    /// Keyboard capture is **layer-ordered**, not exclusive: the topmost
+    /// capturing overlay owns the keys, and a reader is silenced only by a
+    /// capture *strictly above* its own layer.
     ///
-    /// An uncaptured read is blocked only by a capture at or above the
-    /// reader's own layer. Without that comparison a `Popup` capture
-    /// empties the stream for everyone, including the `Modal` layer
-    /// painted above it — which is what left a modal unable to see its
-    /// own Escape while any popup was open.
+    /// Two things fall out of "strictly above". A `Popup` capture no
+    /// longer empties the stream for the `Modal` layer painted over it —
+    /// which is what left a modal unable to see its own Escape. And the
+    /// capturing overlay's own body keeps reading: `Popup` holds capture
+    /// across its whole body, so a `TextEdit` in there, which drains the
+    /// uncaptured stream, would otherwise receive nothing — and did,
+    /// before capture became layer-ordered.
     fn keyboard_events_for(&self, reader: Reader) -> &[KeyboardEvent] {
         let visible = match (self.keyboard_capture, reader) {
             (Some(capture), Reader::Owner(id)) => capture.id == id,
-            (Some(capture), Reader::Uncaptured(layer)) => capture.layer.idx() < layer.idx(),
+            (Some(capture), Reader::Uncaptured(layer)) => capture.layer.idx() <= layer.idx(),
             (None, Reader::Owner(_)) => false,
             (None, Reader::Uncaptured(_)) => true,
         };
@@ -497,8 +509,27 @@ impl InputState {
         }
     }
 
+    /// Commit the frame's keyboard owner: the **topmost** candidate, with
+    /// record order breaking ties inside one layer.
+    ///
+    /// Was `candidates.last()`, which ignored layer entirely — so a
+    /// `Popup` recorded after a `Modal` took the keyboard from it, and a
+    /// modal and a popup could both act on the same Escape.
+    ///
+    /// Resolving here rather than live is deliberate. Recomputing a
+    /// topmost-so-far on every claim looks like the fix and is worse: with
+    /// two same-layer popups recording in sequence, the first reads while
+    /// it is topmost and the second reads after displacing it, so *both*
+    /// receive the key. Ownership must be stable for the whole pass, which
+    /// costs one frame of lag when a new overlay opens on top.
     pub(crate) fn finish_record(&mut self) -> bool {
-        self.keyboard_capture = self.keyboard_capture_candidates.last().copied();
+        self.keyboard_capture = self
+            .keyboard_capture_candidates
+            .iter()
+            .copied()
+            .enumerate()
+            .max_by_key(|(index, candidate)| (candidate.layer.idx(), *index))
+            .map(|(_, candidate)| candidate);
         self.take_action_flag()
     }
 

@@ -191,7 +191,12 @@ impl Popup {
         let mut widget = ui.widget(node);
         let keyboard_owner = widget.id();
         let eater_id = widget.id().with("eater");
-        ui.with_keyboard_capture(keyboard_owner, |ui, keyboard| {
+        // Claimed *inside* the popup layer so the capture records the layer
+        // it lives on: that is what orders it against overlays above, and
+        // what stops it silencing its own body (a `TextEdit` in a popup
+        // drains the uncaptured stream and would otherwise get nothing).
+        let keyboard = ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
+            let keyboard = ui.claim_keyboard(keyboard_owner);
             // Eater records first → paints under the body. Hit-test runs
             // reverse-iter so the body's leaves still win inside its rect.
             //
@@ -203,20 +208,22 @@ impl Popup {
             // the other three never produce visible behavior on the
             // eater itself — they're absorbed and discarded so the host
             // doesn't see them.
-            ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
-                Frame::new()
-                    .id(eater_id)
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .sense(Sense::CLICK | Sense::DRAG | Sense::SCROLL | Sense::PINCH)
-                    .show(ui);
-            });
+            Frame::new()
+                .id(eater_id)
+                .size((Sizing::FILL, Sizing::FILL))
+                .sense(Sense::CLICK | Sense::DRAG | Sense::SCROLL | Sense::PINCH)
+                .show(ui);
+            keyboard
+        });
+
+        {
             let chrome = resolve_container_chrome(
                 &mut widget.node,
                 chrome,
                 ui.theme.panel_background.as_ref(),
                 ui.theme.panel_clip,
             );
-            let handle = PopupHandle::new(keyboard);
+            let handle = PopupHandle::new(&keyboard);
             ui.overlay_layer(Layer::Popup, position, |ui| {
                 widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
             });
@@ -232,10 +239,10 @@ impl Popup {
                 close_requested: handle.requested.get(),
             };
             if response.closed() {
-                keyboard.release();
+                keyboard.release(ui);
             }
             response
-        })
+        }
     }
 }
 

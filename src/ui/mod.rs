@@ -492,25 +492,23 @@ impl Ui {
         self.input.keyboard_events(self.forest.current_layer())
     }
 
-    /// Register stable `owner` for exclusive keyboard input during
-    /// this record pass and run `body` with its scoped captured-input
-    /// handle. Call this every frame the owner is active. The candidate
-    /// remains registered after `body` returns so frame finalization
-    /// can commit the topmost owner; calling [`KeyboardCapture::release`]
-    /// withdraws it after the closure.
-    pub fn with_keyboard_capture<R>(
-        &mut self,
-        owner: WidgetId,
-        body: impl FnOnce(&mut Ui, &KeyboardCapture) -> R,
-    ) -> R {
+    /// Register stable `owner` as a keyboard-capture candidate for this
+    /// record pass, returning its scoped captured-input handle. Call this
+    /// every frame the owner is active; [`KeyboardCapture::release`]
+    /// withdraws the claim.
+    ///
+    /// **Claim from inside the overlay's own layer.** The capture records
+    /// [`Self::layer`]'s current layer, and that layer decides both which
+    /// candidate wins when several claim at once (topmost) and which
+    /// readers the capture silences (everything strictly below it, so the
+    /// overlay's own body keeps reading). Taking it from the ambient layer
+    /// rather than an argument is deliberate: the two can then never
+    /// disagree, which they could when the caller named the layer and
+    /// recorded somewhere else.
+    pub fn claim_keyboard(&mut self, owner: WidgetId) -> KeyboardCapture {
         self.input
             .capture_keyboard(owner, self.forest.current_layer());
-        let capture = KeyboardCapture::new(owner);
-        let result = body(self, &capture);
-        if capture.release_requested.get() {
-            self.input.release_keyboard_capture(owner);
-        }
-        result
+        KeyboardCapture::new(owner)
     }
 
     /// `true` if any [`KeyboardEvent::Down`] this frame matches
@@ -831,29 +829,38 @@ impl Ui {
     /// higher-ranked side layer's body (a tooltip raised from a popup or
     /// modal). The nested layer must sit strictly above the current scope
     /// in `Layer::PAINT_ORDER`, else it would paint under its parent.
-    pub fn layer(
+    pub fn layer<R>(
         &mut self,
         layer: Layer,
         anchor: glam::Vec2,
         size: Option<Size>,
-        body: impl FnOnce(&mut Ui),
-    ) {
-        self.placed_layer(layer, Placement::fixed(anchor, size), body);
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        self.placed_layer(layer, Placement::fixed(anchor, size), body)
     }
 
-    pub(crate) fn overlay_layer(
+    pub(crate) fn overlay_layer<R>(
         &mut self,
         layer: Layer,
         position: OverlayPosition,
-        body: impl FnOnce(&mut Ui),
-    ) {
-        self.placed_layer(layer, Placement::overlay(position), body);
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        self.placed_layer(layer, Placement::overlay(position), body)
     }
 
-    fn placed_layer(&mut self, layer: Layer, placement: Placement, body: impl FnOnce(&mut Ui)) {
+    /// Forwards `body`'s value so a layer scope can hand something back —
+    /// notably a [`KeyboardCapture`] claimed inside it, which is how an
+    /// overlay records its capture against the layer it actually lives on.
+    fn placed_layer<R>(
+        &mut self,
+        layer: Layer,
+        placement: Placement,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
         self.forest.push_layer(layer, placement);
-        body(self);
+        let result = body(self);
         self.forest.pop_layer();
+        result
     }
 
     /// Resolve `node`'s stable [`WidgetId`] for this frame and hand

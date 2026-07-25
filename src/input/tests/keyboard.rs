@@ -133,17 +133,22 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
     assert!(!state.captured_key_pressed(other, shortcut));
     assert_eq!(state.subs.keys.len(), 1);
 
-    // Capture is layer-*ordered*, not exclusive. The popup's capture
-    // silences readers at or below its own layer, but an overlay painted
-    // above it still sees the key — this is exactly the `Modal` over
-    // `Popup` case that previously left a modal unable to see its own
-    // Escape. `Tooltip` (above `Modal`) sees it for the same reason.
+    // Capture is layer-*ordered*, not exclusive: it silences only readers
+    // strictly *below* the capturing overlay's layer.
+    //
+    // Above — the `Modal` over `Popup` case that previously left a modal
+    // unable to see its own Escape, and `Tooltip` above that.
     assert_eq!(state.keyboard_events(Layer::Modal), &[event]);
     assert!(state.key_pressed(Layer::Modal, shortcut));
     assert_eq!(state.keyboard_events(Layer::Tooltip), &[event]);
-    // ...and the layers at or below it stay silenced.
-    assert!(state.keyboard_events(Layer::Popup).is_empty());
+    // Same layer — the capturing overlay's own interior. `Popup` holds
+    // capture across its whole body, so a non-capturing widget in there
+    // (a `TextEdit`, which drains the uncaptured stream) has to keep
+    // reading or it cannot be typed into.
+    assert_eq!(state.keyboard_events(Layer::Popup), &[event]);
+    // Strictly below — cut off, which is the whole point of capturing.
     assert!(state.keyboard_events(Layer::Main).is_empty());
+    assert!(!state.key_pressed(Layer::Main, shortcut));
 }
 
 #[test]
@@ -159,21 +164,29 @@ fn ui_keyboard_capture_scope_retains_or_releases_its_candidate() {
     let owner = WidgetId::from_hash("popup");
     let shortcut = Shortcut::key(Key::Escape);
 
-    let result = ui.with_keyboard_capture(owner, |ui, capture| {
-        assert!(ui.keyboard_events().is_empty());
-        assert_eq!(capture.keyboard_events(ui), &[event]);
-        assert!(capture.key_pressed(ui, shortcut));
-        "captured"
+    // Claimed inside the popup layer, which is what the capture records —
+    // and the handle outlives that scope, which is the point of returning
+    // it by value rather than scoping it to a closure.
+    let capture = ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
+        ui.claim_keyboard(owner)
     });
-    assert_eq!(result, "captured");
+    assert!(
+        ui.keyboard_events().is_empty(),
+        "Main sits below the claim and is cut off",
+    );
+    assert_eq!(capture.keyboard_events(&ui), &[event]);
+    assert!(capture.key_pressed(&mut ui, shortcut));
     ui.input.finish_record();
     assert!(ui.keyboard_events().is_empty());
 
+    // Releasing withdraws the claim immediately, so the next resolution
+    // finds no candidate and the raw stream reaches `Main` again.
     ui.input.begin_record();
-    ui.with_keyboard_capture(owner, |ui, capture| {
-        assert_eq!(capture.keyboard_events(ui), &[event]);
-        capture.release();
+    let capture = ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
+        ui.claim_keyboard(owner)
     });
+    assert_eq!(capture.keyboard_events(&ui), &[event]);
+    capture.release(&mut ui);
     ui.input.finish_record();
     assert_eq!(ui.keyboard_events(), &[event]);
 }
