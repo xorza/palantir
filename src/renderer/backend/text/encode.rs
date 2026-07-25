@@ -120,14 +120,31 @@ const COMPACT_RATIO: usize = 1;
 
 impl EncodedCache {
     /// Drop entries not touched in the last `keep_frames` frames and,
-    /// when the arena holds more dead-glyph slack than live, compact
-    /// it into the retained scratch. Compaction rewrites every
-    /// surviving entry's `span`.
+    /// when the arena holds more dead-glyph slack than live, compact it
+    /// into the retained scratch. Compaction rewrites every surviving
+    /// entry's `span`.
+    ///
+    /// Runs every frame, deliberately: a cadence gate would make the
+    /// cost lumpy (one frame in N paying for all of them), and uniform
+    /// per-frame cost is worth more here than a lower average — the
+    /// whole pass is ~1.6 ns per live row (`encoded_cache_sweep` bench),
+    /// so there is no burst worth amortizing into a spike.
+    ///
+    /// The live-glyph total is accumulated *inside* the expiry `retain`
+    /// rather than by a second `values()` pass: the survivors are
+    /// already in hand there, and the compaction test needs nothing
+    /// else. One traversal per frame instead of two.
     fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
         let cutoff = current_frame.saturating_sub(keep_frames);
-        self.map.retain(|_, e| e.last_use >= cutoff);
+        let mut live = 0usize;
+        self.map.retain(|_, e| {
+            let keep = e.last_use >= cutoff;
+            if keep {
+                live += e.span.len as usize;
+            }
+            keep
+        });
 
-        let live: usize = self.map.values().map(|e| e.span.len as usize).sum();
         if self.arena.len() <= live * (1 + COMPACT_RATIO) {
             return;
         }
@@ -206,6 +223,7 @@ impl TextEncoder {
         let glyphs = &self.cache.arena[entry.span.range()];
         let out_start = self.instances.len();
         self.instances.reserve(glyphs.len());
+        let mut stale = false;
         // One pass emits the instance and refreshes the backing slot's
         // LRU stamp together, so `evict_one` can't reclaim a slot we're
         // still drawing this frame.
@@ -213,7 +231,8 @@ impl TextEncoder {
             let slot = &mut self.atlas.slots[glyph.atlas_slot as usize];
             if slot.generation != glyph.generation {
                 self.instances.truncate(out_start);
-                return false;
+                stale = true;
+                break;
             }
             let g = glyph.instance;
             self.instances.push(GlyphInstance {
@@ -223,6 +242,16 @@ impl TextEncoder {
                 color: g.color,
             });
             slot.last_use = current_frame;
+        }
+        if stale {
+            // An eviction reused one of this run's slots, so the whole
+            // template is dead. Drop the row now (the map borrow ends
+            // here) rather than re-probing and re-walking it every
+            // frame until the next sweep: `encode_run` only replaces it
+            // if this run also survives the y-cull, so a culled run
+            // would otherwise pay the failed lookup indefinitely.
+            self.cache.map.remove(&run_key.key);
+            return false;
         }
         entry.last_use = current_frame;
         true
@@ -369,9 +398,190 @@ fn rasterize_and_insert(
     atlas.insert(device, key, content, metadata, &image.data)
 }
 
+// `internals` only, not `any(test, …)`: the sole consumer is the
+// `text_atlas` benchmark, which that feature gates too.
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use super::*;
+
+    /// Sweep harness for the `encoded_cache_sweep` benchmark. Populates
+    /// a cache with `rows` live rows of `glyphs_per_row` each — the
+    /// steady-state shape a text-heavy frame leaves behind — so a
+    /// benchmark iteration measures [`EncodedCache::sweep`] alone,
+    /// isolated from the encode work that surrounds it in `end_frame`.
+    #[derive(Debug, Default)]
+    pub(crate) struct SweepBench {
+        cache: EncodedCache,
+    }
+
+    impl SweepBench {
+        pub(crate) fn new(rows: u32, glyphs_per_row: u32) -> Self {
+            let mut cache = EncodedCache::default();
+            for row in 0..rows {
+                let start = cache.arena.len() as u32;
+                for glyph in 0..glyphs_per_row {
+                    cache.arena.push(EncodedGlyph {
+                        instance: GlyphInstance {
+                            pos: [glyph as i32, row as i32],
+                            dim: 0,
+                            uv_and_kind: 0,
+                            color: 0,
+                        },
+                        atlas_slot: glyph,
+                        generation: 1,
+                    });
+                }
+                cache.map.insert(
+                    EncodedKey {
+                        text: TextShapeKey::INVALID,
+                        scale_q: row,
+                        area_color: 0,
+                        bins: 0,
+                    },
+                    EncodedEntry {
+                        span: Span::new(start, glyphs_per_row),
+                        last_use: ENCODED_CACHE_KEEP_FRAMES,
+                    },
+                );
+            }
+            Self { cache }
+        }
+
+        /// One steady-state `end_frame` sweep: the cutoff lands before
+        /// every row's stamp, so nothing expires and the arena holds no
+        /// dead spans — exactly the pass a frame pays when the cache is
+        /// warm and nothing changed. Returns the surviving row count so
+        /// the caller can assert the fixture stayed intact.
+        pub(crate) fn sweep_steady(&mut self) -> usize {
+            self.cache
+                .sweep(ENCODED_CACHE_KEEP_FRAMES, ENCODED_CACHE_KEEP_FRAMES);
+            self.cache.map.len()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::renderer::backend::text::encode::{ContentType, pack_uv};
+
+    fn key(scale_q: u32) -> EncodedKey {
+        EncodedKey {
+            text: TextShapeKey::INVALID,
+            scale_q,
+            area_color: 0,
+            bins: 0,
+        }
+    }
+
+    /// Distinguishable glyph payload — `tag` reaches every field so a
+    /// compaction that shuffled or truncated data can't pass.
+    fn glyph(tag: u32) -> EncodedGlyph {
+        EncodedGlyph {
+            instance: GlyphInstance {
+                pos: [tag as i32, -(tag as i32)],
+                dim: tag,
+                uv_and_kind: tag << 8,
+                color: !tag,
+            },
+            atlas_slot: tag,
+            generation: tag + 1,
+        }
+    }
+
+    /// Byte-exact comparison: `GlyphInstance` is `Pod`, so this catches
+    /// any field the copy dropped.
+    fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
+        bytemuck::bytes_of(&a.instance) == bytemuck::bytes_of(&b.instance)
+            && a.atlas_slot == b.atlas_slot
+            && a.generation == b.generation
+    }
+
+    /// Push `glyphs` onto the arena and point `k` at them, as a
+    /// re-encode of that run would.
+    fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u32>, at: u64) {
+        let start = cache.arena.len() as u32;
+        cache.arena.extend(tags.map(glyph));
+        let len = cache.arena.len() as u32 - start;
+        cache.map.insert(
+            k,
+            EncodedEntry {
+                span: Span::new(start, len),
+                last_use: at,
+            },
+        );
+    }
+
+    /// Sweeping every frame makes the retention window exact: a row
+    /// unused since frame `L` is kept while `L >= frame - KEEP` and dies
+    /// on the first frame past that, i.e. at `L + KEEP + 1` — so its
+    /// lifetime is exactly KEEP + 1 frames regardless of when it was
+    /// last touched. Two offsets pin that the death frame tracks `L`
+    /// rather than landing on some grid.
+    #[test]
+    fn unused_rows_die_one_frame_past_the_keep_window() {
+        for last_use in [0u64, 9] {
+            let mut cache = EncodedCache::default();
+            insert(&mut cache, key(1), 0..1, last_use);
+            let mut died = None;
+            for frame in last_use + 1..=last_use + 400 {
+                cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+                if cache.map.is_empty() {
+                    died = Some(frame);
+                    break;
+                }
+            }
+            assert_eq!(
+                died,
+                Some(last_use + ENCODED_CACHE_KEEP_FRAMES + 1),
+                "row unused since {last_use}",
+            );
+        }
+    }
+
+    /// Sweeping every frame keeps the arena bounded at all times: dead
+    /// spans pile up only until they exceed the live glyphs, then
+    /// compaction reclaims them, so the arena never exceeds
+    /// `live * (1 + COMPACT_RATIO)` by more than one frame's appends.
+    /// Hand-traced with a 10-glyph untouched row plus a 4-glyph run
+    /// re-encoded every frame — COMPACT_RATIO = 1 puts the threshold at
+    /// `arena > live * 2` = 28:
+    ///
+    /// frame 1 → 14, 2 → 18, 3 → 22, 4 → 26 (all within 28, kept),
+    /// frame 5 → 30 > 28 → compacts back to the 14 live glyphs.
+    ///
+    /// Then exactness: every survivor comes out byte-identical with its
+    /// span rewritten. Row order in the compacted arena follows map
+    /// iteration order, so each row is read through its own span and the
+    /// two spans must tile the arena.
+    #[test]
+    fn arena_compacts_as_soon_as_dead_glyphs_exceed_live() {
+        let mut cache = EncodedCache::default();
+        // Untouched row: 10 glyphs, well inside its keep window.
+        insert(&mut cache, key(1), 1000..1010, 0);
+        for (frame, expected_arena) in [(1u64, 14), (2, 18), (3, 22), (4, 26), (5, 14)] {
+            let base = frame as u32 * 10;
+            insert(&mut cache, key(2), base..base + 4, frame);
+            cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+            assert_eq!(cache.arena.len(), expected_arena, "after frame {frame}");
+        }
+        assert_eq!(cache.map.len(), 2, "neither row is past its keep window");
+
+        let untouched = cache.map[&key(1)].span;
+        let churned = cache.map[&key(2)].span;
+        assert_eq!(untouched.len, 10);
+        assert_eq!(churned.len, 4);
+        assert!(
+            untouched.range().end == churned.range().start
+                || churned.range().end == untouched.range().start,
+            "surviving spans must tile the compacted arena: {untouched:?} / {churned:?}",
+        );
+        for (span, tags) in [(untouched, 1000..1010), (churned, 50..54)] {
+            for (got, want) in cache.arena[span.range()].iter().zip(tags.map(glyph)) {
+                assert!(same(got, &want), "compaction altered a glyph: {got:?}");
+            }
+        }
+    }
 
     #[test]
     fn pack_uv_round_trip() {
