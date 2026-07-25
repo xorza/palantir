@@ -33,9 +33,9 @@ use std::f32::consts::TAU;
 use std::hash::Hasher;
 
 #[derive(Clone, Copy, Debug)]
-pub(in crate::scene) struct ChromeInput<'a> {
-    pub(in crate::scene) bg: &'a Background,
-    pub(in crate::scene) store: &'a RecordStore,
+pub(crate) struct ChromeInput<'a> {
+    pub(crate) bg: &'a Background,
+    pub(crate) store: &'a RecordStore,
 }
 
 /// Result of lowering a user-side `Brush`. `brush` is the storage form
@@ -136,7 +136,7 @@ fn curve_brush(store: &RecordStore, brush: &CurveBrush) -> LoweredBrush {
 /// reference — `Background` is 168 B and the recording chain
 /// threads it through 4 functions; the per-field reads below copy
 /// the small fields locally as needed.
-pub(in crate::scene) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
+pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
     let LoweredBrush {
         brush: fill,
         hash: fill_grad_hash,

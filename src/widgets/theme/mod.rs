@@ -179,7 +179,7 @@ impl Theme {
 /// configure. Implemented by [`ButtonTheme`] and [`TextEditTheme`]; each
 /// impl defines its own `active` semantics by delegating to its inherent
 /// `pick`.
-pub(in crate::widgets) trait WidgetTheme {
+pub(super) trait WidgetTheme {
     fn pick(&self, state: &ResponseState) -> &WidgetLook;
     fn padding(&self) -> Spacing;
     fn margin(&self) -> Spacing;
@@ -202,7 +202,7 @@ pub(in crate::widgets) trait WidgetTheme {
 // self-time. Force the whole lookup chain into each widget so state picking,
 // default resolution and target construction optimize as one block.
 #[inline(always)]
-pub(in crate::widgets) fn resolve_look<T: WidgetTheme>(
+pub(super) fn resolve_look<T: WidgetTheme>(
     ui: &mut Ui,
     id: WidgetId,
     node: &mut Node,

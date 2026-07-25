@@ -143,7 +143,7 @@ pub(crate) struct ShaperInner {
     /// `None` ⇒ the test/internals-only mono fallback. `TextShaper::new`
     /// always installs `Some`, and `TextShaper::test_mono` is the only
     /// `None` construction, so production never observes it.
-    pub(in crate::text) cosmic: Option<CosmicMeasure>,
+    cosmic: Option<CosmicMeasure>,
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
     /// plus every bypass [`TextShaper::layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
@@ -326,21 +326,21 @@ impl ShaperInner {
 /// from the request that produced it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TextRoot {
-    pub(in crate::text) size: Size,
+    size: Size,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
-    pub(in crate::text) intrinsic_min: f32,
+    intrinsic_min: f32,
     /// `true` when the shaped result is one visual line. Gates
     /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
     /// whose natural width fits the committed width needs no Clip/Ellipsis
     /// resolve — the unbounded root stands in.
-    pub(in crate::text) single_line: bool,
+    single_line: bool,
 }
 
 impl TextRoot {
     /// Successful empty-text shape.
-    pub(in crate::text) const ZERO: Self = Self {
+    const ZERO: Self = Self {
         size: Size::ZERO,
         intrinsic_min: 0.0,
         single_line: true,
