@@ -953,34 +953,16 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Mesh);
                     debug_marker::push(pass, "meshes");
                     rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
-                    let range = buffer.mesh_batches[batch].items;
-                    let start = range.start as usize;
-                    let end = start + range.len as usize;
-                    for (offset, draw) in buffer.meshes.draw()[start..end].iter().enumerate() {
-                        // `draw_indexed` takes a per-call vertex
-                        // offset; pass the mesh's vertex start as
-                        // `base_vertex` so indices stay buffer-local.
-                        // Instance index is the draw's absolute slot in
-                        // `meshes.instances`.
-                        self.mesh.draw(
-                            pass,
-                            draw.indices.into(),
-                            draw.vertices.start as i32,
-                            (start + offset) as u32,
-                        );
-                    }
+                    let items = buffer.mesh_batches[batch].items;
+                    self.mesh.draw_batch(pass, buffer.meshes.draw(), items);
                     debug_marker::pop(pass);
                 }
                 RenderStep::ImageBatch { batch } => {
                     mark(pass, BatchKind::Image);
                     debug_marker::push(pass, "images");
                     rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
-                    let range = buffer.image_batches[batch].items;
-                    let start = range.start as usize;
-                    let end = start + range.len as usize;
-                    for (offset, id) in buffer.images.id()[start..end].iter().enumerate() {
-                        self.image.draw(pass, *id, (start + offset) as u32);
-                    }
+                    let items = buffer.image_batches[batch].items;
+                    self.image.draw_batch(pass, buffer.images.id(), items);
                     debug_marker::pop(pass);
                 }
                 RenderStep::CurveBatch { batch } => {
@@ -991,8 +973,8 @@ impl WgpuBackend {
                         self.curve
                             .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                     );
-                    let range = buffer.curve_batches[batch].items;
-                    self.curve.draw(pass, range.start..range.start + range.len);
+                    self.curve
+                        .draw(pass, buffer.curve_batches[batch].items.into());
                     debug_marker::pop(pass);
                 }
             },

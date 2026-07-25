@@ -9,6 +9,7 @@
 mod render_target;
 mod textures;
 
+use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
@@ -172,24 +173,71 @@ impl ImagePipeline {
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
-    /// Issue one image draw. `instance` indexes into the per-frame
-    /// instance buffer. `id` selects the bind group; an **absent id is
-    /// skipped** (no warning, no draw) — it just means the owning
-    /// [`ImageHandle`](crate::ImageHandle) was dropped before this draw,
-    /// or hasn't been uploaded yet. Drawing nothing is the defined
-    /// behaviour for a missing texture.
-    pub(super) fn draw<'a>(
+    /// Draw one image batch. `ids` is the frame's whole per-draw texture
+    /// column and `items` selects this batch's slice of it — the same
+    /// `Span` that indexes the per-frame instance buffer, so the textures
+    /// and the instances they draw cannot come from different batches.
+    ///
+    /// Adjacent draws sharing a texture collapse into a single
+    /// `set_bind_group` + instanced `draw` (see [`image_runs`]). The
+    /// repeated-icon and repeated-`GpuView`-composite cases are the ones
+    /// this targets; an alternating sequence yields one run per draw and
+    /// records exactly what it did before.
+    ///
+    /// An **absent id is skipped** (no warning, no draw) — it just means
+    /// the owning [`ImageHandle`](crate::ImageHandle) was dropped before
+    /// this draw, or hasn't been uploaded yet. Drawing nothing is the
+    /// defined behaviour for a missing texture. Every draw in a run
+    /// shares one id, so the miss check runs once per run and skips the
+    /// whole run, which is exactly the per-draw behaviour it replaces.
+    pub(super) fn draw_batch<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        id: TextureId,
-        instance: u32,
+        ids: &[TextureId],
+        items: Span,
     ) {
-        let Some(bind_group) = self.textures.bindings.get(&id) else {
-            return;
-        };
-        pass.set_bind_group(0, bind_group, &[]);
-        pass.draw(0..4, instance..instance + 1);
+        for run in image_runs(&ids[items.range()], items.start) {
+            let Some(bind_group) = self.textures.bindings.get(&run.id) else {
+                continue;
+            };
+            pass.set_bind_group(0, bind_group, &[]);
+            pass.draw(0..4, run.instances.into());
+        }
     }
+}
+
+/// One maximal run of consecutive draws in a batch that share a
+/// [`TextureId`], and therefore a bind group.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ImageRun {
+    id: TextureId,
+    /// Slice of the per-frame instance buffer this run draws, as one
+    /// instanced range.
+    instances: Span,
+}
+
+/// Split a batch's texture ids into maximal runs of *adjacent* equal ids.
+///
+/// Adjacency is the whole trick: only neighbours merge, so paint order is
+/// preserved exactly and nothing is sorted. A non-adjacent repeat (`A B A`)
+/// stays three runs — collapsing it would reorder the draws, and the
+/// one-entry "last binding" cache that would spare the second `A` its hash
+/// probe cannot help either, since by construction no two consecutive runs
+/// share an id.
+///
+/// Instance indices are contiguous within a batch (the composer appends a
+/// batch's rows in draw order), so each run is one `Span` and needs no
+/// per-draw arithmetic. Lazy — allocates nothing.
+fn image_runs(ids: &[TextureId], first_instance: u32) -> impl Iterator<Item = ImageRun> + '_ {
+    let mut next = first_instance;
+    ids.chunk_by(|a, b| a == b).map(move |run| {
+        let instances = Span::new(next, run.len() as u32);
+        next += run.len() as u32;
+        ImageRun {
+            id: run[0],
+            instances,
+        }
+    })
 }
 
 const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
@@ -241,5 +289,84 @@ pub(crate) mod internals {
         pub(crate) fn gpu_cached_count(&self) -> usize {
             self.textures.bindings.len()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn textures(raw: &[u64]) -> Vec<TextureId> {
+        raw.iter().copied().map(TextureId).collect()
+    }
+
+    /// Expand runs back into the one-draw-per-image sequence the
+    /// pre-coalescing loop issued: `(instance index, texture)` in order.
+    /// Equality with the input is the correctness property — same
+    /// textures, same instances, same order, nothing dropped or
+    /// duplicated. It also proves the spans tile the batch with no gap
+    /// and no overlap, which a run-count assertion alone would not.
+    fn expand(ids: &[TextureId], first_instance: u32) -> Vec<(usize, TextureId)> {
+        image_runs(ids, first_instance)
+            .flat_map(|run| {
+                run.instances
+                    .range()
+                    .map(move |instance| (instance, run.id))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn adjacent_runs_coalesce_without_disturbing_draw_order() {
+        // `runs` is the post-change bind + draw count: one of each per
+        // run. Before coalescing every case below cost `ids.len()`.
+        let cases: [(&str, &[u64], usize); 7] = [
+            ("empty", &[], 0),
+            ("single", &[7], 1),
+            // The win: repeated icons / repeated GpuView composites.
+            ("all same", &[7, 7, 7, 7], 1),
+            ("adjacent groups", &[7, 7, 9, 9, 9, 4], 3),
+            // Controls that must NOT shrink. Alternating is the case a
+            // one-entry last-binding cache is also powerless against:
+            // consecutive runs never share an id.
+            ("alternating", &[7, 9, 7, 9], 4),
+            ("all unique", &[1, 2, 3, 4], 4),
+            // Equal ids either side of a different one stay three runs —
+            // merging them would reorder paint.
+            ("non-adjacent repeat", &[7, 9, 7], 3),
+        ];
+        for (label, raw, expected_runs) in cases {
+            let ids = textures(raw);
+            let runs: Vec<_> = image_runs(&ids, 0).collect();
+            assert_eq!(runs.len(), expected_runs, "{label}: bind + draw count");
+            let per_draw: Vec<_> = ids.iter().copied().enumerate().collect();
+            assert_eq!(expand(&ids, 0), per_draw, "{label}: draw sequence");
+        }
+    }
+
+    #[test]
+    fn runs_index_the_batch_slice_not_the_frame() {
+        // A batch starts partway into the shared instance buffer, so the
+        // first run begins at `first_instance` and the rest follow it —
+        // getting this wrong draws another batch's instances.
+        let ids = textures(&[7, 7, 9]);
+        let runs: Vec<_> = image_runs(&ids, 5).collect();
+        assert_eq!(
+            runs,
+            [
+                ImageRun {
+                    id: TextureId(7),
+                    instances: Span::new(5, 2),
+                },
+                ImageRun {
+                    id: TextureId(9),
+                    instances: Span::new(7, 1),
+                },
+            ]
+        );
+        assert_eq!(
+            expand(&ids, 5),
+            [(5, TextureId(7)), (6, TextureId(7)), (7, TextureId(9)),]
+        );
     }
 }

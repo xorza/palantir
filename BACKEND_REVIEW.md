@@ -38,14 +38,14 @@ The remaining opportunities are narrow:
 
 Priority summary:
 
-| Priority | Change | Expected benefit | Risk | Code effect |
-| --- | --- | --- | --- | --- |
-| P1 | Feature-gate per-step debug markers | CPU command recording, scales with draw steps | Low | Small reduction |
-| P1 | Coalesce same-texture image runs; cache the last binding | Bind/draw count, per-draw hash probes | Low | Small increase |
-| P2 | Split bind tracking into pipeline / group-0 / vertex buffer, include text | Redundant `set_*` commands | Low–medium | Increase (~40 lines) |
-| P2 | Let `ImageTextures` own its bind-group layout + sampler | Signature consolidation | Low | Reduction |
-| P2 | Move `text/mod.rs`'s gated tests into `text/tests.rs` | Navigability; project convention | None | Neutral (move) |
-| P3 | Small cleanups bundle (7 items) | Clarity, ~60 lines | Low | Reduction |
+| Priority | Change | Expected benefit | Risk | Code effect | Status |
+| --- | --- | --- | --- | --- | --- |
+| P1 | Feature-gate per-step debug markers | CPU command recording, scales with draw steps | Low | Small reduction | Shipped `bfe5c493` |
+| P1 | Coalesce same-texture image runs; cache the last binding | Bind/draw count, per-draw hash probes | Low | Small increase | Coalescing shipped; last-binding cache dropped — see below |
+| P2 | Split bind tracking into pipeline / group-0 / vertex buffer, include text | Redundant `set_*` commands | Low–medium | Increase (~40 lines) | Open |
+| P2 | Let `ImageTextures` own its bind-group layout + sampler | Signature consolidation | Low | Reduction | Shipped `c37d8006` |
+| P2 | Move `text/mod.rs`'s gated tests into `text/tests.rs` | Navigability; project convention | None | Neutral (move) | Open |
+| P3 | Small cleanups bundle (7 items) | Clarity, ~60 lines | Low | Reduction | 6 open; #3 (span arithmetic) done with the image work |
 
 P1 here means "measure and do first", not "assume the result".
 
@@ -98,6 +98,39 @@ Verification:
 - Command count is the explanatory metric; wall time is the decision metric.
 
 ## P1 — Image batches: coalesce same-texture runs and stop probing per draw
+
+**Shipped, with one of the two proposed wins withdrawn.** `ImagePipeline::draw`
+is now `draw_batch`, walking maximal runs of adjacent equal `TextureId`s
+(`image_runs`) and emitting one `set_bind_group` + one instanced `draw` per run.
+Measured on the `record_pass` bench (min over 256 frames, 256 images):
+
+| Arm | Before | After |
+| --- | --- | --- |
+| `images/shared` (256 draws, one texture) | 3.6–4.1 µs | **1.3 µs** |
+| `images/distinct` (256 draws, 256 textures) | 6.9–7.4 µs | 7.2 µs — flat, as required |
+
+`shared` now sits at the same floor as `groups/single`'s lone instanced quad
+draw (1.2 µs): 256 image draws cost what one draw costs. `distinct` is the
+control and did not move. (Criterion reports a change on `distinct` too, but its
+interval on this bench is tens of percent wide — the min is the signal, and it
+is flat.)
+
+**The last-binding cache was not implemented, because it cannot work alongside
+coalescing.** The review claimed the two were "cheap and independent". They are
+not independent: once adjacent runs are merged, no two *consecutive* lookups can
+share an id — if they did they'd be the same run. A one-entry `(last_id,
+&BindGroup)` cache therefore has a structurally guaranteed 0% hit rate, including
+on the `A B A` case the review offered as its motivation, where the cached entry
+is always `B` by the time the second `A` is probed. Catching non-adjacent repeats
+needs a full memo, which is what the `FxHashMap` already is. Adding the cache
+would have been pure dead state.
+
+P3 cleanup #3 (hand-rolled span arithmetic) folded in while the arms were open —
+see that item.
+
+Original finding follows.
+
+---
 
 Still open from the renderer review, and worth restating because a second cost
 sits next to it.
@@ -235,12 +268,14 @@ Each of these is independently mergeable and removes code.
    field, so the two paths disagree about which is authoritative today.
    `Stencil::size` is *not* redundant — it keeps no texture handle.
 
-3. **Hand-rolled span arithmetic in three draw arms.** The `MeshBatch` and
-   `ImageBatch` arms recompute `let start = range.start as usize; let end =
-   start + range.len as usize;` and the `CurveBatch` arm writes
-   `range.start..range.start + range.len`. `Span` already provides
-   `range() -> Range<usize>` and `From<Span> for Range<u32>` — the latter is
-   what `QuadPipeline::draw_range` uses. ≈8 lines.
+3. ~~**Hand-rolled span arithmetic in three draw arms.**~~ **Done**, alongside
+   the P1 image work — leaving one arm converted and its two neighbours not
+   would have been worse than either state. All three now go through
+   `Span::range()` / `From<Span> for Range<u32>`, the latter being what
+   `QuadPipeline::draw_range` already used. `ImagePipeline::draw_batch` also
+   takes the batch `Span` itself rather than a pre-sliced slice plus a start,
+   matching `draw_range`'s shape and making it structurally impossible to
+   slice by one batch and index instances by another.
 
 4. **Two hand-built full-viewport quads.** `QuadPipeline::upload_clear`
    (`quad_pipeline.rs:286-313`) and `DebugOverlay::upload_dim`
@@ -343,7 +378,7 @@ Recorded so the same ground is not re-walked.
 
 | Item | Status |
 | --- | --- |
-| Coalesce adjacent same-texture image draws | Open — restated as P1 above with the added hash-probe finding |
+| Coalesce adjacent same-texture image draws | Shipped — see P1 above; the added hash-probe finding was withdrawn as unimplementable alongside it |
 | Partition retained render targets by owner (P3) | Open, still correctly P3; the two `retain` scans are unchanged |
 | Avoid uploading unused mesh payload ranges (P3) | Open, still correctly P3 |
 
