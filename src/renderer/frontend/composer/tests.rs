@@ -91,9 +91,9 @@ fn run_with_texture_cap(
     build(&mut recorded, &mut payloads);
     let mut composer = Composer::new(max_texture_dim);
     let mut out = render_buffer();
-    let mut session = composer.begin(*display, &payloads, &mut out);
-    recorded.replay(&mut session);
-    session.finish();
+    composer
+        .begin(*display, &payloads, &mut out)
+        .replay_from(&recorded);
     out
 }
 
@@ -121,6 +121,39 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.groups[0].scissor.is_none());
     assert_eq!(buf.groups[0].quads, Span::new(0, 2));
+}
+
+/// Closing is the session's destructor, so a caller that just drops it
+/// still gets the trailing group and text batch. Nothing else surfaces
+/// the omission: the quad and text rows land in the buffer either way,
+/// and a backend given no group/batch covering them silently draws
+/// neither.
+#[test]
+fn dropping_a_session_emits_the_trailing_group_and_batch() {
+    let display = params(1.0, UVec2::new(200, 200));
+    let payloads = RecordPayloads::default();
+    let mut composer = composer();
+    let mut out = render_buffer();
+    {
+        let mut session = composer.begin(display, &payloads, &mut out);
+        let mut recorded = RecordedPaint::default();
+        draw(&mut recorded, rect(0.0, 0.0, 10.0, 10.0));
+        text(&mut recorded, rect(0.0, 20.0, 10.0, 10.0));
+        recorded.replay(&mut session);
+        // The rows themselves are already in the buffer; only the
+        // group and batch that schedule them are still pending.
+        assert_eq!(session.out.quads.len(), 1);
+        assert_eq!(session.out.texts.len(), 1);
+        assert!(session.out.groups.is_empty());
+        assert!(session.out.text_batches.is_empty());
+    }
+    assert_eq!(out.quads.len(), 1);
+    assert_eq!(out.texts.len(), 1);
+    assert_eq!(out.groups.len(), 1, "trailing group emitted on drop");
+    assert_eq!(out.groups[0].quads, Span::new(0, 1));
+    assert_eq!(out.text_batches.len(), 1, "trailing batch closed on drop");
+    assert_eq!(out.text_batches[0].texts, Span::new(0, 1));
+    assert_eq!(out.text_batches[0].last_group, 0);
 }
 
 #[test]

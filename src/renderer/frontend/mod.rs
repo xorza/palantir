@@ -99,7 +99,9 @@ impl Frontend {
             .composer
             .begin(scene.display, &scene.payloads, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
-        sink.finish();
+        // Dropping the session closes the trailing batch and group;
+        // explicit because it also releases the `buffer` borrow.
+        drop(sink);
         self.buffer.time = scene.time;
     }
 }

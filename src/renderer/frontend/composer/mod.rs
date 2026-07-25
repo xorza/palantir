@@ -714,20 +714,27 @@ pub(crate) struct ComposeSession<'a> {
 }
 
 impl ComposeSession<'_> {
-    /// Close the trailing text batch and draw group. Consumes the
-    /// session so no paint can land after the final flush.
-    pub(crate) fn finish(self) {
-        self.composer.close_batch(self.out);
-        self.composer.flush(self.out);
-    }
-
-    /// Replay a recorded paint stream into this session and close it.
-    /// Lets tests and benches drive the composer from a stream captured
-    /// once, outside whatever they are measuring or asserting on.
+    /// Replay a recorded paint stream into this session, closing it on
+    /// return. Lets tests and benches drive the composer from a stream
+    /// captured once, outside whatever they are measuring or asserting on.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) fn replay_from(mut self, recorded: &RecordedPaint) {
         recorded.replay(&mut self);
-        self.finish();
+    }
+}
+
+impl Drop for ComposeSession<'_> {
+    /// Close the trailing text batch and draw group.
+    ///
+    /// Finalization is a destructor rather than a `finish()` the caller
+    /// must remember: a session dropped un-closed leaves a
+    /// `RenderBuffer` that *looks* populated but whose trailing group
+    /// and batch were never emitted, so the backend schedules neither —
+    /// missing pixels, nothing failing loudly. Since the session holds
+    /// `&mut RenderBuffer`, that borrow also ends exactly here.
+    fn drop(&mut self) {
+        self.composer.close_batch(self.out);
+        self.composer.flush(self.out);
     }
 }
 
