@@ -17,7 +17,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | A1 | `run_on_main` silently drops owned work | Correctness | XS | **Shipped** |
 | A2 | Modal misses Escape under popup keyboard capture | Correctness | S | **Shipped** |
 | A3 | Popup capture resolves after popup bodies read events | Correctness | S | Cross-layer fixed; same-layer needs D2 |
-| A4 | `DragValue` loses node configuration in edit mode | Correctness | S | Verified open |
+| A4 | `DragValue` loses node configuration in edit mode | Correctness | S | **Shipped** |
 | B1 | Cascade preflight: O(N) verify, then unbounded re-work | Perf (derived) | M | Verified open |
 | B2 | `restore_after_cache_hit` is now the layout hot path | Perf (derived) | M | **New** — not in any source doc |
 | B3 | Damage's moved-subtree (scroll) leg | Perf (unproven) | M | Verified open |
@@ -109,19 +109,36 @@ i.e. D2. There is also a residual double-delivery today: a `Modal` reading
 Escape and a `Popup` holding capture both see it, so both close. Strictly better
 than the modal being stuck, and it closes with the same D2 work.
 
-### A4. `DragValue` loses node configuration in edit mode
+### A4. `DragValue` loses node configuration in edit mode — **shipped**
 
-`show_editing` (`src/widgets/drag_value/mod.rs:396`) rebuilds a `TextEdit` from
-a subset of the caller's node — verified: `size`, `min_size`, `max_size`.
-Padding, margin, parent alignment, grid placement, canvas position, clipping
-and visibility are dropped, so **entering edit mode can move, resize, or
-re-clip the widget**.
+One `inherit_chip_node` helper now carries the caller's node policy across the
+chip → editor swap, with an exhaustive `Node` destructure modelled on
+`scroll_wrappers`: every field is either carried or given a named reason for
+being dropped, so a field added later cannot vanish silently.
 
-Transfer the applicable node policy through one explicit helper with an
-exhaustive destructure, and add a table-driven test over every `Configure`
-field. Note this is an instance of D1, and its sibling defect (`Scroll`'s
-non-exhaustive destructure) has already been fixed that way — the guard comment
-now in `scroll_wrappers` is the model to copy.
+Measured before and after by recording the same configured `DragValue` twice —
+once as a chip, once focused as an editor — and diffing the *recorded* layout:
+
+| Field | Chip | Editor before | Editor after |
+| --- | --- | --- | --- |
+| `margin` | 3.0 | **0.0** | 3.0 |
+| `align` | `Align(18)` | **`Align(0)`** | `Align(18)` |
+| `position` | `(23, 11)` | **`(0, 0)`** | `(23, 11)` |
+
+**`padding` is deliberately *not* carried**, which the investigation changed my
+mind about. Box parity across the swap is the theme's job —
+`DragValueTheme::from_chip` mirrors the chip's padding onto the editor for
+exactly that reason — and the chip resolves its own padding from the theme
+rather than from the node. Forwarding it would make the editor honour a value
+the chip ignores (a *new* divergence, not a fix) and it perturbed the editor's
+intrinsic height in testing. `clip` is likewise dropped: `TextEdit::new` pins
+`ClipMode::Rect` so glyphs cannot spill, and a caller must not relax that.
+
+The test compares chip against editor rather than enumerating fields, so
+fields added later are covered without editing it. Padding and minimum height
+are excluded with a stated reason — both modes resolve those from their own
+theme and intrinsics (a text editor has a line-height floor a chip does not),
+so comparing them would pin theme configuration rather than this fix.
 
 ---
 
