@@ -19,24 +19,34 @@ pub(super) enum RepaintScissors {
     Partial(PartialScissors),
 }
 
+/// The non-empty scissor list a `Partial` repaint walks, one pass walk
+/// per rect.
+///
+/// Non-emptiness is a real invariant — a `Partial` plan with nothing to
+/// scissor would load the backbuffer and draw nothing — but it is carried
+/// by the constructor's `assert!` rather than the field layout. Splitting
+/// a `first` off the array would restate the same guarantee while costing
+/// an O(n) shift to build and a chained iterator to read.
 #[derive(Debug)]
 pub(super) struct PartialScissors {
-    first: URect,
-    rest: ArrayVec<[URect; DAMAGE_RECT_CAP]>,
+    rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>,
 }
 
 impl PartialScissors {
-    fn new(mut rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>) -> Self {
+    fn new(rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>) -> Self {
         assert!(
             !rects.is_empty(),
             "Partial plan produced no damage scissors"
         );
-        let first = rects.remove(0);
-        Self { first, rest: rects }
+        Self { rects }
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.rects.len()
     }
 
     pub(super) fn iter(&self) -> impl Iterator<Item = URect> + '_ {
-        std::iter::once(self.first).chain(self.rest.iter().copied())
+        self.rects.iter().copied()
     }
 }
 

@@ -334,10 +334,15 @@ impl QuadPipeline {
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
+        // Deliberately does **not** set a stencil reference, even under
+        // `use_stencil`. The schedule dedupes `SetStencilRef` on the
+        // strength of no draw arm setting one of its own, and the ref is
+        // provably 0 here anyway: a pass opens at 0 per the WebGPU spec,
+        // `for_each_step`'s tail `clear_active` returns every walk to 0,
+        // and `PreClear` is a walk's first step. Re-adding a defensive
+        // `set_stencil_reference(0)` would falsify that invariant, not
+        // guard it.
         pass.set_pipeline(pipelines.select(use_stencil));
-        if use_stencil {
-            pass.set_stencil_reference(0);
-        }
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
     }
