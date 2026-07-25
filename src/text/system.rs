@@ -34,7 +34,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// every row not touched during a frame is dropped at its end.
 #[derive(Debug)]
 pub(crate) struct TextSystem {
-    pub(in crate::text) shaper: TextShaper,
+    pub(super) shaper: TextShaper,
     entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
     /// Held once rather than asked per run: whether this window's shaper
     /// mints shaped buffers at all. False only under the gated mono metric.
@@ -263,7 +263,7 @@ pub(crate) mod internals {
         /// a width off the row it freshened. Dispatch count is unchanged from
         /// calling [`TextSystem::measure`] alone — the root call leaves the
         /// row fresh, so the second lookup is a hit.
-        pub(in crate::text) fn shape_run(
+        pub(crate) fn shape_run(
             &mut self,
             slot: TextRunSlot,
             text: &str,
@@ -287,7 +287,7 @@ pub(crate) mod internals {
         }
 
         /// Live reuse rows, for the sweep tests.
-        pub(in crate::text) fn entry_count(&self) -> usize {
+        pub(crate) fn entry_count(&self) -> usize {
             self.entries.len()
         }
     }

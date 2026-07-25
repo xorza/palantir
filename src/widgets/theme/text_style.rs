@@ -59,7 +59,7 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
-    pub(in crate::widgets) fn metrics_valid(&self) -> bool {
+    pub(crate) fn metrics_valid(&self) -> bool {
         key::text_metrics_valid(self.font_size_px, self.line_height_for(self.font_size_px))
     }
 

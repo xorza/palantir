@@ -230,7 +230,7 @@ fn push_run_selection_rects(
 /// Map a UTF-8 byte offset into `text` to a cosmic-text `Cursor`:
 /// `line` = count of `\n` before the offset, `index` = bytes since
 /// the most recent `\n` (or start of text).
-pub(in crate::text) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
+pub(super) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
     let prefix = &text.as_bytes()[..byte_offset.min(text.len())];
     let line = prefix.iter().filter(|&&b| b == b'\n').count();
     let line_start = prefix
@@ -242,7 +242,7 @@ pub(in crate::text) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmi
 
 /// Inverse of [`cursor_from_byte`]. Walks `text` to find the
 /// `line`-th `\n` and adds `cursor.index`.
-pub(in crate::text) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
+pub(super) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
     let line_start = if cursor.line == 0 {
         0
     } else {
@@ -263,7 +263,7 @@ mod internals {
         /// against cosmic's own geometry (`run.highlight`). Test-only
         /// so production builds expose no cosmic types outside
         /// `src/text/`.
-        pub(in crate::text) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
+        pub(crate) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
             self.buffer()
         }
     }
