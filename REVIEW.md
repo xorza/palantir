@@ -24,7 +24,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | C1 | Record replay is a second lifecycle protocol | Structural | L | Verified open; gates C3 |
 | C2 | Author-ordered render batches | Structural | L | Verified open |
 | C3 | Fuse the cascade repair walk with the damage diff | Structural | L | Blocked on C1 |
-| D1 | `Node` delegation and composite translation | Maintainability | M | Verified open — A4 is an instance |
+| D1 | ~~Delegation macro~~ / composite translation | Maintainability | M | Macro **rejected** (tried); composite half open |
 | D2 | Overlay behaviour duplicated across four facades | Maintainability | M | Verified open — A2/A3 live here |
 | D3 | Layout driver identity repeated across three dispatches | Maintainability | S | Verified open |
 | D4 | Measure cache's manually synchronized shadow state | Maintainability | M | Narrowed by the arrange replay |
@@ -264,6 +264,26 @@ first pass's diff would corrupt the snapshot baseline.
 ## D. Maintainability
 
 ### D1. `Node` delegation and composite translation
+
+**The delegation macro was attempted and rejected.** Two reasons, both found by
+building it:
+
+- A single roster in `widgets/mod.rs` cannot work: `node` is private to each
+  widget's module, so the parent cannot reach it. It would take 19 field
+  visibility escalations to buy a cosmetic win.
+- Falling back to per-widget invocation gives up the roster — the only real
+  benefit — leaving "5 lines → 1 line, 19 times" in exchange for a textually
+  scoped `macro_rules!` that must sit above the `mod` declarations to be
+  visible. An explicit, greppable, compiler-checked impl is worth more than
+  that.
+
+The 19 identical impls stay. **The composite-translation half is still open and
+is the part that ever mattered** — it is what produced the `Scroll` and
+`DragValue` defects, both now fixed with per-site exhaustive destructures
+(`scroll_wrappers`, `inherit_chip_node`). A third instance would justify
+extracting the shared shape; two do not.
+
+Original finding:
 
 19 near-identical `impl Configure for` blocks in `src/widgets`, and — the part
 that actually bites — composite widgets hand-translating a `Node` into other
