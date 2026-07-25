@@ -1723,7 +1723,11 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
             |b, _arena| {
                 b.push_transform(TranslateScale::from_scale(2.0));
                 b.push_transform(TranslateScale::from_scale(1.5));
-                b.draw_gpu_view(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee), gpu_paint());
+                b.draw_gpu_view(
+                    rect(0.0, 0.0, 20.0, 10.0),
+                    TextureId(0xc0ffee),
+                    &gpu_paint(),
+                );
                 b.pop_transform();
                 b.pop_transform();
             },
@@ -1771,7 +1775,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
                         size: case.logical_size,
                     },
                     TextureId(0xc0ffee),
-                    gpu_paint(),
+                    &gpu_paint(),
                 );
             },
             &params(1.0, UVec2::new(400, 400)),
