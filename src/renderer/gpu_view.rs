@@ -15,7 +15,7 @@
 //! collide with registered images or other
 //! windows, and refreshing the [`GpuPaintRef`]. The shape records only the
 //! redraw `epoch`; the encoder looks the view up by the node's `WidgetId`,
-//! forwards the callback down the command buffer, and the composer lists it in
+//! forwards the callback alongside the image payload, and the composer lists it in
 //! `RenderBuffer::frame_targets` for the backend. The map is swept by the same
 //! `removed` set as every other per-widget cache; the backend then frees the
 //! orphaned texture (see `ImagePipeline::paint_gpu_views`).

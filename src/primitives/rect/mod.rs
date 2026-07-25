@@ -66,7 +66,7 @@ impl Rect {
 
     /// True when this rect paints no pixels — at least one axis is
     /// `<= EPS` (including NaN / negative). Defers to
-    /// [`Size::is_paint_empty`]; shared between every cmd-buffer
+    /// [`Size::is_paint_empty`]; shared between every paint-payload
     /// noop gate so the predicate can't drift.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {

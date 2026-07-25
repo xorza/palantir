@@ -77,8 +77,11 @@ pub(crate) struct RecordedPaint {
 
 impl RecordedPaint {
     /// Push the recorded sequence into `sink`. Calls re-enter through
-    /// the provided half, so `sink` re-applies its own no-op gates —
-    /// harmlessly, since a recorded call already passed them once.
+    /// the *required* half, below the no-op gate — deliberately, so a
+    /// replay reproduces the recorded stream exactly rather than
+    /// re-filtering it. Sound because every recorded call already
+    /// passed the gate once, at record time. Replaying calls that did
+    /// **not** come from a recording would bypass it.
     pub(crate) fn replay(&self, sink: &mut impl PaintSink) {
         for call in &self.calls {
             match call {

@@ -196,8 +196,8 @@ impl TextShapeKey {
 /// One shaped run's render-handoff identity: the shaped-buffer cache key
 /// plus the record-store span of the exact source bytes it hashes. Minted
 /// once by the encoder via [`Self::new`] (which checks the pairing against
-/// the recorded content hash) and carried as a unit through the command
-/// buffer, composer, and text backend so the key cannot drift from its
+/// the recorded content hash) and carried as a unit through the paint
+/// payload, composer, and text backend so the key cannot drift from its
 /// bytes between layers; [`Self::resolve_request`] is the single place the
 /// pair turns back into a shaping request.
 #[repr(C)]

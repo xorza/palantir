@@ -10,7 +10,7 @@ use crate::primitives::brush::gradient::Spread;
 use bytemuck::{Pod, Zeroable};
 
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching
-/// cmd-buffer payload fields. Low byte: kind tag (0 = solid,
+/// paint-payload fields. Low byte: kind tag (0 = solid,
 /// 1 = linear). Bits 8..16: `Spread` discriminant (only meaningful
 /// when kind == linear).
 ///

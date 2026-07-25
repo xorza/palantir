@@ -1080,7 +1080,7 @@ mod bars {
     }
 
     /// Showcase-style nested scroll cards. Pin that the deeper
-    /// clip-stack walk + warm caches still leave the cmd stream balanced.
+    /// clip-stack walk + warm caches still leave the paint stream balanced.
     #[test]
     fn nested_clipped_scrolls_compose_through_warm_cache() {
         let surface = UVec2::new(800, 600);
