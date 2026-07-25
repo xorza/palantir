@@ -30,12 +30,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Per-window text coordinator. Reuse slots belong to the window while
 /// shaped content buffers and the font system remain shared through
-/// [`TextShaper`]. Reuse rows are clock-swept under size pressure.
+/// [`TextShaper`]. Reuse rows live exactly as long as they are used:
+/// every row not touched during a frame is dropped at its end.
 #[derive(Debug)]
 pub(crate) struct TextSystem {
     pub(in crate::text) shaper: TextShaper,
     entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
-    sweep_limit: usize,
     /// Held once rather than asked per run: whether this window's shaper
     /// mints shaped buffers at all. False only under the gated mono metric.
     shapes_buffers: bool,
@@ -52,31 +52,27 @@ pub(crate) struct TextRunSlot {
     pub(crate) ordinal: u16,
 }
 
-const MIN_REUSE_SWEEP_LIMIT: usize = 256;
-
 impl TextSystem {
     pub(crate) fn new(shaper: TextShaper) -> Self {
         Self {
             shapes_buffers: shaper.shapes_buffers(),
             shaper,
             entries: FxHashMap::default(),
-            sweep_limit: MIN_REUSE_SWEEP_LIMIT,
         }
     }
 
+    /// Drop every row not used this frame, and every row belonging to a
+    /// widget that vanished. Unconditional: the previous size-pressure
+    /// ladder only ran the `retain` once the map crossed a power-of-two
+    /// rung, which made one frame in many pay for all of them. A row is
+    /// a hint — [`Self::measure`] revalidates it and a miss just costs
+    /// one refresh dispatch — so holding cold rows buys nothing a
+    /// reconstruction can't.
     pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
         self.shaper.end_frame();
-        let previous_len = self.entries.len();
-        let sweep = previous_len > self.sweep_limit;
-        if !sweep && removed.is_empty() {
-            return;
-        }
         self.entries.retain(|(widget_id, _), entry| {
-            !removed.contains(widget_id) && (!sweep || std::mem::take(&mut entry.hot))
+            !removed.contains(widget_id) && std::mem::take(&mut entry.hot)
         });
-        if sweep || self.entries.len() != previous_len {
-            self.sweep_limit = next_reuse_sweep_limit(self.entries.len());
-        }
     }
 
     /// The run's natural shape, for the intrinsic pass. `TextWrap`'s
@@ -198,13 +194,6 @@ struct TextReuseEntry {
     hot: bool,
 }
 
-pub(in crate::text) fn next_reuse_sweep_limit(len: usize) -> usize {
-    len.saturating_add(1)
-        .checked_next_power_of_two()
-        .unwrap_or(usize::MAX)
-        .max(MIN_REUSE_SWEEP_LIMIT)
-}
-
 /// What distinguishes one bounded resolve of a row from another.
 ///
 /// Six bytes rather than a second 24-byte [`TextShapeKey`]: the row's `key`
@@ -297,14 +286,9 @@ pub(crate) mod internals {
             self.entries.contains_key(&(wid, ordinal))
         }
 
-        /// Live reuse rows, for the sweep-bound tests.
+        /// Live reuse rows, for the sweep tests.
         pub(in crate::text) fn entry_count(&self) -> usize {
             self.entries.len()
-        }
-
-        /// Row count the next `end_frame` sweeps at.
-        pub(in crate::text) fn sweep_limit(&self) -> usize {
-            self.sweep_limit
         }
     }
 }

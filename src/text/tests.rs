@@ -7,7 +7,7 @@ use crate::text::internals::{TestMeasure, TestShape};
 use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
-use crate::text::system::{self, TextRunSlot, TextSystem};
+use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
 use rustc_hash::FxHashSet;
@@ -1511,16 +1511,14 @@ fn bounded_identity_cache_keys_width_and_halign() {
     );
 }
 
+/// A reuse row lives exactly one frame of non-use: `end_frame` drops
+/// every row whose hot bit wasn't set during the frame, with no size
+/// threshold gating the pass. The old exponential ladder held cold rows
+/// until the map crossed a power-of-two rung (256 at minimum), so a
+/// three-row window swept nothing — the second phase here is what that
+/// version could not do.
 #[test]
-fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
-    for (len, expected) in [(0, 256), (255, 256), (256, 512), (257, 512), (512, 1024)] {
-        assert_eq!(
-            system::next_reuse_sweep_limit(len),
-            expected,
-            "next ladder rung for cache size {len}",
-        );
-    }
-
+fn end_frame_drops_every_row_not_used_this_frame() {
     let mut text = TextSystem::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
@@ -1533,68 +1531,32 @@ fn end_frame_sweeps_cold_entries_at_exponential_size_thresholds() {
         halign: HAlign::Auto,
     };
 
-    for ordinal in 0_u16..=256 {
-        text.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine);
-    }
-    text.end_frame(&FxHashSet::default());
-    assert_eq!(
-        text.entry_count(),
-        257,
-        "the first threshold sweep keeps entries created in its hot interval",
-    );
-    assert_eq!(text.sweep_limit(), 512);
-
-    text.shape_run(slot(a), "hi", params, TextWrap::SingleLine);
-    for ordinal in 257_u16..=512 {
-        text.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine);
-    }
-    text.end_frame(&FxHashSet::default());
-    assert_eq!(
-        text.entry_count(),
-        257,
-        "one reused row plus 256 new rows must survive the second sweep",
-    );
-    assert!(text.has_entry(a, 0), "hot existing row must survive");
-    assert!(!text.has_entry(a, 1), "cold prior row must be evicted");
-    assert!(
-        !text.has_entry(a, 256),
-        "last cold prior row must be evicted"
-    );
-    assert!(text.has_entry(a, 257), "new row must survive");
-    assert!(text.has_entry(a, 512), "last new row must survive");
-    assert_eq!(
-        text.sweep_limit(),
-        512,
-        "257 survivors rebase to the next power-of-two rung",
-    );
-
+    text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
+    text.shape_run(slot_at(a, 1), "hi", params, TextWrap::SingleLine);
     text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
-    let removed = FxHashSet::from_iter([a]);
-    text.end_frame(&removed);
+    text.end_frame(&FxHashSet::default());
+    assert_eq!(text.entry_count(), 3, "rows used this frame all survive");
+
+    // Second frame touches only `a`'s first row. Three rows is far below
+    // the old ladder's floor, so all three used to survive.
+    text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
+    text.end_frame(&FxHashSet::default());
+    assert_eq!(text.entry_count(), 1);
+    assert!(text.has_entry(a, 0), "row re-shaped this frame stays hot");
+    assert!(!text.has_entry(a, 1), "untouched sibling row goes");
+    assert!(!text.has_entry(b, 0), "untouched row of another widget too");
+
+    // A removed widget's rows go even when hot, in the same retain pass
+    // that drops cold ones.
+    text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
+    text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
+    text.end_frame(&FxHashSet::from_iter([a]));
+    assert_eq!(text.entry_count(), 1);
     assert!(
         !text.has_entry(a, 0),
-        "removed widgets must evict immediately below the sweep threshold",
+        "removed widget's row goes regardless of its hot bit",
     );
-    assert!(text.has_entry(b, 0), "unrelated rows must remain");
-    assert_eq!(
-        text.sweep_limit(),
-        256,
-        "a large immediate eviction must rebase the exponential ladder",
-    );
-
-    let mut combined = TextSystem::default();
-    for ordinal in 0_u16..=256 {
-        combined.shape_run(slot_at(a, ordinal), "hi", params, TextWrap::SingleLine);
-    }
-    combined.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
-    combined.end_frame(&FxHashSet::from_iter([a]));
-    assert_eq!(
-        combined.entry_count(),
-        1,
-        "a pressure sweep and removed-widget cleanup must share one retain pass",
-    );
-    assert!(combined.has_entry(b, 0));
-    assert_eq!(combined.sweep_limit(), 256);
+    assert!(text.has_entry(b, 0), "unrelated hot row remains");
 }
 
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands

@@ -50,14 +50,16 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::queue::Queue;
 use crate::renderer::backend::text::TextBackend;
+use crate::renderer::backend::text::encode::internals::SweepBench;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextRun;
 use crate::scene::record_store::RecordStore;
 use crate::text::key::ShapedTextRef;
 use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
-use criterion::Criterion;
+use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use pollster::FutureExt;
+use std::hint::black_box;
 use wgpu::util::StagingBelt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -72,6 +74,14 @@ const CHURN_INDEX_STRIDE: u32 = 37;
 /// than a few wrapped paragraphs. 32 rows × 4 columns = 128 runs ≈
 /// what the showcase's node graph tab paints.
 const ROWS: u32 = 32;
+
+/// Distinct-text run count for the large-stable-key-set workload. The
+/// steady scene reuses four labels at integral origins, and
+/// `EncodedKey` folds in only the text key, quantized scale, colour and
+/// subpixel bins — so all 128 of its runs collapse onto a handful of
+/// cache rows. Encoded-cache maintenance scales with *rows*, so pinning
+/// it needs a scene where every run owns one.
+const DISTINCT_RUNS: usize = 512;
 
 #[derive(Debug)]
 struct Gpu {
@@ -371,6 +381,34 @@ fn run_batches(
     backend.end_frame();
 }
 
+/// [`DISTINCT_RUNS`] runs whose texts all differ, so each occupies its
+/// own encoded-cache row. Laid out in `ROWS` columns-worth of rows with
+/// every origin integral: y stays inside the viewport so no run is
+/// y-culled (a culled run is deliberately not cached, which would leave
+/// the map empty and defeat the workload).
+fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
+    let store = RecordStore::default();
+    let color = ColorU8::rgba(220, 220, 220, 255);
+    let mut runs = Vec::with_capacity(DISTINCT_RUNS);
+    for i in 0..DISTINCT_RUNS {
+        let text = format!("field {i}: f32");
+        let row = i as u32 % ROWS;
+        let column = i as u32 / ROWS;
+        runs.push(make_run(
+            &store,
+            shaper,
+            &text,
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(16.0 + (column as f32) * 80.0, 16.0 + (row as f32) * 18.0),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
+    }
+    BenchRuns { store, runs }
+}
+
 fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
     let shaper = TextShaper::new();
     let runs = build_runs(&shaper);
@@ -601,5 +639,110 @@ pub fn bench(c: &mut Criterion) {
         });
     }
 
+    {
+        // Large stable key set: every run hits its own cache row every
+        // frame, so nothing expires and nothing is re-encoded — all the
+        // encoded cache does is maintenance. CPU-only, because a
+        // whole-map scan is microseconds against a GPU submit and the
+        // full-frame variant cannot resolve it.
+        let shaper = TextShaper::new();
+        let scene = build_distinct_runs(&shaper);
+        let mut backend = BenchText::new(&g.device, FORMAT, shaper);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        for _ in 0..2 {
+            run_frame(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &scene.store,
+                &scene.runs,
+                BASE_SCALE,
+            );
+        }
+        group.bench_function("stable_keys_cpu", |b| {
+            b.iter(|| {
+                let mut encoder =
+                    g.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("aperture.text_atlas.stable_keys_cpu"),
+                        });
+                {
+                    let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
+                    let payloads = scene.store.payloads.borrow();
+                    let interned_text = payloads.interned_text();
+                    backend.prepare(&mut ctx, BASE_SCALE, &scene.runs, &interned_text);
+                }
+                belt.finish();
+                belt.recall();
+                backend.end_frame();
+            });
+        });
+    }
+
+    {
+        // The counter-workload to `stable_keys_cpu`: every frame lands on
+        // a new quantized scale, so every run misses, appends to the
+        // encoded arena and inserts a row. CPU-only for the same reason
+        // — `cache_churn` measures the same scene end to end, but at
+        // ~1 ms per GPU-bound iteration it cannot resolve which side of
+        // the encoded cache's maintenance tradeoff moved.
+        let (mut backend, scene) = fresh_backend(g);
+        let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
+        for step in 0..CHURN_SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
+            run_frame(
+                g,
+                &mut backend,
+                &mut belt,
+                &view,
+                &scene.store,
+                &scene.runs,
+                scale,
+            );
+        }
+        let mut i: u32 = 0;
+        group.bench_function("churn_cpu", |b| {
+            b.iter(|| {
+                let rung = i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE;
+                let scale = BASE_SCALE + (rung as f32) * TEXT_SCALE_STEP;
+                let mut encoder =
+                    g.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("aperture.text_atlas.churn_cpu"),
+                        });
+                {
+                    let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
+                    let payloads = scene.store.payloads.borrow();
+                    let interned_text = payloads.interned_text();
+                    backend.prepare(&mut ctx, scale, &scene.runs, &interned_text);
+                }
+                belt.finish();
+                belt.recall();
+                backend.end_frame();
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    group.finish();
+
+    // Prices the encoded cache's per-frame maintenance on its own. It
+    // runs on every frame by design — a cadence gate would trade uniform
+    // cost for a periodic spike — so this is the number that has to stay
+    // small, and `stable_keys_cpu` can't resolve it (a few percent of
+    // that workload, under this machine's run-to-run drift).
+    //
+    // 12 glyphs per row matches what the 512-row stable scene actually
+    // leaves in the arena (~11.8).
+    let mut group = c.benchmark_group("encoded_cache_sweep");
+    group.measurement_time(Duration::from_secs(2));
+    for rows in [128u32, 512] {
+        let mut fixture = SweepBench::new(rows, 12);
+        assert_eq!(fixture.sweep_steady(), rows as usize);
+        group.bench_with_input(BenchmarkId::from_parameter(rows), &rows, |b, _| {
+            b.iter(|| black_box(fixture.sweep_steady()));
+        });
+    }
     group.finish();
 }
