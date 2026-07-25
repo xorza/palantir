@@ -46,6 +46,19 @@ impl Sense {
     /// Ergonomic alias for [`Self::empty`] — the default "inert" sense.
     pub const NONE: Self = Self::empty();
 
+    /// Every pointer interaction, so none reaches widgets underneath.
+    ///
+    /// The overlay scrim sense: `Popup`'s click-eater and `Modal`'s
+    /// backdrop both cover the whole surface to stop clicks, drags,
+    /// scrolls and pinches leaking into the `Main` tree — a graph canvas
+    /// that pans on middle-drag and zooms on scroll is the case that
+    /// makes the last two matter. Named once because two independent
+    /// copies of "all four" drift apart the moment a fifth is added.
+    pub const ABSORB_POINTER: Self = Self::CLICK
+        .union(Self::DRAG)
+        .union(Self::SCROLL)
+        .union(Self::PINCH);
+
     /// True if this sense participates in hover hit-test. Any of
     /// `HOVER`/`CLICK`/`DRAG` implies hoverable; `SCROLL`-only widgets
     /// are invisible to the hover layer so the cursor / tooltip keeps

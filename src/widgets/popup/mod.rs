@@ -211,7 +211,7 @@ impl Popup {
             Frame::new()
                 .id(eater_id)
                 .size((Sizing::FILL, Sizing::FILL))
-                .sense(Sense::CLICK | Sense::DRAG | Sense::SCROLL | Sense::PINCH)
+                .sense(Sense::ABSORB_POINTER)
                 .show(ui);
             keyboard
         });
