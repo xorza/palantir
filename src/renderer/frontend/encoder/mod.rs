@@ -603,7 +603,11 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
     // emits exactly one command.
     let mode = ctx.tree.records.attrs()[id.idx()].clip_mode();
     let clip = mode.is_clip();
-    let chrome = ctx.tree.chrome(id).copied();
+    // Borrowed, not copied: `LayerCtx::tree` is a shared reference, so this
+    // borrows the `Tree` rather than `ctx` and does not collide with the
+    // `&mut ctx` that `brush_source` needs below. Copying instead cost a
+    // 56-byte `ChromeRow` per chromed node — most nodes in a real UI.
+    let chrome = ctx.tree.chrome(id);
 
     if let Some(bg) = chrome {
         // Shadow paints UNDER the rect fill (CSS box-shadow order).

@@ -66,7 +66,7 @@ pub(super) struct CaptureTreeInput<'a> {
 
 #[inline]
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
-    assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
+    debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
     IVec2::new(s.w.quantize_px(), s.h.quantize_px())
 }
 
@@ -252,7 +252,7 @@ impl MeasureCache {
                     bound = union_spans(bound, child_bound);
                     child = tree.subtree_end_of(child) as usize;
                 }
-                assert_eq!(
+                debug_assert_eq!(
                     bound.len, run_count,
                     "a measured subtree's text runs must be contiguous"
                 );

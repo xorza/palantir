@@ -28,7 +28,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | D2 | Overlay behaviour duplicated across four facades | Maintainability | M | Verified open — A2/A3 live here |
 | D3 | Layout driver identity repeated across three dispatches | Maintainability | S | Verified open |
 | D4 | Measure cache's manually synchronized shadow state | Maintainability | M | Narrowed by the arrange replay |
-| D5 | Small wins bundle (3 items) | Mixed | S | Verified open |
+| D5 | Small wins bundle (3 items) | Mixed | S | **Shipped** |
 | E1–E3 | Benchmark gaps | Enabler | S | Two of five closed |
 
 ---
@@ -305,21 +305,21 @@ restore is dead work on the hot path and live only on the resize-bail path.
 Making it lazy is the remaining piece, and it is a measured change, not a
 freebie. Do it with B2.
 
-### D5. Small wins bundle
+### D5. Small wins bundle — **shipped**
 
-- **`encode_node` copies a whole 56-byte `ChromeRow`**
-  (`src/renderer/frontend/encoder/mod.rs:606`) purely so `ctx.brush_source` can
-  take `&mut ctx` after. Reading `bg.fill` and `bg.corners` first lets the
-  reference stand — a cacheline copy per chromed node, which is most nodes, on
-  every encode.
-- **Release `assert!` on genuinely per-node paths** —
-  `quantize_available` (`src/layout/cache/mod.rs:69`) runs per node per frame;
-  `capture_tree`'s text-contiguity check (`:257`) per node per rebuild frame.
-  The crate's assert policy names exactly this case; `debug_assert!` is the
-  conforming form.
-- **`FrameRuntime::classify_frame` mutates** — it drains fired wakes as a side
-  effect of "classifying". Not worth restructuring; the name should say so
-  (`take_frame_plan` / `begin_frame`).
+- **`encode_node` no longer copies the 56-byte `ChromeRow`.** The `.copied()`
+  turned out to be unnecessary rather than load-bearing: `LayerCtx::tree` is a
+  shared-reference field, so `ctx.tree.chrome(id)` borrows the *`Tree`*, not
+  `ctx`, and never collided with the `&mut ctx` that `brush_source` needs. One
+  cacheline saved per chromed node — most nodes — on every encode.
+- **The two per-node release asserts are now `debug_assert`** —
+  `quantize_available` (per node per frame) and `capture_tree`'s text-contiguity
+  check (per node per rebuild frame). Both are internal invariants on hot paths,
+  which is exactly what the crate's assert policy reserves `debug_assert!` for.
+- **`classify_frame` → `take_frame_plan`.** It drains the wakes that fired, and
+  a reader is entitled to assume a `classify_*` is pure. The doc now states that
+  the drain is the point — a wake must drive exactly one frame — rather than a
+  side effect.
 
 ---
 

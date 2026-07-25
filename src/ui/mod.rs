@@ -83,7 +83,7 @@ pub struct Ui {
     /// and read by the encoder, input dispatch, and damage compute.
     pub(crate) cascades: Cascades,
     pub(crate) input: InputState,
-    /// Selects which "did input arrive?" signal `classify_frame`
+    /// Selects which "did input arrive?" signal `take_frame_plan`
     /// consults to gate the full record path. Default
     /// [`InputPolicy::OnDelta`] skips record on inert pointer moves
     /// and scroll-over-nothing; flip to [`InputPolicy::Always`] for
@@ -187,7 +187,7 @@ impl Ui {
         // Refresh the input clock so input handlers running before the
         // next frame timestamp double-clicks on this deterministic time.
         self.input.frame_time = self.frame_runtime.time;
-        let plan = self.frame_runtime.classify_frame(FrameClassifyInput {
+        let plan = self.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
             damage_baseline_valid,
             input_policy: self.input_policy,
