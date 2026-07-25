@@ -12,17 +12,6 @@ pub enum LineCap {
     Round = 2,
 }
 
-impl LineCap {
-    pub(crate) const fn from_u8(value: u8) -> Self {
-        match value {
-            0 => LineCap::Butt,
-            1 => LineCap::Square,
-            2 => LineCap::Round,
-            _ => panic!("invalid LineCap discriminant in cmd buffer"),
-        }
-    }
-}
-
 /// Interior-join style for [`crate::shape::Shape::Polyline`]. Miter joins
 /// downgrade to bevel when their extension exceeds the shared miter limit.
 #[repr(u8)]
@@ -32,15 +21,4 @@ pub enum LineJoin {
     Miter = 0,
     Bevel = 1,
     Round = 2,
-}
-
-impl LineJoin {
-    pub(crate) const fn from_u8(value: u8) -> Self {
-        match value {
-            0 => LineJoin::Miter,
-            1 => LineJoin::Bevel,
-            2 => LineJoin::Round,
-            _ => panic!("invalid LineJoin discriminant in cmd buffer"),
-        }
-    }
 }

@@ -205,7 +205,7 @@ fn collapsed_does_not_consume_fill_weight() {
 
 #[test]
 fn hidden_keeps_slot_but_emits_no_draws() {
-    use crate::renderer::frontend::cmd_buffer::Command;
+    use crate::renderer::frontend::record_sink::PaintCall;
 
     let mut ui = Ui::for_test();
     let mut root = NodeId(0);
@@ -253,10 +253,11 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
     // ...but emits no DrawRect.
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let draws = cmds
+        .calls
         .iter()
-        .filter(|command| matches!(command, Command::DrawRect(_)))
+        .filter(|command| matches!(command, PaintCall::Rect(_)))
         .count();
     assert_eq!(draws, 2, "only the two Visible frames should paint");
 }

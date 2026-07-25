@@ -14,7 +14,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::frontend::cmd_buffer::test_support::assert_same_stream;
+use crate::renderer::frontend::record_sink::assert_same_paint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
@@ -372,8 +372,8 @@ fn cache_hit_preserves_per_driver_rects() {
 
 /// Cache-correctness generalization: a measure-cache hit must not
 /// perturb ANY downstream consumer of per-frame engine state — so a
-/// fully-encoded `RenderCmdBuffer` from a warm frame must be
-/// byte-identical to one from a cold frame.
+/// the full paint-call sequence a warm frame encodes must be
+/// identical to a cold frame's, operation for operation.
 #[test]
 fn encoded_buffer_stable_across_cache_hit_boundary() {
     let record = |ui: &mut Ui| {
@@ -443,12 +443,12 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 
     let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
     ui.run_at(UVec2::new(800, 600), |ui| record(ui));
-    let cold = ui.encode_cmds();
+    let cold = ui.encode_paint();
 
     ui.run_at(UVec2::new(800, 600), |ui| record(ui));
-    let warm = ui.encode_cmds();
+    let warm = ui.encode_paint();
 
-    assert_same_stream(&cold, &warm);
+    assert_same_paint(&cold, &warm);
 }
 
 /// Stress test: alternating surface widths force the cache through

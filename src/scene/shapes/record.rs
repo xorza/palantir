@@ -16,22 +16,14 @@ use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) enum ColorMode {
+    /// One colour for the whole polyline — the default and the only
+    /// mode whose colour span is a single entry.
+    #[default]
     Single = 0,
     PerPoint = 1,
     PerSegment = 2,
-}
-
-impl ColorMode {
-    pub(crate) const fn from_u8(value: u8) -> Self {
-        match value {
-            0 => ColorMode::Single,
-            1 => ColorMode::PerPoint,
-            2 => ColorMode::PerSegment,
-            _ => panic!("invalid ColorMode discriminant in cmd buffer"),
-        }
-    }
 }
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache

@@ -11,7 +11,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
-use crate::renderer::frontend::cmd_buffer::Command;
+use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
@@ -244,10 +244,10 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
             });
     });
 
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let mut text_xs: Vec<f32> = Vec::new();
-    for command in cmds.iter() {
-        if let Command::DrawText(payload) = command {
+    for command in cmds.calls.iter() {
+        if let PaintCall::Text(payload) = command {
             text_xs.push(payload.rect.min.x);
         }
     }
@@ -343,10 +343,10 @@ fn text_layouts_full_showcase_drawtext_dump() {
         });
     });
 
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
-    for command in cmds.iter() {
-        if let Command::DrawText(payload) = command {
+    for command in cmds.calls.iter() {
+        if let PaintCall::Text(payload) = command {
             entries.push((
                 payload.rect.min.x,
                 payload.rect.min.y,

@@ -7,12 +7,12 @@ use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
-use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, ColorModeBits, DrawMeshPayload, DrawPolylinePayload, LineCapBits, LineJoinBits,
-    ResolvedGradient,
-};
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_scissor};
+use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::{
+    BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
+};
+use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::texture_id::TextureId;
@@ -43,7 +43,7 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x, y, w, h)
 }
 
-fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
+fn draw(buf: &mut RecordedPaint, r: Rect) {
     buf.draw_rect(
         r,
         Corners::default(),
@@ -52,7 +52,7 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
     );
 }
 
-fn text(buf: &mut RenderCmdBuffer, r: Rect) {
+fn text(buf: &mut RecordedPaint, r: Rect) {
     buf.draw_text(
         r,
         Color::WHITE.into(),
@@ -75,23 +75,25 @@ fn params(scale: f32, physical: UVec2) -> Display {
 }
 
 fn run(
-    build: impl FnOnce(&mut RenderCmdBuffer, &mut RecordPayloads),
+    build: impl FnOnce(&mut RecordedPaint, &mut RecordPayloads),
     display: &Display,
 ) -> RenderBuffer {
     run_with_texture_cap(build, display, 16_384)
 }
 
 fn run_with_texture_cap(
-    build: impl FnOnce(&mut RenderCmdBuffer, &mut RecordPayloads),
+    build: impl FnOnce(&mut RecordedPaint, &mut RecordPayloads),
     display: &Display,
     max_texture_dim: u32,
 ) -> RenderBuffer {
-    let mut buffer = RenderCmdBuffer::default();
+    let mut recorded = RecordedPaint::default();
     let mut payloads = RecordPayloads::default();
-    build(&mut buffer, &mut payloads);
+    build(&mut recorded, &mut payloads);
     let mut composer = Composer::new(max_texture_dim);
     let mut out = render_buffer();
-    composer.compose(&buffer, &payloads, *display, &mut out);
+    let mut session = composer.begin(*display, &payloads, &mut out);
+    recorded.replay(&mut session);
+    session.finish();
     out
 }
 
@@ -296,7 +298,7 @@ fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
     assert_eq!(buf.groups.len(), 1);
 }
 
-fn mesh(buf: &mut RenderCmdBuffer, bbox: Rect) {
+fn mesh(buf: &mut RecordedPaint, bbox: Rect) {
     // 3 verts / 3 indices + opaque tint clears `DrawMeshPayload::is_noop`
     // so the cmd reaches the composer.
     buf.draw_mesh(DrawMeshPayload {
@@ -307,7 +309,6 @@ fn mesh(buf: &mut RenderCmdBuffer, bbox: Rect) {
         v_len: 3,
         i_start: 0,
         i_len: 3,
-        ..bytemuck::Zeroable::zeroed()
     });
 }
 
@@ -471,7 +472,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
     assert_eq!(buf.groups[2].scissor, Some(URect::new(30, 30, 50, 50)));
 }
 
-fn push_distinct_rounded_clips(buffer: &mut RenderCmdBuffer, depth: u32) {
+fn push_distinct_rounded_clips(buffer: &mut RecordedPaint, depth: u32) {
     for level in 1..=depth {
         buffer.push_clip_rounded(rect(0.0, 0.0, 400.0, 400.0), Corners::all(level as f32));
     }
@@ -621,8 +622,8 @@ fn compose_scales_radius_and_stroke_under_transform() {
 /// regression that accidentally sets `fill_kind = 1` on solid quads.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
-    let mut buffer = RenderCmdBuffer::default();
+    use crate::renderer::frontend::payload::BrushSource;
+    let mut buffer = RecordedPaint::default();
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
@@ -633,12 +634,13 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     let mut out = render_buffer();
     // 200×200 viewport: an opaque solid sharp quad covering the whole
     // viewport would fold into the clear instead of emitting a quad.
-    composer.compose(
-        &buffer,
-        &RecordPayloads::default(),
-        params(1.0, UVec2::new(200, 200)),
-        &mut out,
-    );
+    composer
+        .begin(
+            params(1.0, UVec2::new(200, 200)),
+            &RecordPayloads::default(),
+            &mut out,
+        )
+        .replay_from(&buffer);
     let q = &out.quads[0];
     assert_eq!(
         q.fill_kind,
@@ -665,7 +667,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 #[test]
 fn windowed_rect_is_not_an_opaque_cover() {
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0));
@@ -701,7 +703,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::gradient::Spread;
     use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
@@ -713,7 +715,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         row,
         kind: FillKind::linear(g.spread),
     };
-    let mut buffer = RenderCmdBuffer::default();
+    let mut buffer = RecordedPaint::default();
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
@@ -722,12 +724,13 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     );
     let mut composer = composer();
     let mut out = render_buffer();
-    composer.compose(
-        &buffer,
-        &RecordPayloads::default(),
-        params(1.0, UVec2::new(100, 100)),
-        &mut out,
-    );
+    composer
+        .begin(
+            params(1.0, UVec2::new(100, 100)),
+            &RecordPayloads::default(),
+            &mut out,
+        )
+        .replay_from(&buffer);
     let q = &out.quads[0];
     assert_eq!(q.fill_kind, FillKind::linear(Spread::Reflect));
     assert!(q.fill_lut_row.0 >= 1, "linear quad must get a real row");
@@ -741,7 +744,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let atlas = SharedGradientAtlas::default();
@@ -750,7 +753,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
         row: atlas.register_stops(&g.stops, g.interp),
         kind: FillKind::linear(g.spread),
     };
-    let mut buffer = RenderCmdBuffer::default();
+    let mut buffer = RecordedPaint::default();
     for _ in 0..3 {
         buffer.draw_rect(
             rect(0.0, 0.0, 10.0, 10.0),
@@ -761,12 +764,13 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     }
     let mut composer = composer();
     let mut out = render_buffer();
-    composer.compose(
-        &buffer,
-        &RecordPayloads::default(),
-        params(1.0, UVec2::new(100, 100)),
-        &mut out,
-    );
+    composer
+        .begin(
+            params(1.0, UVec2::new(100, 100)),
+            &RecordPayloads::default(),
+            &mut out,
+        )
+        .replay_from(&buffer);
     let rows: Vec<_> = out.quads.iter().map(|q| q.fill_lut_row).collect();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0], rows[1]);
@@ -1228,7 +1232,7 @@ fn compose_polyline_between_texts_splits_text_batch() {
 
 #[allow(clippy::too_many_arguments)]
 fn polyline_cmd(
-    b: &mut RenderCmdBuffer,
+    b: &mut RecordedPaint,
     payloads: &mut RecordPayloads,
     points: &[Vec2],
     colors: &[Color],
@@ -1257,10 +1261,10 @@ fn polyline_cmd(
         points_len: points.len() as u32,
         colors_start: c_start,
         colors_len: colors.len() as u32,
-        color_mode: ColorModeBits::new(mode),
-        cap: LineCapBits::new(cap),
-        join: LineJoinBits::new(join),
-        ..bytemuck::Zeroable::zeroed()
+        color_mode: mode,
+        cap,
+        join,
+        ..Default::default()
     });
 }
 
@@ -1279,7 +1283,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         Vec2::new(110.0, 10.0),
         Vec2::new(160.0, 40.0),
     ];
-    let mut commands = RenderCmdBuffer::default();
+    let mut commands = RecordedPaint::default();
     let mut payloads = RecordPayloads::default();
     polyline_cmd(
         &mut commands,
@@ -1293,12 +1297,9 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     );
     let mut composer = composer();
     let mut buf = render_buffer();
-    composer.compose(
-        &commands,
-        &payloads,
-        params(1.0, UVec2::new(200, 200)),
-        &mut buf,
-    );
+    composer
+        .begin(params(1.0, UVec2::new(200, 200)), &payloads, &mut buf)
+        .replay_from(&commands);
     let segs: Vec<_> = buf
         .curves
         .iter()
@@ -1508,7 +1509,7 @@ fn compose_spins_polyline_about_bbox_center() {
     // bbox 100×100 ⇒ centre (50, 50) is both the pivot and the symmetry
     // point of the segment, so a correct spin keeps the AABB centred.
     let aabb = |rotation: f32| -> (Vec2, Vec2) {
-        let mut buffer = RenderCmdBuffer::default();
+        let mut buffer = RecordedPaint::default();
         let mut payloads = RecordPayloads::default();
         let p_start = payloads.polyline_points.len() as u32;
         payloads.polyline_points.push(Vec2::new(15.0, 50.0));
@@ -1524,19 +1525,15 @@ fn compose_spins_polyline_about_bbox_center() {
             points_len: 2,
             colors_start: c_start,
             colors_len: 1,
-            color_mode: ColorModeBits::new(ColorMode::Single),
-            cap: LineCapBits::new(LineCap::Butt),
-            join: LineJoinBits::new(LineJoin::Miter),
-            ..bytemuck::Zeroable::zeroed()
+            color_mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
         });
         let mut composer = composer();
         let mut out = render_buffer();
-        composer.compose(
-            &buffer,
-            &payloads,
-            params(1.0, UVec2::new(200, 200)),
-            &mut out,
-        );
+        composer
+            .begin(params(1.0, UVec2::new(200, 200)), &payloads, &mut out)
+            .replay_from(&buffer);
         // GPU path: the polyline emits one segment instance whose
         // p0/p3 lanes carry the transformed (spun) endpoints.
         assert_eq!(out.curves.len(), 1, "one segment instance");
@@ -1638,7 +1635,7 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
 
 #[test]
 fn compose_emits_image_batch_for_drawimage() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             b.draw_image(DrawImagePayload::image(
@@ -1768,7 +1765,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
 
 #[test]
 fn compose_image_forwards_uv_crop_for_cover_fit() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             b.draw_image(DrawImagePayload::image(
@@ -1790,7 +1787,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 /// (a `GpuView` ships full UV from the encoder — see `gpu_view` tests).
 #[test]
 fn compose_forwards_flags_and_repeat_uv() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::DrawImagePayload;
     use crate::renderer::render_buffer::image::{
         IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
     };
@@ -1837,7 +1834,7 @@ fn compose_forwards_flags_and_repeat_uv() {
 
 #[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
             // Two curves under one (implicit) scissor group → must
@@ -1854,7 +1851,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
                     p3: Vec2::new(offset + 100.0, 0.0),
                     color: Color::WHITE.into(),
                     width: 2.0,
-                    ..bytemuck::Zeroable::zeroed()
+                    ..Default::default()
                 });
             }
         },
@@ -1876,7 +1873,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
 
 #[test]
 fn compose_splits_curve_batches_across_scissor_groups() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
@@ -1888,7 +1885,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 p3: Vec2::new(100.0, 0.0),
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
             b.push_clip(rect(0.0, 0.0, 50.0, 200.0));
             b.draw_curve(DrawCurvePayload {
@@ -1900,7 +1897,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 p3: Vec2::new(50.0, 0.0),
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
             b.pop_clip();
         },
@@ -1922,7 +1919,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::brush::gradient::Spread;
     use crate::primitives::fill_wire::FillKind;
     use crate::primitives::fill_wire::LutRow;
-    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
             // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
@@ -1938,7 +1935,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
                 width: 4.0,
                 fill_kind: FillKind::linear(Spread::Pad),
                 fill_lut_row: LutRow(7),
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -1959,7 +1956,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 
 #[test]
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawArcPayload;
+    use crate::renderer::frontend::payload::DrawArcPayload;
     use crate::renderer::render_buffer::curve::CURVE_KIND_ARC;
     use std::f32::consts::PI;
     // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
@@ -1975,7 +1972,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
                 a1: sweep,
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
         },
         &params(2.0, UVec2::new(400, 400)),
@@ -2004,7 +2001,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
 
 #[test]
 fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawArcPayload;
+    use crate::renderer::frontend::payload::DrawArcPayload;
     use std::f32::consts::{FRAC_PI_2, PI};
     // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
     // rotation = π/2 (clockwise on screen, y-down): (+20, 0) → (0, +20),
@@ -2021,7 +2018,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
                 rotation: FRAC_PI_2,
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2040,12 +2037,12 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 
 #[test]
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::DrawCurvePayload;
     // Same 800 px span: a straight cubic (CPs on the segment thirds —
     // exactly what Shape::line lowers to) must collapse to one
     // instance; a genuinely curved one must subdivide (800 px polygon
     // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
-    let straight = |b: &mut RenderCmdBuffer| {
+    let straight = |b: &mut RecordedPaint| {
         b.draw_curve(DrawCurvePayload {
             bbox: rect(0.0, 0.0, 800.0, 10.0),
             origin: Vec2::ZERO,
@@ -2055,10 +2052,10 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
             p3: Vec2::new(800.0, 5.0),
             color: Color::WHITE.into(),
             width: 2.0,
-            ..bytemuck::Zeroable::zeroed()
+            ..Default::default()
         });
     };
-    let curved = |b: &mut RenderCmdBuffer| {
+    let curved = |b: &mut RecordedPaint| {
         b.draw_curve(DrawCurvePayload {
             bbox: rect(0.0, 0.0, 800.0, 400.0),
             origin: Vec2::ZERO,
@@ -2068,7 +2065,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
             p3: Vec2::new(800.0, 5.0),
             color: Color::WHITE.into(),
             width: 2.0,
-            ..bytemuck::Zeroable::zeroed()
+            ..Default::default()
         });
     };
     let vp = params(1.0, UVec2::new(900, 900));
@@ -2086,7 +2083,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
 
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::DrawCurvePayload;
     use std::f32::consts::FRAC_PI_2;
     // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
     // screen, y-down) maps an offset (dx, dy) from the pivot to
@@ -2103,7 +2100,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
                 p3: Vec2::new(50.0, 30.0),
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2134,7 +2131,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
-    use crate::renderer::frontend::cmd_buffer::payload::{DrawArcPayload, DrawCurvePayload};
+    use crate::renderer::frontend::payload::{DrawArcPayload, DrawCurvePayload};
     use crate::renderer::render_buffer::curve::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
     let buf = run(
         |b, _arena| {
@@ -2147,7 +2144,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                 a1: 1.0,
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
             b.draw_curve(DrawCurvePayload {
                 bbox: rect(100.0, 0.0, 100.0, 100.0),
@@ -2158,7 +2155,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                 p3: Vec2::new(200.0, 0.0),
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
         },
         &params(1.0, UVec2::new(300, 300)),
@@ -2169,8 +2166,8 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
 }
 
-fn curve(b: &mut RenderCmdBuffer, bbox: Rect) {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
+fn curve(b: &mut RecordedPaint, bbox: Rect) {
+    use crate::renderer::frontend::payload::DrawCurvePayload;
     b.draw_curve(DrawCurvePayload {
         bbox,
         origin: Vec2::ZERO,
@@ -2180,12 +2177,12 @@ fn curve(b: &mut RenderCmdBuffer, bbox: Rect) {
         p3: bbox.max(),
         color: Color::WHITE.into(),
         width: 2.0,
-        ..bytemuck::Zeroable::zeroed()
+        ..Default::default()
     });
 }
 
-fn image(b: &mut RenderCmdBuffer, r: Rect) {
-    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
+fn image(b: &mut RecordedPaint, r: Rect) {
+    use crate::renderer::frontend::payload::DrawImagePayload;
     b.draw_image(DrawImagePayload::image(
         r,
         Vec2::ZERO,
@@ -2503,7 +2500,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
 #[test]
 fn prune_does_not_drop_stroked_quad_under_solid_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     // A stroked quad's stroke spills outside the rect; pruning a
     // stroked quad on the strict containment test below would lose
     // the stroke fringe. Predicate requires zero-stroke as
@@ -2544,7 +2541,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
     // a sharp opaque quad on top exactly covers a rounded under,
     // the under is dropped (sharp cover == its own bounding rect,
     // which contains the rounded's bounding rect).
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     let buf_rounded_on_top = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid sharp under
@@ -2585,7 +2582,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 #[test]
 fn prune_keeps_transparent_solid_as_non_occluder() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     // alpha=0.5 quad on top doesn't occlude anything beneath.
     let buf = run(
         |b, _| {
@@ -2610,7 +2607,7 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
     // gives a cover deflation of ≈3.43 per side.
     // An under-quad at (10,10,80,80) is well inside cover and
     // should be dropped.
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
@@ -2639,7 +2636,7 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
     // Rounded r=20 ⇒ inset ≈ 5.86. An under at (0,0,5,5) lies
     // entirely inside the [0,20]×[0,20] corner-cutout zone and is
     // never covered.
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
@@ -2752,7 +2749,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     // (Translucent strokes shrink the cover — see
     // `prune_occluder_stroke_translucency_gates_cover`.)
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
@@ -2793,7 +2790,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
 #[test]
 fn prune_occluder_stroke_translucency_gates_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
+    use crate::renderer::frontend::payload::BrushSource;
     #[derive(Debug)]
     struct Case {
         label: &'static str,
@@ -2942,15 +2939,17 @@ fn prune_steady_state_across_repeated_compose_calls() {
     // `drop_indices`) are reset cleanly between frames — a stale
     // entry would either panic on index OOB after the slice shrinks
     // or leak across-frame drops.
-    let mut buffer = RenderCmdBuffer::default();
+    let mut buffer = RecordedPaint::default();
     let mut composer = composer();
     let display = params(1.0, UVec2::new(200, 200));
     for _ in 0..5 {
-        buffer.clear();
+        buffer.calls.clear();
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = render_buffer();
-        composer.compose(&buffer, &RecordPayloads::default(), display, &mut out);
+        composer
+            .begin(display, &RecordPayloads::default(), &mut out)
+            .replay_from(&buffer);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
 }
@@ -3059,7 +3058,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     let folded = ColorF16::from(bg).unpack();
 
     // (case, builder, expected quad count, expected override)
-    type Build = fn(&mut RenderCmdBuffer);
+    type Build = fn(&mut RecordedPaint);
     let cases: &[(&str, Build, usize, Option<Color>)] = &[
         (
             "qualifying root folds, later quad stays",
@@ -3252,21 +3251,27 @@ fn clear_fold_resets_across_frames() {
     let mut out = render_buffer();
     let payloads = RecordPayloads::default();
 
-    let mut covered = RenderCmdBuffer::default();
+    let mut covered = RecordedPaint::default();
     draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
     draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
 
-    composer.compose(&covered, &payloads, display, &mut out);
+    composer
+        .begin(display, &payloads, &mut out)
+        .replay_from(&covered);
     assert!(out.clear_override.is_some(), "frame 1 folds");
     assert_eq!(out.quads.len(), 1);
 
-    composer.compose(&covered, &payloads, display, &mut out);
+    composer
+        .begin(display, &payloads, &mut out)
+        .replay_from(&covered);
     assert!(out.clear_override.is_some(), "steady state re-folds");
     assert_eq!(out.quads.len(), 1);
 
-    let mut uncovered = RenderCmdBuffer::default();
+    let mut uncovered = RecordedPaint::default();
     draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
-    composer.compose(&uncovered, &payloads, display, &mut out);
+    composer
+        .begin(display, &payloads, &mut out)
+        .replay_from(&uncovered);
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);
 }

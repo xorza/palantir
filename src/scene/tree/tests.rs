@@ -6,7 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::frontend::cmd_buffer::Command;
+use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::shapes::record::ShapeRecord;
@@ -109,10 +109,11 @@ fn interleaved_shapes_record_correct_order() {
         .collect();
     assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
 
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let draw_rect_count = cmds
+        .calls
         .iter()
-        .filter(|command| matches!(command, Command::DrawRect(_)))
+        .filter(|command| matches!(command, PaintCall::Rect(_)))
         .count();
     assert_eq!(
         draw_rect_count, 5,
@@ -176,7 +177,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     );
 
     // Encoder walks without panicking (the original symptom).
-    let _cmds = ui.encode_cmds();
+    let _cmds = ui.encode_paint();
 }
 
 fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
@@ -1006,7 +1007,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
                 });
             });
     });
-    let _cmds = ui.encode_cmds();
+    let _cmds = ui.encode_paint();
 
     let payloads = ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();

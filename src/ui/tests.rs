@@ -1649,7 +1649,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     // Indirect pin: re-run the encoder against the retained tree
     // + record store. With the bug, this panicked on `gradients[id]`.
-    let _ = ui.encode_cmds();
+    let _ = ui.encode_paint();
 }
 
 #[test]
@@ -1659,8 +1659,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     use crate::primitives::fill_wire::LutRow;
 
-    use crate::renderer::frontend::cmd_buffer::Command;
     use crate::renderer::frontend::encoder;
+    use crate::renderer::frontend::record_sink::PaintCall;
     use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::shape::Shape;
@@ -1674,9 +1674,10 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             kind: RenderKind::Full,
         };
         encoder::test_support::encode(ui.frame_scene(), atlas, plan)
+            .calls
             .iter()
             .filter_map(|command| match command {
-                Command::DrawRect(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
+                PaintCall::Rect(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
                     Some(payload.fill_lut_row)
                 }
                 _ => None,

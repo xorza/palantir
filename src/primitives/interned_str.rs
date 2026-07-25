@@ -54,7 +54,7 @@ pub(crate) struct InternedText<'a> {
 
 /// Compact reference to source bytes in the active record store.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextSource {
     pub(crate) span: Span,
 }
