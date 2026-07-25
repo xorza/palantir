@@ -14,7 +14,7 @@ partly gated, then maintainability. Performance claims state whether they are
 
 | # | Item | Kind | Size | Status |
 | --- | --- | --- | --- | --- |
-| A1 | `run_on_main` silently drops owned work | Correctness | XS | Verified open |
+| A1 | `run_on_main` silently drops owned work | Correctness | XS | **Shipped** |
 | A2 | Modal misses Escape under popup keyboard capture | Correctness | S | Verified open |
 | A3 | Popup capture resolves after popup bodies read events | Correctness | S | Verified open |
 | A4 | `DragValue` loses node configuration in edit mode | Correctness | S | Verified open |
@@ -40,16 +40,29 @@ refactors", and only `SIMPLIFICATION_REVIEW.md` carried them — neither of the
 other two surfaced them at all, which is how they stayed unaddressed while
 performance items got attention. They are user-visible defects.
 
-### A1. `HostHandle::run_on_main` silently drops owned work
+### A1. `HostHandle::run_on_main` silently drops owned work — **shipped**
 
-`src/host/winit/handle.rs:89` — `let _ = self.proxy.send_event(...)`, returning
-`()`. An event-loop shutdown race destroys the boxed closure **and the
-application-state mutation it carried**, with nothing observable to the caller.
-This is the documented "safe way to fold background-thread results into app
-state", so silent loss is the worst possible failure mode for it.
+`run_on_main` now returns `Result<(), HostDisconnected>`, mapped from winit's
+`EventLoopClosed`. `HostDisconnected` is a new zero-sized public error in
+`host/winit/error.rs`, exported from `lib.rs`.
 
-Return a delivery status, or take the closure back on failure. Smallest item in
-this document and the highest severity-to-effort ratio.
+**Status, not the closure back.** Winit hands the event back inside its error,
+so returning the task was available — but there is no `&mut T` left to run it
+against once the loop is gone, and its captures drop either way, so the payload
+would be dead weight in the public signature. The caller's actionable fact is
+*that* the mutation was lost.
+
+`request_repaint` and `quit` stay fire-and-forget, and the asymmetry is now
+documented on all three: `run_on_main` is the only poke carrying owned work,
+so it is the only one whose loss is unobservable otherwise. A dropped repaint
+or quit against an exiting loop costs nothing.
+
+The failure path is not unit-tested — it needs a live-then-closed event loop,
+which is not constructible headlessly. The shipped test pins the error's
+contract instead: zero-sized, `Error`-boxable for propagation off a background
+thread, and a message that names the *consequence* ("the scheduled work was not
+delivered") rather than just the cause, since "event loop exited" reads as
+routine shutdown.
 
 ### A2. Modal keyboard ownership disagrees with layer ownership
 

@@ -6,6 +6,7 @@
 
 use winit::event_loop::EventLoopProxy;
 
+use crate::host::winit::error::HostDisconnected;
 use crate::window::WindowToken;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`],
@@ -76,7 +77,9 @@ impl<T: 'static> std::fmt::Debug for HostHandle<T> {
 impl<T: 'static> HostHandle<T> {
     /// Request the host paint one frame of the window named by `win`.
     /// Cheap and lock-free; safe to call from any thread. Drops silently
-    /// if the event loop has already exited or the window is gone.
+    /// if the event loop has already exited or the window is gone —
+    /// nothing is owned by the poke, so an undelivered repaint against a
+    /// closing loop costs nothing. Contrast [`Self::run_on_main`].
     pub fn request_repaint(&self, win: WindowToken) {
         let _ = self.proxy.send_event(UserEvent::Repaint(win));
     }
@@ -86,12 +89,28 @@ impl<T: 'static> HostHandle<T> {
     /// background-thread results into app state without a separate
     /// channel. Return `true` from `f` to repaint every window, `false`
     /// to leave the present schedule unchanged.
-    pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) {
-        let _ = self.proxy.send_event(UserEvent::RunOnMain(Box::new(f)));
+    ///
+    /// # Errors
+    ///
+    /// [`HostDisconnected`] when the event loop has already exited. `f` is
+    /// then dropped **undelivered and unrun**, together with whatever it
+    /// captured. This is the only [`HostHandle`] method that reports
+    /// delivery, and the asymmetry is the point: it is the only one
+    /// carrying owned work, so it is the only one whose failure silently
+    /// discards an application-state mutation the caller believes it
+    /// made.
+    pub fn run_on_main(
+        &self,
+        f: impl FnOnce(&mut T) -> bool + Send + 'static,
+    ) -> Result<(), HostDisconnected> {
+        self.proxy
+            .send_event(UserEvent::RunOnMain(Box::new(f)))
+            .map_err(|_| HostDisconnected)
     }
 
     /// Ask the host's event loop to exit. The current frame finishes;
-    /// no further frames are scheduled.
+    /// no further frames are scheduled. Drops silently against an
+    /// already-exited loop, which is the state it was asking for.
     pub fn quit(&self) {
         let _ = self.proxy.send_event(UserEvent::Quit);
     }
