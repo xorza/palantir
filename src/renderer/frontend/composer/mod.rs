@@ -1528,7 +1528,7 @@ impl PaintSink for ComposeSession<'_> {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     //! Replay driver for the composer tests and the compose bench.
 
     use crate::renderer::frontend::composer::ComposeSession;

@@ -14,13 +14,13 @@ use glam::Vec2;
 use tinyvec::ArrayVec;
 
 #[derive(Debug)]
-pub(crate) enum RepaintScissors {
+pub(super) enum RepaintScissors {
     Full,
     Partial(PartialScissors),
 }
 
 #[derive(Debug)]
-pub(crate) struct PartialScissors {
+pub(super) struct PartialScissors {
     first: URect,
     rest: ArrayVec<[URect; DAMAGE_RECT_CAP]>,
 }
@@ -35,7 +35,7 @@ impl PartialScissors {
         Self { first, rest: rects }
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = URect> + '_ {
+    pub(super) fn iter(&self) -> impl Iterator<Item = URect> + '_ {
         std::iter::once(self.first).chain(self.rest.iter().copied())
     }
 }
@@ -66,7 +66,7 @@ fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect>
 /// scissors nonzero. An empty result means the plan and composed draw
 /// list disagree; it must not degrade to a full clear.
 #[profiling::function]
-pub(crate) fn build_repaint_scissors(
+pub(super) fn build_repaint_scissors(
     render_kind: RenderKind,
     buffer: &RenderBuffer,
 ) -> RepaintScissors {
@@ -94,19 +94,19 @@ pub(crate) struct ViewportPush {
 }
 
 impl ViewportPush {
-    pub(crate) const BYTES: usize = size_of::<Self>();
+    pub(super) const BYTES: usize = size_of::<Self>();
     /// Offset inside the per-pipeline immediate region. Locked at 0
     /// because every shader puts `viewport` first.
-    pub(crate) const OFFSET: u32 = 0;
+    pub(super) const OFFSET: u32 = 0;
 
-    pub(crate) fn encode(&self) -> [u8; Self::BYTES] {
+    pub(super) fn encode(&self) -> [u8; Self::BYTES] {
         bytemuck::cast(*self)
     }
 
     /// Push this viewport into the active pipeline's immediate region.
     /// Caller must ensure a pipeline is already bound — wgpu's
     /// `set_immediates` validation rejects an unbound pipeline.
-    pub(crate) fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(super) fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_immediates(Self::OFFSET, &self.encode());
     }
 }

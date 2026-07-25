@@ -1,20 +1,20 @@
 //! Checked substitution for Rust-owned constants embedded in WGSL sources.
 
 #[derive(Debug)]
-pub(crate) struct ShaderConstant {
+pub(super) struct ShaderConstant {
     marker: &'static str,
     value: String,
 }
 
 impl ShaderConstant {
-    pub(crate) fn uint(marker: &'static str, value: u32) -> Self {
+    pub(super) fn uint(marker: &'static str, value: u32) -> Self {
         Self {
             marker,
             value: format!("{value}u"),
         }
     }
 
-    pub(crate) fn float(marker: &'static str, value: f32) -> Self {
+    pub(super) fn float(marker: &'static str, value: f32) -> Self {
         assert!(value.is_finite());
         Self {
             marker,
@@ -23,7 +23,7 @@ impl ShaderConstant {
     }
 }
 
-pub(crate) fn specialize(source: &str, constants: &[ShaderConstant]) -> String {
+pub(super) fn specialize(source: &str, constants: &[ShaderConstant]) -> String {
     let mut specialized = source.to_owned();
     for constant in constants {
         let marker = format!("/*{{{}}}*/", constant.marker);

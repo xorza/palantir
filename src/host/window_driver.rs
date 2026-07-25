@@ -36,14 +36,14 @@ use crate::{Display, FrameReport};
 /// Built by [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU
 /// resources except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
-pub(crate) struct WindowDriver {
+pub(super) struct WindowDriver {
     /// Stable application identity for this render stream. Stored here so a
     /// retained `Ui` cannot be driven under a different token on a later frame.
-    pub(crate) token: WindowToken,
-    pub(crate) ui: Ui,
+    pub(super) token: WindowToken,
+    pub(super) ui: Ui,
     /// Stable submitter identity used by the shared backend to scope retained
     /// `GpuView` targets to this window.
-    pub(crate) render_owner: RenderOwnerId,
+    pub(super) render_owner: RenderOwnerId,
     /// Persistent off-screen color target holding last frame's pixels for
     /// `LoadOp::Load` partial damage. Used by `BackbufferCopy` every frame and
     /// by `DirectAdaptive` for its small-partial path (paint the damage region,
@@ -73,14 +73,14 @@ pub(crate) struct WindowDriver {
     /// Injected at construction ([`RealtimeClock`](crate::host::clock::RealtimeClock)
     /// for on-screen windows, [`FixedClock`](crate::host::clock::FixedClock) for a
     /// reproducible offscreen render) so the pipeline doesn't branch on it.
-    pub(crate) clock: Box<dyn Clock>,
+    pub(super) clock: Box<dyn Clock>,
     /// Whether axis-aligned paint edges snap to physical pixels.
-    pub(crate) pixel_snap: bool,
+    pub(super) pixel_snap: bool,
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum PresentStrategy {
+pub(super) enum PresentStrategy {
     /// A target whose prior contents can't be relied on — a fresh texture each
     /// call (screenshots, the visual harness). Every frame renders into the
     /// persistent backbuffer and copies out, so the whole target is filled
@@ -101,7 +101,7 @@ pub(crate) enum PresentStrategy {
 /// draw list for it — and threaded through to the GPU half, so the
 /// submitted plan is by construction the one the draw list was built for.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum PresentMode {
+pub(super) enum PresentMode {
     /// Skip frame on a backbuffer-copy window: copy the backbuffer onto the
     /// target so it's filled regardless of its prior contents.
     SkipCopy,
@@ -185,14 +185,14 @@ fn present_mode(
 /// recomputing it in the GPU half) is what guarantees the submitted plan
 /// is the one the draw list was built for.
 #[derive(Debug)]
-pub(crate) struct CpuFrame {
-    pub(crate) report: FrameReport,
-    pub(crate) mode: PresentMode,
+pub(super) struct CpuFrame {
+    pub(super) report: FrameReport,
+    pub(super) mode: PresentMode,
 }
 
 /// Seals per-window policy before allocating the recorder.
 #[derive(Debug)]
-pub(crate) struct WindowDriverBuilder<'a> {
+pub(super) struct WindowDriverBuilder<'a> {
     token: WindowToken,
     shared: &'a HostShared,
     strategy: PresentStrategy,
@@ -201,22 +201,22 @@ pub(crate) struct WindowDriverBuilder<'a> {
 }
 
 impl WindowDriverBuilder<'_> {
-    pub(crate) fn strategy(mut self, strategy: PresentStrategy) -> Self {
+    pub(super) fn strategy(mut self, strategy: PresentStrategy) -> Self {
         self.strategy = strategy;
         self
     }
 
-    pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
+    pub(super) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
         self.clock = clock;
         self
     }
 
-    pub(crate) fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+    pub(super) fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.pixel_snap = pixel_snap;
         self
     }
 
-    pub(crate) fn build(self) -> WindowDriver {
+    pub(super) fn build(self) -> WindowDriver {
         WindowDriver {
             token: self.token,
             ui: Ui::new(self.shared.resources.clone()),
@@ -237,7 +237,7 @@ impl WindowDriver {
     /// Its `Ui` receives recorder capabilities plus a fresh per-window record
     /// store. Defaults suit a swapchain window: direct adaptive presentation,
     /// realtime clock, and physical-pixel snapping.
-    pub(crate) fn builder(token: WindowToken, shared: &HostShared) -> WindowDriverBuilder<'_> {
+    pub(super) fn builder(token: WindowToken, shared: &HostShared) -> WindowDriverBuilder<'_> {
         WindowDriverBuilder {
             token,
             shared,
@@ -250,7 +250,7 @@ impl WindowDriver {
     /// Invalidate all state whose correctness depends on the current render
     /// target. Target-owning adapters call this when their size or format key
     /// changes, before running the next CPU frame.
-    pub(crate) fn invalidate_target(&mut self) {
+    pub(super) fn invalidate_target(&mut self) {
         self.output_valid = false;
         self.backbuffer_fresh = false;
     }
@@ -265,7 +265,7 @@ impl WindowDriver {
     /// `Frontend` at construction. Shared by the offscreen and surface
     /// adapters.
     #[profiling::function]
-    pub(crate) fn cpu_frame<T: App>(
+    pub(super) fn cpu_frame<T: App>(
         &mut self,
         frontend: &mut Frontend,
         display: Display,
@@ -302,7 +302,7 @@ impl WindowDriver {
     /// `target` so callers that always present still see valid pixels.
     /// Shared by the offscreen and surface adapters.
     #[profiling::function]
-    pub(crate) fn render_to_texture(
+    pub(super) fn render_to_texture(
         &mut self,
         buffer: &RenderBuffer,
         backend: &mut WgpuBackend,
@@ -607,7 +607,7 @@ mod record_store_tests {
     use glam::{UVec2, Vec2};
 
     use crate::app::App;
-    use crate::app::test_support::RecordApp;
+    use crate::app::internals::RecordApp;
     use crate::host::clock::FixedClock;
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};

@@ -42,7 +42,7 @@ pub struct TooltipTheme {
 
 impl TooltipTheme {
     /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         f(&mut self.text);
     }
 }

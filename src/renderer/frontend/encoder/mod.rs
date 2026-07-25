@@ -852,7 +852,7 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::renderer::frontend::FrameScene;
     use crate::renderer::frontend::encoder::Encoder;
     use crate::renderer::frontend::record_sink::RecordedPaint;

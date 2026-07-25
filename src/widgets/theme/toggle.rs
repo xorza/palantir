@@ -43,7 +43,7 @@ pub struct ToggleTheme {
 }
 
 impl ToggleTheme {
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.unchecked.for_each_text(f);
         self.checked.for_each_text(f);
     }

@@ -41,7 +41,7 @@ impl StateMap {
         self.typed_mut::<T>().get_or_insert_with(id, init)
     }
 
-    pub(crate) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
+    pub(super) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
         let store = (self.by_type.get(&TypeId::of::<T>())?.as_ref() as &dyn Any)
             .downcast_ref::<Store<T>>()
             .expect("TypeId is stable per T, downcast cannot fail");
@@ -49,7 +49,7 @@ impl StateMap {
         Some(&store.data[idx])
     }
 
-    pub(crate) fn try_get_mut<T: 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
+    pub(super) fn try_get_mut<T: 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
         let store = (self.by_type.get_mut(&TypeId::of::<T>())?.as_mut() as &mut dyn Any)
             .downcast_mut::<Store<T>>()
             .expect("TypeId is stable per T, downcast cannot fail");
@@ -57,7 +57,7 @@ impl StateMap {
         Some(&mut store.data[idx])
     }
 
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(super) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         if removed.is_empty() {
             return;
         }

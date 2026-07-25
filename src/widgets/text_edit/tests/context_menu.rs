@@ -1,4 +1,4 @@
-use crate::common::clipboard::{Clipboard, test_support};
+use crate::common::clipboard::{Clipboard, internals};
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against
@@ -199,7 +199,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
     assert_eq!(text2, "hello", "non-primary must not paste");
 
-    let rejecting = test_support::rejecting();
+    let rejecting = internals::rejecting();
     let mut rejected_text = String::from("hello");
     let mut rejected_state = EditState {
         caret: 4,
@@ -225,7 +225,7 @@ fn clipboard_shortcuts_apply_keypresses() {
 /// the Cmd/Ctrl+V shortcut.
 #[test]
 fn paste_strips_newlines() {
-    use crate::widgets::text_edit::model::sanitize_single_line;
+    use crate::widgets::text_edit::model::internals::sanitize_single_line;
     let cases: &[(&str, &str)] = &[
         ("ab\ncd", "ab cd"),
         ("ab\rcd", "ab cd"),

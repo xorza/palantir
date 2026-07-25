@@ -11,22 +11,22 @@ use crate::common::hash;
 /// boundaries, while [`Self::normalize`] repairs offsets after the host
 /// replaces the buffer between frames.
 #[derive(Clone, Default, Debug)]
-pub(crate) struct EditState {
-    pub(crate) caret: usize,
+pub(super) struct EditState {
+    pub(super) caret: usize,
     /// Selection anchor. `None` = no selection. Invariant: never
     /// `Some(caret)` — every mutation site collapses an empty selection
     /// to `None` so "selection live" is a single `is_some()` check.
-    pub(crate) selection: Option<usize>,
-    pub(crate) undo: VecDeque<EditDelta>,
-    pub(crate) redo: Vec<EditDelta>,
+    pub(super) selection: Option<usize>,
+    pub(super) undo: VecDeque<EditDelta>,
+    pub(super) redo: Vec<EditDelta>,
     /// Kind of the most recent recorded edit, used to coalesce
     /// consecutive same-kind edits (typing chars, deleting chars) into
     /// a single undo unit. `None` after any caret-only motion so the
     /// next edit always opens a fresh group.
-    pub(crate) last_edit_kind: Option<EditKind>,
-    pub(crate) expected_hash: Option<u64>,
-    pub(crate) local_edit_pending: bool,
-    pub(crate) char_count: Option<usize>,
+    pub(super) last_edit_kind: Option<EditKind>,
+    pub(super) expected_hash: Option<u64>,
+    pub(super) local_edit_pending: bool,
+    pub(super) char_count: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,7 +36,7 @@ struct SelectionState {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct EditDelta {
+pub(super) struct EditDelta {
     start: usize,
     removed: String,
     inserted: String,
@@ -45,7 +45,7 @@ pub(crate) struct EditDelta {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EditKind {
+pub(super) enum EditKind {
     Typing,
     Delete,
     /// Bulk edits (paste, cut, clear, newline insert) — never coalesce.
@@ -56,20 +56,20 @@ const UNDO_LIMIT: usize = 128;
 
 /// One frame's semantic editing session.
 #[derive(Debug)]
-pub(crate) struct Editor<'a> {
-    pub(crate) text: &'a mut String,
-    pub(crate) state: &'a mut EditState,
-    pub(crate) multiline: bool,
+pub(super) struct Editor<'a> {
+    pub(super) text: &'a mut String,
+    pub(super) state: &'a mut EditState,
+    pub(super) multiline: bool,
     max_chars: Option<usize>,
     history_checked: bool,
     /// The buffer was mutated this session (typing, delete, paste,
     /// cut, undo/redo). Set by the mutation choke points, so it's
     /// content-accurate — a same-length overwrite still reports.
-    pub(crate) edited: bool,
+    pub(super) edited: bool,
 }
 
 impl<'a> Editor<'a> {
-    pub(crate) fn new(
+    pub(super) fn new(
         text: &'a mut String,
         state: &'a mut EditState,
         multiline: bool,
@@ -226,7 +226,7 @@ impl<'a> Editor<'a> {
     /// Replace the live selection with `s` under one undo unit of
     /// `kind` — the shared choke point for typing, IME text, newline
     /// insert, and paste.
-    pub(crate) fn replace_selection(&mut self, s: &str, kind: EditKind) {
+    pub(super) fn replace_selection(&mut self, s: &str, kind: EditKind) {
         self.ensure_history_matches();
         let fit_len = self.capped_prefix(s).len();
         let fit = &s[..fit_len];
@@ -242,7 +242,7 @@ impl<'a> Editor<'a> {
 
     /// Single-line editors never admit line breaks; multi-line passes
     /// text through untouched.
-    pub(crate) fn sanitized<'s>(&self, raw: &'s str) -> Cow<'s, str> {
+    pub(super) fn sanitized<'s>(&self, raw: &'s str) -> Cow<'s, str> {
         if self.multiline {
             Cow::Borrowed(raw)
         } else {
@@ -253,7 +253,7 @@ impl<'a> Editor<'a> {
     /// Paste at the caret, replacing any live selection; line breaks
     /// are sanitized away for single-line editors. No-op on an empty
     /// clipboard.
-    pub(crate) fn paste(&mut self, raw: &str) {
+    pub(super) fn paste(&mut self, raw: &str) {
         let cleaned = self.sanitized(raw);
         if !cleaned.is_empty() {
             self.replace_selection(&cleaned, EditKind::Other);
@@ -261,25 +261,25 @@ impl<'a> Editor<'a> {
     }
 
     /// Delete the live selection as one bulk edit.
-    pub(crate) fn cut_selection(&mut self) {
+    pub(super) fn cut_selection(&mut self) {
         let Some(r) = self.state.sel_range() else {
             return;
         };
         self.replace_range(r, "", EditKind::Other);
     }
 
-    pub(crate) fn selected_text(&self) -> Option<&str> {
+    pub(super) fn selected_text(&self) -> Option<&str> {
         self.state.sel_range().map(|range| &self.text[range])
     }
 
     /// Clear the whole buffer (the context menu's Clear).
-    pub(crate) fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         if !self.text.is_empty() {
             self.replace_range(0..self.text.len(), "", EditKind::Other);
         }
     }
 
-    pub(crate) fn enforce_single_line(&mut self) {
+    pub(super) fn enforce_single_line(&mut self) {
         if self.multiline {
             return;
         }
@@ -300,7 +300,7 @@ impl<'a> Editor<'a> {
     }
 
     /// Select the whole buffer (collapses to no-selection when empty).
-    pub(crate) fn select_all(&mut self) {
+    pub(super) fn select_all(&mut self) {
         self.state.selection = (!self.text.is_empty()).then_some(0);
         self.state.caret = self.text.len();
         self.state.last_edit_kind = None;
@@ -312,7 +312,7 @@ impl<'a> Editor<'a> {
     /// `Some(caret)`" invariant. Always ends the current edit-coalesce
     /// group — caret-only motion breaks Typing / Delete runs into
     /// separate undo entries.
-    pub(crate) fn move_caret(&mut self, new_caret: usize, extend: bool) {
+    pub(super) fn move_caret(&mut self, new_caret: usize, extend: bool) {
         if extend {
             self.state.selection.get_or_insert(self.state.caret);
         } else {
@@ -326,7 +326,7 @@ impl<'a> Editor<'a> {
     }
 
     /// No-op on an empty stack.
-    pub(crate) fn undo(&mut self) {
+    pub(super) fn undo(&mut self) {
         self.ensure_history_matches();
         if let Some(delta) = self.state.undo.pop_back() {
             self.apply_history(&delta, true);
@@ -335,7 +335,7 @@ impl<'a> Editor<'a> {
     }
 
     /// No-op on an empty stack.
-    pub(crate) fn redo(&mut self) {
+    pub(super) fn redo(&mut self) {
         self.ensure_history_matches();
         if let Some(delta) = self.state.redo.pop() {
             self.apply_history(&delta, false);
@@ -343,12 +343,12 @@ impl<'a> Editor<'a> {
         }
     }
 
-    pub(crate) fn insert_char(&mut self, c: char) {
+    pub(super) fn insert_char(&mut self, c: char) {
         let mut buf = [0u8; 4];
         self.replace_selection(c.encode_utf8(&mut buf), EditKind::Typing);
     }
 
-    pub(crate) fn delete_backward(&mut self) {
+    pub(super) fn delete_backward(&mut self) {
         if self.state.selection.is_none() && self.state.caret == 0 {
             return;
         }
@@ -361,7 +361,7 @@ impl<'a> Editor<'a> {
         self.replace_range(range, "", EditKind::Delete);
     }
 
-    pub(crate) fn delete_forward(&mut self) {
+    pub(super) fn delete_forward(&mut self) {
         if self.state.selection.is_none() && self.state.caret == self.text.len() {
             return;
         }
@@ -374,7 +374,7 @@ impl<'a> Editor<'a> {
         self.replace_range(range, "", EditKind::Delete);
     }
 
-    pub(crate) fn move_grapheme_left(&mut self, extend: bool) {
+    pub(super) fn move_grapheme_left(&mut self, extend: bool) {
         let target = if !extend && let Some(range) = self.state.sel_range() {
             range.start
         } else {
@@ -383,7 +383,7 @@ impl<'a> Editor<'a> {
         self.move_caret(target, extend);
     }
 
-    pub(crate) fn move_grapheme_right(&mut self, extend: bool) {
+    pub(super) fn move_grapheme_right(&mut self, extend: bool) {
         let target = if !extend && let Some(range) = self.state.sel_range() {
             range.end
         } else {
@@ -392,17 +392,17 @@ impl<'a> Editor<'a> {
         self.move_caret(target, extend);
     }
 
-    pub(crate) fn move_word_left(&mut self, extend: bool) {
+    pub(super) fn move_word_left(&mut self, extend: bool) {
         let target = prev_word_boundary(self.text, self.state.caret);
         self.move_caret(target, extend);
     }
 
-    pub(crate) fn move_word_right(&mut self, extend: bool) {
+    pub(super) fn move_word_right(&mut self, extend: bool) {
         let target = next_word_boundary(self.text, self.state.caret);
         self.move_caret(target, extend);
     }
 
-    pub(crate) fn collapse_selection(&mut self) -> bool {
+    pub(super) fn collapse_selection(&mut self) -> bool {
         if self.state.selection.is_none() {
             return false;
         }
@@ -451,7 +451,7 @@ impl EditDelta {
 }
 
 impl EditState {
-    pub(crate) fn observe_text_hash(&mut self, text_hash: u64) {
+    pub(super) fn observe_text_hash(&mut self, text_hash: u64) {
         if !self.local_edit_pending
             && self
                 .expected_hash
@@ -466,12 +466,12 @@ impl EditState {
         self.local_edit_pending = false;
     }
 
-    pub(crate) fn sel_range(&self) -> Option<std::ops::Range<usize>> {
+    pub(super) fn sel_range(&self) -> Option<std::ops::Range<usize>> {
         let a = self.selection?;
         Some(a.min(self.caret)..a.max(self.caret))
     }
 
-    pub(crate) fn repair_offset(text: &str, offset: usize) -> usize {
+    pub(super) fn repair_offset(text: &str, offset: usize) -> usize {
         let mut offset = offset.min(text.len());
         while !text.is_char_boundary(offset) {
             offset -= 1;
@@ -484,7 +484,7 @@ impl EditState {
     /// UTF-8 code point walk backward to its start (at most three bytes).
     /// Then collapse an empty selection. Safe both before input, when the
     /// application may have replaced the buffer, and after our mutations.
-    pub(crate) fn normalize(&mut self, text: &str) {
+    pub(super) fn normalize(&mut self, text: &str) {
         self.caret = Self::repair_offset(text, self.caret);
         self.selection = self
             .selection
@@ -504,7 +504,7 @@ impl EditState {
 /// "First Name\nLast Name" → "First Name Last Name"). Borrowed
 /// pass-through on the common break-free case — no per-keystroke
 /// allocation.
-pub(crate) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
+pub(super) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
     if memchr::memchr2(b'\n', b'\r', s.as_bytes()).is_none() {
         return Cow::Borrowed(s);
     }
@@ -529,7 +529,7 @@ pub(crate) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
 /// `text.len()`). Walks extended grapheme clusters via
 /// [`unicode_segmentation::GraphemeCursor`] so multi-codepoint clusters
 /// (combining marks, ZWJ-joined family emoji) advance as one unit.
-pub(crate) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
+pub(super) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset >= text.len() {
         return text.len();
     }
@@ -543,7 +543,7 @@ pub(crate) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
 
 /// Previous grapheme-cluster boundary strictly before `offset` (clamped
 /// to zero).
-pub(crate) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
+pub(super) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset == 0 {
         return 0;
     }
@@ -577,7 +577,7 @@ fn char_kind(c: char) -> CharKind {
 /// same-`CharKind` chars. Returns `text.len()` if `from` is already at
 /// the end. The result is the byte index *just past* the end of the
 /// consumed word run — same convention as `Ctrl+Right` in most editors.
-pub(crate) fn next_word_boundary(text: &str, from: usize) -> usize {
+pub(super) fn next_word_boundary(text: &str, from: usize) -> usize {
     let mut chars = text[from..].char_indices();
     let mut pos;
     let target_kind = loop {
@@ -602,7 +602,7 @@ pub(crate) fn next_word_boundary(text: &str, from: usize) -> usize {
 /// Mirror of [`next_word_boundary`]. Walks backward from `from` over
 /// whitespace and then over the run of same-`CharKind` chars; returns
 /// the byte index of the first consumed char (start of that run).
-pub(crate) fn prev_word_boundary(text: &str, from: usize) -> usize {
+pub(super) fn prev_word_boundary(text: &str, from: usize) -> usize {
     let mut rev = text[..from].char_indices().rev();
     let mut pos;
     let target_kind = loop {
@@ -629,7 +629,7 @@ pub(crate) fn prev_word_boundary(text: &str, from: usize) -> usize {
 /// or just past a boundary inside the run. Whitespace runs collapse to
 /// `byte..byte` so a double-click on a space doesn't select the gap.
 /// Used by double-click word selection.
-pub(crate) fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
+pub(super) fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
     if text.is_empty() {
         return 0..0;
     }
@@ -673,4 +673,12 @@ pub(crate) fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
         }
     }
     start..end
+}
+
+#[cfg(test)]
+pub(in crate::widgets::text_edit) mod internals {
+    pub(in crate::widgets::text_edit) use crate::widgets::text_edit::model::{
+        next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
+        sanitize_single_line,
+    };
 }

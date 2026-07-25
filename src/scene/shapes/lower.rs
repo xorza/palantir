@@ -33,9 +33,9 @@ use std::f32::consts::TAU;
 use std::hash::Hasher;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ChromeInput<'a> {
-    pub(crate) bg: &'a Background,
-    pub(crate) store: &'a RecordStore,
+pub(in crate::scene) struct ChromeInput<'a> {
+    pub(in crate::scene) bg: &'a Background,
+    pub(in crate::scene) store: &'a RecordStore,
 }
 
 /// Result of lowering a user-side `Brush`. `brush` is the storage form
@@ -45,9 +45,9 @@ pub(crate) struct ChromeInput<'a> {
 /// threading the store into their `Hash` impls. `hash == 0` for
 /// `Solid` (no gradient payload to identify).
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct LoweredBrush {
-    pub(crate) brush: ShapeBrush,
-    pub(crate) hash: u64,
+pub(super) struct LoweredBrush {
+    pub(super) brush: ShapeBrush,
+    pub(super) hash: u64,
 }
 
 /// Stable content hash for a gradient variant: discriminant byte
@@ -96,7 +96,7 @@ fn linear_brush(store: &RecordStore, gradient: &LinearGradient) -> LoweredBrush 
 /// `ShapeBrush::Gradient`. The pre-computed content hash is returned
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
-pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
+pub(super) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
     match b {
         Brush::Solid(color) => solid_brush(*color),
         Brush::Linear(gradient) => linear_brush(store, gradient),
@@ -136,7 +136,7 @@ fn curve_brush(store: &RecordStore, brush: &CurveBrush) -> LoweredBrush {
 /// reference — `Background` is 168 B and the recording chain
 /// threads it through 4 functions; the per-field reads below copy
 /// the small fields locally as needed.
-pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
+pub(in crate::scene) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
     let LoweredBrush {
         brush: fill,
         hash: fill_grad_hash,
@@ -197,7 +197,7 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
 /// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
 /// `ShapeRecord::Curve`/`Arc` directly. Both render on the GPU
 /// curve pipeline.
-pub(crate) fn polyline(
+pub(super) fn polyline(
     store: &RecordStore,
     points: &[Vec2],
     colors: PolylineColors<'_>,
@@ -269,7 +269,7 @@ pub(crate) fn polyline(
 /// vertex/index allocation. The composer derives sub-instance count
 /// from the post-transform control-polygon length. A linear gradient samples
 /// along the curve parameter `t`; its `angle` is ignored.
-pub(crate) fn cubic_bezier(
+pub(super) fn cubic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 4],
     width: f32,
@@ -283,7 +283,7 @@ pub(crate) fn cubic_bezier(
 /// Lower a quadratic bezier by promoting it to a cubic and going
 /// through [`cubic_bezier`]'s path. Exact reparameterization:
 /// `q1' = q0 + 2/3·(c - q0)`, `q2' = q2 + 2/3·(c - q2)`.
-pub(crate) fn quadratic_bezier(
+pub(super) fn quadratic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 3],
     width: f32,
@@ -301,7 +301,7 @@ pub(crate) fn quadratic_bezier(
 /// so `B(t) = a + (b - a)·t` exactly — `t` (and thus a gradient
 /// brush) runs linearly from `a` to `b`. The composer's flatness
 /// fast-path keeps the collinear cubic a single GPU instance.
-pub(crate) fn line(
+pub(super) fn line(
     store: &RecordStore,
     a: Vec2,
     b: Vec2,
@@ -321,7 +321,7 @@ pub(crate) fn line(
 /// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
 /// pixels and double-blend a translucent stroke.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn arc(
+pub(super) fn arc(
     store: &RecordStore,
     center: Vec2,
     radius: f32,
@@ -358,7 +358,7 @@ pub(crate) fn arc(
 /// the stroke is inner-edge and adds no outward reach), so damage and
 /// clip-cull cover the rounded, antialiased extent. No store needed
 /// (no gradient to register).
-pub(crate) fn triangle(
+pub(super) fn triangle(
     a: Vec2,
     b: Vec2,
     c: Vec2,

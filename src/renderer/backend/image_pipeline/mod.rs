@@ -23,7 +23,7 @@ use crate::renderer::texture_id::TextureId;
 use std::time::Duration;
 
 #[derive(Debug)]
-pub(crate) struct ImagePipeline {
+pub(super) struct ImagePipeline {
     instance_buffer: DynamicBuffer<ImageInstance>,
     /// Image shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
@@ -58,7 +58,7 @@ impl ImagePipeline {
     /// texture cache). The pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variant`].
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("aperture.image.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
@@ -96,7 +96,7 @@ impl ImagePipeline {
     /// the only format-dependent image objects; the per-image textures,
     /// bind groups, sampler, and layout are all format-independent.
     /// Called by `FormatPipelines` per format.
-    pub(crate) fn build_variants(
+    pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -130,7 +130,7 @@ impl ImagePipeline {
     /// in the same frame uploads then frees (no orphan) rather than
     /// free-then-upload (which would leak it into the cache un-owned).
     #[profiling::function]
-    pub(crate) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
+    pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
         self.textures
             .drain_registry(ctx, images, &self.image_bgl, &self.sampler);
     }
@@ -154,7 +154,7 @@ impl ImagePipeline {
     /// evict its *own* absent targets — another window's targets survive
     /// both this submit and their owner's idle (non-submitting) frames.
     #[profiling::function]
-    pub(crate) fn paint_gpu_views(
+    pub(super) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         frame_targets: &[RenderTargetDraw],
@@ -177,7 +177,7 @@ impl ImagePipeline {
     /// Per-submit eviction only ever frees the *submitting* owner's absent
     /// targets, so a closed window's targets have no submit left to be absent
     /// from and would be retained by every surviving window forever.
-    pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
+    pub(super) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets
             .retire_owner(owner, &mut self.textures);
     }
@@ -185,13 +185,13 @@ impl ImagePipeline {
     /// Sync the per-instance buffer — one contiguous, zero-copy upload from
     /// the shared slice; the schedule slices by batch at draw time.
     #[profiling::function]
-    pub(crate) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
+    pub(super) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
     /// Bind once per pass. Viewport rides immediates; per-image
     /// group 0 is set in [`Self::draw`] from the cached bind group.
-    pub(crate) fn bind<'a>(
+    pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipelines: &'a StencilVariant,
@@ -207,7 +207,7 @@ impl ImagePipeline {
     /// [`ImageHandle`](crate::ImageHandle) was dropped before this draw,
     /// or hasn't been uploaded yet. Drawing nothing is the defined
     /// behaviour for a missing texture.
-    pub(crate) fn draw<'a>(
+    pub(super) fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         id: TextureId,
@@ -256,7 +256,7 @@ fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     //! Reach-in for the surface-format-change tests: GPU texture-cache
     //! occupancy, used to assert the cache survives a pipeline rebuild.
 
@@ -267,7 +267,7 @@ pub(crate) mod test_support {
         /// Lets the surface-format-change tests assert the cache survives
         /// a pipeline rebuild (surgical rebuild keeps it; a full rebuild
         /// would drop it to zero).
-        pub(crate) fn gpu_cached_count(&self) -> usize {
+        pub(in crate::renderer::backend) fn gpu_cached_count(&self) -> usize {
             self.textures.bindings.len()
         }
     }

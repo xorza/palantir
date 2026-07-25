@@ -10,9 +10,9 @@ use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::model::Editor;
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct MenuResult {
-    pub(crate) edited: bool,
-    pub(crate) caret_moved: bool,
+pub(super) struct MenuResult {
+    pub(super) edited: bool,
+    pub(super) caret_moved: bool,
 }
 
 impl MenuResult {
@@ -22,7 +22,7 @@ impl MenuResult {
     }
 }
 
-pub(crate) fn show(
+pub(super) fn show(
     ui: &mut Ui,
     id: WidgetId,
     snapshot: &ResponseSnapshot,

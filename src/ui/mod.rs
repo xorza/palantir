@@ -73,7 +73,7 @@ pub struct Ui {
     /// `TextureId` once, refreshing the paint callback); the shape records only
     /// the redraw epoch and the encoder looks the view up here by the node's
     /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
-    pub(crate) gpu_views: WidgetIdMap<GpuViewEntry>,
+    gpu_views: WidgetIdMap<GpuViewEntry>,
     /// App-global capabilities available to the recorder.
     pub(crate) resources: UiResources,
     pub(crate) layout_engine: LayoutEngine,
@@ -89,10 +89,10 @@ pub struct Ui {
     /// and scroll-over-nothing; flip to [`InputPolicy::Always`] for
     /// telemetry / custom canvases that need every event.
     pub input_policy: InputPolicy,
-    pub(crate) cascades_engine: CascadesEngine,
+    cascades_engine: CascadesEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
-    pub(crate) anim: AnimMap,
+    anim: AnimMap,
     /// Retained frame clock, wake queue, repaint/relayout flags, and prior-frame
     /// validity state. Kept separate from the widget engines above.
     pub(crate) frame_runtime: FrameRuntime,
@@ -1126,7 +1126,7 @@ impl Default for Ui {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support;
+pub(crate) mod internals;
 
 #[cfg(test)]
 mod tests;

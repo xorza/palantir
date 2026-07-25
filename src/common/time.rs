@@ -18,7 +18,7 @@ pub(crate) const MAX_ANIM_DT: f32 = 0.1;
 /// `Display::refresh_millihertz`. 1/120 s is a safe middle ground: fast
 /// enough not to throttle a 60 Hz panel, slow enough to cap runaway
 /// `request_repaint_after` bursts.
-pub(crate) const DEFAULT_REPAINT_COALESCE_DT: Duration = Duration::from_nanos(1_000_000_000 / 120);
+const DEFAULT_REPAINT_COALESCE_DT: Duration = Duration::from_nanos(1_000_000_000 / 120);
 
 /// Repaint-wake coalesce floor for a display refreshing at
 /// `refresh_millihertz` (winit's `MonitorHandle::refresh_rate_millihertz`,

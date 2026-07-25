@@ -75,12 +75,12 @@ use crate::text::system::{TextRunSlot, TextSystem};
 /// `src/layout/cache/integration_tests.rs`.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
-    pub(crate) grid: GridContext,
-    pub(crate) wrap: WrapScratch,
-    pub(crate) stack_fill: StackScratch,
-    pub(crate) desired: Vec<Size>,
-    pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
-    pub(crate) available_q: Vec<AvailableKey>,
+    pub(super) grid: GridContext,
+    pub(super) wrap: WrapScratch,
+    pub(super) stack_fill: StackScratch,
+    pub(super) desired: Vec<Size>,
+    pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
+    pub(super) available_q: Vec<AvailableKey>,
     /// Count of `intrinsic::compute` (cache-miss) calls this frame —
     /// test observability for the intrinsic cache. Reset at the top of
     /// `run`; read by tests to assert a localized change doesn't trigger
@@ -349,7 +349,7 @@ impl LayoutEngine {
     /// intra-frame cache so repeated queries during the same `run` cost
     /// one array load. Consumed by `grid::measure` (Phase 1 column
     /// resolution) and `stack::measure` (Fill min-content floor).
-    pub(crate) fn intrinsic(
+    pub(super) fn intrinsic(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -395,7 +395,7 @@ impl LayoutEngine {
     /// traverses the subtree once and fills both intra-frame cache slots;
     /// partially populated and cross-frame cache rows compute only the
     /// missing side.
-    pub(crate) fn intrinsic_range(
+    pub(super) fn intrinsic_range(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -586,7 +586,7 @@ impl LayoutEngine {
     /// Bottom-up measure dispatcher. Children call back via this method to
     /// recurse. Stores the resolved size for each visited node in
     /// `self.desired` (read by `arrange`).
-    pub(crate) fn measure(
+    pub(super) fn measure(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -694,8 +694,9 @@ impl LayoutEngine {
     /// ## Driver contract
     ///
     /// Every layout driver (`stack`, `wrapstack`, `zstack`, `canvas`,
-    /// `grid`) is a free module exporting three `pub(crate) fn`s,
-    /// matched into here and into [`Self::arrange`] / `intrinsic::compute`:
+    /// `grid`) is a free module exporting three fns (visible at least to
+    /// the rest of `layout`), matched into here and into
+    /// [`Self::arrange`] / `intrinsic::compute`:
     ///
     /// - `measure(layout, tree, node, [variant_payload,] inner_avail, interned_text) -> Size`
     ///   — bottom-up. Recurses into children via `layout.measure(...)`.
@@ -784,7 +785,7 @@ impl LayoutEngine {
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` for each visited node in the
     /// active layer's `Layout`.
-    pub(crate) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect, out: &mut LayerLayout) {
+    pub(super) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect, out: &mut LayerLayout) {
         let layout = tree.records.layout()[node.idx()];
         if layout.meta.visibility().is_collapsed() {
             zero_subtree(tree, node, slot.min, out);

@@ -25,12 +25,12 @@ impl PointerButton {
     /// `strum::IntoEnumIterator` so callers don't need to bring the
     /// trait into scope.
     #[inline]
-    pub fn all() -> impl Iterator<Item = Self> {
+    pub(super) fn all() -> impl Iterator<Item = Self> {
         <Self as IntoEnumIterator>::iter()
     }
 
     #[inline]
-    pub(crate) fn idx(self) -> usize {
+    pub(super) fn idx(self) -> usize {
         self as usize
     }
 }

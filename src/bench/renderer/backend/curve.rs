@@ -11,7 +11,7 @@
 //! complete record-to-GPU wall time; the keep-or-revert signal is the median
 //! curve timestamp and pipeline statistics printed before each case.
 
-use crate::app::test_support::RecordApp;
+use crate::app::internals::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;

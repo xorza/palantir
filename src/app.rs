@@ -22,7 +22,7 @@ pub trait App {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::app::App;
     use crate::ui::Ui;
     use crate::window::WindowToken;

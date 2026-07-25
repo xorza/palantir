@@ -13,8 +13,8 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use std::marker::PhantomData;
 
 #[derive(Debug)]
-pub(crate) struct DynamicBuffer<T: bytemuck::Pod> {
-    pub(crate) buffer: wgpu::Buffer,
+pub(super) struct DynamicBuffer<T: bytemuck::Pod> {
+    pub(super) buffer: wgpu::Buffer,
     capacity: usize,
     usage: wgpu::BufferUsages,
     label: &'static str,
@@ -26,7 +26,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     /// `VERTEX | COPY_DST` usage (the common case for the four
     /// pipelines and the debug overlay). Item size comes from
     /// `size_of::<T>()` so call sites don't repeat it.
-    pub(crate) fn vertex(
+    pub(super) fn vertex(
         device: &wgpu::Device,
         label: &'static str,
         initial_capacity: usize,
@@ -41,7 +41,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
 
     /// Construct an index buffer for items of type `T` (typically `u16`).
     /// `INDEX | COPY_DST` usage.
-    pub(crate) fn index(
+    pub(super) fn index(
         device: &wgpu::Device,
         label: &'static str,
         initial_capacity: usize,
@@ -102,7 +102,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     /// The empty-guard + `cast_slice` + count are identical across every
     /// instanced pipeline, so they live here rather than re-spelled per
     /// pipeline.
-    pub(crate) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
+    pub(super) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
         if items.is_empty() {
             return;
         }

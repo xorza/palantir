@@ -19,10 +19,10 @@ use crate::renderer::backend::queue::Queue;
 
 #[derive(Debug)]
 pub(crate) struct GpuCtx<'a> {
-    pub(crate) device: &'a wgpu::Device,
-    pub(crate) queue: &'a Queue,
-    pub(crate) belt: &'a mut wgpu::util::StagingBelt,
-    pub(crate) encoder: &'a mut wgpu::CommandEncoder,
+    pub(super) device: &'a wgpu::Device,
+    pub(super) queue: &'a Queue,
+    belt: &'a mut wgpu::util::StagingBelt,
+    pub(super) encoder: &'a mut wgpu::CommandEncoder,
 }
 
 impl<'a> GpuCtx<'a> {
@@ -44,7 +44,7 @@ impl<'a> GpuCtx<'a> {
     /// `dst@offset`. Empty `bytes` is a no-op (wgpu's
     /// `BufferSize::new` rejects zero). `offset` and `bytes.len()`
     /// must both be multiples of `COPY_BUFFER_ALIGNMENT` (4).
-    pub(crate) fn write(&mut self, dst: &wgpu::Buffer, offset: u64, bytes: &[u8]) {
+    pub(super) fn write(&mut self, dst: &wgpu::Buffer, offset: u64, bytes: &[u8]) {
         let Some(size) = wgpu::BufferSize::new(bytes.len() as u64) else {
             return;
         };

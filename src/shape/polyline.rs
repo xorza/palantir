@@ -24,7 +24,7 @@ impl PolylineShape<'_> {
         self
     }
 
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(super) fn is_noop(&self) -> bool {
         if noop_f32(self.width) || self.points.len() < 2 {
             return true;
         }

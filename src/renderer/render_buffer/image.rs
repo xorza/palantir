@@ -32,8 +32,8 @@ pub(crate) struct RenderTargetDraw {
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct ImageDrawRow {
-    pub id: TextureId,
-    pub instance: ImageInstance,
+    pub(crate) id: TextureId,
+    pub(crate) instance: ImageInstance,
 }
 
 /// Bit in [`ImageInstance::flags`]: wrap UVs with `fract` in the shader

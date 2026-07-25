@@ -22,21 +22,21 @@ use crate::renderer::backend::text::TextBackend;
 /// by [`Self::color_format`] in the backend so windows on different-format
 /// outputs each bind the right set while sharing every other resource.
 #[derive(Debug)]
-pub(crate) struct FormatPipelines {
-    pub(crate) quad: StencilVariant,
+pub(super) struct FormatPipelines {
+    pub(super) quad: StencilVariant,
     /// Quad-only stencil mask-stamp variant (deepens the rounded SDF
     /// into the stencil buffer, one chain level per draw;
     /// mesh/image/curve read the mask, never write).
-    pub(crate) quad_mask_stamp: wgpu::RenderPipeline,
+    pub(super) quad_mask_stamp: wgpu::RenderPipeline,
     /// Quad-only stencil mask-clear variant (resets a stamped chain by
     /// replaying its outermost quad at ref 0).
-    pub(crate) quad_mask_clear: wgpu::RenderPipeline,
-    pub(crate) mesh: StencilVariant,
-    pub(crate) image: StencilVariant,
-    pub(crate) curve: StencilVariant,
+    pub(super) quad_mask_clear: wgpu::RenderPipeline,
+    pub(super) mesh: StencilVariant,
+    pub(super) image: StencilVariant,
+    pub(super) curve: StencilVariant,
     /// Text base + stencil-test pipelines; selected by `use_stencil` like
     /// the other four. Built from `TextBackend::build_variants`.
-    pub(crate) text: StencilVariant,
+    pub(super) text: StencilVariant,
 }
 
 impl FormatPipelines {
@@ -44,7 +44,7 @@ impl FormatPipelines {
     /// the shared, format-independent resource structs. `gradient_bgl` is
     /// the shared group-0 layout (quad/curve).
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         gradient_bgl: &wgpu::BindGroupLayout,

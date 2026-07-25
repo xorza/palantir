@@ -22,7 +22,7 @@ impl MeshShape<'_> {
         self
     }
 
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(super) fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || self.tint.is_noop() || self.mesh.is_noop()
     }
 }

@@ -1,4 +1,4 @@
-use crate::app::test_support::RecordApp;
+use crate::app::internals::RecordApp;
 use crate::host::shared::HostShared;
 use crate::scene::damage::region::DamageRegion;
 use crate::text::TextShaper;
@@ -223,7 +223,7 @@ mod unit {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Full,
             };
-            encoder::test_support::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
+            encoder::internals::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
         }
 
         pub(crate) fn encode_paint_for(&self, region: DamageRegion) -> RecordedPaint {
@@ -231,7 +231,7 @@ mod unit {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Partial { region },
             };
-            encoder::test_support::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
+            encoder::internals::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
         }
     }
 }

@@ -26,31 +26,31 @@ use glam::Vec2;
 /// [`leaf_text_shapes`] and [`container_text_shapes`]; named so the fields
 /// aren't a tuple.
 #[derive(Debug)]
-pub(crate) struct TextShapeInput<'a> {
-    pub(crate) ordinal: u16,
-    pub(crate) text: &'a str,
+pub(super) struct TextShapeInput<'a> {
+    pub(super) ordinal: u16,
+    pub(super) text: &'a str,
     /// Content hash retained on the [`RecordedText`] at record time —
     /// [`Self::shape_request`] reuses it so shaping passes don't rescan
     /// the source bytes.
     ///
     /// [`RecordedText`]: crate::primitives::interned_str::RecordedText
-    pub(crate) text_hash: u64,
-    pub(crate) font_size_px: f32,
-    pub(crate) line_height_px: f32,
-    pub(crate) wrap: TextWrap,
-    pub(crate) family: FontFamily,
-    pub(crate) weight: FontWeight,
+    pub(super) text_hash: u64,
+    pub(super) font_size_px: f32,
+    pub(super) line_height_px: f32,
+    pub(super) wrap: TextWrap,
+    pub(super) family: FontFamily,
+    pub(super) weight: FontWeight,
     /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
     /// bakes per-line offsets into the shaped buffer when wrap is on,
     /// so the layout pass has to thread this all the way down to
     /// `TextSystem::measure` (and into `TextShapeKey`) — two shapes with
     /// identical text/size/wrap but different halign aren't
     /// interchangeable.
-    pub(crate) halign: HAlign,
+    pub(super) halign: HAlign,
 }
 
 impl<'a> TextShapeInput<'a> {
-    pub(crate) fn shape_request(&self) -> TextShapeRequest<'a> {
+    pub(super) fn shape_request(&self) -> TextShapeRequest<'a> {
         debug_assert_eq!(
             self.text_hash,
             hash::hash_str(self.text),
@@ -74,7 +74,7 @@ impl<'a> TextShapeInput<'a> {
 /// shaping, `intrinsic::leaf` drives the unbounded content axis.
 /// Filtering and destructuring happen here so neither side can drift
 /// on which shape variants contribute to size.
-pub(crate) fn leaf_text_shapes<'a>(
+pub(super) fn leaf_text_shapes<'a>(
     tree: &'a Tree,
     interned_text: &'a InternedText<'_>,
     node: NodeId,
@@ -95,7 +95,7 @@ pub(crate) fn leaf_text_shapes<'a>(
 
 /// Iterate the direct text shapes on a container, skipping text belonging to
 /// descendant nodes while preserving this node's within-owner record order.
-pub(crate) fn container_text_shapes<'a>(
+pub(super) fn container_text_shapes<'a>(
     tree: &'a Tree,
     interned_text: &'a InternedText<'_>,
     node: NodeId,
@@ -164,14 +164,14 @@ fn checked_text_ordinal(index: usize) -> u16 {
 /// 7-arg parameter cliff. `content_plus_padding` is the
 /// margin-exclusive hug size (`content + padding`); `available` and
 /// the returned value are margin-inclusive.
-pub(crate) struct AxisCtx {
-    pub sizing: Sizing,
-    pub content_plus_padding: f32,
-    pub available: f32,
-    pub intrinsic_min: f32,
-    pub margin: f32,
-    pub min: f32,
-    pub max: f32,
+pub(super) struct AxisCtx {
+    pub(super) sizing: Sizing,
+    pub(super) content_plus_padding: f32,
+    pub(super) available: f32,
+    pub(super) intrinsic_min: f32,
+    pub(super) margin: f32,
+    pub(super) min: f32,
+    pub(super) max: f32,
 }
 
 /// **Contains-content rule:** Hug aims for content size, Fill aims
@@ -203,7 +203,7 @@ pub(crate) struct AxisCtx {
 /// `Fill` on an unconstrained axis (intrinsic queries with
 /// `available = INFINITY`) collapses to its content size — matches
 /// CSS Grid's `1fr` track in an auto-context parent.
-pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
+pub(super) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
     let rendered = if let Some(value) = ctx.sizing.fixed_value() {
         value
     } else if ctx.sizing.is_hug() {
@@ -229,7 +229,7 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
 /// directly — no recursion, no child cursors.
-pub(crate) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut LayerLayout) {
+pub(super) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut LayerLayout) {
     let zero = Rect {
         min: anchor,
         size: Size::ZERO,
@@ -243,7 +243,7 @@ pub(crate) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut La
 /// drivers whose own size on an axis is "the largest child wants this
 /// much" (ZStack, Stack cross-axis, WrapStack). Canvas, which also folds
 /// in each child's declared position, uses [`children_max_intrinsic_offset`].
-pub(crate) fn children_max_intrinsic<const RANGE: bool>(
+pub(super) fn children_max_intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -267,7 +267,7 @@ pub(crate) fn children_max_intrinsic<const RANGE: bool>(
 /// Like [`children_max_intrinsic`] but adds a per-child positional offset
 /// on the same axis before taking the max. Canvas alone needs it — on Hug
 /// axes the child's declared position folds into its contribution.
-pub(crate) fn children_max_intrinsic_offset<const RANGE: bool>(
+pub(super) fn children_max_intrinsic_offset<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -294,12 +294,12 @@ pub(crate) fn children_max_intrinsic_offset<const RANGE: bool>(
 /// `justify`-distributed children. Single source of truth for Stack and
 /// WrapStack — keeps SpaceBetween / SpaceAround degeneracy rules
 /// (count < 2 / count < 1) in one place.
-pub(crate) struct JustifyOffsets {
-    pub(crate) start: f32,
-    pub(crate) gap: f32,
+pub(super) struct JustifyOffsets {
+    pub(super) start: f32,
+    pub(super) gap: f32,
 }
 
-pub(crate) fn justify_offsets(
+pub(super) fn justify_offsets(
     justify: Justify,
     leftover: f32,
     gap: f32,
@@ -336,7 +336,7 @@ pub(crate) fn justify_offsets(
 /// `child_avail`, then folds the child's contribution (size + offset
 /// from `contrib`) into a per-axis max. Drivers differ only in
 /// whether they add a positional offset.
-pub(crate) fn measure_per_axis_hug(
+pub(super) fn measure_per_axis_hug(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -378,19 +378,19 @@ pub(crate) fn measure_per_axis_hug(
 }
 
 /// Resolved horizontal/vertical alignment after the cascade.
-pub(crate) struct AxisAlignPair {
-    pub(crate) h: AxisAlign,
-    pub(crate) v: AxisAlign,
+pub(super) struct AxisAlignPair {
+    pub(super) h: AxisAlign,
+    pub(super) v: AxisAlign,
 }
 
 /// Per-axis placement: chosen extent + offset within the parent's inner span.
-pub(crate) struct AxisPlacement {
-    pub(crate) size: f32,
-    pub(crate) offset: f32,
+pub(super) struct AxisPlacement {
+    pub(super) size: f32,
+    pub(super) offset: f32,
 }
 
 #[inline]
-pub(crate) fn weighted_share(space: f32, weight: f32, total_weight: f64) -> f32 {
+pub(super) fn weighted_share(space: f32, weight: f32, total_weight: f64) -> f32 {
     (f64::from(space) * f64::from(weight) / total_weight) as f32
 }
 
@@ -399,7 +399,7 @@ pub(crate) fn weighted_share(space: f32, weight: f32, total_weight: f64) -> f32 
 /// the alignment cascade — every layout (stack, grid, zstack) calls this so
 /// they can't drift. Stack discards the unused axis; the cost is two enum
 /// matches per child per frame.
-pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align) -> AxisAlignPair {
+pub(super) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align) -> AxisAlignPair {
     let a = child.meta.align();
     AxisAlignPair {
         h: a.halign().or(parent_child_align.halign()).to_axis(),
@@ -411,7 +411,7 @@ pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
 /// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
 /// grow to their slot without shrinking below measured content, while the
 /// node's outer min/max bounds remain authoritative.
-pub(crate) fn arrange_axis(
+pub(super) fn arrange_axis(
     axis: Axis,
     align: AxisAlign,
     child: &LayoutCore,
@@ -445,7 +445,7 @@ pub(crate) fn arrange_axis(
 /// child's cross sizing + desired + the parent's cross extent. Single
 /// source of truth so the cascade rule can't drift between Stack and
 /// WrapStack.
-pub(crate) fn cross_place(
+pub(super) fn cross_place(
     main_axis: Axis,
     child: &LayoutCore,
     bounds: &BoundsExtras,

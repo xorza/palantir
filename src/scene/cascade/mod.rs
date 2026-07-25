@@ -99,16 +99,16 @@ pub(crate) struct Paint {
 /// index into it. A full cascade rebuild resets it; an incremental
 /// pass copies changed spans into retained rows.
 #[derive(Debug, Default)]
-pub(crate) struct PaintArena {
+pub(super) struct PaintArena {
     /// One [`Paint`] row per chrome contribution (row 0 of a node's
     /// span when present), direct shape, or immediate-child marker,
     /// in record order per node. Pushed in pre-order paint order;
     /// cleared by [`Self::reset_for`].
-    pub(crate) rows: Vec<Paint>,
+    pub(super) rows: Vec<Paint>,
     /// Per-node [`Span`] into [`Self::rows`]. Empty span
     /// (`Span::default()`) means the node paints nothing — replaces
     /// the old `rollups.paints` bitset.
-    pub(crate) node_spans: Vec<Span>,
+    pub(super) node_spans: Vec<Span>,
 }
 
 impl PaintArena {
@@ -116,7 +116,7 @@ impl PaintArena {
     /// `node_spans`; every retained slot is overwritten by
     /// [`compute_paint_rect`]. `rows` is cleared and reserved for the
     /// expected upper bound.
-    pub(crate) fn reset_for(&mut self, n_nodes: usize) {
+    fn reset_for(&mut self, n_nodes: usize) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
         self.node_spans.resize(n_nodes, Span::default());
@@ -134,35 +134,35 @@ impl PaintArena {
 pub(crate) struct EntryRow {
     /// Visible screen rect (post-transform, clipped by ancestor clip).
     /// Read for rows referenced by [`Cascades::hits`].
-    pub rect: Rect,
+    pub(crate) rect: Rect,
     /// Pointer interactions this row participates in (`HOVER` / `CLICK`
     /// / `DRAG` / `SCROLL`).
-    pub sense: Sense,
+    pub(crate) sense: Sense,
     /// Focus eligibility — checked by the focusable hit-test only.
-    pub focusable: bool,
+    pub(crate) focusable: bool,
     /// Effective disabled (self OR any ancestor). Mirrors what
     /// `cascaded_off` already used to null `sense`/`focusable`,
     /// preserved here so per-widget responses can read it.
-    pub disabled: bool,
+    pub(crate) disabled: bool,
     /// Pre-transform layout rect (unclipped, in world coords).
     /// Surfaced via `ResponseState::layout_rect` so callers can read
     /// a widget's arranged position without the cascade's transform +
     /// clip applied — useful for drawing connection geometry into a
     /// scrolling/zoomed parent's coordinate system.
-    pub layout_rect: Rect,
+    pub(crate) layout_rect: Rect,
     /// The cumulative ancestor transform mapping this node's `layout_rect`
     /// into unclipped surface space. The visible `rect` may be smaller
     /// after ancestor clipping. Surfaced via `ResponseState::transform`
     /// for converting surface-space vectors into widget-local logical
     /// coordinates — `IDENTITY` when untransformed.
-    pub transform: TranslateScale,
+    pub(crate) transform: TranslateScale,
 }
 
 #[derive(Soars, Clone, Copy, Debug)]
 #[soa_derive(Debug)]
 pub(crate) struct HitRow {
-    pub entry_idx: u32,
-    pub widget_id: WidgetId,
+    pub(crate) entry_idx: u32,
+    pub(crate) widget_id: WidgetId,
 }
 
 struct Frame {
@@ -260,9 +260,9 @@ pub(crate) struct LayerCascades {
     /// result *during the next record* — by then the live tree's
     /// columns are already being rebuilt. Indexed like
     /// `cascade_inputs`.
-    pub(crate) subtree_ends: Vec<u32>,
+    subtree_ends: Vec<u32>,
     /// Unified paint arena (rows + per-node spans).
-    pub(crate) paint_arena: PaintArena,
+    pub(super) paint_arena: PaintArena,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascades::entries`] — fixed for the layer's run, set at
     /// `reset_for` time. A full rebuild pushes one entry per node;
@@ -270,7 +270,7 @@ pub(crate) struct LayerCascades {
     /// always `entries_base + node.0`. Combined with the per-pass
     /// [`Cascades::by_id`] snapshot this gives O(1) `WidgetId → entry`
     /// without a per-widget `WidgetId → u32` hashmap fill.
-    pub(crate) entries_base: u32,
+    pub(super) entries_base: u32,
 }
 
 impl LayerCascades {
@@ -282,7 +282,7 @@ impl LayerCascades {
     /// in place during the walk, retaining both allocation and initialized
     /// slots when the tree size is stable;
     /// `paint_arena` columns reset according to their own sizing rules.
-    pub(crate) fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
+    fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
         self.cascade_inputs
             .resize(n_nodes, CascadeInputHash::default());
         self.subtree_paint_rects.resize(n_nodes, Rect::ZERO);

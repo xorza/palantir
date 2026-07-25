@@ -38,7 +38,7 @@ use crate::scene::tree::node::NodeId;
 /// userspace pattern (shift positions into positive space and
 /// auto-compensate the scroll's offset so visible state stays stable).
 #[profiling::function]
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -72,7 +72,7 @@ pub(crate) fn measure(
 /// Each child gets a slot at `inner.min + bounds.position`, sized per its
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -119,7 +119,7 @@ pub(crate) fn arrange(
 /// reach this branch — see `intrinsic.rs`), drops the positional offset
 /// so a `.position(...)` past `available` can't floor `Fill` above what
 /// the parent offered.
-pub(crate) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

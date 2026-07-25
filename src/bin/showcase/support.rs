@@ -43,7 +43,7 @@ pub(crate) fn panel_bg() -> Background {
 
 /// Light demo surface — for content that only reads against a light
 /// backdrop (drop shadows, dark strokes).
-pub(crate) fn light_panel_bg() -> Background {
+fn light_panel_bg() -> Background {
     Background {
         fill: Color::hex(0xc8ccd2).into(),
         corners: Corners::all(4.0),

@@ -4,7 +4,7 @@ mod format_pipelines;
 pub(crate) mod gpu_ctx;
 mod gpu_gradient_atlas;
 mod gpu_timings;
-pub(crate) mod image_pipeline;
+mod image_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_utils;
@@ -59,7 +59,7 @@ use wgpu::util::StagingBelt;
 /// declare `immediate_size = IMMEDIATES_BYTES` so the immediate-state
 /// layout matches and bytes written by other pipelines stay valid
 /// after a pipeline switch.
-pub(crate) const IMMEDIATES_BYTES: u32 = 16;
+const IMMEDIATES_BYTES: u32 = 16;
 
 /// Persistent off-screen *color* target for the backbuffer-copy path: the
 /// frontend renders into it, then [`WgpuBackend::submit`] copies it onto the
@@ -1091,7 +1091,7 @@ fn begin_load_pass<'e>(
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     //! Reach-in introspection for the surface-format-change tests: the
     //! count of cached per-format pipeline sets and the GPU image-cache
     //! occupancy, used to assert a new format builds its own pipelines

@@ -34,7 +34,7 @@ pub(crate) mod window;
 /// `OffscreenHost::gpu_pass_stats` is the canonical handle.
 pub use diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
 #[cfg(feature = "internals")]
-pub use host::offscreen::test_support::{
+pub use host::offscreen::internals::{
     OffscreenWindowScratch, TwoWindowOffscreenHost, offscreen_window_scratch,
 };
 #[cfg(feature = "internals")]

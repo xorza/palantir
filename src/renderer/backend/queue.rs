@@ -22,7 +22,7 @@ impl Queue {
     /// Counted shadow of [`wgpu::Queue::write_texture`]. Records the
     /// length of the source byte slice as the upload size.
     #[inline]
-    pub(crate) fn write_texture(
+    pub(super) fn write_texture(
         &self,
         texture: wgpu::TexelCopyTextureInfo<'_>,
         data: &[u8],

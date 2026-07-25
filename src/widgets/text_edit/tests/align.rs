@@ -350,7 +350,7 @@ fn selection_rects_offset_matches_text() {
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
     use crate::text::TextShaper;
-    use crate::text::test_support::TestShape;
+    use crate::text::internals::TestShape;
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};

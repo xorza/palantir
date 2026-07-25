@@ -19,9 +19,7 @@ use crate::primitives::{
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::payload::{BrushSource, PushClipPayload};
 use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
-use crate::renderer::gradient_atlas::handle::{
-    SharedGradientAtlas, test_support::registration_count,
-};
+use crate::renderer::gradient_atlas::handle::{SharedGradientAtlas, internals::registration_count};
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;

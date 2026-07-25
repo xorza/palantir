@@ -24,8 +24,8 @@
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
 //!   region as two `u32`s, pushed per batch — no uniform buffer.
 
-pub(crate) mod atlas;
-pub(crate) mod encode;
+mod atlas;
+mod encode;
 
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
@@ -43,10 +43,10 @@ use encode::{TextEncoder, encode_key_for};
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct GlyphInstance {
-    pub(crate) pos: [i32; 2],
-    pub(crate) dim: u32,
-    pub(crate) uv_and_kind: u32,
-    pub(crate) color: u32,
+    pos: [i32; 2],
+    dim: u32,
+    uv_and_kind: u32,
+    color: u32,
 }
 
 /// `[color_atlas_size, mask_atlas_size]` follows `ViewportPush` in the
@@ -58,7 +58,7 @@ const _: () = assert!(PARAMS_BYTES == 8);
 /// 0 = mask, 1 = color. Encoded in the high bit of `uv.u`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
-pub(crate) enum ContentType {
+enum ContentType {
     Mask = 0,
     Color = 1,
 }
@@ -396,7 +396,7 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 #[cfg(all(test, feature = "internals"))]
-mod test_support {
+mod internals {
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextRun;
@@ -406,7 +406,7 @@ mod test_support {
     use glam::{UVec2, Vec2};
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn make_inner_run(
+    pub(super) fn make_inner_run(
         store: &RecordStore,
         shaper: &TextShaper,
         text: &str,
@@ -486,7 +486,7 @@ mod gpu_regression {
     use crate::renderer::backend::gpu_ctx::GpuCtx;
     use crate::renderer::backend::queue::Queue;
     use crate::renderer::backend::text::TextBackend;
-    use crate::renderer::backend::text::test_support::make_inner_run;
+    use crate::renderer::backend::text::internals::make_inner_run;
     use crate::renderer::render_buffer::text::TextRun;
     use crate::scene::record_store::RecordStore;
     use crate::text::TextShaper;

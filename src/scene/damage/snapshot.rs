@@ -26,7 +26,7 @@ const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
 /// `matched_pos` sentinel for a curr row with no exact match in the
 /// prev span (moved / added / content-changed — the content diff
 /// damages those over their full rects).
-pub(crate) const ROW_UNMATCHED: u32 = u32::MAX;
+pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 
 /// Per-widget snapshot held in [`crate::scene::damage::DamageEngine::prev`], keyed by stable
 /// [`WidgetId`]. Only widgets with paint rows last frame have an entry
@@ -56,7 +56,7 @@ pub(crate) struct NodeSnapshot {
     /// when present, then shapes + child markers). Never empty — the
     /// row invariant means rowless nodes don't get an entry in `prev`
     /// at all.
-    pub(crate) paint_span: Span,
+    pub(super) paint_span: Span,
     /// Authoring hash from last frame's `Tree.rollups.node`.
     pub(crate) hash: ContentHash,
     /// Rollup hash of this node + its entire subtree from last frame's
@@ -64,11 +64,11 @@ pub(crate) struct NodeSnapshot {
     /// subtree-skip fast path: if both match the current frame, every
     /// descendant is bit-identical and the per-node diff can jump to
     /// `subtree_end[i]`.
-    pub(crate) subtree_hash: ContentHash,
+    pub(super) subtree_hash: ContentHash,
     /// Fingerprint of last frame's cascade inputs at this node (parent
     /// transform/clip/disabled/invisible + own arranged rect). See
     /// [`CascadeInputHash`].
-    pub(crate) cascade_input: CascadeInputHash,
+    pub(super) cascade_input: CascadeInputHash,
     /// Paint-order position: the immediate parent's `WidgetId` bits,
     /// or the layer discriminant for a root. A widget reparented (or
     /// moved to another layer) at an identical rect with identical
@@ -76,7 +76,7 @@ pub(crate) struct NodeSnapshot {
     /// (which folds ancestor *state*, not identity) — yet its
     /// compositing order against outside overlappers flipped, so the
     /// skip tiers must not treat it as unchanged.
-    pub(crate) parent_key: u64,
+    pub(super) parent_key: u64,
 }
 
 /// Per-widget paint snapshots packed contiguously, plus the
@@ -106,7 +106,7 @@ pub(crate) struct PaintSnapArena {
     /// it). Feeds the within-node order-inversion check — an exact
     /// pair emits no content damage, but two of them swapping paint
     /// order still flips their overlap's pixels. Capacity retained.
-    pub(crate) matched_pos: Vec<u32>,
+    pub(super) matched_pos: Vec<u32>,
     /// Sort-merge scratch for the content-keyed passes: `(key, row
     /// index)` pairs for the unclaimed prev side / the unmatched curr
     /// side. Sorting + merging both sides replaces the old restart-
@@ -128,10 +128,10 @@ pub(crate) struct PaintSnapArena {
 
 /// Result of [`PaintSnapArena::diff_changed_leg`].
 #[derive(Debug)]
-pub(crate) struct ChangedLeg {
+pub(super) struct ChangedLeg {
     /// Span covering this frame's paints — `prev_span` reused when the
     /// row count is stable, a fresh tail span when it changes.
-    pub(crate) span: Span,
+    pub(super) span: Span,
     /// True when every `Paint` matched bit-identically (the fast path),
     /// so the per-shape diff emitted *no* damage. Reaching the
     /// changed-paints arm at all means `hash` or `cascade_input`
@@ -139,19 +139,19 @@ pub(crate) struct ChangedLeg {
     /// disabled / clip-saturated pan) altered the node's pixels without
     /// moving any shape — the caller must damage the union to repaint
     /// it.
-    pub(crate) geometry_unchanged: bool,
+    pub(super) geometry_unchanged: bool,
 }
 
 impl PaintSnapArena {
     /// Reset to empty — caller's next `compute` will repopulate.
-    pub(crate) fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.snaps.clear();
         self.orphaned = 0;
     }
 
     /// Append `paints` to the tail and return the covering [`Span`].
     /// Used by the Vacant-insert arm of `compute`.
-    pub(crate) fn append(&mut self, paints: &[Paint]) -> Span {
+    pub(super) fn append(&mut self, paints: &[Paint]) -> Span {
         let start = self.snaps.len() as u32;
         self.snaps.extend_from_slice(paints);
         Span::new(start, paints.len() as u32)
@@ -206,7 +206,7 @@ impl PaintSnapArena {
     /// the tail of `snaps` and route the prev span through
     /// [`Self::mark_orphaned`]; `maybe_compact` reclaims the tail once
     /// orphans accumulate.
-    pub(crate) fn diff_changed_leg(
+    pub(super) fn diff_changed_leg(
         &mut self,
         out: &mut Vec<Rect>,
         prev_span: Span,
@@ -352,13 +352,13 @@ impl PaintSnapArena {
     /// evicted or its span was relocated). Saturating to avoid wrap
     /// in the unlikely 4-billion-orphan edge case.
     #[inline]
-    pub(crate) fn mark_orphaned(&mut self, n: u32) {
+    pub(super) fn mark_orphaned(&mut self, n: u32) {
         self.orphaned = self.orphaned.saturating_add(n);
     }
 
     /// Walk live `NodeSnapshot::paint_span`s in pre-order paint
     /// order and reseat into `scratch`, then swap.
-    pub(crate) fn compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
+    pub(super) fn compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
         self.scratch.clear();
         for (_layer, tree) in forest.trees.iter_paint_order() {
             for wid in tree.records.widget_id() {
@@ -392,7 +392,7 @@ impl PaintSnapArena {
     /// Trigger compaction when the arena is large enough
     /// ([`COMPACT_MIN_TOTAL`]) and orphaned entries are ≥ 75 % of the
     /// buffer ([`COMPACT_ORPHAN_RATIO_NUM`]/4).
-    pub(crate) fn maybe_compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
+    pub(super) fn maybe_compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
         let total = self.snaps.len() as u32;
         if total >= COMPACT_MIN_TOTAL
             && self.orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
@@ -407,7 +407,7 @@ impl PaintSnapArena {
 /// clipped-away shapes produce no pixels, so they have nothing to
 /// clear or repaint.
 #[inline]
-pub(crate) fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
+pub(super) fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
     if !screen.is_paint_empty() {
         out.push(screen);
     }
@@ -448,7 +448,7 @@ impl PaintKey {
 /// O(n) gate in front of the quadratic pair enumeration. Equal
 /// adjacent positions can't occur (each prev row is claimed at most
 /// once), so allow-equal `is_sorted` is exact.
-pub(crate) fn has_order_inversion(matched_pos: &[u32]) -> bool {
+pub(super) fn has_order_inversion(matched_pos: &[u32]) -> bool {
     !matched_pos
         .iter()
         .filter(|&&pos| pos != ROW_UNMATCHED)

@@ -46,7 +46,7 @@ impl DragValueTheme {
         Self { chip, editor }
     }
 
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.chip.for_each_text(f);
         self.editor.for_each_text(f);
     }

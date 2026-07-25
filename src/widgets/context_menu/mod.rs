@@ -23,8 +23,8 @@ use glam::Vec2;
 /// widget's id in [`crate::ui::state::StateMap`]. `anchor = Some` is
 /// the single source of truth for "menu open".
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct ContextMenuState {
-    pub(crate) anchor: Option<Vec2>,
+struct ContextMenuState {
+    anchor: Option<Vec2>,
 }
 
 /// A right-click / programmatically-opened popup menu attached to a

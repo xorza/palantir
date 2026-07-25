@@ -3,11 +3,11 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::{self, ClusterGlyph, CosmicMeasure};
+use crate::text::internals::{TestMeasure, TestShape};
 use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
 use crate::text::probe::{self, SelectionRects};
 use crate::text::system::{self, TextRunSlot, TextSystem};
-use crate::text::test_support::{TestMeasure, TestShape};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
 use rustc_hash::FxHashSet;
@@ -46,7 +46,7 @@ fn mono_shape(
         None => request,
     };
     // Mono mints no shaped buffer, so every run it measures is invalid.
-    let root = mono::test_support::measure(request);
+    let root = mono::internals::measure(request);
     TestMeasure {
         size: root.size,
         key: TextShapeKey::INVALID,

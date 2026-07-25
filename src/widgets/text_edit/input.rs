@@ -15,24 +15,24 @@ use crate::widgets::text_edit::view::ShapeCtx;
 /// the (sorted) selection range for the painter, and the edge signals
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
-pub(crate) struct InputResult {
+pub(super) struct InputResult {
     /// Caret or selection differ from their pre-input values (compared
     /// against the pre-clamp snapshot, so an external buffer shrink
     /// that displaces the caret also reads as motion) — drives the
     /// blink-phase reset.
-    pub(crate) caret_moved: bool,
+    pub(super) caret_moved: bool,
     /// The view state's focus bit before this pass. `show()` derives
     /// gained/lost edges before the view update stores the new value.
-    pub(crate) was_focused: bool,
+    pub(super) was_focused: bool,
     /// Escape asked to blur before view recording.
-    pub(crate) blur: bool,
+    pub(super) blur: bool,
     /// Enter accepted a single-line value this frame.
-    pub(crate) submitted: bool,
+    pub(super) submitted: bool,
     /// The buffer was mutated this frame (typing, delete, paste, cut,
     /// undo/redo). Reported by the mutation choke points, so it's
     /// content-accurate — a same-length overwrite still counts, unlike
     /// a length-delta proxy.
-    pub(crate) edited: bool,
+    pub(super) edited: bool,
 }
 
 /// Process this frame's pointer + keyboard input for one TextEdit
@@ -40,7 +40,7 @@ pub(crate) struct InputResult {
 /// edge signals. Splitting this out of `show()` keeps the borrow
 /// choreography contained: we touch `ui.state`, `ui.input`, and
 /// `ui.resources.text` here, but never the shape/tree storage.
-pub(crate) fn handle_input(
+pub(super) fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
     is_focused: bool,
@@ -230,7 +230,7 @@ pub(crate) fn handle_input(
     }
 }
 
-pub(crate) fn dispatch_action(
+pub(super) fn dispatch_action(
     editor: &mut Editor<'_>,
     keypress: KeyPress,
     clipboard: &Clipboard,
@@ -242,7 +242,7 @@ pub(crate) fn dispatch_action(
     true
 }
 
-pub(crate) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
+pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
     let extend = keypress.mods.shift;
     match keypress.key {
         Key::Char(c) if !keypress.mods.any_command() => editor.insert_char(c),
@@ -302,7 +302,7 @@ fn is_word_nav(modifiers: Modifiers) -> bool {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum KeyOutcome {
+pub(super) enum KeyOutcome {
     None,
     Blur,
     Vertical { up: bool, extend: bool },

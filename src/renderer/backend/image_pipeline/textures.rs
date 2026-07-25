@@ -9,13 +9,13 @@ use crate::renderer::texture_id::TextureId;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Default)]
-pub(crate) struct ImageTextures {
-    pub(crate) bindings: FxHashMap<TextureId, wgpu::BindGroup>,
+pub(super) struct ImageTextures {
+    pub(super) bindings: FxHashMap<TextureId, wgpu::BindGroup>,
 }
 
 impl ImageTextures {
     #[profiling::function]
-    pub(crate) fn drain_registry(
+    pub(super) fn drain_registry(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         images: &ImageRegistry,

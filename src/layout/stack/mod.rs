@@ -16,7 +16,7 @@ use crate::scene::tree::node::NodeId;
 /// the call. `frozen_alloc = Some(v)` means this child has been
 /// removed from the active pool and gets exactly `v` main-axis space.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FillEntry {
+struct FillEntry {
     node: NodeId,
     weight: f32,
     /// Minimum main-axis extent this entry will accept. The freeze
@@ -101,7 +101,7 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
 /// reuse the tail capacity. Allocation-free in steady state.
 #[derive(Debug, Default)]
 pub(crate) struct StackScratch {
-    pub(crate) pool: Vec<FillEntry>,
+    pool: Vec<FillEntry>,
 }
 
 #[derive(Debug)]

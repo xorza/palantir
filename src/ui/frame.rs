@@ -34,14 +34,14 @@ impl WakeReasons {
     pub(crate) const ANIM: Self = Self(1 << 1);
 
     #[inline]
-    pub(crate) fn merge(self, r: Self) -> Self {
+    fn merge(self, r: Self) -> Self {
         Self(self.0 | r.0)
     }
 
     /// `true` when the only reason set is `ANIM` — the predicate that
     /// gates `FrameProcessing::PaintOnly`.
     #[inline]
-    pub(crate) fn is_anim_only(self) -> bool {
+    fn is_anim_only(self) -> bool {
         self == Self::ANIM
     }
 }
@@ -54,8 +54,8 @@ impl WakeReasons {
 /// carries the surface size + scale factor.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FrameStamp {
-    pub(crate) display: Display,
-    pub(crate) time: Duration,
+    pub(super) display: Display,
+    pub(super) time: Duration,
 }
 
 impl FrameStamp {
@@ -71,13 +71,13 @@ pub(crate) struct FrameInput {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FrameClassifyInput {
-    pub(crate) display: Display,
-    pub(crate) damage_baseline_valid: bool,
-    pub(crate) input_policy: InputPolicy,
-    pub(crate) had_input: bool,
-    pub(crate) input_requested_repaint: bool,
-    pub(crate) close_requested: bool,
+pub(super) struct FrameClassifyInput {
+    pub(super) display: Display,
+    pub(super) damage_baseline_valid: bool,
+    pub(super) input_policy: InputPolicy,
+    pub(super) had_input: bool,
+    pub(super) input_requested_repaint: bool,
+    pub(super) close_requested: bool,
 }
 
 /// One entry on the `Ui` repaint-wake queue.
@@ -140,7 +140,7 @@ pub(crate) struct FrameRuntime {
 /// — `paint_only ⇒ !force_full` is encoded in the variant shape
 /// instead of relying on two independent bools.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FramePlan {
+pub(super) enum FramePlan {
     /// Skip pre_record / record / finalize / layout / cascade and
     /// reuse the retained tree + cascades from the prior frame. Only
     /// fired by the anim-only fast path.
@@ -152,9 +152,9 @@ pub(crate) enum FramePlan {
 }
 
 impl FrameRuntime {
-    pub(crate) const MAX_DT: f32 = MAX_ANIM_DT;
+    pub(super) const MAX_DT: f32 = MAX_ANIM_DT;
 
-    pub(crate) fn advance_clock(&mut self, now: Duration) {
+    pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.time).as_secs_f32();
         let raw_dt = true_dt.min(Self::MAX_DT);
         if self.frame_id > 0 && true_dt > EPS {
@@ -177,7 +177,7 @@ impl FrameRuntime {
         self.frame_id += 1;
     }
 
-    pub(crate) fn classify_frame(&mut self, input: FrameClassifyInput) -> FramePlan {
+    pub(super) fn classify_frame(&mut self, input: FrameClassifyInput) -> FramePlan {
         let fired_count = self
             .repaint_wakes
             .partition_point(|wake| wake.deadline <= self.time);
@@ -216,7 +216,7 @@ impl FrameRuntime {
         }
     }
 
-    pub(crate) fn schedule_wake(
+    pub(super) fn schedule_wake(
         &mut self,
         deadline: Duration,
         reasons: WakeReasons,

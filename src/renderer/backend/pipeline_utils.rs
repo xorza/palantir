@@ -16,7 +16,7 @@ use crate::renderer::backend::stencil::stencil_test_state;
 /// [`wgpu::RenderPipeline`] retains its own internal references and
 /// outlives the recipe.
 #[derive(Debug)]
-pub(crate) struct PipelineRecipe<'a> {
+pub(super) struct PipelineRecipe<'a> {
     pub label: &'static str,
     pub shader: &'a wgpu::ShaderModule,
     pub layout: &'a wgpu::PipelineLayout,
@@ -33,7 +33,7 @@ pub(crate) struct PipelineRecipe<'a> {
 /// truth for the descriptor fields each pipeline doesn't vary —
 /// vertex entry, sample count, multiview mask. Every quad / mesh /
 /// image / curve / text pipeline goes through here.
-pub(crate) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wgpu::RenderPipeline {
+pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(r.label),
         layout: Some(r.layout),
@@ -84,7 +84,7 @@ pub(crate) struct StencilVariant {
 /// quad / mesh / image / curve families and filled in by
 /// [`StencilVariant::build`].
 #[derive(Debug)]
-pub(crate) struct ColorVariantSpec<'a> {
+pub(super) struct ColorVariantSpec<'a> {
     pub label: &'static str,
     pub stencil_label: &'static str,
     pub layout_label: &'static str,
@@ -100,7 +100,7 @@ impl StencilVariant {
     /// they can't drift on blend / writes / fragment entry — and the
     /// twins share one `PipelineLayout` (depth-stencil state isn't part
     /// of the layout, so building two identical ones was pure waste).
-    pub(crate) fn build(
+    pub(super) fn build(
         device: &wgpu::Device,
         spec: ColorVariantSpec<'_>,
         color_format: wgpu::TextureFormat,
@@ -131,7 +131,7 @@ impl StencilVariant {
 
     /// The pipeline to bind: the stencil-test twin in a rounded-clip
     /// pass, otherwise the base.
-    pub(crate) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
+    pub(super) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
         if use_stencil { &self.test } else { &self.base }
     }
 }
@@ -140,7 +140,7 @@ impl StencilVariant {
 /// texture at binding 0 with a filtering sampler at binding 1, both
 /// fragment-visible. The shape shared by the gradient LUT atlas
 /// (`GpuGradientAtlas`) and the per-image bind group (`ImagePipeline`).
-pub(crate) fn texture_sampler_bgl(
+pub(super) fn texture_sampler_bgl(
     device: &wgpu::Device,
     label: &'static str,
 ) -> wgpu::BindGroupLayout {
@@ -174,7 +174,7 @@ pub(crate) fn texture_sampler_bgl(
 /// target (`image_pipeline::render_target::make_target`), and the
 /// gradient LUT atlas (`GpuGradientAtlas::new`), so their bindings
 /// can't drift.
-pub(crate) fn texture_bind_group(
+pub(super) fn texture_bind_group(
     device: &wgpu::Device,
     bgl: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
@@ -202,7 +202,7 @@ pub(crate) fn texture_bind_group(
 /// immediate state set by the backend at pass open (viewport) stays
 /// valid as pipelines switch, and the text pipeline can additionally
 /// write its `Params` at offset 8.
-pub(crate) fn build_pipeline_layout(
+pub(super) fn build_pipeline_layout(
     device: &wgpu::Device,
     label: &'static str,
     bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],

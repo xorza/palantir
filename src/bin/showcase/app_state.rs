@@ -12,7 +12,7 @@ use aperture::{Button, Configure, Panel, Sizing, Text, Ui};
 /// State threaded through the entire showcase frame. Lives on `State`
 /// in `main.rs` and is handed to `build` by the central dispatcher.
 pub(crate) struct AppState {
-    pub counter: i32,
+    pub(crate) counter: i32,
 }
 
 pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {

@@ -51,41 +51,41 @@ use crate::renderer::backend::text::{ContentType, GlyphInstance};
 /// `TextRenderSession::extract_glyphs`'s glyph loop is the tripwire for
 /// that invariant.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct EncodedKey {
-    pub(crate) text: TextShapeKey,
+pub(super) struct EncodedKey {
+    text: TextShapeKey,
     /// `(scale * 65536).round() as u32`. 1/65536 px is below cosmic's
     /// 4-bin subpixel resolution, so distinct quantized scales are the
     /// only ones that produce distinct cosmic cache keys.
-    pub(crate) scale_q: u32,
-    pub(crate) area_color: u32,
+    scale_q: u32,
+    area_color: u32,
     /// Packed subpixel bins of the run origin, exactly as produced by
     /// [`cosmic::SubpixelOrigin::bins`].
-    pub(crate) bins: u8,
+    bins: u8,
 }
 
 /// `encode_key_for`'s named result. Carries the cache identity plus
 /// the integer-pixel origin (the fractional component is folded into
 /// `EncodedKey::bins`).
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct EncodedRunKey {
-    pub(crate) key: EncodedKey,
-    pub(crate) origin_x: i32,
-    pub(crate) origin_y: i32,
+pub(super) struct EncodedRunKey {
+    key: EncodedKey,
+    origin_x: i32,
+    origin_y: i32,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct EncodedEntry {
+pub(super) struct EncodedEntry {
     /// Slice into `EncodedCache.arena` holding this run's glyph
     /// templates.
-    pub(crate) span: Span,
-    pub(crate) last_use: u64,
+    pub(super) span: Span,
+    last_use: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct EncodedGlyph {
-    pub(crate) instance: GlyphInstance,
-    pub(crate) atlas_slot: u32,
-    pub(crate) generation: u32,
+pub(super) struct EncodedGlyph {
+    instance: GlyphInstance,
+    pub(super) atlas_slot: u32,
+    pub(super) generation: u32,
 }
 
 /// Flat-arena cache: one contiguous `Vec<EncodedGlyph>` holds every
@@ -94,12 +94,12 @@ pub(crate) struct EncodedGlyph {
 /// After warmup this is alloc-free — the arena/map/scratch all retain
 /// capacity across frames.
 #[derive(Debug, Default)]
-pub(crate) struct EncodedCache {
-    pub(crate) map: FxHashMap<EncodedKey, EncodedEntry>,
+pub(super) struct EncodedCache {
+    pub(super) map: FxHashMap<EncodedKey, EncodedEntry>,
     /// Append-only arena. Replaced runs leave dead spans behind;
     /// `sweep` compacts when dead bytes exceed live ones (see
     /// `COMPACT_RATIO`).
-    pub(crate) arena: Vec<EncodedGlyph>,
+    pub(super) arena: Vec<EncodedGlyph>,
     /// A cache hit emits `arena` straight out without walking cosmic,
     /// so the atlas slots backing the run would never get their LRU
     /// `last_use` bumped — `evict_one` could then reclaim a slot still
@@ -110,7 +110,7 @@ pub(crate) struct EncodedCache {
     /// reusable.
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
-    pub(crate) scratch: Vec<EncodedGlyph>,
+    scratch: Vec<EncodedGlyph>,
 }
 
 /// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
@@ -123,7 +123,7 @@ impl EncodedCache {
     /// when the arena holds more dead-glyph slack than live, compact
     /// it into the retained scratch. Compaction rewrites every
     /// surviving entry's `span`.
-    pub(crate) fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
+    fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
         let cutoff = current_frame.saturating_sub(keep_frames);
         self.map.retain(|_, e| e.last_use >= cutoff);
 
@@ -146,7 +146,7 @@ impl EncodedCache {
 /// plus the integer-pixel origin (cosmic's subpixel bins absorb the
 /// fractional component into per-glyph `CacheKey`s, so two runs at
 /// different fractional origins live in different cache entries).
-pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
+pub(super) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
     let scale = frame_scale * r.scale;
     let area_color: u32 = bytemuck::cast(r.color);
     let sub = render::subpixel_origin(r.origin);
@@ -175,18 +175,18 @@ const ENCODED_CACHE_KEEP_FRAMES: u64 = 120;
 /// draw ranges; owning the state here lets every method borrow
 /// disjoint fields directly, with no per-call context bundle.
 #[derive(Debug)]
-pub(crate) struct TextEncoder {
-    pub(crate) atlas: GlyphAtlas,
-    pub(crate) cache: EncodedCache,
+pub(super) struct TextEncoder {
+    pub(super) atlas: GlyphAtlas,
+    pub(super) cache: EncodedCache,
     /// Retained per-miss extraction scratch.
     placed: Vec<PlacedGlyph>,
     /// Drawable glyph instances accumulated across this frame's
     /// batches.
-    pub(crate) instances: Vec<GlyphInstance>,
+    pub(super) instances: Vec<GlyphInstance>,
 }
 
 impl TextEncoder {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         Self {
             atlas: GlyphAtlas::new(device),
             cache: EncodedCache::default(),
@@ -198,7 +198,7 @@ impl TextEncoder {
     /// Cache-hit fast path. Returns `true` if `run_key` resolved to a
     /// live entry and the run's glyphs were emitted; `false` falls
     /// through to [`Self::encode_run`].
-    pub(crate) fn try_emit_cached(&mut self, run_key: &EncodedRunKey) -> bool {
+    pub(super) fn try_emit_cached(&mut self, run_key: &EncodedRunKey) -> bool {
         let current_frame = self.atlas.current_frame;
         let Some(entry) = self.cache.map.get_mut(&run_key.key) else {
             return false;
@@ -229,7 +229,7 @@ impl TextEncoder {
     }
 
     /// Frame teardown: age the atlas LRU and sweep both caches.
-    pub(crate) fn end_frame(&mut self) {
+    pub(super) fn end_frame(&mut self) {
         self.atlas.end_frame();
         self.cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
@@ -242,7 +242,7 @@ impl TextEncoder {
     /// `GlyphInstance`s and populate the encoded cache as a side
     /// effect. Callers are expected to have already filtered out
     /// invalid keys and cache hits.
-    pub(crate) fn encode_run(
+    pub(super) fn encode_run(
         &mut self,
         device: &wgpu::Device,
         session: &mut TextRenderSession<'_>,
@@ -331,7 +331,7 @@ impl TextEncoder {
 /// Pack `(u, v, kind)` into the 32-bit `uv_and_kind` field. `u`'s
 /// high bit carries `content_type` (atlases cap at 16384 = 14 bits).
 #[inline]
-pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
+fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
     debug_assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
     (u as u32) | ((kind as u32) << 15) | ((v as u32) << 16)
 }

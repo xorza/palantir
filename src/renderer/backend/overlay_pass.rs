@@ -50,7 +50,7 @@ const DAMAGE_OVERLAY_GAP: f32 = 1.0;
 const DIM_ALPHA: f32 = 0.4;
 
 #[derive(Debug)]
-pub(crate) struct DebugOverlay {
+pub(super) struct DebugOverlay {
     /// Single-instance buffer holding a translucent-black full-viewport
     /// quad. Drawn into the backbuffer with `LoadOp::Load` before any
     /// partial-damage passes when `DebugOverlayConfig::dim_undamaged` is
@@ -68,7 +68,7 @@ pub(crate) struct DebugOverlay {
 }
 
 impl DebugOverlay {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let dim_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("aperture.quad.dim"),
             size: std::mem::size_of::<Quad>() as u64,
@@ -86,7 +86,7 @@ impl DebugOverlay {
 
     /// Upload one full-viewport translucent-black quad ([`DIM_ALPHA`])
     /// to `dim_buffer`.
-    pub(crate) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
+    pub(super) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
             rect: Rect {
                 min: Vec2::ZERO,
@@ -107,7 +107,7 @@ impl DebugOverlay {
     /// Draw the single dim quad. The dim pass runs without a stencil
     /// attachment (uniform dim across the viewport), so the
     /// no-stencil pipeline is always correct here.
-    pub(crate) fn draw_dim<'a>(
+    pub(super) fn draw_dim<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         quad_base: &'a wgpu::RenderPipeline,
@@ -123,7 +123,7 @@ impl DebugOverlay {
     /// `0` means nothing survived and the caller skips the overlay
     /// pass. All quads ride one instanced draw inside one pass, so a
     /// single belt write covers them.
-    pub(crate) fn upload_damage_rects(
+    pub(super) fn upload_damage_rects(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         plan: RenderPlan,
@@ -189,7 +189,7 @@ impl DebugOverlay {
     /// Draw `count` damage-rect outline quads. Used in the post-copy
     /// overlay pass on the swapchain texture (no stencil attachment,
     /// no scissor).
-    pub(crate) fn draw_overlays<'a>(
+    pub(super) fn draw_overlays<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         quad_base: &'a wgpu::RenderPipeline,

@@ -101,15 +101,15 @@ fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub(crate) struct BarGeometry {
-    pub(crate) thumb_size: f32,
-    pub(crate) thumb_offset: f32,
+struct BarGeometry {
+    thumb_size: f32,
+    thumb_offset: f32,
 }
 
 /// Compute thumb size/offset along the bar's main axis. Returns `None`
 /// when the bar can't be drawn meaningfully (zero/negative track or no
 /// scrollable range).
-pub(crate) fn bar_geometry(
+fn bar_geometry(
     viewport: f32,
     content: f32,
     offset: f32,

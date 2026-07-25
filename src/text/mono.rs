@@ -1,6 +1,6 @@
 //! Deterministic placeholder shaping for the mono fallback: every glyph is
 //! `font_size_px * 0.5` wide, so the engine can run in tests and headless
-//! tools without a font system. [`test_support::measure`] is the metric
+//! tools without a font system. [`internals::measure`] is the metric
 //! behind [`TextShaper::test_mono`](crate::text::TextShaper).
 //!
 //! [`caret_x`] and [`byte_at_x`] are the geometry [`probe`] falls back to
@@ -8,7 +8,7 @@
 //! empty text is unshaped in production too, and it is answered here so
 //! the caller carries no `cfg`. Everything past that point — a *non-empty*
 //! run with no shaped buffer — exists only under the mono shaper, so the
-//! layout itself lives in the gated [`test_support`] and production builds
+//! layout itself lives in the gated [`internals`] and production builds
 //! reach an unreachable branch instead.
 //!
 //! [`probe`]: crate::text::probe
@@ -16,13 +16,13 @@
 /// Caret-x for a run with no shaped buffer. Empty text has no glyphs to
 /// walk in any build and takes `empty_x` — the caller's alignment-aware
 /// empty-line placement.
-pub(crate) fn caret_x(text: &str, byte_offset: usize, font_size_px: f32, empty_x: f32) -> f32 {
+pub(super) fn caret_x(text: &str, byte_offset: usize, font_size_px: f32, empty_x: f32) -> f32 {
     if text.is_empty() {
         return empty_x;
     }
     #[cfg(any(test, feature = "internals"))]
     {
-        test_support::single_line_caret_x(text, byte_offset, font_size_px)
+        internals::single_line_caret_x(text, byte_offset, font_size_px)
     }
     #[cfg(not(any(test, feature = "internals")))]
     {
@@ -33,7 +33,7 @@ pub(crate) fn caret_x(text: &str, byte_offset: usize, font_size_px: f32, empty_x
 
 /// Byte offset nearest `target_x` for a run with no shaped buffer. Empty
 /// text has exactly one position.
-pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
+pub(super) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
     // Outside the `cfg` deliberately: empty text is the one unshaped case
     // production reaches, so it must be answered before the mono-only
     // layout below is gated away.
@@ -42,7 +42,7 @@ pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
     }
     #[cfg(any(test, feature = "internals"))]
     {
-        test_support::nearest_byte(text, target_x, font_size_px)
+        internals::nearest_byte(text, target_x, font_size_px)
     }
     #[cfg(not(any(test, feature = "internals")))]
     {
@@ -56,7 +56,7 @@ pub(crate) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
 ///
 /// [`TextShaper::test_mono`]: crate::text::TextShaper
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(in crate::text) mod internals {
     use crate::primitives::size::Size;
     use crate::text::wrap::LineFit;
     use crate::text::{TextRoot, TextShapeRequest};
@@ -65,7 +65,7 @@ pub(crate) mod test_support {
     /// Multi-line aware callers should go through `cursor_xy` instead —
     /// this is the cheap path for the mono fallback's degenerate single-
     /// line behaviour.
-    pub(crate) fn single_line_caret_x(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
+    pub(super) fn single_line_caret_x(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
         let clamped = byte_offset.min(text.len());
         (clamped as f32) * font_size_px * 0.5
     }
@@ -73,7 +73,7 @@ pub(crate) mod test_support {
     /// Inverse of [`single_line_caret_x`]. Picks the char boundary whose
     /// prefix-x is closest to `target_x` so click positioning on the mono
     /// fallback matches the rendered glyph layout exactly.
-    pub(crate) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usize {
+    pub(super) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usize {
         let mut best_off = 0usize;
         let mut best_dist = target_x.abs();
         for (i, ch) in text.char_indices() {
@@ -98,7 +98,7 @@ pub(crate) mod test_support {
     /// Mints no shaped buffer, so `TextSystem` reports
     /// [`TextShapeKey::INVALID`] for every run measured this way and the
     /// renderer drops them cleanly.
-    pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
+    pub(in crate::text) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
         let text = request.text;
         if text.is_empty() {
             return TextRoot::ZERO;

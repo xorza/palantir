@@ -10,9 +10,9 @@ use glam::Vec2;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
-    pub(crate) zoom: f32,
+    pub(super) zoom: f32,
     /// Cumulative drag deltas compose against this stable snapshot.
-    pub(crate) drag_anchor: Option<(Axis, Vec2)>,
+    drag_anchor: Option<(Axis, Vec2)>,
 }
 
 impl Default for ScrollState {
@@ -26,10 +26,10 @@ impl Default for ScrollState {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ScrollBounds {
-    pub(crate) content: Size,
-    pub(crate) viewport: Size,
-    pub(crate) content_margin: Spacing,
+pub(super) struct ScrollBounds {
+    pub(super) content: Size,
+    pub(super) viewport: Size,
+    pub(super) content_margin: Spacing,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -45,12 +45,12 @@ struct OffsetBounds {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TrackPage {
-    pub(crate) click_main: f32,
-    pub(crate) thumb_offset: f32,
-    pub(crate) thumb_size: f32,
-    pub(crate) page_step: f32,
-    pub(crate) max_off: f32,
+pub(super) struct TrackPage {
+    pub(super) click_main: f32,
+    pub(super) thumb_offset: f32,
+    pub(super) thumb_size: f32,
+    pub(super) page_step: f32,
+    pub(super) max_off: f32,
 }
 
 impl ScrollState {
@@ -84,7 +84,7 @@ impl ScrollState {
         }
     }
 
-    pub(crate) fn apply_zoom(
+    pub(super) fn apply_zoom(
         &mut self,
         min_zoom: f32,
         max_zoom: f32,
@@ -103,7 +103,7 @@ impl ScrollState {
         }
     }
 
-    pub(crate) fn apply_wheel_pan(
+    pub(super) fn apply_wheel_pan(
         &mut self,
         bounds: ScrollBounds,
         pan_x: bool,
@@ -128,13 +128,13 @@ impl ScrollState {
         }
     }
 
-    pub(crate) fn clamp_to_natural(&mut self, bounds: ScrollBounds) {
+    pub(super) fn clamp_to_natural(&mut self, bounds: ScrollBounds) {
         let bounds = self.natural_bounds(bounds);
         self.offset.x = self.offset.x.clamp(bounds.lo.x, bounds.hi.x);
         self.offset.y = self.offset.y.clamp(bounds.lo.y, bounds.hi.y);
     }
 
-    pub(crate) fn apply_thumb_drag(
+    pub(super) fn apply_thumb_drag(
         &mut self,
         axis: Axis,
         drag_started: bool,
@@ -165,7 +165,7 @@ impl ScrollState {
         }
     }
 
-    pub(crate) fn apply_track_page(&mut self, axis: Axis, page: Option<TrackPage>) {
+    pub(super) fn apply_track_page(&mut self, axis: Axis, page: Option<TrackPage>) {
         let Some(page) = page else {
             return;
         };
@@ -180,6 +180,17 @@ impl ScrollState {
         match axis {
             Axis::X => self.offset.x = next,
             Axis::Y => self.offset.y = next,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(in crate::widgets::scroll) mod internals {
+    use crate::widgets::scroll::state::ScrollState;
+
+    impl ScrollState {
+        pub(in crate::widgets::scroll) fn drag_anchor_is_none(&self) -> bool {
+            self.drag_anchor.is_none()
         }
     }
 }

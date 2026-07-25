@@ -321,7 +321,7 @@ impl Tree {
     /// shadow-only) survives here and is dropped per-emit by the cmd
     /// buffer's gates.
     #[inline]
-    pub(crate) fn open_node(
+    pub(in crate::scene) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
         widget_id: WidgetId,
@@ -564,7 +564,7 @@ pub(crate) mod recording;
 pub(crate) mod rollups;
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::node::NodeId;

@@ -9,7 +9,7 @@ use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::pointer::PointerButton;
 use crate::input::{self as native_input, InputEvent};
 
-pub(crate) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
+pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
     let scale = scale_factor.max(f32::EPSILON);
     match event {
         WindowEvent::CursorMoved { position, .. } => {

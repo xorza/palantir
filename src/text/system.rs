@@ -33,7 +33,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// [`TextShaper`]. Reuse rows are clock-swept under size pressure.
 #[derive(Debug)]
 pub(crate) struct TextSystem {
-    pub(crate) shaper: TextShaper,
+    pub(in crate::text) shaper: TextShaper,
     entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
     sweep_limit: usize,
     /// Held once rather than asked per run: whether this window's shaper
@@ -189,7 +189,7 @@ impl TextSystem {
 
 /// Cached natural shape plus the most recent width-bounded resolve.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TextReuseEntry {
+struct TextReuseEntry {
     /// Unbounded request this row answers — the freshness check, and the
     /// root every bounded key it can serve is derived from.
     key: TextShapeKey,
@@ -198,7 +198,7 @@ pub(crate) struct TextReuseEntry {
     hot: bool,
 }
 
-pub(crate) fn next_reuse_sweep_limit(len: usize) -> usize {
+pub(in crate::text) fn next_reuse_sweep_limit(len: usize) -> usize {
     len.saturating_add(1)
         .checked_next_power_of_two()
         .unwrap_or(usize::MAX)
@@ -254,12 +254,12 @@ impl WrapSlot {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::primitives::widget_id::WidgetId;
     use crate::text::TextShaper;
+    use crate::text::internals::{TestMeasure, TestShape};
     use crate::text::system::{TextRunSlot, TextSystem};
-    use crate::text::test_support::{TestMeasure, TestShape};
     use crate::text::wrap::TextWrap;
 
     impl Default for TextSystem {
@@ -274,7 +274,7 @@ pub(crate) mod test_support {
         /// a width off the row it freshened. Dispatch count is unchanged from
         /// calling [`TextSystem::measure`] alone — the root call leaves the
         /// row fresh, so the second lookup is a hit.
-        pub(crate) fn shape_run(
+        pub(in crate::text) fn shape_run(
             &mut self,
             slot: TextRunSlot,
             text: &str,
@@ -298,12 +298,12 @@ pub(crate) mod test_support {
         }
 
         /// Live reuse rows, for the sweep-bound tests.
-        pub(crate) fn entry_count(&self) -> usize {
+        pub(in crate::text) fn entry_count(&self) -> usize {
             self.entries.len()
         }
 
         /// Row count the next `end_frame` sweeps at.
-        pub(crate) fn sweep_limit(&self) -> usize {
+        pub(in crate::text) fn sweep_limit(&self) -> usize {
             self.sweep_limit
         }
     }
