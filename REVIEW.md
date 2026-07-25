@@ -2,8 +2,13 @@
 
 Supersedes `BACKEND_REVIEW.md`, `FRAME_PIPELINE_REVIEW.md`, and
 `SIMPLIFICATION_REVIEW.md`, all audited 2026-07-25 at commit `86162a5a`.
+Also absorbs `codex-review.md`, an independent frame-path review from
+2026-07-26, whose material is folded into B1–B4 and E1 (it corroborated B3
+independently, and was sharper than this document on the layout-skip gate, the
+cascade preflight mechanism, and the moved-subtree slot arena).
+
 Merged and re-verified against the working tree on 2026-07-26: every item
-below was checked against current code, and everything the three documents
+below was checked against current code, and everything the source documents
 carried that has since shipped, been withdrawn on measurement, or isn't worth
 doing is recorded at the bottom instead of taking up space at the top.
 
@@ -18,9 +23,10 @@ partly gated, then maintainability. Performance claims state whether they are
 | A2 | Modal misses Escape under popup keyboard capture | Correctness | S | **Shipped** |
 | A3 | Popup capture resolves after popup bodies read events | Correctness | S | Cross-layer fixed; same-layer needs D2 |
 | A4 | `DragValue` loses node configuration in edit mode | Correctness | S | **Shipped** |
-| B1 | Cascade preflight: O(N) verify, then unbounded re-work | Perf (derived) | M | Verified open |
-| B2 | `restore_after_cache_hit` is now the layout hot path | Perf (derived) | M | **New** — not in any source doc |
-| B3 | Damage's moved-subtree (scroll) leg | Perf (unproven) | M | Verified open |
+| B1 | Whole-scene equivalence gate before layout | Perf (derived) | M | Verified open |
+| B2 | Cascade preflight: O(N) verify, then unbounded re-work | Perf (derived) | M | Verified open |
+| B3 | `restore_after_cache_hit` is now the layout hot path | Perf (derived) | M | **New** — not in any source doc |
+| B4 | Damage's moved-subtree (scroll) leg | Perf (unproven) | M | Verified open |
 | C1 | Record replay is a second lifecycle protocol | Structural | L | Verified open; gates C3 |
 | C2 | Author-ordered render batches | Structural | L | Verified open |
 | C3 | Fuse the cascade repair walk with the damage diff | Structural | L | Blocked on C1 |
@@ -29,7 +35,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | D3 | Layout driver identity repeated across three dispatches | Maintainability | S | Verified open |
 | D4 | Measure cache's manually synchronized shadow state | Maintainability | M | Narrowed by the arrange replay |
 | D5 | Small wins bundle (3 items) | Mixed | S | **Shipped** |
-| E1–E3 | Benchmark gaps | Enabler | S | Two of five closed |
+| E1–E4 | Benchmark gaps | Enabler | S | Three of seven closed |
 
 ---
 
@@ -144,7 +150,41 @@ so comparing them would pin theme configuration rather than this fix.
 
 ## B. Performance with a measurement behind it
 
-### B1. Cascade preflight verifies O(N), then can throw the work away
+### B1. Whole-scene equivalence gate before layout
+
+`Ui::post_record` always runs layout before computing `cascade_fingerprint`,
+which is late purely by placement: the fingerprint takes only `(&Forest,
+Display)` and already covers root identity, complete subtree authoring,
+placement, surface size and scale. Computing it after rollups and reusing the
+retained `Layout` + `Cascades` on a match skips layout, cascade **and** the
+structural damage walk on an identical recorded frame — which subsumes B3's
+whole cost on that frame, leaving B3 to matter only for localized changes.
+
+**Two retained fingerprints are required, not one.** `last_derived_fp` tracks
+the most recent record pass, including an earlier pass in the *same* frame;
+`previous_final_fp` tracks the scene the damage snapshot belongs to. Pass B can
+equal pass A while both differ from the last rendered frame, so a single marker
+would incorrectly skip structural damage on exactly that frame.
+
+**The hazard is not optional.** `TextSystem::end_frame` retains only reuse rows
+whose hot bit was set *during measure*. Skipping the layout pass marks nothing
+hot, so every reuse row is evicted and the next real layout pays a full
+re-measure — turning a saved frame into a much more expensive one two frames
+later. A layout skip must also skip `text.end_frame` (or mark the frame as "no
+measure ran"). A prototype missing this reads as a regression for the wrong
+reason.
+
+Two consequences worth planning for: `FrameProcessing::SingleLayout` /
+`DoubleLayout` would start lying once layout can be skipped and should become
+record-oriented names, and `frame/cached_cpu` **cannot measure this** — see E1.
+
+Be honest about firing rate: `InputPolicy::OnDelta` (the default) already
+suppresses frames where input changed nothing, and a `request_relayout` pass B
+usually *does* differ from pass A. The reliable wins are `InputPolicy::Always`
+hosts, `request_repaint` frames whose animation is shape-keyed, close-request
+frames, and settling passes that changed no authoring.
+
+### B2. Cascade preflight verifies O(N), then can throw the work away
 
 `CascadesEngine::can_update` (`src/scene/cascade/mod.rs:489`) runs before every
 incremental cascade and does, per layer, a full `Rect` slice comparison
@@ -158,18 +198,23 @@ incremental walk already ran. **Adding one shape to one node pays preflight +
 partial incremental + full rebuild.** That is an ordinary authoring edit, not a
 pathological one.
 
-Row count per node is derivable from `chrome.is_some() + shape_span.len +
-child count` without walking, so the bail can move up front; alternatively let
-the incremental walk widen into a rebuild in place rather than restarting.
+Fold the per-node row count into `cascade_static` during the **existing**
+rollup walk. `OpenFrame::paint_rows` (`scene/tree/recording.rs:33`) already
+maintains exactly this count during recording — its own doc says it "mirrors
+the row stream `cascade::compute_paint_rect` emits" — so this needs no extra
+traversal and no new retained arena. A changed row count then fails
+`can_update` *before* incremental repair starts, the late length mismatch
+becomes a `debug_assert`, and `run_tree` no longer needs a recoverable failure
+result.
 
 The rect scan could fold into a rolling hash written during layout — but
-**sequence this after B2**, because the arrange replay now leaves whole
+**sequence this after B3**, because the arrange replay now leaves whole
 subtrees' rects unwritten, so there is no longer a single pass that touches
 every rect to fold a hash into.
 
-Needs E1 (no bench arm covers a row-count change).
+Needs E2 (no bench arm covers a row-count change).
 
-### B2. `restore_after_cache_hit` is now the layout hot path — **new finding**
+### B3. `restore_after_cache_hit` is now the layout hot path — **new finding**
 
 Not in any source document, and it is a direct consequence of shipping the
 arrange replay. Measured on `caches`, min µs over 64 frames:
@@ -197,11 +242,20 @@ Two consequences:
   appears in no review. It is a per-node loop with a branch and an add, over
   the whole tree, on every cached frame.
 
+Concrete shapes for both. **Sparse scroll content:** store sorted
+`(relative_node, Size)` rows for scroll nodes only; restoration rebases and
+appends just those rows, and the widget-side lookup can binary-search because a
+subtree holds few scroll containers. **Relative text spans:** store snapshot
+spans relative to the cached subtree's text range rather than absolute. That is
+sharper than it looks — on a root hit `dest_start` is 0, so the per-node loop
+with its branch collapses to a `copy_from_slice`, which is precisely the hot
+case.
+
 Both are **derived, not measured** — split `restore_after_cache_hit` in the
-bench (E3) before committing to either. That discipline is what made the
+bench (E4) before committing to either. That discipline is what made the
 arrange replay provable and what killed the backend's bind-tracking item.
 
-### B3. Damage's moved-subtree (scroll) leg
+### B4. Damage's moved-subtree (scroll) leg
 
 Tier 1.5 in `DamageEngine::compute` handles the scroll/pan case, and for
 **every node** in a jumped subtree does a `prev_map` hash probe, a
@@ -209,12 +263,17 @@ Tier 1.5 in `DamageEngine::compute` handles the scroll/pan case, and for
 every frame of every scroll gesture over a long list.
 
 Inside the jump the structure is known identical to last frame, so N hash
-probes could become N pointer bumps via a per-snapshot pre-order link. The
+probes could become N pointer bumps. Concretely: change the retained snapshot
+from `WidgetId -> NodeSnapshot` to `WidgetId -> stable slot` plus
+`slot -> NodeSnapshot + next_preorder`, with the slot arena a retained `Vec` and
+a free list. A moved subtree then pays one hash lookup for its root and
+sequential slot access for every descendant, while structural paths keep the map
+for identity, additions, removals and reparenting. The
 copy is a separate question and a bigger change (owner-local rows plus a
 per-node screen origin).
 
 **Unproven**, and the code notes it was already optimized once — a per-row hash
-matcher that was ~18% of a scrolling frame. Needs E2 to say whether probe or
+matcher that was ~18% of a scrolling frame. Needs E3 to say whether probe or
 memcpy dominates before choosing.
 
 ---
@@ -323,7 +382,7 @@ forgetting any one corrupts arrange silently" — still stands, but the arrange
 replay **narrowed it**: skip and translate never read `grid.hugs`, so the
 restore is dead work on the hot path and live only on the resize-bail path.
 Making it lazy is the remaining piece, and it is a measured change, not a
-freebie. Do it with B2.
+freebie. Do it with B3.
 
 ### D5. Small wins bundle — **shipped**
 
@@ -345,13 +404,19 @@ freebie. Do it with B2.
 
 ## E. Benchmark gaps
 
-Three of the original five are closed. What remains gates B1 and B3.
+Three of the original seven are closed. What remains gates B1, B2 and B4.
 
 | | Gap | Metric | Control |
 | --- | --- | --- | --- |
-| E1 | Cascade with a paint-row **count** change | CPU in `CascadesEngine::run` | Paint-only change (incremental succeeds) |
-| E2 | Scroll over a long list (moved subtree, no authoring change) | CPU in `DamageEngine::compute`; probes vs bytes copied | Static list |
-| E3 | `restore_after_cache_hit` split by column | CPU per restored column | — |
+| E1 | Identical-record lifecycle: record + rollup + gate + damage, **without** forced frontend work | CPU per frame | `frame/cached_cpu` |
+| E2 | Cascade with a paint-row **count** change | CPU in `CascadesEngine::run` | Paint-only change (incremental succeeds) |
+| E3 | Scroll over a long list (moved subtree, no authoring change) | CPU in `DamageEngine::compute`; probes vs bytes copied | Static list |
+| E4 | `restore_after_cache_hit` split by column | CPU per restored column | Forced miss, and B1's whole-scene skip |
+
+`frame/cached_cpu` cannot serve as E1: it deliberately substitutes a `Full`
+plan after `Damage::Skip` so every CPU arm measures the same pipeline, which
+means it *always* includes whole-tree encode + compose. It is a valid
+whole-frame number and the wrong instrument for a lifecycle skip.
 
 Measure release builds. Counts explain a result; they never replace elapsed
 time.
