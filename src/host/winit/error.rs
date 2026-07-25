@@ -3,6 +3,30 @@ use std::fmt::{Display, Formatter};
 
 use crate::window::WindowToken;
 
+/// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no
+/// longer deliver to it.
+///
+/// Reported by [`HostHandle::run_on_main`](crate::HostHandle::run_on_main)
+/// alone, because it is the only poke carrying **owned work**: a lost send
+/// destroys the closure and the application-state mutation it would have
+/// performed, which the caller has no other way to observe. `request_repaint`
+/// and `quit` carry no payload — losing either against a loop that is already
+/// leaving costs nothing — so they stay fire-and-forget.
+///
+/// Zero-sized: there is exactly one way to fail, and the closure is not handed
+/// back because there would be no `&mut T` left to run it against. Its
+/// captures drop with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HostDisconnected;
+
+impl Display for HostDisconnected {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("host event loop has exited; the scheduled work was not delivered")
+    }
+}
+
+impl Error for HostDisconnected {}
+
 /// Failure while constructing or running a [`WinitHost`](crate::WinitHost).
 #[derive(Debug)]
 #[non_exhaustive]
@@ -126,7 +150,7 @@ impl Error for WinitHostError {
 mod tests {
     use std::error::Error;
 
-    use crate::host::winit::error::WinitHostError;
+    use crate::host::winit::error::{HostDisconnected, WinitHostError};
 
     #[test]
     fn host_errors_preserve_sources_and_explain_capability_failures() {
@@ -149,5 +173,28 @@ mod tests {
             "graphics adapter limit max_immediate_size is 8, but Aperture requires 16"
         );
         assert!(capability.source().is_none());
+    }
+
+    #[test]
+    fn host_disconnected_reports_the_loss_and_costs_nothing_to_return() {
+        // `run_on_main` returns this by value on a path the caller reaches
+        // during shutdown; a payload would be dead weight, since there is
+        // no `&mut T` left to re-run the closure against.
+        assert_eq!(size_of::<HostDisconnected>(), 0);
+
+        // The message has to name the consequence, not just the cause —
+        // "event loop exited" alone reads as routine shutdown, while the
+        // point is that submitted work was thrown away.
+        let err = HostDisconnected;
+        assert_eq!(
+            err.to_string(),
+            "host event loop has exited; the scheduled work was not delivered"
+        );
+        assert!(err.source().is_none());
+
+        // Usable through `?` into a boxed error, which is how a background
+        // thread would actually propagate it.
+        let boxed: Box<dyn Error> = Box::new(err);
+        assert!(boxed.to_string().contains("not delivered"));
     }
 }

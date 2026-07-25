@@ -60,7 +60,7 @@ pub use host::offscreen::{InvalidScaleFactorError, OffscreenHost, OffscreenHostB
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
     config::WinitHostConfig,
-    error::WinitHostError,
+    error::{HostDisconnected, WinitHostError},
     handle::{HostHandle, UserEvent},
 };
 pub use input::InputEvent;
