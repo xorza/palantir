@@ -224,12 +224,12 @@ pub(crate) trait PaintSink {
     /// Composite a `GpuView` over its full arranged `rect` and schedule
     /// its off-screen paint. Same draw as any image — the callback rides
     /// alongside the payload so the sink can list the off-screen target.
-    fn draw_gpu_view(&mut self, rect: Rect, handle: TextureId, paint: GpuPaintRef) {
+    fn draw_gpu_view(&mut self, rect: Rect, handle: TextureId, paint: &GpuPaintRef) {
         let payload = DrawImagePayload::gpu_view(rect, handle);
         if payload.is_noop() {
             return;
         }
-        self.image(payload, Some(&paint));
+        self.image(payload, Some(paint));
     }
 
     fn draw_curve(&mut self, payload: DrawCurvePayload) {
@@ -304,8 +304,12 @@ mod tests {
     use crate::renderer::frontend::paint_sink::PaintSink;
     use crate::renderer::frontend::payload::{BrushSource, DrawPolylinePayload};
     use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
+    use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
+    use crate::renderer::texture_id::TextureId;
     use crate::scene::shapes::paint::ShapeStroke;
     use glam::Vec2;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
     fn polyline_payload_gate_uses_the_canonical_scalar_noop_policy() {
@@ -430,6 +434,59 @@ mod tests {
             } else {
                 assert_eq!(tp.stroke_color, ColorF16::from(green), "case {label}");
             }
+        }
+    }
+
+    /// The `GpuView` gate. A collapsed view emits *nothing*: no image
+    /// draw and no callback, so the composer schedules no off-screen
+    /// target for a widget that can't paint. A live one records the
+    /// payload and its callback as a single call — the composite and the
+    /// target it needs can't come apart. The null-handle arm of
+    /// `is_noop` is deliberately unreachable here: a `GpuView`'s texture
+    /// is framework-painted and `TextureId(0)` is never minted.
+    #[test]
+    fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
+        #[derive(Debug)]
+        struct NoopGpuPaint;
+
+        impl GpuPaint for NoopGpuPaint {
+            fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
+        }
+
+        let paint = GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)));
+        let handle = TextureId(7);
+        let cases = [
+            ("zero_width", Rect::new(0.0, 0.0, 0.0, 10.0), false),
+            ("zero_height", Rect::new(0.0, 0.0, 10.0, 0.0), false),
+            ("live", Rect::new(1.0, 2.0, 10.0, 10.0), true),
+        ];
+
+        for (label, rect, expect_call) in cases {
+            let mut sink = RecordedPaint::default();
+            sink.draw_gpu_view(rect, handle, &paint);
+            if !expect_call {
+                assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);
+                continue;
+            }
+            let [
+                PaintCall::Image {
+                    payload,
+                    paint: got,
+                },
+            ] = sink.calls.as_slice()
+            else {
+                panic!(
+                    "case {label}: expected one Image call, got {:?}",
+                    sink.calls
+                );
+            };
+            assert_eq!(got.as_ref(), Some(&paint), "case {label}");
+            assert_eq!(payload.rect, rect, "case {label}");
+            assert_eq!(payload.handle, handle, "case {label}");
+            assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
+            assert_eq!(payload.uv_size, Vec2::ONE, "case {label}");
+            assert_eq!(payload.flags, 0, "case {label}");
+            assert_eq!(payload.tint, ColorF16::from(Color::WHITE), "case {label}");
         }
     }
 }

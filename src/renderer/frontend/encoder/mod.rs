@@ -542,7 +542,7 @@ fn emit_one_shape<S: PaintSink>(
             // `epoch` only affects the shape hash (damage), not the draw.
             let wid = ctx.tree.records.widget_id()[id.idx()];
             let view = &ctx.gpu_views[&wid];
-            out.draw_gpu_view(owner_rect, view.texture_id, view.paint.clone());
+            out.draw_gpu_view(owner_rect, view.texture_id, &view.paint);
         }
     }
 }
