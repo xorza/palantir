@@ -427,11 +427,12 @@ impl<'a> DragValue<'a> {
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.node.max_size.unwrap_or(Size::INF));
-            let edit = if let Some(editor) = editor {
+            let mut edit = if let Some(editor) = editor {
                 edit.style(editor)
             } else {
                 edit
             };
+            inherit_chip_node(self.node, &mut edit.node);
             let resp = edit.show(ui);
             resp.submitted
         };
@@ -450,6 +451,69 @@ impl<'a> DragValue<'a> {
             committed: submitted,
         }
     }
+}
+
+/// Carry the caller's node policy from the chip onto the inline editor.
+///
+/// The destructure is exhaustive on purpose: a new `Node` field must be
+/// given a policy here rather than silently vanishing when the field flips
+/// to edit mode. That silent loss is the defect this exists to prevent —
+/// padding, margin, alignment, grid placement and canvas position all used
+/// to disappear on the edit frame, visibly moving and resizing the widget
+/// mid-interaction.
+fn inherit_chip_node(chip: Node, editor: &mut Node) {
+    let Node {
+        // Identity and layout mode belong to the editor: it deliberately
+        // shares the chip's resolved `WidgetId` (same focus, same state
+        // row), and it is a scrolling text field whatever the chip was.
+        salt: _,
+        mode: _,
+        // Sizing is resolved by the caller, which pins the width to the
+        // chip's last rect so a long value scrolls instead of growing the
+        // row. Forwarding the raw values here would undo that.
+        size: _,
+        min_size: _,
+        max_size: _,
+        // `TextEdit::new` pins `ClipMode::Rect` so glyphs cannot spill past
+        // the field; a caller's clip choice must not relax that.
+        clip: _,
+        // Box parity across the swap is the *theme's* job —
+        // `DragValueTheme::from_chip` mirrors the chip's padding onto the
+        // editor for exactly that reason — and the chip itself resolves its
+        // padding from the theme rather than from this node. Forwarding it
+        // would make the editor honour a value the chip ignores, which is a
+        // new divergence rather than a fix, and it perturbs the editor's
+        // intrinsic height. Margin below is different: nothing else carries
+        // it, so without this the field visibly shifts.
+        padding: _,
+        // Interior child configuration — the editor owns its one child.
+        gaps: _,
+        justify: _,
+        child_align: _,
+        // The editor senses as a text field, not as a click/drag chip.
+        flags: _,
+        // `TextEdit` wraps a `Scroll`, which overwrites `transform` with its
+        // pan offset (see `scroll::scroll_wrappers`), so forwarding one
+        // would read as supported while doing nothing.
+        transform: _,
+        // Everything below places the widget inside its parent or sets its
+        // box metrics. These are what must survive the swap.
+        margin,
+        align,
+        position,
+        grid,
+        visibility,
+    } = chip;
+
+    // `None` means "no caller opinion" — leave the editor's own theme
+    // default standing rather than overwriting it with zero.
+    if let Some(margin) = margin {
+        editor.margin = Some(margin);
+    }
+    editor.align = align;
+    editor.position = position;
+    editor.grid = grid;
+    editor.visibility = visibility;
 }
 
 impl Configure for DragValue<'_> {

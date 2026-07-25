@@ -45,7 +45,10 @@ struct TextEditState {
 /// are repaired before each input pass.
 #[derive(Debug)]
 pub struct TextEdit<'a> {
-    node: Node,
+    /// `pub(crate)` for `DragValue`, which swaps its chip for an inline
+    /// editor and has to carry the caller's node policy across the swap
+    /// (see `drag_value::inherit_chip_node`).
+    pub(crate) node: Node,
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
     placeholder: Cow<'static, str>,

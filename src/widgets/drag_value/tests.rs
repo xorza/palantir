@@ -680,3 +680,98 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     ui.request_focus(Some(id));
     ui.run_at(surface, |ui| draw(ui, &mut v));
 }
+
+/// Entering edit mode must not move, resize, or re-place the widget.
+///
+/// The chip and the inline editor are two different widgets sharing one
+/// `WidgetId`, so every field of the caller's `Node` that positions the
+/// widget in its parent has to be carried across the swap by hand. It
+/// wasn't: padding, margin, alignment, canvas position and grid placement
+/// were all dropped, so clicking to type visibly jumped the field.
+///
+/// Rather than enumerate the fields a second time, this records the same
+/// configured `DragValue` twice — once as a chip, once focused as an
+/// editor — and asserts the *recorded* layout matches. Any inherited field
+/// that stops being carried shows up here as a divergence, including
+/// fields added later.
+#[test]
+fn entering_edit_mode_preserves_the_callers_node_placement() {
+    use crate::layout::types::align::Align;
+    use crate::primitives::size::Size;
+    use crate::primitives::spacing::Spacing;
+    use crate::scene::layer::Layer;
+
+    const POSITION: Vec2 = Vec2::new(23.0, 11.0);
+    let padding = Spacing::all(7.0);
+    let margin = Spacing::all(3.0);
+
+    let id = WidgetId::from_hash("configured-drag-value");
+    // A `Canvas` parent so `position` is honoured rather than ignored.
+    let scene = |ui: &mut Ui| {
+        let mut v = 1.5_f64;
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                DragValue::new(&mut v)
+                    .editable(true)
+                    .id(id)
+                    .padding(padding)
+                    .margin(margin)
+                    .align(Align::CENTER)
+                    .position(POSITION)
+                    .min_size(Size::new(40.0, 20.0))
+                    .max_size(Size::new(200.0, 60.0))
+                    .show(ui);
+            });
+    };
+
+    /// Recorded placement of `id` — the fields the swap must preserve.
+    ///
+    /// Padding and minimum height are excluded on purpose: both modes
+    /// resolve those from their own theme and intrinsics (a text editor has
+    /// a line-height floor a chip does not), so they are not carried by the
+    /// node policy and comparing them would pin theme configuration rather
+    /// than this fix.
+    fn placement(ui: &Ui, id: WidgetId) -> (Spacing, Align, Vec2, Size) {
+        let tree = &ui.forest.trees[Layer::Main];
+        let index = tree
+            .records
+            .widget_id()
+            .iter()
+            .position(|w| *w == id)
+            .expect("drag value node");
+        let layout = tree.records.layout()[index];
+        let bounds = tree.bounds(NodeId(index as u32));
+        (
+            layout.margin,
+            layout.meta.align(),
+            bounds.position,
+            bounds.max_size,
+        )
+    }
+
+    let mut ui = Ui::for_test();
+    ui.run_at(UVec2::new(300, 100), scene);
+    let chip = placement(&ui, id);
+
+    // Focus flips the same widget to its inline editor.
+    ui.request_focus(Some(id));
+    ui.run_at_without_baseline(UVec2::new(300, 100), scene);
+    let editor = placement(&ui, id);
+
+    assert_eq!(
+        chip, editor,
+        "edit mode dropped part of the caller's node policy \
+         (margin, align, position, max_size)",
+    );
+    // Guard against the test going inert if the editor path stops being
+    // taken at all — then both frames would be chips and match trivially.
+    assert!(
+        matches!(
+            ui.state_mut::<DragValueState>(id),
+            DragValueState::Editing { .. }
+        ),
+        "second frame must have recorded the inline editor",
+    );
+}
