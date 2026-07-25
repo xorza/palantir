@@ -1,4 +1,5 @@
 mod curve_pipeline;
+mod debug_marker;
 mod dynamic_buffer;
 mod format_pipelines;
 pub(crate) mod gpu_ctx;
@@ -851,7 +852,7 @@ impl WgpuBackend {
             |step| match step {
                 RenderStep::PreClear => {
                     mark(pass, BatchKind::PreClear);
-                    pass.push_debug_group("preclear");
+                    debug_marker::push(pass, "preclear");
                     // bind → push viewport → draw. Pushing after the
                     // draw (or skipping it) leaves the clear quad
                     // reading whatever's in the immediate region —
@@ -865,7 +866,7 @@ impl WgpuBackend {
                     // Distinct vertex buffer (clear_buffer); next
                     // non-clear step re-binds.
                     bound = Bound::None;
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::SetScissor(r) => {
                     pass.set_scissor_rect(r.x, r.y, r.w, r.h);
@@ -875,40 +876,40 @@ impl WgpuBackend {
                 }
                 RenderStep::MaskStamp(mi) => {
                     mark(pass, BatchKind::Mask);
-                    pass.push_debug_group("mask_stamp");
+                    debug_marker::push(pass, "mask_stamp");
                     rebind!(
                         Bound::MaskStamp,
                         self.quad
                             .bind_mask(pass, &fmt.quad_mask_stamp, &self.gradient.bg)
                     );
                     self.quad.draw_mask(pass, mi);
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::MaskClear(mi) => {
                     mark(pass, BatchKind::Mask);
-                    pass.push_debug_group("mask_clear");
+                    debug_marker::push(pass, "mask_clear");
                     rebind!(
                         Bound::MaskClear,
                         self.quad
                             .bind_mask(pass, &fmt.quad_mask_clear, &self.gradient.bg)
                     );
                     self.quad.draw_mask(pass, mi);
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::Quads { range } => {
                     mark(pass, BatchKind::Quads);
-                    pass.push_debug_group("quads");
+                    debug_marker::push(pass, "quads");
                     rebind!(
                         Bound::QuadInstance,
                         self.quad
                             .bind(pass, &fmt.quad, use_stencil, &self.gradient.bg)
                     );
                     self.quad.draw_range(pass, range);
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::Text { batch } => {
                     mark(pass, BatchKind::Text);
-                    pass.push_debug_group("text");
+                    debug_marker::push(pass, "text");
                     // `render_batch` pushes both halves of the
                     // immediate region (viewport at offset 0, params
                     // at offset 8) itself. Subsequent non-text steps
@@ -917,11 +918,11 @@ impl WgpuBackend {
                     self.text
                         .render_batch(batch, pass, &fmt.text, use_stencil, &viewport);
                     bound = Bound::None;
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::MeshBatch { batch } => {
                     mark(pass, BatchKind::Mesh);
-                    pass.push_debug_group("meshes");
+                    debug_marker::push(pass, "meshes");
                     rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
                     let range = buffer.mesh_batches[batch].items;
                     let start = range.start as usize;
@@ -939,11 +940,11 @@ impl WgpuBackend {
                             (start + offset) as u32,
                         );
                     }
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::ImageBatch { batch } => {
                     mark(pass, BatchKind::Image);
-                    pass.push_debug_group("images");
+                    debug_marker::push(pass, "images");
                     rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
                     let range = buffer.image_batches[batch].items;
                     let start = range.start as usize;
@@ -951,11 +952,11 @@ impl WgpuBackend {
                     for (offset, id) in buffer.images.id()[start..end].iter().enumerate() {
                         self.image.draw(pass, *id, (start + offset) as u32);
                     }
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
                 RenderStep::CurveBatch { batch } => {
                     mark(pass, BatchKind::Curve);
-                    pass.push_debug_group("curves");
+                    debug_marker::push(pass, "curves");
                     rebind!(
                         Bound::Curve,
                         self.curve
@@ -963,7 +964,7 @@ impl WgpuBackend {
                     );
                     let range = buffer.curve_batches[batch].items;
                     self.curve.draw(pass, range.start..range.start + range.len);
-                    pass.pop_debug_group();
+                    debug_marker::pop(pass);
                 }
             },
         );

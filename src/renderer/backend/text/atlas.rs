@@ -1,5 +1,6 @@
 //! Glyph atlas: one struct for both mask + color content.
 
+use crate::renderer::backend::debug_marker;
 use crate::text::render::{GlyphPlacement, GlyphRasterKey};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
@@ -310,8 +311,7 @@ impl GlyphAtlas {
         for side in &mut self.sides {
             if let Some(pg) = side.pending_grow.take() {
                 if !any_grow {
-                    ctx.encoder
-                        .push_debug_group("aperture text atlas grow blit");
+                    debug_marker::push_encoder(ctx.encoder, "aperture text atlas grow blit");
                     any_grow = true;
                 }
                 ctx.encoder.copy_texture_to_texture(
@@ -326,7 +326,7 @@ impl GlyphAtlas {
             }
         }
         if any_grow {
-            ctx.encoder.pop_debug_group();
+            debug_marker::pop_encoder(ctx.encoder);
         }
 
         if self.pending_copies.is_empty() {
@@ -346,8 +346,7 @@ impl GlyphAtlas {
         let buf = self.staging_buf.as_ref().unwrap();
         ctx.write(buf, 0, &self.pending_staging[..self.pending_staging_used]);
 
-        ctx.encoder
-            .push_debug_group("aperture text atlas batch upload");
+        debug_marker::push_encoder(ctx.encoder, "aperture text atlas batch upload");
         for c in &self.pending_copies {
             let side = &self.sides[c.side as usize];
             ctx.encoder.copy_buffer_to_texture(
@@ -376,7 +375,7 @@ impl GlyphAtlas {
                 },
             );
         }
-        ctx.encoder.pop_debug_group();
+        debug_marker::pop_encoder(ctx.encoder);
 
         self.pending_staging_used = 0;
         self.pending_copies.clear();
