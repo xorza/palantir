@@ -33,7 +33,9 @@ use std::num::NonZeroU32;
 
 mod higher_kind;
 mod occlusion;
-mod text_grid;
+// `pub(crate)` only so the `text_grid` benchmark can reach the gated
+// `internals` harness; every item inside stays `pub(super)`.
+pub(crate) mod text_grid;
 
 use higher_kind::HigherKindRects;
 use occlusion::OcclusionPruner;
