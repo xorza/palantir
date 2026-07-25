@@ -8,7 +8,9 @@
 # script makes the matrix explicit.
 #
 # Combos covered:
-#   - no features        (production-shaped build)
+#   - no default features (host-less: the renderer without `winit-host`,
+#                         the shape an embedding host compiles)
+#   - default features   (production-shaped build: winit host + clipboard)
 #   - internals          (cache helpers + render-debug knobs +
 #                         damage fixtures + the deeper bench targets)
 #   - showcase           (bundled widget-tour binary + logging setup)
@@ -40,7 +42,7 @@ banner() { printf '\n%s== %s ==%s\n' "$bold" "$1" "$reset"; }
 step()   { printf '%s-> %s%s\n' "$dim" "$1" "$reset"; }
 
 COMBOS=(
-  ""                       # no features
+  ""                       # default features
   "internals"
   "showcase"
   "profile-with-tracy"
@@ -54,8 +56,17 @@ if [[ "${FAST:-0}" != "1" ]]; then
   RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 fi
 
+banner "features = <no-default>"
+if [[ "${FAST:-0}" != "1" ]]; then
+  step "clippy"
+  cargo clippy --all-targets --no-default-features -- -D warnings
+fi
+
+step "test"
+cargo test --no-default-features
+
 for features in "${COMBOS[@]}"; do
-  label="${features:-<none>}"
+  label="${features:-<default>}"
   banner "features = $label"
 
   if [[ "${FAST:-0}" != "1" ]]; then

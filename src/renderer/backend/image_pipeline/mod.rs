@@ -177,6 +177,7 @@ impl ImagePipeline {
     /// Per-submit eviction only ever frees the *submitting* owner's absent
     /// targets, so a closed window's targets have no submit left to be absent
     /// from and would be retained by every surviving window forever.
+    #[cfg_attr(not(feature = "winit-host"), allow(dead_code))]
     pub(super) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets
             .retire_owner(owner, &mut self.textures);

@@ -1033,6 +1033,9 @@ impl WgpuBackend {
     /// frame does not lose its views. A closed window never submits again, so
     /// without this its textures and bind groups would be held by every
     /// surviving window until the host shuts down.
+    // `allow` rather than `cfg`: the winit host is only the current caller, not
+    // the only conceivable one — an embedding host needs this entry point too.
+    #[cfg_attr(not(feature = "winit-host"), allow(dead_code))]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.image.retire_render_owner(owner);
     }
