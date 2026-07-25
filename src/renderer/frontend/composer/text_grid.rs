@@ -140,6 +140,7 @@ impl TextRectGrid {
         let cy0 = (r.y / TILE_SIZE).min(max_y);
         let cx1 = ((r.x + r.w - 1) / TILE_SIZE).min(max_x);
         let cy1 = ((r.y + r.h - 1) / TILE_SIZE).min(max_y);
+        let mut spilled = false;
         for ty in cy0..=cy1 {
             let row = ty * self.cols;
             for tx in cx0..=cx1 {
@@ -154,9 +155,16 @@ impl TextRectGrid {
                         self.touched.push(tile_idx as u32);
                     }
                 } else {
-                    self.spill.push(idx);
+                    spilled = true;
                 }
             }
+        }
+        // One entry however many of the spanned tiles were full: the
+        // spill list is scanned tile-blind with an exact rect intersect,
+        // so a second copy can only make every future query re-test the
+        // same rect. Appended after the loop rather than per full tile.
+        if spilled {
+            self.spill.push(idx);
         }
     }
 
@@ -202,6 +210,84 @@ impl TextRectGrid {
         self.rects[TILE_INDEX_CAPACITY.min(self.rects.len())..]
             .iter()
             .any(|r| r.intersect(q).is_some())
+    }
+}
+
+// `internals` only, not `any(test, …)`: the sole consumer is the
+// `text_grid` benchmark, which that feature gates too.
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use super::*;
+
+    /// Saturated-grid harness for the `text_grid` benchmark — the
+    /// pathological batch the spill list exists to absorb, which no
+    /// realistic workload reaches: a row of tiles each holding more than
+    /// [`TILE_CAP`] text rects, plus wide rects spanning every one of
+    /// them. The wide rects are the interesting part: with all their
+    /// tiles full they are reachable *only* through the tile-blind spill
+    /// scan, and every query pays for the whole list.
+    #[derive(Debug)]
+    pub(crate) struct GridBench {
+        grid: TextRectGrid,
+        tiles: u32,
+        wide: u32,
+    }
+
+    impl GridBench {
+        /// `tiles` saturated tiles across, `wide` rects spanning all of
+        /// them.
+        pub(crate) fn new(tiles: u32, wide: u32) -> Self {
+            let mut bench = Self {
+                grid: TextRectGrid::default(),
+                tiles,
+                wide,
+            };
+            bench
+                .grid
+                .start_frame(UVec2::new(tiles * TILE_SIZE, TILE_SIZE));
+            bench.register();
+            bench
+        }
+
+        /// Fill each tile past capacity, then lay the spanning rects in
+        /// the y-band the small ones leave free so they overlap the same
+        /// saturated tiles without stacking on each other.
+        fn register(&mut self) {
+            for tx in 0..self.tiles {
+                for i in 0..(TILE_CAP as u32 + 2) {
+                    self.grid.push(URect::new(tx * TILE_SIZE + 1, i * 3, 8, 2));
+                }
+            }
+            for i in 0..self.wide {
+                self.grid
+                    .push(URect::new(0, TILE_SIZE / 2 + i, self.tiles * TILE_SIZE, 1));
+            }
+        }
+
+        /// One compose-shaped round: rebuild the batch, then run one
+        /// overlap query per tile the way the composer probes per quad.
+        /// Returns the hit count so nothing can be elided.
+        pub(crate) fn round(&mut self) -> usize {
+            self.grid.clear();
+            self.register();
+            let mut hits = 0;
+            for tx in 0..self.tiles {
+                for y in 0..TILE_SIZE {
+                    if self
+                        .grid
+                        .any_overlap(URect::new(tx * TILE_SIZE + 2, y, 4, 1))
+                    {
+                        hits += 1;
+                    }
+                }
+            }
+            hits
+        }
+
+        /// Entries every query re-tests linearly — the secondary metric.
+        pub(crate) fn spill_len(&self) -> usize {
+            self.grid.spill.len()
+        }
     }
 }
 
@@ -292,12 +378,16 @@ mod tests {
         let mut g = TextRectGrid::default();
         g.start_frame(UVec2::new(256, 256));
         // 10 rects all overlapping tiles (0,0) and (1,0): tile 0 holds
-        // TILE_CAP inline, 2 spill; tile 1 the same.
+        // TILE_CAP inline, tile 1 the same, and the last 2 fit neither.
         for i in 0..10u32 {
             g.push(URect::new(60, i * 3, 8, 2));
         }
         assert_eq!(g.lens[0] as usize, TILE_CAP);
-        assert_eq!(g.spill.len(), 4, "2 spilled per spanned tile");
+        assert_eq!(
+            g.spill.len(),
+            2,
+            "one entry per spilled rect, not one per full tile it spans",
+        );
         // The 9th rect (y=24..26) exists only in spill for both tiles;
         // a query touching just it must still hit.
         assert!(g.any_overlap(URect::new(60, 24, 1, 1)));
@@ -306,6 +396,29 @@ mod tests {
         g.clear();
         assert!(!g.any_overlap(URect::new(60, 24, 1, 1)));
         assert_eq!(g.spill.len(), 0);
+
+        // Widen the axis: three neighbouring tiles saturated, then one
+        // rect spanning all three. It is unfindable by tile — every one
+        // is full — so the single spill entry has to carry it, and a
+        // per-tile push would have queued three copies for every future
+        // query to re-test.
+        for tx in 0..3u32 {
+            for i in 0..TILE_CAP as u32 {
+                g.push(URect::new(tx * 64 + 1, i * 3, 8, 2));
+            }
+        }
+        assert_eq!(g.spill.len(), 0, "each rect fits inside its own tile");
+        // y = 30 is clear of the saturating rects (they occupy y 0..23),
+        // so a hit here can only come from this rect.
+        g.push(URect::new(0, 30, 192, 2));
+        assert_eq!(g.spill.len(), 1, "one entry for three saturated tiles");
+        for tx in 0..3u32 {
+            assert!(
+                g.any_overlap(URect::new(tx * 64 + 2, 30, 1, 1)),
+                "spanning rect must be found from tile {tx}",
+            );
+        }
+        assert!(!g.any_overlap(URect::new(2, 40, 1, 1)));
     }
 
     #[test]
