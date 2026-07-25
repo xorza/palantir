@@ -598,10 +598,7 @@ impl WgpuBackend {
             }
         };
         if let RepaintScissors::Partial(rects) = &repaint_scissors {
-            tracing::trace!(
-                rects = rects.iter().count(),
-                "wgpu_backend.submit.pass.partial"
-            );
+            tracing::trace!(rects = rects.len(), "wgpu_backend.submit.pass.partial");
         } else {
             tracing::trace!("wgpu_backend.submit.pass.full");
         }
@@ -781,7 +778,7 @@ impl WgpuBackend {
                     self.render_groups(fmt, &mut pass, buffer, None, use_stencil)
                 }
                 RepaintScissors::Partial(rects) => {
-                    let rect_count = rects.iter().count();
+                    let rect_count = rects.len();
                     for (i, r) in rects.iter().enumerate() {
                         tracing::trace!(
                             rect = i,

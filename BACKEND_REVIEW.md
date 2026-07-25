@@ -42,10 +42,10 @@ Priority summary:
 | --- | --- | --- | --- | --- | --- |
 | P1 | Feature-gate per-step debug markers | CPU command recording, scales with draw steps | Low | Small reduction | Shipped `bfe5c493` |
 | P1 | Coalesce same-texture image runs; cache the last binding | Bind/draw count, per-draw hash probes | Low | Small increase | Coalescing shipped; last-binding cache dropped — see below |
-| P2 | Split bind tracking into pipeline / group-0 / vertex buffer, include text | Redundant `set_*` commands | Low–medium | Increase (~40 lines) | Open |
+| P2 | Split bind tracking into pipeline / group-0 / vertex buffer, include text | Redundant `set_*` commands | Low–medium | Increase (~40 lines) | **Withdrawn** — `record_pass` puts the ceiling below 1% of a frame |
 | P2 | Let `ImageTextures` own its bind-group layout + sampler | Signature consolidation | Low | Reduction | Shipped `c37d8006` |
-| P2 | Move `text/mod.rs`'s gated tests into `text/tests.rs` | Navigability; project convention | None | Neutral (move) | Open |
-| P3 | Small cleanups bundle (7 items) | Clarity, ~60 lines | Low | Reduction | 6 open; #3 (span arithmetic) done with the image work |
+| P2 | Move `text/mod.rs`'s gated tests into `text/tests.rs` | Navigability; project convention | None | Neutral (move) | Shipped — 1032 → 401 lines |
+| P3 | Small cleanups bundle (7 items) | Clarity, ~60 lines | Low | Reduction | 4 open; #1, #3, #5 shipped |
 
 P1 here means "measure and do first", not "assume the result".
 
@@ -166,7 +166,28 @@ Verification:
   many-distinct-icons workload — its current shape is one texture and
   fragment-bound, so it cannot see this at all.
 
-## P2 — Bind tracking models one state where the pass has three
+## P2 — Bind tracking models one state where the pass has three — **withdrawn**
+
+The `record_pass` bench (built for the coverage gap below) measured the ceiling
+and it is not worth taking. Deriving from its arms: the `groups` pair gives a
+generic cost of **~11 ns per recorded step**; `text/per_group`'s 768 steps
+should cost ~8.8 µs at that rate and cost ~17.5 µs, so a text batch carries a
+**~29 ns premium** over a generic step. Removing 3 of the 5–6 unconditional
+commands recovers maybe 4 µs — on a fixture deliberately engineered to produce
+**256 consecutive text batches** via strict-bounds clipping. Real frames do not:
+text batches span groups by design, so they only split when clipped text is cut
+in X. The `PreClear → Quads` seam is 2 commands × ≤8 damage rects ≈ **0.2 µs**.
+
+Whole main-pass recording is single-digit µs against a ~146 µs CPU frame, so
+this item's ceiling is a fraction of a percent, on frames that are already
+unusual. The original finding's hedge was right for the wrong reason: the
+limiter is not the `Quads → Text → Quads` alternation, it is that recording is
+not a large enough slice of the frame to matter.
+
+Original finding follows.
+
+---
+
 
 `render_groups` tracks a single `Bound` enum and re-issues the whole
 pipeline + bind group + vertex buffer triple whenever it changes. But the pass
@@ -227,7 +248,18 @@ removes roughly ten threaded parameters and both `allow`s. `ImagePipeline::build
 then reads `&self.textures.bgl`, which is the only other consumer. This is pure
 consolidation — no behaviour change, no new type.
 
-## P2 — `text/mod.rs` is 61% gated test code
+## P2 — `text/mod.rs` is 61% gated test code — **shipped**
+
+`mod.rs` is now 401 lines of production; the `internals` fixture, the wire-layout
+pins, and the `gpu_regression` suite moved to `text/tests.rs` (641 lines) behind
+one `#[cfg(test)] mod tests;`. The GPU suite keeps its `internals` gate, nested
+inside the file rather than repeated per mod, so the default headless
+`cargo test` stays GPU-free. All 14 text tests still pass.
+
+Original finding follows.
+
+---
+
 
 `text/mod.rs` is 1032 lines, of which lines 400-1032 are the
 `#[cfg(all(test, feature = "internals"))] mod internals` fixture and the
@@ -248,7 +280,13 @@ test corpus by deleting cases" still holds.
 
 Each of these is independently mergeable and removes code.
 
-1. **`PartialScissors` splits a head off a small array for no reason.**
+1. ~~**`PartialScissors` splits a head off a small array for no reason.**~~
+   **Done.** Now a plain `ArrayVec` with `len()` / `iter()`; the two
+   `rects.iter().count()` call sites in `mod.rs` became `len()`, and the O(n)
+   `remove(0)` and the `once().chain()` iterator are gone. The non-emptiness
+   invariant stays where it always actually lived — the constructor's
+   `assert!` — and the type doc now says so, so nobody re-derives the split.
+   Original finding:
    `viewport.rs:23-41` stores `first: URect` plus `rest: ArrayVec`, built with
    `rects.remove(0)` (an O(n) shift) and iterated as `once(first).chain(rest)`.
    The only thing the split buys is a non-empty guarantee that the existing
@@ -286,7 +324,17 @@ Each of these is independently mergeable and removes code.
    fast-path precondition the clear quad does, so it runs the full rounded-rect
    SDF over the whole viewport. Debug-only, but free to fix in the same edit.
 
-5. **`bind_clear` contradicts the schedule's documented invariant.**
+5. ~~**`bind_clear` contradicts the schedule's documented invariant.**~~
+   **Done — dropped the call**, rather than amending the doc, because the
+   redundancy is provable rather than probable: a render pass opens with the
+   stencil reference at 0 (WebGPU spec), `for_each_step`'s tail
+   `clear_active()` returns every walk to 0 (a chain-less `establish` ends at
+   `stencil_ref(0)`; a stamped one is closed by the tail clear, whose own
+   comment is "never let a stamped chain survive the walk"), and `PreClear` is
+   a walk's first step. So the schedule's invariant is now true as written
+   instead of carrying an exception. `bind_clear` gained a comment explaining
+   the *absence* of the call, so it does not get re-added defensively.
+   Original finding:
    `schedule.rs:318-321` states that deduplication is "only sound because
    `SetScissor` / `SetStencilRef` are the *only* steps that touch either piece
    of state — no draw arm … sets a scissor or stencil reference of its own".
