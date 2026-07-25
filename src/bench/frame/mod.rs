@@ -516,11 +516,27 @@ impl BenchMode {
     }
 }
 
+/// `true` when this process is a real measurement run, which is what
+/// the env-var guards below exist to make deliberate. Mirrors
+/// criterion's own rule — `--bench` without `--test` — because
+/// `cargo test --all-targets` runs every bench binary in test mode,
+/// where each arm executes once and nothing is measured or recorded.
+fn measuring() -> bool {
+    let mut bench = false;
+    let mut test = false;
+    for arg in std::env::args() {
+        bench |= arg == "--bench";
+        test |= arg == "--test";
+    }
+    bench && !test
+}
+
 /// Required mode selector for the frame bench. Read from
-/// `APERTURE_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`. The bench
-/// refuses to run without one so every invocation is an explicit
-/// decision about which arms to pay for (the full `both` matrix is
-/// ~90 s; `cpu` or `gpu` alone is ~45 s).
+/// `APERTURE_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`. A
+/// measurement run refuses to start without one so every invocation is
+/// an explicit decision about which arms to pay for (the full `both`
+/// matrix is ~90 s; `cpu` or `gpu` alone is ~45 s). A test-mode run
+/// pays none of that, so it defaults to the whole matrix.
 fn bench_mode() -> BenchMode {
     match std::env::var("APERTURE_BENCH_MODE")
         .ok()
@@ -532,6 +548,7 @@ fn bench_mode() -> BenchMode {
         Some("cpu") => BenchMode::Cpu,
         Some("gpu") => BenchMode::Gpu,
         Some("both") => BenchMode::Both,
+        _ if !measuring() => BenchMode::Both,
         _ => panic!(
             "frame bench requires APERTURE_BENCH_MODE=cpu|gpu|both; \
              e.g. APERTURE_BENCH_MODE=cpu APERTURE_BENCH_NOTE='...' cargo bench --bench frame",
@@ -840,20 +857,9 @@ pub fn text_ui() -> Ui {
 }
 
 pub fn bench(c: &mut Criterion) {
-    // `cargo test --all-targets` runs this binary in criterion's test
-    // mode: every arm executes once and no estimate is written, so the
+    // Under criterion's test mode no estimate is written, so the
     // results row — and the note it demands — would be meaningless.
-    // Mirrors criterion's own rule: measuring iff `--bench` without
-    // `--test` (`cargo bench` passes the former, `cargo test` neither).
-    let measuring = {
-        let mut bench = false;
-        let mut test = false;
-        for arg in std::env::args() {
-            bench |= arg == "--bench";
-            test |= arg == "--test";
-        }
-        bench && !test
-    };
+    let measuring = measuring();
     // Fail fast before any arm runs so a long bench doesn't finish and
     // then realise the results row has no context.
     if measuring {
