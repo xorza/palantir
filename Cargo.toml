@@ -127,6 +127,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "image_pipeline"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "text_shape"
 harness = false
 required-features = ["internals"]
