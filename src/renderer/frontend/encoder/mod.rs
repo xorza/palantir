@@ -10,10 +10,10 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-use crate::renderer::frontend::cmd_buffer::payload::{
-    BrushSource, ColorModeBits, DrawArcPayload, DrawCurvePayload, DrawImagePayload,
-    DrawMeshPayload, DrawPolylinePayload, LineCapBits, LineJoinBits, ResolvedGradient,
+use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::{
+    BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
+    DrawPolylinePayload, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -44,7 +44,6 @@ const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0)
 /// Retained encoder state and its command output.
 #[derive(Debug)]
 pub(crate) struct Encoder {
-    cmds: RenderCmdBuffer,
     gradients: GradientResolver,
     gradient_atlas: SharedGradientAtlas,
 }
@@ -141,24 +140,27 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 ///   Push/Pop emission. Caller's responsibility to skip the call
 ///   entirely when there's no damage to paint.
 ///
-/// The command buffer is cleared at entry; capacity is retained across frames.
+/// The sink arrives ready for a fresh frame — a `ComposeSession` from
+/// `Composer::begin`, or an empty recording sink.
 impl Encoder {
     pub(crate) fn new(gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
-            cmds: RenderCmdBuffer::default(),
             gradients: GradientResolver::default(),
             gradient_atlas,
         }
     }
 
     #[profiling::function]
-    pub(crate) fn encode(&mut self, scene: &FrameScene<'_>, plan: RenderPlan) -> &RenderCmdBuffer {
+    pub(crate) fn encode<S: PaintSink>(
+        &mut self,
+        scene: &FrameScene<'_>,
+        plan: RenderPlan,
+        out: &mut S,
+    ) {
         let Self {
-            cmds: out,
             gradients: gradient_resolver,
             gradient_atlas,
         } = self;
-        out.clear();
 
         let damage_filter = match &plan.kind {
             RenderKind::Partial { region } => Some(region),
@@ -195,7 +197,6 @@ impl Encoder {
         }
 
         emit_collision_overlays(scene.forest, scene.layout, out);
-        out
     }
 }
 
@@ -248,7 +249,7 @@ impl std::fmt::Debug for LayerCtx<'_> {
 /// ignores any clip context the colliding widgets sit under (scroll
 /// viewports, clipped popups). Both `NodeId`s are precomputed at
 /// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
-fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut RenderCmdBuffer) {
+fn emit_collision_overlays<S: PaintSink>(forest: &Forest, layout: &Layout, out: &mut S) {
     if forest.collisions.is_empty() {
         return;
     }
@@ -285,14 +286,14 @@ fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut RenderCmd
 /// match. `text_ordinal` is the within-node index of the next
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
-fn emit_one_shape(
+fn emit_one_shape<S: PaintSink>(
     ctx: &mut LayerCtx<'_>,
     id: NodeId,
     owner_rect: Rect,
     shape_idx: u32,
     shape: &ShapeRecord,
     text_ordinal: u32,
-    out: &mut RenderCmdBuffer,
+    out: &mut S,
 ) {
     // Paint-anim gate. Today's only alpha source (`BlinkOpacity`) is
     // binary 0/1, so a "hidden" sample just skips emission;
@@ -384,10 +385,9 @@ fn emit_one_shape(
                 points_len: points.len,
                 colors_start: colors.start,
                 colors_len: colors.len,
-                color_mode: ColorModeBits::new(*color_mode),
-                cap: LineCapBits::new(*cap),
-                join: LineJoinBits::new(*join),
-                ..bytemuck::Zeroable::zeroed()
+                color_mode: *color_mode,
+                cap: *cap,
+                join: *join,
             });
         }
         ShapeRecord::Shadow {
@@ -415,7 +415,6 @@ fn emit_one_shape(
                 v_len: vertices.len,
                 i_start: indices.start,
                 i_len: indices.len,
-                ..bytemuck::Zeroable::zeroed()
             });
         }
         ShapeRecord::Curve {
@@ -444,10 +443,9 @@ fn emit_one_shape(
                 p3: *p3,
                 color: fill.color,
                 width: *width,
-                cap: LineCapBits::new(*cap),
+                cap: *cap,
                 fill_kind: fill.kind,
                 fill_lut_row: fill.lut_row,
-                ..bytemuck::Zeroable::zeroed()
             });
         }
         ShapeRecord::Arc {
@@ -475,10 +473,9 @@ fn emit_one_shape(
                 rotation,
                 color: fill.color,
                 width: *width,
-                cap: LineCapBits::new(*cap),
+                cap: *cap,
                 fill_kind: fill.kind,
                 fill_lut_row: fill.lut_row,
-                ..bytemuck::Zeroable::zeroed()
             });
         }
         ShapeRecord::Triangle {
@@ -534,9 +531,9 @@ fn emit_one_shape(
             // rect, untinted, full UV, sampling the view's stable `id` from
             // the shared texture cache (all encapsulated in `gpu_view`). The
             // view's `id` + app `paint` callback live in `Ui::gpu_views`, keyed
-            // by the owner node's `WidgetId`; the callback then rides the cmd
-            // buffer's own side channel, linked to this draw by index so the
-            // composer can list the off-screen target in `frame_targets`.
+            // by the owner node's `WidgetId`; the callback rides alongside
+            // the payload so the sink can list the off-screen target in
+            // `frame_targets`.
             // `epoch` only affects the shape hash (damage), not the draw.
             let wid = ctx.tree.records.widget_id()[id.idx()];
             let view = &ctx.gpu_views[&wid];
@@ -545,7 +542,7 @@ fn emit_one_shape(
     }
 }
 
-fn encode_node(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut RenderCmdBuffer) {
+fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
     if ctx.cascade_inputs[id.idx()].invisible() {
         return;
     }
@@ -712,8 +709,8 @@ fn encode_node(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut RenderCmdBuffer) {
 /// owner-relative `local_rect`) both route here so the
 /// `shadow_paint_rect_local` translation + fill-axis packing
 /// can't drift between the two views.
-fn emit_shadow(
-    out: &mut RenderCmdBuffer,
+fn emit_shadow<S: PaintSink>(
+    out: &mut S,
     owner_rect: Rect,
     local_rect: Option<Rect>,
     corners: Corners,
@@ -852,8 +849,8 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
 #[cfg(test)]
 pub(crate) mod test_support {
     use crate::renderer::frontend::FrameScene;
-    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder::Encoder;
+    use crate::renderer::frontend::record_sink::RecordedPaint;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::renderer::plan::RenderPlan;
 
@@ -861,10 +858,11 @@ pub(crate) mod test_support {
         scene: FrameScene<'_>,
         gradient_atlas: &SharedGradientAtlas,
         plan: RenderPlan,
-    ) -> RenderCmdBuffer {
+    ) -> RecordedPaint {
         let mut encoder = Encoder::new(gradient_atlas.clone());
-        encoder.encode(&scene, plan);
-        encoder.cmds
+        let mut recorded = RecordedPaint::default();
+        encoder.encode(&scene, plan, &mut recorded);
+        recorded
     }
 }
 

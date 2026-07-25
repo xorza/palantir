@@ -82,8 +82,8 @@ mod unit {
     use crate::input::pointer::PointerButton;
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
-    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
     use crate::renderer::frontend::encoder;
+    use crate::renderer::frontend::record_sink::RecordedPaint;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::DamageRegion;
@@ -218,7 +218,7 @@ mod unit {
                 .map_or(0, |rows| rows.rows.len())
         }
 
-        pub(crate) fn encode_cmds(&self) -> RenderCmdBuffer {
+        pub(crate) fn encode_paint(&self) -> RecordedPaint {
             let plan = RenderPlan {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Full,
@@ -226,7 +226,7 @@ mod unit {
             encoder::test_support::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
         }
 
-        pub(crate) fn encode_cmds_for(&self, region: DamageRegion) -> RenderCmdBuffer {
+        pub(crate) fn encode_paint_for(&self, region: DamageRegion) -> RecordedPaint {
             let plan = RenderPlan {
                 clear: self.theme.window_clear,
                 kind: RenderKind::Partial { region },

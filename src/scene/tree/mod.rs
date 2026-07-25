@@ -17,9 +17,9 @@
 //!   tight.
 //!
 //! Partial-noop chrome (e.g. shadow-only) survives storage and is
-//! dropped per-emit by `cmd_buffer::draw_*`'s gates. Together with
-//! the authoring filter at `Shapes::add` and the emit-time gates in
-//! `cmd_buffer`, every layer has exactly one canonical noop site,
+//! dropped per-emit by `PaintSink::draw_*`'s gates. Together with
+//! the authoring filter at `Shapes::add` and the emit-time gates on
+//! `PaintSink`, every layer has exactly one canonical noop site,
 //! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
 
 use crate::ClipMode;
@@ -81,7 +81,7 @@ pub(crate) struct Tree {
     /// the rounded-clip case keeps a row even when the paint itself
     /// is fully no-op (`Background::is_noop`), so the encoder can
     /// read `bg.radius` for the stencil-mask path without a separate
-    /// clip-radius column. Per-emit gates in `cmd_buffer::draw_*`
+    /// clip-radius column. Per-emit gates in `PaintSink::draw_*`
     /// drop the visual no-op slices; the radius survives.
     pub(crate) chrome_table: Vec<ChromeRow>,
 
@@ -381,7 +381,7 @@ impl Tree {
                 cols.layout.padding = Spacing::new(l + s, t + s, r + s, b + s);
             }
             // Tree-storage noop gate for chrome — mirrors `Shapes::add`
-            // for the shape buffer and `cmd_buffer::draw_*` for emits.
+            // for the shape buffer and `PaintSink::draw_*` for emits.
             let needs_chrome_row =
                 !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
@@ -547,7 +547,7 @@ impl Tree {
     /// paint OR `ClipMode::Rounded` (the latter keeps a row even on
     /// `Background::is_noop` so the encoder can read `bg.radius` for
     /// the stencil-mask path). Per-emit `is_noop` gates in
-    /// `cmd_buffer::draw_*` drop the no-paint slices; the radius
+    /// `PaintSink::draw_*` drop the no-paint slices; the radius
     /// always survives.
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&ChromeRow> {
         self.extras_idx[id.idx()]

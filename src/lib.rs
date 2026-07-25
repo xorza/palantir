@@ -179,8 +179,7 @@ mod hot_struct_sizes {
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
     use crate::renderer::backend::text::GlyphInstance;
-    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-    use crate::renderer::frontend::cmd_buffer::payload::{
+    use crate::renderer::frontend::payload::{
         DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
         DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
         ResolvedGradient,
@@ -281,7 +280,7 @@ mod hot_struct_sizes {
         ShapeStroke => "shapes::ShapeStroke": 10 / 2,
         LoweredShadow => "shapes::LoweredShadow": 18 / 2,
         RecordedGradient => "shapes::RecordedGradient": 56 / 4,
-        ResolvedGradient => "cmd::ResolvedGradient": 16 / 4,
+        ResolvedGradient => "payload::ResolvedGradient": 16 / 4,
         // Authoring paint primitives.
         Background => "primitives::Background": 124 / 4,
         Brush => "primitives::Brush": 60 / 4,
@@ -317,17 +316,16 @@ mod hot_struct_sizes {
         DamageRegion => "damage::DamageRegion": 140 / 4,
         NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
-        RenderCmdBuffer => "cmd::RenderCmdBuffer": 72 / 8,
-        PushClipPayload => "cmd::PushClipPayload": 24 / 4,
-        DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
-        DrawShadowPayload => "cmd::DrawShadowPayload": 44 / 4,
-        DrawTextPayload => "cmd::DrawTextPayload": 56 / 8,
-        DrawPolylinePayload => "cmd::DrawPolylinePayload": 52 / 4,
-        DrawMeshPayload => "cmd::DrawMeshPayload": 48 / 4,
-        DrawImagePayload => "cmd::DrawImagePayload": 56 / 8,
-        DrawTrianglePayload => "cmd::DrawTrianglePayload": 56 / 4,
-        DrawCurvePayload => "cmd::DrawCurvePayload": 84 / 4,
-        DrawArcPayload => "cmd::DrawArcPayload": 72 / 4,
+        PushClipPayload => "payload::PushClipPayload": 24 / 4,
+        DrawRectPayload => "payload::DrawRectPayload": 60 / 4,
+        DrawShadowPayload => "payload::DrawShadowPayload": 44 / 4,
+        DrawTextPayload => "payload::DrawTextPayload": 56 / 8,
+        DrawPolylinePayload => "payload::DrawPolylinePayload": 52 / 4,
+        DrawMeshPayload => "payload::DrawMeshPayload": 48 / 4,
+        DrawImagePayload => "payload::DrawImagePayload": 56 / 8,
+        DrawTrianglePayload => "payload::DrawTrianglePayload": 56 / 4,
+        DrawCurvePayload => "payload::DrawCurvePayload": 84 / 4,
+        DrawArcPayload => "payload::DrawArcPayload": 72 / 4,
         // GPU instance / vertex types.
         Quad => "renderer::Quad": 60 / 4,
         CurveInstance => "renderer::CurveInstance": 68 / 4,

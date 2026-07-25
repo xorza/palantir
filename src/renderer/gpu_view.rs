@@ -117,6 +117,15 @@ impl std::fmt::Debug for GpuPaintRef {
     }
 }
 
+/// Handle identity, not callback behaviour: two refs are equal when they
+/// point at the same `GpuPaint`. `dyn GpuPaint` has no equality of its
+/// own, and identity is the only comparison a view's consumers want.
+impl PartialEq for GpuPaintRef {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// One live `GpuView` in [`Ui::gpu_views`](crate::ui::Ui), keyed by `WidgetId`:
 /// the view's stable backend `texture_id` (minted once from the shared render
 /// caches, so it cannot collide with images or another window), the app

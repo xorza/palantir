@@ -4,10 +4,10 @@
 //! Cleared at record-pass start and retained across `PaintOnly` frames.
 //!
 //! Replaces the previous three-step copy (user `Mesh` →
-//! `Tree.shapes.payloads` → `RenderCmdBuffer.shape_payloads` →
+//! `Tree.shapes.payloads` → an intermediate command stream →
 //! `RenderBuffer.meshes`) with a single retained payload store. Shape records on
-//! the tree, payloads on the cmd buffer, and `MeshDraw` entries on the
-//! render buffer all carry spans into this storage directly.
+//! the tree, the paint payloads the encoder hands the composer, and `MeshDraw`
+//! entries on the render buffer all carry spans into this storage directly.
 //!
 //! This file is storage only: the authoring `Shape` → `ShapeRecord` /
 //! `ChromeRow` lowering that appends here lives in

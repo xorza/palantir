@@ -1,9 +1,10 @@
 //! Frontend (CPU) rendering pipeline.
 //!
-//! 1. [`Encoder`] — `&Tree` → [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer)
-//!    (logical-px). Owns the command output and encode scratch.
-//! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
-//!    quads + scissor groups). Owns the output + scratch; no GPU handles.
+//! 1. [`Encoder`] — walks `&Tree` and paints logical-px operations into
+//!    a [`PaintSink`](paint_sink::PaintSink). Owns the encode scratch.
+//! 2. [`Composer`] — the production sink: scales, snaps, and groups each
+//!    operation into a `RenderBuffer` (physical-px quads + scissor
+//!    groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
 //!    persistent per-frame allocation. A host shares one frontend serially
 //!    across its windows: [`WindowDriver`] calls [`Frontend::build`] once per
@@ -16,9 +17,12 @@
 //!
 //! [`WindowDriver`]: crate::host::window_driver::WindowDriver
 
-pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
+pub(crate) mod paint_sink;
+pub(crate) mod payload;
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod record_sink;
 
 use std::cell::Ref;
 use std::time::Duration;
@@ -85,12 +89,17 @@ impl Frontend {
         }
     }
 
-    /// Encode → compose into the staged output buffer.
+    /// Encode straight into the composer, filling the staged output
+    /// buffer. One pass: the encoder's paint calls land in a live
+    /// [`ComposeSession`] rather than an intermediate command stream, so
+    /// nothing is serialized only to be read back a line later.
     #[profiling::function]
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
-        let cmds = self.encoder.encode(&scene, plan);
-        self.composer
-            .compose(cmds, &scene.payloads, scene.display, &mut self.buffer);
+        let mut sink = self
+            .composer
+            .begin(scene.display, &scene.payloads, &mut self.buffer);
+        self.encoder.encode(&scene, plan, &mut sink);
+        sink.finish();
         self.buffer.time = scene.time;
     }
 }

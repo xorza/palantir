@@ -8,7 +8,7 @@ use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
-use crate::renderer::frontend::cmd_buffer::Command;
+use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
 use crate::scene::shapes::record::ShapeRecord;
@@ -711,10 +711,11 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     assert_eq!(shaped.measured, Size::new(73.0, 80.0));
 
     let draw_keys: Vec<_> = ui
-        .encode_cmds()
+        .encode_paint()
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.text.key),
+            PaintCall::Text(payload) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -786,10 +787,11 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     assert_ne!(first_parent_keys[0], first_child_key);
     assert_ne!(first_parent_keys[1], first_child_key);
     let first_draw_keys: Vec<_> = ui
-        .encode_cmds()
+        .encode_paint()
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.text.key),
+            PaintCall::Text(payload) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -818,10 +820,11 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     assert_eq!(second_parent_keys, first_parent_keys);
     assert_eq!(second_child_key, first_child_key);
     let second_draw_keys: Vec<_> = ui
-        .encode_cmds()
+        .encode_paint()
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.text.key),
+            PaintCall::Text(payload) => Some(payload.text.key),
             _ => None,
         })
         .collect();
@@ -879,11 +882,12 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
     let owner_min = ui.layout[Layer::Main].rect[leaf.idx()].min;
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let mut drawn: Vec<glam::Vec2> = cmds
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.rect.min),
+            PaintCall::Text(payload) => Some(payload.rect.min),
             _ => None,
         })
         .collect();

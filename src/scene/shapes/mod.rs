@@ -57,7 +57,7 @@ impl Shapes {
     ///
     /// Single canonical noop gate for the shape buffer — drops any
     /// shape whose authoring inputs would emit no visible pixels
-    /// before lowering runs. Mirrors `cmd_buffer::draw_*`'s emit-time
+    /// before lowering runs. Mirrors `PaintSink::draw_*`'s emit-time
     /// gate: caller code can pass anything, the storage layer
     /// canonicalises. Saves the per-shape lowering cost (payload
     /// staging, mesh hashing, text shaping downstream) that the

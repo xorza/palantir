@@ -1,4 +1,12 @@
-//! Typed command discriminants and Pod payload records.
+//! Lowered paint payloads — the values the encoder hands a
+//! [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink),
+//! one per paint operation.
+//!
+//! Plain value types: they used to be `bytemuck::Pod` so a packed
+//! command arena could store them, and carried `#[repr(C)]` plus
+//! injected trailing padding to satisfy that. Nothing serializes them
+//! now, so the layout is the compiler's to choose and fields can be
+//! ordinary enums rather than `u8` newtypes.
 
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
@@ -7,59 +15,14 @@ use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
     rect::Rect,
-    transform::TranslateScale,
 };
 use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::ShapedTextRef;
-use strum::{EnumCount, EnumIter, FromRepr};
-
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ColorModeBits(u8);
-
-impl ColorModeBits {
-    pub(crate) const fn new(value: ColorMode) -> Self {
-        Self(value as u8)
-    }
-
-    pub(crate) const fn get(self) -> ColorMode {
-        ColorMode::from_u8(self.0)
-    }
-}
-
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LineCapBits(u8);
-
-impl LineCapBits {
-    pub(crate) const fn new(value: LineCap) -> Self {
-        Self(value as u8)
-    }
-
-    pub(crate) const fn get(self) -> LineCap {
-        LineCap::from_u8(self.0)
-    }
-}
-
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LineJoinBits(u8);
-
-impl LineJoinBits {
-    pub(crate) const fn new(value: LineJoin) -> Self {
-        Self(value as u8)
-    }
-
-    pub(crate) const fn get(self) -> LineJoin {
-        LineJoin::from_u8(self.0)
-    }
-}
 
 /// Physical gradient identity resolved for this encode pass.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ResolvedGradient {
     pub(crate) axis: FillAxis,
     pub(crate) row: LutRow,
@@ -122,98 +85,13 @@ pub(crate) struct GpuFillFields {
     pub(crate) axis: FillAxis,
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumCount, EnumIter, FromRepr)]
-pub(crate) enum CmdKind {
-    /// Scissor clip with optional rounded-corner stencil mask. Carries
-    /// [`PushClipPayload`] (rect + corners). When `corners` is all-zero
-    /// the composer treats it as a plain scissor; otherwise the
-    /// backend's stencil path writes the SDF mask using the radii.
-    PushClip,
-    PopClip,
-    PushTransform,
-    PopTransform,
-    DrawRect,
-    /// Drop / inset box-shadow. Payload: [`DrawShadowPayload`]. Same
-    /// `Quad` shape at the GPU end as `DrawRect`, but the composer
-    /// scales `fill_axis` (logical-px shadow params) and skips the
-    /// stroke / gradient-atlas code paths.
-    DrawShadow,
-    DrawText,
-    /// Mesh paint cmd. Payload: [`DrawMeshPayload`]. Vertex/index
-    /// rows live in `RecordPayloads` and are sliced by the payload's spans.
-    DrawMesh,
-    /// Stroked polyline paint cmd. Payload:
-    /// [`DrawPolylinePayload`]. Point storage lives in `RecordPayloads`,
-    /// sliced by the payload's span. Composer transforms + DPI-scales
-    /// the points, then emits one `CurveInstance` per kept segment
-    /// plus one join-chrome instance per interior joint into
-    /// `RenderBuffer.curves` — polylines batch and draw with every
-    /// other stroke on the GPU curve pipeline.
-    DrawPolyline,
-    /// Textured rectangle paint cmd. Payload: [`DrawImagePayload`].
-    /// The composer transforms `rect` into physical-px and routes to
-    /// the backend's image pipeline, which samples the texture
-    /// registered against `handle` in the shared
-    /// [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry).
-    DrawImage,
-    /// Native GPU cubic-bezier curve. Payload: [`DrawCurvePayload`].
-    /// The composer transforms the four control points to physical-px,
-    /// derives an adaptive sub-instance count from the control-polygon
-    /// length, and appends one or more `CurveInstance`s into
-    /// `RenderBuffer.curves`. A single `draw` per scissor group covers
-    /// every instance in the group's curve [`GroupBatch`].
-    ///
-    /// [`GroupBatch`]: crate::renderer::render_buffer::batch::GroupBatch
-    DrawCurve,
-    /// Native GPU circular arc. Payload: [`DrawArcPayload`]. Same
-    /// batching as `DrawCurve` — the composer transforms center/radius
-    /// to physical-px, derives the sub-instance count from the exact
-    /// arc length (`radius · |sweep|`), and appends `CurveInstance`s
-    /// with `kind = CURVE_KIND_ARC` into the same `RenderBuffer.curves`
-    /// stream.
-    DrawArc,
-    /// Rounded-triangle SDF. Payload: [`DrawTrianglePayload`]. The composer
-    /// transforms the three owner-local corner points to physical px, derives
-    /// the covering AABB, and emits one `Quad` with `FillKind::TRIANGLE` —
-    /// reusing the shared quad pipeline (the three points + radius pack into
-    /// the `Quad`'s `corners` / `fill_axis` lanes; the shader evaluates the
-    /// triangle SDF per fragment).
-    DrawTriangle,
-}
-
 /// Scissor clip payload. `corners` is all-zero for plain rect clips
 /// and non-zero for rounded-mask clips — the composer decides which
 /// path to take by inspecting it.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PushClipPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
-}
-
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct PushTransformPayload {
-    pub(crate) translation: glam::Vec2,
-    pub(crate) scale: f32,
-}
-
-impl From<TranslateScale> for PushTransformPayload {
-    fn from(transform: TranslateScale) -> Self {
-        Self {
-            translation: transform.translation,
-            scale: transform.scale,
-            ..bytemuck::Zeroable::zeroed()
-        }
-    }
-}
-
-impl From<PushTransformPayload> for TranslateScale {
-    fn from(payload: PushTransformPayload) -> Self {
-        Self::new(payload.translation, payload.scale)
-    }
 }
 
 /// Brush metadata packed into draw-rect payloads. `fill_kind` low byte
@@ -226,8 +104,7 @@ impl From<PushTransformPayload> for TranslateScale {
 /// `ColorF16` (8 B linear-RGB) vs. 16 B `Color` saves 8 B per rect
 /// payload — the composer decodes via `Color::from(f16)` at `Quad`
 /// write time. `Pod` invariant: `repr(C)` + no padding.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
@@ -248,8 +125,7 @@ pub(crate) struct DrawRectPayload {
 /// `SHADOW_INSET`. `fill_axis` carries `(0, 0, σ, spread)` for drops and
 /// `(offset.x, offset.y, σ, spread)` for insets in logical px; the
 /// composer scales these to physical px so the shader's `local` coords line up.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawShadowPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
@@ -270,8 +146,7 @@ impl DrawShadowPayload {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
     pub(crate) color: ColorF16,
@@ -280,8 +155,8 @@ pub(crate) struct DrawTextPayload {
 
 impl DrawTextPayload {
     /// Canonical noop predicate for this payload — zero-extent rect
-    /// or fully transparent color. See `cmd_buffer` module docs for
-    /// the noop policy.
+    /// or fully transparent color. See [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)
+    /// for the noop policy.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         self.rect.is_paint_empty() || self.color.is_noop()
@@ -300,9 +175,7 @@ impl DrawTextPayload {
 /// stroke/cap/join/AA inflation once in physical space.
 ///
 /// [`RecordPayloads`]: crate::scene::record_store::RecordPayloads
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
@@ -320,16 +193,16 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) points_len: u32,
     pub(crate) colors_start: u32,
     pub(crate) colors_len: u32,
-    pub(crate) color_mode: ColorModeBits,
-    pub(crate) cap: LineCapBits,
-    pub(crate) join: LineJoinBits,
+    pub(crate) color_mode: ColorMode,
+    pub(crate) cap: LineCap,
+    pub(crate) join: LineJoin,
 }
 
 impl DrawPolylinePayload {
     /// Canonical noop predicate — fewer than two points (no
     /// segments) or a non-paintable stroke width. **Does not** check
     /// color noop-ness: per-point / per-segment colours live in
-    /// spans on `RenderCmdBuffer`, and an O(n) read here would
+    /// spans on the record store, and an O(n) read here would
     /// dominate the per-cmd cost. Color noop is filtered at the
     /// `Shape::Polyline::is_noop` authoring boundary instead. The
     /// bbox can legitimately be zero-area (horizontal / vertical
@@ -347,9 +220,7 @@ impl DrawPolylinePayload {
 /// content-stable across frames.
 ///
 /// [`RecordPayloads`]: crate::scene::record_store::RecordPayloads
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawMeshPayload {
     /// Owner-local AABB of `vertices`. The composer transforms the
     /// four corners (uniform-scale `TranslateScale` preserves AABBs)
@@ -381,9 +252,7 @@ impl DrawMeshPayload {
 /// `tint` multiplies the sampled texel. `handle` is the user-supplied
 /// [`ImageHandle`] — the backend looks it up against its GPU texture
 /// cache.
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawImagePayload {
     pub(crate) rect: Rect,
     pub(crate) uv_min: glam::Vec2,
@@ -399,19 +268,18 @@ pub(crate) struct DrawImagePayload {
     /// `0` (the common case, including a `GpuView`) samples the UV
     /// directly with the bilinear sampler.
     pub(crate) flags: u32,
-    /// An `Option<u32>` `GpuView` link, packed into this `Pod` field (`Option`
-    /// itself isn't `Pod`) as the `+1` niche: `0` = ordinary image (so the
-    /// `Zeroable` default reads as `None`), `n > 0` = a `GpuView` whose
-    /// `GpuPaintRef` is `gpu_view_paints[n - 1]`. Private — set only through
-    /// [`Self::image`] / [`Self::gpu_view`], read only through
-    /// [`Self::gpu_view_paint`], so the niche never leaks. `handle` carries
-    /// the view's stable `TextureId` either way, so the draw + cache path
+    /// Whether this draw composites a `GpuView`'s off-screen target
+    /// rather than a registered image. Private — set only through
+    /// [`Self::image`] / [`Self::gpu_view`]. The sink receives the paint
+    /// callback alongside the payload; this only tells [`Self::is_noop`]
+    /// not to null-skip a framework-painted texture. `handle` carries the
+    /// view's stable `TextureId` either way, so the draw + cache path
     /// stays identical to an image.
-    target: u32,
+    gpu_view: bool,
 }
 
 impl DrawImagePayload {
-    /// An ordinary image draw — no off-screen target (`target` is `None`).
+    /// An ordinary image draw — no off-screen target.
     #[inline]
     pub(crate) fn image(
         rect: Rect,
@@ -428,17 +296,14 @@ impl DrawImagePayload {
             tint,
             handle,
             flags,
-            target: 0,
-            ..bytemuck::Zeroable::zeroed()
+            gpu_view: false,
         }
     }
 
-    /// A `GpuView` composite over its full arranged `rect`: full UV, untinted,
-    /// sampling the view's stable `handle`. `paint_index` (into the cmd
-    /// buffer's `gpu_view_paints`) packs into the `target` niche — the sole
-    /// `+1`, so the composer can list the off-screen target to paint.
+    /// A `GpuView` composite over its full arranged `rect`: full UV,
+    /// untinted, sampling the view's stable `handle`.
     #[inline]
-    pub(crate) fn gpu_view(rect: Rect, handle: TextureId, paint_index: u32) -> Self {
+    pub(crate) fn gpu_view(rect: Rect, handle: TextureId) -> Self {
         Self {
             rect,
             uv_min: glam::Vec2::ZERO,
@@ -446,28 +311,17 @@ impl DrawImagePayload {
             tint: ColorF16::from(Color::WHITE),
             handle,
             flags: 0,
-            target: paint_index + 1,
-            ..bytemuck::Zeroable::zeroed()
+            gpu_view: true,
         }
     }
 
-    /// The `GpuView` paint index this draw composites, or `None` for an
-    /// ordinary image — unpacks the `target` niche.
-    #[inline]
-    pub(crate) fn gpu_view_paint(&self) -> Option<u32> {
-        self.target.checked_sub(1)
-    }
-
     /// Canonical noop predicate — zero-extent rect, fully transparent tint,
-    /// or null handle (paints no pixels, no texture to sample). A `GpuView`
-    /// (`gpu_view_paint().is_some()`) is never null-skipped — its texture is
-    /// framework-painted this frame, not a registered image that could have
-    /// been dropped.
+    /// or null handle (paints no pixels, no texture to sample). A
+    /// `GpuView` is never null-skipped — its texture is framework-painted
+    /// this frame, not a registered image that could have been dropped.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty()
-            || self.tint.is_noop()
-            || (self.handle.0 == 0 && self.gpu_view_paint().is_none())
+        self.rect.is_paint_empty() || self.tint.is_noop() || (self.handle.0 == 0 && !self.gpu_view)
     }
 }
 
@@ -483,9 +337,7 @@ impl DrawImagePayload {
 /// (same contract as `DrawPolylinePayload`); the composer rotates the
 /// control points about that pivot, which is exact for a bezier
 /// (affine invariance).
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
@@ -500,7 +352,7 @@ pub(crate) struct DrawCurvePayload {
     pub(crate) width: f32,
     /// Typed Pod wire form; composer widens it only at the GPU
     /// `CurveInstance.cap` boundary.
-    pub(crate) cap: LineCapBits,
+    pub(crate) cap: LineCap,
     /// Brush kind tag (low byte: 0 = solid, 1 = linear). Only solid +
     /// linear are valid on curves; the lowering hard-asserts.
     pub(crate) fill_kind: FillKind,
@@ -516,9 +368,7 @@ pub(crate) struct DrawCurvePayload {
 /// the physical points into a `Quad` with `FillKind::TRIANGLE`.
 /// `fill` is the solid fill; `stroke_color` / `stroke_width` the inner-edge
 /// stroke. `radius` rounds all three corners (`0.0` = sharp).
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawTrianglePayload {
     pub(crate) origin: glam::Vec2,
     pub(crate) a: glam::Vec2,
@@ -562,9 +412,7 @@ impl DrawCurvePayload {
 /// angle sampled from `PaintAnim::Spin` — non-zero only when the
 /// encoder replaced `bbox` with the rotation-invariant square whose
 /// centre is the spin pivot (same contract as `DrawPolylinePayload`).
-#[padding_struct::padding_struct]
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawArcPayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
@@ -578,7 +426,7 @@ pub(crate) struct DrawArcPayload {
     pub(crate) color: ColorF16,
     pub(crate) width: f32,
     /// See [`DrawCurvePayload::cap`].
-    pub(crate) cap: LineCapBits,
+    pub(crate) cap: LineCap,
     pub(crate) fill_kind: FillKind,
     pub(crate) fill_lut_row: LutRow,
 }

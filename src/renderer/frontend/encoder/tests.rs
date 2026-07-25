@@ -16,9 +16,9 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::frontend::cmd_buffer::payload::{BrushSource, CmdKind, PushClipPayload};
-use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::frontend::encoder::GradientResolver;
+use crate::renderer::frontend::payload::{BrushSource, PushClipPayload};
+use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
 use crate::renderer::gradient_atlas::handle::{
     SharedGradientAtlas, test_support::registration_count,
 };
@@ -36,41 +36,25 @@ struct ClipPairs {
     pops: usize,
 }
 
-fn count_clip_pairs(cmds: &RenderCmdBuffer) -> ClipPairs {
+fn count_clip_pairs(cmds: &RecordedPaint) -> ClipPairs {
     let pushes = cmds
+        .calls
         .iter()
-        .filter(|command| matches!(command, Command::PushClip(_)))
+        .filter(|command| matches!(command, PaintCall::Clip(_)))
         .count();
     let pops = cmds
+        .calls
         .iter()
-        .filter(|command| matches!(command, Command::PopClip))
+        .filter(|command| matches!(command, PaintCall::PopClip))
         .count();
     ClipPairs { pushes, pops }
 }
 
-fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
-    cmds.iter()
-        .filter(|command| matches!(command, Command::DrawRect(_)))
+fn count_draw_rects(cmds: &RecordedPaint) -> usize {
+    cmds.calls
+        .iter()
+        .filter(|command| matches!(command, PaintCall::Rect(_)))
         .count()
-}
-
-fn command_matches_kind(command: &Command<'_>, kind: CmdKind) -> bool {
-    matches!(
-        (command, kind),
-        (Command::PushClip(_), CmdKind::PushClip)
-            | (Command::PopClip, CmdKind::PopClip)
-            | (Command::PushTransform(_), CmdKind::PushTransform)
-            | (Command::PopTransform, CmdKind::PopTransform)
-            | (Command::DrawRect(_), CmdKind::DrawRect)
-            | (Command::DrawShadow(_), CmdKind::DrawShadow)
-            | (Command::DrawText(_), CmdKind::DrawText)
-            | (Command::DrawMesh(_), CmdKind::DrawMesh)
-            | (Command::DrawPolyline(_), CmdKind::DrawPolyline)
-            | (Command::DrawImage { .. }, CmdKind::DrawImage)
-            | (Command::DrawCurve(_), CmdKind::DrawCurve)
-            | (Command::DrawArc(_), CmdKind::DrawArc)
-            | (Command::DrawTriangle(_), CmdKind::DrawTriangle)
-    )
 }
 
 #[test]
@@ -181,7 +165,7 @@ fn baseline_draw_rect_count_cases() {
                 }
             });
         });
-        let cmds = ui.encode_cmds();
+        let cmds = ui.encode_paint();
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -226,11 +210,12 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 .show(ui);
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let rect_kinds: Vec<_> = cmds
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::DrawRect(payload) => Some(payload.fill_kind),
+            PaintCall::Rect(payload) => Some(payload.fill_kind),
             _ => None,
         })
         .collect();
@@ -246,13 +231,15 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     // emits a DrawCurve — not a DrawPolyline — and never touches the
     // polyline point payloads.
     let curves = cmds
+        .calls
         .iter()
-        .filter(|command| matches!(command, Command::DrawCurve(_)))
+        .filter(|command| matches!(command, PaintCall::Curve(_)))
         .count();
     assert_eq!(curves, 1, "expected exactly one DrawCurve cmd");
     assert_eq!(
-        cmds.iter()
-            .filter(|command| matches!(command, Command::DrawPolyline(_)))
+        cmds.calls
+            .iter()
+            .filter(|command| matches!(command, PaintCall::Polyline(_)))
             .count(),
         0,
         "lines no longer lower to polylines"
@@ -277,7 +264,7 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::Shadow;
 
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::payload::DrawShadowPayload;
+    use crate::renderer::frontend::payload::DrawShadowPayload;
     use crate::shape::Shape;
 
     let mut ui = Ui::for_test();
@@ -311,11 +298,12 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
                 .show(ui);
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let shadow_payloads: Vec<DrawShadowPayload> = cmds
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::DrawShadow(payload) => Some(payload),
+            PaintCall::Shadow(payload) => Some(*payload),
             _ => None,
         })
         .collect();
@@ -352,11 +340,12 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         "fixture must evict the retained layout's key",
     );
 
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let payload = cmds
+        .calls
         .iter()
         .find_map(|command| match command {
-            Command::DrawText(payload) => Some(payload),
+            PaintCall::Text(payload) => Some(payload),
             _ => None,
         })
         .expect("Text widget must emit a DrawText command");
@@ -385,11 +374,12 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         !ui.resources.text.has_cosmic_buffer(replayed_key),
         "layout replay must be allowed to retain an evicted cache key",
     );
-    let replayed = ui.encode_cmds();
+    let replayed = ui.encode_paint();
     let payload = replayed
+        .calls
         .iter()
         .find_map(|command| match command {
-            Command::DrawText(payload) => Some(payload),
+            PaintCall::Text(payload) => Some(payload),
             _ => None,
         })
         .expect("replayed text must still emit");
@@ -417,7 +407,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
                 .show(ui, |_| {});
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
     assert_eq!(pops, 1);
@@ -445,24 +435,27 @@ fn clip_emits_balanced_push_pop() {
                 });
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
 
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
     assert_eq!(pops, 1);
 
     let push_idx = cmds
+        .calls
         .iter()
-        .position(|command| matches!(command, Command::PushClip(_)))
+        .position(|command| matches!(command, PaintCall::Clip(_)))
         .unwrap();
     let pop_idx = cmds
+        .calls
         .iter()
-        .position(|command| matches!(command, Command::PopClip))
+        .position(|command| matches!(command, PaintCall::PopClip))
         .unwrap();
     let draw_idxs: Vec<_> = cmds
+        .calls
         .iter()
         .enumerate()
-        .filter_map(|(i, command)| matches!(command, Command::DrawRect(_)).then_some(i))
+        .filter_map(|(i, command)| matches!(command, PaintCall::Rect(_)).then_some(i))
         .collect();
     assert!(!draw_idxs.is_empty());
     for &di in &draw_idxs {
@@ -505,12 +498,13 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
             );
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
 
     let rounded_clips: Vec<_> = cmds
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::PushClip(payload) if !payload.corners.approx_zero() => Some(payload),
+            PaintCall::Clip(payload) if !payload.corners.approx_zero() => Some(payload),
             _ => None,
         })
         .collect();
@@ -543,11 +537,12 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
                 });
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let push_clips: Vec<PushClipPayload> = cmds
+        .calls
         .iter()
         .filter_map(|command| match command {
-            Command::PushClip(payload) => Some(payload),
+            PaintCall::Clip(payload) => Some(*payload),
             _ => None,
         })
         .collect();
@@ -560,20 +555,20 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
 
 /// Walk an encoder command stream and return the effective screen-space rect
 /// for each `DrawRect`, keyed by its fill colour.
-fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
+fn screen_rects_by_fill(cmds: &RecordedPaint) -> Vec<(ColorF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for command in cmds.iter() {
+    for command in cmds.calls.iter() {
         match command {
-            Command::PushTransform(child) => {
+            PaintCall::PushTransform(child) => {
                 t_stack.push(t);
-                t = t.compose(child);
+                t = t.compose(*child);
             }
-            Command::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
-            Command::PushClip(p) => {
+            PaintCall::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
+            PaintCall::Clip(p) => {
                 let screen = t.apply_rect(p.rect);
                 let intersected = match clip {
                     Some(c) => screen.intersect(c),
@@ -582,8 +577,8 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
                 clip_stack.push(clip);
                 clip = Some(intersected);
             }
-            Command::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
-            Command::DrawRect(p) => {
+            PaintCall::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
+            PaintCall::Rect(p) => {
                 let screen = t.apply_rect(p.rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
@@ -591,14 +586,14 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
                 };
                 out.push((p.fill, visible));
             }
-            Command::DrawShadow(_)
-            | Command::DrawText(_)
-            | Command::DrawMesh(_)
-            | Command::DrawPolyline(_)
-            | Command::DrawImage { .. }
-            | Command::DrawCurve(_)
-            | Command::DrawArc(_)
-            | Command::DrawTriangle(_) => {}
+            PaintCall::Shadow(_)
+            | PaintCall::Text(_)
+            | PaintCall::Mesh(_)
+            | PaintCall::Polyline(_)
+            | PaintCall::Image { .. }
+            | PaintCall::Curve(_)
+            | PaintCall::Arc(_)
+            | PaintCall::Triangle(_) => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");
@@ -672,7 +667,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let mut sink = (false, false, false);
     ui.run_at(surface, |ui| build(ui, &mut sink));
 
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let drawn = screen_rects_by_fill(&cmds);
 
     // Encoder stores fills as `ColorF16` now; encode the expected
@@ -751,7 +746,7 @@ fn nested_clips_each_emit_their_own_pair() {
                 });
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
@@ -821,11 +816,12 @@ fn encoder_text_alignment_respects_leaf_padding() {
                 .show(ui);
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let text_rect = cmds
+        .calls
         .iter()
         .find_map(|command| match command {
-            Command::DrawText(payload) => Some(payload.rect),
+            PaintCall::Text(payload) => Some(payload.rect),
             _ => None,
         })
         .expect("button must emit one DrawText");
@@ -875,7 +871,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     .show(ui);
             });
         });
-        let cmds = ui.encode_cmds_for(DamageRegion::from(*filter));
+        let cmds = ui.encode_paint_for(DamageRegion::from(*filter));
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -889,21 +885,22 @@ fn damage_filter_culls_subtree_outside_damage() {
         Clipped,
         Transformed,
     }
-    let cases: &[(&str, Wrap, CmdKind, CmdKind)] = &[
+    type Matches = fn(&PaintCall) -> bool;
+    let cases: &[(&str, Wrap, Matches, Matches)] = &[
         (
             "clipped",
             Wrap::Clipped,
-            CmdKind::PushClip,
-            CmdKind::PopClip,
+            |call| matches!(call, PaintCall::Clip(_)),
+            |call| matches!(call, PaintCall::PopClip),
         ),
         (
             "transformed",
             Wrap::Transformed,
-            CmdKind::PushTransform,
-            CmdKind::PopTransform,
+            |call| matches!(call, PaintCall::PushTransform(_)),
+            |call| matches!(call, PaintCall::PopTransform),
         ),
     ];
-    for (label, wrap, push_kind, pop_kind) in cases {
+    for (label, wrap, push_matches, pop_matches) in cases {
         let mut ui = Ui::for_test();
         ui.run_at(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -931,15 +928,9 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
             });
         });
-        let cmds = ui.encode_cmds_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
-        let pushes = cmds
-            .iter()
-            .filter(|command| command_matches_kind(command, *push_kind))
-            .count();
-        let pops = cmds
-            .iter()
-            .filter(|command| command_matches_kind(command, *pop_kind))
-            .count();
+        let cmds = ui.encode_paint_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
+        let pushes = cmds.count(push_matches);
+        let pops = cmds.count(pop_matches);
         assert_eq!(pushes, 0, "case {label}: no push (cull)");
         assert_eq!(pops, 0, "case {label}: no pop");
         assert_eq!(count_draw_rects(&cmds), 0, "case {label}: no draws");
@@ -971,7 +962,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
         Rect::new(0.0, 0.0, 50.0, 50.0),
         Rect::new(150.0, 0.0, 50.0, 50.0),
     ];
-    let cmds = ui.encode_cmds_for(DamageRegion::from_rects(&rects));
+    let cmds = ui.encode_paint_for(DamageRegion::from_rects(&rects));
     assert_eq!(
         count_draw_rects(&cmds),
         2,
@@ -1036,9 +1027,9 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
             [0, 1],
         );
         let cmds = match cull {
-            Cull::Viewport => ui.encode_cmds(),
+            Cull::Viewport => ui.encode_paint(),
             Cull::Damage => {
-                ui.encode_cmds_for(DamageRegion::from(Rect::new(55.0, 5.0, 35.0, 30.0)))
+                ui.encode_paint_for(DamageRegion::from(Rect::new(55.0, 5.0, 35.0, 30.0)))
             }
         };
         assert_eq!(
@@ -1087,7 +1078,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
         });
     });
     let damage = Rect::new(60.0, 0.0, 40.0, 40.0);
-    let cmds = ui.encode_cmds_for(DamageRegion::from(damage));
+    let cmds = ui.encode_paint_for(DamageRegion::from(damage));
     assert_eq!(
         count_draw_rects(&cmds),
         1,
@@ -1137,7 +1128,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .show(ui);
                 });
         });
-        let cmds = ui.encode_cmds_for(DamageRegion::from(*damage));
+        let cmds = ui.encode_paint_for(DamageRegion::from(*damage));
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -1244,11 +1235,12 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
                 });
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let p = cmds
+        .calls
         .iter()
         .find_map(|command| match command {
-            Command::DrawPolyline(payload) => Some(payload),
+            PaintCall::Polyline(payload) => Some(payload),
             _ => None,
         })
         .expect("spun polyline must emit a DrawPolyline");
@@ -1304,11 +1296,12 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
                 });
         });
     });
-    let cmds = ui.encode_cmds();
+    let cmds = ui.encode_paint();
     let p = cmds
+        .calls
         .iter()
         .find_map(|command| match command {
-            Command::DrawArc(payload) => Some(payload),
+            PaintCall::Arc(payload) => Some(payload),
             _ => None,
         })
         .expect("spun arc must emit a DrawArc");
@@ -1375,7 +1368,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     });
 
     use crate::primitives::color::ColorF16;
-    let drawn = screen_rects_by_fill(&ui.encode_cmds());
+    let drawn = screen_rects_by_fill(&ui.encode_paint());
     let shape_f16: ColorF16 = shape_color.into();
     let child_f16: ColorF16 = child_color.into();
 
@@ -1428,7 +1421,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
     });
 
     use crate::primitives::color::ColorF16;
-    let drawn = screen_rects_by_fill(&ui.encode_cmds());
+    let drawn = screen_rects_by_fill(&ui.encode_paint());
     let chrome_f16: ColorF16 = chrome_color.into();
     let (_, chrome_rect) = drawn
         .iter()

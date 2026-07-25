@@ -1,11 +1,10 @@
 use crate::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-use crate::renderer::frontend::cmd_buffer::payload::{
-    DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-};
 use crate::renderer::frontend::composer::Composer;
+use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::{DrawCurvePayload, DrawImagePayload, DrawMeshPayload};
+use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::texture_id::TextureId;
 use crate::scene::record_store::RecordPayloads;
@@ -16,7 +15,7 @@ use std::time::Duration;
 
 #[derive(Debug)]
 struct ComposeBench {
-    cmds: RenderCmdBuffer,
+    cmds: RecordedPaint,
     payloads: RecordPayloads,
     composer: Composer,
     out: RenderBuffer,
@@ -24,7 +23,7 @@ struct ComposeBench {
 }
 
 impl ComposeBench {
-    fn new(cmds: RenderCmdBuffer) -> Self {
+    fn new(cmds: RecordedPaint) -> Self {
         Self {
             cmds,
             payloads: RecordPayloads::default(),
@@ -36,7 +35,7 @@ impl ComposeBench {
 
     fn curves(curve_count: usize) -> Self {
         assert!(curve_count > 0);
-        let mut cmds = RenderCmdBuffer::default();
+        let mut cmds = RecordedPaint::default();
         for _ in 0..curve_count {
             cmds.draw_curve(DrawCurvePayload {
                 bbox: Rect::new(16.0, 63.0, 96.0, 2.0),
@@ -47,7 +46,7 @@ impl ComposeBench {
                 p3: Vec2::new(112.0, 64.0),
                 color: Color::WHITE.into(),
                 width: 2.0,
-                ..bytemuck::Zeroable::zeroed()
+                ..Default::default()
             });
         }
         Self::new(cmds)
@@ -55,7 +54,8 @@ impl ComposeBench {
 
     fn compose(&mut self) -> usize {
         self.composer
-            .compose(&self.cmds, &self.payloads, self.display, &mut self.out);
+            .begin(self.display, &self.payloads, &mut self.out)
+            .replay_from(&self.cmds);
         self.out.meshes.len() + self.out.images.len() + self.out.curves.len()
     }
 }
@@ -87,7 +87,7 @@ impl HigherKindCase {
 
     fn fixture(self, draw_count: usize) -> ComposeBench {
         assert!(draw_count > 0);
-        let mut cmds = RenderCmdBuffer::default();
+        let mut cmds = RecordedPaint::default();
         let overlap = Rect::new(16.0, 16.0, 32.0, 32.0);
         let disjoint = Rect::new(80.0, 80.0, 32.0, 32.0);
         match self {
@@ -125,7 +125,7 @@ impl HigherKindCase {
     }
 }
 
-fn push_mesh(cmds: &mut RenderCmdBuffer, bbox: Rect) {
+fn push_mesh(cmds: &mut RecordedPaint, bbox: Rect) {
     cmds.draw_mesh(DrawMeshPayload {
         bbox,
         origin: Vec2::ZERO,
@@ -134,11 +134,10 @@ fn push_mesh(cmds: &mut RenderCmdBuffer, bbox: Rect) {
         v_len: 3,
         i_start: 0,
         i_len: 3,
-        ..bytemuck::Zeroable::zeroed()
     });
 }
 
-fn push_image(cmds: &mut RenderCmdBuffer, rect: Rect) {
+fn push_image(cmds: &mut RecordedPaint, rect: Rect) {
     cmds.draw_image(DrawImagePayload::image(
         rect,
         Vec2::ZERO,

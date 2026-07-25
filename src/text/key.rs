@@ -201,7 +201,7 @@ impl TextShapeKey {
 /// bytes between layers; [`Self::resolve_request`] is the single place the
 /// pair turns back into a shaping request.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ShapedTextRef {
     pub(crate) key: TextShapeKey,
     pub(crate) source: TextSource,

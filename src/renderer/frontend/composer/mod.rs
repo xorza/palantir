@@ -8,7 +8,14 @@ use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
-use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
+use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::{
+    DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
+};
+#[cfg(any(test, feature = "internals"))]
+use crate::renderer::frontend::record_sink::RecordedPaint;
+use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::{
@@ -34,8 +41,8 @@ use higher_kind::HigherKindRects;
 use occlusion::OcclusionPruner;
 use text_grid::TextRectGrid;
 
-/// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
-/// (physical-px quads + text runs + scissor groups). Owns its output buffer
+/// CPU-only compose engine: turns the encoder's paint calls into a `RenderBuffer`
+/// (physical-px quads + text runs + scissor groups), one [`ComposeSession`] per frame. Owns its output buffer
 /// + compose-time scratch stacks so steady-state rendering is alloc-free.
 ///
 /// Composer doesn't know about `Tree` or `encode` — it's pure algorithm +
@@ -430,769 +437,31 @@ impl Composer {
         }
     }
 
-    /// Consume a logical-px command stream → physical-px `Quad`s +
-    /// `TextRun`s + draw groups (scissor ranges) into the caller-
-    /// provided `out` buffer. Pure: no device, no queue.
-    ///
-    /// Gradient atlas registration happens at shape-lowering time
-    /// (upstream of this stage), so each draw-rect payload carries a
-    /// pre-resolved `fill_lut_row`; nothing here touches the atlas.
-    #[profiling::function]
-    pub(crate) fn compose(
-        &mut self,
-        cmds: &RenderCmdBuffer,
-        payloads: &RecordPayloads,
+    /// Open a compose session over `out`: stamp the frame's display,
+    /// reset scratch + walk state, and hand back the sink paint streams
+    /// into. [`ComposeSession::finish`] closes the trailing batch and
+    /// group.
+    pub(crate) fn begin<'a>(
+        &'a mut self,
         display: Display,
-        out: &mut RenderBuffer,
-    ) {
-        let scale = display.scale_factor;
-        let snap = display.pixel_snap;
-        let viewport_phys = display.physical;
-
+        payloads: &'a RecordPayloads,
+        out: &'a mut RenderBuffer,
+    ) -> ComposeSession<'a> {
         out.start_frame(display);
 
-        self.reset_group_scratch(viewport_phys);
+        self.reset_group_scratch(display.physical);
         self.clip_stack.clear();
         self.transform_stack.clear();
         self.current_scissor = None;
         self.current_chain = Span::default();
-        let mut current_transform = TranslateScale::IDENTITY;
 
-        for command in cmds.iter() {
-            match command {
-                Command::PushClip(p) => {
-                    let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
-                    let world = current_transform.apply_rect(p.rect);
-                    let me = scissor_from_logical(world, scale, snap, viewport_phys);
-                    let parent = self.clip_stack.last().copied();
-                    let scissor = match parent {
-                        Some(parent) => me.clamp_to(parent.scissor),
-                        None => me,
-                    };
-                    let parent_chain = parent.map_or(Span::default(), |f| f.chain);
-                    let chain = if let Some(logical_radius) = logical_radius {
-                        // Combine current transform's uniform scale with DPR
-                        // so radii match the painted SDF's physical size.
-                        let phys_scale = current_transform.scale * scale;
-                        // `mask_rect` stays unclamped — the SDF needs the
-                        // rect's true edges, otherwise corner curves
-                        // would shift inward when the clip partially
-                        // leaves the viewport.
-                        let rc = RoundedClip {
-                            mask_rect: world.scaled_by(scale, snap),
-                            corners: logical_radius.scaled_by(phys_scale),
-                        };
-                        // A rounded push nested in rounded ancestors
-                        // STACKS: child chain = ancestor chain + own
-                        // mask, copied so every chain is one contiguous
-                        // span the stencil path can stamp outer→inner.
-                        // Re-pushing the innermost mask verbatim adds no
-                        // depth (a redundant stamp would test/write the
-                        // same pixels).
-                        if out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
-                            parent_chain
-                        } else {
-                            let depth = parent_chain.len + 1;
-                            if depth > MAX_ROUNDED_CLIP_DEPTH {
-                                rounded_clip_depth_overflow(depth);
-                            }
-                            let chain_start = out.rounded_clips.len() as u32;
-                            out.rounded_clips.extend_from_within(parent_chain.range());
-                            out.rounded_clips.push(rc);
-                            Span::new(chain_start, depth)
-                        }
-                    } else {
-                        // Rect clip nested inside rounded ancestors: inherit
-                        // the ancestor chain so children stay stencil-tested
-                        // against the active masks. Without this, the child
-                        // group would draw with ref=0 over pixels already
-                        // stenciled nonzero by the ancestors' masks, and the
-                        // stencil_test pipeline would discard every fragment.
-                        parent_chain
-                    };
-                    self.clip_stack.push(ClipFrame { scissor, chain });
-                    self.set_clip(Some(scissor), chain, out);
-                }
-                Command::PopClip => {
-                    self.clip_stack
-                        .pop()
-                        .expect("PopClip without matching PushClip");
-                    let parent = self.clip_stack.last().copied();
-                    self.set_clip(
-                        parent.map(|f| f.scissor),
-                        parent.map_or(Span::default(), |f| f.chain),
-                        out,
-                    );
-                }
-                Command::PushTransform(t) => {
-                    self.transform_stack.push(current_transform);
-                    current_transform = current_transform.compose(t);
-                }
-                Command::PopTransform => {
-                    current_transform = self
-                        .transform_stack
-                        .pop()
-                        .expect("PopTransform without matching PushTransform");
-                }
-                Command::DrawRect(p) => {
-                    let world_rect = current_transform.apply_rect(p.rect);
-                    // Scale to physical px once: the cull `URect` and the
-                    // emitted quad share this rect (the cull needs the
-                    // scaled bounds anyway, so a culled draw costs the same).
-                    let phys_rect = world_rect.scaled_by(scale, snap);
-                    // Clear fold: an opaque solid sharp unclipped quad
-                    // covering the whole viewport paints exactly what
-                    // `LoadOp::Clear(fill)` would — every covered pixel
-                    // is deep inside the SDF (coverage exactly 1.0), so
-                    // the outputs are bit-identical. And being opaque
-                    // over every pixel, it hides *everything painted
-                    // before it*. So: discard the whole scene composed
-                    // so far and record the fill as the pass clear —
-                    // the frame effectively starts at the last such
-                    // cover. The root window background is the common
-                    // case (cover at position 0, nothing to discard); a
-                    // fullscreen page/panel painted over an underlay
-                    // drops the entire hidden underlay too. The active
-                    // clip must be empty: a scissored cover only hides
-                    // its scissor, and an empty scissor state also
-                    // guarantees no group in flight references
-                    // `rounded_clips` state that `discard` wipes.
-                    if self.current_scissor.is_none()
-                        && self.current_chain.len == 0
-                        && p.fill_kind == FillKind::SOLID
-                        && p.fill.is_opaque()
-                        && noop_f32(p.stroke_width)
-                        && p.corners.approx_zero()
-                        && phys_rect.min.x <= EPS
-                        && phys_rect.min.y <= EPS
-                        && phys_rect.max().x >= out.viewport_phys_f.x - EPS
-                        && phys_rect.max().y >= out.viewport_phys_f.y - EPS
-                    {
-                        self.discard_composed(out);
-                        out.clear_override = Some(p.fill.unpack());
-                        continue;
-                    }
-                    let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
-                    // Clip-cull: skip emitting the quad when it sits
-                    // entirely outside the active scissor. The GPU
-                    // would scissor it away anyway; this saves the
-                    // `quads.push` + per-quad math.
-                    if self.cull_bounds(quad_urect) {
-                        continue;
-                    }
-                    self.quad_forces_flush(quad_urect, out);
-                    let phys_scale = current_transform.scale * scale;
-                    let phys_radius = p.corners.scaled_by(phys_scale);
-                    let stroke_width_phys = p.stroke_width * phys_scale;
-                    // Fragment fast path: a solid, sharp, stroke-less
-                    // quad whose physical rect is pixel-aligned
-                    // rasterizes only interior fragments (SDF coverage
-                    // exactly 1.0) — flag the instance so the shader
-                    // returns the premultiplied fill directly, skipping
-                    // the SDF + composite path. Alignment is exact, not
-                    // approx: exactness is what makes the skip
-                    // bitwise-identical (host pixel snapping yields
-                    // exact integers when active; unsnapped fractional
-                    // rects keep the full SDF for edge AA).
-                    let pmax = phys_rect.max();
-                    let fast = p.fill_kind == FillKind::SOLID
-                        && noop_f32(stroke_width_phys)
-                        && phys_radius.approx_zero()
-                        && phys_rect.min.x.is_integral()
-                        && phys_rect.min.y.is_integral()
-                        && pmax.x.is_integral()
-                        && pmax.y.is_integral();
-                    let fill_kind = if fast {
-                        p.fill_kind.with_fast()
-                    } else {
-                        p.fill_kind
-                    };
-                    out.quads.push(Quad {
-                        rect: phys_rect,
-                        fill: p.fill,
-                        corners: phys_radius,
-                        stroke_color: p.stroke_color,
-                        stroke_width: stroke_width_phys,
-                        fill_kind,
-                        fill_lut_row: p.fill_lut_row,
-                        fill_axis: p.fill_axis,
-                    });
-                    if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
-                        let inscribed = phys_rect.inscribed_for_corners(phys_radius);
-                        let stroke_inset =
-                            if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
-                                0.0
-                            } else {
-                                stroke_width_phys
-                            };
-                        let aa_inset = if fast { 0.0 } else { AA_RADIUS };
-                        let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
-                        if !cover.is_paint_empty() {
-                            let idx = out.quads.len() as u32 - 1 - self.cursors.quads;
-                            self.occlusion.record_opaque(idx, cover);
-                        }
-                    }
-                }
-                Command::DrawShadow(p) => {
-                    let world_rect = current_transform.apply_rect(p.rect);
-                    let phys_rect = world_rect.scaled_by(scale, snap);
-                    let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
-                    if self.cull_bounds(quad_urect) {
-                        continue;
-                    }
-                    self.quad_forces_flush(quad_urect, out);
-                    let phys_scale = current_transform.scale * scale;
-                    let phys_radius = p.corners.scaled_by(phys_scale);
-                    // Live shadow parameters are logical-px scalars; scale
-                    // them so the shader's `local` coords line up.
-                    let fill_axis = p.fill_axis.scaled(phys_scale);
-                    out.quads.push(Quad {
-                        rect: phys_rect,
-                        fill: p.color,
-                        corners: phys_radius,
-                        stroke_color: ColorF16::TRANSPARENT,
-                        stroke_width: 0.0,
-                        fill_kind: p.fill_kind,
-                        fill_lut_row: LutRow::FALLBACK,
-                        fill_axis,
-                    });
-                }
-                Command::DrawTriangle(p) => {
-                    // Fold owner origin + active transform, scale to physical
-                    // px. No pixel-snap — the SDF handles sub-pixel placement;
-                    // snapping the covering rect would only shift the AA band.
-                    let phys_scale = current_transform.scale * scale;
-                    let xf = |q: Vec2| current_transform.apply_point(q + p.origin) * scale;
-                    let a = xf(p.a);
-                    let b = xf(p.b);
-                    let c = xf(p.c);
-                    let radius_phys = (p.radius * phys_scale).max(0.0);
-                    let stroke_phys = (p.stroke_width * phys_scale).max(0.0);
-                    // Covering AABB: the rounded shape (the SDF offsets the
-                    // triangle outward by `radius` to round its corners) plus
-                    // the ½px AA fringe. The stroke sits on the *inner* edge
-                    // (like a rounded rect), so it adds no outward reach.
-                    let lo = a.min(b).min(c);
-                    let hi = a.max(b).max(c);
-                    let pad = radius_phys + 0.5;
-                    let rect = Rect::from_min_max(lo, hi).inflated(pad);
-                    let tri_urect = urect_from_phys(rect.min, rect.max(), viewport_phys);
-                    // Triangle is a quad-tier draw (lowest paint kind), so it
-                    // culls + flushes exactly like `DrawRect`.
-                    if self.cull_bounds(tri_urect) {
-                        continue;
-                    }
-                    self.quad_forces_flush(tri_urect, out);
-                    // Pack the three points in rect-local coords (0..size,
-                    // matching the shader's `in.local`) + the corner radius
-                    // into the reused `corners` / `fill_axis` lanes;
-                    // `FillKind::TRIANGLE` tells the shader to read them as a
-                    // triangle SDF rather than rounded-rect radii / gradient
-                    // axis. No occlusion annotation — a triangle covers only
-                    // its interior, not the whole `rect`.
-                    let al = a - rect.min;
-                    let bl = b - rect.min;
-                    let cl = c - rect.min;
-                    out.quads.push(Quad {
-                        rect,
-                        fill: p.fill,
-                        corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
-                        stroke_color: p.stroke_color,
-                        stroke_width: stroke_phys,
-                        fill_kind: FillKind::TRIANGLE,
-                        fill_lut_row: LutRow::FALLBACK,
-                        fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
-                    });
-                }
-                Command::DrawMesh(p) => {
-                    // `draw_mesh` already gated empty/degenerate meshes
-                    // (`draw_mesh` applies its no-op gate), so `v_len >= 1` here.
-                    // Inflate by 0.5 phys-px to match polyline's AA-fringe
-                    // policy. Mesh today paints inside its vertex hull,
-                    // but a future AA edge or displacement shader would
-                    // silently produce false negatives — and false
-                    // negatives in the overlap test reorder paint. The
-                    // same inflated rect feeds the clip cull below.
-                    let world_bbox = current_transform.apply_rect(Rect {
-                        min: p.bbox.min + p.origin,
-                        size: p.bbox.size,
-                    });
-                    // Mesh skips snapping (matches polyline/curve); route
-                    // through the shared scaler so the cull tracks `DrawRect`
-                    // instead of open-coding `* scale`.
-                    let phys_bbox = world_bbox.scaled_by(scale, false);
-                    let fringe = Vec2::splat(0.5);
-                    let mesh_urect = urect_from_phys(
-                        phys_bbox.min - fringe,
-                        phys_bbox.max() + fringe,
-                        viewport_phys,
-                    );
-                    // Clip-cull + batch-close: a mesh fully outside the
-                    // active scissor (e.g. scrolled out of an ancestor clip)
-                    // is skipped; a surviving one closes the open text batch
-                    // so its text emits before this above-text geometry.
-                    if !self.enter_higher_kind(PaintTier::Mesh, mesh_urect, out) {
-                        continue;
-                    }
-                    // Verts already live in RecordStore owner-local;
-                    // span passes through to `MeshDraw` verbatim. The
-                    // per-instance translate folds in both the owner
-                    // origin and the active push-transform stack so the
-                    // shader produces physical coords. Phase 1's
-                    // transform/tint move plus this slice eliminates
-                    // both the per-vertex CPU multiply and the
-                    // per-frame vertex copy.
-                    let phys_scale = current_transform.scale * scale;
-                    let phys_translate = (current_transform.scale * p.origin
-                        + current_transform.translation)
-                        * scale;
-                    out.meshes.push(MeshDrawRow {
-                        draw: MeshDraw {
-                            vertices: (p.v_start..p.v_start + p.v_len).into(),
-                            indices: (p.i_start..p.i_start + p.i_len).into(),
-                        },
-                        instance: MeshInstance {
-                            translate: phys_translate,
-                            scale: phys_scale,
-                            tint: p.tint.into(),
-                            ..bytemuck::Zeroable::zeroed()
-                        },
-                    });
-                }
-                Command::DrawImage { payload: p, paint } => {
-                    let world_rect = current_transform.apply_rect(p.rect);
-                    let phys_rect = world_rect.scaled_by(scale, snap);
-                    let image_urect =
-                        urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
-                    // Clip-cull + batch-close: image sits above text in the
-                    // kind order (same as mesh), so a surviving draw closes
-                    // the open text batch first.
-                    if !self.enter_higher_kind(PaintTier::Image, image_urect, out) {
-                        continue;
-                    }
-                    out.images.push(ImageDrawRow {
-                        // Just the registration id — the backend looks it
-                        // up in its texture cache; the encoder already
-                        // resolved fit into `rect` + UV. A `GpuView` row is
-                        // identical (its `id` is the off-screen target's),
-                        // so the draw stays uniform; `target` below only
-                        // schedules the off-screen paint.
-                        id: p.handle,
-                        instance: ImageInstance {
-                            rect: phys_rect,
-                            uv_min: p.uv_min,
-                            uv_size: p.uv_size,
-                            tint: p.tint.into(),
-                            flags: p.flags,
-                            ..bytemuck::Zeroable::zeroed()
-                        },
-                    });
-                    // A `GpuView` also needs its off-screen target painted:
-                    // list it with the used physical size + display/raster
-                    // scales + app paint callback from the cmd buffer's side
-                    // channel. The draw above already composites the result by
-                    // `id`.
-                    if let Some(paint) = paint {
-                        let cap = i64::from(self.max_texture_dim.get());
-                        let s = phys_rect.size;
-                        let downsample =
-                            (self.max_texture_dim.get() as f32 / s.w.max(s.h)).min(1.0);
-                        let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
-                        out.frame_targets.push(RenderTargetDraw {
-                            id: p.handle,
-                            used: UVec2::new(px(s.w), px(s.h)),
-                            display_scale: scale,
-                            raster_scale: current_transform.scale * scale * downsample,
-                            paint: paint.clone(),
-                        });
-                    }
-                }
-                Command::DrawCurve(p) => {
-                    let width_phys = p.width * current_transform.scale * scale;
-                    let cap = p.cap.get();
-                    let bbox_scissor = stroke_bbox_scissor(
-                        current_transform,
-                        p.bbox,
-                        p.origin,
-                        width_phys,
-                        cap,
-                        None,
-                        display,
-                    );
-                    // Clip-cull + batch-close: curve sits above text in the
-                    // kind order (same as mesh/image), so a surviving draw
-                    // closes the open text batch first.
-                    if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
-                        continue;
-                    }
-                    // Transform control points to physical px. Owner
-                    // origin folds in here so the record stays
-                    // owner-local (cross-frame stable). No pixel
-                    // snapping — snapping control points would warp
-                    // the curve shape; AA fringe lives in the shader.
-                    // Paint-time spin rotates the control points about
-                    // the payload-bbox centre first (the encoder's
-                    // pivot contract, see `spin_bbox`) — exact for a
-                    // bezier by affine invariance.
-                    let mut ctrl = [p.p0, p.p1, p.p2, p.p3];
-                    if p.rotation != 0.0 {
-                        let pivot = p.bbox.center();
-                        let rotor = Vec2::from_angle(p.rotation);
-                        for q in &mut ctrl {
-                            *q = rotor.rotate(*q - pivot) + pivot;
-                        }
-                    }
-                    let [p0, p1, p2, p3] =
-                        ctrl.map(|q| current_transform.apply_point(q + p.origin) * scale);
-                    // Adaptive sub-instance count from post-transform
-                    // control-polygon length. Polygon length bounds
-                    // arc length from above — slight overshoot, but
-                    // never undershoots → no faceting from too-coarse
-                    // sampling. Near-straight cubics (`Shape::line`
-                    // lowers as one; graph wires often relax to one)
-                    // short-circuit to a single instance: every chord
-                    // of a flat curve lies on the segment, so the 16
-                    // baked chords render it exactly at any length.
-                    let n = if cubic_is_flat(p0, p1, p2, p3) {
-                        1
-                    } else {
-                        let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
-                        sub_instance_count(l)
-                    };
-                    let color: ColorU8 = p.color.into();
-                    push_sub_instances(
-                        out,
-                        n,
-                        CurveInstance {
-                            p0,
-                            p1,
-                            p2,
-                            p3,
-                            width: width_phys,
-                            color0: color,
-                            color1: color,
-                            cap: cap_lanes(cap as u32, cap as u32),
-                            fill_kind: p.fill_kind,
-                            fill_lut_row: p.fill_lut_row,
-                            kind: CURVE_KIND_CUBIC,
-                            ..bytemuck::Zeroable::zeroed()
-                        },
-                    );
-                }
-                Command::DrawArc(p) => {
-                    let width_phys = p.width * current_transform.scale * scale;
-                    let cap = p.cap.get();
-                    let bbox_scissor = stroke_bbox_scissor(
-                        current_transform,
-                        p.bbox,
-                        p.origin,
-                        width_phys,
-                        cap,
-                        None,
-                        display,
-                    );
-                    if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
-                        continue;
-                    }
-                    // Paint-time spin: rotate the center about the
-                    // payload-bbox centre (the encoder guarantees
-                    // `bbox.center()` is the owner-box pivot when
-                    // `rotation != 0`, same contract as DrawPolyline)
-                    // and shift both angles — exact for a circle, no
-                    // control-point rotation needed.
-                    let mut center = p.center;
-                    let mut a0 = p.a0;
-                    let mut a1 = p.a1;
-                    if p.rotation != 0.0 {
-                        let pivot = p.bbox.center();
-                        center = Vec2::from_angle(p.rotation).rotate(center - pivot) + pivot;
-                        a0 += p.rotation;
-                        a1 += p.rotation;
-                    }
-                    // The transform stack is translate + uniform scale
-                    // (no rotation/skew — see `TranslateScale`), so a
-                    // circle maps to a circle: transform the center,
-                    // scale the radius. Angles pass through untouched.
-                    let center_phys = current_transform.apply_point(center + p.origin) * scale;
-                    let radius_phys = p.radius * current_transform.scale * scale;
-                    // Adaptive sub-instance count from the *exact* arc
-                    // length `r·|sweep|` — no control-polygon overshoot.
-                    // Same ~1.5 px chord target as the cubic path; at
-                    // that density the chord sagitta is `≈ c²/(8r)` ≤
-                    // 0.3 px even at r = 1, buried under the AA fringe.
-                    let n = sub_instance_count(radius_phys * (a1 - a0).abs());
-                    let color: ColorU8 = p.color.into();
-                    push_sub_instances(
-                        out,
-                        n,
-                        CurveInstance {
-                            p0: center_phys,
-                            p1: Vec2::new(radius_phys, 0.0),
-                            p2: Vec2::new(a0, a1),
-                            p3: Vec2::ZERO,
-                            width: width_phys,
-                            color0: color,
-                            color1: color,
-                            cap: cap_lanes(cap as u32, cap as u32),
-                            fill_kind: p.fill_kind,
-                            fill_lut_row: p.fill_lut_row,
-                            kind: CURVE_KIND_ARC,
-                            ..bytemuck::Zeroable::zeroed()
-                        },
-                    );
-                }
-                Command::DrawPolyline(p) => {
-                    let mode = p.color_mode.get();
-                    let cap = p.cap.get();
-                    let join = p.join.get();
-                    let width_phys = p.width * current_transform.scale * scale;
-
-                    // Compute the inflated physical-px AABB once and
-                    // reuse it for cull and overlap tracking. Inflating
-                    // by the stroke's outer fringe means the cull never
-                    // trims a pixel the stroke would reach, and it
-                    // short-circuits before transforming the full point
-                    // list — the win for long dense point runs.
-                    let bbox_scissor = stroke_bbox_scissor(
-                        current_transform,
-                        p.bbox,
-                        p.origin,
-                        width_phys,
-                        cap,
-                        (p.points_len > 2).then_some(join),
-                        display,
-                    );
-                    if self.cull_bounds(bbox_scissor) {
-                        continue;
-                    }
-
-                    let pts_start = p.points_start as usize;
-                    let pts_end = pts_start + p.points_len as usize;
-                    let cs_start = p.colors_start as usize;
-                    let cs_end = cs_start + p.colors_len as usize;
-                    let src_points = &payloads.polyline_points[pts_start..pts_end];
-                    let src_colors = &payloads.polyline_colors[cs_start..cs_end];
-
-                    // Transform points into physical-px. Owner-local
-                    // origin is folded in here so points stay owner-
-                    // local in the record store (cross-frame stable). No
-                    // pixel-snap — snapping stroke verts shifts thin
-                    // lines off-axis. Hairline regime (<1 phys px) is
-                    // the shader's trapezoid-plateau coverage.
-                    self.polyline.points.clear();
-                    if p.rotation == 0.0 {
-                        self.polyline.points.extend(
-                            src_points
-                                .iter()
-                                .map(|&q| current_transform.apply_point(q + p.origin) * scale),
-                        );
-                    } else {
-                        // Spin: rotate each owner-local point about the
-                        // bbox centre before placing it via the ancestor
-                        // transform, so the shape rotates in place. The
-                        // encoder replaced the payload bbox with a
-                        // rotation-invariant square CENTRED on the spin
-                        // pivot (the owner-box centre), so `bbox.center()`
-                        // is the pivot by construction — keep the two
-                        // ends of that contract in sync.
-                        let pivot = p.bbox.center();
-                        let rotor = Vec2::from_angle(p.rotation);
-                        self.polyline.points.extend(src_points.iter().map(|&q| {
-                            let local = rotor.rotate(q - pivot) + pivot;
-                            current_transform.apply_point(local + p.origin) * scale
-                        }));
-                    }
-
-                    // Keep only points beyond the coincidence threshold
-                    // from their predecessor — degenerate segments
-                    // contribute no geometry and their colors drop
-                    // with them.
-                    self.polyline.kept.clear();
-                    let mut prev: Option<Vec2> = None;
-                    for (i, &q) in self.polyline.points.iter().enumerate() {
-                        if prev
-                            .is_none_or(|p| (q - p).length_squared() > POLYLINE_COINCIDENT_EPS_SQ)
-                        {
-                            self.polyline.kept.push(i as u32);
-                            prev = Some(q);
-                        }
-                    }
-                    if self.polyline.kept.len() < 2 {
-                        continue;
-                    }
-                    // Only now that the polyline will actually emit
-                    // geometry — an empty or culled polyline must not
-                    // split the batch or the group.
-                    if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
-                        continue;
-                    }
-                    let PolylineScratch {
-                        points,
-                        kept,
-                        directions,
-                    } = &mut self.polyline;
-                    directions.clear();
-                    directions.extend(kept.windows(2).map(|pair| {
-                        (points[pair[1] as usize] - points[pair[0] as usize]).normalize()
-                    }));
-                    let pts = points.as_slice();
-                    let kept = kept.as_slice();
-                    let directions = directions.as_slice();
-                    let pt = |k: usize| pts[kept[k] as usize];
-                    // Segment color(s) for the kept segment `k → k+1`,
-                    // honoring the original indices (coincident skips
-                    // drop the degenerate segments' colors, mirroring
-                    // the old `ColorPlan` walker).
-                    let seg_colors = |k: usize| -> (ColorU8, ColorU8) {
-                        match mode {
-                            ColorMode::Single => (src_colors[0], src_colors[0]),
-                            ColorMode::PerPoint => (
-                                src_colors[kept[k] as usize],
-                                src_colors[kept[k + 1] as usize],
-                            ),
-                            ColorMode::PerSegment => {
-                                let c = src_colors[kept[k + 1] as usize - 1];
-                                (c, c)
-                            }
-                        }
-                    };
-                    let user_cap = cap as u32;
-                    let n_segs = directions.len();
-                    for k in 0..n_segs {
-                        // Pre-oriented bisector clip planes for the
-                        // joint ends, riding the neighbor lanes ("keep"
-                        // is `dot(x - endpoint, n) <= 0` in the shader);
-                        // zero = cap end, no clip.
-                        let n_start = if k > 0 {
-                            -(directions[k - 1] + directions[k])
-                        } else {
-                            Vec2::ZERO
-                        };
-                        let n_end = if k + 1 < n_segs {
-                            directions[k] + directions[k + 1]
-                        } else {
-                            Vec2::ZERO
-                        };
-                        let butt = LineCap::Butt as u32;
-                        let start_cap = if k == 0 { user_cap } else { butt };
-                        let end_cap = if k + 1 == n_segs { user_cap } else { butt };
-                        let (color, color1) = seg_colors(k);
-                        out.curves.push(CurveInstance {
-                            p0: pt(k),
-                            p1: n_start,
-                            p2: n_end,
-                            p3: pt(k + 1),
-                            t0: 0.0,
-                            t1: 1.0,
-                            width: width_phys,
-                            color0: color,
-                            color1,
-                            cap: cap_lanes(start_cap, end_cap),
-                            kind: CURVE_KIND_SEGMENT,
-                            ..bytemuck::Zeroable::zeroed()
-                        });
-                    }
-                    // One chrome instance per interior joint fills the
-                    // convex wedge between the two segment end faces.
-                    // The face-plane normals ride the neighbor lanes
-                    // pre-oriented for the shader's keep test
-                    // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
-                    // average of the adjacent colors.
-                    for k in 1..n_segs {
-                        let d_a = directions[k - 1];
-                        let d_b = directions[k];
-                        let (_, ca) = seg_colors(k - 1);
-                        let (cb, _) = seg_colors(k);
-                        let color = ca.midpoint(cb);
-                        out.curves.push(CurveInstance {
-                            p0: pt(k),
-                            p1: -d_a,
-                            p2: d_b,
-                            t0: 0.0,
-                            t1: 1.0,
-                            width: width_phys,
-                            color0: color,
-                            color1: color,
-                            kind: polyline_join_kind(d_a, d_b, join),
-                            ..bytemuck::Zeroable::zeroed()
-                        });
-                    }
-                }
-                Command::DrawText(t) => {
-                    let world_rect = current_transform.apply_rect(t.rect);
-                    // Scale once: `unclipped` (overlap/cull bounds) and the
-                    // emitted run's `origin` both derive from this rect.
-                    let phys_rect = world_rect.scaled_by(scale, snap);
-                    // `bounds` feeds the batch GPU scissor (union of the
-                    // batch's runs — see the strict-bounds rule below) and
-                    // the backend's per-line y-cull; there is no per-glyph
-                    // clip. Intersect with the active clip-stack top so
-                    // ancestor `clip = true` panels actually clip glyphs;
-                    // an empty intersection means the run can't reach
-                    // pixels — skip the push entirely (cull).
-                    let unclipped = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
-                    let bounds = match self.clip_stack.last() {
-                        Some(parent) => unclipped.clamp_to(parent.scissor),
-                        None => unclipped,
-                    };
-                    if bounds.w == 0 || bounds.h == 0 {
-                        continue;
-                    }
-                    // Text sits below mesh/image/curve/polyline in the
-                    // kind order — flush if any prior higher-kind draw in
-                    // the group overlaps so this text doesn't get
-                    // reordered above it. (No need to check quads: text
-                    // paints over quads anyway.)
-                    if self.any_higher_kind_overlap(bounds) {
-                        self.flush(out);
-                    }
-                    // Batch GPU scissor = `open_grid.union` (union of every
-                    // run's `bounds` in the batch). The text shader has
-                    // no per-instance clip, so a "strict" run — one
-                    // whose ancestor clip cuts the unclipped extent —
-                    // can only batch with peers whose `bounds` matches
-                    // exactly; anything wider would let the strict
-                    // run's glyphs paint past their intended clip.
-                    // Non-strict-with-non-strict coalesces freely.
-                    let new_strict = bounds != unclipped;
-                    if let Some(b) = self.batch.open.as_ref()
-                        && (b.strict || new_strict)
-                        && self.batch.open_grid.union != bounds
-                    {
-                        self.close_batch(out);
-                    }
-                    // open_batch must run BEFORE the text push so the
-                    // batch's `texts_start` captures this run's index.
-                    let b = self.open_batch(out);
-                    b.strict |= new_strict;
-                    out.texts.push(TextRun {
-                        origin: phys_rect.min,
-                        bounds,
-                        // Linear ColorU8 straight to the text backend.
-                        // Aperture's native text shader (see
-                        // `src/renderer/backend/text/`) consumes linear
-                        // bytes and premultiplies at output — matching
-                        // the rest of the renderer's pipelines. No sRGB
-                        // roundtrip.
-                        color: t.color.into(),
-                        text: t.text,
-                        // Snap the ancestor-transform component of the
-                        // text scale to discrete 0.5% steps. Continuous
-                        // zoom would otherwise mint a fresh glyph
-                        // cache key every frame (subpixel font size +
-                        // bin shift), forcing swash to re-rasterize
-                        // every glyph. Snapping stabilizes the key
-                        // across small zoom deltas so the atlas hits.
-                        // Quads/meshes keep continuous scale — only
-                        // text glyph crispness "steps."
-                        scale: snap_text_scale(current_transform.scale),
-                    });
-                    self.batch.open_grid.push(bounds);
-                }
-            }
+        ComposeSession {
+            composer: self,
+            payloads,
+            out,
+            display,
+            current_transform: TranslateScale::IDENTITY,
         }
-        self.close_batch(out);
-        self.flush(out);
     }
 
     /// Clear-fold discard: a fullscreen opaque cover proved everything
@@ -1425,6 +694,827 @@ fn stroke_bbox_scissor(
     let centerline_phys = world_bbox.scaled_by(display.scale_factor, false);
     let painted = stroked_bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
     urect_from_phys(painted.min, painted.max(), display.physical)
+}
+
+/// One compose pass in flight: the running walk transform bound to the
+/// `Composer`'s retained scratch, the record payloads variable-length
+/// draws read from, and the buffer being filled.
+///
+/// Paint streams in through [`PaintSink`], one call per lowered draw, in
+/// authoring order. Clip and transform *stacks* stay on the `Composer`
+/// so their capacity survives across frames; only the live transform
+/// product rides here, because it is per-pass state with no allocation.
+#[derive(Debug)]
+pub(crate) struct ComposeSession<'a> {
+    composer: &'a mut Composer,
+    payloads: &'a RecordPayloads,
+    out: &'a mut RenderBuffer,
+    display: Display,
+    current_transform: TranslateScale,
+}
+
+impl ComposeSession<'_> {
+    /// Close the trailing text batch and draw group. Consumes the
+    /// session so no paint can land after the final flush.
+    pub(crate) fn finish(self) {
+        self.composer.close_batch(self.out);
+        self.composer.flush(self.out);
+    }
+
+    /// Replay a recorded paint stream into this session and close it.
+    /// Lets tests and benches drive the composer from a stream captured
+    /// once, outside whatever they are measuring or asserting on.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) fn replay_from(mut self, recorded: &RecordedPaint) {
+        recorded.replay(&mut self);
+        self.finish();
+    }
+}
+
+impl PaintSink for ComposeSession<'_> {
+    fn clip(&mut self, p: PushClipPayload) {
+        let scale = self.display.scale_factor;
+        let snap = self.display.pixel_snap;
+        let viewport_phys = self.display.physical;
+        let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
+        let world = self.current_transform.apply_rect(p.rect);
+        let me = scissor_from_logical(world, scale, snap, viewport_phys);
+        let parent = self.composer.clip_stack.last().copied();
+        let scissor = match parent {
+            Some(parent) => me.clamp_to(parent.scissor),
+            None => me,
+        };
+        let parent_chain = parent.map_or(Span::default(), |f| f.chain);
+        let chain = if let Some(logical_radius) = logical_radius {
+            // Combine current transform's uniform scale with DPR
+            // so radii match the painted SDF's physical size.
+            let phys_scale = self.current_transform.scale * scale;
+            // `mask_rect` stays unclamped — the SDF needs the
+            // rect's true edges, otherwise corner curves
+            // would shift inward when the clip partially
+            // leaves the viewport.
+            let rc = RoundedClip {
+                mask_rect: world.scaled_by(scale, snap),
+                corners: logical_radius.scaled_by(phys_scale),
+            };
+            // A rounded push nested in rounded ancestors
+            // STACKS: child chain = ancestor chain + own
+            // mask, copied so every chain is one contiguous
+            // span the stencil path can stamp outer→inner.
+            // Re-pushing the innermost mask verbatim adds no
+            // depth (a redundant stamp would test/write the
+            // same pixels).
+            if self.out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
+                parent_chain
+            } else {
+                let depth = parent_chain.len + 1;
+                if depth > MAX_ROUNDED_CLIP_DEPTH {
+                    rounded_clip_depth_overflow(depth);
+                }
+                let chain_start = self.out.rounded_clips.len() as u32;
+                self.out
+                    .rounded_clips
+                    .extend_from_within(parent_chain.range());
+                self.out.rounded_clips.push(rc);
+                Span::new(chain_start, depth)
+            }
+        } else {
+            // Rect clip nested inside rounded ancestors: inherit
+            // the ancestor chain so children stay stencil-tested
+            // against the active masks. Without this, the child
+            // group would draw with ref=0 over pixels already
+            // stenciled nonzero by the ancestors' masks, and the
+            // stencil_test pipeline would discard every fragment.
+            parent_chain
+        };
+        self.composer.clip_stack.push(ClipFrame { scissor, chain });
+        self.composer.set_clip(Some(scissor), chain, self.out);
+    }
+
+    fn pop_clip(&mut self) {
+        self.composer
+            .clip_stack
+            .pop()
+            .expect("PopClip without matching PushClip");
+        let parent = self.composer.clip_stack.last().copied();
+        self.composer.set_clip(
+            parent.map(|f| f.scissor),
+            parent.map_or(Span::default(), |f| f.chain),
+            self.out,
+        );
+    }
+
+    fn push_transform(&mut self, t: TranslateScale) {
+        self.composer.transform_stack.push(self.current_transform);
+        self.current_transform = self.current_transform.compose(t);
+    }
+
+    fn pop_transform(&mut self) {
+        self.current_transform = self
+            .composer
+            .transform_stack
+            .pop()
+            .expect("PopTransform without matching PushTransform");
+    }
+
+    fn rect(&mut self, p: DrawRectPayload) {
+        let scale = self.display.scale_factor;
+        let snap = self.display.pixel_snap;
+        let viewport_phys = self.display.physical;
+        let world_rect = self.current_transform.apply_rect(p.rect);
+        // Scale to physical px once: the cull `URect` and the
+        // emitted quad share this rect (the cull needs the
+        // scaled bounds anyway, so a culled draw costs the same).
+        let phys_rect = world_rect.scaled_by(scale, snap);
+        // Clear fold: an opaque solid sharp unclipped quad
+        // covering the whole viewport paints exactly what
+        // `LoadOp::Clear(fill)` would — every covered pixel
+        // is deep inside the SDF (coverage exactly 1.0), so
+        // the outputs are bit-identical. And being opaque
+        // over every pixel, it hides *everything painted
+        // before it*. So: discard the whole scene composed
+        // so far and record the fill as the pass clear —
+        // the frame effectively starts at the last such
+        // cover. The root window background is the common
+        // case (cover at position 0, nothing to discard); a
+        // fullscreen page/panel painted over an underlay
+        // drops the entire hidden underlay too. The active
+        // clip must be empty: a scissored cover only hides
+        // its scissor, and an empty scissor state also
+        // guarantees no group in flight references
+        // `rounded_clips` state that `discard` wipes.
+        if self.composer.current_scissor.is_none()
+            && self.composer.current_chain.len == 0
+            && p.fill_kind == FillKind::SOLID
+            && p.fill.is_opaque()
+            && noop_f32(p.stroke_width)
+            && p.corners.approx_zero()
+            && phys_rect.min.x <= EPS
+            && phys_rect.min.y <= EPS
+            && phys_rect.max().x >= self.out.viewport_phys_f.x - EPS
+            && phys_rect.max().y >= self.out.viewport_phys_f.y - EPS
+        {
+            self.composer.discard_composed(self.out);
+            self.out.clear_override = Some(p.fill.unpack());
+            return;
+        }
+        let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
+        // Clip-cull: skip emitting the quad when it sits
+        // entirely outside the active scissor. The GPU
+        // would scissor it away anyway; this saves the
+        // `quads.push` + per-quad math.
+        if self.composer.cull_bounds(quad_urect) {
+            return;
+        }
+        self.composer.quad_forces_flush(quad_urect, self.out);
+        let phys_scale = self.current_transform.scale * scale;
+        let phys_radius = p.corners.scaled_by(phys_scale);
+        let stroke_width_phys = p.stroke_width * phys_scale;
+        // Fragment fast path: a solid, sharp, stroke-less
+        // quad whose physical rect is pixel-aligned
+        // rasterizes only interior fragments (SDF coverage
+        // exactly 1.0) — flag the instance so the shader
+        // returns the premultiplied fill directly, skipping
+        // the SDF + composite path. Alignment is exact, not
+        // approx: exactness is what makes the skip
+        // bitwise-identical (host pixel snapping yields
+        // exact integers when active; unsnapped fractional
+        // rects keep the full SDF for edge AA).
+        let pmax = phys_rect.max();
+        let fast = p.fill_kind == FillKind::SOLID
+            && noop_f32(stroke_width_phys)
+            && phys_radius.approx_zero()
+            && phys_rect.min.x.is_integral()
+            && phys_rect.min.y.is_integral()
+            && pmax.x.is_integral()
+            && pmax.y.is_integral();
+        let fill_kind = if fast {
+            p.fill_kind.with_fast()
+        } else {
+            p.fill_kind
+        };
+        self.out.quads.push(Quad {
+            rect: phys_rect,
+            fill: p.fill,
+            corners: phys_radius,
+            stroke_color: p.stroke_color,
+            stroke_width: stroke_width_phys,
+            fill_kind,
+            fill_lut_row: p.fill_lut_row,
+            fill_axis: p.fill_axis,
+        });
+        if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
+            let inscribed = phys_rect.inscribed_for_corners(phys_radius);
+            let stroke_inset = if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
+                0.0
+            } else {
+                stroke_width_phys
+            };
+            let aa_inset = if fast { 0.0 } else { AA_RADIUS };
+            let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
+            if !cover.is_paint_empty() {
+                let idx = self.out.quads.len() as u32 - 1 - self.composer.cursors.quads;
+                self.composer.occlusion.record_opaque(idx, cover);
+            }
+        }
+    }
+
+    fn shadow(&mut self, p: DrawShadowPayload) {
+        let scale = self.display.scale_factor;
+        let snap = self.display.pixel_snap;
+        let viewport_phys = self.display.physical;
+        let world_rect = self.current_transform.apply_rect(p.rect);
+        let phys_rect = world_rect.scaled_by(scale, snap);
+        let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
+        if self.composer.cull_bounds(quad_urect) {
+            return;
+        }
+        self.composer.quad_forces_flush(quad_urect, self.out);
+        let phys_scale = self.current_transform.scale * scale;
+        let phys_radius = p.corners.scaled_by(phys_scale);
+        // Live shadow parameters are logical-px scalars; scale
+        // them so the shader's `local` coords line up.
+        let fill_axis = p.fill_axis.scaled(phys_scale);
+        self.out.quads.push(Quad {
+            rect: phys_rect,
+            fill: p.color,
+            corners: phys_radius,
+            stroke_color: ColorF16::TRANSPARENT,
+            stroke_width: 0.0,
+            fill_kind: p.fill_kind,
+            fill_lut_row: LutRow::FALLBACK,
+            fill_axis,
+        });
+    }
+
+    fn triangle(&mut self, p: DrawTrianglePayload) {
+        let scale = self.display.scale_factor;
+        let viewport_phys = self.display.physical;
+        // Fold owner origin + active transform, scale to physical
+        // px. No pixel-snap — the SDF handles sub-pixel placement;
+        // snapping the covering rect would only shift the AA band.
+        let phys_scale = self.current_transform.scale * scale;
+        let xf = |q: Vec2| self.current_transform.apply_point(q + p.origin) * scale;
+        let a = xf(p.a);
+        let b = xf(p.b);
+        let c = xf(p.c);
+        let radius_phys = (p.radius * phys_scale).max(0.0);
+        let stroke_phys = (p.stroke_width * phys_scale).max(0.0);
+        // Covering AABB: the rounded shape (the SDF offsets the
+        // triangle outward by `radius` to round its corners) plus
+        // the ½px AA fringe. The stroke sits on the *inner* edge
+        // (like a rounded rect), so it adds no outward reach.
+        let lo = a.min(b).min(c);
+        let hi = a.max(b).max(c);
+        let pad = radius_phys + 0.5;
+        let rect = Rect::from_min_max(lo, hi).inflated(pad);
+        let tri_urect = urect_from_phys(rect.min, rect.max(), viewport_phys);
+        // Triangle is a quad-tier draw (lowest paint kind), so it
+        // culls + flushes exactly like `DrawRect`.
+        if self.composer.cull_bounds(tri_urect) {
+            return;
+        }
+        self.composer.quad_forces_flush(tri_urect, self.out);
+        // Pack the three points in rect-local coords (0..size,
+        // matching the shader's `in.local`) + the corner radius
+        // into the reused `corners` / `fill_axis` lanes;
+        // `FillKind::TRIANGLE` tells the shader to read them as a
+        // triangle SDF rather than rounded-rect radii / gradient
+        // axis. No occlusion annotation — a triangle covers only
+        // its interior, not the whole `rect`.
+        let al = a - rect.min;
+        let bl = b - rect.min;
+        let cl = c - rect.min;
+        self.out.quads.push(Quad {
+            rect,
+            fill: p.fill,
+            corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
+            stroke_color: p.stroke_color,
+            stroke_width: stroke_phys,
+            fill_kind: FillKind::TRIANGLE,
+            fill_lut_row: LutRow::FALLBACK,
+            fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
+        });
+    }
+
+    fn mesh(&mut self, p: DrawMeshPayload) {
+        let scale = self.display.scale_factor;
+        let viewport_phys = self.display.physical;
+        // `draw_mesh` already gated empty/degenerate meshes
+        // (`draw_mesh` applies its no-op gate), so `v_len >= 1` here.
+        // Inflate by 0.5 phys-px to match polyline's AA-fringe
+        // policy. Mesh today paints inside its vertex hull,
+        // but a future AA edge or displacement shader would
+        // silently produce false negatives — and false
+        // negatives in the overlap test reorder paint. The
+        // same inflated rect feeds the clip cull below.
+        let world_bbox = self.current_transform.apply_rect(Rect {
+            min: p.bbox.min + p.origin,
+            size: p.bbox.size,
+        });
+        // Mesh skips snapping (matches polyline/curve); route
+        // through the shared scaler so the cull tracks `DrawRect`
+        // instead of open-coding `* scale`.
+        let phys_bbox = world_bbox.scaled_by(scale, false);
+        let fringe = Vec2::splat(0.5);
+        let mesh_urect = urect_from_phys(
+            phys_bbox.min - fringe,
+            phys_bbox.max() + fringe,
+            viewport_phys,
+        );
+        // Clip-cull + batch-close: a mesh fully outside the
+        // active scissor (e.g. scrolled out of an ancestor clip)
+        // is skipped; a surviving one closes the open text batch
+        // so its text emits before this above-text geometry.
+        if !self
+            .composer
+            .enter_higher_kind(PaintTier::Mesh, mesh_urect, self.out)
+        {
+            return;
+        }
+        // Verts already live in RecordStore owner-local;
+        // span passes through to `MeshDraw` verbatim. The
+        // per-instance translate folds in both the owner
+        // origin and the active push-transform stack so the
+        // shader produces physical coords. Phase 1's
+        // transform/tint move plus this slice eliminates
+        // both the per-vertex CPU multiply and the
+        // per-frame vertex copy.
+        let phys_scale = self.current_transform.scale * scale;
+        let phys_translate =
+            (self.current_transform.scale * p.origin + self.current_transform.translation) * scale;
+        self.out.meshes.push(MeshDrawRow {
+            draw: MeshDraw {
+                vertices: (p.v_start..p.v_start + p.v_len).into(),
+                indices: (p.i_start..p.i_start + p.i_len).into(),
+            },
+            instance: MeshInstance {
+                translate: phys_translate,
+                scale: phys_scale,
+                tint: p.tint.into(),
+                ..bytemuck::Zeroable::zeroed()
+            },
+        });
+    }
+
+    fn image(&mut self, p: DrawImagePayload, paint: Option<&GpuPaintRef>) {
+        let scale = self.display.scale_factor;
+        let snap = self.display.pixel_snap;
+        let viewport_phys = self.display.physical;
+        let world_rect = self.current_transform.apply_rect(p.rect);
+        let phys_rect = world_rect.scaled_by(scale, snap);
+        let image_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
+        // Clip-cull + batch-close: image sits above text in the
+        // kind order (same as mesh), so a surviving draw closes
+        // the open text batch first.
+        if !self
+            .composer
+            .enter_higher_kind(PaintTier::Image, image_urect, self.out)
+        {
+            return;
+        }
+        self.out.images.push(ImageDrawRow {
+            // Just the registration id — the backend looks it
+            // up in its texture cache; the encoder already
+            // resolved fit into `rect` + UV. A `GpuView` row is
+            // identical (its `id` is the off-screen target's),
+            // so the draw stays uniform; `target` below only
+            // schedules the off-screen paint.
+            id: p.handle,
+            instance: ImageInstance {
+                rect: phys_rect,
+                uv_min: p.uv_min,
+                uv_size: p.uv_size,
+                tint: p.tint.into(),
+                flags: p.flags,
+                ..bytemuck::Zeroable::zeroed()
+            },
+        });
+        // A `GpuView` also needs its off-screen target painted:
+        // list it with the used physical size + display/raster
+        // scales + app paint callback from the cmd buffer's side
+        // channel. The draw above already composites the result by
+        // `id`.
+        if let Some(paint) = paint {
+            let cap = i64::from(self.composer.max_texture_dim.get());
+            let s = phys_rect.size;
+            let downsample = (self.composer.max_texture_dim.get() as f32 / s.w.max(s.h)).min(1.0);
+            let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
+            self.out.frame_targets.push(RenderTargetDraw {
+                id: p.handle,
+                used: UVec2::new(px(s.w), px(s.h)),
+                display_scale: scale,
+                raster_scale: self.current_transform.scale * scale * downsample,
+                paint: paint.clone(),
+            });
+        }
+    }
+
+    fn curve(&mut self, p: DrawCurvePayload) {
+        let scale = self.display.scale_factor;
+        let display = self.display;
+        let width_phys = p.width * self.current_transform.scale * scale;
+        let cap = p.cap;
+        let bbox_scissor = stroke_bbox_scissor(
+            self.current_transform,
+            p.bbox,
+            p.origin,
+            width_phys,
+            cap,
+            None,
+            display,
+        );
+        // Clip-cull + batch-close: curve sits above text in the
+        // kind order (same as mesh/image), so a surviving draw
+        // closes the open text batch first.
+        if !self
+            .composer
+            .enter_higher_kind(PaintTier::Curve, bbox_scissor, self.out)
+        {
+            return;
+        }
+        // Transform control points to physical px. Owner
+        // origin folds in here so the record stays
+        // owner-local (cross-frame stable). No pixel
+        // snapping — snapping control points would warp
+        // the curve shape; AA fringe lives in the shader.
+        // Paint-time spin rotates the control points about
+        // the payload-bbox centre first (the encoder's
+        // pivot contract, see `spin_bbox`) — exact for a
+        // bezier by affine invariance.
+        let mut ctrl = [p.p0, p.p1, p.p2, p.p3];
+        if p.rotation != 0.0 {
+            let pivot = p.bbox.center();
+            let rotor = Vec2::from_angle(p.rotation);
+            for q in &mut ctrl {
+                *q = rotor.rotate(*q - pivot) + pivot;
+            }
+        }
+        let [p0, p1, p2, p3] =
+            ctrl.map(|q| self.current_transform.apply_point(q + p.origin) * scale);
+        // Adaptive sub-instance count from post-transform
+        // control-polygon length. Polygon length bounds
+        // arc length from above — slight overshoot, but
+        // never undershoots → no faceting from too-coarse
+        // sampling. Near-straight cubics (`Shape::line`
+        // lowers as one; graph wires often relax to one)
+        // short-circuit to a single instance: every chord
+        // of a flat curve lies on the segment, so the 16
+        // baked chords render it exactly at any length.
+        let n = if cubic_is_flat(p0, p1, p2, p3) {
+            1
+        } else {
+            let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
+            sub_instance_count(l)
+        };
+        let color: ColorU8 = p.color.into();
+        push_sub_instances(
+            self.out,
+            n,
+            CurveInstance {
+                p0,
+                p1,
+                p2,
+                p3,
+                width: width_phys,
+                color0: color,
+                color1: color,
+                cap: cap_lanes(cap as u32, cap as u32),
+                fill_kind: p.fill_kind,
+                fill_lut_row: p.fill_lut_row,
+                kind: CURVE_KIND_CUBIC,
+                ..bytemuck::Zeroable::zeroed()
+            },
+        );
+    }
+
+    fn arc(&mut self, p: DrawArcPayload) {
+        let scale = self.display.scale_factor;
+        let display = self.display;
+        let width_phys = p.width * self.current_transform.scale * scale;
+        let cap = p.cap;
+        let bbox_scissor = stroke_bbox_scissor(
+            self.current_transform,
+            p.bbox,
+            p.origin,
+            width_phys,
+            cap,
+            None,
+            display,
+        );
+        if !self
+            .composer
+            .enter_higher_kind(PaintTier::Curve, bbox_scissor, self.out)
+        {
+            return;
+        }
+        // Paint-time spin: rotate the center about the
+        // payload-bbox centre (the encoder guarantees
+        // `bbox.center()` is the owner-box pivot when
+        // `rotation != 0`, same contract as DrawPolyline)
+        // and shift both angles — exact for a circle, no
+        // control-point rotation needed.
+        let mut center = p.center;
+        let mut a0 = p.a0;
+        let mut a1 = p.a1;
+        if p.rotation != 0.0 {
+            let pivot = p.bbox.center();
+            center = Vec2::from_angle(p.rotation).rotate(center - pivot) + pivot;
+            a0 += p.rotation;
+            a1 += p.rotation;
+        }
+        // The transform stack is translate + uniform scale
+        // (no rotation/skew — see `TranslateScale`), so a
+        // circle maps to a circle: transform the center,
+        // scale the radius. Angles pass through untouched.
+        let center_phys = self.current_transform.apply_point(center + p.origin) * scale;
+        let radius_phys = p.radius * self.current_transform.scale * scale;
+        // Adaptive sub-instance count from the *exact* arc
+        // length `r·|sweep|` — no control-polygon overshoot.
+        // Same ~1.5 px chord target as the cubic path; at
+        // that density the chord sagitta is `≈ c²/(8r)` ≤
+        // 0.3 px even at r = 1, buried under the AA fringe.
+        let n = sub_instance_count(radius_phys * (a1 - a0).abs());
+        let color: ColorU8 = p.color.into();
+        push_sub_instances(
+            self.out,
+            n,
+            CurveInstance {
+                p0: center_phys,
+                p1: Vec2::new(radius_phys, 0.0),
+                p2: Vec2::new(a0, a1),
+                p3: Vec2::ZERO,
+                width: width_phys,
+                color0: color,
+                color1: color,
+                cap: cap_lanes(cap as u32, cap as u32),
+                fill_kind: p.fill_kind,
+                fill_lut_row: p.fill_lut_row,
+                kind: CURVE_KIND_ARC,
+                ..bytemuck::Zeroable::zeroed()
+            },
+        );
+    }
+
+    fn polyline(&mut self, p: DrawPolylinePayload) {
+        let scale = self.display.scale_factor;
+        let display = self.display;
+        let mode = p.color_mode;
+        let cap = p.cap;
+        let join = p.join;
+        let width_phys = p.width * self.current_transform.scale * scale;
+
+        // Compute the inflated physical-px AABB once and
+        // reuse it for cull and overlap tracking. Inflating
+        // by the stroke's outer fringe means the cull never
+        // trims a pixel the stroke would reach, and it
+        // short-circuits before transforming the full point
+        // list — the win for long dense point runs.
+        let bbox_scissor = stroke_bbox_scissor(
+            self.current_transform,
+            p.bbox,
+            p.origin,
+            width_phys,
+            cap,
+            (p.points_len > 2).then_some(join),
+            display,
+        );
+        if self.composer.cull_bounds(bbox_scissor) {
+            return;
+        }
+
+        let pts_start = p.points_start as usize;
+        let pts_end = pts_start + p.points_len as usize;
+        let cs_start = p.colors_start as usize;
+        let cs_end = cs_start + p.colors_len as usize;
+        let src_points = &self.payloads.polyline_points[pts_start..pts_end];
+        let src_colors = &self.payloads.polyline_colors[cs_start..cs_end];
+
+        // Transform points into physical-px. Owner-local
+        // origin is folded in here so points stay owner-
+        // local in the record store (cross-frame stable). No
+        // pixel-snap — snapping stroke verts shifts thin
+        // lines off-axis. Hairline regime (<1 phys px) is
+        // the shader's trapezoid-plateau coverage.
+        self.composer.polyline.points.clear();
+        if p.rotation == 0.0 {
+            self.composer.polyline.points.extend(
+                src_points
+                    .iter()
+                    .map(|&q| self.current_transform.apply_point(q + p.origin) * scale),
+            );
+        } else {
+            // Spin: rotate each owner-local point about the
+            // bbox centre before placing it via the ancestor
+            // transform, so the shape rotates in place. The
+            // encoder replaced the payload bbox with a
+            // rotation-invariant square CENTRED on the spin
+            // pivot (the owner-box centre), so `bbox.center()`
+            // is the pivot by construction — keep the two
+            // ends of that contract in sync.
+            let pivot = p.bbox.center();
+            let rotor = Vec2::from_angle(p.rotation);
+            self.composer
+                .polyline
+                .points
+                .extend(src_points.iter().map(|&q| {
+                    let local = rotor.rotate(q - pivot) + pivot;
+                    self.current_transform.apply_point(local + p.origin) * scale
+                }));
+        }
+
+        // Keep only points beyond the coincidence threshold
+        // from their predecessor — degenerate segments
+        // contribute no geometry and their colors drop
+        // with them.
+        self.composer.polyline.kept.clear();
+        let mut prev: Option<Vec2> = None;
+        for (i, &q) in self.composer.polyline.points.iter().enumerate() {
+            if prev.is_none_or(|p| (q - p).length_squared() > POLYLINE_COINCIDENT_EPS_SQ) {
+                self.composer.polyline.kept.push(i as u32);
+                prev = Some(q);
+            }
+        }
+        if self.composer.polyline.kept.len() < 2 {
+            return;
+        }
+        // Only now that the polyline will actually emit
+        // geometry — an empty or culled polyline must not
+        // split the batch or the group.
+        if !self
+            .composer
+            .enter_higher_kind(PaintTier::Curve, bbox_scissor, self.out)
+        {
+            return;
+        }
+        let PolylineScratch {
+            points,
+            kept,
+            directions,
+        } = &mut self.composer.polyline;
+        directions.clear();
+        directions.extend(
+            kept.windows(2)
+                .map(|pair| (points[pair[1] as usize] - points[pair[0] as usize]).normalize()),
+        );
+        let pts = points.as_slice();
+        let kept = kept.as_slice();
+        let directions = directions.as_slice();
+        let pt = |k: usize| pts[kept[k] as usize];
+        // Segment color(s) for the kept segment `k → k+1`,
+        // honoring the original indices (coincident skips
+        // drop the degenerate segments' colors, mirroring
+        // the old `ColorPlan` walker).
+        let seg_colors = |k: usize| -> (ColorU8, ColorU8) {
+            match mode {
+                ColorMode::Single => (src_colors[0], src_colors[0]),
+                ColorMode::PerPoint => (
+                    src_colors[kept[k] as usize],
+                    src_colors[kept[k + 1] as usize],
+                ),
+                ColorMode::PerSegment => {
+                    let c = src_colors[kept[k + 1] as usize - 1];
+                    (c, c)
+                }
+            }
+        };
+        let user_cap = cap as u32;
+        let n_segs = directions.len();
+        for k in 0..n_segs {
+            // Pre-oriented bisector clip planes for the
+            // joint ends, riding the neighbor lanes ("keep"
+            // is `dot(x - endpoint, n) <= 0` in the shader);
+            // zero = cap end, no clip.
+            let n_start = if k > 0 {
+                -(directions[k - 1] + directions[k])
+            } else {
+                Vec2::ZERO
+            };
+            let n_end = if k + 1 < n_segs {
+                directions[k] + directions[k + 1]
+            } else {
+                Vec2::ZERO
+            };
+            let butt = LineCap::Butt as u32;
+            let start_cap = if k == 0 { user_cap } else { butt };
+            let end_cap = if k + 1 == n_segs { user_cap } else { butt };
+            let (color, color1) = seg_colors(k);
+            self.out.curves.push(CurveInstance {
+                p0: pt(k),
+                p1: n_start,
+                p2: n_end,
+                p3: pt(k + 1),
+                t0: 0.0,
+                t1: 1.0,
+                width: width_phys,
+                color0: color,
+                color1,
+                cap: cap_lanes(start_cap, end_cap),
+                kind: CURVE_KIND_SEGMENT,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        }
+        // One chrome instance per interior joint fills the
+        // convex wedge between the two segment end faces.
+        // The face-plane normals ride the neighbor lanes
+        // pre-oriented for the shader's keep test
+        // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
+        // average of the adjacent colors.
+        for k in 1..n_segs {
+            let d_a = directions[k - 1];
+            let d_b = directions[k];
+            let (_, ca) = seg_colors(k - 1);
+            let (cb, _) = seg_colors(k);
+            let color = ca.midpoint(cb);
+            self.out.curves.push(CurveInstance {
+                p0: pt(k),
+                p1: -d_a,
+                p2: d_b,
+                t0: 0.0,
+                t1: 1.0,
+                width: width_phys,
+                color0: color,
+                color1: color,
+                kind: polyline_join_kind(d_a, d_b, join),
+                ..bytemuck::Zeroable::zeroed()
+            });
+        }
+    }
+
+    fn text(&mut self, t: DrawTextPayload) {
+        let scale = self.display.scale_factor;
+        let snap = self.display.pixel_snap;
+        let viewport_phys = self.display.physical;
+        let world_rect = self.current_transform.apply_rect(t.rect);
+        // Scale once: `unclipped` (overlap/cull bounds) and the
+        // emitted run's `origin` both derive from this rect.
+        let phys_rect = world_rect.scaled_by(scale, snap);
+        // `bounds` feeds the batch GPU scissor (union of the
+        // batch's runs — see the strict-bounds rule below) and
+        // the backend's per-line y-cull; there is no per-glyph
+        // clip. Intersect with the active clip-stack top so
+        // ancestor `clip = true` panels actually clip glyphs;
+        // an empty intersection means the run can't reach
+        // pixels — skip the push entirely (cull).
+        let unclipped = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
+        let bounds = match self.composer.clip_stack.last() {
+            Some(parent) => unclipped.clamp_to(parent.scissor),
+            None => unclipped,
+        };
+        if bounds.w == 0 || bounds.h == 0 {
+            return;
+        }
+        // Text sits below mesh/image/curve/polyline in the
+        // kind order — flush if any prior higher-kind draw in
+        // the group overlaps so this text doesn't get
+        // reordered above it. (No need to check quads: text
+        // paints over quads anyway.)
+        if self.composer.any_higher_kind_overlap(bounds) {
+            self.composer.flush(self.out);
+        }
+        // Batch GPU scissor = `open_grid.union` (union of every
+        // run's `bounds` in the batch). The text shader has
+        // no per-instance clip, so a "strict" run — one
+        // whose ancestor clip cuts the unclipped extent —
+        // can only batch with peers whose `bounds` matches
+        // exactly; anything wider would let the strict
+        // run's glyphs paint past their intended clip.
+        // Non-strict-with-non-strict coalesces freely.
+        let new_strict = bounds != unclipped;
+        if let Some(b) = self.composer.batch.open.as_ref()
+            && (b.strict || new_strict)
+            && self.composer.batch.open_grid.union != bounds
+        {
+            self.composer.close_batch(self.out);
+        }
+        // open_batch must run BEFORE the text push so the
+        // batch's `texts_start` captures this run's index.
+        let b = self.composer.open_batch(self.out);
+        b.strict |= new_strict;
+        self.out.texts.push(TextRun {
+            origin: phys_rect.min,
+            bounds,
+            // Linear ColorU8 straight to the text backend.
+            // Aperture's native text shader (see
+            // `src/renderer/backend/text/`) consumes linear
+            // bytes and premultiplies at output — matching
+            // the rest of the renderer's pipelines. No sRGB
+            // roundtrip.
+            color: t.color.into(),
+            text: t.text,
+            // Snap the ancestor-transform component of the
+            // text scale to discrete 0.5% steps. Continuous
+            // zoom would otherwise mint a fresh glyph
+            // cache key every frame (subpixel font size +
+            // bin shift), forcing swash to re-rasterize
+            // every glyph. Snapping stabilizes the key
+            // across small zoom deltas so the atlas hits.
+            // Quads/meshes keep continuous scale — only
+            // text glyph crispness "steps."
+            scale: snap_text_scale(self.current_transform.scale),
+        });
+        self.composer.batch.open_grid.push(bounds);
+    }
 }
 
 #[cfg(test)]
