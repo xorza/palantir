@@ -299,3 +299,67 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         "tiled nearest intra-tile seam-right must be BLUE"
     );
 }
+
+/// Third solid source for the run-coalescing fixture, distinct from
+/// [`RED`] / [`BLUE`] so every run boundary is a visible colour change.
+const GREEN: [u8; 4] = [60, 200, 90, 255];
+
+/// Adjacent draws sharing a texture collapse into one instanced draw
+/// (`image_runs`). Composited output must be byte-identical to the
+/// one-draw-per-image walk that preceded it, so this paints a pattern
+/// carrying every case that distinguishes them and reads back the pane
+/// each instance landed in:
+///
+/// - `A A` — a leading run, the case that actually coalesces.
+/// - `B` then `A` — singletons, and `A`'s second appearance is a
+///   *non-adjacent* repeat that must stay its own run. Merging it would
+///   paint it before `B`.
+/// - `C C` — a trailing run, which pins that the last span closes at the
+///   batch end rather than one short.
+///
+/// A drifting instance range shows up as a pane painting its neighbour's
+/// colour, and a dropped run as a pane left at the clear colour — both
+/// caught by the per-pane centre-pixel assertion.
+#[test]
+fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
+    const PATTERN: [usize; 6] = [0, 0, 1, 0, 2, 2];
+    const SOURCES: [[u8; 4]; 3] = [RED, BLUE, GREEN];
+    const PANE: f32 = 32.0;
+
+    let mut h = Harness::new();
+    let mut sources: Option<[aperture::ImageHandle; 3]> = None;
+    let out = h.render(UVec2::new(192, 32), 1.0, Color::BLACK, |ui| {
+        let handles = sources.get_or_insert_with(|| {
+            SOURCES.map(|texel| {
+                ui.register_image(aperture::Image::from_rgba8(1, 1, texel.to_vec()))
+                    .expect("fixture image fits every supported GPU")
+            })
+        });
+        Panel::canvas()
+            .id_salt("coalesce_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (pane, &source) in PATTERN.iter().enumerate() {
+                    strip_pane(
+                        ui,
+                        &handles[source],
+                        pane as f32 * PANE,
+                        Vec2::new(PANE, 32.0),
+                        ImageFit::Fill,
+                        ImageFilter::Linear,
+                        ImageFilter::Linear,
+                    );
+                }
+            });
+    });
+
+    for (pane, &source) in PATTERN.iter().enumerate() {
+        let expected = SOURCES[source];
+        let x = pane as u32 * PANE as u32 + PANE as u32 / 2;
+        let pixel = out.get_pixel(x, 16).0;
+        assert!(
+            close(pixel, expected),
+            "pane {pane} draws source {source}: expected {expected:?}, got {pixel:?}"
+        );
+    }
+}

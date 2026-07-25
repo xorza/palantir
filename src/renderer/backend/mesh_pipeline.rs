@@ -11,10 +11,11 @@
 //! [`crate::renderer::backend::image_pipeline::ImagePipeline`].
 
 use crate::primitives::mesh::MeshVertex;
+use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::render_buffer::mesh::MeshInstance;
+use crate::renderer::render_buffer::mesh::{MeshDraw, MeshInstance};
 
 #[derive(Debug)]
 pub(super) struct MeshPipeline {
@@ -93,8 +94,8 @@ impl MeshPipeline {
         self.index_buffer.upload_instances(ctx, indices);
     }
 
-    /// Bind pipeline + vertex/instance/index buffers, then issue one
-    /// [`Self::draw`] per mesh in the batch. Mesh binds no groups —
+    /// Bind pipeline + vertex/instance/index buffers once per batch;
+    /// [`Self::draw_batch`] then issues the draws. Mesh binds no groups —
     /// the viewport rides the shared immediate region, re-pushed by
     /// the backend's `rebind!` after every pipeline switch.
     pub(super) fn bind<'a>(
@@ -112,20 +113,41 @@ impl MeshPipeline {
         );
     }
 
-    /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::mesh::MeshDraw).
-    /// `instance` indexes into the per-frame instance buffer for the
-    /// matching transform + tint.
-    pub(super) fn draw(
+    /// Draw one mesh batch. `draws` is the frame's whole per-draw span
+    /// column and `items` selects this batch's slice of it — the same
+    /// `Span` that indexes the per-frame instance buffer, so a draw's
+    /// geometry and its transform + tint cannot come from different
+    /// batches.
+    ///
+    /// One `draw_indexed` per mesh, and unlike
+    /// [`ImagePipeline::draw_batch`](crate::renderer::backend::image_pipeline::ImagePipeline::draw_batch)
+    /// there is no run to coalesce: `shapes::lower` appends each authored
+    /// mesh's vertices and indices to the record payloads rather than
+    /// interning them, so every draw owns a private span and no two
+    /// `MeshDraw`s are ever equal — not even two draws of the same
+    /// `Mesh`. Interning payloads by their already-computed
+    /// `content_hash` would change that, and is the prerequisite for any
+    /// batching here.
+    pub(super) fn draw_batch(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
-        index_range: std::ops::Range<u32>,
-        base_vertex: i32,
-        instance: u32,
+        draws: &[MeshDraw],
+        items: Span,
     ) {
-        if index_range.start == index_range.end {
-            return;
+        for (offset, draw) in draws[items.range()].iter().enumerate() {
+            if draw.indices.len == 0 {
+                continue;
+            }
+            // The draw's absolute slot in `meshes.instances`.
+            let instance = items.start + offset as u32;
+            pass.draw_indexed(
+                draw.indices.into(),
+                // Per-call vertex offset, so a mesh's indices stay
+                // buffer-local rather than needing a rebase at record time.
+                draw.vertices.start as i32,
+                instance..instance + 1,
+            );
         }
-        pass.draw_indexed(index_range, base_vertex, instance..instance + 1);
     }
 }
 
