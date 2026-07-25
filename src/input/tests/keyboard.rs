@@ -3,6 +3,7 @@ use crate::input::shortcut::Shortcut;
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
+use crate::scene::layer::Layer;
 use crate::{FocusPolicy, Ui};
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
@@ -110,27 +111,39 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
         &cascades,
     );
     let shortcut = Shortcut::key(Key::Escape);
-    let event = state.keyboard_events()[0];
+    let event = state.keyboard_events(Layer::Main)[0];
     let KeyboardEvent::Down(keypress) = event else {
         panic!("expected queued key press");
     };
 
-    assert_eq!(state.keyboard_events(), &[event]);
-    assert!(state.key_pressed(shortcut));
+    assert_eq!(state.keyboard_events(Layer::Main), &[event]);
+    assert!(state.key_pressed(Layer::Main, shortcut));
     assert!(state.subs.matches_press(keypress));
     assert_eq!(state.subs.keys.len(), 1);
 
     let owner = WidgetId::from_hash("popup");
     let other = WidgetId::from_hash("other-popup");
-    state.capture_keyboard(owner);
+    state.capture_keyboard(owner, Layer::Popup);
 
-    assert!(state.keyboard_events().is_empty());
-    assert!(!state.key_pressed(shortcut));
+    assert!(state.keyboard_events(Layer::Main).is_empty());
+    assert!(!state.key_pressed(Layer::Main, shortcut));
     assert_eq!(state.captured_keyboard_events(owner), &[event]);
     assert!(state.captured_key_pressed(owner, shortcut));
     assert!(state.captured_keyboard_events(other).is_empty());
     assert!(!state.captured_key_pressed(other, shortcut));
     assert_eq!(state.subs.keys.len(), 1);
+
+    // Capture is layer-*ordered*, not exclusive. The popup's capture
+    // silences readers at or below its own layer, but an overlay painted
+    // above it still sees the key — this is exactly the `Modal` over
+    // `Popup` case that previously left a modal unable to see its own
+    // Escape. `Tooltip` (above `Modal`) sees it for the same reason.
+    assert_eq!(state.keyboard_events(Layer::Modal), &[event]);
+    assert!(state.key_pressed(Layer::Modal, shortcut));
+    assert_eq!(state.keyboard_events(Layer::Tooltip), &[event]);
+    // ...and the layers at or below it stay silenced.
+    assert!(state.keyboard_events(Layer::Popup).is_empty());
+    assert!(state.keyboard_events(Layer::Main).is_empty());
 }
 
 #[test]

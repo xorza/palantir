@@ -187,9 +187,10 @@ pub(super) fn handle_input(
     // because they need the shaper + layout. Indexing keeps the borrow
     // on the input queue short-lived so we can dispatch to
     // `ui.resources.text` inside the same loop without a scratch Vec.
-    let n = ui.input.keyboard_events().len();
+    let layer = ui.forest.current_layer();
+    let n = ui.input.keyboard_events(layer).len();
     for i in 0..n {
-        let event = ui.input.keyboard_events()[i];
+        let event = ui.input.keyboard_events(layer)[i];
         match event {
             KeyboardEvent::Text(chunk) => {
                 let to_insert = ed.sanitized(chunk.as_str());

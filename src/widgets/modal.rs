@@ -90,14 +90,22 @@ impl Modal {
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(BLOCK);
+        // Escape is read *inside* the modal's own layer, and after the
+        // body records. Keyboard capture is layer-ordered, so reading
+        // here means a `Popup` below cannot silence the modal (which is
+        // what left it undismissable while any popup was open) while an
+        // overlay the body opened *on* the modal layer still wins Escape
+        // ahead of it.
+        let mut escape = false;
         ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
             widget.record(ui, Some(&dim), |ui| {
                 ui.widget(card).record(ui, Some(&card_bg), body);
             });
+            escape = ui.escape_pressed();
         });
 
         ModalResponse {
-            dismissed: ui.response_for(root_id).left.clicked() || ui.escape_pressed(),
+            dismissed: ui.response_for(root_id).left.clicked() || escape,
         }
     }
 }
@@ -111,6 +119,8 @@ impl Configure for Modal {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
+    use crate::input::InputEvent;
+    use crate::input::keyboard::Key;
     use crate::primitives::background::Background;
     use crate::primitives::size::Size;
     use crate::primitives::spacing::Spacing;
@@ -119,7 +129,8 @@ mod tests {
     use crate::scene::node::Configure;
     use crate::scene::tree::node::NodeId;
     use crate::widgets::modal::Modal;
-    use glam::UVec2;
+    use crate::widgets::popup::Popup;
+    use glam::{UVec2, Vec2};
 
     #[test]
     fn explicit_zero_padding_and_minimum_override_card_theme() {
@@ -145,5 +156,63 @@ mod tests {
         let node = NodeId(index as u32);
         assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
         assert_eq!(tree.bounds(node).min_size, Size::ZERO);
+    }
+
+    /// A modal paints above every popup and eats pointer input through
+    /// its backdrop, so it must also be the one that hears Escape. It
+    /// previously could not: any popup holding keyboard capture emptied
+    /// the uncaptured stream the modal read from, leaving it
+    /// undismissable for as long as the popup stayed open.
+    ///
+    /// The control matters as much as the case — with no popup open the
+    /// modal has always dismissed, so asserting only the popup case
+    /// would not distinguish "layer ordering works" from "Escape works".
+    #[test]
+    fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_capture() {
+        fn escape_dismisses(with_popup: bool) -> bool {
+            const SURFACE: UVec2 = UVec2::new(400, 300);
+            let scene = |ui: &mut Ui, dismissed: &mut bool| {
+                if with_popup {
+                    Popup::anchored_to(Vec2::ZERO)
+                        .id(WidgetId::from_hash("under-modal"))
+                        .show(ui, |_ui, _handle| {});
+                }
+                *dismissed |= Modal::new()
+                    .id(WidgetId::from_hash("modal-escape"))
+                    .show(ui, |_| {})
+                    .dismissed;
+            };
+
+            // Two frames: the keyboard wake-gate parks a press whose
+            // shortcut nobody subscribed yet, so the first frame is what
+            // registers the modal's interest in Escape and the press lands
+            // after it.
+            //
+            // `|=` rather than `=` because a frame may record twice, and
+            // `post_record` drains the key queue between passes — so pass B
+            // sees no Escape and would overwrite pass A's result. Real
+            // callers have the same shape: they flip an `open` flag on
+            // dismissal rather than reading the last pass's return.
+            let mut ui = Ui::for_test();
+            let mut dismissed = false;
+            ui.run_at(SURFACE, |ui| scene(ui, &mut dismissed));
+            ui.on_input(InputEvent::KeyDown {
+                key: Key::Escape,
+                repeat: false,
+                physical: Key::Escape,
+            });
+            let mut dismissed = false;
+            ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut dismissed));
+            dismissed
+        }
+
+        assert!(
+            escape_dismisses(false),
+            "control: a modal with no popup open must dismiss on Escape",
+        );
+        assert!(
+            escape_dismisses(true),
+            "a popup's keyboard capture must not silence the modal above it",
+        );
     }
 }

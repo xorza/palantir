@@ -489,7 +489,7 @@ impl Ui {
     /// capture; the popup reads the underlying stream through its
     /// scoped owner id.
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
-        self.input.keyboard_events()
+        self.input.keyboard_events(self.forest.current_layer())
     }
 
     /// Register stable `owner` for exclusive keyboard input during
@@ -503,7 +503,8 @@ impl Ui {
         owner: WidgetId,
         body: impl FnOnce(&mut Ui, &KeyboardCapture) -> R,
     ) -> R {
-        self.input.capture_keyboard(owner);
+        self.input
+            .capture_keyboard(owner, self.forest.current_layer());
         let capture = KeyboardCapture::new(owner);
         let result = body(self, &capture);
         if capture.release_requested.get() {
@@ -522,7 +523,8 @@ impl Ui {
     /// Pair with the call-it-every-frame discipline that the
     /// subscription system already requires.
     pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
-        self.input.key_pressed(sc)
+        let layer = self.forest.current_layer();
+        self.input.key_pressed(layer, sc)
     }
 
     /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
