@@ -48,9 +48,9 @@
 //! The shared workload lives in [`fixture`] and also drives the allocation
 //! benches and `examples/frame_visual.rs`.
 
-pub(crate) mod fixture;
+pub(super) mod fixture;
 
-use crate::app::test_support::RecordApp;
+use crate::app::internals::RecordApp;
 use crate::bench::frame::fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::display::Display;

@@ -7,7 +7,7 @@ use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::{TEXT_SCALE_ERROR, text_scale_is_valid};
 
 #[derive(Debug, ::serde::Deserialize)]
-pub(crate) struct UncheckedTextStyle {
+pub(super) struct UncheckedTextStyle {
     font_size_px: f32,
     color: Color,
     line_height_mult: f32,
@@ -35,7 +35,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
     }
 }
 
-pub(crate) fn deserialize_text_scale<'de, D>(deserializer: D) -> Result<f32, D::Error>
+pub(super) fn deserialize_text_scale<'de, D>(deserializer: D) -> Result<f32, D::Error>
 where
     D: ::serde::Deserializer<'de>,
 {
@@ -46,21 +46,26 @@ where
     Ok(scale)
 }
 
-pub(crate) mod duration_seconds {
+pub(in crate::widgets::theme) mod duration_seconds {
     use std::time::Duration;
 
     use ::serde::de::Error as _;
 
     const ERROR: &str = "tooltip timing must be finite, non-negative, and representable";
 
-    pub(crate) fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    pub(in crate::widgets::theme) fn serialize<S>(
+        duration: &Duration,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: ::serde::Serializer,
     {
         serializer.serialize_f32(duration.as_secs_f32())
     }
 
-    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    pub(in crate::widgets::theme) fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Duration, D::Error>
     where
         D: ::serde::Deserializer<'de>,
     {

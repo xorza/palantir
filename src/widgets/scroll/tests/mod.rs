@@ -164,7 +164,7 @@ fn state_is_swept_when_scroll_disappears() {
     let state = ui.try_state::<ScrollState>(id).unwrap();
     assert_eq!(state.offset, Vec2::ZERO);
     assert_eq!(state.zoom, 1.0);
-    assert!(state.drag_anchor.is_none());
+    assert!(state.drag_anchor_is_none());
 }
 
 /// Wheel delta accumulates across frames into offset, clamped to

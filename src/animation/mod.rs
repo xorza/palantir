@@ -12,7 +12,7 @@
 pub(crate) mod animatable;
 pub(crate) mod easing;
 mod serde;
-pub(crate) mod spring;
+mod spring;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
@@ -235,7 +235,7 @@ impl AnimSpec {
 /// State carried only by the active motion model. The variant is also
 /// the row's mode tag, so duration and spring state cannot drift apart.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum MotionRow<T: Animatable> {
+enum MotionRow<T: Animatable> {
     Duration { segment_start: T, elapsed: f32 },
     Spring { velocity: T },
 }
@@ -256,15 +256,15 @@ impl<T: Animatable> MotionRow<T> {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AnimRow<T: Animatable> {
-    pub(crate) current: T,
-    pub(crate) target: T,
-    pub(crate) motion: MotionRow<T>,
+    current: T,
+    target: T,
+    motion: MotionRow<T>,
     /// Set by every `tick`, cleared by `post_record`. Rows still
     /// `false` at `post_record` are dropped — that's how a slot whose
     /// caller stopped poking it (widget id stuck around but the
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
-    pub(crate) touched: bool,
+    touched: bool,
     /// `Ui` frame-runtime id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:
     /// the frame driver re-runs `build` after an input action drains) sees
@@ -272,14 +272,14 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// integrator advances exactly once per host frame. Retarget
     /// logic still runs in the short-circuited call so pass B's
     /// post-action target replaces pass A's stale one.
-    pub(crate) advanced_at: u64,
+    advanced_at: u64,
     /// Cached settle state, set true on insert / when the integrator
     /// or `within_settle_eps` confirms settlement, false on retarget.
     /// Lets `tick` fast-return on a steady-state row without the
     /// `sub` + `magnitude_squared` settle math; the `PartialEq`
     /// retarget compare still runs so a target change unfreezes the
     /// row immediately.
-    pub(crate) settled: bool,
+    settled: bool,
 }
 
 /// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
@@ -525,7 +525,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// stopped poking it this frame; clear the `touched` flag on the
     /// rows that survive. Single retain pass — both predicates fold
     /// into one walk.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         self.rows.retain(|(id, _), row| {
             if removed.contains(id) {
                 return false;

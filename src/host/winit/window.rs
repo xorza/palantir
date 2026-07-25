@@ -26,15 +26,15 @@ struct SurfaceTarget {
 /// Everything one native window owns: its handle, swapchain state, target-
 /// agnostic render driver, input/display facts, and event-loop schedule.
 #[derive(Debug)]
-pub(crate) struct Window {
-    pub(crate) window: Arc<WinitWindow>,
-    pub(crate) surface: wgpu::Surface<'static>,
-    pub(crate) config: wgpu::SurfaceConfiguration,
-    pub(crate) driver: WindowDriver,
-    pub(crate) scale_factor: f32,
-    pub(crate) next: FramePresent,
-    pub(crate) close_requested: bool,
-    pub(crate) cursor: CursorIcon,
+pub(super) struct Window {
+    pub(super) window: Arc<WinitWindow>,
+    pub(super) surface: wgpu::Surface<'static>,
+    pub(super) config: wgpu::SurfaceConfiguration,
+    pub(super) driver: WindowDriver,
+    pub(super) scale_factor: f32,
+    pub(super) next: FramePresent,
+    pub(super) close_requested: bool,
+    pub(super) cursor: CursorIcon,
     /// Last size and format applied with `surface.configure`. Configuration
     /// changes are coalesced until the next frame.
     configured: Option<SurfaceTarget>,
@@ -44,7 +44,7 @@ pub(crate) struct Window {
 }
 
 impl Window {
-    pub(crate) fn new(
+    pub(super) fn new(
         window: Arc<WinitWindow>,
         surface: WindowSurface,
         driver: WindowDriver,
@@ -64,11 +64,11 @@ impl Window {
         }
     }
 
-    pub(crate) fn on_input(&mut self, event: InputEvent) -> InputDelta {
+    pub(super) fn on_input(&mut self, event: InputEvent) -> InputDelta {
         self.driver.ui.on_input(event)
     }
 
-    pub(crate) fn set_occluded(&mut self, occluded: bool) {
+    pub(super) fn set_occluded(&mut self, occluded: bool) {
         match (occluded, self.occluded_at) {
             (true, None) => self.occluded_at = Some(Instant::now()),
             (false, Some(at)) => {
@@ -81,7 +81,7 @@ impl Window {
 
     /// Run one application/UI frame, acquire and update the swapchain texture
     /// when needed, present it, then drain window-host output.
-    pub(crate) fn frame<T: App>(
+    pub(super) fn frame<T: App>(
         &mut self,
         surfaces: &SurfaceManager,
         frontend: &mut Frontend,
@@ -204,15 +204,15 @@ fn frame_output(driver: &mut WindowDriver, present: FramePresent) -> WindowFrame
 }
 
 #[derive(Debug)]
-pub(crate) struct WindowFrameOutput {
-    pub(crate) present: FramePresent,
-    pub(crate) cursor: CursorIcon,
-    pub(crate) commands: WindowCommands,
+pub(super) struct WindowFrameOutput {
+    pub(super) present: FramePresent,
+    pub(super) cursor: CursorIcon,
+    pub(super) commands: WindowCommands,
 }
 
 /// Scheduling hint returned by a native-window frame.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum FramePresent {
+pub(super) enum FramePresent {
     Immediate,
     At(Instant),
     Idle,

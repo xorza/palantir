@@ -50,24 +50,24 @@ impl Sense {
     /// `HOVER`/`CLICK`/`DRAG` implies hoverable; `SCROLL`-only widgets
     /// are invisible to the hover layer so the cursor / tooltip keeps
     /// targeting content beneath.
-    pub const fn hovers(self) -> bool {
+    pub(crate) const fn hovers(self) -> bool {
         self.intersects(Self::HOVER.union(Self::CLICK).union(Self::DRAG))
     }
 
     /// True if this sense captures press/release. `CLICK` and `DRAG`
     /// both qualify — drag widgets must capture the press to set
     /// `active` and start tracking pointer travel.
-    pub const fn clicks(self) -> bool {
+    pub(crate) const fn clicks(self) -> bool {
         self.intersects(Self::CLICK.union(Self::DRAG))
     }
 
     /// True if this sense captures scroll deltas.
-    pub const fn scrolls(self) -> bool {
+    pub(crate) const fn scrolls(self) -> bool {
         self.contains(Self::SCROLL)
     }
 
     /// True if this sense captures pinch zoom factors.
-    pub const fn pinches(self) -> bool {
+    pub(crate) const fn pinches(self) -> bool {
         self.contains(Self::PINCH)
     }
 }
@@ -76,7 +76,7 @@ impl Sense {
 /// latches as a drag. Under this, the gesture is still a click. Once
 /// crossed, the latch holds for the press lifetime and the release
 /// no longer emits a click. Mouse-sized — touch will want larger.
-pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
+pub(super) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// Maximum interval between two clicks on the same widget for the
 /// second one to be reported as a double-click. 500 ms matches the
@@ -84,10 +84,10 @@ pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 /// is user-configurable but defaults to the same neighborhood, and
 /// Linux has no system-wide value to read. Tracked per-button on
 /// [`crate::input::Capture`].
-pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
+pub(super) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for the second
 /// to still count as a double-click. A slow drift past this reads as two
 /// separate clicks — matches native behaviour and `TextEdit`'s
 /// `MULTI_CLICK_RADIUS`. Tracked per-button on [`crate::input::Capture`].
-pub(crate) const DOUBLE_CLICK_RADIUS: f32 = 5.0;
+pub(super) const DOUBLE_CLICK_RADIUS: f32 = 5.0;

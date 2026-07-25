@@ -17,7 +17,7 @@ use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant}
 use crate::renderer::render_buffer::mesh::MeshInstance;
 
 #[derive(Debug)]
-pub(crate) struct MeshPipeline {
+pub(super) struct MeshPipeline {
     vertex_buffer: DynamicBuffer<MeshVertex>,
     index_buffer: DynamicBuffer<u32>,
     instance_buffer: DynamicBuffer<MeshInstance>,
@@ -30,7 +30,7 @@ impl MeshPipeline {
     /// Format-independent mesh resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variant`].
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("aperture.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
@@ -54,7 +54,7 @@ impl MeshPipeline {
     /// the only format-dependent mesh objects; the vertex / index /
     /// instance buffers are reused. Called by `FormatPipelines` per
     /// format.
-    pub(crate) fn build_variants(
+    pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -77,7 +77,7 @@ impl MeshPipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(
+    pub(super) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         vertices: &[MeshVertex],
@@ -97,7 +97,7 @@ impl MeshPipeline {
     /// [`Self::draw`] per mesh in the batch. Mesh binds no groups —
     /// the viewport rides the shared immediate region, re-pushed by
     /// the backend's `rebind!` after every pipeline switch.
-    pub(crate) fn bind<'a>(
+    pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipelines: &'a StencilVariant,
@@ -115,7 +115,7 @@ impl MeshPipeline {
     /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::mesh::MeshDraw).
     /// `instance` indexes into the per-frame instance buffer for the
     /// matching transform + tint.
-    pub(crate) fn draw(
+    pub(super) fn draw(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         index_range: std::ops::Range<u32>,

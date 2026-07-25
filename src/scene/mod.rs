@@ -316,7 +316,7 @@ impl Forest {
     /// `open_node` / `add_shape` dispatch to. Convenience over
     /// `tree(current_layer())` for the very common case.
     #[inline]
-    pub(crate) fn current_tree(&self) -> &Tree {
+    fn current_tree(&self) -> &Tree {
         &self.trees[self.current_layer()]
     }
 

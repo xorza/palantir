@@ -7,7 +7,7 @@
 //!   [`render`]. Each render run carries its record-local
 //!   source span so an encoded-cache miss can restore an evicted shaped
 //!   buffer. The only production backend.
-//! - [`mono::test_support::measure`] — deterministic placeholder metric behind
+//! - [`mono::internals::measure`] — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
 //!   `font_size_px * 0.5` wide; it mints no shaped buffer, so `TextSystem`
 //!   reports [`TextShapeKey::INVALID`] for those runs and the renderer drops
@@ -43,7 +43,7 @@ use std::rc::Rc;
 
 mod cosmic;
 pub(crate) mod key;
-pub(crate) mod mono;
+mod mono;
 pub(crate) mod probe;
 pub(crate) mod render;
 pub(crate) mod system;
@@ -143,13 +143,13 @@ pub(crate) struct ShaperInner {
     /// `None` ⇒ the test/internals-only mono fallback. `TextShaper::new`
     /// always installs `Some`, and `TextShaper::test_mono` is the only
     /// `None` construction, so production never observes it.
-    pub(crate) cosmic: Option<CosmicMeasure>,
+    pub(in crate::text) cosmic: Option<CosmicMeasure>,
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
     /// plus every bypass [`TextShaper::layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
     /// dispatches, not reshapes. Reuse-slot hits don't increment.
     /// Read by tests pinning reshape-skip behaviour via
-    /// [`test_support::measure_calls`]; production builds carry neither
+    /// [`internals::measure_calls`]; production builds carry neither
     /// the field nor the write.
     #[cfg(any(test, feature = "internals"))]
     measure_calls: u64,
@@ -307,7 +307,7 @@ impl ShaperInner {
         match self.cosmic.as_mut() {
             Some(cosmic) => cosmic.shape(request),
             #[cfg(any(test, feature = "internals"))]
-            None => mono::test_support::measure(request),
+            None => mono::internals::measure(request),
             // The mono metric is gated out of production, and so is the
             // only constructor that could put us here.
             #[cfg(not(any(test, feature = "internals")))]
@@ -326,21 +326,21 @@ impl ShaperInner {
 /// from the request that produced it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TextRoot {
-    pub(crate) size: Size,
+    pub(in crate::text) size: Size,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
-    pub(crate) intrinsic_min: f32,
+    pub(in crate::text) intrinsic_min: f32,
     /// `true` when the shaped result is one visual line. Gates
     /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
     /// whose natural width fits the committed width needs no Clip/Ellipsis
     /// resolve — the unbounded root stands in.
-    pub(crate) single_line: bool,
+    pub(in crate::text) single_line: bool,
 }
 
 impl TextRoot {
     /// Successful empty-text shape.
-    pub(crate) const ZERO: Self = Self {
+    pub(in crate::text) const ZERO: Self = Self {
         size: Size::ZERO,
         intrinsic_min: 0.0,
         single_line: true,
@@ -348,7 +348,7 @@ impl TextRoot {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::text::key::TextShapeKey;
     use crate::text::probe::{CursorPos, TextLayoutProbe};

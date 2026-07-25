@@ -1673,7 +1673,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
         };
-        encoder::test_support::encode(ui.frame_scene(), atlas, plan)
+        encoder::internals::encode(ui.frame_scene(), atlas, plan)
             .calls
             .iter()
             .filter_map(|command| match command {

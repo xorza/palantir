@@ -15,13 +15,13 @@ use crate::renderer::render_buffer::batch::{GroupBatch, TextBatch};
 
 /// Per-group and per-text-batch spans into the staged mask-quad buffer.
 #[derive(Debug, Default)]
-pub(crate) struct MaskPlan {
-    pub(crate) groups: Vec<Span>,
-    pub(crate) batches: Vec<Span>,
+pub(super) struct MaskPlan {
+    pub(super) groups: Vec<Span>,
+    pub(super) batches: Vec<Span>,
 }
 
 /// Build the schedule's mask spans and deduplicated mask-quad instances.
-pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks: &mut Vec<Quad>) {
+pub(super) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks: &mut Vec<Quad>) {
     plan.groups.clear();
     plan.batches.clear();
     masks.clear();
@@ -73,7 +73,7 @@ pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks:
 /// (`use_stencil`, the actual `RenderPass`) to translate each into
 /// wgpu calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RenderStep {
+pub(super) enum RenderStep {
     /// Pre-clear quad inside the damage scissor: paints the clear
     /// color (alpha 1) over last frame's pixels so AA fringes don't
     /// compound across animation frames. Emitted only when
@@ -168,7 +168,7 @@ pub(crate) enum RenderStep {
 ///    `damage_scissor`) emit no steps at all.
 ///
 /// [`PreClear`]: RenderStep::PreClear
-pub(crate) fn for_each_step(
+pub(super) fn for_each_step(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
     masks: &MaskPlan,

@@ -149,7 +149,7 @@ impl Shortcut {
     /// non-Latin physical-key fallback onto. Crate-internal on purpose —
     /// external callers go through [`Self::matches`] so they get the
     /// layout-correct path rather than this logical-only one.
-    pub(crate) fn matches_key(self, key: Key, mods: Modifiers) -> bool {
+    fn matches_key(self, key: Key, mods: Modifiers) -> bool {
         if Mods::from_event(mods) != self.mods {
             return false;
         }

@@ -135,7 +135,7 @@ impl TextShapeKey {
         }
     }
 
-    pub(crate) fn unbounded_version(self) -> Self {
+    pub(in crate::text) fn unbounded_version(self) -> Self {
         Self {
             max_w_q: MAX_W_NONE,
             halign_q: HAlign::Auto as u8,
@@ -144,19 +144,19 @@ impl TextShapeKey {
         }
     }
 
-    pub(crate) fn font_size_px(self) -> f32 {
+    pub(in crate::text) fn font_size_px(self) -> f32 {
         dequantize(self.size_q)
     }
 
-    pub(crate) fn line_height_px(self) -> f32 {
+    pub(in crate::text) fn line_height_px(self) -> f32 {
         dequantize(self.lh_q)
     }
 
-    pub(crate) fn max_width_px(self) -> Option<f32> {
+    pub(in crate::text) fn max_width_px(self) -> Option<f32> {
         (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
     }
 
-    pub(crate) fn family(self) -> FontFamily {
+    pub(in crate::text) fn family(self) -> FontFamily {
         match self.family_q {
             0 => FontFamily::Sans,
             1 => FontFamily::Mono,
@@ -164,7 +164,7 @@ impl TextShapeKey {
         }
     }
 
-    pub(crate) fn weight(self) -> FontWeight {
+    pub(in crate::text) fn weight(self) -> FontWeight {
         match self.weight_q {
             0 => FontWeight::Regular,
             1 => FontWeight::Bold,
@@ -172,7 +172,7 @@ impl TextShapeKey {
         }
     }
 
-    pub(crate) fn halign(self) -> HAlign {
+    pub(in crate::text) fn halign(self) -> HAlign {
         match self.halign_q {
             0 => HAlign::Auto,
             1 => HAlign::Left,
@@ -183,7 +183,7 @@ impl TextShapeKey {
         }
     }
 
-    pub(crate) fn fit(self) -> LineFit {
+    pub(in crate::text) fn fit(self) -> LineFit {
         match self.fit_q {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,

@@ -55,7 +55,7 @@ const _: () = {
 };
 
 #[derive(Debug)]
-pub(crate) struct CurvePipeline {
+pub(super) struct CurvePipeline {
     instance_buffer: DynamicBuffer<CurveInstance>,
     index_buffer: wgpu::Buffer,
     /// Curve shader module — format-independent; [`Self::build_variants`]
@@ -67,7 +67,7 @@ impl CurvePipeline {
     /// Format-independent curve resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variant`].
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let wgsl = specialize(
             include_str!("curve.wgsl"),
             &[
@@ -111,7 +111,7 @@ impl CurvePipeline {
     /// Caller passes the shared `gradient_bgl` (owned by
     /// `GpuGradientAtlas`) so the layout matches; the instance buffer
     /// is format-independent. Called by `FormatPipelines` per format.
-    pub(crate) fn build_variants(
+    pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -135,7 +135,7 @@ impl CurvePipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
+    pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
@@ -143,7 +143,7 @@ impl CurvePipeline {
     /// curve group batch. Viewport rides the shared immediate region;
     /// `gradient_bg` is the group-0 handle owned by `GpuGradientAtlas`
     /// (one allocation, used by both the quad and curve pipelines).
-    pub(crate) fn bind<'a>(
+    pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipelines: &'a StencilVariant,
@@ -159,7 +159,7 @@ impl CurvePipeline {
     /// Issue one indexed instanced draw covering every instance in the
     /// span. This is the "one draw call per scissor group" terminus —
     /// the entire curve group batch lands as a single GPU draw call.
-    pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, instances: std::ops::Range<u32>) {
+    pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, instances: std::ops::Range<u32>) {
         if instances.start == instances.end {
             return;
         }

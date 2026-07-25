@@ -27,7 +27,7 @@ const ATLAS_GROWTH_FACTOR: u32 = 2;
 const UNALLOCATED_SWEEP_INTERVAL: u64 = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PackedGlyphMetadata {
+pub(super) struct PackedGlyphMetadata {
     width: u16,
     height: u16,
     left: i16,
@@ -35,14 +35,14 @@ pub(crate) struct PackedGlyphMetadata {
 }
 
 impl PackedGlyphMetadata {
-    pub(crate) const EMPTY: Self = Self {
+    pub(super) const EMPTY: Self = Self {
         width: 0,
         height: 0,
         left: 0,
         top: 0,
     };
 
-    pub(crate) fn is_empty(self) -> bool {
+    pub(super) fn is_empty(self) -> bool {
         self.width == 0 || self.height == 0
     }
 }
@@ -61,17 +61,17 @@ impl TryFrom<&GlyphPlacement> for PackedGlyphMetadata {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct GlyphSlot {
-    pub(crate) x: u16,
-    pub(crate) y: u16,
-    pub(crate) width: u16,
-    pub(crate) height: u16,
-    pub(crate) left: i16,
-    pub(crate) top: i16,
-    pub(crate) content: ContentType,
-    pub(crate) alloc: Option<AllocId>,
-    pub(crate) generation: u32,
-    pub(crate) last_use: u64,
+pub(super) struct GlyphSlot {
+    pub(super) x: u16,
+    pub(super) y: u16,
+    pub(super) width: u16,
+    pub(super) height: u16,
+    pub(super) left: i16,
+    pub(super) top: i16,
+    pub(super) content: ContentType,
+    pub(super) alloc: Option<AllocId>,
+    pub(super) generation: u32,
+    pub(super) last_use: u64,
 }
 
 /// One per-content-type backing store. Indexed by `ContentType as usize`.
@@ -97,29 +97,29 @@ struct PendingGrow {
 }
 
 #[derive(Debug)]
-pub(crate) struct AtlasBindings<'a> {
-    pub(crate) mask_view: &'a wgpu::TextureView,
-    pub(crate) color_view: &'a wgpu::TextureView,
-    pub(crate) atlas_px: [u32; 2],
+pub(super) struct AtlasBindings<'a> {
+    pub(super) mask_view: &'a wgpu::TextureView,
+    pub(super) color_view: &'a wgpu::TextureView,
+    pub(super) atlas_px: [u32; 2],
 }
 
 #[derive(Debug)]
-pub(crate) struct GlyphAtlas {
+pub(super) struct GlyphAtlas {
     sides: [Side; 2],
     /// Dense slot slab; `cache` maps each key to an index into it.
     /// Encoded-run caches record these indices so their hot-path LRU
     /// refresh is an indexed store instead of a map probe per glyph —
     /// safe because every recorded index carries the slot generation
     /// that `evict_one` advances before making the index reusable.
-    pub(crate) slots: Vec<GlyphSlot>,
-    pub(crate) cache: FxHashMap<GlyphRasterKey, u32>,
+    pub(super) slots: Vec<GlyphSlot>,
+    pub(super) cache: FxHashMap<GlyphRasterKey, u32>,
     /// Slab indices freed by `evict_one` / the empty sweep, reused by
     /// the next `store`.
     free: Vec<u32>,
-    pub(crate) current_frame: u64,
+    pub(super) current_frame: u64,
     max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
-    pub(crate) bind_group_dirty: bool,
+    pub(super) bind_group_dirty: bool,
 
     /// Glyph pixel data queued by `insert`, packed with per-row padding
     /// so each glyph's copy can satisfy
@@ -145,7 +145,7 @@ struct PendingCopy {
 }
 
 impl GlyphAtlas {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let max = device.limits().max_texture_dimension_2d;
 
         // Order matches `ContentType as usize`: [Mask, Color].
@@ -173,7 +173,7 @@ impl GlyphAtlas {
         }
     }
 
-    pub(crate) fn bindings(&self) -> AtlasBindings<'_> {
+    pub(super) fn bindings(&self) -> AtlasBindings<'_> {
         let mask = &self.sides[ContentType::Mask as usize];
         let color = &self.sides[ContentType::Color as usize];
         AtlasBindings {
@@ -185,7 +185,7 @@ impl GlyphAtlas {
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its
     /// slab index (read the slot itself via `self.slots[idx]`).
-    pub(crate) fn touch(&mut self, key: &GlyphRasterKey) -> Option<u32> {
+    pub(super) fn touch(&mut self, key: &GlyphRasterKey) -> Option<u32> {
         let &idx = self.cache.get(key)?;
         self.slots[idx as usize].last_use = self.current_frame;
         Some(idx)
@@ -198,7 +198,7 @@ impl GlyphAtlas {
     /// `queue.write_texture` calls. Grows if full; returns `None`
     /// only at GPU-max and still doesn't fit. On success returns the
     /// new slot's slab index.
-    pub(crate) fn insert(
+    pub(super) fn insert(
         &mut self,
         device: &wgpu::Device,
         key: GlyphRasterKey,
@@ -302,7 +302,7 @@ impl GlyphAtlas {
     /// `copy_buffer_to_buffer` into our retained staging buffer), plus
     /// N `copy_buffer_to_texture` commands recorded on `ctx.encoder`.
     /// The renderer owns the submit; this method adds no extra one.
-    pub(crate) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
+    pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: old→new copy must complete before any new
         // glyph writes hit the new texture. wgpu serialises commands
         // within an encoder, so recording in this order is enough.
@@ -384,7 +384,7 @@ impl GlyphAtlas {
 
     /// Cache a non-drawing glyph (no atlas slot or upload). Subsequent
     /// lookups still hit the cache and skip swash.
-    pub(crate) fn insert_unallocated(
+    pub(super) fn insert_unallocated(
         &mut self,
         key: GlyphRasterKey,
         content: ContentType,
@@ -408,7 +408,7 @@ impl GlyphAtlas {
 
     /// Frame teardown: advance the LRU frame counter and periodically
     /// sweep stale non-drawing entries.
-    pub(crate) fn end_frame(&mut self) {
+    pub(super) fn end_frame(&mut self) {
         self.current_frame += 1;
         sweep_stale_unallocated(
             &mut self.cache,

@@ -12,7 +12,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
 /// Record the opt-in FPS readout into the top-right of `Layer::Debug`.
-pub(crate) fn record(ui: &mut Ui) {
+pub(super) fn record(ui: &mut Ui) {
     // Omit GPU time until timestamp readback yields a value so the first-frame
     // readout does not reserve a misleading placeholder column.
     let gpu = ui

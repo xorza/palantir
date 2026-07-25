@@ -23,8 +23,8 @@ pub(crate) struct MeshDraw {
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct MeshDrawRow {
-    pub draw: MeshDraw,
-    pub instance: MeshInstance,
+    pub(crate) draw: MeshDraw,
+    pub(crate) instance: MeshInstance,
 }
 
 /// Per-mesh GPU state, uploaded to a `step_mode: Instance` vertex

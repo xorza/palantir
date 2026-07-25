@@ -45,7 +45,7 @@ impl SharedGradientAtlas {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 
     pub(crate) fn registration_count(atlas: &SharedGradientAtlas) -> u64 {

@@ -1,12 +1,12 @@
 pub(crate) mod axis;
 pub(crate) mod cache;
-pub(crate) mod canvas;
+mod canvas;
 pub(crate) mod engine;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod scroll;
 pub(crate) mod stack;
-pub(crate) mod support;
+mod support;
 pub(crate) mod types;
 pub(crate) mod wrapstack;
 pub(crate) mod zstack;
@@ -70,12 +70,12 @@ impl IndexMut<Layer> for Layout {
 /// records only the authoring inputs; this is the layout-side derived state.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedText {
-    pub measured: Size,
-    pub key: TextShapeKey,
+    pub(crate) measured: Size,
+    pub(crate) key: TextShapeKey,
 }
 
 impl LayerLayout {
-    pub(crate) fn resize_for(&mut self, tree: &Tree) {
+    fn resize_for(&mut self, tree: &Tree) {
         let n = tree.records.len();
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);

@@ -246,13 +246,12 @@ impl Damage {
 }
 
 impl DamageEngine {
-    /// Drop the per-widget previous-frame snapshot map. Pairs with
-    /// the caller passing `force_full = true` into the next
-    /// `compute` so the diff repopulates the map from scratch but
-    /// still returns `Damage::Full`. Called by `Ui::frame` when
-    /// the surface changed, the previous frame wasn't acked, or
-    /// it's the first frame.
-    pub(crate) fn invalidate_prev(&mut self) {
+    /// Drop the per-widget previous-frame snapshot map. Called by
+    /// [`Self::compute`] at entry when the caller passes
+    /// `force_full = true` (surface changed, previous frame wasn't
+    /// acked, or first frame) — the diff then repopulates the map
+    /// from scratch but still returns `Damage::Full`.
+    fn invalidate_prev(&mut self) {
         self.prev.clear();
         self.arena.clear();
     }
@@ -912,7 +911,7 @@ fn extend_predamaged(
 }
 
 /// In-tree-test-only reach-in. Lives in a plain `#[cfg(test)]` impl
-/// (not the `internals`-gated `test_support` mod) because only the
+/// (not the feature-gated `internals` mod) because only the
 /// crate's own unit tests call it — so it needs no `allow(dead_code)`
 /// for the feature-only build.
 #[cfg(test)]
@@ -926,7 +925,7 @@ impl DamageEngine {
         union_screens(&self.arena.snaps[snap.paint_span.range()])
     }
 
-    pub(crate) fn compact_paint_snaps(&mut self, forest: &Forest) {
+    fn compact_paint_snaps(&mut self, forest: &Forest) {
         self.arena.compact(forest, &mut self.prev);
     }
 }

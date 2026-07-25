@@ -6,7 +6,7 @@ use crate::input::shortcut::Shortcut;
 use crate::widgets::text_edit::model::Editor;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditAction {
+pub(super) enum EditAction {
     Undo,
     Redo,
     SelectAll,
@@ -17,22 +17,22 @@ pub(crate) enum EditAction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ActionAvailability {
+pub(super) enum ActionAvailability {
     Always,
     Selection,
     Text,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct MenuAction {
-    pub(crate) action: EditAction,
-    pub(crate) label: &'static str,
-    pub(crate) availability: ActionAvailability,
-    pub(crate) separator_before: bool,
+pub(super) struct MenuAction {
+    pub(super) action: EditAction,
+    pub(super) label: &'static str,
+    pub(super) availability: ActionAvailability,
+    pub(super) separator_before: bool,
 }
 
 impl EditAction {
-    pub(crate) const MENU: [MenuAction; 5] = [
+    pub(super) const MENU: [MenuAction; 5] = [
         MenuAction {
             action: Self::Cut,
             label: "Cut",
@@ -65,7 +65,7 @@ impl EditAction {
         },
     ];
 
-    pub(crate) const fn shortcut(self) -> Option<Shortcut> {
+    pub(super) const fn shortcut(self) -> Option<Shortcut> {
         match self {
             Self::Undo => Some(Shortcut::ctrl('Z')),
             Self::Redo => Some(Shortcut::ctrl_shift('Z')),
@@ -77,7 +77,7 @@ impl EditAction {
         }
     }
 
-    pub(crate) fn from_keypress(keypress: KeyPress) -> Option<Self> {
+    pub(super) fn from_keypress(keypress: KeyPress) -> Option<Self> {
         [
             Self::Undo,
             Self::Redo,
@@ -94,7 +94,7 @@ impl EditAction {
         })
     }
 
-    pub(crate) fn execute(self, editor: &mut Editor<'_>, clipboard: &Clipboard) {
+    pub(super) fn execute(self, editor: &mut Editor<'_>, clipboard: &Clipboard) {
         match self {
             Self::Undo => editor.undo(),
             Self::Redo => editor.redo(),

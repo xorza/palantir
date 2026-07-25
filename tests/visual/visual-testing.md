@@ -25,7 +25,7 @@ a failing diff.
 ## Running
 
 The suite is gated behind the `internals` feature (it reaches into
-`test_support` helpers), so the bare `cargo test --test visual` errors —
+`internals` helpers), so the bare `cargo test --test visual` errors —
 always pass the feature:
 
 ```sh

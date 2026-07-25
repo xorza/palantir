@@ -30,7 +30,7 @@ pub struct ContextMenuTheme {
 
 impl ContextMenuTheme {
     /// `panel` / `separator` are chrome only; the rows carry the text.
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.item.for_each_text(f);
     }
 }
@@ -53,7 +53,7 @@ pub struct MenuItemTheme {
 }
 
 impl MenuItemTheme {
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.looks.for_each_text(f);
     }
 

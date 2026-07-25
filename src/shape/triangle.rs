@@ -30,7 +30,7 @@ impl TriangleShape {
         self
     }
 
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(super) fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.stroke.is_noop())
             || triangle_paint_empty(self.a, self.b, self.c)
     }

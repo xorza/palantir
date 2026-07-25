@@ -24,7 +24,7 @@ pub struct RectShape {
 }
 
 impl RectShape {
-    pub(crate) fn new(kind: RectKind, local_rect: Option<Rect>) -> Self {
+    pub(super) fn new(kind: RectKind, local_rect: Option<Rect>) -> Self {
         Self {
             kind,
             local_rect,
@@ -49,7 +49,7 @@ impl RectShape {
         self
     }
 
-    pub(crate) fn is_noop(&self) -> bool {
+    pub(super) fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || (self.fill.is_noop() && self.stroke.is_noop())
     }
 }

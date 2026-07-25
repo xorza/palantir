@@ -3,7 +3,7 @@ mod action;
 pub(crate) mod bench;
 mod input;
 mod menu;
-pub(crate) mod model;
+mod model;
 mod view;
 
 use crate::input::sense::Sense;
@@ -28,10 +28,10 @@ use glam::Vec2;
 use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct TextEditState {
-    pub(crate) edit: EditState,
-    pub(crate) interaction: InteractionState,
-    pub(crate) view: ViewState,
+struct TextEditState {
+    edit: EditState,
+    interaction: InteractionState,
+    view: ViewState,
 }
 
 /// Editable text leaf. Supports typing (`KeyDown` printable chars or

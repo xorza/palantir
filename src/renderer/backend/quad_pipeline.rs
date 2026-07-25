@@ -20,7 +20,7 @@ use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use glam::Vec2;
 
 #[derive(Debug)]
-pub(crate) struct QuadPipeline {
+pub(super) struct QuadPipeline {
     /// Format-independent quad resources. The format-dependent render
     /// pipelines (base + stencil-test twin via [`StencilVariant`], plus
     /// the mask stamp / clear variants) live in
@@ -41,7 +41,7 @@ pub(crate) struct QuadPipeline {
     /// [`Self::stage_masks`] and read by the render schedule. Stale on
     /// non-stencil frames; the schedule only reads it when
     /// `use_stencil` is true.
-    pub(crate) mask_indices: MaskPlan,
+    pub(super) mask_indices: MaskPlan,
     /// Retained scratch for stencil-mask quads: one entry per chain
     /// level per run of consecutive groups sharing a chain (see
     /// [`build_mask_plan`]); uploaded to `mask_buffer`. Cleared at
@@ -75,7 +75,7 @@ impl QuadPipeline {
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`] / [`Self::build_mask_stamp`] /
     /// [`Self::build_mask_clear`].
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let wgsl = specialize(
             include_str!("quad.wgsl"),
             &[
@@ -126,7 +126,7 @@ impl QuadPipeline {
     /// / [`Self::build_mask_clear`]) stay separate — different fragment
     /// entry, color writes off. Called by `FormatPipelines` for each
     /// swapchain format.
-    pub(crate) fn build_variants(
+    pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -156,7 +156,7 @@ impl QuadPipeline {
     /// SDF passes AND the stencil already equals `level`, so nested
     /// masks intersect — the outermost stamps ref 0 onto the cleared
     /// stencil, each inner mask deepens only inside its ancestors.
-    pub(crate) fn build_mask_stamp(
+    pub(super) fn build_mask_stamp(
         &self,
         device: &wgpu::Device,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -182,7 +182,7 @@ impl QuadPipeline {
     /// the chain's *outermost* quad suffices — inner stamps only ever
     /// incremented inside the outer's SDF, so every nonzero stencil
     /// pixel lies under it.
-    pub(crate) fn build_mask_clear(
+    pub(super) fn build_mask_clear(
         &self,
         device: &wgpu::Device,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -242,7 +242,7 @@ impl QuadPipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
+    pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
         self.instance_buffer.upload_instances(ctx, quads);
     }
 
@@ -252,7 +252,7 @@ impl QuadPipeline {
     /// shared gradient bind group; viewport rides immediates. Mirrors
     /// the `bind(pass, use_stencil, gradient_bg)` shape of the mesh /
     /// image / curve pipelines.
-    pub(crate) fn bind<'a>(
+    pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipelines: &'a StencilVariant,
@@ -268,7 +268,7 @@ impl QuadPipeline {
     /// segment quads by scissor region; caller is responsible for
     /// calling [`Self::bind`] once and setting
     /// `RenderPass::set_scissor_rect` before each call.
-    pub(crate) fn draw_range(&self, pass: &mut wgpu::RenderPass<'_>, instances: Span) {
+    pub(super) fn draw_range(&self, pass: &mut wgpu::RenderPass<'_>, instances: Span) {
         if instances.len == 0 {
             return;
         }
@@ -283,7 +283,7 @@ impl QuadPipeline {
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
     #[profiling::function]
-    pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: Color) {
+    pub(super) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: Color) {
         // Steady state: viewport + clear color match last frame, so
         // the clear_buffer already holds the right pixels. Skip the
         // belt write entirely on a match.
@@ -322,7 +322,7 @@ impl QuadPipeline {
     /// reference 0 instead — the stencil is cleared to 0 each pass,
     /// so `Equal(0)` matches every pixel and `write_mask=0` keeps
     /// stencil intact.
-    pub(crate) fn bind_clear<'a>(
+    pub(super) fn bind_clear<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipelines: &'a StencilVariant,
@@ -348,7 +348,7 @@ impl QuadPipeline {
     /// `buffer.groups` and `.batches` parallels `buffer.text_batches`,
     /// each entry the mask-quad span for that chain.
     #[profiling::function]
-    pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, buffer: &RenderBuffer) {
+    pub(super) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, buffer: &RenderBuffer) {
         build_mask_plan(buffer, &mut self.mask_indices, &mut self.masks);
         if self.masks.is_empty() {
             return;
@@ -367,7 +367,7 @@ impl QuadPipeline {
     /// draw (the chain level for stamps, 0 for clears). Group 0 is the
     /// shared gradient bind group; viewport rides immediates,
     /// pre-pushed by the backend.
-    pub(crate) fn bind_mask<'a>(
+    pub(super) fn bind_mask<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         mask_pipeline: &'a wgpu::RenderPipeline,
@@ -380,7 +380,7 @@ impl QuadPipeline {
     }
 
     /// Draw the single mask `Quad` at `mask_idx` in the mask buffer.
-    pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
+    pub(super) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
         pass.draw(0..4, mask_idx..mask_idx + 1);
     }
 }

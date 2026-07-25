@@ -12,7 +12,7 @@ use std::num::NonZeroU32;
 pub(crate) struct UiResources {
     pub(crate) text: TextShaper,
     pub(crate) images: ImageRegistry,
-    pub(crate) texture_ids: TextureIdSource,
+    pub(super) texture_ids: TextureIdSource,
     pub(crate) clipboard: Clipboard,
     pub(crate) diagnostics: Diagnostics,
     pub(crate) windows: WindowDirectory,

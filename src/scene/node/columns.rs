@@ -173,7 +173,7 @@ pub(crate) struct LayoutCore {
 }
 
 impl LayoutCore {
-    pub(crate) fn from_node(node: &Node) -> Self {
+    pub(super) fn from_node(node: &Node) -> Self {
         let mode = node.mode.resolved();
         Self {
             size: node.size.unwrap_or_default(),
@@ -184,7 +184,11 @@ impl LayoutCore {
     }
 
     #[inline]
-    pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
+    pub(in crate::scene) fn hash_with_flags<H: std::hash::Hasher>(
+        &self,
+        flags: NodeFlags,
+        h: &mut H,
+    ) {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
@@ -266,10 +270,10 @@ const _: () = assert!(
 );
 
 #[derive(Debug)]
-pub(crate) struct NodeColumns {
-    pub(crate) widget_id: WidgetId,
-    pub(crate) layout: LayoutCore,
-    pub(crate) attrs: NodeFlags,
-    pub(crate) bounds: BoundsExtras,
-    pub(crate) panel: PanelExtras,
+pub(in crate::scene) struct NodeColumns {
+    pub(in crate::scene) widget_id: WidgetId,
+    pub(in crate::scene) layout: LayoutCore,
+    pub(in crate::scene) attrs: NodeFlags,
+    pub(in crate::scene) bounds: BoundsExtras,
+    pub(in crate::scene) panel: PanelExtras,
 }

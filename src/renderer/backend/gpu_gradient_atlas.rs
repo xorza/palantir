@@ -30,7 +30,7 @@ const _: () = assert!(
 /// consumed by the quad and curve pipelines. Format-independent: survives a
 /// swapchain format change untouched (only the pipelines carry the target).
 #[derive(Debug)]
-pub(crate) struct GpuGradientAtlas {
+pub(super) struct GpuGradientAtlas {
     cpu: SharedGradientAtlas,
     /// LUT atlas texture. 256 cols × N rows of `Rgba16Float`
     /// (linear, no sampler decode — the LUT bake stores linear-RGB
@@ -49,9 +49,9 @@ pub(crate) struct GpuGradientAtlas {
     /// their pipeline layouts against this so they can share one bind
     /// group at draw time. Height-independent, so a grown atlas leaves
     /// every pipeline built against it valid.
-    pub(crate) bgl: wgpu::BindGroupLayout,
+    pub(super) bgl: wgpu::BindGroupLayout,
     /// Group-0 bind group, bound by both pipelines at draw time.
-    pub(crate) bg: wgpu::BindGroup,
+    pub(super) bg: wgpu::BindGroup,
 }
 
 /// Allocate the LUT atlas texture at `rows` rows. The shaders read the
@@ -75,7 +75,7 @@ fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
 }
 
 impl GpuGradientAtlas {
-    pub(crate) fn new(device: &wgpu::Device, cpu: SharedGradientAtlas) -> Self {
+    pub(super) fn new(device: &wgpu::Device, cpu: SharedGradientAtlas) -> Self {
         // Group 0 = gradient LUT atlas + sampler. Viewport rides
         // immediates (shared with every pipeline) — no bind-group slot.
         let bgl = texture_sampler_bgl(device, "aperture.gradient.bgl");
@@ -126,7 +126,7 @@ impl GpuGradientAtlas {
     /// valid because they bind through the height-independent `bgl` and
     /// read the height with `textureDimensions`.
     #[profiling::function]
-    pub(crate) fn upload(&mut self, ctx: &GpuCtx<'_>) {
+    pub(super) fn upload(&mut self, ctx: &GpuCtx<'_>) {
         // Destructured so the resize below borrows the GPU-side fields
         // while `flush_with` holds the CPU atlas.
         let Self {

@@ -38,7 +38,7 @@ pub struct CurveShape {
 }
 
 impl CurveShape {
-    pub(crate) fn new(geometry: CurveGeometry, width: f32) -> Self {
+    pub(super) fn new(geometry: CurveGeometry, width: f32) -> Self {
         Self {
             geometry,
             width,

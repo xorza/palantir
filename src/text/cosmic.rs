@@ -109,7 +109,7 @@ struct CacheEntry {
 /// Per-call font family + weight selection comes from [`FontFamily`] /
 /// [`FontWeight`] on each measurement; internal named lookups resolve against
 /// the bundled set.
-pub(crate) struct CosmicMeasure {
+pub(in crate::text) struct CosmicMeasure {
     font_system: FontSystem,
     /// Swash rasterization context for [`Self::rasterize_glyph`]. Used
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
@@ -156,7 +156,7 @@ impl CosmicMeasure {
     /// don't cover — so text metrics are *not* guaranteed identical
     /// across machines. Each measurement selects its [`FontFamily`] and
     /// [`FontWeight`].
-    pub(crate) fn with_bundled_fonts() -> Self {
+    pub(in crate::text) fn with_bundled_fonts() -> Self {
         let sources = [INTER, JBMONO]
             .into_iter()
             .map(|b| fontdb::Source::Binary(Arc::new(b)));
@@ -178,7 +178,7 @@ impl CosmicMeasure {
     /// Look up the shaped buffer for `key`. Returns `None` for keys that
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextShapeKey::INVALID`].
-    pub(crate) fn buffer_for(&self, key: TextShapeKey) -> Option<&Buffer> {
+    pub(in crate::text) fn buffer_for(&self, key: TextShapeKey) -> Option<&Buffer> {
         if key.is_invalid() {
             return None;
         }
@@ -193,7 +193,7 @@ impl CosmicMeasure {
     /// whether any line was culled — such partial extractions must not
     /// become renderer cache templates (its encoded key carries no
     /// bounds).
-    pub(crate) fn extract_glyphs(
+    pub(in crate::text) fn extract_glyphs(
         &mut self,
         request: TextShapeRequest<'_>,
         placement: RunPlacement,
@@ -249,7 +249,7 @@ impl CosmicMeasure {
     /// Rasterize one glyph via swash, uncached on the cosmic side — the
     /// renderer's atlas is the real cache. `None` when swash cannot
     /// produce an image for the key (e.g. a glyph the face lacks).
-    pub(crate) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
+    pub(in crate::text) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
         let image = self
             .swash_cache
             .get_image_uncached(&mut self.font_system, key.0)?;
@@ -288,7 +288,7 @@ impl std::fmt::Debug for CosmicMeasure {
 
 impl CosmicMeasure {
     #[profiling::function]
-    pub(crate) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
+    pub(in crate::text) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         match (request.key.fit(), request.key.max_width_px()) {
             (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
             _ => self.measure_wrapped(request),
@@ -531,7 +531,7 @@ impl CosmicMeasure {
     /// Restore a missing shaped buffer from the retained source text and
     /// the canonical parameters encoded by `key`. Truncated runs restore
     /// their unbounded probe first; callers never manage that dependency.
-    pub(crate) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) {
+    pub(in crate::text) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) {
         if request.key.is_invalid() || self.cache_hit(request.key).is_some() {
             return;
         }
@@ -572,7 +572,7 @@ impl CosmicMeasure {
 
     /// Retain the `max_keep` most-recently-used buffers. Every entry is
     /// reconstructible at encode, so no owner or layout can pin a key.
-    pub(crate) fn end_frame_evict(&mut self, max_keep: usize) {
+    pub(in crate::text) fn end_frame_evict(&mut self, max_keep: usize) {
         if self.cache.len() <= max_keep {
             return;
         }
@@ -619,10 +619,10 @@ impl EllipsisMemo {
 /// One shaped glyph reduced to what the truncation cut reads: the source
 /// bytes it covers and the advance it costs.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ClusterGlyph {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-    pub(crate) advance: f32,
+pub(in crate::text) struct ClusterGlyph {
+    pub(in crate::text) start: usize,
+    pub(in crate::text) end: usize,
+    pub(in crate::text) advance: f32,
 }
 
 /// Longest logical byte prefix of `count` shaped glyphs whose advances sum
@@ -646,7 +646,7 @@ pub(crate) struct ClusterGlyph {
 /// cluster once every glyph covering it is paid for. Committing mid-cluster
 /// would claim bytes whose advance the budget never covered, and the prefix
 /// would reshape wider than `avail`.
-pub(crate) fn fitting_prefix(
+pub(in crate::text) fn fitting_prefix(
     count: usize,
     glyph: impl Fn(usize) -> ClusterGlyph,
     order: &mut Vec<u32>,
@@ -783,24 +783,24 @@ fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
 }
 
 #[cfg(test)]
-mod test_support {
+mod internals {
     use super::*;
 
     #[derive(Debug, PartialEq, Eq)]
-    pub(crate) struct RecyclePoolStats {
-        pub(crate) len: usize,
-        pub(crate) capacity: usize,
-        pub(crate) limit: usize,
+    pub(in crate::text) struct RecyclePoolStats {
+        pub(in crate::text) len: usize,
+        pub(in crate::text) capacity: usize,
+        pub(in crate::text) limit: usize,
     }
 
     impl CosmicMeasure {
         /// Number of shaped buffers currently cached. Reach-in for the
         /// in-tree eviction tests.
-        pub(crate) fn cache_len(&self) -> usize {
+        pub(in crate::text) fn cache_len(&self) -> usize {
             self.cache.len()
         }
 
-        pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
+        pub(in crate::text) fn recycle_pool_stats(&self) -> RecyclePoolStats {
             RecyclePoolStats {
                 len: self.recycle_pool.len(),
                 capacity: self.recycle_pool.capacity(),
@@ -813,7 +813,11 @@ mod test_support {
         /// [`FontFamily`] to the intended physical face — a measured-
         /// width comparison can't, since two different faces can share
         /// an advance.
-        pub(crate) fn resolved_family(&mut self, text: &str, family: FontFamily) -> Option<String> {
+        pub(in crate::text) fn resolved_family(
+            &mut self,
+            text: &str,
+            family: FontFamily,
+        ) -> Option<String> {
             let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
             buf.set_text(
                 text,

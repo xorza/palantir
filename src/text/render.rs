@@ -23,7 +23,7 @@ pub(crate) struct TextRenderSession<'a> {
 }
 
 impl<'a> TextRenderSession<'a> {
-    pub(crate) fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
+    pub(super) fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
         Self { cosmic }
     }
 
@@ -128,7 +128,7 @@ pub(crate) struct SubpixelOrigin {
 }
 
 #[cfg(test)]
-mod test_support {
+mod internals {
     use crate::text::render::GlyphRasterKey;
     use cosmic_text::{CacheKey, CacheKeyFlags, SubpixelBin, Weight, fontdb};
 

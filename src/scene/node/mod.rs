@@ -29,7 +29,7 @@ pub(crate) enum NodeMode {
 
 impl NodeMode {
     #[inline(always)]
-    pub(crate) fn resolved(self) -> LayoutMode {
+    fn resolved(self) -> LayoutMode {
         match self {
             Self::Resolved(mode) => mode,
             Self::PendingGrid => {
@@ -285,7 +285,7 @@ impl Node {
     /// `Forest::open_node`) so `Node` itself never carries a
     /// resolved id.
     #[inline(always)]
-    pub(crate) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
+    pub(in crate::scene) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
         NodeColumns {

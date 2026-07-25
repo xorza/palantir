@@ -17,7 +17,7 @@ use glam::Vec2;
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum HugKind {
+enum HugKind {
     Max,
     Min,
 }
@@ -56,10 +56,10 @@ fn reset_hugs_for(layout: &mut LayoutEngine, idx: GridDefId) {
 /// `GridHugStore` (durable across the whole layout pass); they're passed
 /// into `resolve_axis` as slices alongside this scratch.
 #[derive(Debug, Default)]
-pub(crate) struct AxisScratch {
-    pub(crate) sizes: Vec<f32>,
-    pub(crate) resolved: FixedBitSet,
-    pub(crate) offsets: Vec<f32>,
+struct AxisScratch {
+    sizes: Vec<f32>,
+    resolved: FixedBitSet,
+    offsets: Vec<f32>,
     flexible: Vec<usize>,
     hug_bounds: Vec<HugBound>,
 }
@@ -88,9 +88,9 @@ impl AxisScratch {
 /// `Vec<GridScratch>` indexed by nesting depth lets nested grids each have
 /// their own slot. Pushed on first descent to a new depth.
 #[derive(Debug, Default)]
-pub(crate) struct GridScratch {
-    pub(crate) col: AxisScratch,
-    pub(crate) row: AxisScratch,
+struct GridScratch {
+    col: AxisScratch,
+    row: AxisScratch,
 }
 
 /// All grid-layout scratch held by `LayoutEngine`, in one bag. `depth_stack`
@@ -105,7 +105,7 @@ pub(crate) struct GridScratch {
 pub(crate) struct GridContext {
     pub(crate) depth_stack: GridDepthStack,
     pub(crate) hugs: GridHugStore,
-    pub(crate) track_aggregator: Vec<f32>,
+    track_aggregator: Vec<f32>,
 }
 
 /// Nesting stack of per-depth grid scratch. One `GridScratch` slot per
@@ -210,7 +210,7 @@ impl GridHugStore {
         s.range()
     }
 
-    pub(crate) fn slice(&self, idx: GridDefId, axis: Axis, kind: HugKind) -> &[f32] {
+    fn slice(&self, idx: GridDefId, axis: Axis, kind: HugKind) -> &[f32] {
         let r = self.axis_slice(idx, axis);
         match kind {
             HugKind::Max => &self.max_pool[r],
@@ -218,7 +218,7 @@ impl GridHugStore {
         }
     }
 
-    pub(crate) fn slice_mut(&mut self, idx: GridDefId, axis: Axis, kind: HugKind) -> &mut [f32] {
+    fn slice_mut(&mut self, idx: GridDefId, axis: Axis, kind: HugKind) -> &mut [f32] {
         let r = self.axis_slice(idx, axis);
         match kind {
             HugKind::Max => &mut self.max_pool[r],
@@ -229,11 +229,7 @@ impl GridHugStore {
     /// Both pools' slices for one `(idx, axis)` in one call. Single
     /// slot lookup; the borrow checker splits the `&mut self` because
     /// `min_pool` and `max_pool` are separate fields.
-    pub(crate) fn slice_mut_pair(
-        &mut self,
-        idx: GridDefId,
-        axis: Axis,
-    ) -> (&mut [f32], &mut [f32]) {
+    fn slice_mut_pair(&mut self, idx: GridDefId, axis: Axis) -> (&mut [f32], &mut [f32]) {
         let r = self.axis_slice(idx, axis);
         (&mut self.min_pool[r.clone()], &mut self.max_pool[r])
     }
@@ -248,7 +244,7 @@ impl GridHugStore {
     /// Persisted resolved track sizes for `(idx, axis)` from the last
     /// measure. Empty-equivalent until measure writes via
     /// `record_resolution`.
-    pub(crate) fn sizes_slice(&self, idx: GridDefId, axis: Axis) -> &[f32] {
+    fn sizes_slice(&self, idx: GridDefId, axis: Axis) -> &[f32] {
         let r = self.axis_slice(idx, axis);
         &self.sizes_pool[r]
     }
@@ -257,7 +253,7 @@ impl GridHugStore {
     /// Returns `0.0` for grids that haven't been measured this frame
     /// (e.g. cache-hit descendants); arrange treats that as "no
     /// persisted state" and re-resolves.
-    pub(crate) fn total_used(&self, idx: GridDefId, axis: Axis) -> f32 {
+    fn total_used(&self, idx: GridDefId, axis: Axis) -> f32 {
         self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)]
     }
 
@@ -266,13 +262,7 @@ impl GridHugStore {
     /// without re-running `resolve_axis`. Caller passes the same
     /// `total` it just handed to `resolve_axis` plus the resolved
     /// `sizes` slice from the per-depth scratch.
-    pub(crate) fn record_resolution(
-        &mut self,
-        idx: GridDefId,
-        axis: Axis,
-        total: f32,
-        sizes: &[f32],
-    ) {
+    fn record_resolution(&mut self, idx: GridDefId, axis: Axis, total: f32, sizes: &[f32]) {
         let r = self.axis_slice(idx, axis);
         self.sizes_pool[r].copy_from_slice(sizes);
         self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)] = total;

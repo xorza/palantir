@@ -34,17 +34,17 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 /// coexist, the run tracker never half-exists) are unrepresentable
 /// rather than maintained.
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct Capture {
+struct Capture {
     /// The in-flight press, created on the press event and destroyed
     /// by release / cascade-eviction. `Some` == "this button's
     /// capture is latched".
-    pub(crate) press: Option<Press>,
+    press: Option<Press>,
     /// One-frame edge: how a capture ended this frame. Cleared by
     /// `end_frame`.
-    pub(crate) release: Option<Release>,
+    release: Option<Release>,
     /// Multi-press run tracker. Persists *across* presses (that's the
     /// chaining) — never cleared, only replaced by the next press.
-    pub(crate) run: Option<PressRun>,
+    run: Option<PressRun>,
 }
 
 impl Capture {
@@ -84,23 +84,23 @@ impl Capture {
 /// One in-flight press: the capture target, the drag anchor, and this
 /// press's run position, bundled so none can exist without the others.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Press {
+struct Press {
     /// Widget the press latched onto.
-    pub(crate) target: WidgetId,
+    target: WidgetId,
     /// Pointer position at the press. Subtracted from the current
     /// pointer position for rect-independent drag deltas.
-    pub(crate) origin: Vec2,
+    origin: Vec2,
     /// This press's position in its multi-press run (1 = single,
     /// 2 = double-press, 3+ = triple…), stamped from [`PressRun::seq`]
     /// at press time so the release can carry the click count without
     /// depending on the run tracker's later state.
-    pub(crate) seq: u8,
+    seq: u8,
     /// One-frame edge: the press landed this frame (drives
     /// `ButtonPhase::Down`). Lowered by `drain_per_frame_queues`.
-    pub(crate) fresh: bool,
+    fresh: bool,
     /// Drag latch. Sticky non-`None` for the press lifetime; doubles
     /// as "suppress click on release".
-    pub(crate) drag: PressDrag,
+    drag: PressDrag,
 }
 
 /// Drag latch of an in-flight [`Press`]: `None` until the pointer has
@@ -108,7 +108,7 @@ pub(crate) struct Press {
 /// the threshold-crossing frame (the drag-start edge),
 /// `Active` after — `drain_per_frame_queues` lowers the edge.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PressDrag {
+enum PressDrag {
     #[default]
     None,
     Started,
@@ -120,14 +120,14 @@ pub(crate) enum PressDrag {
 /// drag-stop are mutually exclusive by construction, and either can
 /// only target the widget that was released.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Release {
+struct Release {
     /// The widget whose capture ended.
-    pub(crate) target: WidgetId,
-    pub(crate) kind: ReleaseKind,
+    target: WidgetId,
+    kind: ReleaseKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ReleaseKind {
+enum ReleaseKind {
     /// The release landed back on the captured widget with no drag
     /// latched — a click. `count` is the press run's number
     /// (2 = double-click, 3 = triple…), stamped from [`Press::seq`].
@@ -144,11 +144,11 @@ pub(crate) enum ReleaseKind {
 /// lands on the same `target` within [`DOUBLE_CLICK_WINDOW`] of `at`
 /// and [`DOUBLE_CLICK_RADIUS`] of `pos`; any break restarts at 1.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PressRun {
-    pub(crate) at: Duration,
-    pub(crate) target: WidgetId,
-    pub(crate) pos: Vec2,
-    pub(crate) seq: u8,
+struct PressRun {
+    at: Duration,
+    target: WidgetId,
+    pos: Vec2,
+    seq: u8,
 }
 
 /// Aperture-native input event. Independent of any windowing toolkit.
@@ -271,12 +271,12 @@ pub(crate) struct InputState {
     /// Pixel, line, and pinch deltas accumulated by their event-time
     /// target. One row per touched [`WidgetId`]; capacity is retained
     /// when the rows are cleared in [`Self::drain_per_frame_queues`].
-    pub(crate) frame_target_deltas: Vec<TargetScrollDelta>,
+    frame_target_deltas: Vec<TargetScrollDelta>,
     /// Per-button press capture (active widget, press pos, drag latch,
     /// frame edges for `drag_started` and `clicked`). Indexed by
     /// [`PointerButton`] via [`PointerButton::idx`]. Independent per
     /// button — a left-drag in progress doesn't block a right-click.
-    pub(crate) captures: [Capture; PointerButton::COUNT],
+    captures: [Capture; PointerButton::COUNT],
     /// Frame-snapshot of "no widget can hold any non-default interaction
     /// state this frame" — no pointer on the surface, no routed
     /// scroll/pinch target or pending target delta, no live button
@@ -286,7 +286,7 @@ pub(crate) struct InputState {
     /// half out for every widget instead of re-deriving it per call.
     /// `focused` is excluded on purpose (see `snapshot_frame_quiescent`),
     /// so the fast path still reads it live.
-    pub(crate) frame_quiescent: bool,
+    frame_quiescent: bool,
     /// Unified keyboard event stream this frame:
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from `Text` events, in arrival order.
@@ -321,7 +321,7 @@ pub(crate) struct InputState {
     /// drains the input queues. Hover-only events (`PointerMoved`,
     /// `PointerLeft`) and modifier changes don't flip it. Unrouted actions
     /// leave it clear because no widget or subscriber can observe them.
-    pub(crate) frame_had_action: bool,
+    frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
     /// pointer moves and mod changes), cleared by `Ui::frame`
     /// at the top of each frame after the paint-anim-only
@@ -761,7 +761,7 @@ impl InputState {
     /// Read and reset [`Self::frame_had_action`]. Called by
     /// [`crate::Ui::frame`] to decide whether to run a discarded
     /// pre-pass for state-mutation settling.
-    pub(crate) fn take_action_flag(&mut self) -> bool {
+    fn take_action_flag(&mut self) -> bool {
         std::mem::take(&mut self.frame_had_action)
     }
 

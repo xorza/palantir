@@ -10,7 +10,7 @@ use crate::window::WindowToken;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`],
 /// invoked with `&mut` the host's app `T`.
-pub(crate) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
+pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
 
 /// Events delivered to the host through [`HostHandle`] — cross-thread
 /// pokes the winit event loop turns into a redraw of a window, a
@@ -52,7 +52,7 @@ impl<T> std::fmt::Debug for UserEvent<T> {
 /// Obtain one via [`WinitHost::handle`](super::WinitHost::handle) before
 /// calling `run`.
 pub struct HostHandle<T: 'static> {
-    pub(crate) proxy: EventLoopProxy<UserEvent<T>>,
+    pub(super) proxy: EventLoopProxy<UserEvent<T>>,
 }
 
 // Hand-written so the impls don't pick up a spurious `T: Clone` / `T:

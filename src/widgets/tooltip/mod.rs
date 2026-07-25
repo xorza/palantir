@@ -18,17 +18,17 @@ use std::time::Duration;
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
 /// the frame runtime's `MAX_DT` clamp on idle wakes.
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct TooltipState {
-    pub(crate) hover_started_at: Option<Duration>,
-    pub(crate) visible: bool,
+struct TooltipState {
+    hover_started_at: Option<Duration>,
+    visible: bool,
 }
 
 /// Singleton tracking the most recent moment any tooltip was visible.
 /// Cold-start tooltips within `theme.warmup` of `last_visible_at`
 /// skip their delay (egui-style toolbar warmup).
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct TooltipGlobal {
-    pub(crate) last_visible_at: Option<Duration>,
+struct TooltipGlobal {
+    last_visible_at: Option<Duration>,
 }
 
 static GLOBAL_STATE_ID: LazyLock<WidgetId> =

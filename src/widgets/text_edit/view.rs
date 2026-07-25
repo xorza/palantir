@@ -23,21 +23,21 @@ const BLINK_HALF: f32 = 0.5;
 const BLINK_STOP_AFTER_IDLE: f32 = 30.0;
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct ViewState {
-    pub(crate) selection_rects: Option<Box<SelectionRects>>,
-    pub(crate) prev_focused: bool,
-    pub(crate) scroll: Vec2,
-    pub(crate) block_offset: Vec2,
-    pub(crate) last_caret_change: Duration,
+pub(super) struct ViewState {
+    pub(super) selection_rects: Option<Box<SelectionRects>>,
+    pub(super) prev_focused: bool,
+    pub(super) scroll: Vec2,
+    pub(super) block_offset: Vec2,
+    pub(super) last_caret_change: Duration,
 }
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct InteractionState {
-    pub(crate) drag_anchor: Option<usize>,
+pub(super) struct InteractionState {
+    pub(super) drag_anchor: Option<usize>,
 }
 
 impl InteractionState {
-    pub(crate) fn normalize(&mut self, text: &str) {
+    pub(super) fn normalize(&mut self, text: &str) {
         self.drag_anchor = self
             .drag_anchor
             .map(|offset| EditState::repair_offset(text, offset));
@@ -76,7 +76,7 @@ impl ViewState {
         }
     }
 
-    pub(crate) fn update(&mut self, input: ViewUpdateInput) -> ViewUpdate {
+    pub(super) fn update(&mut self, input: ViewUpdateInput) -> ViewUpdate {
         self.update_scroll(input);
         if input.focused && (input.caret_moved || input.edited || input.gained_focus) {
             self.last_caret_change = input.now;
@@ -103,20 +103,20 @@ impl ViewState {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ShapeCtx {
-    pub(crate) font_size: f32,
-    pub(crate) line_height_px: f32,
-    pub(crate) padding: Spacing,
+pub(super) struct ShapeCtx {
+    pub(super) font_size: f32,
+    pub(super) line_height_px: f32,
+    pub(super) padding: Spacing,
     wrap_target: Option<f32>,
-    pub(crate) family: FontFamily,
-    pub(crate) weight: FontWeight,
-    pub(crate) multiline: bool,
+    pub(super) family: FontFamily,
+    pub(super) weight: FontWeight,
+    pub(super) multiline: bool,
     halign: HAlign,
-    pub(crate) block_offset: Vec2,
+    pub(super) block_offset: Vec2,
 }
 
 impl ShapeCtx {
-    pub(crate) fn request<'a>(&self, text: &'a str) -> TextShapeRequest<'a> {
+    pub(super) fn request<'a>(&self, text: &'a str) -> TextShapeRequest<'a> {
         let request = TextShapeRequest::unbounded(
             text,
             self.font_size,
@@ -132,31 +132,31 @@ impl ShapeCtx {
 }
 
 #[derive(Debug)]
-pub(crate) struct LayoutInput {
-    pub(crate) response_rect: Option<Rect>,
-    pub(crate) padding: Spacing,
-    pub(crate) caret_width: f32,
-    pub(crate) font_size: f32,
-    pub(crate) line_height_px: f32,
-    pub(crate) family: FontFamily,
-    pub(crate) weight: FontWeight,
-    pub(crate) multiline: bool,
-    pub(crate) text_align: Option<Align>,
-    pub(crate) previous_block_offset: Vec2,
+pub(super) struct LayoutInput {
+    pub(super) response_rect: Option<Rect>,
+    pub(super) padding: Spacing,
+    pub(super) caret_width: f32,
+    pub(super) font_size: f32,
+    pub(super) line_height_px: f32,
+    pub(super) family: FontFamily,
+    pub(super) weight: FontWeight,
+    pub(super) multiline: bool,
+    pub(super) text_align: Option<Align>,
+    pub(super) previous_block_offset: Vec2,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ResolvedLayout {
-    pub(crate) ctx: ShapeCtx,
-    pub(crate) text_align: Align,
-    pub(crate) caret_room: f32,
-    pub(crate) content_width: f32,
-    pub(crate) display_width: f32,
-    pub(crate) placeholder_offset: Vec2,
-    pub(crate) inner_size: Size,
+pub(super) struct ResolvedLayout {
+    pub(super) ctx: ShapeCtx,
+    pub(super) text_align: Align,
+    pub(super) caret_room: f32,
+    pub(super) content_width: f32,
+    pub(super) display_width: f32,
+    pub(super) placeholder_offset: Vec2,
+    pub(super) inner_size: Size,
 }
 
-pub(crate) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
+pub(super) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
     let caret_room = input.caret_width.max(0.0);
     // Raw inner width; `TextShapeKey::bounded` owns the canonical rounding.
     let wrap_target = if input.multiline {
@@ -200,22 +200,22 @@ pub(crate) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
 }
 
 #[derive(Debug)]
-pub(crate) struct GeometryInput<'a> {
-    pub(crate) layout: ResolvedLayout,
-    pub(crate) text: &'a str,
-    pub(crate) placeholder: &'a str,
-    pub(crate) caret: usize,
-    pub(crate) selection: Option<Range<usize>>,
+pub(super) struct GeometryInput<'a> {
+    pub(super) layout: ResolvedLayout,
+    pub(super) text: &'a str,
+    pub(super) placeholder: &'a str,
+    pub(super) caret: usize,
+    pub(super) selection: Option<Range<usize>>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FinalGeometry {
-    pub(crate) layout: ResolvedLayout,
-    pub(crate) caret_pos: CursorPos,
-    pub(crate) text_hash: u64,
+pub(super) struct FinalGeometry {
+    pub(super) layout: ResolvedLayout,
+    pub(super) caret_pos: CursorPos,
+    pub(super) text_hash: u64,
 }
 
-pub(crate) fn resolve_geometry(
+pub(super) fn resolve_geometry(
     shaper: &TextShaper,
     input: GeometryInput<'_>,
     selection_rects: &mut SelectionRects,
@@ -275,50 +275,50 @@ pub(crate) fn resolve_geometry(
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ViewUpdateInput {
-    pub(crate) response_rect: Option<Rect>,
-    pub(crate) ctx: ShapeCtx,
-    pub(crate) caret_pos: CursorPos,
-    pub(crate) caret_width: f32,
-    pub(crate) content_width: f32,
-    pub(crate) focused: bool,
-    pub(crate) caret_moved: bool,
-    pub(crate) edited: bool,
-    pub(crate) gained_focus: bool,
-    pub(crate) now: Duration,
-    pub(crate) block_offset: Vec2,
+pub(super) struct ViewUpdateInput {
+    pub(super) response_rect: Option<Rect>,
+    pub(super) ctx: ShapeCtx,
+    pub(super) caret_pos: CursorPos,
+    pub(super) caret_width: f32,
+    pub(super) content_width: f32,
+    pub(super) focused: bool,
+    pub(super) caret_moved: bool,
+    pub(super) edited: bool,
+    pub(super) gained_focus: bool,
+    pub(super) now: Duration,
+    pub(super) block_offset: Vec2,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ViewUpdate {
-    pub(crate) scroll: Vec2,
-    pub(crate) caret_anim: Option<PaintAnim>,
+pub(super) struct ViewUpdate {
+    pub(super) scroll: Vec2,
+    pub(super) caret_anim: Option<PaintAnim>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct CaretPaint {
-    pub(crate) pos: CursorPos,
-    pub(crate) width: f32,
-    pub(crate) color: Color,
-    pub(crate) anim: Option<PaintAnim>,
+pub(super) struct CaretPaint {
+    pub(super) pos: CursorPos,
+    pub(super) width: f32,
+    pub(super) color: Color,
+    pub(super) anim: Option<PaintAnim>,
 }
 
 #[derive(Debug)]
-pub(crate) struct PaintInput<'a> {
-    pub(crate) node: Node,
-    pub(crate) chrome: Background,
-    pub(crate) text: &'a str,
-    pub(crate) placeholder: &'a str,
-    pub(crate) layout: ResolvedLayout,
-    pub(crate) selection_rects: &'a SelectionRects,
-    pub(crate) selection_color: Color,
-    pub(crate) text_color: Color,
-    pub(crate) placeholder_color: Color,
-    pub(crate) scroll: Vec2,
-    pub(crate) caret: Option<CaretPaint>,
+pub(super) struct PaintInput<'a> {
+    pub(super) node: Node,
+    pub(super) chrome: Background,
+    pub(super) text: &'a str,
+    pub(super) placeholder: &'a str,
+    pub(super) layout: ResolvedLayout,
+    pub(super) selection_rects: &'a SelectionRects,
+    pub(super) selection_color: Color,
+    pub(super) text_color: Color,
+    pub(super) placeholder_color: Color,
+    pub(super) scroll: Vec2,
+    pub(super) caret: Option<CaretPaint>,
 }
 
-pub(crate) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
+pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
     let mut node = input.node;
     let ctx = input.layout.ctx;
     if !ctx.multiline {

@@ -66,7 +66,7 @@ pub(crate) struct DamageRegion {
     /// Mutate only through [`Self::add`] — it owns the merge policy
     /// and the `len ≤ DAMAGE_RECT_CAP` invariant.
     pub(crate) rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
-    pub(crate) budget_px: f32,
+    budget_px: f32,
     /// Damaged fraction of the surface (`total_area / surface_area`),
     /// precomputed by [`Self::collapse_from`] against the surface its rects were
     /// clipped to — so the coverage thresholds that read it

@@ -40,7 +40,7 @@ use std::cell::OnceCell;
 /// an explicit `.background(...)` wins, otherwise the theme default
 /// fills in; the clip default only applies when the caller did not configure
 /// clipping. Returns the chrome to pass to [`Ui::node`].
-pub(crate) fn resolve_container_chrome(
+fn resolve_container_chrome(
     node: &mut Node,
     explicit: Option<Background>,
     theme_bg: Option<&Background>,
@@ -122,8 +122,8 @@ impl Widget {
 /// disabled bit for the returned [`Response::eager`].
 #[derive(Debug)]
 pub(crate) struct WidgetEntry {
-    pub(crate) widget: Widget,
-    pub(crate) state: ResponseState,
+    widget: Widget,
+    state: ResponseState,
     raw_disabled: bool,
 }
 
@@ -134,7 +134,7 @@ impl WidgetEntry {
     }
 }
 
-pub(crate) fn enter_widget(ui: &mut Ui, node: Node) -> WidgetEntry {
+fn enter_widget(ui: &mut Ui, node: Node) -> WidgetEntry {
     let widget = ui.widget(node);
     let mut state = ui.response_for(widget.id());
     let raw_disabled = state.disabled;
@@ -171,13 +171,13 @@ pub struct Response<'a> {
     /// long as the call-site / explicit-key inputs don't change.
     /// Cheap — reading it never probes.
     pub id: WidgetId,
-    pub(crate) ui: &'a Ui,
+    ui: &'a Ui,
     /// `OnceCell` so `deref` can lend `&ResponseState` out of the
     /// lazily-filled cache. The state survives later reads — a
     /// `Tooltip` / `Scroll` body that asks for `hovered`, `pressed()`,
     /// and `drag_delta()` in sequence pays for exactly one
     /// `response_for` probe.
-    pub(crate) cached: OnceCell<ResponseState>,
+    cached: OnceCell<ResponseState>,
 }
 
 impl<'a> Response<'a> {
@@ -187,7 +187,7 @@ impl<'a> Response<'a> {
     /// Text, Frame, Panel, Grid). External widget authors reach this
     /// through [`Widget::response`].
     #[inline]
-    pub(crate) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
+    fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
             id,
             ui,
@@ -273,7 +273,7 @@ pub struct InnerResponse<'a, R> {
 }
 
 #[cfg(test)]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use crate::scene::tree::node::NodeId;
     use crate::widgets::drag_value::DragValueResponse;
     use crate::widgets::text_edit::TextEditResponse;

@@ -107,7 +107,7 @@ impl Frontend {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::renderer::frontend::Frontend;
 

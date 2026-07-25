@@ -295,10 +295,10 @@ impl OffscreenHost {
 }
 
 #[cfg(feature = "internals")]
-pub(crate) mod test_support {
+pub(crate) mod internals {
     use std::num::NonZeroU32;
 
-    use crate::app::test_support::RecordApp;
+    use crate::app::internals::RecordApp;
     use crate::host::clock::Clock;
     use crate::host::offscreen::{self, InvalidScaleFactorError, OffscreenHost, OffscreenTarget};
     use crate::host::shared::HostShared;

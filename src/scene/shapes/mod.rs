@@ -1,5 +1,5 @@
 pub(crate) mod hash;
-pub(crate) mod lower;
+pub(super) mod lower;
 pub(crate) mod paint;
 pub(crate) mod record;
 

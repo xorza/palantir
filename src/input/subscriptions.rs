@@ -81,21 +81,21 @@ impl KeyboardSense {
 /// Per-`Ui` wake-gate registry. Cleared pre-record; widgets re-OR /
 /// re-push their declarations during record.
 #[derive(Default)]
-pub(crate) struct Subscriptions {
-    pub(crate) pointer_mask: PointerSense,
-    pub(crate) keyboard_mask: KeyboardSense,
+pub(super) struct Subscriptions {
+    pub(super) pointer_mask: PointerSense,
+    pub(super) keyboard_mask: KeyboardSense,
     /// Specific-chord wake list. [`Shortcut`] carries platform-aware
     /// `Mods` (Cmd↔Ctrl) + ignore-case `Char` matching — the same
     /// vocabulary menus / context-menus use, so subscriptions and
     /// menu shortcuts share one type.
-    pub(crate) keys: Vec<Shortcut>,
+    pub(super) keys: Vec<Shortcut>,
 }
 
 impl Subscriptions {
     /// Idempotent push — duplicate shortcuts from multiple
     /// subscribers collapse to one entry. Linear `contains` is fine
     /// at the expected count.
-    pub(crate) fn subscribe_key(&mut self, sc: Shortcut) {
+    pub(super) fn subscribe_key(&mut self, sc: Shortcut) {
         if !self.keys.contains(&sc) {
             self.keys.push(sc);
         }
@@ -105,14 +105,14 @@ impl Subscriptions {
     /// Takes the whole [`KeyPress`] so [`Shortcut::matches`]'s non-Latin
     /// layout fallback applies — an off-focus Cmd/Ctrl chord on e.g. a
     /// Russian layout still wakes its subscriber.
-    pub(crate) fn matches_press(&self, kp: KeyPress) -> bool {
+    pub(super) fn matches_press(&self, kp: KeyPress) -> bool {
         self.keys.iter().any(|s| s.matches(kp))
     }
 
     /// Capacity-retained pre-record clear. Called from
     /// [`Ui::record_pass`](crate::Ui) before every full record
     /// (including pass B of a double-layout frame).
-    pub(crate) fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.pointer_mask = PointerSense::NONE;
         self.keyboard_mask = KeyboardSense::NONE;
         self.keys.clear();

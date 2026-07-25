@@ -17,7 +17,7 @@ const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
 /// Native-surface authority retained after startup. The cloned device/queue
 /// handles refer to the same GPU objects owned by `WgpuBackend`.
 #[derive(Debug)]
-pub(crate) struct SurfaceManager {
+pub(super) struct SurfaceManager {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
@@ -25,7 +25,7 @@ pub(crate) struct SurfaceManager {
     /// `max_texture_dimension_2d` granted at device creation — fixed for
     /// the device's lifetime, cached so the host's per-event resize clamp
     /// doesn't re-query `device.limits()`.
-    pub(crate) max_texture_dim: NonZeroU32,
+    pub(super) max_texture_dim: NonZeroU32,
     /// App-global presentation policy requested through `WinitHostConfig`.
     /// Each surface negotiates it against its own capabilities.
     requested_present_mode: wgpu::PresentMode,
@@ -34,19 +34,19 @@ pub(crate) struct SurfaceManager {
 /// A window's swapchain pieces, produced by [`SurfaceManager::make_surface`]. The
 /// swapchain color format lives on `config.format`.
 #[derive(Debug)]
-pub(crate) struct WindowSurface {
-    pub(crate) surface: wgpu::Surface<'static>,
-    pub(crate) config: wgpu::SurfaceConfiguration,
+pub(super) struct WindowSurface {
+    pub(super) surface: wgpu::Surface<'static>,
+    pub(super) config: wgpu::SurfaceConfiguration,
 }
 
 /// Startup result. The probe surface used for adapter selection is reused as
 /// the first window's swapchain.
 #[derive(Debug)]
-pub(crate) struct GpuInit {
-    pub(crate) surfaces: SurfaceManager,
-    pub(crate) device: wgpu::Device,
-    pub(crate) queue: wgpu::Queue,
-    pub(crate) first_surface: WindowSurface,
+pub(super) struct GpuInit {
+    pub(super) surfaces: SurfaceManager,
+    pub(super) device: wgpu::Device,
+    pub(super) queue: wgpu::Queue,
+    pub(super) first_surface: WindowSurface,
 }
 
 #[derive(Debug)]
@@ -57,7 +57,7 @@ struct DeviceRequirements {
 
 impl GpuInit {
     /// Pick the shared adapter/device and create the first native surface.
-    pub(crate) fn new(
+    pub(super) fn new(
         window: &Arc<WinitWindow>,
         cfg: &WinitHostConfig,
     ) -> Result<Self, WinitHostError> {
@@ -168,7 +168,7 @@ fn device_requirements(
 
 impl SurfaceManager {
     /// Create a surface for an additional window against the selected adapter.
-    pub(crate) fn make_surface(
+    pub(super) fn make_surface(
         &self,
         window: &Arc<WinitWindow>,
     ) -> Result<WindowSurface, WinitHostError> {
@@ -180,11 +180,11 @@ impl SurfaceManager {
         self.build_window_surface(surface, UVec2::new(size.width, size.height), window.id())
     }
 
-    pub(crate) fn configure(&self, surface: &wgpu::Surface, config: &wgpu::SurfaceConfiguration) {
+    pub(super) fn configure(&self, surface: &wgpu::Surface, config: &wgpu::SurfaceConfiguration) {
         surface.configure(&self.device, config);
     }
 
-    pub(crate) fn present(&self, frame: wgpu::SurfaceTexture) {
+    pub(super) fn present(&self, frame: wgpu::SurfaceTexture) {
         self.queue.present(frame);
     }
 

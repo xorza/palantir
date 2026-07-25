@@ -4,7 +4,7 @@ use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::batch::PaintTier;
 
 #[derive(Debug, Default)]
-pub(crate) struct HigherKindRects {
+pub(super) struct HigherKindRects {
     meshes: TierRects,
     images: TierRects,
     curves: TierRects,
@@ -35,7 +35,7 @@ impl TierRects {
 }
 
 impl HigherKindRects {
-    pub(crate) fn push(&mut self, tier: PaintTier, rect: URect) {
+    pub(super) fn push(&mut self, tier: PaintTier, rect: URect) {
         let tier_rects = match tier {
             PaintTier::Mesh => &mut self.meshes,
             PaintTier::Image => &mut self.images,
@@ -45,7 +45,7 @@ impl HigherKindRects {
         self.union = self.union.union(rect);
     }
 
-    pub(crate) fn conflicts(&self, incoming: PaintTier, rect: URect) -> bool {
+    pub(super) fn conflicts(&self, incoming: PaintTier, rect: URect) -> bool {
         match incoming {
             PaintTier::Mesh => self.images.any_overlap(rect) || self.curves.any_overlap(rect),
             PaintTier::Image => self.curves.any_overlap(rect),
@@ -53,14 +53,14 @@ impl HigherKindRects {
         }
     }
 
-    pub(crate) fn any_overlap(&self, rect: URect) -> bool {
+    pub(super) fn any_overlap(&self, rect: URect) -> bool {
         self.union.intersect(rect).is_some()
             && (self.meshes.any_overlap(rect)
                 || self.images.any_overlap(rect)
                 || self.curves.any_overlap(rect))
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.meshes.clear();
         self.images.clear();
         self.curves.clear();

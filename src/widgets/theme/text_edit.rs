@@ -51,7 +51,7 @@ pub struct TextEditTheme {
 }
 
 impl TextEditTheme {
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.looks.for_each_text(f);
     }
 

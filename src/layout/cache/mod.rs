@@ -16,47 +16,47 @@ use crate::scene::tree::Tree;
 use glam::IVec2;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ArenaSnapshot {
-    pub(crate) subtree_hash: ContentHash,
-    pub(crate) available_q: AvailableKey,
-    pub(crate) nodes: Span,
-    pub(crate) hugs: Span,
-    pub(crate) text_shapes: Span,
+struct ArenaSnapshot {
+    subtree_hash: ContentHash,
+    available_q: AvailableKey,
+    nodes: Span,
+    hugs: Span,
+    text_shapes: Span,
 }
 
-pub(crate) type AvailableKey = IVec2;
+pub(super) type AvailableKey = IVec2;
 
-pub(crate) const INVALID_AVAILABLE: AvailableKey = IVec2::splat(i32::MIN);
+pub(super) const INVALID_AVAILABLE: AvailableKey = IVec2::splat(i32::MIN);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct RootSnapshotKey {
-    pub(crate) wid: WidgetId,
-    pub(crate) subtree_hash: ContentHash,
-    pub(crate) available_q: AvailableKey,
+pub(super) struct RootSnapshotKey {
+    pub(super) wid: WidgetId,
+    pub(super) subtree_hash: ContentHash,
+    pub(super) available_q: AvailableKey,
 }
 
 #[derive(Debug)]
-pub(crate) struct CachedSubtree<'a> {
-    pub(crate) root: Size,
-    pub(crate) desired: &'a [Size],
-    pub(crate) scroll_content: &'a [Size],
-    pub(crate) text_spans: &'a [Span],
-    pub(crate) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(crate) available_q: &'a [AvailableKey],
-    pub(crate) hugs: &'a [f32],
-    pub(crate) text_shapes: &'a [ShapedText],
-    pub(crate) text_shapes_base: u32,
+pub(super) struct CachedSubtree<'a> {
+    pub(super) root: Size,
+    pub(super) desired: &'a [Size],
+    pub(super) scroll_content: &'a [Size],
+    pub(super) text_spans: &'a [Span],
+    pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
+    pub(super) available_q: &'a [AvailableKey],
+    pub(super) hugs: &'a [f32],
+    pub(super) text_shapes: &'a [ShapedText],
+    pub(super) text_shapes_base: u32,
 }
 
 #[derive(Debug)]
-pub(crate) struct CaptureTreeInput<'a> {
-    pub(crate) desired: &'a mut Vec<Size>,
-    pub(crate) scroll_content: &'a [Size],
-    pub(crate) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(crate) available_q: &'a mut Vec<AvailableKey>,
-    pub(crate) grid_hugs: &'a GridHugStore,
-    pub(crate) text_spans: &'a [Span],
-    pub(crate) text_shapes: &'a [ShapedText],
+pub(super) struct CaptureTreeInput<'a> {
+    pub(super) desired: &'a mut Vec<Size>,
+    pub(super) scroll_content: &'a [Size],
+    pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
+    pub(super) available_q: &'a mut Vec<AvailableKey>,
+    pub(super) grid_hugs: &'a GridHugStore,
+    pub(super) text_spans: &'a [Span],
+    pub(super) text_shapes: &'a [ShapedText],
 }
 
 #[inline]
@@ -80,10 +80,10 @@ fn union_spans(a: Span, b: Span) -> Span {
 #[derive(Debug, Default)]
 pub(crate) struct NodeArenas {
     pub(crate) desired: Vec<Size>,
-    pub(crate) scroll_content: Vec<Size>,
-    pub(crate) text_spans: Vec<Span>,
-    pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
-    pub(crate) available_q: Vec<AvailableKey>,
+    scroll_content: Vec<Size>,
+    text_spans: Vec<Span>,
+    intrinsics: Vec<[f32; SLOT_COUNT]>,
+    available_q: Vec<AvailableKey>,
 }
 
 impl NodeArenas {
@@ -99,12 +99,12 @@ impl NodeArenas {
 #[derive(Debug, Default)]
 pub(crate) struct MeasureSnapshot {
     pub(crate) nodes: NodeArenas,
-    pub(crate) hugs: Vec<f32>,
-    pub(crate) text_shapes: Vec<ShapedText>,
-    pub(crate) snapshots: WidgetIdMap<u32>,
-    pub(crate) descriptors: Vec<ArenaSnapshot>,
+    hugs: Vec<f32>,
+    text_shapes: Vec<ShapedText>,
+    snapshots: WidgetIdMap<u32>,
+    descriptors: Vec<ArenaSnapshot>,
     descriptor_wids: Vec<WidgetId>,
-    pub(crate) roots: Vec<RootSnapshotKey>,
+    pub(super) roots: Vec<RootSnapshotKey>,
     descriptor_identity: u64,
 }
 
@@ -136,13 +136,13 @@ pub(crate) struct MeasureCache {
 }
 
 impl MeasureCache {
-    pub(crate) fn begin_frame(&mut self) {
+    pub(super) fn begin_frame(&mut self) {
         self.previous_descriptor_identity = self.current.descriptor_identity;
         self.current.begin_capture();
     }
 
     #[inline]
-    pub(crate) fn try_lookup(
+    pub(super) fn try_lookup(
         &self,
         wid: WidgetId,
         curr_hash: ContentHash,
@@ -168,7 +168,7 @@ impl MeasureCache {
     }
 
     #[inline]
-    pub(crate) fn lookup_root_intrinsic(
+    pub(super) fn lookup_root_intrinsic(
         &self,
         wid: WidgetId,
         subtree_hash: ContentHash,
@@ -183,7 +183,7 @@ impl MeasureCache {
         (!value.is_nan()).then_some(value)
     }
 
-    pub(crate) fn capture_tree(&mut self, tree: &Tree, input: CaptureTreeInput<'_>) {
+    pub(super) fn capture_tree(&mut self, tree: &Tree, input: CaptureTreeInput<'_>) {
         let CaptureTreeInput {
             desired,
             scroll_content,
@@ -317,7 +317,7 @@ impl MeasureCache {
         }
     }
 
-    pub(crate) fn finish_frame(&mut self) {
+    pub(super) fn finish_frame(&mut self) {
         if self.current.descriptor_identity != self.previous_descriptor_identity
             || self.current.snapshots.len() != self.current.descriptors.len()
         {

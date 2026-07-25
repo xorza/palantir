@@ -10,11 +10,11 @@ use std::cell::Cell;
 #[derive(Debug)]
 pub struct KeyboardCapture {
     owner: WidgetId,
-    pub(crate) release_requested: Cell<bool>,
+    pub(super) release_requested: Cell<bool>,
 }
 
 impl KeyboardCapture {
-    pub(crate) fn new(owner: WidgetId) -> Self {
+    pub(super) fn new(owner: WidgetId) -> Self {
         Self {
             owner,
             release_requested: Cell::new(false),

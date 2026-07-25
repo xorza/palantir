@@ -92,10 +92,10 @@ impl std::hash::Hash for Track {
 /// Spans into a `Tree`'s retained flat track arena plus the gaps for one Grid.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GridDef {
-    pub rows: Span,
-    pub cols: Span,
-    pub row_gap: f32,
-    pub col_gap: f32,
+    pub(crate) rows: Span,
+    pub(crate) cols: Span,
+    pub(crate) row_gap: f32,
+    pub(crate) col_gap: f32,
 }
 
 impl GridDef {

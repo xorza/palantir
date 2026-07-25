@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 static TEXTURE_CALLS: AtomicU64 = AtomicU64::new(0);
 static TEXTURE_BYTES: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn record_texture(bytes: u64) {
+pub(super) fn record_texture(bytes: u64) {
     TEXTURE_CALLS.fetch_add(1, Relaxed);
     TEXTURE_BYTES.fetch_add(bytes, Relaxed);
 }

@@ -12,10 +12,10 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
-pub(crate) const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 #[derive(Debug, Default)]
-pub(crate) struct GpuViewTargets {
+pub(super) struct GpuViewTargets {
     entries: FxHashMap<TextureId, RenderTarget>,
     submit_epoch: u64,
 }
@@ -23,7 +23,7 @@ pub(crate) struct GpuViewTargets {
 impl GpuViewTargets {
     #[allow(clippy::too_many_arguments)]
     #[profiling::function]
-    pub(crate) fn paint(
+    pub(super) fn paint(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         frame_targets: &[RenderTargetDraw],
@@ -93,7 +93,7 @@ impl GpuViewTargets {
     /// [`keep_target`] preserves foreign owners' entries on every submit, so
     /// a closed window's targets would otherwise be held by the surviving
     /// windows for the life of the host.
-    pub(crate) fn retire_owner(&mut self, owner: RenderOwnerId, textures: &mut ImageTextures) {
+    pub(super) fn retire_owner(&mut self, owner: RenderOwnerId, textures: &mut ImageTextures) {
         self.entries.retain(|id, target| {
             let keep = target.owner != owner;
             if !keep {

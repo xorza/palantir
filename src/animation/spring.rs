@@ -43,7 +43,7 @@ const DURATION_SNAP_EPS_SQ: f32 = EPS * EPS;
 /// of truth for the threshold; consumed both by [`step`] and by the
 /// spring arm of the snap-if-close fast path in `AnimMapTyped::tick`.
 #[inline]
-pub(crate) fn within_settle_eps<T: Animatable>(displacement: T, velocity: T) -> bool {
+pub(super) fn within_settle_eps<T: Animatable>(displacement: T, velocity: T) -> bool {
     displacement.magnitude_squared() < POS_EPS_SQ && velocity.magnitude_squared() < VEL_EPS_SQ
 }
 
@@ -52,17 +52,17 @@ pub(crate) fn within_settle_eps<T: Animatable>(displacement: T, velocity: T) -> 
 /// Position-only (duration rows have no velocity). Consumed by the
 /// duration arm of the snap-if-close fast path in `AnimMapTyped::tick`.
 #[inline]
-pub(crate) fn within_duration_snap_eps<T: Animatable>(displacement: T) -> bool {
+pub(super) fn within_duration_snap_eps<T: Animatable>(displacement: T) -> bool {
     displacement.magnitude_squared() < DURATION_SNAP_EPS_SQ
 }
 
-pub(crate) struct SpringStep<T: Animatable> {
-    pub(crate) current: T,
-    pub(crate) velocity: T,
-    pub(crate) settled: bool,
+pub(super) struct SpringStep<T: Animatable> {
+    pub(super) current: T,
+    pub(super) velocity: T,
+    pub(super) settled: bool,
 }
 
-pub(crate) fn stable_substep_dt(stiffness: f32, damping: f32) -> f32 {
+pub(super) fn stable_substep_dt(stiffness: f32, damping: f32) -> f32 {
     let stiffness = f64::from(stiffness);
     let damping = f64::from(damping);
     let boundary = 4.0 / ((damping * damping + 4.0 * stiffness).sqrt() + damping);
@@ -80,7 +80,7 @@ fn decay_rate(stiffness: f32, damping: f32) -> f64 {
     }
 }
 
-pub(crate) fn params_are_valid(stiffness: f32, damping: f32, substep_dt: f32) -> bool {
+pub(super) fn params_are_valid(stiffness: f32, damping: f32, substep_dt: f32) -> bool {
     if !(stiffness.is_finite() && stiffness > 0.0 && damping.is_finite() && damping > 0.0) {
         return false;
     }
@@ -89,7 +89,7 @@ pub(crate) fn params_are_valid(stiffness: f32, damping: f32, substep_dt: f32) ->
         && (MAX_ANIM_DT / substep_dt).ceil() <= MAX_SUBSTEPS_PER_FRAME
 }
 
-pub(crate) fn step<T: Animatable>(
+pub(super) fn step<T: Animatable>(
     stiffness: f32,
     damping: f32,
     substep_dt: f32,

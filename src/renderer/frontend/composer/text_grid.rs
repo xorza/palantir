@@ -38,7 +38,7 @@ const TILE_CAP: usize = 8;
 /// per-text/per-quad loops, and the inline/heap tag dispatch TinyVec
 /// pays on every access profiled at ~2% of the frame on its own.
 #[derive(Debug, Default)]
-pub(crate) struct TextRectGrid {
+pub(super) struct TextRectGrid {
     cols: u32,
     rows: u32,
     /// Per-tile occupancy (`0..=TILE_CAP`), row-major
@@ -74,14 +74,14 @@ pub(crate) struct TextRectGrid {
     /// [`Self::any_overlap`]: a query outside the union can't hit any
     /// rect, so the tile walk (scattered 32-byte bucket loads from a
     /// grid too big for L1) is skipped entirely. Zero-sized = empty.
-    pub(crate) union: URect,
+    pub(super) union: URect,
 }
 
 impl TextRectGrid {
     /// Reshape to cover `viewport` and reset all state. Called once
     /// per frame at compose start. Cheap when the viewport hasn't
     /// changed (no allocation — the outer `Vec` is already sized).
-    pub(crate) fn start_frame(&mut self, viewport: UVec2) {
+    pub(super) fn start_frame(&mut self, viewport: UVec2) {
         let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
         let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
         let want = (cols * rows) as usize;
@@ -109,7 +109,7 @@ impl TextRectGrid {
     /// got pushed to this frame (`touched`), not the full row-major
     /// grid — `~100-300` tile clears in the dense-text fixture vs
     /// `~4500` on the full sweep.
-    pub(crate) fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         for &i in &self.touched {
             self.lens[i as usize] = 0;
         }
@@ -121,7 +121,7 @@ impl TextRectGrid {
 
     /// Register `r`. No-op for zero-area input (degenerate text rects
     /// can't intersect anything anyway).
-    pub(crate) fn push(&mut self, r: URect) {
+    pub(super) fn push(&mut self, r: URect) {
         if r.w == 0 || r.h == 0 {
             return;
         }
@@ -165,7 +165,7 @@ impl TextRectGrid {
     /// tile's rect list — typical workload visits 1-4 tiles with 1-3
     /// rects each (avg total: ~4-8 intersect tests vs ~120 for the
     /// old flat scan).
-    pub(crate) fn any_overlap(&self, q: URect) -> bool {
+    pub(super) fn any_overlap(&self, q: URect) -> bool {
         // The union check subsumes the empty-grid case (an empty grid's
         // zero-sized union intersects nothing).
         if q.w == 0 || q.h == 0 || self.union.intersect(q).is_none() {

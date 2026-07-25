@@ -6,7 +6,7 @@ pub(crate) mod palette;
 pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
 pub(crate) mod separator;
-pub(crate) mod serde;
+mod serde;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
@@ -179,7 +179,7 @@ impl Theme {
 /// configure. Implemented by [`ButtonTheme`] and [`TextEditTheme`]; each
 /// impl defines its own `active` semantics by delegating to its inherent
 /// `pick`.
-pub(crate) trait WidgetTheme {
+pub(in crate::widgets) trait WidgetTheme {
     fn pick(&self, state: &ResponseState) -> &WidgetLook;
     fn padding(&self) -> Spacing;
     fn margin(&self) -> Spacing;
@@ -202,7 +202,7 @@ pub(crate) trait WidgetTheme {
 // self-time. Force the whole lookup chain into each widget so state picking,
 // default resolution and target construction optimize as one block.
 #[inline(always)]
-pub(crate) fn resolve_look<T: WidgetTheme>(
+pub(in crate::widgets) fn resolve_look<T: WidgetTheme>(
     ui: &mut Ui,
     id: WidgetId,
     node: &mut Node,

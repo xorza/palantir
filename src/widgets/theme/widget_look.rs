@@ -83,7 +83,7 @@ impl WidgetLook {
 
     /// Visit this look's overriding `TextStyle`, if any. An unset look
     /// inherits `Theme::text` (visited separately), so it carries none.
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         if let Some(t) = &mut self.text {
             f(t);
         }
@@ -125,7 +125,7 @@ impl StatefulLook {
         }
     }
 
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.normal.for_each_text(f);
         self.hovered.for_each_text(f);
         self.active.for_each_text(f);

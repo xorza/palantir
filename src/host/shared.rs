@@ -20,7 +20,7 @@ impl HostShared {
         Self::with_clipboard(text, Clipboard::default(), max_texture_dimension_2d)
     }
 
-    pub(crate) fn with_clipboard(
+    pub(super) fn with_clipboard(
         text: TextShaper,
         clipboard: Clipboard,
         max_texture_dimension_2d: Option<NonZeroU32>,
@@ -31,7 +31,7 @@ impl HostShared {
         }
     }
 
-    pub(crate) fn backend_resources(&self) -> BackendResources {
+    pub(super) fn backend_resources(&self) -> BackendResources {
         BackendResources {
             text: self.resources.text.clone(),
             images: self.resources.images.clone(),
