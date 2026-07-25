@@ -31,7 +31,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | C2 | Author-ordered render batches | Structural | L | Verified open |
 | C3 | Fuse the cascade repair walk with the damage diff | Structural | L | Blocked on C1 |
 | D1 | ~~Delegation macro~~ / composite translation | Maintainability | M | Macro **rejected** (tried); composite half open |
-| D2 | Overlay keyboard authority / facade duplication | Mixed | M | Keyboard half **shipped**; chrome + placement half open |
+| D2 | Overlay keyboard authority / facade duplication | Mixed | M | **Closed** — keyboard half shipped; chrome/placement half found not to be duplication |
 | D3 | Layout driver identity repeated across three dispatches | Maintainability | S | Verified open |
 | D4 | Measure cache's manually synchronized shadow state | Maintainability | M | Narrowed by the arrange replay |
 | D5 | Small wins bundle (3 items) | Mixed | S | **Shipped** |
@@ -367,7 +367,39 @@ transformation helpers for composites, with exhaustive destructuring inside and
 named policies for fields intentionally consumed or rejected. Do not add
 generic accessors for every field.
 
-### D2. Overlay keyboard authority — **shipped**; facade dedup still open
+### D2. Overlay keyboard authority — **shipped**; chrome/placement examined and closed
+
+#### Chrome and placement: one real duplicate, the rest isn't duplication
+
+Examined after the keyboard half landed. Exactly **one** genuine duplicate
+existed and is now gone: `Modal`'s `BLOCK` constant and `Popup`'s eater sense
+were the same four pointer senses, written two different ways in two files,
+each documented as "so nothing leaks to `Main`". Two independent copies of "all
+four" drift the moment a fifth sense is added, so it is now
+`Sense::ABSORB_POINTER`, defined where `Sense` lives.
+
+The rest does not consolidate, and the evidence is worth recording so it is not
+re-attempted:
+
+- **Chrome resolution looks shared and isn't.** All three apply theme
+  fallbacks then resolve chrome, but against different slots and different
+  fields — `Popup` uses `panel_background` + `panel_clip` via the existing
+  `resolve_container_chrome`; `Tooltip` uses `tooltip.panel` + `padding` +
+  `max_size`; `Modal` uses `modal.card` + `padding` + `min_size`. Widening
+  `resolve_container_chrome` to cover them turns a 4-line helper into a config
+  object over three policies.
+- **Placement is already two library calls.** `Popup` and `Tooltip` position
+  through `overlay_layer(layer, OverlayPosition)`; `Modal` fills the surface
+  through `layer(..)`. There is no third thing to factor.
+- **The scrims are structurally different.** `Popup`'s eater is a transparent
+  `Frame` occupying its own layer root; `Modal`'s backdrop *is* the layer root,
+  is painted, and centres the card. A shared recorder would need to branch on
+  both, which moves the branching rather than removing it.
+
+With the keyboard policy now uniform, a general "overlay recorder" would be a
+configuration struct whose fields are the differences. Not worth it.
+
+#### Keyboard authority
 
 Scoped to the keyboard half deliberately. That is where both correctness
 residuals lived, and it has a forcing function; chrome / placement / backdrop
