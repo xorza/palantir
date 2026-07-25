@@ -13,8 +13,6 @@ use crate::renderer::frontend::payload::{
     DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
 };
-#[cfg(any(test, feature = "internals"))]
-use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
@@ -711,16 +709,6 @@ pub(crate) struct ComposeSession<'a> {
     out: &'a mut RenderBuffer,
     display: Display,
     current_transform: TranslateScale,
-}
-
-impl ComposeSession<'_> {
-    /// Replay a recorded paint stream into this session, closing it on
-    /// return. Lets tests and benches drive the composer from a stream
-    /// captured once, outside whatever they are measuring or asserting on.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) fn replay_from(mut self, recorded: &RecordedPaint) {
-        recorded.replay(&mut self);
-    }
 }
 
 impl Drop for ComposeSession<'_> {
@@ -1521,6 +1509,24 @@ impl PaintSink for ComposeSession<'_> {
             scale: snap_text_scale(self.current_transform.scale),
         });
         self.composer.batch.open_grid.push(bounds);
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    //! Replay driver for the composer tests and the compose bench.
+
+    use crate::renderer::frontend::composer::ComposeSession;
+    use crate::renderer::frontend::record_sink::RecordedPaint;
+
+    impl ComposeSession<'_> {
+        /// Replay a recorded paint stream into this session, closing it
+        /// on return. Lets tests and benches drive the composer from a
+        /// stream captured once, outside whatever they are measuring or
+        /// asserting on.
+        pub(crate) fn replay_from(mut self, recorded: &RecordedPaint) {
+            recorded.replay(&mut self);
+        }
     }
 }
 

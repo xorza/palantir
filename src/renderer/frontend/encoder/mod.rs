@@ -150,7 +150,12 @@ impl Encoder {
         }
     }
 
-    #[profiling::function]
+    /// Deliberately carries no profiling span: the sink composes
+    /// inline, so this covers the same work as [`Frontend::build`] and a
+    /// second span would only read as an encoder regression against a
+    /// pre-fusion capture.
+    ///
+    /// [`Frontend::build`]: crate::renderer::frontend::Frontend::build
     pub(crate) fn encode<S: PaintSink>(
         &mut self,
         scene: &FrameScene<'_>,
