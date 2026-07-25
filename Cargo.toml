@@ -191,8 +191,14 @@ default = ["system-clipboard", "winit-host"]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets.
 internals = ["dep:criterion", "dep:dhat", "dep:gethostname", "dep:pollster"]
-# Enables the bundled widget-tour binary and its logging setup.
-showcase = ["dep:tracing-subscriber", "winit-host"]
+# Enables the bundled widget-tour binary and its logging setup. Carries
+# `gpu-debug-markers` because the showcase is what you capture.
+showcase = ["dep:tracing-subscriber", "winit-host", "gpu-debug-markers"]
+# GPU debug groups (RenderDoc / Xcode capture labels) around every draw
+# step. Off by default: wgpu-core records two commands plus a label
+# memcpy per pair even with no capture tool attached, and the step count
+# scales with UI complexity. Turn on when you intend to capture.
+gpu-debug-markers = []
 system-clipboard = ["winit-host", "dep:arboard"]
 winit-host = ["dep:pollster", "dep:winit"]
 # Profiler backend — off by default (zero overhead).

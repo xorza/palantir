@@ -1,5 +1,6 @@
 //! Framework-owned off-screen targets for composited `GpuView`s.
 
+use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
@@ -46,19 +47,19 @@ impl GpuViewTargets {
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
                 profiling::scope!("GpuView::init");
-                ctx.encoder.push_debug_group("aperture.gpu_view.init");
+                debug_marker::push_encoder(ctx.encoder, "aperture.gpu_view.init");
                 paint.init(&GpuInitCtx {
                     device: ctx.device,
                     target_format: TARGET_FORMAT,
                 });
-                ctx.encoder.pop_debug_group();
+                debug_marker::pop_encoder(ctx.encoder);
                 target.initialized = true;
             }
             let dt = target
                 .last_paint
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
             profiling::scope!("GpuView::paint");
-            ctx.encoder.push_debug_group("aperture.gpu_view.paint");
+            debug_marker::push_encoder(ctx.encoder, "aperture.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
                 device: ctx.device,
                 queue: ctx.queue,
@@ -69,7 +70,7 @@ impl GpuViewTargets {
                 raster_scale: draw.raster_scale,
                 dt,
             });
-            ctx.encoder.pop_debug_group();
+            debug_marker::pop_encoder(ctx.encoder);
             target.last_paint = Some(now);
         }
         self.entries.retain(|id, target| {
