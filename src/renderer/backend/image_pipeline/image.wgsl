@@ -63,15 +63,11 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    let dims = vec2<f32>(textureDimensions(tex));
-    let texel_dx = dpdx(in.uv) * dims;
-    let texel_dy = dpdy(in.uv) * dims;
-    let footprint_squared = max(dot(texel_dx, texel_dx), dot(texel_dy, texel_dy));
-    let filter_flag = select(
-        FLAG_MAG_NEAREST,
-        FLAG_MIN_NEAREST,
-        footprint_squared > 1.0,
-    );
+    // `flags` is flat-interpolated per instance, so it is non-uniform
+    // across a draw: the derivatives must be taken here, in uniform
+    // control flow, even though only the nearest paths consume them.
+    let uv_dx = dpdx(in.uv);
+    let uv_dy = dpdy(in.uv);
 
     // `ImageFit::Tile` ships UVs spanning [0, repeats]; wrap into the
     // [0,1) tile with `fract` (the ClampToEdge sampler would otherwise
@@ -82,11 +78,29 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     if ((in.flags & FLAG_TILED) != 0u) {
         uv = fract(in.uv);
     }
-    // Snap the UV to the texel center for the active scale direction.
-    // Single mip, so the snapped UV's derivatives cannot select a
-    // different level.
-    if ((in.flags & filter_flag) != 0u) {
-        uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
+    // Deliberately outside the branch below: gating the descriptor read
+    // as well costs the nearest path more than it saves the bilinear one
+    // (`image_pipeline` bench, 24-layer overdraw).
+    let dims = vec2<f32>(textureDimensions(tex));
+    // Zero flags is the common case (every plain image and GpuView);
+    // the footprint measurement only ever feeds the texel-center snap,
+    // so keep it out of the bilinear path entirely.
+    let nearest = in.flags & (FLAG_MIN_NEAREST | FLAG_MAG_NEAREST);
+    if (nearest != 0u) {
+        let texel_dx = uv_dx * dims;
+        let texel_dy = uv_dy * dims;
+        let footprint_squared = max(dot(texel_dx, texel_dx), dot(texel_dy, texel_dy));
+        let filter_flag = select(
+            FLAG_MAG_NEAREST,
+            FLAG_MIN_NEAREST,
+            footprint_squared > 1.0,
+        );
+        // Snap the UV to the texel center for the active scale
+        // direction. Single mip, so the snapped UV's derivatives cannot
+        // select a different level.
+        if ((nearest & filter_flag) != 0u) {
+            uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
+        }
     }
     // sRGB-format texture decodes to linear on read; tint is linear
     // straight-alpha. Multiply, then premultiply for the blend.

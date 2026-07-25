@@ -19,6 +19,7 @@ fn strip_pane(
     handle: &aperture::ImageHandle,
     x: f32,
     size: Vec2,
+    fit: ImageFit,
     min_filter: ImageFilter,
     mag_filter: ImageFilter,
 ) {
@@ -29,11 +30,31 @@ fn strip_pane(
         .show(ui, |ui| {
             ui.add_shape(
                 Shape::image(handle.clone())
-                    .fit(ImageFit::Fill)
+                    .fit(fit)
                     .min_filter(min_filter)
                     .mag_filter(mag_filter),
             );
         });
+}
+
+/// Pixel comparison shared by the fixtures: sRGB round-trip through the
+/// f16 tint and the render target moves a channel by at most one step.
+fn close(a: [u8; 4], b: [u8; 4]) -> bool {
+    a.iter().zip(b).all(|(l, r)| l.abs_diff(r) <= 2)
+}
+
+/// Assert the pixel sits strictly between the two source texels on both
+/// the red and blue channels — i.e. the sampler blended rather than
+/// picked one texel.
+fn assert_blend(pixel: [u8; 4], label: &str) {
+    for c in [0, 2] {
+        let (lo, hi) = (RED[c].min(BLUE[c]), RED[c].max(BLUE[c]));
+        assert!(
+            pixel[c] > lo + 20 && pixel[c] < hi - 20,
+            "{label} channel {c} = {} must ramp between {lo} and {hi}",
+            pixel[c],
+        );
+    }
 }
 
 /// Minification and magnification choose their own filters. Sampled
@@ -65,6 +86,7 @@ fn minification_and_magnification_filters_are_independent() {
                     &handle,
                     0.0,
                     Vec2::new(128.0, 64.0),
+                    ImageFit::Fill,
                     ImageFilter::Nearest,
                     ImageFilter::Linear,
                 );
@@ -73,6 +95,7 @@ fn minification_and_magnification_filters_are_independent() {
                     &handle,
                     128.0,
                     Vec2::new(128.0, 64.0),
+                    ImageFit::Fill,
                     ImageFilter::Linear,
                     ImageFilter::Nearest,
                 );
@@ -80,17 +103,6 @@ fn minification_and_magnification_filters_are_independent() {
     });
 
     let px = |x: u32| magnified.get_pixel(x, 32).0;
-    let close = |a: [u8; 4], b: [u8; 4]| a.iter().zip(b).all(|(l, r)| l.abs_diff(r) <= 2);
-    let assert_blend = |pixel: [u8; 4], label: &str| {
-        for c in [0, 2] {
-            let (lo, hi) = (RED[c].min(BLUE[c]), RED[c].max(BLUE[c]));
-            assert!(
-                pixel[c] > lo + 20 && pixel[c] < hi - 20,
-                "{label} channel {c} = {} must ramp between {lo} and {hi}",
-                pixel[c],
-            );
-        }
-    };
 
     for (base, name) in [(0, "linear magnification"), (128, "nearest magnification")] {
         assert!(close(px(base + 16), RED), "{name} left half must be RED");
@@ -125,6 +137,7 @@ fn minification_and_magnification_filters_are_independent() {
                     &handle,
                     0.0,
                     Vec2::new(2.0, 16.0),
+                    ImageFit::Fill,
                     ImageFilter::Nearest,
                     ImageFilter::Linear,
                 );
@@ -133,6 +146,7 @@ fn minification_and_magnification_filters_are_independent() {
                     &handle,
                     2.0,
                     Vec2::new(2.0, 16.0),
+                    ImageFit::Fill,
                     ImageFilter::Linear,
                     ImageFilter::Nearest,
                 );
@@ -151,4 +165,137 @@ fn minification_and_magnification_filters_are_independent() {
             &format!("linear minification pixel {x}"),
         );
     }
+}
+
+/// The shader keeps its footprint measurement behind the nearest-flag
+/// branch, so the zero-flag (bilinear), both-nearest, and tiled
+/// combinations each need their own pin at a fractional texel-per-pixel
+/// ratio — where the two filters land on different texels.
+///
+/// Strip fixture: RED|BLUE|RED across 100px → 33.33px per texel, so the
+/// per-fragment texel coordinate is `t = (x + 0.5) · 3 / 100`.
+/// - Bilinear samples the texel *centers* at 0.5 / 1.5 / 2.5:
+///   `t(16) = 0.495` and `t(83) = 2.505` sit outside the outermost
+///   centers → clamped to pure RED; `t(32) = 0.975` is 47.5% of the way
+///   to texel 1 → a ramp.
+/// - Both-nearest snaps to `floor(t)`: `t(32) = 0.975` → RED and
+///   `t(33) = 1.005` → BLUE, a hard seam exactly where bilinear ramps;
+///   `t(66) = 1.995` → BLUE and `t(67) = 2.025` → RED.
+///
+/// Tile fixture: RED|BLUE with `scale = 2.5` across 100px → 2.5 repeats,
+/// so `uv = (x + 0.5) / 40` and the shader's `fract` wrap gives
+/// `t = fract(uv) · 2`.
+/// - Wrap is filter-independent: `t(39)` lands past the last texel
+///   center (BLUE) and `t(40)` restarts the tile (RED) under both.
+/// - Inside a repeat the filters diverge: `t(20) = 1.025` blends under
+///   bilinear but snaps to BLUE under nearest.
+/// - `x = 81` is inside the truncated third repeat
+///   (`fract(2.0375) = 0.0375` → `t = 0.075`, below the first texel
+///   center) → RED under both filters, which pins that `fract` runs per
+///   fragment rather than the sampler clamping the last partial tile.
+#[test]
+fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
+    let mut h = Harness::new();
+    let mut strip: Option<aperture::ImageHandle> = None;
+    let strips = h.render(UVec2::new(200, 32), 1.0, Color::BLACK, |ui| {
+        let handle = strip
+            .get_or_insert_with(|| {
+                ui.register_image(aperture::Image::from_rgba8(3, 1, [RED, BLUE, RED].concat()))
+                    .expect("fixture image fits every supported GPU")
+            })
+            .clone();
+        Panel::canvas()
+            .id_salt("branch_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                strip_pane(
+                    ui,
+                    &handle,
+                    0.0,
+                    Vec2::new(100.0, 32.0),
+                    ImageFit::Fill,
+                    ImageFilter::Linear,
+                    ImageFilter::Linear,
+                );
+                strip_pane(
+                    ui,
+                    &handle,
+                    100.0,
+                    Vec2::new(100.0, 32.0),
+                    ImageFit::Fill,
+                    ImageFilter::Nearest,
+                    ImageFilter::Nearest,
+                );
+            });
+    });
+
+    let px = |x: u32| strips.get_pixel(x, 16).0;
+    assert!(close(px(16), RED), "bilinear left clamp must be RED");
+    assert!(close(px(83), RED), "bilinear right clamp must be RED");
+    assert_blend(px(32), "bilinear seam");
+    for (x, expected, name) in [
+        (32, RED, "both-nearest first seam-left"),
+        (33, BLUE, "both-nearest first seam-right"),
+        (66, BLUE, "both-nearest second seam-left"),
+        (67, RED, "both-nearest second seam-right"),
+    ] {
+        assert!(close(px(100 + x), expected), "{name} must be {expected:?}");
+    }
+
+    let mut tile: Option<aperture::ImageHandle> = None;
+    let tiled = h.render(UVec2::new(200, 16), 1.0, Color::BLACK, |ui| {
+        let handle = tile
+            .get_or_insert_with(|| {
+                ui.register_image(aperture::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
+                    .expect("fixture image fits every supported GPU")
+            })
+            .clone();
+        let fit = ImageFit::Tile {
+            offset: Vec2::ZERO,
+            scale: Vec2::new(2.5, 1.0),
+        };
+        Panel::canvas()
+            .id_salt("tile_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                strip_pane(
+                    ui,
+                    &handle,
+                    0.0,
+                    Vec2::new(100.0, 16.0),
+                    fit,
+                    ImageFilter::Linear,
+                    ImageFilter::Linear,
+                );
+                strip_pane(
+                    ui,
+                    &handle,
+                    100.0,
+                    Vec2::new(100.0, 16.0),
+                    fit,
+                    ImageFilter::Nearest,
+                    ImageFilter::Nearest,
+                );
+            });
+    });
+
+    let tpx = |x: u32| tiled.get_pixel(x, 8).0;
+    for (base, name) in [(0, "tiled bilinear"), (100, "tiled both-nearest")] {
+        assert!(close(tpx(base), RED), "{name} tile start must be RED");
+        assert!(close(tpx(base + 39), BLUE), "{name} tile end must be BLUE");
+        assert!(close(tpx(base + 40), RED), "{name} must wrap back to RED");
+        assert!(
+            close(tpx(base + 81), RED),
+            "{name} partial third repeat must be RED"
+        );
+    }
+    assert_blend(tpx(20), "tiled bilinear intra-tile seam");
+    assert!(
+        close(tpx(100 + 19), RED),
+        "tiled nearest intra-tile seam-left must be RED"
+    );
+    assert!(
+        close(tpx(100 + 20), BLUE),
+        "tiled nearest intra-tile seam-right must be BLUE"
+    );
 }
