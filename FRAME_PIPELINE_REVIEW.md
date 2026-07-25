@@ -35,7 +35,7 @@ keyed on substantially the same fact.
 
 | Priority | Change | Expected benefit | Risk | Code effect |
 | --- | --- | --- | --- | --- |
-| P1 | Extend the subtree cache from measure to arrange | Removes a full arrange walk over unchanged subtrees | Medium | **Reduction** — deletes the `hugs` restore contract |
+| P1 | Extend the subtree cache from measure to arrange | Removes a full arrange walk over unchanged subtrees | Medium | Small increase — **shipped**; 30–150× on arrange, `hugs` restore survives |
 | P1 | Compute one scene-identity value once; gate layout with it | Skips measure+arrange on unchanged frames | Low–medium | Reduction (two gates → one) |
 | P2 | Fuse the cascade repair walk with the damage diff | One traversal, one row copy instead of two of each | High | Large reduction, blocked by record replay |
 | P2 | Cascade reuse preflight: 2× O(N) verify, then unbounded fallback | CPU on every changed frame | Low | Neutral |
@@ -45,9 +45,89 @@ keyed on substantially the same fact.
 
 ---
 
-## P1 — The cross-frame cache covers measure but stops at arrange
+## P1 — The cross-frame cache covers measure but stops at arrange — **shipped**
+
+`LayoutEngine::replay_arranged` closes it. Measure stamps the snapshot arena
+base of every subtree it short-circuits (`LayoutScratch::arrange_src`); arrange
+reads that stamp and replays the subtree's captured rects instead of running the
+drivers — verbatim when the slot is unchanged, translated when it moved without
+resizing, bailing to the normal path when it resized.
+
+Sound because **arrange's only output is `out.rect`**. Every driver writes rects
+and recurses, `scroll::arrange` merely delegates to stack/zstack, and container
+text shapes later in `run` off this path. So for a subtree whose authoring and
+`desired` are both known identical to the snapshot — exactly what a measure hit
+proves — arrange is a pure function of the slot it is handed.
+
+Result, arrange min µs, same machine and session before and after:
+
+| Arm | before | after | |
+| --- | --- | --- | --- |
+| `measure/cached` | 89.18 | **1.17** | 76× |
+| `heavy/measure/cached` | 45.49 | **0.54** | 84× |
+| `deep/measure/cached` | 6.06 | **0.04** | 152× |
+| `broad/measure/cached` | 24.89 | **0.27** | 92× |
+| `broad/measure/localized` | 25.03 | **0.83** | 30× |
+| `grid/intrinsic/cached` | 6.95 | **0.08** | 87× |
+
+The whole layout pass on `measure/cached` goes 92.4 → 4.36 µs, and
+`frame/cached_cpu` moves −5.1% (p = 0.00) end to end against criterion's stored
+baseline.
+
+Controls held flat, which is the part that matters: `forced_miss` 90.36 → 87.29,
+45.24 → 44.76, 25.00 → 25.03, 6.22 → 6.35; `resizing` 25.00 → 25.06,
+6.23 → 6.36. Nothing was bought by weakening the miss path.
+
+Two notes on the design as built:
+
+- The review proposed blitting **from the snapshot**, and that is what shipped,
+  rather than reusing the live retained `rect` column. The live column is
+  cheaper (the unchanged case would cost nothing at all) but it is indexed by
+  pre-order position, and a measure hit does *not* prove index stability — the
+  snapshot's per-`WidgetId` descriptors deliberately let a subtree hit after
+  moving. Replaying from the snapshot writes into a destination range computed
+  from the *current* tree, so it is index-safe by construction. That removes the
+  entire class of "prove the indices still line up" reasoning.
+- **The `grid.hugs` restore was not deleted.** The review expected it to go. It
+  can't: the resize-bail path still arranges normally and still needs hugs. What
+  changes is that skip and translate never read them, so the restore becomes
+  dead weight on the hot path — worth making lazy, but that is a separate
+  measured change, not a freebie. P3 cleanup 1 also **inverts**: `rect`'s
+  per-frame zero-fill is no longer redundant-because-overwritten, it is load
+  bearing for nodes arrange now skips.
+
+Original finding follows.
+
+---
 
 This is the largest single asymmetry in the pipeline.
+
+**Measured before the change.** `LayoutEngine::run` publishes a measure / arrange split
+(`PhaseTimings`), and the `caches` bench reports it per arm — min µs over 64
+frames after warmup:
+
+| Arm | measure | arrange | arrange ÷ measure |
+| --- | --- | --- | --- |
+| `measure/cached` | 3.22 | 89.18 | **27.7×** |
+| `heavy/measure/cached` | 1.56 | 45.49 | **29.1×** |
+| `deep/measure/cached` | 0.11 | 6.06 | **55.1×** |
+| `broad/measure/cached` | 0.59 | 24.89 | **42.1×** |
+| `broad/measure/localized` | 3.87 | 25.03 | 6.5× |
+| `grid/intrinsic/cached` | 0.39 | 6.95 | 17.8× |
+
+On a steady-state frame **arrange is ~96% of the layout pass** (89.18 of
+92.4 µs on `measure/cached`). The cache itself works exactly as designed —
+`measure/forced_miss` is 397 µs against `cached`'s 3.22, a 123× reduction — and
+then the uncached half dominates what is left.
+
+The decisive number is not the ratio but arrange's **invariance**. Across
+`broad/measure`'s four arms it is 24.89 / 25.00 / 25.00 / 25.03 µs for
+cached / forced_miss / resizing / localized. Arrange does not care whether
+anything changed, whether the cache hit, or whether the viewport moved. It is a
+fixed O(N) toll on every frame, paid in full even when measure has just proven
+the whole tree identical. `localized` is the sharpest illustration: measure
+drops to 3.87 µs because the cache isolates the one changed branch, and arrange
+still charges the same 25 µs it charges for a full miss.
 
 `MeasureCache::try_lookup` can short-circuit an **entire subtree**: same
 `WidgetId`, same `subtree_hash`, same quantized `available` → `desired` is
@@ -379,7 +459,7 @@ separates CPU from GPU. Three gaps block the findings above:
 
 | Missing benchmark | Primary metric | Control |
 | --- | --- | --- |
-| Arrange over a cache-hit subtree (localized change, wide tree) | CPU time in `LayoutEngine::run`, split measure vs arrange | Forced full miss |
+| ~~Arrange over a cache-hit subtree~~ — **done**: `LayoutEngine::run` publishes `PhaseTimings`, every `caches` arm reports the split | CPU time in `LayoutEngine::run`, split measure vs arrange | Forced full miss |
 | Cascade with a paint-row count change | CPU time in `CascadesEngine::run` | Paint-only change (incremental succeeds) |
 | Scroll over a large list (moved subtree, no authoring change) | CPU time in `DamageEngine::compute`, probes vs bytes copied | Static list |
 

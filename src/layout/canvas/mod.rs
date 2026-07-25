@@ -3,9 +3,8 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
-    arrange_axis, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
+    arrange_size, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
 };
-use crate::layout::types::align::AxisAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -103,10 +102,7 @@ pub(super) fn arrange(
         };
         let child_rect = Rect {
             min: inner.min + pos,
-            size: Size::new(
-                arrange_axis(Axis::X, AxisAlign::Auto, &child_layout, bounds, d, slot_w).size,
-                arrange_axis(Axis::Y, AxisAlign::Auto, &child_layout, bounds, d, slot_h).size,
-            ),
+            size: arrange_size(&child_layout, bounds, d, Size::new(slot_w, slot_h)),
         };
         layout.arrange(tree, c, child_rect, out);
     }

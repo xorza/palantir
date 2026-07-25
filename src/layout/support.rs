@@ -411,6 +411,29 @@ pub(super) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
 /// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
 /// grow to their slot without shrinking below measured content, while the
 /// node's outer min/max bounds remain authoritative.
+/// Outer size of a node arranged into `slot` on both axes with no
+/// alignment — [`arrange_axis`] twice under [`AxisAlign::Auto`], keeping
+/// only the extents.
+///
+/// The two callers that place a node without needing its alignment offset:
+/// `LayoutEngine::run` sizing a layer root against the surface, and
+/// `canvas::arrange` sizing an absolutely-positioned child against its
+/// slot. Both position by other means (the root's `Placement`, the child's
+/// declared `pos`), so the offset `arrange_axis` returns is dead to them.
+/// Grid and ZStack call `arrange_axis` directly precisely because they do
+/// use that offset.
+pub(super) fn arrange_size(
+    child: &LayoutCore,
+    bounds: &BoundsExtras,
+    desired: Size,
+    slot: Size,
+) -> Size {
+    Size::new(
+        arrange_axis(Axis::X, AxisAlign::Auto, child, bounds, desired, slot.w).size,
+        arrange_axis(Axis::Y, AxisAlign::Auto, child, bounds, desired, slot.h).size,
+    )
+}
+
 pub(super) fn arrange_axis(
     axis: Axis,
     align: AxisAlign,

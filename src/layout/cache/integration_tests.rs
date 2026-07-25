@@ -584,3 +584,98 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
          should bound this to the changed ancestor chain",
     );
 }
+
+/// A subtree whose slot **moves without resizing** replays its rects
+/// translated rather than re-running the drivers
+/// (`LayoutEngine::replay_arranged`). This is the only replay branch that
+/// rewrites values instead of copying them verbatim, so it gets three
+/// independent assertions: the branch actually fired, the shift is exactly
+/// the header's growth on Y and zero on X, and the result still equals a
+/// cold remeasure.
+///
+/// Shape: a vstack whose fixed-height header grows, followed by an
+/// untouched nested subtree. Every node below the header shifts by the
+/// growth with its size intact — the "a sibling above grew, so everything
+/// below shifts by dy" case.
+#[test]
+fn moved_subtree_replays_translated_rects() {
+    const ROWS: usize = 4;
+    let record = |ui: &mut Ui, header_h: f32, capture: &mut Vec<NodeId>| {
+        capture.clear();
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("header"))
+                    .size((Sizing::FILL, Sizing::fixed(header_h)))
+                    .show(ui, |_ui| {});
+                Panel::vstack()
+                    .id(WidgetId::from_hash("stable"))
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .show(ui, |ui| {
+                        for row in 0..ROWS {
+                            let outer = Panel::hstack()
+                                .id(WidgetId::from_hash(("row", row)))
+                                .size((Sizing::FILL, Sizing::fixed(20.0)))
+                                .show(ui, |ui| {
+                                    capture.push(
+                                        Panel::zstack()
+                                            .id(WidgetId::from_hash(("cell", row)))
+                                            .size((Sizing::fixed(30.0), Sizing::FILL))
+                                            .show(ui, |_ui| {})
+                                            .response
+                                            .node(),
+                                    );
+                                });
+                            capture.push(outer.response.node());
+                        }
+                    });
+            });
+    };
+
+    let size = UVec2::new(800, 600);
+    let rects = |ui: &Ui, nodes: &[NodeId]| -> Vec<_> {
+        nodes
+            .iter()
+            .map(|n| ui.layout[Layer::Main].rect[n.idx()])
+            .collect()
+    };
+
+    let mut ui = Ui::for_test();
+    let mut before_nodes = Vec::new();
+    ui.run_at(size, |ui| record(ui, 10.0, &mut before_nodes));
+    let before = rects(&ui, &before_nodes);
+
+    let mut after_nodes = Vec::new();
+    ui.run_at(size, |ui| record(ui, 30.0, &mut after_nodes));
+    let after = rects(&ui, &after_nodes);
+
+    // Non-vacuity: the translate branch must be the one that ran. Without
+    // this the test still passes if arrange re-derived every rect.
+    assert!(
+        ui.layout_engine.scratch.arrange_replays.translated > 0,
+        "no subtree replayed via translation — fixture pins nothing, got {:?}",
+        ui.layout_engine.scratch.arrange_replays,
+    );
+
+    // The header grew 10 → 30, so everything below shifts down exactly 20
+    // and keeps its size. Hand-computed, not a range check.
+    assert_eq!(before.len(), ROWS * 2);
+    for (i, (b, a)) in before.iter().zip(&after).enumerate() {
+        assert_eq!(a.size, b.size, "node {i} resized during a pure translation");
+        assert_eq!(a.min.x, b.min.x, "node {i} drifted on X");
+        assert_eq!(a.min.y, b.min.y + 20.0, "node {i} shifted by the wrong dy");
+    }
+
+    // Ground truth: clearing the cache forces a full remeasure of the same
+    // frame, which must land on the identical geometry.
+    ui.layout_engine.cache.clear();
+    let mut cold_nodes = Vec::new();
+    ui.run_at(size, |ui| record(ui, 30.0, &mut cold_nodes));
+    assert_eq!(
+        after,
+        rects(&ui, &cold_nodes),
+        "translated replay diverged from a cold remeasure",
+    );
+}

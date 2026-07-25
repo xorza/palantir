@@ -9,6 +9,7 @@ use crate::layout::grid::GridHugStore;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::num::F32Ext;
+use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
@@ -38,6 +39,9 @@ pub(super) struct RootSnapshotKey {
 #[derive(Debug)]
 pub(super) struct CachedSubtree<'a> {
     pub(super) root: Size,
+    /// Arena index this subtree's columns start at. `arrange` stores it
+    /// per node so it can re-slice `rect` without a second map probe.
+    pub(super) nodes_base: u32,
     pub(super) desired: &'a [Size],
     pub(super) scroll_content: &'a [Size],
     pub(super) text_spans: &'a [Span],
@@ -51,6 +55,7 @@ pub(super) struct CachedSubtree<'a> {
 #[derive(Debug)]
 pub(super) struct CaptureTreeInput<'a> {
     pub(super) desired: &'a mut Vec<Size>,
+    pub(super) rect: &'a [Rect],
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(super) available_q: &'a mut Vec<AvailableKey>,
@@ -80,6 +85,11 @@ fn union_spans(a: Span, b: Span) -> Span {
 #[derive(Debug, Default)]
 pub(crate) struct NodeArenas {
     pub(crate) desired: Vec<Size>,
+    /// Arranged rect per node, captured after `arrange` wrote it. The
+    /// only column produced by the *second* half of the layout pass;
+    /// `LayoutEngine::arrange` replays it instead of re-running the
+    /// drivers when a subtree's slot is unchanged or merely translated.
+    pub(super) rect: Vec<Rect>,
     scroll_content: Vec<Size>,
     text_spans: Vec<Span>,
     intrinsics: Vec<[f32; SLOT_COUNT]>,
@@ -89,6 +99,7 @@ pub(crate) struct NodeArenas {
 impl NodeArenas {
     fn clear(&mut self) {
         self.desired.clear();
+        self.rect.clear();
         self.scroll_content.clear();
         self.text_spans.clear();
         self.intrinsics.clear();
@@ -156,6 +167,7 @@ impl MeasureCache {
         let nodes = snap.nodes.range();
         Some(CachedSubtree {
             root: self.previous.nodes.desired[nodes.start],
+            nodes_base: snap.nodes.start,
             desired: &self.previous.nodes.desired[nodes.clone()],
             scroll_content: &self.previous.nodes.scroll_content[nodes.clone()],
             text_spans: &self.previous.nodes.text_spans[nodes.clone()],
@@ -186,6 +198,7 @@ impl MeasureCache {
     pub(super) fn capture_tree(&mut self, tree: &Tree, input: CaptureTreeInput<'_>) {
         let CaptureTreeInput {
             desired,
+            rect,
             scroll_content,
             intrinsics,
             available_q,
@@ -195,6 +208,7 @@ impl MeasureCache {
         } = input;
         let node_count = tree.records.len();
         assert_eq!(desired.len(), node_count);
+        assert_eq!(rect.len(), node_count);
         assert_eq!(scroll_content.len(), node_count);
         assert_eq!(intrinsics.len(), node_count);
         assert_eq!(available_q.len(), node_count);
@@ -203,6 +217,7 @@ impl MeasureCache {
         let node_base = self.current.nodes.desired.len() as u32;
         let text_base = self.current.text_shapes.len() as u32;
 
+        self.current.nodes.rect.extend_from_slice(rect);
         self.current.nodes.intrinsics.extend_from_slice(intrinsics);
         self.current
             .nodes
