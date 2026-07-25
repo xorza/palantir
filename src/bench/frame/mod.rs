@@ -843,7 +843,17 @@ pub fn bench(c: &mut Criterion) {
     // `cargo test --all-targets` runs this binary in criterion's test
     // mode: every arm executes once and no estimate is written, so the
     // results row — and the note it demands — would be meaningless.
-    let measuring = !std::env::args().any(|a| a == "--test");
+    // Mirrors criterion's own rule: measuring iff `--bench` without
+    // `--test` (`cargo bench` passes the former, `cargo test` neither).
+    let measuring = {
+        let mut bench = false;
+        let mut test = false;
+        for arg in std::env::args() {
+            bench |= arg == "--bench";
+            test |= arg == "--test";
+        }
+        bench && !test
+    };
     // Fail fast before any arm runs so a long bench doesn't finish and
     // then realise the results row has no context.
     if measuring {
