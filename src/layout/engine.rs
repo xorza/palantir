@@ -7,10 +7,9 @@ use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
-    AxisCtx, TextShapeInput, arrange_axis, container_text_shapes, leaf_text_shapes,
+    AxisCtx, TextShapeInput, arrange_size, container_text_shapes, leaf_text_shapes,
     resolve_axis_size, zero_subtree,
 };
-use crate::layout::types::align::AxisAlign;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
@@ -28,8 +27,10 @@ use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node::NodeId;
+use crate::scene::tree::recording::RootSlot;
 use crate::text::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
+use glam::Vec2;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of
@@ -73,12 +74,21 @@ use crate::text::system::{TextRunSlot, TextSystem};
 /// [`restore_after_cache_hit`] in this module. Forgetting any one
 /// corrupts arrange silently — pinned per-driver by the fixtures in
 /// `src/layout/cache/integration_tests.rs`.
+///
+/// `arrange_src` is the one category-(2) field arrange *consumes* rather
+/// than reads through: measure stamps the snapshot arena base of every
+/// subtree it short-circuited, and [`LayoutEngine::replay_arranged`]
+/// replays that subtree's rects instead of re-running the drivers.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
     pub(super) grid: GridContext,
     pub(super) wrap: WrapScratch,
     pub(super) stack_fill: StackScratch,
     pub(super) desired: Vec<Size>,
+    /// Snapshot arena base of each subtree root measure restored from the
+    /// cache this frame, or [`NO_ARRANGE_SRC`]. Written at the measure-hit
+    /// site, read once per node by `arrange`.
+    pub(super) arrange_src: Vec<u32>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(super) available_q: Vec<AvailableKey>,
     /// Count of `intrinsic::compute` (cache-miss) calls this frame —
@@ -94,6 +104,23 @@ pub(crate) struct LayoutScratch {
     /// when hash stability regresses and every lookup misses.
     #[cfg(test)]
     pub(crate) cache_hits: Vec<WidgetId>,
+    /// Which branch [`LayoutEngine::replay_arranged`] took, per `run`.
+    /// Test observability: a replay test that asserts only "warm rects
+    /// equal cold rects" passes vacuously if the replay never fires, and
+    /// the translate branch in particular is easy to write a fixture that
+    /// silently never reaches.
+    #[cfg(test)]
+    pub(crate) arrange_replays: ReplayCounts,
+}
+
+/// Per-`run` tally of [`LayoutEngine::replay_arranged`] outcomes.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ReplayCounts {
+    /// Slot unchanged — the subtree's rects were copied verbatim.
+    pub(crate) copied: u32,
+    /// Slot moved without resizing — rects were copied and shifted.
+    pub(crate) translated: u32,
 }
 
 impl LayoutScratch {
@@ -101,12 +128,61 @@ impl LayoutScratch {
         let n = tree.records.len();
         self.desired.clear();
         self.desired.resize(n, Size::ZERO);
+        self.arrange_src.clear();
+        self.arrange_src.resize(n, NO_ARRANGE_SRC);
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
         self.available_q.clear();
         self.available_q.resize(n, INVALID_AVAILABLE);
         self.grid.hugs.reset_for(tree);
     }
+}
+
+/// Size offered to one layer root.
+///
+/// `Layer::Main` fills the surface; every overlay layer derives its own from
+/// its [`Placement`]. Shared by [`LayoutEngine::run`], which measures against
+/// it, and [`LayoutEngine::cache_snapshot_matches_forest`], which quantizes it
+/// into the snapshot's root key — those two **must** agree, or the key
+/// describes an offer measure never saw and every root misses.
+fn root_available(layer: Layer, slot: &RootSlot, surface: Rect) -> Size {
+    if layer == Layer::Main {
+        surface.size
+    } else {
+        slot.placement.available(surface)
+    }
+}
+
+/// `LayoutScratch::arrange_src` entry for a node whose subtree measure did
+/// not restore from the cache — arrange must run the drivers for it.
+/// `u32::MAX` is unreachable as an arena index: the snapshot holds one row
+/// per node and a tree that large exhausts memory first.
+const NO_ARRANGE_SRC: u32 = u32::MAX;
+
+/// CPU nanoseconds the last [`LayoutEngine::run`] spent in each half of
+/// the layout pass, summed over every root in every layer.
+///
+/// Split because the cross-frame cache covers only the first half.
+/// [`MeasureCache::try_lookup`] can short-circuit an entire subtree — in
+/// steady state the root itself, so measure collapses to a few whole-tree
+/// `copy_from_slice`s — while [`LayoutEngine::arrange`] walks every node
+/// with full driver dispatch regardless. A whole-`run` number averages
+/// that asymmetry away; these two are what make it visible.
+///
+/// The sliver between the two (resolving the root's own size from
+/// `desired`) is charged to neither: it is one `arrange_size` call per
+/// root, independent of tree size.
+///
+/// `internals`-gated: the `caches` bench is the only consumer, and the
+/// four clock reads per root per frame are no longer negligible against
+/// the pass they measure — arrange replay took the cached layout pass to
+/// ~4 µs, so the instrumentation would be a low single-digit percentage
+/// of it, landing inside the frame but outside the spans it reports.
+#[cfg(feature = "internals")]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct PhaseTimings {
+    pub(crate) measure_ns: u64,
+    pub(crate) arrange_ns: u64,
 }
 
 /// Persistent layout engine. Field groups by lifetime:
@@ -128,6 +204,10 @@ pub(crate) struct LayoutEngine {
     cache_rebuild: bool,
     pub(crate) text: TextSystem,
     pub(crate) cache: MeasureCache,
+    /// Measure / arrange split for the most recent [`Self::run`]; see
+    /// [`PhaseTimings`] for why it is gated.
+    #[cfg(feature = "internals")]
+    pub(crate) phase_timings: PhaseTimings,
 }
 
 /// Splat every per-subtree side-state column carried by `arenas` back
@@ -295,6 +375,8 @@ impl LayoutEngine {
             cache_rebuild: false,
             text: TextSystem::new(shaper),
             cache: MeasureCache::default(),
+            #[cfg(feature = "internals")]
+            phase_timings: PhaseTimings::default(),
         }
     }
 
@@ -322,11 +404,7 @@ impl LayoutEngine {
             let tree = &forest.trees[layer];
             for slot in &tree.roots {
                 let root = slot.first_node;
-                let available = if layer == Layer::Main {
-                    surface.size
-                } else {
-                    slot.placement.available(surface)
-                };
+                let available = root_available(layer, slot, surface);
                 let current = RootSnapshotKey {
                     wid: tree.records.widget_id()[root.idx()],
                     subtree_hash: tree.rollups.subtree[root.idx()],
@@ -339,6 +417,26 @@ impl LayoutEngine {
             }
         }
         true
+    }
+
+    /// Cross-frame intrinsic for one `(node, axis, req)` slot, or `None`
+    /// when the node is ineligible or the snapshot has no value.
+    ///
+    /// Only non-leaf nodes are cacheable: a leaf's intrinsic is cheap to
+    /// recompute and it owns no descriptor. Intrinsics are independent of
+    /// the parent's `available`, so this checks `subtree_hash` alone and
+    /// hits even on a resize frame where `try_lookup` misses on
+    /// `available_q`.
+    #[inline]
+    fn cached_intrinsic(&self, tree: &Tree, idx: usize, slot: usize) -> Option<f32> {
+        if LayoutMode::from(tree.records.layout()[idx].meta) == LayoutMode::Leaf {
+            return None;
+        }
+        self.cache.lookup_root_intrinsic(
+            tree.records.widget_id()[idx],
+            tree.rollups.subtree[idx],
+            slot,
+        )
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -363,13 +461,9 @@ impl LayoutEngine {
         if !cached.is_nan() {
             return cached;
         }
-        if LayoutMode::from(tree.records.layout()[idx].meta) != LayoutMode::Leaf {
-            let wid = tree.records.widget_id()[idx];
-            let hash = tree.rollups.subtree[idx];
-            if let Some(value) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
-                self.scratch.intrinsics[idx][slot] = value;
-                return value;
-            }
+        if let Some(value) = self.cached_intrinsic(tree, idx, slot) {
+            self.scratch.intrinsics[idx][slot] = value;
+            return value;
         }
         #[cfg(test)]
         {
@@ -421,16 +515,12 @@ impl LayoutEngine {
         // children, so the children's own cache-hit restore comes too late
         // — only a lookup here stops the ancestor cold-recursing through
         // every unchanged sibling subtree.
-        if LayoutMode::from(tree.records.layout()[idx].meta) != LayoutMode::Leaf {
-            let wid = tree.records.widget_id()[idx];
-            let hash = tree.rollups.subtree[idx];
-            for (slot, value) in [(min_slot, &mut range.min), (max_slot, &mut range.max)] {
-                if value.is_nan()
-                    && let Some(cached) = self.cache.lookup_root_intrinsic(wid, hash, slot)
-                {
-                    *value = cached;
-                    self.scratch.intrinsics[idx][slot] = cached;
-                }
+        for (slot, value) in [(min_slot, &mut range.min), (max_slot, &mut range.max)] {
+            if value.is_nan()
+                && let Some(cached) = self.cached_intrinsic(tree, idx, slot)
+            {
+                *value = cached;
+                self.scratch.intrinsics[idx][slot] = cached;
             }
         }
         let min_missing = range.min.is_nan();
@@ -489,6 +579,11 @@ impl LayoutEngine {
         {
             self.scratch.intrinsic_computes = 0;
             self.scratch.cache_hits.clear();
+            self.scratch.arrange_replays = ReplayCounts::default();
+        }
+        #[cfg(feature = "internals")]
+        {
+            self.phase_timings = PhaseTimings::default();
         }
         self.cache_rebuild =
             !Self::cache_snapshot_matches_forest(&self.cache.previous, forest, surface);
@@ -505,34 +600,16 @@ impl LayoutEngine {
             self.scratch.resize_for(tree);
             for slot in &tree.roots {
                 let root = slot.first_node;
-                let available = if layer == Layer::Main {
-                    surface.size
-                } else {
-                    slot.placement.available(surface)
-                };
+                let available = root_available(layer, slot, surface);
+                #[cfg(feature = "internals")]
+                let measure_start = std::time::Instant::now();
                 let desired = self.measure(tree, root, available, interned_text, layer_out);
+                #[cfg(feature = "internals")]
+                {
+                    self.phase_timings.measure_ns += measure_start.elapsed().as_nanos() as u64;
+                }
                 let root_layout = tree.records.layout()[root.idx()];
-                let bounds = tree.bounds(root);
-                let size = Size::new(
-                    arrange_axis(
-                        Axis::X,
-                        AxisAlign::Auto,
-                        &root_layout,
-                        bounds,
-                        desired,
-                        available.w,
-                    )
-                    .size,
-                    arrange_axis(
-                        Axis::Y,
-                        AxisAlign::Auto,
-                        &root_layout,
-                        bounds,
-                        desired,
-                        available.h,
-                    )
-                    .size,
-                );
+                let size = arrange_size(&root_layout, tree.bounds(root), desired, available);
                 // Overlay policies need the current measured body, not a
                 // response rect retained from an earlier frame.
                 let origin = if layer == Layer::Main {
@@ -540,13 +617,20 @@ impl LayoutEngine {
                 } else {
                     slot.placement.origin(size, surface)
                 };
+                #[cfg(feature = "internals")]
+                let arrange_start = std::time::Instant::now();
                 self.arrange(tree, root, Rect { min: origin, size }, layer_out);
+                #[cfg(feature = "internals")]
+                {
+                    self.phase_timings.arrange_ns += arrange_start.elapsed().as_nanos() as u64;
+                }
             }
             if self.cache_rebuild {
                 self.cache.capture_tree(
                     tree,
                     CaptureTreeInput {
                         desired: &mut self.scratch.desired,
+                        rect: &layer_out.rect,
                         scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
                         available_q: &mut self.scratch.available_q,
@@ -622,6 +706,7 @@ impl LayoutEngine {
                 // so a length mismatch here would mean the rollup is broken.
                 debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
                 self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
+                self.scratch.arrange_src[curr_start] = hit.nodes_base;
                 restore_after_cache_hit(
                     &mut self.scratch,
                     tree,
@@ -791,9 +876,11 @@ impl LayoutEngine {
             zero_subtree(tree, node, slot.min, out);
             return;
         }
-        let mode = LayoutMode::from(layout.meta);
-
         let rendered = slot.deflated_by(layout.margin);
+        if self.replay_arranged(tree, node, rendered, out) {
+            return;
+        }
+        let mode = LayoutMode::from(layout.meta);
         out.rect[node.idx()] = rendered;
         let inner = rendered.deflated_by(layout.padding);
 
@@ -812,6 +899,75 @@ impl LayoutEngine {
                 scroll::arrange(self, tree, node, inner, scroll_spec, out)
             }
         }
+    }
+
+    /// Replay a measure-cache-hit subtree's arranged rects instead of
+    /// re-running the drivers over it. Returns `false` when the subtree
+    /// must be arranged normally.
+    ///
+    /// Sound because arrange's **only** output is `out.rect` — every
+    /// driver's `arrange` writes rects and recurses, and nothing else
+    /// (`scroll::arrange` merely delegates to stack/zstack; container text
+    /// shapes later in [`Self::run`], off this path). So for a subtree
+    /// whose authoring and `desired` are both known identical to the
+    /// snapshot — which is exactly what a measure hit proves — arrange is
+    /// a pure function of the slot it is handed.
+    ///
+    /// Two of the three slot outcomes replay:
+    ///
+    /// - **Unchanged** rendered rect: a straight `copy_from_slice`.
+    /// - **Translated** (same size, moved origin — a sibling above grew,
+    ///   so everything below shifts): one add per node over a contiguous
+    ///   `Rect` slice, which is what the drivers would have spent a full
+    ///   dispatch to arrive at.
+    /// - **Resized**: bails to the normal path. A different size
+    ///   redistributes `Fill` children, so nothing below is reusable.
+    ///
+    /// Indexing is safe by construction: the destination range comes from
+    /// the *current* tree while the source is keyed by `WidgetId`, so a
+    /// subtree that moved in pre-order still replays into its new slot.
+    /// Collapsed descendants ride along — `zero_subtree` anchors them at
+    /// their parent's slot origin, which translates with everything else.
+    #[inline]
+    fn replay_arranged(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        rendered: Rect,
+        out: &mut LayerLayout,
+    ) -> bool {
+        let base = self.scratch.arrange_src[node.idx()];
+        if base == NO_ARRANGE_SRC {
+            return false;
+        }
+        let start = node.idx();
+        let end = tree.subtree_end_of(start) as usize;
+        let base = base as usize;
+        let src = &self.cache.previous.nodes.rect[base..base + (end - start)];
+        if src[0].size != rendered.size {
+            return false;
+        }
+        let delta = rendered.min - src[0].min;
+        let dst = &mut out.rect[start..end];
+        if delta == Vec2::ZERO {
+            #[cfg(test)]
+            {
+                self.scratch.arrange_replays.copied += 1;
+            }
+            dst.copy_from_slice(src);
+        } else {
+            #[cfg(test)]
+            {
+                self.scratch.arrange_replays.translated += 1;
+            }
+            for (d, s) in dst.iter_mut().zip(src) {
+                *d = Rect {
+                    min: s.min + delta,
+                    size: s.size,
+                };
+            }
+        }
+        true
     }
 
     fn shape_text_runs<'a>(

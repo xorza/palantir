@@ -125,6 +125,17 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
+    // The rects above must come from the replay, not from arrange
+    // re-deriving them — identical output either way, so without this the
+    // assertion says nothing about which path ran.
+    assert_eq!(
+        ui.layout_engine.scratch.arrange_replays,
+        crate::layout::engine::ReplayCounts {
+            copied: 1,
+            translated: 0,
+        },
+        "an unchanged frame must replay its one hit subtree verbatim",
+    );
     assert_snapshot_is_linear(&ui);
 }
 

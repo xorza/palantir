@@ -30,6 +30,7 @@
 //! use `Ui::for_test_text()` so text-shaping cost is in the measurement.
 
 use crate::display::Display;
+use crate::layout::engine::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -60,6 +61,66 @@ const DEEP_DEPTH: usize = 192;
 const BROAD_FANOUT: usize = 8;
 const BROAD_DEPTH: usize = 3;
 const GRID_ROWS: usize = 128;
+
+/// Frames each arm runs before and during its measure/arrange split
+/// report. Separate from criterion's own loop so the split is sampled
+/// per frame rather than averaged into one wall-clock estimate.
+const PHASE_WARMUP_FRAMES: usize = 8;
+const PHASE_EVIDENCE_FRAMES: usize = 64;
+
+/// Sorted-sample summary of one phase. Min is the signal — these arms
+/// share a machine with everything else on it, so the upper half of the
+/// distribution measures interference rather than layout.
+#[derive(Clone, Copy, Debug)]
+struct PhaseSummary {
+    min_us: f64,
+    median_us: f64,
+}
+
+fn summarize(samples: &mut [u64]) -> PhaseSummary {
+    assert!(!samples.is_empty());
+    samples.sort_unstable();
+    PhaseSummary {
+        min_us: samples[0] as f64 / 1_000.0,
+        median_us: samples[samples.len() / 2] as f64 / 1_000.0,
+    }
+}
+
+/// Report how one arm splits across the two halves of the layout pass.
+///
+/// Criterion times a whole CPU frame, which hides the asymmetry this
+/// benchmark exists to expose: the measure cache can short-circuit a
+/// whole subtree — in steady state the root, collapsing measure to a few
+/// `copy_from_slice`s — while arrange walks every node with full driver
+/// dispatch no matter what. `arrange_over_measure` is the headline: on a
+/// `cached` arm it is the factor by which the uncached half dominates.
+///
+/// `step` runs one iteration of the arm and returns the engine's timings
+/// for that frame.
+fn report_phases(label: &str, mut step: impl FnMut() -> PhaseTimings) {
+    for _ in 0..PHASE_WARMUP_FRAMES {
+        step();
+    }
+    let mut measure = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
+    let mut arrange = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
+    for _ in 0..PHASE_EVIDENCE_FRAMES {
+        let t = step();
+        measure.push(t.measure_ns);
+        arrange.push(t.arrange_ns);
+    }
+    let m = summarize(&mut measure);
+    let a = summarize(&mut arrange);
+    let ratio = if m.min_us > 0.0 {
+        format!("{:.1}x", a.min_us / m.min_us)
+    } else {
+        "n/a".to_owned()
+    };
+    eprintln!(
+        "[caches] {label} measure_min_us={:.2} measure_median_us={:.2} \
+         arrange_min_us={:.2} arrange_median_us={:.2} arrange_over_measure={ratio}",
+        m.min_us, m.median_us, a.min_us, a.median_us,
+    );
+}
 
 fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -271,6 +332,13 @@ fn bench_cache_pair(
     make_ui: fn() -> Ui,
     build: fn(&mut Ui),
 ) {
+    {
+        let mut ui = make_ui();
+        report_phases(&format!("{name}/cached"), || {
+            let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
+            ui.layout_engine.phase_timings
+        });
+    }
     group.bench_function(format!("{name}/cached"), |b| {
         let mut ui = make_ui();
         let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
@@ -279,6 +347,14 @@ fn bench_cache_pair(
         });
     });
 
+    {
+        let mut ui = make_ui();
+        report_phases(&format!("{name}/forced_miss"), || {
+            ui.layout_engine.cache.clear();
+            let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
+            ui.layout_engine.phase_timings
+        });
+    }
     group.bench_function(format!("{name}/forced_miss"), |b| {
         let mut ui = make_ui();
         let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
@@ -300,6 +376,19 @@ fn bench_cache_workload(
 
     let resize_displays = [1280, 1248, 1216, 1184]
         .map(|width| Display::from_physical(glam::UVec2::new(width, 800), 2.0));
+    {
+        let mut ui = make_ui();
+        let mut frame = 0usize;
+        report_phases(&format!("{name}/resizing"), || {
+            frame = (frame + 1) % resize_displays.len();
+            let _ = ui.record_test_frame_without_baseline(
+                resize_displays[frame],
+                Duration::ZERO,
+                build,
+            );
+            ui.layout_engine.phase_timings
+        });
+    }
     group.bench_function(format!("{name}/resizing"), |b| {
         let mut ui = make_ui();
         let _ = ui.record_test_frame_without_baseline(resize_displays[0], Duration::ZERO, build);
@@ -316,6 +405,17 @@ fn bench_cache_workload(
 }
 
 fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str, display: Display) {
+    {
+        let mut ui = Ui::for_test();
+        let mut changed = false;
+        report_phases(&format!("{name}/localized"), || {
+            changed = !changed;
+            let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+                build_broad_variant(ui, changed);
+            });
+            ui.layout_engine.phase_timings
+        });
+    }
     group.bench_function(format!("{name}/localized"), |b| {
         let mut ui = Ui::for_test();
         let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
