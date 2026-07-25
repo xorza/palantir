@@ -2,7 +2,6 @@ use crate::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::frontend::composer::text_grid::internals::GridBench;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{DrawCurvePayload, DrawImagePayload, DrawMeshPayload};
 use crate::renderer::frontend::record_sink::RecordedPaint;
@@ -162,31 +161,6 @@ pub fn bench(c: &mut Criterion) {
             BenchmarkId::from_parameter(curve_count),
             &curve_count,
             |b, _| b.iter(|| black_box(fixture.compose())),
-        );
-    }
-    group.finish();
-
-    // Pathological text-rect batch: tiles saturated past `TILE_CAP` plus
-    // wide rects spanning every one of them, so the spill list — normally
-    // empty — carries the spanning rects and every overlap query scans
-    // it linearly. Spill length prints as the secondary metric; the
-    // per-round wall time is the decision metric.
-    let mut group = c.benchmark_group("composer/text_grid_saturated");
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
-    for (tiles, wide) in [(8u32, 16u32), (16, 32)] {
-        let mut fixture = GridBench::new(tiles, wide);
-        fixture.round();
-        eprintln!(
-            "[text_grid] tiles={tiles} wide={wide} spill={}",
-            fixture.spill_len(),
-        );
-        group.throughput(Throughput::Elements((tiles * wide) as u64));
-        group.bench_with_input(
-            BenchmarkId::new(format!("{tiles}x{wide}"), tiles),
-            &tiles,
-            |b, _| b.iter(|| black_box(fixture.round())),
         );
     }
     group.finish();

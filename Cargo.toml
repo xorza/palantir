@@ -167,6 +167,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "text_grid"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "gradient"
 harness = false
 required-features = ["internals"]

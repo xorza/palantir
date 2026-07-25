@@ -1,6 +1,31 @@
 //! Spatial index over text-rect AABBs, used by the composer's
 //! paint-order overlap checks. Replaces a flat `Vec<URect>` linear scan
 //! that dominated compose time in text-dense UIs.
+//!
+//! **The shape of the real workload**, from instrumenting the
+//! `frame/*_cpu` arms (25–63 M queries each): ~70–80 rects live at query
+//! time (peak 207), 24–34% of queries survive the union pre-reject, and
+//! a surviving query walks 7–12 tiles to perform ~0.2–1.6 rect tests.
+//! `spill` never receives a single entry, and `rects` never approaches
+//! [`TILE_INDEX_CAPACITY`] — both are correctness fallbacks that no
+//! realistic frame reaches, not tuning knobs.
+//!
+//! **Why a tiled index and not something simpler**, all measured on
+//! `composer/text_grid_realistic` (200 labels, µs per round):
+//!
+//! - Union pre-reject + linear scan, i.e. what `higher_kind.rs` does:
+//!   **56.7 vs 7.0**. The pre-reject alone does not carry it; at ~75
+//!   live rects the surviving third of queries scan far too much. Whole
+//!   frames move 1.7% (`scrolling_cpu`) to 3.4% (`cached_cpu`).
+//! - A conservative coverage bitmap (one bit per cell, no rect lists, no
+//!   spill — legal because a false positive only costs a flush) looks
+//!   like a rout at 64-px cells, **4.2 vs 7.0**, until you count
+//!   flushes: **35 per compose against 11**, i.e. triple the draw calls.
+//!   Shrink cells until behaviour matches (16 px, 11 flushes) and it is
+//!   **10% slower than the grid** on `cached_cpu`. Exactness is the
+//!   feature being paid for here.
+//! - Sorted sweep, interval tree, BVH: all need an O(n log n) build
+//!   every frame for n ≈ 200, against a ~7 µs total budget.
 
 use crate::primitives::urect::URect;
 use glam::UVec2;
@@ -8,21 +33,38 @@ use glam::UVec2;
 /// Physical-pixel size of one tile in [`TextRectGrid`]. Each text rect
 /// is registered into every tile it overlaps; each overlap query walks
 /// the tiles a quad covers and intersects against per-tile rect lists.
-/// 64 px balances tile count (~4500 for a 4K viewport, fits in L1)
-/// against per-tile rect count (typically 1-3 in dense UIs).
-const TILE_SIZE: u32 = 64;
+///
+/// 64 px is a measured optimum, not a guess — `composer/text_grid_realistic`
+/// sweeps it (µs per round, 1920×1080):
+///
+/// | labels | 32 px | 64 px | 128 px | 256 px |
+/// | ------ | ----- | ----- | ------ | ------ |
+/// | 64     | 2.53  | 2.20  | 2.23   | 5.16   |
+/// | 200    | 8.15  | 7.02  | 7.35   | 36.1   |
+/// | 600    | 27.96 | 51.60 | 211.4  | 379.3  |
+///
+/// Bigger tiles do not degrade gracefully: past ~200 labels occupancy
+/// crosses [`TILE_CAP`] and the overflow lands in [`TextRectGrid::spill`],
+/// which every later query scans linearly — that is the 128/256 px
+/// blow-up, not cache behaviour. Smaller tiles push that cliff out at a
+/// steady ~15% cost in the common case.
+pub(crate) const TILE_SIZE: u32 = 64;
 const TILE_INDEX_CAPACITY: usize = u16::MAX as usize + 1;
 
 /// Per-tile inline capacity. Sized empirically from the
 /// `frame/resizing` workload (dense UI at 32× bench scale, viewport
-/// 3840×4800 phys px): observed max occupancy was **3**. `8` gives
-/// substantial headroom in any realistic UI — a 64-px tile holds 2-3
-/// stacked labels in a typical column. A tile past capacity diverts to
-/// the shared [`TextRectGrid::spill`] list, so pathological text-dense
-/// workloads (spreadsheet grids with tiny fonts and no padding) stay
-/// functional — they degrade to a linear scan of the spilled indices
-/// rather than panicking.
-const TILE_CAP: usize = 8;
+/// 3840×4800 phys px): observed max occupancy was **3**. A tile past
+/// capacity diverts to the shared [`TextRectGrid::spill`] list, so
+/// pathological text-dense workloads (spreadsheet grids with tiny fonts
+/// and no padding) stay functional — they degrade to a linear scan of
+/// the spilled indices rather than panicking.
+///
+/// The headroom over that observed 3 is what stops the degradation from
+/// being a cliff, so do not trim it to fit the measurement: dropping to
+/// `4` buys 3% at 64 labels and costs **4.2×** at 600
+/// (`composer/text_grid_realistic`: 216.9 µs against 51.6 µs), because
+/// the overflow starts landing in `spill`.
+pub(crate) const TILE_CAP: usize = 8;
 
 /// Spatial index over the open batch's text-rect AABBs. Replaces a
 /// flat `Vec<URect>` linear scan that dominated compose time in
@@ -38,7 +80,7 @@ const TILE_CAP: usize = 8;
 /// per-text/per-quad loops, and the inline/heap tag dispatch TinyVec
 /// pays on every access profiled at ~2% of the frame on its own.
 #[derive(Debug, Default)]
-pub(super) struct TextRectGrid {
+pub(crate) struct TextRectGrid {
     cols: u32,
     rows: u32,
     /// Per-tile occupancy (`0..=TILE_CAP`), row-major
@@ -52,7 +94,7 @@ pub(super) struct TextRectGrid {
     /// linearly (exact rect intersect, no tile pruning) by every query
     /// while non-empty — correct because the tile walk is only an
     /// acceleration structure; empty in any realistic workload.
-    spill: Vec<u16>,
+    pub(crate) spill: Vec<u16>,
     /// Indices (into `lens`/`slots`) that received at least one `push`
     /// this frame — the set we walk on [`Self::clear`] instead of the
     /// full row-major grid. A tile is recorded the first time it
@@ -81,7 +123,7 @@ impl TextRectGrid {
     /// Reshape to cover `viewport` and reset all state. Called once
     /// per frame at compose start. Cheap when the viewport hasn't
     /// changed (no allocation — the outer `Vec` is already sized).
-    pub(super) fn start_frame(&mut self, viewport: UVec2) {
+    pub(crate) fn start_frame(&mut self, viewport: UVec2) {
         let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
         let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
         let want = (cols * rows) as usize;
@@ -109,7 +151,7 @@ impl TextRectGrid {
     /// got pushed to this frame (`touched`), not the full row-major
     /// grid — `~100-300` tile clears in the dense-text fixture vs
     /// `~4500` on the full sweep.
-    pub(super) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         for &i in &self.touched {
             self.lens[i as usize] = 0;
         }
@@ -121,7 +163,7 @@ impl TextRectGrid {
 
     /// Register `r`. No-op for zero-area input (degenerate text rects
     /// can't intersect anything anyway).
-    pub(super) fn push(&mut self, r: URect) {
+    pub(crate) fn push(&mut self, r: URect) {
         if r.w == 0 || r.h == 0 {
             return;
         }
@@ -173,7 +215,7 @@ impl TextRectGrid {
     /// tile's rect list — typical workload visits 1-4 tiles with 1-3
     /// rects each (avg total: ~4-8 intersect tests vs ~120 for the
     /// old flat scan).
-    pub(super) fn any_overlap(&self, q: URect) -> bool {
+    pub(crate) fn any_overlap(&self, q: URect) -> bool {
         // The union check subsumes the empty-grid case (an empty grid's
         // zero-sized union intersects nothing).
         if q.w == 0 || q.h == 0 || self.union.intersect(q).is_none() {
@@ -210,84 +252,6 @@ impl TextRectGrid {
         self.rects[TILE_INDEX_CAPACITY.min(self.rects.len())..]
             .iter()
             .any(|r| r.intersect(q).is_some())
-    }
-}
-
-// `internals` only, not `any(test, …)`: the sole consumer is the
-// `text_grid` benchmark, which that feature gates too.
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use super::*;
-
-    /// Saturated-grid harness for the `text_grid` benchmark — the
-    /// pathological batch the spill list exists to absorb, which no
-    /// realistic workload reaches: a row of tiles each holding more than
-    /// [`TILE_CAP`] text rects, plus wide rects spanning every one of
-    /// them. The wide rects are the interesting part: with all their
-    /// tiles full they are reachable *only* through the tile-blind spill
-    /// scan, and every query pays for the whole list.
-    #[derive(Debug)]
-    pub(crate) struct GridBench {
-        grid: TextRectGrid,
-        tiles: u32,
-        wide: u32,
-    }
-
-    impl GridBench {
-        /// `tiles` saturated tiles across, `wide` rects spanning all of
-        /// them.
-        pub(crate) fn new(tiles: u32, wide: u32) -> Self {
-            let mut bench = Self {
-                grid: TextRectGrid::default(),
-                tiles,
-                wide,
-            };
-            bench
-                .grid
-                .start_frame(UVec2::new(tiles * TILE_SIZE, TILE_SIZE));
-            bench.register();
-            bench
-        }
-
-        /// Fill each tile past capacity, then lay the spanning rects in
-        /// the y-band the small ones leave free so they overlap the same
-        /// saturated tiles without stacking on each other.
-        fn register(&mut self) {
-            for tx in 0..self.tiles {
-                for i in 0..(TILE_CAP as u32 + 2) {
-                    self.grid.push(URect::new(tx * TILE_SIZE + 1, i * 3, 8, 2));
-                }
-            }
-            for i in 0..self.wide {
-                self.grid
-                    .push(URect::new(0, TILE_SIZE / 2 + i, self.tiles * TILE_SIZE, 1));
-            }
-        }
-
-        /// One compose-shaped round: rebuild the batch, then run one
-        /// overlap query per tile the way the composer probes per quad.
-        /// Returns the hit count so nothing can be elided.
-        pub(crate) fn round(&mut self) -> usize {
-            self.grid.clear();
-            self.register();
-            let mut hits = 0;
-            for tx in 0..self.tiles {
-                for y in 0..TILE_SIZE {
-                    if self
-                        .grid
-                        .any_overlap(URect::new(tx * TILE_SIZE + 2, y, 4, 1))
-                    {
-                        hits += 1;
-                    }
-                }
-            }
-            hits
-        }
-
-        /// Entries every query re-tests linearly — the secondary metric.
-        pub(crate) fn spill_len(&self) -> usize {
-            self.grid.spill.len()
-        }
     }
 }
 
