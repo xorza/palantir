@@ -576,9 +576,6 @@ fn arm_names(mode: BenchMode) -> Vec<&'static str> {
 /// importantly, a `MODE=cpu` run reaches this without `bench_gpu` having
 /// touched the GPU at all — pristine for profiling).
 fn bench_cpu(c: &mut Criterion) {
-    // Fail fast before any work runs so a long bench doesn't finish and
-    // then realise the results row has no context.
-    let _ = bench_annotation();
     if !bench_mode().includes_cpu() {
         return;
     }
@@ -591,7 +588,6 @@ fn bench_cpu(c: &mut Criterion) {
 /// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
 /// `write_stats` dump. Skipped wholesale when `MODE=cpu`.
 fn bench_gpu(c: &mut Criterion) {
-    let _ = bench_annotation();
     if !bench_mode().includes_gpu() {
         return;
     }
@@ -844,7 +840,18 @@ pub fn text_ui() -> Ui {
 }
 
 pub fn bench(c: &mut Criterion) {
+    // `cargo test --all-targets` runs this binary in criterion's test
+    // mode: every arm executes once and no estimate is written, so the
+    // results row — and the note it demands — would be meaningless.
+    let measuring = !std::env::args().any(|a| a == "--test");
+    // Fail fast before any arm runs so a long bench doesn't finish and
+    // then realise the results row has no context.
+    if measuring {
+        let _ = bench_annotation();
+    }
     bench_cpu(c);
     bench_gpu(c);
-    write_results(c);
+    if measuring {
+        write_results(c);
+    }
 }
