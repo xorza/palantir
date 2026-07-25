@@ -2,7 +2,6 @@
 
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
-use crate::renderer::backend::pipeline_utils::texture_bind_group;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
 use crate::renderer::render_buffer::image::RenderTargetDraw;
 use crate::renderer::render_owner::RenderOwnerId;
@@ -21,7 +20,6 @@ pub(super) struct GpuViewTargets {
 }
 
 impl GpuViewTargets {
-    #[allow(clippy::too_many_arguments)]
     #[profiling::function]
     pub(super) fn paint(
         &mut self,
@@ -30,8 +28,6 @@ impl GpuViewTargets {
         owner: RenderOwnerId,
         now: Duration,
         textures: &mut ImageTextures,
-        layout: &wgpu::BindGroupLayout,
-        sampler: &wgpu::Sampler,
     ) {
         self.submit_epoch = self
             .submit_epoch
@@ -46,8 +42,6 @@ impl GpuViewTargets {
                 owner,
                 submit_epoch,
                 textures,
-                layout,
-                sampler,
             );
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
@@ -104,7 +98,6 @@ impl GpuViewTargets {
         });
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn ensure(
         &mut self,
         device: &wgpu::Device,
@@ -113,8 +106,6 @@ impl GpuViewTargets {
         owner: RenderOwnerId,
         submit_epoch: u64,
         textures: &mut ImageTextures,
-        layout: &wgpu::BindGroupLayout,
-        sampler: &wgpu::Sampler,
     ) -> &mut RenderTarget {
         match self.entries.entry(id) {
             Entry::Occupied(entry) => {
@@ -122,7 +113,7 @@ impl GpuViewTargets {
                 target.owner = owner;
                 target.submit_epoch = submit_epoch;
                 if target.size != size {
-                    let allocated = allocate(device, layout, sampler, size);
+                    let allocated = allocate(device, textures, size);
                     target.view = allocated.view;
                     textures.bindings.insert(id, allocated.bind_group);
                     target.size = size;
@@ -130,7 +121,7 @@ impl GpuViewTargets {
                 target
             }
             Entry::Vacant(entry) => {
-                let allocated = allocate(device, layout, sampler, size);
+                let allocated = allocate(device, textures, size);
                 textures.bindings.insert(id, allocated.bind_group);
                 entry.insert(RenderTarget {
                     view: allocated.view,
@@ -161,12 +152,7 @@ struct AllocatedTarget {
     bind_group: wgpu::BindGroup,
 }
 
-fn allocate(
-    device: &wgpu::Device,
-    layout: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-    size: UVec2,
-) -> AllocatedTarget {
+fn allocate(device: &wgpu::Device, textures: &ImageTextures, size: UVec2) -> AllocatedTarget {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("aperture.gpu_view.target"),
         size: wgpu::Extent3d {
@@ -182,7 +168,7 @@ fn allocate(
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let bind_group = texture_bind_group(device, layout, sampler, &view, "aperture.gpu_view.tex.bg");
+    let bind_group = textures.bind_group(device, &view, "aperture.gpu_view.tex.bg");
     AllocatedTarget { view, bind_group }
 }
 
