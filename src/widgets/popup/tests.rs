@@ -608,3 +608,46 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
         "`Block` mode must still eat the click — no leak to Main",
     );
 }
+
+/// A text field inside a popup must be typeable.
+///
+/// It was not: `Popup::show` holds keyboard capture for its whole body, and
+/// `TextEdit` drains the *uncaptured* stream, so before capture became
+/// layer-ordered every keystroke into a popup-hosted field was discarded.
+/// Nothing in the tree exercised the combination, so it went unnoticed.
+///
+/// This works because `Popup::show` calls `with_keyboard_capture` *outside*
+/// `ui.layer(Layer::Popup, ..)`, registering the capture at `Layer::Main` —
+/// so the body, one layer up, is not silenced by it. That is load-bearing:
+/// moving the capture call inside the layer scope would put owner and body
+/// on the same layer and silently break typing again, which is what this
+/// test is here to catch.
+#[test]
+fn text_edit_inside_a_popup_receives_typing() {
+    use crate::input::keyboard::TextChunk;
+    use crate::widgets::text_edit::TextEdit;
+
+    let field = WidgetId::from_hash("popup-field");
+    let mut buf = String::new();
+    let scene = |ui: &mut Ui, buf: &mut String| {
+        Popup::anchored_to(glam::Vec2::ZERO)
+            .id(WidgetId::from_hash("host"))
+            .show(ui, |ui, _handle| {
+                TextEdit::new(buf).id(field).show(ui);
+            });
+    };
+
+    let mut ui = Ui::for_test();
+    ui.run_at(SURFACE, |ui| scene(ui, &mut buf));
+    ui.request_focus(Some(field));
+    ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut buf));
+
+    ui.on_input(InputEvent::Text(TextChunk::new("x").unwrap()));
+    ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut buf));
+
+    assert_eq!(
+        buf, "x",
+        "the popup's keyboard capture must not swallow typing aimed at a \
+         field inside its own body",
+    );
+}

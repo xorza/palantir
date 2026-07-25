@@ -81,10 +81,23 @@ ordering is an `idx()` comparison. `Modal` now reads Escape *inside* its own
 layer scope and after its body records, so an overlay the body opens on the
 modal layer still wins Escape ahead of it.
 
-**The obvious fix was a trap.** "Make `Modal` capture the keyboard" breaks every
-`TextEdit` inside a modal: `text_edit/input.rs` reads the *uncaptured* stream,
-so capture is already exclusive against text input. Layer-ordering the read
-policy fixes dismissal without touching that.
+**"Make `Modal` capture the keyboard" was rejected because capture was, at that
+point, exclusive** — `text_edit/input.rs` drains the *uncaptured* stream, so
+capturing would have silenced every `TextEdit` inside a modal. Layer-ordering
+the read policy fixed dismissal without that cost. (With layer ordering now in
+place the objection would no longer hold, since a capture registered on a lower
+layer does not silence a reader above it — but the shipped design is the
+simpler of the two.)
+
+**It also fixed a second, unreported bug.** `Popup::show` holds capture across
+its whole body, so before this change a `TextEdit` *inside a popup* received no
+typed text at all — verified by reverting the predicate, which empties the
+buffer. Nothing in the tree exercised the combination. Now pinned by
+`popup::tests::text_edit_inside_a_popup_receives_typing`, which also records
+the load-bearing detail: `Popup::show` calls `with_keyboard_capture` *outside*
+`ui.layer(Layer::Popup, ..)`, so the capture registers at `Layer::Main` and the
+body one layer up is not silenced by it. Moving that call inside the layer
+scope would break typing again, silently.
 
 Pinned at both levels: the policy in `input/tests/keyboard.rs` (a `Popup`
 capture is visible from `Modal` and `Tooltip`, invisible from `Popup` and
