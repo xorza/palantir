@@ -1012,7 +1012,7 @@ impl WgpuBackend {
     /// swapchain target still needs valid pixels (visual tests capture
     /// it unconditionally; the showcase short-circuits earlier, but
     /// other hosts may not). A `Skip` requires the previous frame to
-    /// have been submitted at this size and format (`classify_frame`
+    /// have been submitted at this size and format (`take_frame_plan`
     /// forces `Full` otherwise), so the backbuffer must already exist
     /// and match — copying anything else would present undefined or
     /// stale-format pixels, so crash instead of degrading.

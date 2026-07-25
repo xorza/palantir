@@ -302,7 +302,7 @@ impl DamageEngine {
             now,
         } = input;
         // `force_full` is the "treat as a fresh frame" signal — set
-        // by the caller when `Ui::classify_frame` decided
+        // by the caller when `FrameRuntime::take_frame_plan` decided
         // this frame must repaint everything (surface changed, last
         // frame wasn't acked, or first frame). Drop the per-widget
         // snapshot map here — owning the pairing keeps a caller from

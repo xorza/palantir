@@ -225,7 +225,7 @@ impl CpuHarness {
     }
 
     /// Drive one full CPU frame against `display` and ack the present so
-    /// the next frame's `classify_frame` matches what the host would see
+    /// the next frame's `take_frame_plan` matches what the host would see
     /// after a real submit (lets `cached` settle into `Skip`).
     ///
     /// Encode + compose run on **every** frame so all CPU arms measure

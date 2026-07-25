@@ -177,7 +177,12 @@ impl FrameRuntime {
         self.frame_id += 1;
     }
 
-    pub(super) fn classify_frame(&mut self, input: FrameClassifyInput) -> FramePlan {
+    /// Decide what this frame does, **consuming** the wakes that fired by
+    /// now — the drain is the point, not a side effect, since a wake must
+    /// drive exactly one frame. Named `take_` for that reason: a reader is
+    /// entitled to assume a `classify_*` is pure, and this is the frame's
+    /// single entry decision.
+    pub(super) fn take_frame_plan(&mut self, input: FrameClassifyInput) -> FramePlan {
         let fired_count = self
             .repaint_wakes
             .partition_point(|wake| wake.deadline <= self.time);
@@ -409,7 +414,7 @@ mod tests {
                 runtime.schedule_wake(Duration::from_millis(10), case.wake, None);
             }
 
-            let actual = runtime.classify_frame(FrameClassifyInput {
+            let actual = runtime.take_frame_plan(FrameClassifyInput {
                 display,
                 damage_baseline_valid: case.damage_baseline_valid,
                 input_policy: case.input_policy,

@@ -361,7 +361,7 @@ pub(crate) struct InputState {
     /// could plausibly mutate visible state arrived (hover/scroll
     /// target change, capture-active move, click, key, IME, modifier
     /// change). Cleared alongside `had_input_since_last_frame`. Read
-    /// by `Ui::classify_frame` under [`InputPolicy::OnDelta`](policy::InputPolicy::OnDelta).
+    /// by `FrameRuntime::take_frame_plan` under [`InputPolicy::OnDelta`](policy::InputPolicy::OnDelta).
     pub(crate) repaint_requested_since_last_frame: bool,
     /// Wake-gate subscriptions ([`PointerSense`] / [`KeyboardSense`]
     /// flag masks + specific-chord list). Cleared pre-record (in
