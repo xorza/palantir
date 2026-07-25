@@ -11,13 +11,6 @@ use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use glam::Vec2;
 
-/// Pointer senses absorbed by both the backdrop and the card, so no
-/// click / drag / scroll / pinch leaks to the `Main` tree underneath.
-const BLOCK: Sense = Sense::CLICK
-    .union(Sense::DRAG)
-    .union(Sense::SCROLL)
-    .union(Sense::PINCH);
-
 /// A centered dialog over a dimming, input-blocking backdrop, recorded
 /// into [`Layer::Modal`] so it draws above everything and hit-tests
 /// first. The card hugs its content (floored at a min width) and centers
@@ -46,7 +39,7 @@ impl Modal {
     #[track_caller]
     pub fn new() -> Self {
         let mut node = Node::vstack();
-        node.flags.set_sense(BLOCK);
+        node.flags.set_sense(Sense::ABSORB_POINTER);
         Self {
             node,
             chrome: None,
@@ -86,12 +79,12 @@ impl Modal {
         card.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
 
         // Root fills the surface, dims it, eats stray pointer events,
-        // and centers the card. The card re-senses `BLOCK` so clicks
+        // and centers the card. The card re-senses `Sense::ABSORB_POINTER` so clicks
         // on it never fall through to this dismiss-backdrop.
         widget.node = Node::zstack()
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
-            .sense(BLOCK);
+            .sense(Sense::ABSORB_POINTER);
         // A modal *owns* the keyboard, it does not merely outrank the
         // popups below it. Claiming capture on `Layer::Modal` makes that
         // explicit: the topmost claimant wins, so a popup underneath stops
