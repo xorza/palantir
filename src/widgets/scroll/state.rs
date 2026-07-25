@@ -185,11 +185,11 @@ impl ScrollState {
 }
 
 #[cfg(test)]
-pub(in crate::widgets::scroll) mod internals {
+pub(super) mod internals {
     use crate::widgets::scroll::state::ScrollState;
 
     impl ScrollState {
-        pub(in crate::widgets::scroll) fn drag_anchor_is_none(&self) -> bool {
+        pub(crate) fn drag_anchor_is_none(&self) -> bool {
             self.drag_anchor.is_none()
         }
     }

@@ -504,7 +504,7 @@ impl EditState {
 /// "First Name\nLast Name" → "First Name Last Name"). Borrowed
 /// pass-through on the common break-free case — no per-keystroke
 /// allocation.
-pub(super) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
+pub(crate) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
     if memchr::memchr2(b'\n', b'\r', s.as_bytes()).is_none() {
         return Cow::Borrowed(s);
     }
@@ -529,7 +529,7 @@ pub(super) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
 /// `text.len()`). Walks extended grapheme clusters via
 /// [`unicode_segmentation::GraphemeCursor`] so multi-codepoint clusters
 /// (combining marks, ZWJ-joined family emoji) advance as one unit.
-pub(super) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
+pub(crate) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset >= text.len() {
         return text.len();
     }
@@ -543,7 +543,7 @@ pub(super) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
 
 /// Previous grapheme-cluster boundary strictly before `offset` (clamped
 /// to zero).
-pub(super) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
+pub(crate) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset == 0 {
         return 0;
     }
@@ -577,7 +577,7 @@ fn char_kind(c: char) -> CharKind {
 /// same-`CharKind` chars. Returns `text.len()` if `from` is already at
 /// the end. The result is the byte index *just past* the end of the
 /// consumed word run — same convention as `Ctrl+Right` in most editors.
-pub(super) fn next_word_boundary(text: &str, from: usize) -> usize {
+pub(crate) fn next_word_boundary(text: &str, from: usize) -> usize {
     let mut chars = text[from..].char_indices();
     let mut pos;
     let target_kind = loop {
@@ -602,7 +602,7 @@ pub(super) fn next_word_boundary(text: &str, from: usize) -> usize {
 /// Mirror of [`next_word_boundary`]. Walks backward from `from` over
 /// whitespace and then over the run of same-`CharKind` chars; returns
 /// the byte index of the first consumed char (start of that run).
-pub(super) fn prev_word_boundary(text: &str, from: usize) -> usize {
+pub(crate) fn prev_word_boundary(text: &str, from: usize) -> usize {
     let mut rev = text[..from].char_indices().rev();
     let mut pos;
     let target_kind = loop {
@@ -676,8 +676,8 @@ pub(super) fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
 }
 
 #[cfg(test)]
-pub(in crate::widgets::text_edit) mod internals {
-    pub(in crate::widgets::text_edit) use crate::widgets::text_edit::model::{
+pub(super) mod internals {
+    pub(crate) use crate::widgets::text_edit::model::{
         next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
         sanitize_single_line,
     };

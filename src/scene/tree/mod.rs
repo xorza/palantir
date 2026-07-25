@@ -321,7 +321,7 @@ impl Tree {
     /// shadow-only) survives here and is dropped per-emit by the cmd
     /// buffer's gates.
     #[inline]
-    pub(in crate::scene) fn open_node(
+    pub(super) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
         widget_id: WidgetId,

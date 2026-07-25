@@ -268,7 +268,7 @@ pub(crate) mod internals {
         /// Lets the surface-format-change tests assert the cache survives
         /// a pipeline rebuild (surgical rebuild keeps it; a full rebuild
         /// would drop it to zero).
-        pub(in crate::renderer::backend) fn gpu_cached_count(&self) -> usize {
+        pub(crate) fn gpu_cached_count(&self) -> usize {
             self.textures.bindings.len()
         }
     }
