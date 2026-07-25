@@ -1,4 +1,6 @@
+use crate::input::keyboard::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -90,18 +92,18 @@ impl Modal {
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(BLOCK);
-        // Escape is read *inside* the modal's own layer, and after the
-        // body records. Keyboard capture is layer-ordered, so reading
-        // here means a `Popup` below cannot silence the modal (which is
-        // what left it undismissable while any popup was open) while an
-        // overlay the body opened *on* the modal layer still wins Escape
-        // ahead of it.
-        let mut escape = false;
-        ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
+        // A modal *owns* the keyboard, it does not merely outrank the
+        // popups below it. Claiming capture on `Layer::Modal` makes that
+        // explicit: the topmost claimant wins, so a popup underneath stops
+        // seeing Escape entirely instead of dismissing alongside the
+        // modal, and the modal's own body still reads the raw stream
+        // because a capture never silences its own layer.
+        let escape = ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
+            let keyboard = ui.claim_keyboard(root_id);
             widget.record(ui, Some(&dim), |ui| {
                 ui.widget(card).record(ui, Some(&card_bg), body);
             });
-            escape = ui.escape_pressed();
+            keyboard.key_pressed(ui, Shortcut::key(Key::Escape))
         });
 
         ModalResponse {
@@ -213,6 +215,46 @@ mod tests {
         assert!(
             escape_dismisses(true),
             "a popup's keyboard capture must not silence the modal above it",
+        );
+    }
+
+    /// Exactly one overlay may act on a given Escape.
+    ///
+    /// Layer-ordered *reads* alone were not enough: the modal saw Escape
+    /// and so did the popup that held capture, so one keypress closed
+    /// both. Ownership is now resolved topmost-first, so the modal takes
+    /// the keyboard and the popup beneath it sees nothing at all.
+    #[test]
+    fn escape_closes_only_the_topmost_overlay() {
+        const SURFACE: UVec2 = UVec2::new(400, 300);
+        let scene = |ui: &mut Ui, modal: &mut bool, popup: &mut bool| {
+            *popup |= Popup::anchored_to(Vec2::ZERO)
+                .id(WidgetId::from_hash("under-modal"))
+                .show(ui, |_ui, _handle| {})
+                .dismissed;
+            *modal |= Modal::new()
+                .id(WidgetId::from_hash("over-popup"))
+                .show(ui, |_| {})
+                .dismissed;
+        };
+
+        let mut ui = Ui::for_test();
+        let (mut m, mut p) = (false, false);
+        ui.run_at(SURFACE, |ui| scene(ui, &mut m, &mut p));
+        ui.on_input(InputEvent::KeyDown {
+            key: Key::Escape,
+            repeat: false,
+            physical: Key::Escape,
+        });
+        let (mut modal_closed, mut popup_closed) = (false, false);
+        ui.run_at_without_baseline(SURFACE, |ui| {
+            scene(ui, &mut modal_closed, &mut popup_closed)
+        });
+
+        assert!(modal_closed, "the topmost overlay must take the Escape");
+        assert!(
+            !popup_closed,
+            "the popup beneath the modal must not also consume it",
         );
     }
 }

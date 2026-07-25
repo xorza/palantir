@@ -21,7 +21,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | --- | --- | --- | --- | --- |
 | A1 | `run_on_main` silently drops owned work | Correctness | XS | **Shipped** |
 | A2 | Modal misses Escape under popup keyboard capture | Correctness | S | **Shipped** |
-| A3 | Popup capture resolves after popup bodies read events | Correctness | S | Cross-layer fixed; same-layer needs D2 |
+| A3 | Popup capture resolves after popup bodies read events | Correctness | S | **Shipped** (D2) — one frame of lag remains by design |
 | A4 | `DragValue` loses node configuration in edit mode | Correctness | S | **Shipped** |
 | B1 | Whole-scene equivalence gate before layout | Perf (derived) | M | Verified open |
 | B2 | Cascade preflight: O(N) verify, then unbounded re-work | Perf (derived) | M | Verified open |
@@ -31,7 +31,7 @@ partly gated, then maintainability. Performance claims state whether they are
 | C2 | Author-ordered render batches | Structural | L | Verified open |
 | C3 | Fuse the cascade repair walk with the damage diff | Structural | L | Blocked on C1 |
 | D1 | ~~Delegation macro~~ / composite translation | Maintainability | M | Macro **rejected** (tried); composite half open |
-| D2 | Overlay behaviour duplicated across four facades | Maintainability | M | Verified open — A2/A3 live here |
+| D2 | Overlay keyboard authority / facade duplication | Mixed | M | Keyboard half **shipped**; chrome + placement half open |
 | D3 | Layout driver identity repeated across three dispatches | Maintainability | S | Verified open |
 | D4 | Measure cache's manually synchronized shadow state | Maintainability | M | Narrowed by the arrange replay |
 | D5 | Small wins bundle (3 items) | Mixed | S | **Shipped** |
@@ -367,7 +367,48 @@ transformation helpers for composites, with exhaustive destructuring inside and
 named policies for fields intentionally consumed or rejected. Do not add
 generic accessors for every field.
 
-### D2. Overlay behaviour duplicated across four facades
+### D2. Overlay keyboard authority — **shipped**; facade dedup still open
+
+Scoped to the keyboard half deliberately. That is where both correctness
+residuals lived, and it has a forcing function; chrome / placement / backdrop
+dedup does not, `Tooltip` has no input policy at all, and `ContextMenu` /
+`ComboBox` already build *on* `Popup` — so "four duplicated facades" is really
+Popup-vs-Modal for the input parts.
+
+The root cause was sharper than duplication. One `layer` value was doing two
+jobs and the more important one was unused:
+
+- **Ordering** — `finish_record` committed `candidates.last()`, ignoring layer
+  entirely, so a `Popup` recorded after a `Modal` took the keyboard from it.
+  Now the topmost candidate wins, with record order breaking ties inside a
+  layer.
+- **Blocking** — a capture now silences only readers *strictly below* it. That
+  is what lets an overlay's own body keep reading, which is why a `TextEdit`
+  inside a popup can be typed into.
+
+`Modal` claims capture instead of reading the raw stream, so exactly one
+overlay consumes a given Escape.
+
+**The API moved from a scoped closure to a claimed value.**
+`with_keyboard_capture(owner, layer, body)` became
+`Ui::claim_keyboard(owner) -> KeyboardCapture` reading the *ambient* layer, and
+`KeyboardCapture::release(&self, ui)` acting immediately. Overlays claim from
+inside their own layer scope, so the recorded layer and the recording site can
+no longer disagree — the explicit argument made that a caller's responsibility,
+which is a bug waiting to happen. `Ui::layer` / `overlay_layer` /
+`placed_layer` now forward their body's value so a claim can escape the scope
+that created it, which is what `Popup` needs: it enters `Layer::Popup` twice
+(full-screen eater, positioned body) and reads dismissal after both.
+
+Residual, by design: ownership resolves at frame end, so an overlay opening on
+top gets the keyboard one frame late. Resolving live is *worse* — with two
+same-layer popups recording in sequence, the first reads while topmost and the
+second reads after displacing it, so both receive the key. Closing that needs a
+pre-pass over overlay claims before any body records.
+
+Original finding:
+
+### D2 (original). Overlay behaviour duplicated across four facades
 
 `Popup` owns positioning, layer selection, chrome, outside-click policy,
 keyboard capture and dismissal; `ContextMenu` exposes a hand-picked subset of
