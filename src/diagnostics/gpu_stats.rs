@@ -3,7 +3,7 @@
 //! parties hold a `Clone` of the same `Rc<RefCell<_>>` handle so the
 //! reader sees the writer's latest publish without a global static.
 //!
-//! Three kinds of data, set independently as feature support permits:
+//! Four kinds of data, set independently as feature support permits:
 //!
 //! - **Whole-pass duration** ([`GpuPassStats::last_pass_ms`]). Always
 //!   populated when `TIMESTAMP_QUERY` is on.
@@ -11,10 +11,15 @@
 //!   Populated when `TIMESTAMP_QUERY_INSIDE_PASSES` is on.
 //! - **Pipeline statistics** ([`GpuPassStats::last_pipeline_stats`]).
 //!   Populated when `PIPELINE_STATISTICS_QUERY` is on.
+//! - **Main-pass CPU record time**
+//!   ([`GpuPassStats::last_main_pass_cpu_ms`]). The odd one out: host-side,
+//!   not device-side, so it needs no adapter feature and no opt-in and is
+//!   populated on every submitted frame.
 //!
-//! Single-producer (the backend's `GpuTimings::after_submit`),
-//! many-reader (debug overlay, benches), all on the host thread.
-//! `RefCell` is sufficient and panics on the
+//! Two producers, both on the host thread: the backend's
+//! `GpuTimings::after_submit` publishes the three device-side values,
+//! `WgpuBackend::run_main_pass` publishes the CPU one. Many readers (debug
+//! overlay, benches). `RefCell` is sufficient and panics on the
 //! caller-bug case of a concurrent borrow.
 
 use std::cell::RefCell;
@@ -79,6 +84,7 @@ struct Inner {
     pass_ns: Option<u64>,
     kind_ns: [Option<u64>; <BatchKind as strum::EnumCount>::COUNT],
     stats: Option<PipelineStats>,
+    main_pass_cpu_ns: Option<u64>,
 }
 
 /// Shared GPU-stats handle. Clone is a cheap refcount bump — every
@@ -112,8 +118,26 @@ impl GpuPassStats {
         self.inner.borrow().stats
     }
 
+    /// Host CPU time the most recent frame spent opening the main render
+    /// pass, recording every draw step into it, and closing it — i.e. the
+    /// wgpu command-recording cost of `WgpuBackend::run_main_pass`,
+    /// including the end-of-pass command replay. Independent of every
+    /// device-side value above: no adapter feature gates it, so it is
+    /// `Some` after the first submitted frame on any GPU.
+    ///
+    /// This is what scales with the *number* of draw steps rather than the
+    /// number of pixels, which makes it the metric for bind/draw-count
+    /// work (batch coalescing, bind-state deduplication).
+    pub fn last_main_pass_cpu_ms(&self) -> Option<f32> {
+        self.inner.borrow().main_pass_cpu_ns.map(ns_to_ms)
+    }
+
     pub(crate) fn record_pass_ns(&self, ns: u64) {
         self.inner.borrow_mut().pass_ns = Some(ns);
+    }
+
+    pub(crate) fn record_main_pass_cpu_ns(&self, ns: u64) {
+        self.inner.borrow_mut().main_pass_cpu_ns = Some(ns);
     }
 
     pub(crate) fn record_kind_ns(&self, kind: BatchKind, ns: u64) {
@@ -147,6 +171,7 @@ mod tests {
         assert_eq!(s.last_pass_ms(), None);
         assert_eq!(s.last_kind_ms(BatchKind::Quads), None);
         assert_eq!(s.last_pipeline_stats(), None);
+        assert_eq!(s.last_main_pass_cpu_ms(), None);
     }
 
     #[test]
@@ -154,16 +179,23 @@ mod tests {
         let a = GpuPassStats::default();
         let b = a.clone();
         a.record_pass_ns(3_500_000);
+        a.record_main_pass_cpu_ns(250_000);
         assert!((b.last_pass_ms().unwrap() - 3.5).abs() < 1e-4);
+        assert!((b.last_main_pass_cpu_ms().unwrap() - 0.25).abs() < 1e-4);
     }
 
     #[test]
     fn record_overrides_previous_value() {
-        // Pin: stores the *latest* sample, not a rolling EMA.
+        // Pin: stores the *latest* sample, not a rolling EMA. The bench
+        // reporters sample per frame and summarize themselves, so a
+        // smoothing publisher here would silently flatten their spread.
         let s = GpuPassStats::default();
         s.record_pass_ns(1_000_000);
         s.record_pass_ns(5_000_000);
         assert!((s.last_pass_ms().unwrap() - 5.0).abs() < 1e-4);
+        s.record_main_pass_cpu_ns(80_000);
+        s.record_main_pass_cpu_ns(20_000);
+        assert!((s.last_main_pass_cpu_ms().unwrap() - 0.02).abs() < 1e-4);
     }
 
     #[test]
@@ -176,6 +208,9 @@ mod tests {
         assert_eq!(s.last_kind_ms(BatchKind::Mesh), None);
         // Total isn't auto-populated from per-kind.
         assert_eq!(s.last_pass_ms(), None);
+        // Nor is the CPU record time — it has a separate producer, and a
+        // device with no timestamp support publishes only that one.
+        assert_eq!(s.last_main_pass_cpu_ms(), None);
     }
 
     #[test]

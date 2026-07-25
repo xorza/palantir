@@ -347,18 +347,48 @@ Recorded so the same ground is not re-walked.
 | Partition retained render targets by owner (P3) | Open, still correctly P3; the two `retain` scans are unchanged |
 | Avoid uploading unused mesh payload ranges (P3) | Open, still correctly P3 |
 
-## Benchmark coverage gaps
+## Benchmark coverage gaps — closed
 
-The backend has GPU benches for images, curves, text atlas, and a CPU bench for
-the schedule walk — but nothing measures **wgpu command recording**, which is
-what findings 1 and 3 both turn on. `frame/*_gpu` covers it only as part of a
-whole-frame number dominated by GPU execution.
+This gap is filled. `src/bench/renderer/backend/record.rs` (target
+`record_pass`) measures wgpu command recording directly, which is what findings
+1, 2 and 3 all turn on. The three workloads this section asked for exist as
+three **pairs**, each holding painted content fixed and moving only bind / draw
+/ state-set count:
 
-| Missing benchmark | Primary metric | Control |
+| Arm | Control | Covers |
 | --- | --- | --- |
-| Command recording over a step-heavy frame | CPU time in `render_groups`, recorded command count | Markers off vs on |
-| Many-distinct-image frame | CPU record time, bind/draw count | Single repeated texture |
-| Consecutive text batches | CPU record time | One coalesced batch |
+| `groups/per_item` — N clipped cells, one scissor + one draw each | `groups/single` — same N rects in one group, one instanced draw | Per-step cost; the fixture for bind-tracking work |
+| `images/distinct` — N images on N textures | `images/shared` — N images on one texture | Run coalescing must collapse `shared` and leave `distinct` alone |
+| `text/per_group` — N strict-bounds text batches | `text/single` — N runs in one batch | The five unconditional commands per text batch |
+
+Metric plumbing: `WgpuBackend::run_main_pass` publishes its own host CPU time —
+pass open, every recorded step, and the end-of-pass command replay — to
+`GpuPassStats::last_main_pass_cpu_ms`. Unconditional (two `Instant::now()` per
+frame), because gating it behind `collect_gpu_stats` would mean the only way to
+read the number is to also enable the in-pass timestamp writes that perturb it.
+Each arm reports min / median over 256 sampled frames plus exact step counts
+replayed from the composed buffer.
+
+Two things learned while building it, both recorded in the module doc:
+
+- **Whole-frame wall time is not a usable proxy** and is deliberately not
+  reported. A frame is ~70x the recording it contains, and the frontend costs
+  dominating it move the *opposite* way across the `groups` pair — one big
+  group prunes occlusion over 256 quads at once, 256 small ones don't. It ranks
+  the arms backwards.
+- **The device must be drained per frame** (`PollType::Wait`). Under `Poll` the
+  `images` pair inverts: queued submissions contend with the recording being
+  timed. The wait lands outside the measured window.
+
+Read the text pair with one correction. A plain scissor change does not split a
+text batch — batches deliberately span groups — so the only way to *get*
+consecutive batches also churns scissors, and `text/per_group`'s gap bundles
+generic per-step cost with per-batch text cost. Net the first out using the
+per-step rate the `groups` pair measures.
+
+The marker on/off control the original table named is now a compile-time
+choice, not a runtime one (`bfe5c493`), so it is a two-build comparison rather
+than a bench arm.
 
 Measure release builds. Command counts explain a result; they do not replace
 elapsed time.
