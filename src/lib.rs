@@ -2,7 +2,10 @@
 // the only form GitHub expands into an inline video player — wrapping it for
 // rustdoc's sake would turn it back into a dead link on the repo page.
 #![allow(rustdoc::bare_urls)]
-#![doc = include_str!("../README.md")]
+// The README's counter example builds a `WinitHost`, so it only compiles as a
+// doctest when that feature is on. Without it the crate docs open at the
+// orientation section below instead.
+#![cfg_attr(feature = "winit-host", doc = include_str!("../README.md"))]
 //!
 //! # Where to start
 //!
