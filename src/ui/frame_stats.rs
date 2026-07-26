@@ -22,9 +22,18 @@ pub(super) fn record(ui: &mut Ui) {
         .last_pass_ms()
         .map(|ms| format!(" · gpu {ms:>5.2} ms"))
         .unwrap_or_default();
+    // Settling second record passes, over full-record frames. Read the
+    // *delta* across a gesture: a sustained drag that still double-records
+    // advances both halves in lockstep, one that doesn't advances only the
+    // right. Counted through the previous frame — this runs mid-pass, so
+    // the current frame's outcome isn't known yet.
+    let settle = format!(
+        " · settle {}/{}",
+        ui.frame_runtime.settle_frames, ui.frame_runtime.record_frames
+    );
     let label = format!(
-        "f {} · {:>4.0} fps{}",
-        ui.frame_runtime.frame_id, ui.frame_runtime.fps_ema, gpu
+        "f {} · {:>4.0} fps{}{}",
+        ui.frame_runtime.frame_id, ui.frame_runtime.fps_ema, settle, gpu
     );
     let style = TextStyle {
         family: FontFamily::Mono,

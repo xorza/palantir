@@ -11,6 +11,7 @@ use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh}
 use crate::display::Display;
 use crate::input::policy::InputPolicy;
 use crate::primitives::approx::EPS;
+use crate::ui::frame_report::FrameProcessing;
 
 /// Bitset over wake causes. OR-merged when two requests coalesce
 /// onto the same deadline slot, so the frame-entry classifier can see
@@ -123,6 +124,17 @@ pub(crate) struct FrameRuntime {
     /// EMA of `1/raw_dt` across frames; zero before a second timestamp
     /// exists. Uses unclamped wall time so stalls remain visible.
     pub(crate) fps_ema: f32,
+    /// Full-record frames so far, and how many of those needed a
+    /// settling second record pass. Cumulative rather than an EMA
+    /// because the question they answer is "did this gesture stop
+    /// double-recording" — you read the *delta* across an interaction,
+    /// which a decaying average smears. `PaintOnly` frames are excluded
+    /// from both: they can't settle, so counting them would drift the
+    /// ratio toward zero while the UI merely idles. Displayed by the
+    /// opt-in frame-stats overlay; see `RELAYOUT.md` for why the number
+    /// matters.
+    pub(crate) record_frames: u32,
+    pub(crate) settle_frames: u32,
     /// Set when an unsettled animation or widget requests another frame.
     pub(crate) repaint_requested: bool,
     /// Pending absolute wake deadlines, sorted ascending and coalesced.
@@ -153,6 +165,21 @@ pub(super) enum FramePlan {
 
 impl FrameRuntime {
     pub(super) const MAX_DT: f32 = MAX_ANIM_DT;
+
+    /// Fold this frame's outcome into the settle tally. Called once per
+    /// [`crate::Ui::frame`], after the pass count is known — so the
+    /// overlay, which records *during* a pass, always reads the tally
+    /// through the previous frame.
+    pub(super) fn note_processing(&mut self, processing: FrameProcessing) {
+        match processing {
+            FrameProcessing::PaintOnly => {}
+            FrameProcessing::SingleLayout => self.record_frames += 1,
+            FrameProcessing::DoubleLayout => {
+                self.record_frames += 1;
+                self.settle_frames += 1;
+            }
+        }
+    }
 
     pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.time).as_secs_f32();

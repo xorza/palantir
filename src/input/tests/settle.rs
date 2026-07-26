@@ -133,6 +133,45 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
     );
 }
 
+/// The tally behind the frame-stats overlay's `settle n/m`, which is how
+/// a real gesture's cost gets read in the running app. A sustained drag is
+/// the case `RELAYOUT.md` §6-1 and §6-3 were aimed at: after the latch
+/// frame, holding and moving must cost exactly one record pass each.
+#[test]
+fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
+    let (mut ui, rect) = warm(button);
+    let origin = rect.center();
+    let (base_settles, base_records) = (
+        ui.frame_runtime.settle_frames,
+        ui.frame_runtime.record_frames,
+    );
+
+    ui.press_at(origin);
+    ui.on_input(InputEvent::PointerMoved(
+        origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0),
+    ));
+    let _ = passes(&mut ui, button);
+
+    // Eight more frames of holding and moving — the whole gesture body.
+    for step in 2..10 {
+        ui.on_input(InputEvent::PointerMoved(
+            origin + Vec2::new(DRAG_THRESHOLD + step as f32, 0.0),
+        ));
+        let _ = passes(&mut ui, button);
+    }
+
+    assert_eq!(
+        ui.frame_runtime.record_frames - base_records,
+        9,
+        "nine full-record frames were driven",
+    );
+    assert_eq!(
+        ui.frame_runtime.settle_frames - base_settles,
+        1,
+        "only the threshold-crossing frame settles; the drag body is free",
+    );
+}
+
 #[test]
 fn a_drag_settles_on_its_latch_and_again_on_its_stop() {
     let (mut ui, rect) = warm(button);
