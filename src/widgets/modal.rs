@@ -1,6 +1,4 @@
-use crate::input::keyboard::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -85,23 +83,36 @@ impl Modal {
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
-        // A modal *owns* the keyboard, it does not merely outrank the
-        // popups below it. Claiming capture on `Layer::Modal` makes that
-        // explicit: the topmost claimant wins, so a popup underneath stops
-        // seeing Escape entirely instead of dismissing alongside the
-        // modal, and the modal's own body still reads the raw stream
-        // because a capture never silences its own layer.
-        let escape = ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
-            let keyboard = ui.claim_keyboard(root_id);
-            widget.record(ui, Some(&dim), |ui| {
-                ui.widget(card).record(ui, Some(&card_bg), body);
-            });
-            keyboard.key_pressed(ui, Shortcut::key(Key::Escape))
-        });
-
-        ModalResponse {
-            dismissed: ui.response_for(root_id).left.clicked() || escape,
+        // A modal *owns* input, it does not merely outrank the popups
+        // below it. Claiming on `Layer::Modal` makes that explicit: the
+        // topmost claimant wins, so a popup underneath stops seeing
+        // Escape entirely instead of dismissing alongside the modal, and
+        // the modal's own body still reads both streams because a claim
+        // never silences its own layer.
+        let claim = ui.modal_layer(
+            Layer::Modal,
+            Vec2::ZERO,
+            Some(surface.size),
+            root_id,
+            |ui, claim| {
+                widget.record(ui, Some(&dim), |ui| {
+                    ui.widget(card).record(ui, Some(&card_bg), body);
+                });
+                claim
+            },
+        );
+        // Escape reads through the claim, so it is layer-independent and
+        // can be asked after the scope closes — the same shape `Popup`
+        // uses to fold dismissal together.
+        let dismissed = ui.response_for(root_id).left.clicked() || claim.escape_pressed(ui);
+        // Claims resolve at the end of the pass and are read by the next
+        // one, so a dismissing modal that kept its claim would swallow
+        // one more frame of input from where it used to be.
+        if dismissed {
+            claim.release(ui);
         }
+
+        ModalResponse { dismissed }
     }
 }
 
@@ -163,7 +174,7 @@ mod tests {
     /// modal has always dismissed, so asserting only the popup case
     /// would not distinguish "layer ordering works" from "Escape works".
     #[test]
-    fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_capture() {
+    fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
         fn escape_dismisses(with_popup: bool) -> bool {
             const SURFACE: UVec2 = UVec2::new(400, 300);
             let scene = |ui: &mut Ui, dismissed: &mut bool| {
@@ -179,7 +190,7 @@ mod tests {
             };
 
             // Two frames: the keyboard wake-gate parks a press whose
-            // shortcut nobody subscribed yet, so the first frame is what
+            // shortcut nobody watched yet, so the first frame is what
             // registers the modal's interest in Escape and the press lands
             // after it.
             //
@@ -209,6 +220,83 @@ mod tests {
             escape_dismisses(true),
             "a popup's keyboard capture must not silence the modal above it",
         );
+    }
+
+    /// A dismissed modal hands both streams back on the *next* frame,
+    /// not the one after.
+    ///
+    /// Claims resolve at the end of a record pass and are read by the
+    /// following one, so a dismissing frame's claim can outlive the
+    /// overlay by a frame — long enough to swallow the click that lands
+    /// where the modal used to be.
+    ///
+    /// **This does not pin `InputClaim::release`**, and the difference is
+    /// worth recording: dismissal is action input, action input forces a
+    /// second record pass, and that pass re-records without the modal —
+    /// so the claim is already gone by `finish_record` whether or not
+    /// anything released it. Verified by disabling `Modal`'s release and
+    /// watching this still pass. The release is kept because it is
+    /// correct on a single-pass dismissal and because `Popup` has always
+    /// done it, not because it is observable here. `release` itself is
+    /// pinned directly in `input::tests::keyboard`.
+    ///
+    /// What this *does* guard is the end-to-end contract, which would
+    /// break if the resolution timing or the replay ever changed. Both
+    /// streams in one test because their lifecycles are now one thing.
+    #[test]
+    fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
+        use crate::input::pointer::PointerButton;
+        use crate::input::watch::{KeyboardWake, PointerWake};
+        const SURFACE: UVec2 = UVec2::new(400, 300);
+
+        // Watches so `Main` has something to be cut off from, plus the
+        // modal for as long as `open` says so.
+        let scene = |ui: &mut Ui, open: &mut bool| {
+            ui.watch_pointer(PointerWake::BUTTONS);
+            ui.watch_keyboard(KeyboardWake::KEY);
+            if *open {
+                *open = !Modal::new()
+                    .id(WidgetId::from_hash("closing-modal"))
+                    .show(ui, |_| {})
+                    .dismissed;
+            }
+        };
+
+        let mut ui = Ui::for_test();
+        let mut open = true;
+        ui.run_at(SURFACE, |ui| scene(ui, &mut open));
+
+        // Escape dismisses it during this frame's record.
+        ui.on_input(InputEvent::KeyDown {
+            key: Key::Escape,
+            repeat: false,
+            physical: Key::Escape,
+        });
+        ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut open));
+        assert!(!open, "Escape must dismiss the modal");
+
+        // The frame after. A `Main`-layer widget presses and types; both
+        // must reach it during the record, which is when widgets read.
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::KeyDown {
+            key: Key::Char('a'),
+            repeat: false,
+            physical: Key::Other,
+        });
+        // `max`, not `=`: a frame may record twice and `post_record`
+        // drains the queues between passes, so pass B legitimately sees
+        // nothing and would overwrite pass A's reading. Same hazard the
+        // `|=` in `modal_hears_escape_…` guards against.
+        let mut pointer = 0;
+        let mut keyboard = 0;
+        ui.run_at_without_baseline(SURFACE, |ui| {
+            scene(ui, &mut open);
+            pointer = pointer.max(ui.pointer_events().len());
+            keyboard = keyboard.max(ui.keyboard_events().len());
+        });
+        assert_eq!(pointer, 1, "the dismissed modal still held the pointer");
+        assert_eq!(keyboard, 1, "the dismissed modal still held the keyboard");
     }
 
     /// Exactly one overlay may act on a given Escape.

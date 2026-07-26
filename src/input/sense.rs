@@ -37,7 +37,7 @@ bitflags! {
         /// `SCROLL` — a graph canvas wanting pan-via-scroll *and*
         /// zoom-via-pinch sets both; a list that scrolls without
         /// reacting to pinch sets only `SCROLL`. Hit-tested in the
-        /// same `PointerSense::SCROLL` wake category as scroll.
+        /// same `PointerWake::SCROLL` wake category as scroll.
         const PINCH = 1 << 4;
     }
 }
@@ -54,6 +54,12 @@ impl Sense {
     /// that pans on middle-drag and zooms on scroll is the case that
     /// makes the last two matter. Named once because two independent
     /// copies of "all four" drift apart the moment a fifth is added.
+    ///
+    /// Blocks only *routed* input, which is all a sense can reach: it is
+    /// the union of four ordinary bits, so any widget wanting all four
+    /// — a graph canvas — holds it without being a scrim. The watch
+    /// streams, which bypass the hit index entirely, are cut off by
+    /// [`Ui::modal_layer`](crate::Ui::modal_layer) instead.
     pub const ABSORB_POINTER: Self = Self::CLICK
         .union(Self::DRAG)
         .union(Self::SCROLL)

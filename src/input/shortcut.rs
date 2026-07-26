@@ -101,7 +101,7 @@ impl Shortcut {
         Self { mods, key }
     }
 
-    /// Bare key, no modifiers. For subscriptions like
+    /// Bare key, no modifiers. For watches like
     /// `Shortcut::key(Key::Escape)` and event triggers like
     /// `Shortcut::key(Key::Enter)` that don't carry a chord.
     pub const fn key(key: Key) -> Self {

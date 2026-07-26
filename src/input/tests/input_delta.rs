@@ -124,17 +124,17 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
 }
 
 /// `Text` wakes only when a focused widget would consume it OR a
-/// `KeyboardSense::TEXT` subscriber asked for it. `ModifiersChanged`
-/// wakes only with a `KeyboardSense::MODIFIER` subscriber.
+/// `KeyboardWake::TEXT` watcher asked for it. `ModifiersChanged`
+/// wakes only with a `KeyboardWake::MODIFIER` watcher.
 #[test]
-fn non_pointer_events_wake_on_focus_or_subscription() {
+fn non_pointer_events_wake_on_focus_or_watch() {
     use crate::input::keyboard::{Modifiers, TextChunk};
-    use crate::input::subscriptions::KeyboardSense;
+    use crate::input::watch::KeyboardWake;
     use crate::primitives::widget_id::WidgetId;
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(400, 400), build_hover_target);
 
-    // No focus, no subscription → no wake.
+    // No focus, no watch → no wake.
     assert!(
         !ui.on_input(InputEvent::Text(TextChunk::new("a").unwrap()))
             .requests_repaint,
@@ -156,10 +156,10 @@ fn non_pointer_events_wake_on_focus_or_subscription() {
     );
     ui.input.focused = None;
 
-    // KeyboardSense subscribers → Text + ModifiersChanged wake.
+    // KeyboardWake watchers → Text + ModifiersChanged wake.
     ui.run_at(UVec2::new(400, 400), |ui| {
         build_hover_target(ui);
-        ui.subscribe_keyboard(KeyboardSense::TEXT | KeyboardSense::MODIFIER);
+        ui.watch_keyboard(KeyboardWake::TEXT | KeyboardWake::MODIFIER);
     });
     assert!(
         ui.on_input(InputEvent::Text(TextChunk::new("c").unwrap()))
@@ -172,13 +172,13 @@ fn non_pointer_events_wake_on_focus_or_subscription() {
 }
 
 /// `KeyDown` wakes only when a focused widget would consume it or
-/// a global chord subscriber asked for it. Idle keys (no focus,
-/// no subscriber) skip the frame under `OnDelta`.
+/// a global chord watcher asked for it. Idle keys (no focus,
+/// no watcher) skip the frame under `OnDelta`.
 #[test]
-fn keydown_wakes_only_when_focus_or_subscription_exists() {
+fn keydown_wakes_only_when_focus_or_watch_exists() {
     use crate::input::keyboard::Key;
     use crate::input::shortcut::Shortcut;
-    use crate::input::subscriptions::PointerSense;
+    use crate::input::watch::PointerWake;
     use crate::primitives::widget_id::WidgetId;
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(400, 400), build_hover_target);
@@ -204,14 +204,14 @@ fn keydown_wakes_only_when_focus_or_subscription_exists() {
     });
     assert!(delta.requests_repaint);
 
-    // No focus, but chord subscriber → wake. Subscriptions are
+    // No focus, but chord watcher → wake. Watches are
     // cleared pre-record, so re-record with the sub re-asserted.
     ui.input.focused = None;
     ui.run_at(UVec2::new(400, 400), |ui| {
         build_hover_target(ui);
-        ui.subscribe_key(Shortcut::key(Key::Escape));
+        ui.watch_key(Shortcut::key(Key::Escape));
         // Also reassert this so it survives — but we only test Escape below.
-        let _ = PointerSense::BUTTONS;
+        let _ = PointerWake::BUTTONS;
     });
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,

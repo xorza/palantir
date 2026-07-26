@@ -4,7 +4,7 @@
 //! `TextChunk` so [`crate::input::InputEvent`] stays `Copy`.
 //!
 //! Consumers: `TextEdit`, the [`crate::Shortcut`] matcher, and global
-//! [`crate::input::subscriptions::KeyboardSense`] subscribers, fed from
+//! [`crate::input::watch::KeyboardWake`] watchers, fed from
 //! the per-frame keyboard-event queue drained during the frame.
 
 /// A key identity. Used two ways on [`KeyPress`]: as the **logical** key

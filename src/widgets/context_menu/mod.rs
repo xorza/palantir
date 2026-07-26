@@ -125,7 +125,7 @@ impl ContextMenu {
     pub fn show(
         self,
         ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &PopupHandle<'_>),
+        body: impl FnOnce(&mut Ui, &PopupHandle),
     ) -> ContextMenuResponse {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled `escape_pressed` here.
@@ -266,7 +266,7 @@ impl<'a> MenuItem<'a> {
             .show(ui)
     }
 
-    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle<'_>) -> Response<'ui> {
+    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the state
         // is identical before and after the node records.
@@ -301,12 +301,12 @@ impl<'a> MenuItem<'a> {
         node.gaps.set_gap(16.0);
 
         let label = ui.intern(self.label);
-        // Passive hints subscribe for wake-up while their parent owns dispatch.
+        // Passive hints watch for wake-up while their parent owns dispatch.
         let mut shortcut_fired = false;
         let shortcut = match self.shortcut {
             MenuShortcut::None => None,
             MenuShortcut::Hint(shortcut) => {
-                ui.subscribe_key(shortcut);
+                ui.watch_key(shortcut);
                 Some(shortcut)
             }
             MenuShortcut::Activate(shortcut) => {

@@ -123,14 +123,14 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
 
     let owner = WidgetId::from_hash("popup");
     let other = WidgetId::from_hash("other-popup");
-    state.capture_keyboard(owner, Layer::Popup);
+    state.claim_keyboard(owner, Layer::Popup);
 
     assert!(state.keyboard_events(Layer::Main).is_empty());
     assert!(!state.key_pressed(Layer::Main, shortcut));
-    assert_eq!(state.captured_keyboard_events(owner), &[event]);
-    assert!(state.captured_key_pressed(owner, shortcut));
-    assert!(state.captured_keyboard_events(other).is_empty());
-    assert!(!state.captured_key_pressed(other, shortcut));
+    assert_eq!(state.claimed_keyboard_events(owner), &[event]);
+    assert!(state.claimed_key_pressed(owner, shortcut));
+    assert!(state.claimed_keyboard_events(other).is_empty());
+    assert!(!state.claimed_key_pressed(other, shortcut));
     assert_eq!(state.subs.keys.len(), 1);
 
     // Capture is layer-*ordered*, not exclusive: it silences only readers
@@ -151,44 +151,114 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
     assert!(!state.key_pressed(Layer::Main, shortcut));
 }
 
+/// A modal layer's claim covers both streams and releases both at once.
+/// Asserted together rather than in two tests because the point of
+/// bundling them is that their lifecycles can no longer diverge — which
+/// is exactly what a per-stream test would stop catching.
 #[test]
-fn ui_keyboard_capture_scope_retains_or_releases_its_candidate() {
+fn a_modal_layer_claim_retains_or_releases_both_streams() {
     let mut ui = Ui::for_test();
     ui.input.focused = Some(WidgetId::from_hash("editor"));
+    ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
     ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
         physical: Key::Escape,
     });
-    let event = ui.keyboard_events()[0];
+    ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
+    ui.on_input(InputEvent::PointerPressed(
+        crate::input::pointer::PointerButton::Left,
+    ));
+    let key = ui.keyboard_events()[0];
+    let press = ui.pointer_events()[0];
     let owner = WidgetId::from_hash("popup");
     let shortcut = Shortcut::key(Key::Escape);
 
-    // Claimed inside the popup layer, which is what the capture records —
-    // and the handle outlives that scope, which is the point of returning
-    // it by value rather than scoping it to a closure.
-    let capture = ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
-        ui.claim_keyboard(owner)
+    // The claim records the popup layer, and the handle outlives the
+    // scope — the point of handing it to the body by value.
+    let claim = ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
+        claim
     });
     assert!(
         ui.keyboard_events().is_empty(),
         "Main sits below the claim and is cut off",
     );
-    assert_eq!(capture.keyboard_events(&ui), &[event]);
-    assert!(capture.key_pressed(&mut ui, shortcut));
+    assert_eq!(claim.keyboard_events(&ui), &[key]);
+    assert!(claim.key_pressed(&mut ui, shortcut));
     ui.input.finish_record();
     assert!(ui.keyboard_events().is_empty());
+    assert!(
+        ui.pointer_events().is_empty(),
+        "the same claim gates the pointer stream",
+    );
+    // The trap the handle exists to close: out here the ambient layer is
+    // `Main`, so an owner reading `ui.pointer_events()` is silenced by
+    // its *own* claim. Reading through the claim sees the layer it holds.
+    assert_eq!(claim.pointer_events(&ui), &[press]);
 
-    // Releasing withdraws the claim immediately, so the next resolution
-    // finds no candidate and the raw stream reaches `Main` again.
+    // Releasing withdraws both immediately, so the next resolution finds
+    // no candidate and each raw stream reaches `Main` again.
     ui.input.begin_record();
-    let capture = ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
-        ui.claim_keyboard(owner)
+    let claim = ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
+        claim
     });
-    assert_eq!(capture.keyboard_events(&ui), &[event]);
-    capture.release(&mut ui);
+    assert_eq!(claim.keyboard_events(&ui), &[key]);
+    claim.release(&mut ui);
     ui.input.finish_record();
-    assert_eq!(ui.keyboard_events(), &[event]);
+    assert_eq!(ui.keyboard_events(), &[key]);
+    assert_eq!(ui.pointer_events(), &[press]);
+}
+
+/// Two overlays can hold one layer at once, so the pointer claim counts
+/// rather than flags: the first to close must not unblock the layer
+/// while the second is still up.
+#[test]
+fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {
+    let mut ui = Ui::for_test();
+    ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
+    ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
+    ui.on_input(InputEvent::PointerPressed(
+        crate::input::pointer::PointerButton::Left,
+    ));
+    let press = ui.pointer_events()[0];
+
+    let first = ui.modal_layer(
+        Layer::Popup,
+        glam::Vec2::ZERO,
+        None,
+        WidgetId::from_hash("first"),
+        |_, claim| claim,
+    );
+    let second = ui.modal_layer(
+        Layer::Popup,
+        glam::Vec2::ZERO,
+        None,
+        WidgetId::from_hash("second"),
+        |_, claim| claim,
+    );
+
+    first.release(&mut ui);
+    ui.input.finish_record();
+    assert!(
+        ui.pointer_events().is_empty(),
+        "the second popup still holds Layer::Popup",
+    );
+
+    ui.input.begin_record();
+    let second = ui.modal_layer(
+        Layer::Popup,
+        glam::Vec2::ZERO,
+        None,
+        WidgetId::from_hash("second"),
+        |_, _| second,
+    );
+    second.release(&mut ui);
+    ui.input.finish_record();
+    assert_eq!(
+        ui.pointer_events(),
+        &[press],
+        "the last claim leaving unblocks the layer",
+    );
 }
 
 #[test]

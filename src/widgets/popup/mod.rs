@@ -1,4 +1,4 @@
-use crate::input::keyboard::{Key, KeyboardEvent};
+use crate::input::keyboard::KeyboardEvent;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::overlay::OverlayPosition;
@@ -8,7 +8,7 @@ use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
-use crate::ui::keyboard_capture::KeyboardCapture;
+use crate::ui::input_claim::InputClaim;
 use crate::widgets::frame::Frame;
 use crate::widgets::resolve_container_chrome;
 use glam::Vec2;
@@ -35,22 +35,22 @@ pub enum ClickOutside {
 }
 
 /// Scoped popup capabilities handed to the body closure. Content
-/// widgets can request dismissal and consume the keyboard stream
-/// exclusively captured by this popup without handling its owner id.
+/// widgets can request dismissal and read the keyboard stream this
+/// popup claimed, without handling its owner id.
 ///
 /// Lives on the stack for the duration of one [`Popup::show`] call —
 /// no ambient `Ui` state, no nested-popup signal-leak.
 #[derive(Debug)]
-pub struct PopupHandle<'capture> {
+pub struct PopupHandle {
     requested: Cell<bool>,
-    keyboard: &'capture KeyboardCapture,
+    claim: InputClaim,
 }
 
-impl<'capture> PopupHandle<'capture> {
-    fn new(keyboard: &'capture KeyboardCapture) -> Self {
+impl PopupHandle {
+    fn new(claim: InputClaim) -> Self {
         Self {
             requested: Cell::new(false),
-            keyboard,
+            claim,
         }
     }
 
@@ -59,18 +59,23 @@ impl<'capture> PopupHandle<'capture> {
         self.requested.set(true);
     }
 
-    /// Keyboard events captured by this popup in arrival order.
-    /// Returns an empty slice when another popup owns capture. Use
-    /// [`Ui::subscribe_keyboard`] for off-focus event categories;
-    /// [`Self::key_pressed`] subscribes its shortcut automatically.
+    /// Keyboard events this popup claimed, in arrival order. Returns an
+    /// empty slice when another overlay holds the claim. Use
+    /// [`Ui::watch_keyboard`] for off-focus event categories;
+    /// [`Self::key_pressed`] watches its shortcut automatically.
     pub fn keyboard_events<'ui>(&self, ui: &'ui Ui) -> &'ui [KeyboardEvent] {
-        self.keyboard.keyboard_events(ui)
+        self.claim.keyboard_events(ui)
     }
 
-    /// Whether this popup captured a matching key press this frame.
-    /// Subscribes the shortcut for wake-up like [`Ui::key_pressed`].
+    /// Whether this popup claimed a matching key press this frame.
+    /// Watches the shortcut for wake-up like [`Ui::key_pressed`].
     pub fn key_pressed(&self, ui: &mut Ui, shortcut: Shortcut) -> bool {
-        self.keyboard.key_pressed(ui, shortcut)
+        self.claim.key_pressed(ui, shortcut)
+    }
+
+    /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
+    pub fn escape_pressed(&self, ui: &mut Ui) -> bool {
+        self.claim.escape_pressed(ui)
     }
 }
 
@@ -109,9 +114,10 @@ impl PopupResponse {
 /// to the `Main` tree. Inside-body clicks route to the body's own
 /// leaves first (popup hit-test priority).
 ///
-/// While recorded, the topmost popup exclusively owns keyboard input.
-/// Focus remains unchanged, so context-menu commands can still operate
-/// on their trigger without also reaching the focused widget.
+/// While recorded, the topmost popup owns both input streams — keyboard
+/// and the pointer watches — for every layer below it. Focus remains
+/// unchanged, so context-menu commands can still operate on their
+/// trigger without also reaching the focused widget.
 ///
 /// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
@@ -175,7 +181,7 @@ impl Popup {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle<'_>)) -> PopupResponse {
+    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
         let Self {
             position,
             click_outside,
@@ -191,30 +197,35 @@ impl Popup {
         let mut widget = ui.widget(node);
         let keyboard_owner = widget.id();
         let eater_id = widget.id().with("eater");
-        // Claimed *inside* the popup layer so the capture records the layer
-        // it lives on: that is what orders it against overlays above, and
-        // what stops it silencing its own body (a `TextEdit` in a popup
-        // drains the uncaptured stream and would otherwise get nothing).
-        let keyboard = ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
-            let keyboard = ui.claim_keyboard(keyboard_owner);
-            // Eater records first → paints under the body. Hit-test runs
-            // reverse-iter so the body's leaves still win inside its rect.
-            //
-            // Senses all four pointer interactions so the popup is truly
-            // modal-over-`Main`: pan-drag, scroll, and pinch over the
-            // surrounding area can't leak through to the host (e.g. a
-            // graph canvas underneath that pans on middle-drag and zooms
-            // on scroll/pinch). `Sense::CLICK` is the dismiss trigger;
-            // the other three never produce visible behavior on the
-            // eater itself — they're absorbed and discarded so the host
-            // doesn't see them.
-            Frame::new()
-                .id(eater_id)
-                .size((Sizing::FILL, Sizing::FILL))
-                .sense(Sense::ABSORB_POINTER)
-                .show(ui);
-            keyboard
-        });
+        // The claim records the popup layer, which is what orders it
+        // against overlays above and what stops it silencing its own body
+        // (a `TextEdit` in a popup drains the uncaptured stream and would
+        // otherwise get nothing).
+        let claim = ui.modal_layer(
+            Layer::Popup,
+            Vec2::ZERO,
+            None,
+            keyboard_owner,
+            |ui, claim| {
+                // Eater records first → paints under the body. Hit-test runs
+                // reverse-iter so the body's leaves still win inside its rect.
+                //
+                // Senses all four pointer interactions so the popup is truly
+                // modal-over-`Main`: pan-drag, scroll, and pinch over the
+                // surrounding area can't leak through to the host (e.g. a
+                // graph canvas underneath that pans on middle-drag and zooms
+                // on scroll/pinch). `Sense::CLICK` is the dismiss trigger;
+                // the other three never produce visible behavior on the
+                // eater itself — they're absorbed and discarded so the host
+                // doesn't see them.
+                Frame::new()
+                    .id(eater_id)
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .sense(Sense::ABSORB_POINTER)
+                    .show(ui);
+                claim
+            },
+        );
 
         {
             let chrome = resolve_container_chrome(
@@ -223,7 +234,7 @@ impl Popup {
                 ui.theme.panel_background.as_ref(),
                 ui.theme.panel_clip,
             );
-            let handle = PopupHandle::new(&keyboard);
+            let handle = PopupHandle::new(claim);
             ui.overlay_layer(Layer::Popup, position, |ui| {
                 widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
             });
@@ -233,13 +244,15 @@ impl Popup {
                 // A `Dismiss` popup closes on an eaten outside-press OR an Esc
                 // press — so overlay hosts (ComboBox / ContextMenu) read one
                 // `closed()` signal instead of each re-deriving Esc. (`Block`
-                // short-circuits, so it neither dismisses on nor subscribes Esc.)
-                dismissed: dismiss_mode
-                    && (eater_clicked || handle.key_pressed(ui, Shortcut::key(Key::Escape))),
+                // short-circuits, so it neither dismisses on nor watches Esc.)
+                dismissed: dismiss_mode && (eater_clicked || handle.escape_pressed(ui)),
                 close_requested: handle.requested.get(),
             };
+            // Releases both streams, so the frame after dismissal reaches
+            // `Main` intact rather than being swallowed by a popup that
+            // is already gone.
             if response.closed() {
-                keyboard.release(ui);
+                claim.release(ui);
             }
             response
         }

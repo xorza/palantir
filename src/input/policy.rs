@@ -8,7 +8,7 @@
 /// instead: pointer moves only force a record when the hover/scroll
 /// target changed or a capture is active; scroll over a non-scroll
 /// surface is dropped; a press records when it hits a sense target,
-/// changes focus, or a `BUTTONS` subscriber is live — a press on
+/// changes focus, or a `BUTTONS` watcher is live — a press on
 /// fully inert surface is observably a no-op and stays on the
 /// paint-anim path. Keys / IME route through focus and record.
 ///
