@@ -313,12 +313,12 @@ pub struct UiHarness {
 }
 
 impl UiHarness {
-    /// Mono-fallback text — fast, deterministic, wrong for
-    /// width-follows-label assertions.
+    /// `UiResources::isolated_mono` — mono-fallback text: fast,
+    /// deterministic, wrong for width-follows-label assertions.
     pub fn new(surface: UVec2) -> Self;
-    /// Real cosmic shaping. Use when anything under test sizes to text.
-    /// Metrics are not guaranteed identical across machines — assert
-    /// relations, not exact widths.
+    /// `HostShared`'s cosmic resources. Use when anything under test
+    /// sizes to text. Metrics are not guaranteed identical across
+    /// machines — assert relations, not exact widths.
     pub fn with_text(surface: UVec2) -> Self;
     /// A harness that is never framed — its `ui()` is a string-interning
     /// arena for tests that build `InternedStr`-bearing projections
@@ -553,27 +553,55 @@ unless noted:
 `release_left`, `click_at`, `secondary_click_at`, `under_outer`,
 `main_child_ids`, `main_child_rects`, `node_for_widget_id`,
 `encode_paint`, `encode_paint_for`, `damage_region`, `anim_row_count`
-— plus the gated `impl Default for Ui` in `ui/mod.rs`.
+— plus two gated `Default` impls: `Ui` in `ui/mod.rs` and
+`UiResources` in `ui/resources.rs`.
 
-`Default` is the one that is a decision rather than a move, and the
-decision is to drop it. It is a *trait* impl on a `pub` type, so it
-cannot be `pub(crate)`: under the `internals` feature `Ui::default()`
-is a public constructor for a recorder nobody outside should build,
-whatever else the kill list does. It becomes an inherent
+### The two `Default`s
+
+Both are deletions with **no replacement on `Ui`**, which is the part
+worth being precise about.
+
+`impl Default for Ui` is a trait impl on a `pub` type, so it cannot be
+`pub(crate)`: under the `internals` feature `Ui::default()` is a public
+constructor for a recorder nobody outside should build, whatever else
+the kill list does. But it is only
+
+```rust
+fn default() -> Self { Self::new(UiResources::default()) }
+```
+
+and **`Ui::new(resources)` already exists and is already
+`pub(crate)`**. So this needs no new constructor — adding a
+`Ui::headless(resources)` beside it would be `Ui::new` under another
+name. Delete the impl; the door closes by itself.
+
+That leaves `UiResources::default()` as the one actually hiding
+meaning. It reads as "the obvious resources" and is in fact a specific,
+non-obvious choice — mono-fallback shaper, memory clipboard, no texture
+cap, sharing nothing with any other recorder — which is exactly the
+information a reader needs and `Default` deletes. Name it:
 
 ```rust
 #[cfg(any(test, feature = "internals"))]
-pub(crate) fn Ui::headless(resources: UiResources) -> Self
+impl UiResources {
+    /// Recorder capabilities that share nothing: a mono-fallback
+    /// shaper (no font loading, deterministic metrics, wrong for
+    /// width-follows-label), a memory clipboard, and no texture cap.
+    /// The cosmic-shaping peer goes through `HostShared::new`, which
+    /// is also what pairs two recorders onto one text cache.
+    pub(crate) fn isolated_mono() -> Self;
+}
 ```
 
-which only `UiHarness`'s constructors call. Taking `UiResources`
-rather than defaulting them is what folds today's three constructors
-(`Default`, `for_test_text`, `Ui::new(shared.resources.clone())`) into
-one: mono vs. cosmic vs. shared becomes which `UiResources` the caller
-passes, decided in `new` / `with_text` / `from_resources`, not baked
-into three separate entry points. Nothing in production constructs a
-`Ui` this way — the `Default` impl is already
-`#[cfg(any(test, feature = "internals"))]`.
+Two call sites, and it turns `UiHarness::new` into a line that says
+what it picked. The three constructor axes then live in one place —
+`new` takes `isolated_mono`, `with_text` takes `HostShared`'s cosmic
+resources, `from_resources` takes whatever the caller already has —
+instead of being spread across `Default`, `for_test_text`, and a
+hand-rolled `Ui::new(shared.resources.clone())`.
+
+Nothing in production constructs a `Ui` either way; both impls are
+already `#[cfg(any(test, feature = "internals"))]`.
 
 **This one is not free downstream.** Darkroom has 24 `Ui::default()`
 sites, all `#[cfg(test)]`, none of which drive a frame: they want a
@@ -657,9 +685,11 @@ which means the export step lands *before* the deletion, not after.
 5. Migrate darkroom's 24 arena sites to `UiHarness::arena()`. Nothing
    else in darkroom changes; this is the compatibility step, not the
    adoption step.
-6. Swap `impl Default for Ui` for `pub(crate) fn Ui::headless`. The
-   last public constructor for a test recorder is gone, and
-   `UiHarness` is the whole frame-driving API.
+6. Delete `impl Default for Ui` — no replacement; `Ui::new` is already
+   the `pub(crate)` constructor. Swap `impl Default for UiResources`
+   for `UiResources::isolated_mono()`. The last public constructor for
+   a test recorder is gone, and `UiHarness` is the whole frame-driving
+   API.
 7. Port darkroom's dock test, then build darkroom's own
    `Editor::frame`-level harness on top. Rule 5 is the one to watch
    there: an editor-level harness accumulating intents across frames is
