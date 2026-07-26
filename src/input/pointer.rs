@@ -73,7 +73,8 @@ pub enum PointerEvent {
     },
     /// Pinch-zoom factor at `pos`. `factor` is the multiplicative
     /// delta (1.0 = no zoom). Gated on
-    /// [`PointerWake::SCROLL`](crate::input::watch::PointerWake::SCROLL).
+    /// [`PointerWake::PINCH`](crate::input::watch::PointerWake::PINCH) —
+    /// not `SCROLL`, so watching wheel ticks doesn't also wake on pinch.
     Zoom { pos: Vec2, factor: f32 },
     /// Pointer left the surface. No position — by the time this
     /// fires there isn't one. Emitted when any pointer-class

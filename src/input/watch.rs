@@ -38,9 +38,15 @@ bitflags! {
         /// crosshair, drag-anywhere overlays. Expensive in event
         /// count — opt in only when needed.
         const MOVE = 1 << 1;
-        /// Wakes on [`PointerEvent::Scroll`] / [`PointerEvent::Zoom`].
-        /// Global scroll capture (minimap, debug overlay).
+        /// Wakes on [`PointerEvent::Scroll`]. Global scroll capture
+        /// (minimap, debug overlay).
         const SCROLL = 1 << 2;
+        /// Wakes on [`PointerEvent::Zoom`]. Separate from `SCROLL` for
+        /// the same reason [`Sense::PINCH`](crate::Sense::PINCH) is
+        /// separate from `Sense::SCROLL`: a wheel tick and a touchpad
+        /// pinch are different gestures with different targets, and a
+        /// watcher that wants one rarely wants to wake on the other.
+        const PINCH = 1 << 3;
     }
 }
 

@@ -653,12 +653,15 @@ impl InputState {
         true
     }
 
-    /// SCROLL-class push ([`PointerEvent::Scroll`] / [`PointerEvent::Zoom`])
-    /// whose wake additionally requires a pointer position — scroll
-    /// with no pointer routes nowhere, so waking would be pointless.
-    fn push_scroll_class(&mut self, make: impl FnOnce(Vec2) -> PointerEvent) -> bool {
-        self.pointer_pos.is_some()
-            && self.push_pointer_event(PointerWake::SCROLL, self.pointer_pos, make)
+    /// Push for the events that route *by pointer position* — scroll and
+    /// pinch. Their wake additionally requires a pointer on the surface:
+    /// with none, they route nowhere, so waking would be pointless.
+    fn push_positioned(
+        &mut self,
+        wake: PointerWake,
+        make: impl FnOnce(Vec2) -> PointerEvent,
+    ) -> bool {
+        self.pointer_pos.is_some() && self.push_pointer_event(wake, self.pointer_pos, make)
     }
 
     /// Feed an aperture-native input event. Hit-tests against the
@@ -814,11 +817,12 @@ impl InputState {
                 if let Some(target) = target {
                     self.target_scroll_delta_mut(target).pixels += d;
                 }
-                let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
-                    pos,
-                    pixels: d,
-                    lines: Vec2::ZERO,
-                });
+                let subbed =
+                    self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
+                        pos,
+                        pixels: d,
+                        lines: Vec2::ZERO,
+                    });
                 target.is_some() || subbed
             }
             InputEvent::ScrollLines(d) => {
@@ -826,11 +830,12 @@ impl InputState {
                 if let Some(target) = target {
                     self.target_scroll_delta_mut(target).lines += d;
                 }
-                let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
-                    pos,
-                    pixels: Vec2::ZERO,
-                    lines: d,
-                });
+                let subbed =
+                    self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
+                        pos,
+                        pixels: Vec2::ZERO,
+                        lines: d,
+                    });
                 target.is_some() || subbed
             }
             InputEvent::Zoom(f) => {
@@ -839,7 +844,10 @@ impl InputState {
                     let delta = self.target_scroll_delta_mut(target);
                     delta.zoom = combine_zoom_factors(delta.zoom, f);
                 }
-                let subbed = self.push_scroll_class(|pos| PointerEvent::Zoom { pos, factor: f });
+                let subbed = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Zoom {
+                    pos,
+                    factor: f,
+                });
                 target.is_some() || subbed
             }
             InputEvent::KeyDown {
