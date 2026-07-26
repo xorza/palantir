@@ -67,6 +67,8 @@ use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod region;
 pub(crate) mod snapshot;
 

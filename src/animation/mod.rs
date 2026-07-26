@@ -10,6 +10,8 @@
 //! math; this module wires the storage.
 
 pub(crate) mod animatable;
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod easing;
 mod serde;
 mod spring;

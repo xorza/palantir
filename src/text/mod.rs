@@ -41,6 +41,8 @@ use crate::text::wrap::LineFit;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 mod cosmic;
 pub(crate) mod key;
 mod mono;

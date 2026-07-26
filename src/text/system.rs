@@ -11,7 +11,7 @@
 //!
 //! These slots are a second cache in front of the shaper's own
 //! content-keyed one, and the duplication earns its keep — measured, not
-//! assumed. `text_shape/reuse_layer/*` (`src/bench/text.rs`) replays 64
+//! assumed. `text_shape/reuse_layer/*` (`src/text/bench.rs`) replays 64
 //! steady-state runs per frame both ways: 0.92 µs through the slots
 //! against 1.24 µs (single-line) and 2.33 µs (wrapped) dispatching
 //! straight to the shaper. The wrapped gap is the large one because

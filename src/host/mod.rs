@@ -11,6 +11,8 @@
 //! `DebugOverlayConfig`) deliberately lives at the crate root, not here — the
 //! `Ui` API must not depend on the host machinery.
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod clock;
 pub(crate) mod offscreen;
 pub(crate) mod shared;

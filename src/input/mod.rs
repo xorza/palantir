@@ -1,3 +1,5 @@
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod keyboard;
 pub(crate) mod pointer;
 pub(crate) mod policy;

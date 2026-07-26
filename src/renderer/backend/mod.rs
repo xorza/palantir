@@ -1,11 +1,13 @@
-mod curve_pipeline;
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+pub(crate) mod curve_pipeline;
 mod debug_marker;
 mod dynamic_buffer;
 mod format_pipelines;
 pub(crate) mod gpu_ctx;
 mod gpu_gradient_atlas;
 mod gpu_timings;
-mod image_pipeline;
+pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_utils;

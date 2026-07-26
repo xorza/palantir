@@ -17,6 +17,8 @@
 //!
 //! [`WindowDriver`]: crate::host::window_driver::WindowDriver
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 pub(crate) mod paint_sink;

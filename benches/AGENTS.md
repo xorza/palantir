@@ -30,7 +30,7 @@ cargo bench --bench curve_pipeline --features internals # curve GPU evidence + f
 
 ### `frame` has two benchmark modes
 
-`src/bench/frame/mod.rs` owns both modes and runs the results
+`src/ui/bench.rs` owns both modes and runs the results
 finalizer last; `benches/frame.rs` contains only Criterion wiring.
 `APERTURE_BENCH_MODE` gates each mode wholesale, so **`MODE=cpu` runs zero
 GPU code** — no adapter / device request, no `write_stats` — which is the
@@ -149,10 +149,10 @@ allocator overhead.
 
 When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
 intentional aperture change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
-`src/bench/allocation/free_gpu.rs` and note the new floor in the PR.
+`src/host/bench.rs` and note the new floor in the PR.
 
 All three allocation drivers and the frame driver use the opaque
-`FrameFixture` from `src/bench/frame/fixture.rs` — one synthetic
+`FrameFixture` from `src/ui/bench_fixture.rs` — one synthetic
 UI tree (~800 nodes, ~500 text shapes at `NODE_SCALE = 32`)
 exercising every layout driver, widget, `Shape`, and `Brush` variant
 plus the popup/tooltip layers. The `frame_visual` example drives the same
@@ -642,7 +642,7 @@ sibling re-walk, not microarchitecture tuning.)
   events per run, no multiplexing. Useful for validating SoA/cache
   hypotheses; not scripted.
 - **Allocations** (catch steady-state allocs that violate
-  alloc-free-per-frame): `alloc_free.rs` bench (assertion mode) or
+  alloc-free-per-frame): the `alloc_free` bench (assertion mode) or
   `DHAT_DUMP=1` for per-call-site attribution. Samply/perf only show
   CPU time inside the allocator, not allocation counts.
 - **GPU work** (wgpu encoder/queue timings): `scripts/profile-metal.sh`
@@ -665,9 +665,9 @@ thermal — re-run on power, lid open, with other apps closed.
 
 1. Drop a file under `benches/`, register it in `Cargo.toml`'s
    `[[bench]]` table.
-2. Put the benchmark driver in the corresponding mirrored folder under
-   `src/bench/` and expose only its entry function through the root `bench`
-   facade behind `internals`.
+2. Put the benchmark driver in a `bench.rs` beside the code it measures
+   and expose only its entry function through the root `bench`
+   facade (`src/bench.rs`) behind `internals`.
    Add `required-features = ["internals"]` to the `[[bench]]` entry and profile
    with `FEATURES=internals scripts/profile-bench.sh`; external benchmark
    targets never reach through private module paths.

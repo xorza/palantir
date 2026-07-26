@@ -31,6 +31,8 @@ use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 mod higher_kind;
 mod occlusion;
 // `pub(crate)` only so the `text_grid` benchmark can reach the gated

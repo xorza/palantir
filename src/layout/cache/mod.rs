@@ -3,6 +3,9 @@
 //! current layout is materialized once in pre-order. Each node, grid
 //! hug value, and shaped text run is therefore retained exactly once.
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 use crate::common::content_hash::ContentHash;
 use crate::layout::ShapedText;
 use crate::layout::grid::GridHugStore;

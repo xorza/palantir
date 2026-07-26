@@ -1,4 +1,3 @@
-use crate::bench::frame::fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::display::Display;
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
@@ -6,6 +5,7 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::{Cascades, CascadesEngine, EntryRow, HitRow};
 use crate::ui::Ui;
+use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
