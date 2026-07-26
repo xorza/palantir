@@ -28,6 +28,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::node::Configure;
 use crate::ui::Ui;
+use crate::ui::resources::UiResources;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -38,7 +39,7 @@ use glam::{UVec2, Vec2};
 use std::hint::black_box;
 use std::time::Duration;
 
-// Constructs via `Ui::default()` (mono-fallback shaper, self-contained).
+// Constructs via `Ui::new` over isolated mono resources.
 const SIZE: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 const OVERLAP_LAYERS: usize = 64;
@@ -127,7 +128,7 @@ fn build_ui(ui: &mut Ui) {
 }
 
 fn warmed_ui() -> Ui {
-    let mut ui = Ui::default();
+    let mut ui = Ui::new(UiResources::isolated_mono());
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.

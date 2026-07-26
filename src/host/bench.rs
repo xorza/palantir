@@ -20,6 +20,7 @@ use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::ui::Ui;
 use crate::ui::bench_fixture::FrameFixture;
+use crate::ui::resources::UiResources;
 use crate::window::WindowToken;
 use glam::UVec2;
 use pollster::FutureExt;
@@ -71,9 +72,9 @@ pub fn alloc_free() {
     let _profiler = profiler();
 
     let display = Display::from_physical(PHYSICAL, SCALE);
-    // `Ui::default()` (mono-fallback shaper, self-contained); warmed
+    // `Ui::new` over isolated mono resources; warmed
     // manually below via `WARMUP_FRAMES` before measuring.
-    let mut ui = Ui::default();
+    let mut ui = Ui::new(UiResources::isolated_mono());
     let mut state = FrameFixture::default();
 
     for _ in 0..WARMUP_FRAMES {
@@ -322,7 +323,7 @@ fn continuous_size(frame: usize) -> UVec2 {
 /// it doesn't assert. Use the output to find which call sites are
 /// still allocating after warmup.
 ///
-/// Uses `Ui::for_test_text()` (real cosmic-text), NOT `Ui::default()`
+/// Uses `Ui::for_test_text()` (real cosmic-text), NOT the mono resources
 /// (mono fallback): the fallback emits a constant paint count across
 /// sizes, so the damage `PaintSnapArena` reuses its slots in place
 /// and the bench reports a misleading 0 blocks/frame. Real shaping

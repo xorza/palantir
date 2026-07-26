@@ -109,6 +109,7 @@ pub(crate) mod window;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    pub use crate::ui::harness::UiHarness;
 }
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by

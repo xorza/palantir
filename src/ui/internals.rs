@@ -6,6 +6,7 @@ use crate::scene::damage::region::DamageRegion;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame::{FrameInput, FrameStamp};
+use crate::ui::resources::UiResources;
 use crate::{Display, FrameReport, WindowToken};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -51,7 +52,7 @@ impl Ui {
     }
 
     pub(crate) fn for_test() -> Self {
-        let mut ui = Self::default();
+        let mut ui = Self::new(UiResources::isolated_mono());
         mark_warm(&mut ui);
         ui
     }
@@ -71,7 +72,7 @@ impl Ui {
         let display = Display::from_physical(size, 1.0);
         let mut ui = Self {
             display,
-            ..Self::default()
+            ..Self::new(UiResources::isolated_mono())
         };
         ui.frame_runtime.prev_stamp = Some(FrameStamp::new(display, Duration::ZERO));
         ui

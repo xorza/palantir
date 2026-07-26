@@ -20,30 +20,17 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
-use palantir::{Display, FrameReport, Ui};
-use std::time::Duration;
+use palantir::Ui;
+use palantir::internals::UiHarness;
 
-/// Mono-fallback `Ui` for the alloc audits — `Ui::default` is the
-/// self-contained constructor (mono shaper + private arena + fresh
-/// caches), exactly what these GPU-less tests want.
-pub(crate) fn new_ui() -> Ui {
-    Ui::default()
-}
+/// Logical display every audit runs at — `UiHarness`'s own defaults
+/// (scale 1.0, pixel-snapped, no refresh rate) at 800×600.
+const SURFACE: glam::UVec2 = glam::UVec2::new(800, 600);
 
-const DISPLAY: Display = Display {
-    physical: glam::UVec2::new(800, 600),
-    scale_factor: 1.0,
-    pixel_snap: true,
-    refresh_millihertz: None,
-};
-
-pub(crate) fn record(
-    ui: &mut Ui,
-    display: Display,
-    time: Duration,
-    record: impl FnMut(&mut Ui),
-) -> FrameReport {
-    ui.record_test_frame(display, time, record)
+/// Mono-fallback harness for the alloc audits: private arena, fresh
+/// caches, no font loading — exactly what these GPU-less tests want.
+pub(crate) fn new_ui() -> UiHarness {
+    UiHarness::new(SURFACE)
 }
 
 /// Run `scene` for `warmup` frames untracked, then audit each of
@@ -93,11 +80,10 @@ pub(crate) fn audit_text_steady_state<S>(name: &str, max_allocs: u64, mut scene:
 where
     S: FnMut(&mut Ui),
 {
-    let ui = Ui::for_test_text();
-    audit_steady_state_with_ui(name, max_allocs, ui, &mut scene);
+    audit_steady_state_with_ui(name, max_allocs, UiHarness::with_text(SURFACE), &mut scene);
 }
 
-fn audit_steady_state_with_ui<S>(name: &str, max_allocs: u64, mut ui: Ui, scene: &mut S)
+fn audit_steady_state_with_ui<S>(name: &str, max_allocs: u64, mut ui: UiHarness, scene: &mut S)
 where
     S: FnMut(&mut Ui),
 {
@@ -131,8 +117,8 @@ where
 }
 
 #[inline]
-fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, scene: &mut S) {
-    let _ = record(ui, DISPLAY, Duration::ZERO, scene);
+fn run_frame<S: FnMut(&mut Ui)>(ui: &mut UiHarness, scene: &mut S) {
+    let _ = ui.frame(scene);
 }
 
 fn fail_audit(
