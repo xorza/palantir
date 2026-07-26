@@ -45,6 +45,13 @@
 //! is captured automatically. `PALANTIR_BENCH_MACHINE` overrides the
 //! filename derived from `hostname -s`.
 //!
+//! `PALANTIR_BENCH_SIZE=<w>x<h>` and `PALANTIR_BENCH_SCALE=<dpr>` override
+//! the surface every arm renders into (the resize pool rescales with it),
+//! so the same fixture can be measured at a real display size without
+//! editing this file. A surface smaller than the default culls the
+//! off-screen part of the fixture: the CPU arms still record, measure and
+//! arrange the whole tree, but only the visible part is painted.
+//!
 //! The shared workload lives in [`crate::ui::bench_fixture`] and also drives
 //! the allocation benches in [`crate::host::bench`] and
 //! `examples/frame_visual.rs`.
@@ -87,6 +94,36 @@ const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(3520, 5800),
     glam::UVec2::new(4160, 6200),
 ];
+
+fn bench_scale() -> f32 {
+    std::env::var("PALANTIR_BENCH_SCALE")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(SCALE)
+}
+
+fn cached_size() -> glam::UVec2 {
+    let Ok(raw) = std::env::var("PALANTIR_BENCH_SIZE") else {
+        return CACHED_SIZE;
+    };
+    let (w, h) = raw
+        .trim()
+        .split_once(['x', 'X'])
+        .expect("PALANTIR_BENCH_SIZE=<width>x<height>");
+    glam::UVec2::new(
+        w.trim().parse().expect("width"),
+        h.trim().parse().expect("height"),
+    )
+}
+
+fn resize_pool() -> Vec<glam::UVec2> {
+    let base = cached_size();
+    let ratio = base.as_vec2() / CACHED_SIZE.as_vec2();
+    RESIZE_POOL
+        .iter()
+        .map(|s| (s.as_vec2() * ratio).round().as_uvec2())
+        .collect()
+}
 
 /// Block until the GPU has drained all submitted work. The `_gpu` arms
 /// call this between iters so wall time covers the full CPU + GPU frame.
@@ -267,7 +304,7 @@ where
 
 fn cpu_cached(c: &mut Criterion) {
     run_cpu_arm(c, "frame/cached_cpu", |h, state| {
-        h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
+        h.frame(Display::from_physical(cached_size(), bench_scale()), |ui| {
             build_ui(state, BENCH_SCALE, ui)
         });
     });
@@ -280,7 +317,7 @@ fn cpu_partial(c: &mut Criterion) {
         // resizing arms — so every arm sets up this frame's input then
         // records it, rather than relying on the prior iter's leftover.
         state.tick = state.tick.wrapping_add(1);
-        h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
+        h.frame(Display::from_physical(cached_size(), bench_scale()), |ui| {
             build_ui(state, BENCH_SCALE, ui)
         });
     });
@@ -292,7 +329,7 @@ fn cpu_scrolling(c: &mut Criterion) {
         // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
+        h.frame(Display::from_physical(cached_size(), bench_scale()), |ui| {
             build_ui(state, BENCH_SCALE, ui)
         });
     });
@@ -300,10 +337,11 @@ fn cpu_scrolling(c: &mut Criterion) {
 
 fn cpu_resizing(c: &mut Criterion) {
     let mut idx = 0usize;
+    let pool = resize_pool();
     run_cpu_arm(c, "frame/resizing_cpu", move |h, state| {
-        let size = RESIZE_POOL[idx % RESIZE_POOL.len()];
+        let size = pool[idx % pool.len()];
         idx = idx.wrapping_add(1);
-        h.frame(Display::from_physical(size, SCALE), |ui| {
+        h.frame(Display::from_physical(size, bench_scale()), |ui| {
             build_ui(state, BENCH_SCALE, ui)
         });
     });
@@ -317,7 +355,7 @@ fn cpu_resizing(c: &mut Criterion) {
 fn assert_partial_invariant() {
     let mut h = CpuHarness::new();
     let mut state = FrameFixture::default();
-    let display = Display::from_physical(CACHED_SIZE, SCALE);
+    let display = Display::from_physical(cached_size(), bench_scale());
     for _ in 0..2 {
         h.frame(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
@@ -356,37 +394,47 @@ where
 }
 
 fn gpu_cached(c: &mut Criterion) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.cached");
+    let target = make_target(&gpu().device, cached_size(), "palantir.frame_bench.cached");
     run_gpu_arm(c, "frame/cached_gpu", |host, state, device| {
-        frame_offscreen(host, &target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, bench_scale(), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
         gpu_wait(device);
         black_box(&target);
     });
 }
 
 fn gpu_partial(c: &mut Criterion) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.partial");
+    let target = make_target(&gpu().device, cached_size(), "palantir.frame_bench.partial");
     run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
         state.tick = state.tick.wrapping_add(1);
-        frame_offscreen(host, &target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, bench_scale(), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
         gpu_wait(device);
         black_box(&target);
     });
 }
 
 fn gpu_scrolling(c: &mut Criterion) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.scrolling");
+    let target = make_target(
+        &gpu().device,
+        cached_size(),
+        "palantir.frame_bench.scrolling",
+    );
     run_gpu_arm(c, "frame/scrolling_gpu", |host, state, device| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        frame_offscreen(host, &target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, bench_scale(), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
         gpu_wait(device);
         black_box(&target);
     });
 }
 
 fn gpu_resizing(c: &mut Criterion) {
-    let targets: Vec<wgpu::Texture> = RESIZE_POOL
+    let targets: Vec<wgpu::Texture> = resize_pool()
         .iter()
         .enumerate()
         .map(|(i, s)| {
@@ -401,7 +449,9 @@ fn gpu_resizing(c: &mut Criterion) {
     run_gpu_arm(c, "frame/resizing_gpu", move |host, state, device| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
-        frame_offscreen(host, t, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, t, bench_scale(), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
         gpu_wait(device);
         black_box(t);
     });
@@ -430,7 +480,7 @@ fn report_write_stats() {
             mutate(&mut state, frame);
             let _ = write_stats::take();
             let target = &targets[frame % targets.len()];
-            frame_offscreen(&mut host, target, SCALE, |ui| {
+            frame_offscreen(&mut host, target, bench_scale(), |ui| {
                 build_ui(&mut state, BENCH_SCALE, ui)
             });
             gpu_wait(&g.device);
@@ -476,22 +526,26 @@ fn report_write_stats() {
     }
 
     let g = gpu();
-    let cached = [make_target(&g.device, CACHED_SIZE, "write_stats.cached")];
+    let cached = [make_target(&g.device, cached_size(), "write_stats.cached")];
     run("cached", &cached, |_, _| {});
 
-    let partial = [make_target(&g.device, CACHED_SIZE, "write_stats.partial")];
+    let partial = [make_target(&g.device, cached_size(), "write_stats.partial")];
     run("partial", &partial, |state, _| {
         state.tick = state.tick.wrapping_add(1);
     });
 
-    let pool: Vec<wgpu::Texture> = RESIZE_POOL
+    let pool: Vec<wgpu::Texture> = resize_pool()
         .iter()
         .enumerate()
         .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
         .collect();
     run("resizing", &pool, |_, _| {});
 
-    let scrolling = [make_target(&g.device, CACHED_SIZE, "write_stats.scrolling")];
+    let scrolling = [make_target(
+        &g.device,
+        cached_size(),
+        "write_stats.scrolling",
+    )];
     run("scrolling", &scrolling, |state, _| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
