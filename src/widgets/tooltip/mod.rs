@@ -32,7 +32,7 @@ struct TooltipGlobal {
 }
 
 static GLOBAL_STATE_ID: LazyLock<WidgetId> =
-    LazyLock::new(|| WidgetId::from_hash("aperture.tooltip.global"));
+    LazyLock::new(|| WidgetId::from_hash("palantir.tooltip.global"));
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested

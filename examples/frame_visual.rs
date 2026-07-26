@@ -5,7 +5,7 @@
 //
 // Run with `cargo run --example frame_visual --release`.
 
-use aperture::{
+use palantir::{
     App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost, WinitHostError,
     bench::FrameFixture,
 };
@@ -30,7 +30,7 @@ impl App for FrameVisual {
 }
 
 fn main() -> Result<(), WinitHostError> {
-    let window = WindowConfig::new("aperture — frame bench (visual)")
+    let window = WindowConfig::new("palantir — frame bench (visual)")
         .inner_size(UVec2::new(1280, 800))
         .min_inner_size(UVec2::new(640, 480));
     WinitHost::builder(WindowToken(0))

@@ -7,7 +7,7 @@
 
 use crate::support;
 use crate::support::section;
-use aperture::{
+use palantir::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, TextWrap,
     Track, Ui,
 };

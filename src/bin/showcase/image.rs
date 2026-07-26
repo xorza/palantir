@@ -5,7 +5,7 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use aperture::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
+use palantir::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
 use glam::Vec2;
 use std::cell::RefCell;
 

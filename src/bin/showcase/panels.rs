@@ -6,7 +6,7 @@
 
 use crate::support;
 use crate::support::{demo_cell, on_swatch_text, section, swatch_bg};
-use aperture::{
+use palantir::{
     Background, Color, Configure, Corners, Frame, Grid, Justify, Panel, Sizing, Stroke, Text,
     TextStyle, Track, Ui,
 };

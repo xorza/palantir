@@ -9,7 +9,7 @@
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, swatch_bg};
-use aperture::{
+use palantir::{
     Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, TranslateScale, Ui,
 };
 use glam::Vec2;

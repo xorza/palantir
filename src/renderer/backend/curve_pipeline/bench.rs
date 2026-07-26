@@ -86,7 +86,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.curve_pipeline_bench.device"),
+                label: Some("palantir.curve_pipeline_bench.device"),
                 required_features: timing_features | wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -106,7 +106,7 @@ fn gpu() -> &'static Gpu {
 
 fn target(device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.curve_pipeline_bench.target"),
+        label: Some("palantir.curve_pipeline_bench.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,

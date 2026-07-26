@@ -6,7 +6,7 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use aperture::{
+use palantir::{
     Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
     Panel, RadialGradient, Sizing, Spread, Stop, Ui,
 };

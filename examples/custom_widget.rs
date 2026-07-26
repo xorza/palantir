@@ -1,4 +1,4 @@
-//! Authoring a **custom widget** from aperture's public API.
+//! Authoring a **custom widget** from palantir's public API.
 //!
 //! `Stepper` — `[ − ]  value  [ + ]` over a `&mut i32` — is built without
 //! touching any crate internals. It exercises the full widget-authoring
@@ -16,7 +16,7 @@
 //!
 //! Run with: `cargo run --example custom_widget`
 
-use aperture::{
+use palantir::{
     Align, App, Background, Color, Configure, ConfigureNode, Corners, HostHandle, LineCap,
     LineJoin, Node, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing,
     Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost, WinitHostError,

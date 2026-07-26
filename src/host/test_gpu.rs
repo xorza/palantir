@@ -26,7 +26,7 @@ impl ProcessGpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.headless_test.device"),
+                label: Some("palantir.headless_test.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -66,7 +66,7 @@ impl Drop for HeadlessTestGpuLease {
 /// Lease the one GPU owned by this process.
 ///
 /// Initialization takes an interprocess OS lock that remains held until the
-/// test process exits, preventing another Aperture test binary from entering
+/// test process exits, preventing another Palantir test binary from entering
 /// its GPU section concurrently.
 pub fn headless_test_gpu() -> HeadlessTestGpuLease {
     static GPU: OnceLock<ProcessGpu> = OnceLock::new();
@@ -80,15 +80,15 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
 
 fn lock_gpu_process() -> File {
     let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp");
-    std::fs::create_dir_all(&scratch).expect("create Aperture scratch directory");
+    std::fs::create_dir_all(&scratch).expect("create Palantir scratch directory");
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
         .open(scratch.join("gpu-test.lock"))
-        .expect("open Aperture GPU test lock");
-    file.lock().expect("lock Aperture GPU test process");
+        .expect("open Palantir GPU test lock");
+    file.lock().expect("lock Palantir GPU test process");
     file
 }
 

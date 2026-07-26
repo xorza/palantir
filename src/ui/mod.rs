@@ -447,7 +447,7 @@ impl Ui {
 /// (`frame` + its private record/cascade/finalize passes), which user
 /// code never calls directly.
 impl Ui {
-    /// Feed an aperture-native input event. Returns an [`InputDelta`]
+    /// Feed an palantir-native input event. Returns an [`InputDelta`]
     /// the host reads to decide whether to request a redraw — pointer
     /// moves over inert surfaces leave `requests_repaint` false so the
     /// host can skip the frame entirely. Animation/tooltip-delay wakes
@@ -531,7 +531,7 @@ impl Ui {
     /// stateful logic, iterate directly instead.
     ///
     /// Side-effect: auto-watches the chord for wake-up. Without
-    /// this, aperture's keyboard wake-gate parks off-focus presses until the
+    /// this, palantir's keyboard wake-gate parks off-focus presses until the
     /// next unrelated frame, and the caller sees the event one gesture late.
     /// Pair with the call-it-every-frame discipline that the
     /// watch system already requires.
@@ -585,7 +585,7 @@ impl Ui {
     /// awake.
     pub fn request_repaint(&mut self) {
         tracing::trace!(
-            target: "aperture.repaint",
+            target: "palantir.repaint",
             frame = self.frame_runtime.frame_id,
             "request_repaint",
         );
@@ -602,7 +602,7 @@ impl Ui {
     /// briefly, and the queue drains.
     pub fn request_repaint_after(&mut self, after: Duration) {
         tracing::trace!(
-            target: "aperture.repaint",
+            target: "palantir.repaint",
             ?after,
             frame = self.frame_runtime.frame_id,
             "request_repaint_after",

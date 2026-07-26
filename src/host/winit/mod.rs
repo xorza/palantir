@@ -38,7 +38,7 @@
 //!
 //! ```ignore
 //! struct MyApp;
-//! impl aperture::App for MyApp {
+//! impl palantir::App for MyApp {
 //!     fn record(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
 //! }
 //! WinitHost::builder(WindowToken(0))
@@ -116,7 +116,7 @@ impl<T: 'static> std::fmt::Debug for HostPhase<T> {
     }
 }
 
-/// Top-level winit-driven aperture runtime. Owns the caller-supplied app
+/// Top-level winit-driven palantir runtime. Owns the caller-supplied app
 /// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls its
 /// update/record lifecycle once per redraw, per window. `HostPhase` makes
 /// bootstrap and running ownership mutually exclusive.

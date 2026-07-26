@@ -155,7 +155,7 @@ struct PressRun {
     seq: u8,
 }
 
-/// Aperture-native input event. Independent of any windowing toolkit.
+/// Palantir-native input event. Independent of any windowing toolkit.
 /// All coordinates are in **logical pixels** (DIPs). Backends are responsible
 /// for any physical→logical conversion before dispatching.
 #[derive(Clone, Copy, Debug)]
@@ -629,7 +629,7 @@ impl InputState {
         self.pointer_pos.is_some() && self.push_pointer_event(wake, self.pointer_pos, make)
     }
 
-    /// Feed an aperture-native input event. Hit-tests against the
+    /// Feed an palantir-native input event. Hit-tests against the
     /// frozen `Cascades` from this frame's most recent run. Returns an
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active

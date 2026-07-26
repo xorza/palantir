@@ -1,4 +1,4 @@
-//! Aperture-native vocabulary for the render side of the shaper: the wgpu
+//! Palantir-native vocabulary for the render side of the shaper: the wgpu
 //! text backend drives `CosmicMeasure` through these glyph placements
 //! ([`PlacedGlyph`]) and bitmaps ([`GlyphImage`]), so cosmic types
 //! (`Buffer`, `FontSystem`, `SwashCache`) never cross out of `src/text/`.

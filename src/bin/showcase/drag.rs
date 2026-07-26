@@ -1,5 +1,5 @@
 use crate::support;
-use aperture::{
+use palantir::{
     Background, Color, Configure, Corners, Frame, Panel, Sense, Sizing, Stroke, Ui, WidgetId,
 };
 use glam::Vec2;

@@ -14,7 +14,7 @@
 //! The render side never sees cosmic types: `TextShaper::render_session`
 //! lends a `RefMut<CosmicMeasure>` whose
 //! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`]
-//! translate shaped buffers into aperture-native placements and bitmaps;
+//! translate shaped buffers into palantir-native placements and bitmaps;
 //! `text/mod.rs` documents why there's no `TextMeasure` trait.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
@@ -72,7 +72,7 @@ fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
     }
 }
 
-/// Map an Aperture [`HAlign`] to cosmic-text's per-line align.
+/// Map an Palantir [`HAlign`] to cosmic-text's per-line align.
 /// `Auto`/`Stretch` map to `None` — cosmic falls back to its
 /// left-or-rtl-aware default, identical bit-for-bit to the legacy
 /// "no per-line align" path. `Left`/`Center`/`Right` translate
@@ -185,7 +185,7 @@ impl CosmicMeasure {
         self.cache.get(&key).map(|e| &e.buffer)
     }
 
-    /// Resolve `request` to aperture-native glyph placements for the
+    /// Resolve `request` to palantir-native glyph placements for the
     /// renderer. Restores the shaped buffer if evicted (truncated runs
     /// restore their unbounded probe internally), walks its layout runs,
     /// y-culls whole lines against `placement.bounds`, and rewrites

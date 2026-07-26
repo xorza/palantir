@@ -73,7 +73,7 @@ tests/visual/
   offscreen `Rgba8UnormSrgb` texture. `Harness::new()` leases the
   process-static headless device + queue and a per-thread `COSMIC`
   `TextShaper` (fonts load once per worker thread). An interprocess OS lock
-  allows only one Aperture test binary into its GPU section; lease release
+  allows only one Palantir test binary into its GPU section; lease release
   waits for submitted work after each harness drops its render resources.
   `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`.
   Helpers: `render_after_settle(N, …)` for fixtures that need warmup frames

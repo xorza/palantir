@@ -5,7 +5,7 @@
 
 use crate::support;
 use crate::support::{panel_bg, section, swatch_bg};
-use aperture::{
+use palantir::{
     Align, Color, Configure, Frame, HAlign, Justify, Panel, Sizing, Ui, VAlign, Visibility,
 };
 use std::hash::Hash;

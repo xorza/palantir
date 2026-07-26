@@ -26,9 +26,9 @@ impl ImageTextures {
     pub(super) fn new(device: &wgpu::Device) -> Self {
         Self {
             bindings: FxHashMap::default(),
-            bgl: texture_sampler_bgl(device, "aperture.image.tex.bgl"),
+            bgl: texture_sampler_bgl(device, "palantir.image.tex.bgl"),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("aperture.image.sampler"),
+                label: Some("palantir.image.sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -86,8 +86,8 @@ fn upload(
         height: image.size.y,
         depth_or_array_layers: 1,
     };
-    let texture_label = format!("aperture.image.tex.{raw_id:016x}");
-    let bind_group_label = format!("aperture.image.tex.bg.{raw_id:016x}");
+    let texture_label = format!("palantir.image.tex.{raw_id:016x}");
+    let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(&texture_label),
         size,

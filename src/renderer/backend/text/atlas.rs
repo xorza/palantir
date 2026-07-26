@@ -311,7 +311,7 @@ impl GlyphAtlas {
         for side in &mut self.sides {
             if let Some(pg) = side.pending_grow.take() {
                 if !any_grow {
-                    debug_marker::push_encoder(ctx.encoder, "aperture text atlas grow blit");
+                    debug_marker::push_encoder(ctx.encoder, "palantir text atlas grow blit");
                     any_grow = true;
                 }
                 ctx.encoder.copy_texture_to_texture(
@@ -337,7 +337,7 @@ impl GlyphAtlas {
         if bytes > current_cap {
             let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
             self.staging_buf = Some(ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("aperture text atlas staging"),
+                label: Some("palantir text atlas staging"),
                 size: new_cap,
                 usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -346,7 +346,7 @@ impl GlyphAtlas {
         let buf = self.staging_buf.as_ref().unwrap();
         ctx.write(buf, 0, &self.pending_staging[..self.pending_staging_used]);
 
-        debug_marker::push_encoder(ctx.encoder, "aperture text atlas batch upload");
+        debug_marker::push_encoder(ctx.encoder, "palantir text atlas batch upload");
         for c in &self.pending_copies {
             let side = &self.sides[c.side as usize];
             ctx.encoder.copy_buffer_to_texture(

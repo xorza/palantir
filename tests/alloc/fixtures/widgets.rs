@@ -1,5 +1,5 @@
 use crate::harness::{audit_steady_state, audit_text_steady_state};
-use aperture::{
+use palantir::{
     Background, Button, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Panel, Scroll,
     Shortcut, Sizing, Splitter, Text, TextEdit, Track, Ui, Vec2, WidgetId,
 };

@@ -1,7 +1,7 @@
 use crate::primitives::approx::canon_bits;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
-use aperture_anim_derive::Animatable;
+use palantir_anim_derive::Animatable;
 
 /// Solid stroke paint.
 #[derive(

@@ -171,7 +171,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.text_atlas.device"),
+                label: Some("palantir.text_atlas.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -189,7 +189,7 @@ fn gpu() -> &'static Gpu {
 
 fn make_target(device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.text_atlas.target"),
+        label: Some("palantir.text_atlas.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,
@@ -336,7 +336,7 @@ fn run_batches(
     let mut encoder = g
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("aperture.text_atlas.encoder"),
+            label: Some("palantir.text_atlas.encoder"),
         });
     {
         let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
@@ -355,7 +355,7 @@ fn run_batches(
     }
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("aperture.text_atlas.pass"),
+            label: Some("palantir.text_atlas.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target_view,
                 depth_slice: None,
@@ -468,7 +468,7 @@ pub fn bench(c: &mut Criterion) {
                 let mut encoder =
                     g.device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("aperture.text_atlas.cpu_prepare"),
+                            label: Some("palantir.text_atlas.cpu_prepare"),
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
@@ -665,7 +665,7 @@ pub fn bench(c: &mut Criterion) {
                 let mut encoder =
                     g.device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("aperture.text_atlas.stable_keys_cpu"),
+                            label: Some("palantir.text_atlas.stable_keys_cpu"),
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
@@ -709,7 +709,7 @@ pub fn bench(c: &mut Criterion) {
                 let mut encoder =
                     g.device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("aperture.text_atlas.churn_cpu"),
+                            label: Some("palantir.text_atlas.churn_cpu"),
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);

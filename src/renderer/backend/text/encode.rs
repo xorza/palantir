@@ -43,7 +43,7 @@ use crate::renderer::backend::text::{ContentType, GlyphInstance};
 ///
 /// `area_color` is in the key because the run's colour is baked into
 /// every cached [`GlyphInstance::color`] at insert time. **This is only
-/// sufficient because aperture shapes every run with one uniform
+/// sufficient because palantir shapes every run with one uniform
 /// colour** — `attrs_for` (`cosmic.rs`) sets no per-span colour, so
 /// cosmic never emits a per-glyph `color_opt`. If per-span colours are
 /// ever added, fold a colour-span fingerprint into this key *first*, or

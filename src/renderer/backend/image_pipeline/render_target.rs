@@ -47,7 +47,7 @@ impl GpuViewTargets {
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
                 profiling::scope!("GpuView::init");
-                debug_marker::push_encoder(ctx.encoder, "aperture.gpu_view.init");
+                debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
                 paint.init(&GpuInitCtx {
                     device: ctx.device,
                     target_format: TARGET_FORMAT,
@@ -59,7 +59,7 @@ impl GpuViewTargets {
                 .last_paint
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
             profiling::scope!("GpuView::paint");
-            debug_marker::push_encoder(ctx.encoder, "aperture.gpu_view.paint");
+            debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
                 device: ctx.device,
                 queue: ctx.queue,
@@ -155,7 +155,7 @@ struct AllocatedTarget {
 
 fn allocate(device: &wgpu::Device, textures: &ImageTextures, size: UVec2) -> AllocatedTarget {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.gpu_view.target"),
+        label: Some("palantir.gpu_view.target"),
         size: wgpu::Extent3d {
             width: size.x,
             height: size.y,
@@ -169,7 +169,7 @@ fn allocate(device: &wgpu::Device, textures: &ImageTextures, size: UVec2) -> All
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let bind_group = textures.bind_group(device, &view, "aperture.gpu_view.tex.bg");
+    let bind_group = textures.bind_group(device, &view, "palantir.gpu_view.tex.bg");
     AllocatedTarget { view, bind_group }
 }
 

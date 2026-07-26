@@ -50,9 +50,9 @@ pub enum WinitHostError {
     RequestAdapter { source: wgpu::RequestAdapterError },
     /// The selected adapter could not create the logical device.
     RequestDevice { source: wgpu::RequestDeviceError },
-    /// Aperture was compiled without a wgpu backend for the current target.
+    /// Palantir was compiled without a wgpu backend for the current target.
     NoGpuBackend,
-    /// The selected adapter lacks a feature required by Aperture.
+    /// The selected adapter lacks a feature required by Palantir.
     MissingAdapterFeatures {
         required: wgpu::Features,
         supported: wgpu::Features,
@@ -65,9 +65,9 @@ pub enum WinitHostError {
     },
     /// The selected adapter cannot present to this window's surface.
     IncompatibleSurface,
-    /// The surface cannot satisfy Aperture's linear-to-sRGB output contract.
+    /// The surface cannot satisfy Palantir's linear-to-sRGB output contract.
     MissingSrgbSurface,
-    /// The surface lacks texture usages required by Aperture's compositor.
+    /// The surface lacks texture usages required by Palantir's compositor.
     MissingSurfaceUsages {
         required: wgpu::TextureUsages,
         supported: wgpu::TextureUsages,
@@ -92,7 +92,7 @@ impl Display for WinitHostError {
                 write!(f, "failed to create the graphics device: {source}")
             }
             Self::NoGpuBackend => {
-                f.write_str("Aperture was compiled without a GPU backend for this target")
+                f.write_str("Palantir was compiled without a GPU backend for this target")
             }
             Self::MissingAdapterFeatures {
                 required,
@@ -108,7 +108,7 @@ impl Display for WinitHostError {
                 supported,
             } => write!(
                 f,
-                "graphics adapter limit {name} is {supported}, but Aperture requires {required}"
+                "graphics adapter limit {name} is {supported}, but Palantir requires {required}"
             ),
             Self::IncompatibleSurface => {
                 f.write_str("graphics adapter cannot present to the window surface")
@@ -170,7 +170,7 @@ mod tests {
         };
         assert_eq!(
             capability.to_string(),
-            "graphics adapter limit max_immediate_size is 8, but Aperture requires 16"
+            "graphics adapter limit max_immediate_size is 8, but Palantir requires 16"
         );
         assert!(capability.source().is_none());
     }

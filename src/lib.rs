@@ -1,9 +1,9 @@
-// Re-import `aperture` as a self-alias so proc-macros that emit
-// `::aperture::Animatable` paths (from `aperture-anim-derive`) resolve
+// Re-import `palantir` as a self-alias so proc-macros that emit
+// `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,
 // `Background`). Outside the crate this path resolves naturally.
 
-extern crate self as aperture;
+extern crate self as palantir;
 
 pub(crate) mod animation;
 pub(crate) mod app;
@@ -51,9 +51,9 @@ pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};
 pub use app::App;
 // Same-name re-export: the derive lives in the macro namespace,
-// the trait in the type namespace — `use aperture::Animatable;` pulls
+// the trait in the type namespace — `use palantir::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
-pub use aperture_anim_derive::Animatable;
+pub use palantir_anim_derive::Animatable;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
@@ -103,7 +103,7 @@ pub use primitives::spacing::{Spacing, Sums};
 pub use scene::layer::Layer;
 pub use scene::node::{Configure, ConfigureNode, Node};
 pub use scene::visibility::Visibility;
-// Re-exported (not an aperture type) because it's the canonical integer
+// Re-exported (not an palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
 // (`.x` = width, `.y` = height). Saves consumers a direct `glam` dep.

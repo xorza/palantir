@@ -9,7 +9,7 @@ use crate::primitives::{approx, half_simd::F16x4};
     Default,
     bytemuck::Pod,
     bytemuck::Zeroable,
-    aperture_anim_derive::Animatable,
+    palantir_anim_derive::Animatable,
 )]
 pub struct Color {
     pub r: f32,

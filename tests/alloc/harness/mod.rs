@@ -20,7 +20,7 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
-use aperture::{Display, FrameReport, Ui};
+use palantir::{Display, FrameReport, Ui};
 use std::time::Duration;
 
 /// Mono-fallback `Ui` for the alloc audits — `Ui::default` is the
@@ -151,7 +151,7 @@ fn fail_audit(
     for (i, bt) in result.traces.iter_mut().enumerate() {
         eprintln!("--- alloc #{i} backtrace ---\n{}", format::user_frames(bt));
     }
-    eprintln!("(set APERTURE_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)");
+    eprintln!("(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)");
     panic!(
         "alloc budget exceeded for `{name}` on frame {frame_idx} \
          (budget {max_allocs}/frame, got {})",

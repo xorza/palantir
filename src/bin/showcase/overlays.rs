@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::support;
 use crate::support::{row, section, surface_bg};
-use aperture::{
+use palantir::{
     Align, Button, Configure, ContextMenu, Frame, Justify, Key, MenuItem, Mods, Panel, Popup, Rect,
     ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,
 };

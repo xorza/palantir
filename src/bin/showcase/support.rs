@@ -8,7 +8,7 @@
 //! `A`–`D` palette — picked from the Ayu syntax-color block so they
 //! harmonize with the default theme.
 
-use aperture::{
+use palantir::{
     Background, Color, Configure, Corners, Panel, Sizing, Stroke, Text, TextStyle, TextWrap, Ui,
 };
 use std::hash::Hash;

@@ -139,7 +139,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::HUG))
                 .child_align(Align::CENTER)
                 .show(ui, |ui| {
-                    Text::new("Aperture — Frame Bench")
+                    Text::new("Palantir — Frame Bench")
                         .id_salt("title")
                         .style(&TextStyle::default().with_font_size(20.0))
                         .show(ui);

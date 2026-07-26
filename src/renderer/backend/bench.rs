@@ -105,7 +105,7 @@ const TEXEL: u32 = 8;
 /// *strict* and splits the text batch. `TextWrap`'s default `SingleLine`
 /// overflows a narrow slot rather than wrapping, so the width survives
 /// the `Fixed(CELL)` cell intact.
-const LABEL: &str = "Aperture record pass";
+const LABEL: &str = "Palantir record pass";
 /// Frames rendered before sampling starts — enough to settle the glyph
 /// atlas, the image bind-group cache, and every dynamic buffer's capacity
 /// growth, so no sample includes a first-touch allocation.
@@ -197,7 +197,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.record_pass_bench.device"),
+                label: Some("palantir.record_pass_bench.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -216,7 +216,7 @@ fn gpu() -> &'static Gpu {
 
 fn target(device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.record_pass_bench.target"),
+        label: Some("palantir.record_pass_bench.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,

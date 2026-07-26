@@ -13,7 +13,7 @@ mod fixtures;
 mod golden;
 mod harness;
 
-use aperture::{Color, WindowConfig, WindowToken};
+use palantir::{Color, WindowConfig, WindowToken};
 use glam::UVec2;
 use image::Rgba;
 
@@ -27,7 +27,7 @@ fn readback_returns_clear_color_for_empty_scene() {
     let size = UVec2::new(16, 16);
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = Color::rgb(sr, sg, sb);
-    let scene = |ui: &mut aperture::Ui| {
+    let scene = |ui: &mut palantir::Ui| {
         // Vetoing a close the offscreen host never requests is a no-op, not an
         // error — unlike opening a window, which it cannot service at all.
         ui.keep_open();

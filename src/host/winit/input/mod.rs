@@ -1,4 +1,4 @@
-//! Translation from winit events into Aperture's native input vocabulary.
+//! Translation from winit events into Palantir's native input vocabulary.
 
 use glam::Vec2;
 use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
