@@ -44,7 +44,7 @@ Measured via `perf stat -d`, pinned to one core.
 
 A short screen recording of the [showcase](src/bin/showcase) tabs:
 
-https://github.com/user-attachments/assets/73fd7143-087c-4895-a033-7644b184537f
+https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
 
 ---
 
