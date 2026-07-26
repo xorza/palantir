@@ -6,7 +6,7 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use aperture::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
+use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 use glam::Vec2;
 
 pub(crate) fn build(ui: &mut Ui) {

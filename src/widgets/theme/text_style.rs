@@ -13,7 +13,7 @@ use crate::widgets::theme::palette::Palette;
 /// size invalidates the text-shape cache every frame and animating
 /// leading doesn't read meaningfully.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, aperture_anim_derive::Animatable,
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]
 #[serde(try_from = "crate::widgets::theme::serde::UncheckedTextStyle")]
 pub struct TextStyle {

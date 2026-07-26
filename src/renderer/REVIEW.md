@@ -1,6 +1,6 @@
 # Renderer simplification and optimization review
 
-Reviewed 2026-07-25 at Aperture commit `72f030a3`.
+Reviewed 2026-07-25 at Palantir commit `72f030a3`.
 
 ## Scope and conclusion
 

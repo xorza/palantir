@@ -1,4 +1,4 @@
-//! Conversions between Aperture's backend-agnostic window vocabulary and
+//! Conversions between Palantir's backend-agnostic window vocabulary and
 //! winit's, plus native window creation. Together with
 //! [`input`](crate::host::winit::input) this is the whole of what the
 //! windowed host knows about winit *types* — the rest of the module deals

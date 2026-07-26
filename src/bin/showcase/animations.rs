@@ -5,7 +5,7 @@
 //! repaint loop).
 
 use crate::support;
-use aperture::{AnimSpec, Button, Configure, Easing, Frame, Panel, Sizing, Text, Ui, WidgetId};
+use palantir::{AnimSpec, Button, Configure, Easing, Frame, Panel, Sizing, Text, Ui, WidgetId};
 
 #[derive(Default)]
 struct Demo {

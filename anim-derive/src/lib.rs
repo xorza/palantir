@@ -1,11 +1,11 @@
-//! Derive macro for `aperture::Animatable`. Walks each field of a
+//! Derive macro for `palantir::Animatable`. Walks each field of a
 //! struct: animated fields call into the inner `Animatable` impl;
 //! fields marked `#[animate(snap)]` are excluded from arithmetic
 //! (lerp returns target's value, sub/add/scale/zero preserve `self`'s
 //! or pick a default, magnitude_squared contributes 0). Dynamic
 //! spring normalization forwards through animated fields only.
 //!
-//! Re-exported as `aperture::Animatable` (the derive shares its name
+//! Re-exported as `palantir::Animatable` (the derive shares its name
 //! with the trait, by Rust convention).
 
 use proc_macro::TokenStream;
@@ -61,28 +61,28 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
     }
 
     let lerp_anim = anim.iter().map(|(f, _)| {
-        quote! { #f: ::aperture::Animatable::lerp(a.#f, b.#f, t), }
+        quote! { #f: ::palantir::Animatable::lerp(a.#f, b.#f, t), }
     });
     let lerp_snap = snap.iter().map(|(f, _)| {
         quote! { #f: b.#f, }
     });
 
     let sub_anim = anim.iter().map(|(f, _)| {
-        quote! { #f: ::aperture::Animatable::sub(self.#f, other.#f), }
+        quote! { #f: ::palantir::Animatable::sub(self.#f, other.#f), }
     });
     let sub_snap = snap.iter().map(|(f, _)| {
         quote! { #f: self.#f, }
     });
 
     let add_anim = anim.iter().map(|(f, _)| {
-        quote! { #f: ::aperture::Animatable::add(self.#f, other.#f), }
+        quote! { #f: ::palantir::Animatable::add(self.#f, other.#f), }
     });
     let add_snap = snap.iter().map(|(f, _)| {
         quote! { #f: self.#f, }
     });
 
     let scale_anim = anim.iter().map(|(f, _)| {
-        quote! { #f: ::aperture::Animatable::scale(self.#f, k), }
+        quote! { #f: ::palantir::Animatable::scale(self.#f, k), }
     });
     let scale_snap = snap.iter().map(|(f, _)| {
         quote! { #f: self.#f, }
@@ -90,7 +90,7 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
 
     let mag_sq_terms: Vec<TokenStream2> = anim
         .iter()
-        .map(|(f, _)| quote! { ::aperture::Animatable::magnitude_squared(self.#f) })
+        .map(|(f, _)| quote! { ::palantir::Animatable::magnitude_squared(self.#f) })
         .collect();
     let magnitude_squared_body = if mag_sq_terms.is_empty() {
         quote! { 0.0_f32 }
@@ -99,14 +99,14 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
     };
 
     let zero_anim = anim.iter().map(|(f, ty)| {
-        quote! { #f: <#ty as ::aperture::Animatable>::zero(), }
+        quote! { #f: <#ty as ::palantir::Animatable>::zero(), }
     });
     let zero_snap = snap.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::core::default::Default>::default(), }
     });
     let normalize_for_spring_anim = anim.iter().map(|(f, ty)| {
         quote! {
-            <#ty as ::aperture::Animatable>::normalize_for_spring(
+            <#ty as ::palantir::Animatable>::normalize_for_spring(
                 &mut self.#f,
                 &target.#f,
                 &mut velocity.#f,
@@ -116,10 +116,10 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
 
     // `#[inline]` on each method: Animatable is a tight math trait
     // called per frame per animation, often across crate boundaries
-    // (aperture's `tick` calling derived impls in user code). Forces
+    // (palantir's `tick` calling derived impls in user code). Forces
     // availability for cross-crate inlining.
     let expanded = quote! {
-        impl #impl_generics ::aperture::Animatable for #name #ty_generics #where_clause {
+        impl #impl_generics ::palantir::Animatable for #name #ty_generics #where_clause {
             #[inline]
             fn lerp(a: Self, b: Self, t: f32) -> Self {
                 Self {

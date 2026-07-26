@@ -1,7 +1,7 @@
 //! Per-widget fixtures: smallest possible scene that exercises one
 //! widget's render path.
 
-use aperture::{
+use palantir::{
     Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
     DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
     Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Switch, Text, ToggleTheme,
@@ -160,7 +160,7 @@ fn windowed_rect_masks_corners_matches_golden() {
 /// the visual against shader / atlas drift.
 #[test]
 fn showcase_gradients_tab_matches_golden() {
-    use aperture::{Interp, Spread, Stop};
+    use palantir::{Interp, Spread, Stop};
     let mut h = Harness::new();
     let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
         let navy = ColorU8::hex(0x1a1a2e);
@@ -291,11 +291,11 @@ fn radial_and_conic_gradient_matches_golden() {
                     glam::Vec2::splat(0.5),
                     0.0,
                     [
-                        aperture::Stop::new(0.0, ColorU8::hex(0xff5e44)),
-                        aperture::Stop::new(0.25, ColorU8::hex(0xfacc15)),
-                        aperture::Stop::new(0.5, ColorU8::hex(0x46c46c)),
-                        aperture::Stop::new(0.75, ColorU8::hex(0x4c5cdb)),
-                        aperture::Stop::new(1.0, ColorU8::hex(0xff5e44)),
+                        palantir::Stop::new(0.0, ColorU8::hex(0xff5e44)),
+                        palantir::Stop::new(0.25, ColorU8::hex(0xfacc15)),
+                        palantir::Stop::new(0.5, ColorU8::hex(0x46c46c)),
+                        palantir::Stop::new(0.75, ColorU8::hex(0x4c5cdb)),
+                        palantir::Stop::new(1.0, ColorU8::hex(0xff5e44)),
                     ],
                 );
                 Frame::new()
@@ -466,7 +466,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
 #[test]
 fn rounded_clip_survives_surface_resize() {
     let mut h = Harness::new();
-    let scene = |ui: &mut aperture::Ui| {
+    let scene = |ui: &mut palantir::Ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -593,7 +593,7 @@ fn line_diagonal_aa_matches_golden() {
 /// strips, which would fail the gradient sample tolerance.
 #[test]
 fn polyline_gradient_matches_golden() {
-    use aperture::PolylineColors;
+    use palantir::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(160, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -627,7 +627,7 @@ fn polyline_gradient_matches_golden() {
 /// stroke only.
 #[test]
 fn polyline_bevel_join_matches_golden() {
-    use aperture::PolylineColors;
+    use palantir::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -688,7 +688,7 @@ fn polyline_round_caps_match_golden() {
 /// through to the chrome instances and their fragment metrics.
 #[test]
 fn polyline_round_join_matches_golden() {
-    use aperture::PolylineColors;
+    use palantir::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 200), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -724,7 +724,7 @@ fn polyline_round_join_matches_golden() {
 /// the golden.
 #[test]
 fn polyline_translucent_joins_have_uniform_coverage() {
-    use aperture::PolylineColors;
+    use palantir::PolylineColors;
     let mut h = Harness::new();
     // Three translucent chevrons, one per join kind. The GPU joint
     // model clips adjacent segment strips at the angle bisector, so
@@ -794,7 +794,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 /// step fails this with `delta ≈ 60+`.
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
-    use aperture::PolylineColors;
+    use palantir::PolylineColors;
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
     let img = h.render(UVec2::new(120, 120), 1.0, Color::BLACK, |ui| {
@@ -967,7 +967,7 @@ fn progress_bar_half_matches_golden() {
 #[test]
 fn toggle_switch_states_matches_golden() {
     let mut h = Harness::new();
-    let mut style = ToggleTheme::switch(&aperture::Palette::DEFAULT);
+    let mut style = ToggleTheme::switch(&palantir::Palette::DEFAULT);
     style.anim = None; // sit at the rest position, no first-frame transient
     let img = h.render(UVec2::new(220, 110), 1.0, DARK_BG, |ui| {
         let mut on = true;

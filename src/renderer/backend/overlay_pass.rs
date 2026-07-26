@@ -70,14 +70,14 @@ pub(super) struct DebugOverlay {
 impl DebugOverlay {
     pub(super) fn new(device: &wgpu::Device) -> Self {
         let dim_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("aperture.quad.dim"),
+            label: Some("palantir.quad.dim"),
             size: std::mem::size_of::<Quad>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         // `upload_overlays` grows it on demand when the damage region
         // carries more rects (8-quad start avoids tiny early regrows).
-        let overlay_buffer = DynamicBuffer::<Quad>::vertex(device, "aperture.quad.overlay", 8);
+        let overlay_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.overlay", 8);
         Self {
             dim_buffer,
             overlay_buffer,

@@ -52,7 +52,7 @@ use std::time::Instant;
 use wgpu::util::StagingBelt;
 
 /// Size of the per-pipeline immediate (push-constant) region every
-/// aperture shader's `var<immediate> imm: Immediates` reads. Locked
+/// palantir shader's `var<immediate> imm: Immediates` reads. Locked
 /// at the maximum used by any pipeline so a `set_immediates` for one
 /// shader stays valid across pipeline switches:
 ///
@@ -314,7 +314,7 @@ impl WgpuBackend {
             return false;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("aperture.renderer.backbuffer"),
+            label: Some("palantir.renderer.backbuffer"),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -338,7 +338,7 @@ impl WgpuBackend {
             return;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("aperture.renderer.stencil"),
+            label: Some("palantir.renderer.stencil"),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -455,7 +455,7 @@ impl WgpuBackend {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("aperture.renderer.main"),
+                label: Some("palantir.renderer.main"),
             });
 
         // Belt-routed upload phase. Scoped so the borrows release
@@ -571,7 +571,7 @@ impl WgpuBackend {
         // Force alpha to 1: the surface clear is the bottom-most
         // paint layer of the frame, so any sub-1 alpha would let the
         // host's desktop show through the framebuffer's transparent
-        // regions. Aperture doesn't support transparent windows
+        // regions. Palantir doesn't support transparent windows
         // (and the occlusion-prune assumes the clear is opaque).
         let clear_color = wgpu::Color {
             r: clear.r as f64,
@@ -669,7 +669,7 @@ impl WgpuBackend {
         encoder: &mut wgpu::CommandEncoder,
         viewport: ViewportPush,
     ) {
-        let mut pass = begin_load_pass(encoder, "aperture.renderer.dim.pass", color_view);
+        let mut pass = begin_load_pass(encoder, "palantir.renderer.dim.pass", color_view);
         self.debug.draw_dim(
             &mut pass,
             fmt.quad.select(false),
@@ -747,7 +747,7 @@ impl WgpuBackend {
         // encoder — inside the measured window rather than after it.
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("aperture.renderer.main.pass"),
+                label: Some("palantir.renderer.main.pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: color_view,
                     resolve_target: None,
@@ -991,7 +991,7 @@ impl WgpuBackend {
         let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let mut pass = begin_load_pass(
             encoder,
-            "aperture.renderer.overlay.damage_rect",
+            "palantir.renderer.overlay.damage_rect",
             &surface_view,
         );
         self.debug.draw_overlays(
@@ -1025,7 +1025,7 @@ impl WgpuBackend {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("aperture.renderer.skip"),
+                label: Some("palantir.renderer.skip"),
             });
         self.copy_backbuffer_into(backbuffer, &mut encoder, surface_tex);
         self.queue.submit(std::iter::once(encoder.finish()));

@@ -277,7 +277,7 @@ impl TextShaper {
 
     /// Exclusive render-side lease for one batch's encoded-cache misses:
     /// glyph extraction (restoring evicted buffers on the way) and
-    /// rasterization, all in aperture-native terms — see
+    /// rasterization, all in palantir-native terms — see
     /// [`crate::text::render`].
     pub(crate) fn render_session(&self) -> TextRenderSession<'_> {
         TextRenderSession::new(RefMut::map(self.inner.borrow_mut(), |inner| {

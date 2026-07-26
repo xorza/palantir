@@ -1,7 +1,7 @@
 //! The color roster every theme recipe draws from. [`Palette`] is the
 //! public input to [`crate::Theme::from_palette`] — apps hand in their
 //! own swatches and every widget recolors from one source instead of
-//! re-deriving aperture's recipes per widget. [`Palette::DEFAULT`] is
+//! re-deriving palantir's recipes per widget. [`Palette::DEFAULT`] is
 //! the built-in neutral dark grayscale with a single blue accent.
 
 use crate::primitives::color::Color;

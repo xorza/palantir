@@ -1,6 +1,6 @@
-//! Aperture-native glyph atlas + text render pipeline.
+//! Palantir-native glyph atlas + text render pipeline.
 //!
-//! Built to Aperture's contracts:
+//! Built to Palantir's contracts:
 //!
 //! - **Linear-premul end to end.** `ColorU8` is straight-linear-u8 in,
 //!   shader writes `vec4(rgb*a, a)`, blend is
@@ -84,8 +84,8 @@ impl ContentType {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Mask => "aperture text mask atlas",
-            Self::Color => "aperture text color atlas",
+            Self::Mask => "palantir text mask atlas",
+            Self::Color => "palantir text color atlas",
         }
     }
 }
@@ -127,12 +127,12 @@ impl TextBackend {
         let encoder = TextEncoder::new(device);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("aperture.text.shader"),
+            label: Some("palantir.text.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("aperture text sampler"),
+            label: Some("palantir text sampler"),
             min_filter: wgpu::FilterMode::Nearest,
             mag_filter: wgpu::FilterMode::Nearest,
             mipmap_filter: wgpu::MipmapFilterMode::Nearest,
@@ -140,7 +140,7 @@ impl TextBackend {
         });
 
         let atlas_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("aperture text atlas layout"),
+            label: Some("palantir text atlas layout"),
             entries: &[
                 tex_entry(0),
                 tex_entry(1),
@@ -164,7 +164,7 @@ impl TextBackend {
             &sampler,
         );
 
-        let vbuf = DynamicBuffer::<GlyphInstance>::vertex(device, "aperture text vbuf", 4096);
+        let vbuf = DynamicBuffer::<GlyphInstance>::vertex(device, "palantir text vbuf", 4096);
 
         Self {
             shaper,
@@ -194,9 +194,9 @@ impl TextBackend {
         StencilVariant::build(
             device,
             ColorVariantSpec {
-                label: "aperture.text.pipeline",
-                stencil_label: "aperture.text.pipeline.stencil_test",
-                layout_label: "aperture.text.pl",
+                label: "palantir.text.pipeline",
+                stencil_label: "palantir.text.pipeline.stencil_test",
+                layout_label: "palantir.text.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[Some(&self.atlas_bgl)],
                 vertex_buffers: &[Some(glyph_instance_layout())],
@@ -348,7 +348,7 @@ fn build_atlas_bg(
     sampler: &wgpu::Sampler,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("aperture text atlas bg"),
+        label: Some("palantir text atlas bg"),
         layout,
         entries: &[
             wgpu::BindGroupEntry {

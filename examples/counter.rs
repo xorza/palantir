@@ -1,4 +1,4 @@
-use aperture::{
+use palantir::{
     App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
     WinitHostError,
 };

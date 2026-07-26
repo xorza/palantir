@@ -3,7 +3,7 @@
 //! Three entry points, each its own `benches/` binary because `dhat`
 //! must be the process-wide global allocator:
 //!
-//! - [`alloc_free`] — strict-zero invariant on aperture's CPU pipeline
+//! - [`alloc_free`] — strict-zero invariant on palantir's CPU pipeline
 //!   (record → measure → arrange → cascade → encode), no GPU.
 //! - [`alloc_free_gpu`] — bounded gate on the wgpu submission path,
 //!   which allocates a driver-side floor every frame.
@@ -49,7 +49,7 @@ fn profiler() -> dhat::Profiler {
     }
 }
 
-/// Strict per-frame allocation invariant for aperture's record/measure/
+/// Strict per-frame allocation invariant for palantir's record/measure/
 /// arrange/cascade/encode pipeline (no GPU). Pinning test for the
 /// `AGENTS.md` claim: "Per-frame allocation is a real metric.
 /// Steady-state must be heap-alloc-free after warmup."
@@ -57,7 +57,7 @@ fn profiler() -> dhat::Profiler {
 /// Runs the shared [`FrameFixture`] workload through `Ui::record`, warms
 /// up so retained scratch / caches stabilize, then measures heap-block
 /// delta over a batch of steady-state frames. **Fails on any non-zero
-/// delta** — aperture-side regressions show up here.
+/// delta** — palantir-side regressions show up here.
 ///
 /// For the GPU submission path (wgpu backend allocations under
 /// `WgpuBackend::submit`), see [`alloc_free_gpu`] — driver overhead
@@ -126,13 +126,13 @@ pub fn alloc_free() {
     }
 
     println!();
-    println!("PASS: aperture CPU pipeline is allocation-free in steady state.");
+    println!("PASS: palantir CPU pipeline is allocation-free in steady state.");
 }
 
 // Driver floor on the current wgpu/cosmic-text pin. Bump if a driver
-// upgrade or a deliberate aperture change moves the baseline; trip
+// upgrade or a deliberate palantir change moves the baseline; trip
 // the gate otherwise. All current attribution is wgpu_core/wgpu_hal —
-// no aperture-side per-frame allocs in this path.
+// no palantir-side per-frame allocs in this path.
 const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -172,7 +172,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("aperture.alloc_free_gpu.device"),
+                label: Some("palantir.alloc_free_gpu.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -188,7 +188,7 @@ fn gpu() -> &'static Gpu {
 /// Per-frame allocation regression gate for the wgpu submission path.
 ///
 /// Sister to [`alloc_free`]. Where that gate asserts a *strict zero* on
-/// aperture's CPU pipeline (record → measure → arrange → cascade →
+/// palantir's CPU pipeline (record → measure → arrange → cascade →
 /// encode), this one measures the additional allocations introduced by
 /// `OffscreenHost::frame_offscreen` against an offscreen target texture,
 /// with a GPU poll between frames so submitted work drains before the
@@ -202,7 +202,7 @@ fn gpu() -> &'static Gpu {
 /// beneath `OffscreenHost::frame_offscreen` (verified via `DHAT_DUMP=1` +
 /// dh_view). The bench treats this as a baseline: the gate trips when
 /// the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
-/// indicating either an aperture regression or a wgpu/cosmic-text
+/// indicating either an palantir regression or a wgpu/cosmic-text
 /// version drift worth investigating.
 ///
 /// Run with: `cargo bench --bench alloc_free_gpu --features internals`
@@ -219,7 +219,7 @@ pub fn alloc_free_gpu() {
     let mut state = FrameFixture::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.alloc_free_gpu.target"),
+        label: Some("palantir.alloc_free_gpu.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,
@@ -283,7 +283,7 @@ pub fn alloc_free_gpu() {
         eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
         eprintln!();
         eprintln!(
-            "If the baseline legitimately moved (wgpu/cosmic-text upgrade, intentional aperture"
+            "If the baseline legitimately moved (wgpu/cosmic-text upgrade, intentional palantir"
         );
         eprintln!("change), bump RENDER_BLOCKS_PER_FRAME_MAX in src/host/bench.rs.");
         std::process::exit(1);

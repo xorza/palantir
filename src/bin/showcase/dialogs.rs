@@ -8,7 +8,7 @@
 
 use crate::support;
 use crate::support::{row, section};
-use aperture::{
+use palantir::{
     Button, Checkbox, ComboBox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken,
 };
 

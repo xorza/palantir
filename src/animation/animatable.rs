@@ -4,7 +4,7 @@
 //! snap-only fields normalize before that arithmetic. Built-in impls
 //! cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
-//! `aperture-anim-derive` and the type-erased `AnimMap` storage.
+//! `palantir-anim-derive` and the type-erased `AnimMap` storage.
 
 use glam::Vec2;
 

@@ -8,7 +8,7 @@
 
 use crate::support;
 use crate::support::{caption_style, row, section};
-use aperture::{
+use palantir::{
     AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners, DragValue,
     Panel, ProgressBar, RadioButton, Separator, Shadow, Sizing, Slider, Spinner, StatefulLook,
     Stroke, Switch, Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook,

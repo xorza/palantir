@@ -1,7 +1,7 @@
 //! Layout-driver fixtures: vstack/grid/zstack at their minimal
 //! exercise-everything sizes.
 
-use aperture::{
+use palantir::{
     Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing,
     Stroke, Text, TextStyle, TextWrap, Track,
 };

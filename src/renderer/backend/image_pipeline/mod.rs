@@ -58,12 +58,12 @@ impl ImagePipeline {
     /// from [`Self::build_variant`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("aperture.image.shader"),
+            label: Some("palantir.image.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
         });
 
         let instance_buffer =
-            DynamicBuffer::<ImageInstance>::vertex(device, "aperture.image.instances", 16);
+            DynamicBuffer::<ImageInstance>::vertex(device, "palantir.image.instances", 16);
 
         Self {
             instance_buffer,
@@ -87,9 +87,9 @@ impl ImagePipeline {
         StencilVariant::build(
             device,
             ColorVariantSpec {
-                label: "aperture.image.pipeline",
-                stencil_label: "aperture.image.pipeline.stencil_test",
-                layout_label: "aperture.image.pl",
+                label: "palantir.image.pipeline",
+                stencil_label: "palantir.image.pipeline.stencil_test",
+                layout_label: "palantir.image.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[Some(&self.textures.bgl)],
                 vertex_buffers: &[Some(instance_layout())],

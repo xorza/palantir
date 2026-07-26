@@ -1,4 +1,4 @@
-use aperture::{
+use palantir::{
     AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shortcut, Sizing,
     Ui, WindowConfig, WindowToken, WinitHost,
 };
@@ -78,7 +78,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("debug", debug::build),
 ];
 
-fn main() -> Result<(), aperture::WinitHostError> {
+fn main() -> Result<(), palantir::WinitHostError> {
     use tracing_subscriber::EnvFilter;
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -87,7 +87,7 @@ fn main() -> Result<(), aperture::WinitHostError> {
         .init();
 
     WinitHost::builder(MAIN_WINDOW)
-        .title("aperture showcase")
+        .title("palantir showcase")
         .build(State::new)?
         .run()
 }
@@ -130,7 +130,7 @@ fn build_inspector(ui: &mut Ui, state: &mut State) {
 
 fn build_ui(ui: &mut Ui, state: &mut State) {
     handle_debug_keys(ui);
-    // ⌘Q / Ctrl+Q quits — aperture drops winit's default macOS menu (so its
+    // ⌘Q / Ctrl+Q quits — palantir drops winit's default macOS menu (so its
     // Quit item can't hard-terminate past a close-request veto), which also
     // removes the native ⌘Q, so wire it here.
     if ui.key_pressed(Shortcut::ctrl('Q')) {
@@ -184,8 +184,8 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
                 .background(
-                    Background::rounded(Color::hex(0x343434), aperture::Corners::all(8.0))
-                        .with_stroke(aperture::Stroke::solid(Color::hex(0x363636), 1.0)),
+                    Background::rounded(Color::hex(0x343434), palantir::Corners::all(8.0))
+                        .with_stroke(palantir::Stroke::solid(Color::hex(0x363636), 1.0)),
                 )
                 .show(ui, |ui| {
                     let (label, build_fn) = SHOWCASES[state.active];
@@ -208,9 +208,9 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
 /// entry: copy the default theme, swap the `normal` slot to use the
 /// `hovered` background. Pressed / disabled / hovered fall through to
 /// the defaults.
-fn active_toolbar_button(default: &aperture::ButtonTheme) -> aperture::ButtonTheme {
-    aperture::ButtonTheme {
-        looks: aperture::StatefulLook {
+fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonTheme {
+    palantir::ButtonTheme {
+        looks: palantir::StatefulLook {
             normal: default.looks.hovered.clone(),
             ..default.looks.clone()
         },

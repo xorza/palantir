@@ -1,6 +1,6 @@
 //! Text rendering fixtures.
 
-use aperture::{Background, Color, Configure, Panel, Sizing, Text, TextStyle};
+use palantir::{Background, Color, Configure, Panel, Sizing, Text, TextStyle};
 use glam::UVec2;
 use image::Rgba;
 
@@ -21,7 +21,7 @@ fn text_paragraph_matches_golden() {
             .padding(16.0)
             .gap(6.0)
             .show(ui, |ui| {
-                Text::new("Aperture")
+                Text::new("Palantir")
                     .id_salt("title")
                     .style(
                         &TextStyle::default()
@@ -128,7 +128,7 @@ fn text_row_list_survives_partial_damage_smoke() {
     let labels_initial = ["aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff"];
 
     let scene = |labels: [&'static str; 6]| {
-        move |ui: &mut aperture::Ui| {
+        move |ui: &mut palantir::Ui| {
             Panel::vstack()
                 .auto_id()
                 .padding(8.0)

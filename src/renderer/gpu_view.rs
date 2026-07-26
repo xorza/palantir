@@ -48,7 +48,7 @@ pub trait GpuPaint: 'static {
     }
 
     /// Render into the off-screen target. Open your own render pass(es) on
-    /// `ctx.encoder` against `ctx.target`; they ride aperture's main submit
+    /// `ctx.encoder` against `ctx.target`; they ride palantir's main submit
     /// and the result is composited into the UI at the widget's rect.
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>);
 }
@@ -67,7 +67,7 @@ pub struct GpuInitCtx<'a> {
 pub struct GpuFrameCtx<'a> {
     pub device: &'a wgpu::Device,
     pub queue: &'a wgpu::Queue,
-    /// Aperture's main command encoder — record your render pass(es) here.
+    /// Palantir's main command encoder — record your render pass(es) here.
     /// wgpu inserts the `RENDER_ATTACHMENT → TEXTURE_BINDING` transition
     /// between your pass and the main pass that samples `target`.
     pub encoder: &'a mut wgpu::CommandEncoder,

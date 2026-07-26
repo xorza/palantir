@@ -1,6 +1,6 @@
 //! Pixel-level shadow fixtures.
 
-use aperture::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
+use palantir::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
 use glam::{IVec2, UVec2, Vec2};
 use image::RgbaImage;
 

@@ -131,7 +131,7 @@ impl PaintArena {
 /// slice. Hit tests use [`Cascades::hits`] to visit only rows
 /// that can interact, reading `rect` and the relevant flags while
 /// response lookup reaches every row through [`Cascades::by_id`].
-/// Same cache argument as aperture's `Tree.records: Soa<NodeRecord>`.
+/// Same cache argument as palantir's `Tree.records: Soa<NodeRecord>`.
 #[derive(Soars, Clone, Copy, Debug)]
 #[soa_derive(Debug)]
 pub(crate) struct EntryRow {

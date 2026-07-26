@@ -1,6 +1,6 @@
-# Aperture Contributor License Agreement
+# Palantir Contributor License Agreement
 
-Thank you for your interest in contributing to Aperture ("the Project"),
+Thank you for your interest in contributing to Palantir ("the Project"),
 maintained by the copyright holder ("the Maintainer", currently the
 individual reachable at xxorza@gmail.com).
 

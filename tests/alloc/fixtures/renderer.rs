@@ -5,7 +5,7 @@
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
 use crate::harness::audit_steady_state;
-use aperture::{Color, Configure, Frame, Grid, Mesh, Panel, PolylineColors, Shape, Sizing, Track};
+use palantir::{Color, Configure, Frame, Grid, Mesh, Panel, PolylineColors, Shape, Sizing, Track};
 
 /// 16×16 grid of `Frame`s — 256 quads per frame. Stresses
 /// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse much
@@ -24,7 +24,7 @@ fn many_rects_compose_alloc_free() {
                     for c in 0..16u16 {
                         Frame::new()
                             .id_salt((r, c))
-                            .background(aperture::Background {
+                            .background(palantir::Background {
                                 fill: Color::WHITE.into(),
                                 ..Default::default()
                             })

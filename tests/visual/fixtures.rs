@@ -16,7 +16,7 @@ mod shadow;
 mod text;
 mod widgets;
 
-use aperture::Color;
+use palantir::Color;
 
 /// Default scene background — a dark surrogate so fixtures look
 /// roughly like a real shell at a glance. Not tied to any specific

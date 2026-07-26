@@ -10,7 +10,7 @@
 
 use crate::support;
 use crate::support::{row, section};
-use aperture::{
+use palantir::{
     Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
     WidgetId,
 };

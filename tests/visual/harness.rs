@@ -4,8 +4,8 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use aperture::internals::{HeadlessTestGpuLease, headless_test_gpu};
-use aperture::{
+use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
+use palantir::{
     App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui, WindowToken,
 };
 use glam::UVec2;
@@ -148,7 +148,7 @@ fn make_target(
     physical: UVec2,
 ) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.visual_test.target"),
+        label: Some("palantir.visual_test.target"),
         size: wgpu::Extent3d {
             width: physical.x,
             height: physical.y,
@@ -174,14 +174,14 @@ fn readback(
     let row_bytes = (size.x * BYTES_PER_PIXEL) as usize;
     let padded = (size.x * BYTES_PER_PIXEL).div_ceil(COPY_ALIGN) * COPY_ALIGN;
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("aperture.visual_test.readback"),
+        label: Some("palantir.visual_test.readback"),
         size: (padded * size.y) as u64,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("aperture.visual_test.copy"),
+        label: Some("palantir.visual_test.copy"),
     });
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {

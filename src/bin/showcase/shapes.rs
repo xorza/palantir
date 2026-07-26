@@ -7,7 +7,7 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use aperture::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui};
+use palantir::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui};
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI};
 

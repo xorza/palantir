@@ -1,6 +1,6 @@
 # Same-frame re-record (relayout) investigation
 
-Investigation of every case where Aperture runs more than one record pass
+Investigation of every case where Palantir runs more than one record pass
 inside a single frame, what each costs, and how to remove them.
 
 Measurements taken on ASUS ROG Strix SCAR 18 (i9-13980HX), release build,
@@ -140,11 +140,11 @@ inline handling.
 #### B4. For framework-mediated staleness, be exact instead of conservative
 
 Popup open flags, combo/menu state, scroll offsets, and text-edit state all
-live in `StateMap`, which Aperture owns. Stamp each row with
+live in `StateMap`, which Palantir owns. Stamp each row with
 `last_read_idx` / `last_write_idx` (a `u32` record counter bumped in
 `open_node`), and at the end of pass A compute
 `settle_needed = any row where read_idx < write_idx`. Two compares per
-access, 8 bytes per row. That makes every widget Aperture ships exact.
+access, 8 bytes per row. That makes every widget Palantir ships exact.
 
 It does *not* cover user-struct writes — those fall back to B3 or an
 explicit `ui.request_settle()`.

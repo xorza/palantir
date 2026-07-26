@@ -91,14 +91,14 @@ impl CurvePipeline {
             ],
         );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("aperture.curve.shader"),
+            label: Some("palantir.curve.shader"),
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
         let instance_buffer =
-            DynamicBuffer::<CurveInstance>::vertex(device, "aperture.curve.instances", 64);
+            DynamicBuffer::<CurveInstance>::vertex(device, "palantir.curve.instances", 64);
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("aperture.curve.indices"),
+            label: Some("palantir.curve.indices"),
             contents: bytemuck::cast_slice(&CURVE_INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
@@ -125,9 +125,9 @@ impl CurvePipeline {
         StencilVariant::build(
             device,
             ColorVariantSpec {
-                label: "aperture.curve.pipeline",
-                stencil_label: "aperture.curve.pipeline.stencil_test",
-                layout_label: "aperture.curve.pl",
+                label: "palantir.curve.pipeline",
+                stencil_label: "palantir.curve.pipeline.stencil_test",
+                layout_label: "palantir.curve.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[Some(gradient_bgl)],
                 vertex_buffers: &[Some(curve_instance_layout())],

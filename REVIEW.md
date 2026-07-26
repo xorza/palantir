@@ -1,4 +1,4 @@
-# Aperture review — verified backlog
+# Palantir review — verified backlog
 
 Supersedes `BACKEND_REVIEW.md`, `FRAME_PIPELINE_REVIEW.md`, and
 `SIMPLIFICATION_REVIEW.md`, all audited 2026-07-25 at commit `86162a5a`.

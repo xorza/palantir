@@ -59,7 +59,7 @@ pub(super) struct GpuGradientAtlas {
 /// constant, so this is free to change across the device's lifetime.
 fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("aperture.gradient_atlas"),
+        label: Some("palantir.gradient_atlas"),
         size: wgpu::Extent3d {
             width: LUT_ROW_TEXELS as u32,
             height: rows,
@@ -78,7 +78,7 @@ impl GpuGradientAtlas {
     pub(super) fn new(device: &wgpu::Device, cpu: SharedGradientAtlas) -> Self {
         // Group 0 = gradient LUT atlas + sampler. Viewport rides
         // immediates (shared with every pipeline) — no bind-group slot.
-        let bgl = texture_sampler_bgl(device, "aperture.gradient.bgl");
+        let bgl = texture_sampler_bgl(device, "palantir.gradient.bgl");
 
         let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&Default::default());
@@ -87,7 +87,7 @@ impl GpuGradientAtlas {
         // applied shader-side on `t` before the sample, so the GPU
         // sampler never sees t outside 0..1.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("aperture.gradient_sampler"),
+            label: Some("palantir.gradient_sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -97,7 +97,7 @@ impl GpuGradientAtlas {
             ..Default::default()
         });
 
-        let bg = texture_bind_group(device, &bgl, &sampler, &view, "aperture.gradient.bg");
+        let bg = texture_bind_group(device, &bgl, &sampler, &view, "palantir.gradient.bg");
 
         Self {
             cpu,
@@ -140,7 +140,7 @@ impl GpuGradientAtlas {
             if texture.height() != rows.total_rows {
                 *texture = create_texture(ctx.device, rows.total_rows);
                 let view = texture.create_view(&Default::default());
-                *bg = texture_bind_group(ctx.device, bgl, sampler, &view, "aperture.gradient.bg");
+                *bg = texture_bind_group(ctx.device, bgl, sampler, &view, "palantir.gradient.bg");
             }
             // Whole rows by the `FlushedRows` contract, so this divides
             // exactly.

@@ -2,7 +2,7 @@
 //! authoring more distinct gradients than the atlas holds still paints
 //! every one of them correctly.
 
-use aperture::{Color, ColorU8, Configure, LinearGradient, Panel, Rect, Shape, Sizing};
+use palantir::{Color, ColorU8, Configure, LinearGradient, Panel, Rect, Shape, Sizing};
 use glam::UVec2;
 use image::RgbaImage;
 

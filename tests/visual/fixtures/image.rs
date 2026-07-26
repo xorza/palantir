@@ -3,7 +3,7 @@
 //! is machine-independent and pins the *sampling semantics*, not a
 //! rendered snapshot.
 
-use aperture::{Color, Configure, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui};
+use palantir::{Color, Configure, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui};
 use glam::{UVec2, Vec2};
 
 use crate::harness::Harness;
@@ -16,7 +16,7 @@ const BLUE: [u8; 4] = [60, 120, 230, 255];
 /// One exactly placed pane painting a strip with independent filters.
 fn strip_pane(
     ui: &mut Ui,
-    handle: &aperture::ImageHandle,
+    handle: &palantir::ImageHandle,
     x: f32,
     size: Vec2,
     fit: ImageFit,
@@ -69,11 +69,11 @@ fn assert_blend(pixel: [u8; 4], label: &str) {
 #[test]
 fn minification_and_magnification_filters_are_independent() {
     let mut h = Harness::new();
-    let mut mag_strip: Option<aperture::ImageHandle> = None;
+    let mut mag_strip: Option<palantir::ImageHandle> = None;
     let magnified = h.render(UVec2::new(256, 64), 1.0, Color::BLACK, |ui| {
         let handle = mag_strip
             .get_or_insert_with(|| {
-                ui.register_image(aperture::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
+                ui.register_image(palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
                     .expect("fixture image fits every supported GPU")
             })
             .clone();
@@ -116,11 +116,11 @@ fn minification_and_magnification_filters_are_independent() {
     assert!(close(px(128 + 64), BLUE), "nearest seam-right must be BLUE");
     assert_blend(px(64), "linear magnification seam");
 
-    let mut min_strip: Option<aperture::ImageHandle> = None;
+    let mut min_strip: Option<palantir::ImageHandle> = None;
     let minified = h.render(UVec2::new(4, 16), 1.0, Color::BLACK, |ui| {
         let handle = min_strip
             .get_or_insert_with(|| {
-                ui.register_image(aperture::Image::from_rgba8(
+                ui.register_image(palantir::Image::from_rgba8(
                     4,
                     1,
                     [RED, BLUE, RED, BLUE].concat(),
@@ -196,11 +196,11 @@ fn minification_and_magnification_filters_are_independent() {
 #[test]
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let mut h = Harness::new();
-    let mut strip: Option<aperture::ImageHandle> = None;
+    let mut strip: Option<palantir::ImageHandle> = None;
     let strips = h.render(UVec2::new(200, 32), 1.0, Color::BLACK, |ui| {
         let handle = strip
             .get_or_insert_with(|| {
-                ui.register_image(aperture::Image::from_rgba8(3, 1, [RED, BLUE, RED].concat()))
+                ui.register_image(palantir::Image::from_rgba8(3, 1, [RED, BLUE, RED].concat()))
                     .expect("fixture image fits every supported GPU")
             })
             .clone();
@@ -242,11 +242,11 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         assert!(close(px(100 + x), expected), "{name} must be {expected:?}");
     }
 
-    let mut tile: Option<aperture::ImageHandle> = None;
+    let mut tile: Option<palantir::ImageHandle> = None;
     let tiled = h.render(UVec2::new(200, 16), 1.0, Color::BLACK, |ui| {
         let handle = tile
             .get_or_insert_with(|| {
-                ui.register_image(aperture::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
+                ui.register_image(palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
                     .expect("fixture image fits every supported GPU")
             })
             .clone();
@@ -327,11 +327,11 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PANE: f32 = 32.0;
 
     let mut h = Harness::new();
-    let mut sources: Option<[aperture::ImageHandle; 3]> = None;
+    let mut sources: Option<[palantir::ImageHandle; 3]> = None;
     let out = h.render(UVec2::new(192, 32), 1.0, Color::BLACK, |ui| {
         let handles = sources.get_or_insert_with(|| {
             SOURCES.map(|texel| {
-                ui.register_image(aperture::Image::from_rgba8(1, 1, texel.to_vec()))
+                ui.register_image(palantir::Image::from_rgba8(1, 1, texel.to_vec()))
                     .expect("fixture image fits every supported GPU")
             })
         });

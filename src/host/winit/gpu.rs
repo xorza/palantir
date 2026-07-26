@@ -99,7 +99,7 @@ impl GpuInit {
         let requirements =
             device_requirements(adapter.features(), adapter.limits(), timing_features)?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("aperture.device"),
+            label: Some("palantir.device"),
             required_features: requirements.features,
             required_limits: requirements.limits,
             experimental_features: wgpu::ExperimentalFeatures::default(),

@@ -1,7 +1,7 @@
 //! Hi-dpi (scale > 1.0) fixtures. Pixel-snap and sub-pixel positioning
 //! diverge from the 1.0-scale path here.
 
-use aperture::{
+use palantir::{
     Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing, Stroke,
     Text, TextStyle, Track,
 };
@@ -49,7 +49,7 @@ fn dashboard_matches_golden() {
                         shadow: Shadow::NONE,
                     })
                     .show(ui, |ui| {
-                        Text::new("Aperture")
+                        Text::new("Palantir")
                             .id_salt("brand")
                             .style(
                                 &TextStyle::default()
