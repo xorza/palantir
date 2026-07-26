@@ -76,15 +76,16 @@ const SCALE: f32 = 2.0;
 // and reused as the `clear` for the synthesized `Full` plan the CPU
 // `cached` arm encodes against (see `CpuHarness::frame`).
 const WINDOW_CLEAR: Color = Color::BLACK;
-// View sized so `BENCH_SCALE = 32` content (36-row prop grid, 96-button
-// wrap, shape gallery, 96-dot canvas, chat scroll, notes) fits without
-// overflowing the main column.
-const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 4800); // 1920x2400 @ 2x
+// View sized so `BENCH_SCALE = 32` content (36-row prop grid, 96-chip wrap,
+// specimen sheet, 64-cell filmstrip, activity scroll, notes) fits inside the
+// fixture's page scroll — clipped-away cards are culled, so a shorter view
+// would quietly shrink the painted tree this bench exists to measure.
+const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 6000); // 1920x3000 @ 2x
 const RESIZE_POOL: &[glam::UVec2] = &[
-    glam::UVec2::new(3200, 4400),
-    glam::UVec2::new(3840, 4800),
-    glam::UVec2::new(3520, 4600),
-    glam::UVec2::new(4160, 5000),
+    glam::UVec2::new(3200, 5600),
+    glam::UVec2::new(3840, 6000),
+    glam::UVec2::new(3520, 5800),
+    glam::UVec2::new(4160, 6200),
 ];
 
 /// Block until the GPU has drained all submitted work. The `_gpu` arms

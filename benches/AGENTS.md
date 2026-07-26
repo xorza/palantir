@@ -152,12 +152,27 @@ intentional palantir change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
 `src/host/bench.rs` and note the new floor in the PR.
 
 All three allocation drivers and the frame driver use the opaque
-`FrameFixture` from `src/ui/bench_fixture.rs` — one synthetic
-UI tree (~800 nodes, ~500 text shapes at `NODE_SCALE = 32`)
-exercising every layout driver, widget, `Shape`, and `Brush` variant
-plus the popup/tooltip layers. The `frame_visual` example drives the same
-fixture at a smaller scale so a human can eyeball the workload the
-benches measure. Grow the fixture and every allocation bench tracks the
+`FrameFixture` from `src/ui/bench_fixture.rs` — one synthetic app
+screen that at `NODE_SCALE = 32` carries a 160-row grouped sidebar, a
+36-row property table, a 96-chip label wrap, a 64-cell filmstrip and a
+64-message activity list. It exercises every layout driver (both
+`Scroll` axes, both `WrapStack` orientations), every non-animated
+widget, every `Shape` family and `Brush` variant, chrome shadows, grid
+cell spans, `disabled`/`hidden` cascade flattening, and the
+popup/tooltip layers. Nothing animated belongs in it — a `Spinner` or
+`PaintAnim` wakes the host every frame, which would stop `cached_*`
+settling to `Skip` and widen `partial_*` past the footer counter; the
+module doc lists the exclusions and why.
+
+The card column sits in a page scroll, so anything taller than the
+view is clipped **and culled**: `CACHED_SIZE` / `RESIZE_POOL` in
+`src/ui/bench.rs` are sized to fit the whole `BENCH_SCALE` tree, and
+shrinking them quietly shrinks the painted tree being measured. Render
+the fixture and look before assuming it all fits.
+
+The `frame_visual` example drives the same fixture at a smaller scale
+so a human can eyeball the workload the benches measure — `.zed/tasks.json`
+has a task for it. Grow the fixture and every allocation bench tracks the
 new surface area automatically — there is no longer a per-bench mirror
 to keep in sync.
 
