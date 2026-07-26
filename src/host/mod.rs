@@ -1,8 +1,10 @@
 //! The host layer — everything between the OS/GPU and the [`Ui`](crate::Ui)
 //! recorder. [`HostShared`](shared::HostShared) owns the app-global resources
 //! exposed to each `Ui` and the shared renderer;
+//! [`HostCore`](core::HostCore) bundles those resources with the one CPU
+//! frontend and GPU backend both hosts build on;
 //! [`WindowDriver`](window_driver::WindowDriver) owns each window's `Ui`
-//! and drives frames through one host-owned CPU frontend and GPU backend; the
+//! and drives frames through that core; the
 //! `Ui` owns its retained record store. [`winit`] and
 //! [`offscreen`] are the two
 //! drivers (swapchain windows / render-to-texture); [`clock`] is the injected
@@ -14,6 +16,7 @@
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod clock;
+mod core;
 pub(crate) mod offscreen;
 pub(crate) mod shared;
 #[cfg(feature = "internals")]

@@ -3,9 +3,8 @@ use crate::app::App;
 use crate::display::Display;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::{WinitHost, finish_run, platform_icon};
+use crate::host::winit::{WinitHost, finish_run};
 use crate::input::InputEvent;
-use crate::primitives::image::Image;
 use crate::ui::frame::{FrameInput, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::FrameProcessing;
 use crate::window::{WindowConfig, WindowToken};
@@ -72,12 +71,6 @@ fn builder_retains_defaults_and_granular_overrides() {
         wgpu::PowerPreference::HighPerformance
     );
     assert!(builder.config.collect_gpu_stats);
-}
-
-#[test]
-fn validated_window_icon_converts_to_the_platform_type() {
-    let icon = Image::from_rgba8(2, 1, vec![255, 0, 0, 255, 0, 255, 0, 128]);
-    let _ = platform_icon(&icon);
 }
 
 #[test]

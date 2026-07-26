@@ -4,9 +4,9 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use aperture::internals::{HeadlessTestGpuLease, TwoWindowOffscreenHost, headless_test_gpu};
 use aperture::{
-    App, Color, DebugOverlayConfig, FixedClock, HeadlessTestGpuLease, OffscreenHost, TextShaper,
-    TwoWindowOffscreenHost, Ui, WindowToken, headless_test_gpu,
+    App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui, WindowToken,
 };
 use glam::UVec2;
 use image::RgbaImage;
@@ -40,6 +40,8 @@ pub(crate) struct Harness {
     gpu: HeadlessTestGpuLease,
 }
 
+/// Two render streams sharing one frontend, backend, and app-global
+/// resources — the headless stand-in for two winit windows.
 #[derive(Debug)]
 pub(crate) struct TwoWindowHarness {
     host: TwoWindowOffscreenHost,

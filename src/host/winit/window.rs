@@ -8,20 +8,13 @@ use winit::window::Window as WinitWindow;
 
 use crate::Display;
 use crate::app::App;
-use crate::host::window_driver::{CpuFrame, WindowDriver};
+use crate::host::core::HostCore;
+use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{SurfaceManager, WindowSurface};
+use crate::host::winit::native;
 use crate::input::InputEvent;
 use crate::input::response::InputDelta;
-use crate::renderer::backend::WgpuBackend;
-use crate::renderer::frontend::Frontend;
-use crate::renderer::render_buffer::RenderBuffer;
 use crate::window::{CursorIcon, WindowCommands, WindowFrameState};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SurfaceTarget {
-    physical: UVec2,
-    format: wgpu::TextureFormat,
-}
 
 /// Everything one native window owns: its handle, swapchain state, target-
 /// agnostic render driver, input/display facts, and event-loop schedule.
@@ -34,10 +27,7 @@ pub(super) struct Window {
     pub(super) scale_factor: f32,
     pub(super) next: FramePresent,
     pub(super) close_requested: bool,
-    pub(super) cursor: CursorIcon,
-    /// Last size and format applied with `surface.configure`. Configuration
-    /// changes are coalesced until the next frame.
-    configured: Option<SurfaceTarget>,
+    cursor: CursorIcon,
     /// Time at which the window became hidden. The render core remains
     /// untouched while hidden, then its clock skips the elapsed gap on resume.
     occluded_at: Option<Instant>,
@@ -59,7 +49,6 @@ impl Window {
             next: FramePresent::Immediate,
             close_requested: false,
             cursor: CursorIcon::default(),
-            configured: None,
             occluded_at: None,
         }
     }
@@ -80,14 +69,16 @@ impl Window {
     }
 
     /// Run one application/UI frame, acquire and update the swapchain texture
-    /// when needed, present it, then drain window-host output.
+    /// when needed, present it, then drain window-host output into `commands`
+    /// and apply the cursor the frame asked for. Stores the resulting schedule
+    /// on [`Self::next`].
     pub(super) fn frame<T: App>(
         &mut self,
         surfaces: &SurfaceManager,
-        frontend: &mut Frontend,
-        backend: &mut WgpuBackend,
+        core: &mut HostCore,
         app: &mut T,
-    ) -> WindowFrameOutput {
+        commands: &mut WindowCommands,
+    ) {
         #[cfg(feature = "profile-with-tracy")]
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("Window::frame");
@@ -105,14 +96,16 @@ impl Window {
         self.driver.ui.window_requests.close_vetoed = false;
 
         // An occluded window skips its frame, except the one carrying a
-        // close request: `frame_output` below closes unless the app vetoed,
+        // close request: `finish` below closes unless the app vetoed,
         // and the only place a veto can happen is inside `App::update` /
         // `App::record`. Skipping here would settle the close against a veto
         // flag no application code was ever offered — a minimized document
         // window would close straight past its "save changes?" prompt. The
         // request is one-shot, so this costs at most one frame per close.
         if self.occluded_at.is_some() && !self.close_requested {
-            return frame_output(&mut self.driver, FramePresent::Idle);
+            self.next = FramePresent::Idle;
+            self.finish(commands);
+            return;
         }
 
         let physical = UVec2::new(self.config.width, self.config.height);
@@ -126,28 +119,31 @@ impl Window {
                 .and_then(|monitor| monitor.refresh_rate_millihertz()),
         };
 
-        let target = SurfaceTarget {
+        // A size or format change invalidates the driver's retained target
+        // state *and* needs the swapchain reconfigured before the next
+        // acquire. Identical repeats cost nothing (Wayland resends configures
+        // on focus / output changes), which matters because
+        // `surface.configure` waits for GPU idle and reallocates the
+        // swapchain — wgpu #7447 measures 100ms+ stalls when called per
+        // repeated event.
+        if self.driver.note_target(TargetKey {
             physical,
             format: self.config.format,
-        };
-        if self.configured != Some(target) {
-            self.driver.invalidate_target();
+        }) {
             surfaces.configure(&self.surface, &self.config);
-            self.configured = Some(target);
         }
 
-        let cpu = self.driver.cpu_frame(frontend, display, app);
-        let present = self.present(surfaces, &frontend.buffer, backend, cpu);
+        let cpu = core.cpu_frame(&mut self.driver, display, app);
+        self.next = self.present(surfaces, core, cpu);
 
         profiling::finish_frame!();
-        frame_output(&mut self.driver, present)
+        self.finish(commands);
     }
 
     fn present(
         &mut self,
         surfaces: &SurfaceManager,
-        buffer: &RenderBuffer,
-        backend: &mut WgpuBackend,
+        core: &mut HostCore,
         cpu: CpuFrame,
     ) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
@@ -157,8 +153,7 @@ impl Window {
             use wgpu::CurrentSurfaceTexture::*;
             match self.surface.get_current_texture() {
                 Success(frame) => {
-                    self.driver
-                        .render_to_texture(buffer, backend, &frame.texture, mode);
+                    core.submit(&mut self.driver, &frame.texture, mode);
                     self.window.pre_present_notify();
                     surfaces.present(frame);
                     report.repaint_requested
@@ -187,51 +182,58 @@ impl Window {
             FramePresent::Idle
         }
     }
-}
 
-fn frame_output(driver: &mut WindowDriver, present: FramePresent) -> WindowFrameOutput {
-    let close_vetoed = driver.ui.window_requests.close_vetoed;
-    if driver.ui.window_frame.close_requested && !close_vetoed {
-        driver.ui.window_requests.commands.closes.push(driver.token);
+    /// Settle everything the frame produced for the host: drain the recorder's
+    /// window commands (which converts an un-vetoed close request into this
+    /// window's own close command), push the requested cursor to the OS, and
+    /// consume the one-shot close request.
+    fn finish(&mut self, commands: &mut WindowCommands) {
+        let cursor = self.driver.drain_window_output(commands);
+        if cursor != self.cursor {
+            self.window.set_cursor(native::cursor(cursor));
+            self.cursor = cursor;
+        }
+        self.close_requested = false;
     }
-    let commands = std::mem::take(&mut driver.ui.window_requests.commands);
-    driver.ui.window_frame = WindowFrameState::default();
-    WindowFrameOutput {
-        present,
-        cursor: driver.ui.window_requests.cursor,
-        commands,
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct WindowFrameOutput {
-    pub(super) present: FramePresent,
-    pub(super) cursor: CursorIcon,
-    pub(super) commands: WindowCommands,
 }
 
 /// Scheduling hint returned by a native-window frame.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum FramePresent {
     Immediate,
     At(Instant),
     Idle,
 }
 
+impl FramePresent {
+    /// Collapse a deadline that has already come due into `Immediate`. A
+    /// `WaitUntil` in the past fires instantly and spins the loop, so a window
+    /// whose deadline passed may as well request its redraw now.
+    pub(super) fn resolve(self, now: Instant) -> Self {
+        match self {
+            Self::At(t) if t <= now => Self::Immediate,
+            other => other,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use crate::host::shared::HostShared;
     use crate::host::window_driver::WindowDriver;
-    use crate::host::winit::window::{FramePresent, frame_output};
+    use crate::host::winit::window::FramePresent;
     use crate::text::TextShaper;
-    use crate::window::{CursorIcon, WindowConfig, WindowToken};
+    use crate::window::{CursorIcon, WindowCommands, WindowConfig, WindowToken};
 
     #[test]
-    fn frame_output_drains_commands_and_applies_close_veto() {
+    fn frame_drain_collects_commands_and_applies_close_veto() {
         let shared = HostShared::new(TextShaper::test_mono(), None);
         let token = WindowToken(17);
         let mut driver = WindowDriver::builder(token, &shared).build();
         let opened = WindowToken(18);
+        let mut commands = WindowCommands::default();
 
         driver
             .ui
@@ -239,18 +241,64 @@ mod tests {
         driver.ui.set_cursor(CursorIcon::Pointer);
         driver.ui.window_frame.close_requested = true;
 
-        let output = frame_output(&mut driver, FramePresent::Idle);
-        assert!(matches!(output.present, FramePresent::Idle));
-        assert_eq!(output.cursor, CursorIcon::Pointer);
-        assert_eq!(output.commands.opens.len(), 1);
-        assert_eq!(output.commands.opens[0].token, opened);
-        assert_eq!(output.commands.closes, [token]);
+        let cursor = driver.drain_window_output(&mut commands);
+        assert_eq!(cursor, CursorIcon::Pointer);
+        assert_eq!(commands.opens.len(), 1);
+        assert_eq!(commands.opens[0].token, opened);
+        assert_eq!(
+            commands.closes,
+            [token],
+            "an un-vetoed close becomes this window's own close command"
+        );
         assert!(driver.ui.window_requests.commands.opens.is_empty());
         assert!(driver.ui.window_requests.commands.closes.is_empty());
+        // Drained by `append`, not `mem::take`, so the recorder keeps its
+        // buffers for the next frame instead of reallocating per window
+        // command.
+        let open_capacity = driver.ui.window_requests.commands.opens.capacity();
+        let close_capacity = driver.ui.window_requests.commands.closes.capacity();
+        assert!(open_capacity > 0 && close_capacity > 0);
 
         driver.ui.window_frame.close_requested = true;
         driver.ui.keep_open();
-        let vetoed = frame_output(&mut driver, FramePresent::Idle);
-        assert!(vetoed.commands.closes.is_empty());
+        let mut vetoed = WindowCommands::default();
+        driver.drain_window_output(&mut vetoed);
+        assert!(vetoed.closes.is_empty());
+
+        // A second drain after the veto must not resurrect the request: the
+        // frame state was consumed, so nothing is pending.
+        let mut settled = WindowCommands::default();
+        driver.drain_window_output(&mut settled);
+        assert!(settled.closes.is_empty());
+        assert!(!driver.ui.window_requests.close_vetoed);
+        assert_eq!(
+            driver.ui.window_requests.commands.opens.capacity(),
+            open_capacity,
+            "draining must not hand away the recorder's buffer"
+        );
+        assert_eq!(
+            driver.ui.window_requests.commands.closes.capacity(),
+            close_capacity
+        );
+    }
+
+    #[test]
+    fn due_deadlines_resolve_to_immediate_and_future_ones_stand() {
+        let now = Instant::now();
+        let past = now - Duration::from_millis(1);
+        let future = now + Duration::from_millis(16);
+
+        assert_eq!(FramePresent::At(past).resolve(now), FramePresent::Immediate);
+        // `<=` — a deadline landing exactly on `now` is due, not pending.
+        assert_eq!(FramePresent::At(now).resolve(now), FramePresent::Immediate);
+        assert_eq!(
+            FramePresent::At(future).resolve(now),
+            FramePresent::At(future)
+        );
+        assert_eq!(
+            FramePresent::Immediate.resolve(now),
+            FramePresent::Immediate
+        );
+        assert_eq!(FramePresent::Idle.resolve(now), FramePresent::Idle);
     }
 }
