@@ -1847,7 +1847,7 @@ fn input_policy_routes_paint_only_gate() {
         );
     }
 
-    // only with focus or a chord subscriber, so prime focus first.
+    // only with focus or a chord watcher, so prime focus first.
     {
         use crate::primitives::widget_id::WidgetId;
         let mut ui = Ui::for_test();

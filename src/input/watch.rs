@@ -1,22 +1,22 @@
 //! Off-target wake gates + unified pointer event stream.
 //!
-//! [`Subscriptions`] holds two pieces of state — both cleared
+//! [`Watches`] holds two pieces of state — both cleared
 //! pre-record, both re-asserted by widgets each frame they're
 //! active (symmetric to `Sense` on a node):
 //!
-//! 1. [`Subscriptions::pointer_mask`] / [`Subscriptions::keyboard_mask`]
-//!    — category flags ([`PointerSense`]) answering "does this event
+//! 1. [`Watches::pointer_mask`] / [`Watches::keyboard_mask`]
+//!    — category flags ([`PointerWake`]) answering "does this event
 //!    class wake the frame?"
-//! 2. [`Subscriptions::keys`] — specific `(Key, Modifiers)` chords for
+//! 2. [`Watches::keys`] — specific `(Key, Modifiers)` chords for
 //!    modal Escape / command-palette shortcuts.
 //!
 //! Across silent (PaintOnly / skipped) frames the set **persists** —
 //! that's the wake signal: a dormant popup needs `BUTTONS`
 //! to still be set when the next click outside lands.
 //!
-//! Delivery isn't routed through subscriptions. Pointer and keyboard
+//! Delivery isn't routed through watches. Pointer and keyboard
 //! events flow into their per-frame [`InputState`](crate::input::InputState)
-//! queues. Both buffers are populated only when a relevant subscription
+//! queues. Both buffers are populated only when a relevant watch
 //! is active (the mask check short-circuits the push), so idle frames
 //! pay nothing.
 
@@ -25,12 +25,12 @@ use crate::input::shortcut::Shortcut;
 use bitflags::bitflags;
 
 bitflags! {
-    /// Wake-gate categories. Granular so a popup subscribing for
+    /// Wake-gate categories. Granular so a popup watching for
     /// clicks doesn't wake on every pointer move; canvases that want
     /// every move opt in explicitly.
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-    pub struct PointerSense: u8 {
+    pub struct PointerWake: u8 {
         /// Wakes on [`PointerEvent::Down`] / [`PointerEvent::Up`].
         /// Popup dismiss-on-press, focus traps.
         const BUTTONS = 1 << 0;
@@ -44,20 +44,20 @@ bitflags! {
     }
 }
 
-impl PointerSense {
+impl PointerWake {
     pub const NONE: Self = Self::empty();
 }
 
 bitflags! {
     /// Keyboard wake-gate categories. Orthogonal to focus routing —
     /// a focused widget always wakes on `KeyDown` / `Text` regardless
-    /// of these flags; subscribing here is for **off-focus** consumers
+    /// of these flags; watching here is for **off-focus** consumers
     /// (hotkey recorder, debug overlay, accel-underline UIs).
     /// Specific `(Key, Modifiers)` chords use the finer
-    /// [`Subscriptions::keys`] path instead.
+    /// [`Watches::keys`] path instead.
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-    pub struct KeyboardSense: u8 {
+    pub struct KeyboardWake: u8 {
         /// Wakes on
         /// [`KeyboardEvent::Text`](crate::input::keyboard::KeyboardEvent::Text)
         /// regardless of focus. Command palette filtering before
@@ -74,37 +74,37 @@ bitflags! {
     }
 }
 
-impl KeyboardSense {
+impl KeyboardWake {
     pub const NONE: Self = Self::empty();
 }
 
 /// Per-`Ui` wake-gate registry. Cleared pre-record; widgets re-OR /
 /// re-push their declarations during record.
 #[derive(Default)]
-pub(super) struct Subscriptions {
-    pub(super) pointer_mask: PointerSense,
-    pub(super) keyboard_mask: KeyboardSense,
+pub(super) struct Watches {
+    pub(super) pointer_mask: PointerWake,
+    pub(super) keyboard_mask: KeyboardWake,
     /// Specific-chord wake list. [`Shortcut`] carries platform-aware
     /// `Mods` (Cmd↔Ctrl) + ignore-case `Char` matching — the same
-    /// vocabulary menus / context-menus use, so subscriptions and
+    /// vocabulary menus / context-menus use, so watches and
     /// menu shortcuts share one type.
     pub(super) keys: Vec<Shortcut>,
 }
 
-impl Subscriptions {
+impl Watches {
     /// Idempotent push — duplicate shortcuts from multiple
-    /// subscribers collapse to one entry. Linear `contains` is fine
+    /// watchers collapse to one entry. Linear `contains` is fine
     /// at the expected count.
-    pub(super) fn subscribe_key(&mut self, sc: Shortcut) {
+    pub(super) fn watch_key(&mut self, sc: Shortcut) {
         if !self.keys.contains(&sc) {
             self.keys.push(sc);
         }
     }
 
-    /// Test whether a key press would wake any specific-chord subscriber.
+    /// Test whether a key press would wake any specific-chord watcher.
     /// Takes the whole [`KeyPress`] so [`Shortcut::matches`]'s non-Latin
     /// layout fallback applies — an off-focus Cmd/Ctrl chord on e.g. a
-    /// Russian layout still wakes its subscriber.
+    /// Russian layout still wakes its watcher.
     pub(super) fn matches_press(&self, kp: KeyPress) -> bool {
         self.keys.iter().any(|s| s.matches(kp))
     }
@@ -113,8 +113,8 @@ impl Subscriptions {
     /// [`Ui::record_pass`](crate::Ui) before every full record
     /// (including pass B of a double-layout frame).
     pub(super) fn clear(&mut self) {
-        self.pointer_mask = PointerSense::NONE;
-        self.keyboard_mask = KeyboardSense::NONE;
+        self.pointer_mask = PointerWake::NONE;
+        self.keyboard_mask = KeyboardWake::NONE;
         self.keys.clear();
     }
 }

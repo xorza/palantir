@@ -4,7 +4,7 @@ pub(crate) mod policy;
 pub(crate) mod response;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
-pub(crate) mod subscriptions;
+pub(crate) mod watch;
 
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::pointer::{PointerButton, PointerEvent};
@@ -14,11 +14,11 @@ use crate::input::response::{
 };
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::shortcut::Shortcut;
-use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
+use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
-use crate::scene::layer::Layer;
+use crate::scene::layer::{Layer, PerLayer};
 use glam::Vec2;
 use std::time::Duration;
 use strum::EnumCount as _;
@@ -278,13 +278,13 @@ struct KeyboardOwner {
 
 /// Who is asking for keyboard events.
 ///
-/// `Owner` is a capture holder reading its own stream; `Uncaptured` is
+/// `Owner` is a capture holder reading its own stream; `Unclaimed` is
 /// anything else, and carries the layer it is reading from so a capture
 /// below it cannot silence it.
 #[derive(Clone, Copy, Debug)]
 enum Reader {
     Owner(WidgetId),
-    Uncaptured(Layer),
+    Unclaimed(Layer),
 }
 
 pub(crate) struct InputState {
@@ -341,10 +341,22 @@ pub(crate) struct InputState {
     /// separate from focus because opening a context menu must not move
     /// the caret focus it acts on, yet its shortcuts must not also reach
     /// that focused widget.
-    keyboard_capture: Option<KeyboardOwner>,
+    keyboard_claim: Option<KeyboardOwner>,
     /// Capture stack rebuilt in popup record order. Capacity is retained
     /// so stable overlays stay allocation-free after their first frame.
-    keyboard_capture_candidates: Vec<KeyboardOwner>,
+    keyboard_claims: Vec<KeyboardOwner>,
+    /// Topmost layer opened as a `Ui::modal_layer`, committed by
+    /// [`Self::finish_record`] and stable for the whole following record
+    /// pass. The watch stream's counterpart to the blocking a scrim
+    /// already does in the hit index — see [`Self::pointer_events`].
+    pointer_claim: Option<Layer>,
+    /// Live claims per layer for the pass being recorded, rebuilt each
+    /// pass like `keyboard_claims`.
+    ///
+    /// A **count**, not a flag, and that is load-bearing: two overlays
+    /// can hold the same layer at once, and the first to close must not
+    /// unblock the layer while the second is still up.
+    pointer_claims: PerLayer<u8>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when a routed event could drive a state mutation
@@ -352,7 +364,7 @@ pub(crate) struct InputState {
     /// to decide whether to re-record the frame after pass 1's `end_frame`
     /// drains the input queues. Hover-only events (`PointerMoved`,
     /// `PointerLeft`) and modifier changes don't flip it. Unrouted actions
-    /// leave it clear because no widget or subscriber can observe them.
+    /// leave it clear because no widget or watcher can observe them.
     frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
     /// pointer moves and mod changes), cleared by `Ui::frame`
@@ -371,20 +383,22 @@ pub(crate) struct InputState {
     /// change). Cleared alongside `had_input_since_last_frame`. Read
     /// by `FrameRuntime::take_frame_plan` under [`InputPolicy::OnDelta`](policy::InputPolicy::OnDelta).
     pub(crate) repaint_requested_since_last_frame: bool,
-    /// Wake-gate subscriptions ([`PointerSense`] / [`KeyboardSense`]
+    /// Wake-gate watches ([`PointerWake`] / [`KeyboardWake`]
     /// flag masks + specific-chord list). Cleared pre-record (in
     /// `Ui::record_pass`); widgets re-assert each active frame. The
     /// masks **persist across silent frames** — that's the wake
     /// signal a dormant popup needs to be paged in by the next click.
     /// `on_input` short-circuits on the masks before touching event
     /// buffers, so idle frames pay nothing.
-    subs: Subscriptions,
+    subs: Watches,
     /// Unified pointer event stream this frame: moves, presses,
     /// releases, scrolls, zooms, leave. Pushes are gated per-category
-    /// on [`Subscriptions::pointer_mask`] (`MOVE` for `Move`,
+    /// on [`Watches::pointer_mask`] (`MOVE` for `Move`,
     /// `BUTTONS` for `Down`/`Up`, `SCROLL` for `Scroll`/`Zoom`, any
     /// pointer flag for `Leave`) — idle frames pay nothing. Cleared
-    /// in [`Self::drain_per_frame_queues`].
+    /// in [`Self::drain_per_frame_queues`]. Read through
+    /// [`Self::pointer_events`], which layer-gates it against
+    /// [`Self::pointer_claim`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
     /// Frame-runtime clock as of the last `Ui::frame`, refreshed
     /// once per frame so input handlers running *between* frames stamp
@@ -409,13 +423,15 @@ impl Default for InputState {
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
-            keyboard_capture: None,
-            keyboard_capture_candidates: Vec::new(),
+            keyboard_claim: None,
+            keyboard_claims: Vec::new(),
+            pointer_claim: None,
+            pointer_claims: PerLayer::default(),
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
             repaint_requested_since_last_frame: false,
-            subs: Subscriptions::default(),
+            subs: Watches::default(),
             frame_pointer_events: Vec::new(),
             frame_time: Duration::ZERO,
         }
@@ -425,37 +441,75 @@ impl Default for InputState {
 impl InputState {
     pub(crate) fn begin_record(&mut self) {
         self.subs.clear();
-        self.keyboard_capture_candidates.clear();
+        self.keyboard_claims.clear();
+        self.pointer_claims = PerLayer::default();
         self.snapshot_frame_quiescent();
     }
 
-    pub(crate) fn subscribe_pointer(&mut self, flags: PointerSense) {
+    pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
         self.subs.pointer_mask |= flags;
     }
 
-    pub(crate) fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
+    pub(crate) fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.subs.keyboard_mask |= flags;
     }
 
-    pub(crate) fn subscribe_key(&mut self, shortcut: Shortcut) {
-        self.subs.subscribe_key(shortcut);
+    pub(crate) fn watch_key(&mut self, shortcut: Shortcut) {
+        self.subs.watch_key(shortcut);
     }
 
     pub(crate) fn keyboard_events(&self, reader: Layer) -> &[KeyboardEvent] {
-        self.keyboard_events_for(Reader::Uncaptured(reader))
+        self.keyboard_events_for(Reader::Unclaimed(reader))
     }
 
-    pub(crate) fn captured_keyboard_events(&self, owner: WidgetId) -> &[KeyboardEvent] {
+    /// The pointer watch stream as seen from `reader`'s layer, gated the
+    /// same way [`Self::keyboard_events_for`] gates keys: a claiming
+    /// overlay silences only readers *strictly below* its own layer, so
+    /// the overlay's own body keeps watching while everything beneath it
+    /// is cut off.
+    ///
+    /// Watches bypass hit-testing by design — that is what makes them
+    /// useful for gestures with no widget under the pointer — so the
+    /// scrim that stops routed input at the hit index does nothing here.
+    /// Without this gate a `Main`-layer `SCROLL` watcher kept receiving
+    /// every event under an open modal, which is exactly the graph
+    /// canvas that pans and zooms that `Sense::ABSORB_POINTER` is named
+    /// for.
+    pub(crate) fn pointer_events(&self, reader: Layer) -> &[PointerEvent] {
+        let visible = match self.pointer_claim {
+            Some(claim) => claim.idx() <= reader.idx(),
+            None => true,
+        };
+        if visible {
+            &self.frame_pointer_events
+        } else {
+            &[]
+        }
+    }
+
+    /// Note that `layer` was opened as a modal layer this pass.
+    pub(crate) fn claim_pointer(&mut self, layer: Layer) {
+        self.pointer_claims[layer] = self.pointer_claims[layer].saturating_add(1);
+    }
+
+    /// Withdraw one claim on `layer` from the pass being recorded.
+    /// Saturating, so a release without a matching claim is inert rather
+    /// than a way to unblock someone else's layer.
+    pub(crate) fn release_pointer(&mut self, layer: Layer) {
+        self.pointer_claims[layer] = self.pointer_claims[layer].saturating_sub(1);
+    }
+
+    pub(crate) fn claimed_keyboard_events(&self, owner: WidgetId) -> &[KeyboardEvent] {
         // The owner reads its own stream, so its layer is the capture's
         // layer by construction — nothing to compare.
         self.keyboard_events_for(Reader::Owner(owner))
     }
 
     pub(crate) fn key_pressed(&mut self, reader: Layer, shortcut: Shortcut) -> bool {
-        self.key_pressed_for(Reader::Uncaptured(reader), shortcut)
+        self.key_pressed_for(Reader::Unclaimed(reader), shortcut)
     }
 
-    pub(crate) fn captured_key_pressed(&mut self, owner: WidgetId, shortcut: Shortcut) -> bool {
+    pub(crate) fn claimed_key_pressed(&mut self, owner: WidgetId, shortcut: Shortcut) -> bool {
         self.key_pressed_for(Reader::Owner(owner), shortcut)
     }
 
@@ -471,11 +525,11 @@ impl InputState {
     /// uncaptured stream, would otherwise receive nothing — and did,
     /// before capture became layer-ordered.
     fn keyboard_events_for(&self, reader: Reader) -> &[KeyboardEvent] {
-        let visible = match (self.keyboard_capture, reader) {
+        let visible = match (self.keyboard_claim, reader) {
             (Some(capture), Reader::Owner(id)) => capture.id == id,
-            (Some(capture), Reader::Uncaptured(layer)) => capture.layer.idx() <= layer.idx(),
+            (Some(capture), Reader::Unclaimed(layer)) => capture.layer.idx() <= layer.idx(),
             (None, Reader::Owner(_)) => false,
-            (None, Reader::Uncaptured(_)) => true,
+            (None, Reader::Unclaimed(_)) => true,
         };
         if visible {
             &self.frame_keyboard_events
@@ -485,32 +539,33 @@ impl InputState {
     }
 
     fn key_pressed_for(&mut self, reader: Reader, shortcut: Shortcut) -> bool {
-        self.subs.subscribe_key(shortcut);
+        self.subs.watch_key(shortcut);
         self.keyboard_events_for(reader).iter().any(
             |event| matches!(event, KeyboardEvent::Down(keypress) if shortcut.matches(*keypress)),
         )
     }
 
-    pub(crate) fn capture_keyboard(&mut self, owner: WidgetId, layer: Layer) {
+    pub(crate) fn claim_keyboard(&mut self, owner: WidgetId, layer: Layer) {
         let owner = KeyboardOwner { layer, id: owner };
-        self.keyboard_capture_candidates.push(owner);
-        if self.keyboard_capture.is_none() {
-            self.keyboard_capture = Some(owner);
+        self.keyboard_claims.push(owner);
+        if self.keyboard_claim.is_none() {
+            self.keyboard_claim = Some(owner);
         }
     }
 
-    pub(crate) fn release_keyboard_capture(&mut self, owner: WidgetId) {
+    pub(crate) fn release_keyboard(&mut self, owner: WidgetId) {
         if let Some(index) = self
-            .keyboard_capture_candidates
+            .keyboard_claims
             .iter()
             .rposition(|candidate| candidate.id == owner)
         {
-            self.keyboard_capture_candidates.remove(index);
+            self.keyboard_claims.remove(index);
         }
     }
 
-    /// Commit the frame's keyboard owner: the **topmost** candidate, with
-    /// record order breaking ties inside one layer.
+    /// Commit the frame's keyboard owner and pointer-absorbing layer: the
+    /// **topmost** candidate, with record order breaking ties inside one
+    /// layer.
     ///
     /// Was `candidates.last()`, which ignored layer entirely — so a
     /// `Popup` recorded after a `Modal` took the keyboard from it, and a
@@ -522,14 +577,27 @@ impl InputState {
     /// it is topmost and the second reads after displacing it, so *both*
     /// receive the key. Ownership must be stable for the whole pass, which
     /// costs one frame of lag when a new overlay opens on top.
+    ///
+    /// The pointer scrim resolves here for the same reason. Raising it the
+    /// moment the overlay records would split the pass in two: watchers
+    /// recorded before it would read the stream and watchers recorded
+    /// after would not, making the gate depend on authoring order rather
+    /// than on layer.
     pub(crate) fn finish_record(&mut self) -> bool {
-        self.keyboard_capture = self
-            .keyboard_capture_candidates
+        self.keyboard_claim = self
+            .keyboard_claims
             .iter()
             .copied()
             .enumerate()
             .max_by_key(|(index, candidate)| (candidate.layer.idx(), *index))
             .map(|(_, candidate)| candidate);
+        // Paint order is bottom-up, so the last live claim is the topmost.
+        self.pointer_claim = self
+            .pointer_claims
+            .iter_paint_order()
+            .filter(|(_, claims)| **claims > 0)
+            .map(|(layer, _)| layer)
+            .last();
         self.take_action_flag()
     }
 
@@ -565,14 +633,14 @@ impl InputState {
 
     /// Push a pointer event to [`Self::frame_pointer_events`] and
     /// answer "should this event wake the next frame?" Wake fires
-    /// when any subscriber holds `sense` — single bitwise AND on the
+    /// when any watcher holds `sense` — single bitwise AND on the
     /// cached `pointer_mask`. Returns `true` even when `pos` is `None`
     /// so an off-surface press still wakes; the `PointerEvent` itself
     /// is only pushed if there's a position (no consumer can do
     /// anything useful without one).
     fn push_pointer_event(
         &mut self,
-        sense: PointerSense,
+        sense: PointerWake,
         pos: Option<Vec2>,
         make: impl FnOnce(Vec2) -> PointerEvent,
     ) -> bool {
@@ -590,7 +658,7 @@ impl InputState {
     /// with no pointer routes nowhere, so waking would be pointless.
     fn push_scroll_class(&mut self, make: impl FnOnce(Vec2) -> PointerEvent) -> bool {
         self.pointer_pos.is_some()
-            && self.push_pointer_event(PointerSense::SCROLL, self.pointer_pos, make)
+            && self.push_pointer_event(PointerWake::SCROLL, self.pointer_pos, make)
     }
 
     /// Feed an aperture-native input event. Hit-tests against the
@@ -636,7 +704,7 @@ impl InputState {
                 self.frame_had_action |= latched;
                 self.refresh_pointer_targets(cascades);
                 let move_subbed =
-                    self.push_pointer_event(PointerSense::MOVE, Some(p), PointerEvent::Move);
+                    self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Move);
                 self.hovered != prev_hover
                     || self.scroll_target != prev_scroll
                     || self.pinch_target != prev_pinch
@@ -651,7 +719,7 @@ impl InputState {
                 self.pointer_pos = None;
                 self.refresh_pointer_targets(cascades);
                 // `Leave` is rare; emit whenever any pointer-class
-                // subscription is active so subscribers can clean up
+                // watch is active so watchers can clean up
                 // (clear crosshair, dismiss hover preview).
                 let pointer_subbed = !self.subs.pointer_mask.is_empty();
                 if pointer_subbed {
@@ -666,7 +734,7 @@ impl InputState {
                 let pointer_pos = self.pointer_pos;
                 let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
                 let buttons_subbed =
-                    self.push_pointer_event(PointerSense::BUTTONS, pointer_pos, |pos| {
+                    self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Down { pos, button: btn }
                     });
                 // Frame clock for multi-press timing — read before the
@@ -694,11 +762,11 @@ impl InputState {
                     }
                 }
                 // Press on inert surface (no click target, no focus
-                // change, no `BUTTONS` subscriber) is observably
+                // change, no `BUTTONS` watcher) is observably
                 // a no-op — under `OnDelta` the frame stays on the
                 // paint-anim path. Focus-clearing clicks (outside a
                 // focused TextEdit) and any sense hit still record;
-                // popup-dismiss subscribers wake themselves.
+                // popup-dismiss watchers wake themselves.
                 let observable = hit.is_some() || self.focused != prev_focus || buttons_subbed;
                 self.frame_had_action |= observable;
                 observable
@@ -732,11 +800,11 @@ impl InputState {
                     });
                 }
                 let buttons_subbed =
-                    self.push_pointer_event(PointerSense::BUTTONS, pointer_pos, |pos| {
+                    self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Up { pos, button: btn }
                     });
                 // Capture was live ⇒ owning widget needs a record;
-                // otherwise only `BUTTONS` subscribers wake.
+                // otherwise only `BUTTONS` watchers wake.
                 let observable = released.is_some() || buttons_subbed;
                 self.frame_had_action |= observable;
                 observable
@@ -786,8 +854,8 @@ impl InputState {
                     physical,
                 };
                 // Wake when a focused widget would consume the key
-                // OR a specific-chord subscriber asked for it
-                // OR a `KeyboardSense::KEY` subscriber is recording
+                // OR a specific-chord watcher asked for it
+                // OR a `KeyboardWake::KEY` watcher is recording
                 // raw key events. Idle keys with none of those
                 // (typing into empty surface) skip the frame. The
                 // chord check takes the whole `KeyPress` so the
@@ -795,7 +863,7 @@ impl InputState {
                 // Cmd+Z still wakes on a Russian layout.
                 let observable = self.focused.is_some()
                     || self.subs.matches_press(kp)
-                    || self.subs.keyboard_mask.contains(KeyboardSense::KEY);
+                    || self.subs.keyboard_mask.contains(KeyboardWake::KEY);
                 if observable {
                     self.frame_keyboard_events.push(KeyboardEvent::Down(kp));
                     self.frame_had_action = true;
@@ -805,10 +873,10 @@ impl InputState {
             InputEvent::Text(chunk) => {
                 // Text is rare (only fires on IME commit / dead-key
                 // resolution on most platforms). Wake when a focused
-                // widget would consume it OR a TEXT subscriber wants
+                // widget would consume it OR a TEXT watcher wants
                 // it.
                 let observable =
-                    self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardSense::TEXT);
+                    self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardWake::TEXT);
                 if observable {
                     self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
                     self.frame_had_action = true;
@@ -817,10 +885,10 @@ impl InputState {
             }
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
-                // Only wake if a subscriber asked. Accel-underline
-                // UIs / modifier debug overlays must subscribe to
+                // Only wake if a watcher asked. Accel-underline
+                // UIs / modifier debug overlays must watch to
                 // `MODIFIER`; nothing else cares.
-                self.subs.keyboard_mask.contains(KeyboardSense::MODIFIER)
+                self.subs.keyboard_mask.contains(KeyboardWake::MODIFIER)
             }
         };
         if requests_repaint {

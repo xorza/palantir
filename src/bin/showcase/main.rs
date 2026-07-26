@@ -222,7 +222,7 @@ fn active_toolbar_button(default: &aperture::ButtonTheme) -> aperture::ButtonThe
 /// F9 toggles the frame/FPS readout. The overlay is app-global, so
 /// toggling from whichever window has focus updates every window. Only
 /// `build_ui` needs to call this — the inspector inherits the same
-/// config. `key_pressed` auto-subscribes so off-focus presses still wake
+/// config. `key_pressed` auto-watches so off-focus presses still wake
 /// the loop.
 fn handle_debug_keys(ui: &mut Ui) {
     if ui.key_pressed(Shortcut::key(Key::F12)) {

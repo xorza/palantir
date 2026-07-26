@@ -1,7 +1,7 @@
 pub(crate) mod frame;
 pub(crate) mod frame_report;
 mod frame_stats;
-pub(crate) mod keyboard_capture;
+pub(crate) mod input_claim;
 pub(crate) mod resources;
 pub(crate) mod state;
 
@@ -16,7 +16,7 @@ use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
 use crate::input::response::{InputDelta, ResponseState};
 use crate::input::shortcut::Shortcut;
-use crate::input::subscriptions::{KeyboardSense, PointerSense};
+use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
@@ -43,7 +43,7 @@ use crate::scene::damage::{Damage, DamageEngine, DamageInput};
 use crate::shape::Shape;
 use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
-use crate::ui::keyboard_capture::KeyboardCapture;
+use crate::ui::input_claim::InputClaim;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
 use crate::widgets::Widget;
@@ -336,10 +336,10 @@ impl Ui {
             // `forest.pre_record` clears both its trees and the retained
             // payloads their shape records index into.
             self.forest.pre_record();
-            // Rebuild record-scoped input ownership and wake subscriptions;
+            // Rebuild record-scoped input ownership and wake watches;
             // PaintOnly frames skip this so their last wake set persists.
             self.input.begin_record();
-            // Like the subscription set, the cursor request is
+            // Like the watch set, the cursor request is
             // re-asserted by whoever still wants it this pass; reset
             // here (not per frame) so PaintOnly frames keep the last
             // recorded cursor instead of flickering back to the arrow.
@@ -437,7 +437,7 @@ impl Ui {
     }
 }
 
-/// Widget- and host-facing authoring API: input feed, subscriptions,
+/// Widget- and host-facing authoring API: input feed, watches,
 /// repaint/relayout requests, shape recording, per-widget state, and
 /// animation. Distinct from the host-driven frame lifecycle above
 /// (`frame` + its private record/cascade/finalize passes), which user
@@ -452,74 +452,85 @@ impl Ui {
         self.input.on_input(event, &self.cascades)
     }
 
-    // Wake gates for off-target events. All three are idempotent and
-    // cleared pre-record: widgets re-call each active frame, stop
-    // calling to drop the wake. See `crate::input::subscriptions`.
+    // The input surface has three verbs, and every method below is one
+    // of them:
+    //
+    // - `peek_*` reads live state and commits to nothing. `&self`. Use
+    //   it when something that already woke this frame gated the read —
+    //   the modifier held during a click, the pointer position at a
+    //   press.
+    // - `watch_*`, and any plain read that isn't a `peek_*`, reads *and*
+    //   declares "wake me when this changes". `&mut self`. This is the
+    //   default because forgetting it is a silent visual bug: paint
+    //   derived from the pointer freezes on screen until some unrelated
+    //   event forces a frame. Forgetting a peek only costs frames.
+    // - `claim_*`, and `modal_layer`, take authority over a stream for
+    //   the ambient layer, silencing readers strictly below it.
+    //
+    // A plain read auto-watches exactly what its own result depends on:
+    // `pointer_pos` → `MOVE`, `modifiers` → `MODIFIER`,
+    // `key_pressed(sc)` → that chord. The event streams don't, because
+    // which category should wake you isn't inferable from a
+    // `&[PointerEvent]` — that's what the explicit `watch_*` flags are
+    // for. Watches are idempotent and cleared pre-record: re-call each
+    // active frame, stop calling to drop the wake.
 
     /// Declare interest in off-target pointer events of `flags`.
-    pub fn subscribe_pointer(&mut self, flags: PointerSense) {
-        self.input.subscribe_pointer(flags);
+    pub fn watch_pointer(&mut self, flags: PointerWake) {
+        self.input.watch_pointer(flags);
     }
 
     /// Declare interest in off-focus keyboard categories. Hotkey
     /// recorders, accel-underline UIs, command palettes that record
-    /// before focus. Specific chords use [`Self::subscribe_key`].
-    pub fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
-        self.input.subscribe_keyboard(flags);
+    /// before focus. Specific chords use [`Self::watch_key`].
+    pub fn watch_keyboard(&mut self, flags: KeyboardWake) {
+        self.input.watch_keyboard(flags);
     }
 
     /// Declare interest in one specific shortcut (e.g.
     /// `Shortcut::key(Key::Escape)`, `Shortcut::ctrl('K')`).
-    /// Duplicate subscribers collapse.
-    pub fn subscribe_key(&mut self, sc: Shortcut) {
-        self.input.subscribe_key(sc);
+    /// Duplicate watchers collapse.
+    pub fn watch_key(&mut self, sc: Shortcut) {
+        self.input.watch_key(sc);
     }
 
     /// Unified pointer event stream captured this frame. Empty when
-    /// no [`PointerSense`] subscriber is active. Subscribers `match`
+    /// no [`PointerWake`] watcher is active. Watchers `match`
     /// and filter by rect / button.
+    ///
+    /// Layer-gated like [`Self::keyboard_events`]: a [`Self::modal_layer`]
+    /// empties the stream for every layer strictly below it, and for no
+    /// other. Watches deliberately bypass hit-testing, so without this
+    /// the scrim that blocks routed input would let a `Main`-layer
+    /// pan/zoom watcher keep acting under an open modal.
     pub fn pointer_events(&self) -> &[PointerEvent] {
-        &self.input.frame_pointer_events
+        self.input.pointer_events(self.forest.current_layer())
     }
 
     /// Unified keyboard event stream this frame —
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from typed/IME-committed text, in
-    /// arrival order. Empty while a popup has exclusive keyboard
-    /// capture; the popup reads the underlying stream through its
-    /// scoped owner id.
+    /// arrival order.
+    ///
+    /// Layer-gated exactly like [`Self::pointer_events`]: a
+    /// [`Self::modal_layer`] empties the stream for every layer strictly
+    /// below, and for no other — so the claiming overlay's own body keeps
+    /// reading, which is what lets a `TextEdit` inside a popup be typed
+    /// into. The claim owner reads its scoped stream through
+    /// [`InputClaim::keyboard_events`].
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
         self.input.keyboard_events(self.forest.current_layer())
-    }
-
-    /// Register stable `owner` as a keyboard-capture candidate for this
-    /// record pass, returning its scoped captured-input handle. Call this
-    /// every frame the owner is active; [`KeyboardCapture::release`]
-    /// withdraws the claim.
-    ///
-    /// **Claim from inside the overlay's own layer.** The capture records
-    /// [`Self::layer`]'s current layer, and that layer decides both which
-    /// candidate wins when several claim at once (topmost) and which
-    /// readers the capture silences (everything strictly below it, so the
-    /// overlay's own body keeps reading). Taking it from the ambient layer
-    /// rather than an argument is deliberate: the two can then never
-    /// disagree, which they could when the caller named the layer and
-    /// recorded somewhere else.
-    pub fn claim_keyboard(&mut self, owner: WidgetId) -> KeyboardCapture {
-        self.input
-            .capture_keyboard(owner, self.forest.current_layer());
-        KeyboardCapture::new(owner)
     }
 
     /// `true` if any [`KeyboardEvent::Down`] this frame matches
     /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
     /// stateful logic, iterate directly instead.
     ///
-    /// Side-effect: auto-subscribes the chord for wake-up. Without
+    /// Side-effect: auto-watches the chord for wake-up. Without
     /// this, aperture's keyboard wake-gate parks off-focus presses until the
     /// next unrelated frame, and the caller sees the event one gesture late.
     /// Pair with the call-it-every-frame discipline that the
-    /// subscription system already requires.
+    /// watch system already requires.
     pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
         let layer = self.forest.current_layer();
         self.input.key_pressed(layer, sc)
@@ -839,6 +850,44 @@ impl Ui {
         self.placed_layer(layer, Placement::fixed(anchor, size), body)
     }
 
+    /// [`Self::layer`], for an overlay that **owns input** while it is
+    /// up. `owner` takes the keyboard, and the layer takes the pointer:
+    /// [`Self::keyboard_events`] and [`Self::pointer_events`] both go
+    /// empty for every layer strictly below, and are unchanged for this
+    /// one and above — so the overlay's own body keeps reading, which is
+    /// what lets a `TextEdit` inside a popup be typed into.
+    ///
+    /// That distinction is the reason this is a separate entry point
+    /// rather than a flag on [`Self::layer`]. A `Popup` or `Modal` owns
+    /// input; a `Tooltip` or a debug HUD only paints over things, and
+    /// must keep letting the canvas underneath pan and zoom. Both used
+    /// to be spelled identically.
+    ///
+    /// Both halves ride this call rather than being claimed inside the
+    /// body, so the layer they record against is the layer they were
+    /// opened on and the two can never disagree. Re-open every frame the
+    /// overlay is up, and [`InputClaim::release`] on the frame it
+    /// decides to close — claims resolve at the end of a pass and are
+    /// read by the next one, so without the release a dismissing overlay
+    /// owns input for one frame after it is gone.
+    ///
+    /// Only the topmost claim matters, so an overlay that enters its
+    /// layer more than once (as `Popup` does — a full-surface eater plus
+    /// a positioned body) needs this on just one of them.
+    pub fn modal_layer<R>(
+        &mut self,
+        layer: Layer,
+        anchor: glam::Vec2,
+        size: Option<Size>,
+        owner: WidgetId,
+        body: impl FnOnce(&mut Ui, InputClaim) -> R,
+    ) -> R {
+        self.input.claim_pointer(layer);
+        self.input.claim_keyboard(owner, layer);
+        let claim = InputClaim::new(owner, layer);
+        self.placed_layer(layer, Placement::fixed(anchor, size), |ui| body(ui, claim))
+    }
+
     pub(crate) fn overlay_layer<R>(
         &mut self,
         layer: Layer,
@@ -849,7 +898,7 @@ impl Ui {
     }
 
     /// Forwards `body`'s value so a layer scope can hand something back —
-    /// notably a [`KeyboardCapture`] claimed inside it, which is how an
+    /// notably a [`InputClaim`] claimed inside it, which is how an
     /// overlay records its capture against the layer it actually lives on.
     fn placed_layer<R>(
         &mut self,
@@ -1054,7 +1103,7 @@ impl Ui {
     /// stacked on top wins the pointer), and because it's a pure
     /// function of the hover *target*, its value can only change when
     /// the target changes — which is exactly when a repaint is already
-    /// scheduled, so no `MOVE` subscription is needed to stay fresh.
+    /// scheduled, so no `MOVE` watch is needed to stay fresh.
     pub fn hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .hovered
@@ -1076,17 +1125,23 @@ impl Ui {
     /// Current pointer position in logical pixels (surface space), or
     /// `None` if the pointer has left the surface.
     ///
-    /// `&mut` because reading it auto-asserts a [`PointerSense::MOVE`]
-    /// subscription: output derived from the raw pointer may change on
-    /// any move, so moves must keep triggering repaints even when the
-    /// hover target doesn't change — otherwise pointer-derived paint
-    /// (e.g. a proximity highlight) goes stale on screen until an
-    /// unrelated event forces a frame. Like every subscription, it
-    /// lapses as soon as a record pass stops reading. Use
-    /// [`Self::pointer_local`] when the output should be relative to a
-    /// widget.
+    /// `&mut` because reading it auto-asserts a [`PointerWake::MOVE`]
+    /// watch: output derived from the raw pointer may change on any
+    /// move, so moves must keep triggering repaints even when the hover
+    /// target doesn't change — otherwise pointer-derived paint (e.g. a
+    /// proximity highlight) goes stale on screen until an unrelated
+    /// event forces a frame. Like every watch, it lapses as soon as a
+    /// record pass stops reading. Use [`Self::pointer_local`] when the
+    /// output should be relative to a widget, and
+    /// [`Self::peek_pointer_pos`] when this frame is already awake for
+    /// another reason.
+    ///
+    /// This is the *raw* pointer, so it ignores who owns input. For "is
+    /// the pointer on me" styling prefer [`Self::hover_within`], which
+    /// routes through the hit index and is therefore occlusion- and
+    /// overlay-aware.
     pub fn pointer_pos(&mut self) -> Option<glam::Vec2> {
-        self.subscribe_pointer(PointerSense::MOVE);
+        self.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos
     }
 
@@ -1094,22 +1149,55 @@ impl Ui {
     /// coordinates. `None` when the pointer is off-surface or the
     /// widget did not arrange in the previous frame.
     ///
-    /// Reading automatically subscribes the record pass to
-    /// [`PointerSense::MOVE`], keeping pointer-local paint reactive
-    /// while the cursor moves within one hover target.
+    /// Reading auto-asserts a [`PointerWake::MOVE`] watch, keeping
+    /// pointer-local paint reactive while the cursor moves within one
+    /// hover target. [`Self::peek_pointer_local`] is the unwatched read.
     pub fn pointer_local(&mut self, id: WidgetId) -> Option<glam::Vec2> {
-        self.subscribe_pointer(PointerSense::MOVE);
+        self.watch_pointer(PointerWake::MOVE);
         self.input.pointer_local_for(id, &self.cascades)
     }
 
     /// Currently-held modifier keys. State persists across frames; only
     /// `ModifiersChanged` events mutate it.
     ///
-    /// Reading automatically subscribes the record pass to
-    /// [`KeyboardSense::MODIFIER`], so modifier-dependent paint updates
-    /// on both press and release without another input event.
+    /// Reading auto-asserts a [`KeyboardWake::MODIFIER`] watch, so
+    /// modifier-dependent paint updates on both press and release
+    /// without another input event. When the read is instead gated on
+    /// something that already woke this frame — the overwhelmingly
+    /// common `if response.left.clicked() { … }` — use
+    /// [`Self::peek_modifiers`] and don't pay for the wake.
     pub fn modifiers(&mut self) -> Modifiers {
-        self.subscribe_keyboard(KeyboardSense::MODIFIER);
+        self.watch_keyboard(KeyboardWake::MODIFIER);
+        self.input.modifiers
+    }
+
+    /// [`Self::pointer_pos`] without the [`PointerWake::MOVE`] watch.
+    ///
+    /// Correct exactly when something else already guarantees a frame
+    /// whenever this value could matter — reading the press position
+    /// inside a click branch, say. Wrong when paint is derived from it
+    /// continuously: the pointer will move, no frame will run, and the
+    /// stale result stays on screen.
+    pub fn peek_pointer_pos(&self) -> Option<glam::Vec2> {
+        self.input.pointer_pos
+    }
+
+    /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch.
+    /// Same caveat as [`Self::peek_pointer_pos`].
+    pub fn peek_pointer_local(&self, id: WidgetId) -> Option<glam::Vec2> {
+        self.input.pointer_local_for(id, &self.cascades)
+    }
+
+    /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch
+    /// — "which modifiers were held when the thing that woke this frame
+    /// happened", the shape almost every modifier read actually wants.
+    ///
+    /// Use [`Self::modifiers`] instead when a bare modifier press or
+    /// release must repaint on its own, with nothing else happening: an
+    /// accel-underline overlay that appears on Alt, a modifier-state
+    /// debug readout, a drag whose snap targets change under Ctrl while
+    /// the pointer holds still.
+    pub fn peek_modifiers(&self) -> Modifiers {
         self.input.modifiers
     }
 

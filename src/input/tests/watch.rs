@@ -1,10 +1,10 @@
-//! Off-target wake gates — `PointerSense` flags + specific key
+//! Off-target wake gates — `PointerWake` flags + specific key
 //! chords. Pinned axes:
-//!  * subscriber wakes the frame on events that otherwise wouldn't
+//!  * watcher wakes the frame on events that otherwise wouldn't
 //!    (press on inert surface, key with no focus);
-//!  * no subscriber → no wake AND no entry in `frame_pointer_events`
+//!  * no watcher → no wake AND no entry in `frame_pointer_events`
 //!    (the `any_mask` short-circuit gates the push);
-//!  * pre-record clear drops stale subscriptions.
+//!  * pre-record clear drops stale watches.
 use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
@@ -13,13 +13,15 @@ use crate::input::keyboard::{Key, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
-use crate::input::subscriptions::PointerSense;
+use crate::input::watch::PointerWake;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::shape::Shape;
 use crate::widgets::frame::Frame;
+use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -29,25 +31,25 @@ fn empty(ui: &mut Ui) {
         .show(ui, |_| {});
 }
 
-fn empty_sub_buttons(ui: &mut Ui) {
+fn empty_watch_buttons(ui: &mut Ui) {
     empty(ui);
-    ui.subscribe_pointer(PointerSense::BUTTONS);
+    ui.watch_pointer(PointerWake::BUTTONS);
 }
 
-fn empty_sub_move(ui: &mut Ui) {
+fn empty_watch_move(ui: &mut Ui) {
     empty(ui);
-    ui.subscribe_pointer(PointerSense::MOVE);
+    ui.watch_pointer(PointerWake::MOVE);
 }
 
-fn empty_sub_escape(ui: &mut Ui) {
+fn empty_watch_escape(ui: &mut Ui) {
     empty(ui);
-    ui.subscribe_key(Shortcut::key(Key::Escape));
+    ui.watch_key(Shortcut::key(Key::Escape));
 }
 
 #[test]
-fn buttons_subscriber_wakes_press_on_inert() {
+fn buttons_watcher_wakes_press_on_inert() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_watch_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -65,7 +67,7 @@ fn buttons_subscriber_wakes_press_on_inert() {
 }
 
 #[test]
-fn press_on_inert_with_no_subscriber_does_not_wake() {
+fn press_on_inert_with_no_watcher_does_not_wake() {
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(200, 200), empty);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -75,9 +77,9 @@ fn press_on_inert_with_no_subscriber_does_not_wake() {
 }
 
 #[test]
-fn record_without_resubscribe_drops_wake() {
+fn record_without_rewatch_drops_wake() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_watch_buttons);
     ui.run_at(UVec2::new(200, 200), empty);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -88,7 +90,7 @@ fn record_without_resubscribe_drops_wake() {
 #[test]
 fn press_and_release_both_captured() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_watch_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -103,9 +105,9 @@ fn press_and_release_both_captured() {
 
 /// `MOVE` wakes on every pointer move — even inert ones.
 #[test]
-fn move_subscriber_wakes_on_inert_move() {
+fn move_watcher_wakes_on_inert_move() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_move);
+    ui.run_at(UVec2::new(200, 200), empty_watch_move);
 
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert!(delta.requests_repaint);
@@ -118,11 +120,11 @@ fn move_subscriber_wakes_on_inert_move() {
     ));
 }
 
-/// `MOVE` not subscribed → no `Move` in the stream even
+/// `MOVE` not watched → no `Move` in the stream even
 /// though hover may have changed. Hover-driven wake still fires
 /// via the existing hit-test path; we're only checking the buffer.
 #[test]
-fn move_without_subscriber_does_not_log() {
+fn move_without_watcher_does_not_log() {
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(200, 200), empty);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -130,14 +132,14 @@ fn move_without_subscriber_does_not_log() {
 }
 
 #[test]
-fn scroll_subscriber_receives_an_event_without_creating_a_widget_delta() {
-    fn empty_sub_scroll(ui: &mut Ui) {
+fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
+    fn empty_watch_scroll(ui: &mut Ui) {
         empty(ui);
-        ui.subscribe_pointer(PointerSense::SCROLL);
+        ui.watch_pointer(PointerWake::SCROLL);
     }
 
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_scroll);
+    ui.run_at(UVec2::new(200, 200), empty_watch_scroll);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
 
@@ -158,11 +160,11 @@ fn scroll_subscriber_receives_an_event_without_creating_a_widget_delta() {
 /// Reading `Ui::pointer_pos` during record auto-asserts `MOVE`: record
 /// output derived from the raw pointer may change on any move, so moves
 /// must wake even over an inert surface. A pass that stops reading
-/// drops the wake like any other lapsed subscription — the staleness
+/// drops the wake like any other lapsed watch — the staleness
 /// this pins: a pointer-proximity highlight painted from `pointer_pos`
 /// must not freeze on screen when the hover target stops changing.
 #[test]
-fn pointer_pos_read_asserts_move_subscription() {
+fn pointer_pos_read_asserts_move_watch() {
     fn empty_reads_pointer(ui: &mut Ui) {
         empty(ui);
         let _ = ui.pointer_pos();
@@ -176,7 +178,7 @@ fn pointer_pos_read_asserts_move_subscription() {
         "a record pass that read pointer_pos must wake on moves"
     );
 
-    // Next pass doesn't read → subscription lapses with the rest of
+    // Next pass doesn't read → watch lapses with the rest of
     // the per-pass set.
     ui.run_at(UVec2::new(200, 200), empty);
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
@@ -289,9 +291,9 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 }
 
 #[test]
-fn key_chord_subscriber_wakes_only_exact_chord() {
+fn key_chord_watcher_wakes_only_exact_chord() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_escape);
+    ui.run_at(UVec2::new(200, 200), empty_watch_escape);
     assert!(ui.input.focused.is_none());
 
     let delta = ui.on_input(InputEvent::KeyDown {
@@ -301,7 +303,7 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
     });
     assert!(!delta.requests_repaint);
 
-    // Alt+Escape: subscriber asked for bare Escape → no match.
+    // Alt+Escape: watcher asked for bare Escape → no match.
     // (Avoid ctrl here: on macOS, raw Ctrl isn't represented in
     // `Shortcut`'s `Mods` vocabulary, so ctrl+Escape would *match*
     // Shortcut::key(Escape) — a documented platform compromise.)
@@ -329,12 +331,167 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
 #[test]
 fn pointer_events_drain_between_frames() {
     let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_watch_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert_eq!(ui.pointer_events().len(), 1);
 
-    ui.run_at(UVec2::new(200, 200), empty_sub_buttons);
+    ui.run_at(UVec2::new(200, 200), empty_watch_buttons);
     assert!(ui.pointer_events().is_empty());
+}
+
+/// The pointer watch stream is layer-gated exactly like the keyboard's:
+/// a claiming overlay silences readers *strictly below* it and nobody
+/// else. Same predicate, so the two policies are asserted the same way
+/// as `keyboard_views_and_shortcuts_follow_capture_owner`.
+#[test]
+fn a_modal_layer_silences_pointer_watchers_strictly_below_it() {
+    let mut ui = Ui::for_test();
+    ui.run_at(UVec2::new(200, 200), empty_watch_buttons);
+    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    let event = ui.pointer_events()[0];
+
+    ui.modal_layer(
+        Layer::Popup,
+        Vec2::ZERO,
+        None,
+        WidgetId::from_hash("overlay"),
+        |_, _| {},
+    );
+    assert_eq!(
+        ui.input.pointer_events(Layer::Main),
+        &[event],
+        "the claim resolves at finish_record, so the pass it was made in still reads",
+    );
+    ui.input.finish_record();
+
+    // Strictly below — cut off, which is the whole point of the claim.
+    assert!(ui.input.pointer_events(Layer::Main).is_empty());
+    // Same layer — the claiming overlay's own body keeps watching, so a
+    // popup can still drive a drag inside itself.
+    assert_eq!(ui.input.pointer_events(Layer::Popup), &[event]);
+    // Above — a modal over a popup is not silenced by it.
+    assert_eq!(ui.input.pointer_events(Layer::Modal), &[event]);
+    assert_eq!(ui.input.pointer_events(Layer::Tooltip), &[event]);
+
+    // Nothing re-claimed it, so the next resolution reopens the stream.
+    ui.input.begin_record();
+    ui.input.finish_record();
+    assert_eq!(ui.input.pointer_events(Layer::Main), &[event]);
+}
+
+/// End-to-end, and the distinction `modal_layer` exists to draw: a
+/// `Modal` takes the stream from `Main`, a plain `Ui::layer` on the very
+/// same layer does not. Not recording the modal is the whole release.
+#[test]
+fn only_a_modal_layer_gates_the_stream_and_only_while_recorded() {
+    let surface = UVec2::new(200, 200);
+    let press = |ui: &mut Ui| {
+        let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    };
+
+    let mut ui = Ui::for_test();
+    ui.run_at(surface, |ui| {
+        empty_watch_buttons(ui);
+        Modal::new().show(ui, |_| {});
+    });
+    press(&mut ui);
+    assert!(
+        ui.pointer_events().is_empty(),
+        "a Modal opens its layer with modal_layer, so Main is cut off",
+    );
+
+    // A paint-only overlay on the same layer — a tooltip, a debug HUD —
+    // must leave the canvas underneath able to pan and zoom.
+    ui.run_at(surface, |ui| {
+        empty_watch_buttons(ui);
+        ui.layer(Layer::Modal, Vec2::ZERO, None, empty);
+    });
+    press(&mut ui);
+    assert_eq!(
+        ui.pointer_events().len(),
+        1,
+        "a plain layer on the same Layer::Modal blocks nothing",
+    );
+
+    ui.run_at(surface, empty_watch_buttons);
+    press(&mut ui);
+    assert_eq!(
+        ui.pointer_events().len(),
+        1,
+        "a modal that stops recording stops blocking",
+    );
+}
+
+/// `peek_*` is the same value as its watching twin and none of the wake:
+/// A → wakes, B → doesn't, and both report the same reading. The point
+/// is the pair, so they're asserted against each other rather than
+/// separately.
+#[test]
+fn peeks_return_the_watched_value_without_asserting_the_watch() {
+    let surface = UVec2::new(200, 200);
+    let id = WidgetId::from_hash("root");
+    let at = Vec2::new(50.0, 50.0);
+
+    // Watching pass: reads pointer + modifiers the auto-watch way.
+    let mut watched = Ui::for_test();
+    watched.run_at(surface, |ui| {
+        empty(ui);
+        let _ = ui.pointer_pos();
+        let _ = ui.modifiers();
+    });
+    // Peeking pass: same two reads, no watch.
+    let mut peeked = Ui::for_test();
+    peeked.run_at(surface, |ui| {
+        empty(ui);
+        let _ = ui.peek_pointer_pos();
+        let _ = ui.peek_modifiers();
+    });
+
+    for ui in [&mut watched, &mut peeked] {
+        let _ = ui.on_input(InputEvent::PointerMoved(at));
+    }
+    assert!(
+        watched
+            .on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)))
+            .requests_repaint,
+        "pointer_pos watches MOVE",
+    );
+    assert!(
+        !peeked
+            .on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)))
+            .requests_repaint,
+        "peek_pointer_pos must not",
+    );
+
+    let mods = Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    };
+    assert!(
+        watched
+            .on_input(InputEvent::ModifiersChanged(mods))
+            .requests_repaint,
+        "modifiers watches MODIFIER",
+    );
+    assert!(
+        !peeked
+            .on_input(InputEvent::ModifiersChanged(mods))
+            .requests_repaint,
+        "peek_modifiers must not",
+    );
+
+    // Same reading from both, so the cheap one isn't cheap by lying.
+    assert_eq!(peeked.peek_pointer_pos(), Some(Vec2::new(60.0, 50.0)));
+    assert_eq!(peeked.peek_pointer_pos(), watched.peek_pointer_pos());
+    assert!(peeked.peek_modifiers().shift);
+    assert_eq!(peeked.peek_modifiers(), watched.peek_modifiers());
+    assert_eq!(
+        peeked.peek_pointer_local(id),
+        watched.peek_pointer_local(id)
+    );
+    assert_eq!(peeked.peek_pointer_local(id), Some(Vec2::new(60.0, 50.0)));
 }

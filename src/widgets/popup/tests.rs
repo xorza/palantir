@@ -616,7 +616,7 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
 /// layer-ordered every keystroke into a popup-hosted field was discarded.
 /// Nothing in the tree exercised the combination, so it went unnoticed.
 ///
-/// This works because `Popup::show` calls `with_keyboard_capture` *outside*
+/// This works because `Popup::show` calls `with_keyboard_claim` *outside*
 /// `ui.layer(Layer::Popup, ..)`, registering the capture at `Layer::Main` —
 /// so the body, one layer up, is not silenced by it. That is load-bearing:
 /// moving the capture call inside the layer scope would put owner and body
