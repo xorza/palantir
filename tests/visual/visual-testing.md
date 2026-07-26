@@ -78,10 +78,8 @@ tests/visual/
   `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`.
   Helpers: `render_after_settle(N, …)` for fixtures that need warmup frames
   before capture (e.g. scrollbars reading populated state),
-  `render_with_overlay(cfg, …)` for the damage-vis tests.
-  `TwoWindowHarness` drives two `WindowDriver`s through one backend for
-  retained-state interleaving checks. Private `readback()` honors the 256-byte
-  row alignment.
+  `render_with_overlay(cfg, …)` for the damage-vis tests. Private
+  `readback()` honors the 256-byte row alignment.
 - **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }`, default
   `(2, 0.001)`: a pixel passes if every channel is within `per_channel`, and
   the image passes if the differing-pixel ratio stays under `max_ratio`.
@@ -130,11 +128,9 @@ fixtures loosen it for glyph AA).
   the switch with no re-upload).
 - **`hidpi`** — a complex multi-region dashboard at scale 2.0 (header /
   sidebar / 2×2 cards / footer).
-- **`multi_window`** — records different mesh, polyline, and arena-backed text
-  payload lengths in two windows sharing one backend, then asserts window A's
-  spinner-driven `PaintOnly` pixels exactly match its first render after
-  window B records in between (assert-only).
-- **`main`** — a clear-color readback sanity check (sRGB round-trip).
+- **`main`** — a clear-color readback sanity check (sRGB round-trip), plus the
+  two `#[should_panic]` tests pinning that the offscreen host rejects
+  `Ui::open_window` / `Ui::close_window` (assert-only).
 
 ### Adding a fixture
 

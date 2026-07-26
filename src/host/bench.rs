@@ -236,8 +236,7 @@ pub fn alloc_free_gpu() {
     });
     let run = |host: &mut OffscreenHost, state: &mut FrameFixture| {
         host.ui().theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, &mut FixtureApp { state })
-            .expect("valid benchmark scale factor");
+        host.frame_offscreen(&target, SCALE, &mut FixtureApp { state });
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
