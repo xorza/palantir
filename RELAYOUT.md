@@ -180,6 +180,8 @@ touching. (Check whether it already subsumes darkroom's `first_frame`.)
 Independent of everything above, and still worth doing. Three findings, in
 increasing order of leverage.
 
+B1 and B2 below are **done** (§6-3); B3 and B4 are not.
+
 #### B1. Presses almost never need the settle
 
 `let observable = hit.is_some() || self.focused != prev_focus || buttons_subbed`
@@ -336,9 +338,14 @@ the power to double a frame.
    asserts every table entry is a real (non-no-op) step — the first draft
    silently pinned a degenerate `ActivateTab`.
 2. ~~**Delete `main_window.rs:154`.**~~ **Done** — see §3.1, it was dead.
-3. **Narrow `frame_had_action`** — presses to `buttons_subbed` only,
-   releases to `kind != Miss` (B1+B2). Independent of 1–2; same test
-   discipline.
+3. ~~**Narrow `frame_had_action`** (B1+B2).~~ **Done.** Presses now flip it
+   only on `buttons_subbed`; releases only on `kind != Miss`. Both are
+   strictly narrower than the `observable` return value feeding the
+   `OnDelta` wake gate, which is unchanged — a press on inert surface still
+   records, it just doesn't settle. Pinned by `input/tests/settle.rs`, whose
+   two narrowing assertions were confirmed to fail (2 vs 1) against the
+   pre-change code before landing; the drag arm there is a regression guard
+   that passes either way.
 4. **Build `Anchor`** (§5) and land it on darkroom's wires first — the case
    with a visible bug to prove it against, and the one that retires the last
    genuine downstream caller.

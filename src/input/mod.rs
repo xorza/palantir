@@ -342,14 +342,26 @@ pub(crate) struct InputState {
     /// The rule, since the arms differ and the difference is not
     /// obvious: an event flips this when the state it writes is read
     /// through a channel that a widget recorded *earlier in the same
-    /// pass* may already have consulted — a press or release (capture,
-    /// focus), a `KeyDown` or `Text` (the keyboard queue), or a drag
-    /// latch crossing its threshold inside `PointerMoved`. Scroll, pinch
-    /// and `PointerLeft` do not, because their state reaches exactly one
-    /// widget, the routed target, which applies it in the pass that
-    /// receives it; modifier changes do not, because nothing routes on
-    /// them. Unrouted actions leave it clear because no widget or
-    /// watcher can observe them at all.
+    /// pass* may already have consulted — a `Click` or `DragStopped`
+    /// release, a `KeyDown` or `Text` (the keyboard queue), a drag latch
+    /// crossing its threshold inside `PointerMoved`, or any event a
+    /// `PointerWake::BUTTONS` subscriber saw.
+    ///
+    /// Deliberately *not* flipped, though each of these still records:
+    /// a **press**, because a capture reaches only its own target and
+    /// `focused` is read live off this struct (committed before the
+    /// frame, so pass A already sees it); a **`ReleaseKind::Miss`**,
+    /// because it fires no click and only tears down that same
+    /// single-reader capture; and scroll, pinch, `PointerLeft`, or
+    /// modifier changes, whose state reaches exactly one routed target
+    /// that applies it in the pass that receives it. Unrouted actions
+    /// leave it clear because no widget or watcher can observe them.
+    ///
+    /// The press and `Miss` exclusions are what let a click-driven UI
+    /// settle once per gesture instead of three times. The cost is real
+    /// but narrow: an app that reacts to a press-driven focus change by
+    /// writing state a *prefix* widget shows gains a one-frame lag, and
+    /// should handle that edge in [`crate::App::update`] instead.
     frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
     /// pointer moves and mod changes), cleared by `Ui::frame`
@@ -739,7 +751,16 @@ impl InputState {
                 // focused TextEdit) and any sense hit still record;
                 // popup-dismiss watchers wake themselves.
                 let observable = hit.is_some() || self.focused != prev_focus || buttons_subbed;
-                self.frame_had_action |= observable;
+                // Narrower than `observable`: a press must *record*
+                // whenever it lands, but it only needs a settle when it
+                // writes state an earlier-recorded widget could have read.
+                // A capture reaches exactly its own target — the `Down`
+                // phase feeds only that widget's theme picking — and
+                // `focused` is read live off `InputState`, committed here
+                // before the frame starts, so every widget in pass A
+                // already sees the new focus. A `BUTTONS` subscriber is
+                // the one opaque channel left.
+                self.frame_had_action |= buttons_subbed;
                 observable
             }
             InputEvent::PointerReleased(btn) => {
@@ -749,6 +770,12 @@ impl InputState {
                 // has no press to take and touches nothing — an earlier
                 // same-batch gesture's release edge survives it.
                 let released = cap.press.take();
+                // A `Miss` only tears down a capture that exactly one
+                // widget reads, which is precisely what this module's
+                // settle rule excludes. A `Click` or `DragStopped` is the
+                // edge apps act on — dropping a graph node rewires things
+                // a prefix widget draws — so those keep their settle.
+                let mut settles = false;
                 if let Some(press) = released {
                     // A latched drag ending is its own edge (the release
                     // just destroyed the drag, so widgets can't infer it);
@@ -765,6 +792,7 @@ impl InputState {
                             ReleaseKind::Miss
                         }
                     };
+                    settles = !matches!(kind, ReleaseKind::Miss);
                     cap.release = Some(Release {
                         target: press.target,
                         kind,
@@ -777,7 +805,7 @@ impl InputState {
                 // Capture was live ⇒ owning widget needs a record;
                 // otherwise only `BUTTONS` watchers wake.
                 let observable = released.is_some() || buttons_subbed;
-                self.frame_had_action |= observable;
+                self.frame_had_action |= settles || buttons_subbed;
                 observable
             }
             InputEvent::ScrollPixels(d) => {

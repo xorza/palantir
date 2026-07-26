@@ -5,5 +5,6 @@ mod keyboard;
 mod response_state;
 mod scroll;
 mod scroll_routing;
+mod settle;
 mod watch;
 mod zoom;
