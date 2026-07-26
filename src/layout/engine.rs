@@ -13,7 +13,7 @@ use crate::layout::support::{
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
-    LayerLayout, Layout, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
+    LayerLayout, Layout, canvas, grid, intrinsic, scroll, scrollbars, stack, wrapstack, zstack,
 };
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::rect::Rect;
@@ -855,6 +855,9 @@ impl LayoutEngine {
                 out,
             ),
             // Scroll viewport. INF-axis measure of children.
+            LayoutMode::ScrollBars(_) => {
+                scrollbars::measure(self, tree, node, inner_avail, interned_text, out)
+            }
             LayoutMode::Scroll(scroll_spec) => scroll::measure(
                 self,
                 tree,
@@ -877,10 +880,24 @@ impl LayoutEngine {
             return;
         }
         let rendered = slot.deflated_by(layout.margin);
-        if self.replay_arranged(tree, node, rendered, out) {
+        let mode = LayoutMode::from(layout.meta);
+        // Replay's precondition is that arrange is a pure function of the
+        // slot (see `replay_arranged`). `ScrollBars` is the one driver
+        // that isn't: it reads a *sibling's* measured `scroll_content`, so
+        // its bars must be re-placed even when its own subtree hash and
+        // slot are unchanged — otherwise a scroll whose content stopped
+        // overflowing keeps painting the old thumb.
+        // Replay's precondition is that arrange is a pure function of the
+        // slot (see `replay_arranged`). `ScrollBars` is the one driver
+        // that isn't: it reads a *sibling's* measured `scroll_content`, so
+        // its bars must be re-placed even when its own subtree hash and
+        // slot are unchanged — otherwise a scroll whose content stopped
+        // overflowing keeps painting the old thumb.
+        if !matches!(mode, LayoutMode::ScrollBars(_))
+            && self.replay_arranged(tree, node, rendered, out)
+        {
             return;
         }
-        let mode = LayoutMode::from(layout.meta);
         out.rect[node.idx()] = rendered;
         let inner = rendered.deflated_by(layout.padding);
 
@@ -897,6 +914,10 @@ impl LayoutEngine {
             }
             LayoutMode::Scroll(scroll_spec) => {
                 scroll::arrange(self, tree, node, inner, scroll_spec, out)
+            }
+            LayoutMode::ScrollBars(id) => {
+                let def = tree.scrollbar_defs[usize::from(id)];
+                scrollbars::arrange(self, tree, node, inner, def, out)
             }
         }
     }
