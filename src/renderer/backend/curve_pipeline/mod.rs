@@ -14,6 +14,9 @@
 //! [`MeshPipeline`]: crate::renderer::backend::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::renderer::backend::image_pipeline::ImagePipeline
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::fill_wire::FillKind;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;

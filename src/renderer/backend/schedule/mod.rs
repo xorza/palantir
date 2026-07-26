@@ -6,6 +6,9 @@
 //! asserted in tests can't drift from the order actually issued to
 //! wgpu. Pure data — no GPU calls live here.
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::primitives::{color::Color, color::ColorF16};

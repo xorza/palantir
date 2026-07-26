@@ -45,13 +45,11 @@
 //! is captured automatically. `APERTURE_BENCH_MACHINE` overrides the
 //! filename derived from `hostname -s`.
 //!
-//! The shared workload lives in [`fixture`] and also drives the allocation
-//! benches and `examples/frame_visual.rs`.
-
-pub(super) mod fixture;
+//! The shared workload lives in [`crate::ui::bench_fixture`] and also drives
+//! the allocation benches in [`crate::host::bench`] and
+//! `examples/frame_visual.rs`.
 
 use crate::app::internals::RecordApp;
-use crate::bench::frame::fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::display::Display;
 use crate::host::offscreen::OffscreenHost;
@@ -60,6 +58,7 @@ use crate::renderer::backend::write_stats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
+use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::ui::frame_report::FramePaint;
 use crate::window::WindowToken;
 use criterion::Criterion;
@@ -850,10 +849,6 @@ pub fn config() -> Criterion {
     Criterion::default()
         .measurement_time(Duration::from_secs(12))
         .warm_up_time(Duration::from_secs(3))
-}
-
-pub fn text_ui() -> Ui {
-    Ui::for_test_text()
 }
 
 pub fn bench(c: &mut Criterion) {

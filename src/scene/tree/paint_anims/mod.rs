@@ -25,6 +25,9 @@
 //! ship today; pulse or marquee variants would need further encoder
 //! transform-mod plumbing.
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 use std::f32::consts::TAU;
 use std::time::Duration;
 

@@ -479,7 +479,7 @@ mod tests {
     use crate::ui::Ui;
     use std::time::Duration;
 
-    use crate::bench::layout::cache::{
+    use crate::layout::cache::bench::{
         BROAD_DEPTH, BROAD_FANOUT, DEEP_DEPTH, build_broad, build_broad_variant, build_deep,
     };
 

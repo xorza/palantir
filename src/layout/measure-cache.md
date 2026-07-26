@@ -110,7 +110,7 @@ stability, width changes, and the translated arrange replay — the last asserts
 the branch actually fired via `LayoutScratch::arrange_replays`, since a
 warm-equals-cold test passes vacuously when no replay happens.
 
-`src/bench/layout/cache.rs` covers representative and real-text workloads plus
+`src/layout/cache/bench.rs` covers representative and real-text workloads plus
 a 194-node unary chain and a 1,098-node balanced tree. The adversarial fixtures
 now retain exactly 194 and 1,098 node rows respectively, while preserving all
 21 localized sibling hits in the balanced fixture.

@@ -6,6 +6,9 @@
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&Cascades` as their single frozen-state handle.
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 use crate::common::hash::Hasher;
 use crate::display::Display;
 use crate::scene::Forest;
