@@ -18,6 +18,8 @@
 //! adapter owns swapchain acquisition, presentation, occlusion, and wake
 //! scheduling.
 
+use glam::UVec2;
+
 use crate::app::App;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
@@ -29,7 +31,7 @@ use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
 use crate::ui::frame::{FrameInput, FrameStamp};
-use crate::window::WindowToken;
+use crate::window::{CursorIcon, WindowCommands, WindowFrameState, WindowToken};
 use crate::{Display, FrameReport};
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
@@ -76,6 +78,28 @@ pub(super) struct WindowDriver {
     pub(super) clock: Box<dyn Clock>,
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub(super) pixel_snap: bool,
+    /// The target the last [`Self::note_target`] saw. `None` until the first
+    /// frame; a mismatch is what invalidates the retained target state.
+    target: Option<TargetKey>,
+}
+
+/// Identity of the surface or texture a window renders into: everything a
+/// change of which invalidates the driver's retained target state (last-frame
+/// pixels, damage baseline, backbuffer format).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct TargetKey {
+    pub(super) physical: UVec2,
+    pub(super) format: wgpu::TextureFormat,
+}
+
+impl TargetKey {
+    pub(super) fn of(texture: &wgpu::Texture) -> Self {
+        let size = texture.size();
+        Self {
+            physical: UVec2::new(size.width, size.height),
+            format: texture.format(),
+        }
+    }
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
@@ -228,6 +252,7 @@ impl WindowDriverBuilder<'_> {
             strategy: self.strategy,
             clock: self.clock,
             pixel_snap: self.pixel_snap,
+            target: None,
         }
     }
 }
@@ -247,12 +272,20 @@ impl WindowDriver {
         }
     }
 
-    /// Invalidate all state whose correctness depends on the current render
-    /// target. Target-owning adapters call this when their size or format key
-    /// changes, before running the next CPU frame.
-    pub(super) fn invalidate_target(&mut self) {
+    /// Declare the target the next [`Self::cpu_frame`] renders into, returning
+    /// whether it differs from the last one. A change invalidates every piece
+    /// of state whose correctness depends on the target — retained pixels and
+    /// the damage baseline — so the next frame repaints in full. Target-owning
+    /// adapters call this before each CPU frame; a swapchain adapter also
+    /// reconfigures its surface on a `true`.
+    pub(super) fn note_target(&mut self, key: TargetKey) -> bool {
+        if self.target == Some(key) {
+            return false;
+        }
+        self.target = Some(key);
         self.output_valid = false;
         self.backbuffer_fresh = false;
+        true
     }
 
     /// The shared CPU half: app lifecycle → record / measure / arrange /
@@ -296,6 +329,56 @@ impl WindowDriver {
         CpuFrame { report, mode }
     }
 
+    /// Drain the recorder's post-frame window scratch into `commands` and
+    /// return the cursor this frame asked for. Settles the pending close
+    /// first: a close request app code did not veto becomes this window's own
+    /// close command, so every host applies the veto the same way. Shared by
+    /// the offscreen and surface adapters — the offscreen one drains into a
+    /// scratch buffer it then drops, since a headless render has no window
+    /// lifecycle to service.
+    ///
+    /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
+    /// buffers' capacity across frames.
+    pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> CursorIcon {
+        let requests = &mut self.ui.window_requests;
+        if self.ui.window_frame.close_requested && !requests.close_vetoed {
+            requests.commands.closes.push(self.token);
+        }
+        commands.append(&mut requests.commands);
+        requests.close_vetoed = false;
+        self.ui.window_frame = WindowFrameState::default();
+        requests.cursor
+    }
+
+    /// The counterpart to [`Self::drain_window_output`] for a host with no
+    /// window lifecycle. Nothing there can service an open or close, and
+    /// silently dropping one hides a real mistake — the app believes a window
+    /// appeared — so a recorded request is a caller error, not a no-op.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this frame recorded any window open or close request.
+    pub(super) fn deny_window_requests(&mut self) {
+        let commands = &self.ui.window_requests.commands;
+        assert!(
+            commands.opens.is_empty(),
+            "Ui::open_window({:?}) during an offscreen frame: the offscreen \
+             host drives one window and has no window lifecycle — use \
+             WinitHost if the app needs to open windows",
+            commands.opens[0].token
+        );
+        assert!(
+            commands.closes.is_empty(),
+            "Ui::close_window({:?}) during an offscreen frame: the offscreen \
+             host drives one window and has no window lifecycle — drop the \
+             host to release it",
+            commands.closes[0]
+        );
+        // `keep_open` vetoes a close this host never requests; clear it so the
+        // flag can't carry across frames.
+        self.ui.window_requests.close_vetoed = false;
+    }
+
     /// GPU submit against a caller-supplied texture, through the shared
     /// `backend`, dispatching on the [`PresentMode`] `cpu_frame` sealed. On
     /// [`PresentMode::SkipCopy`], copies the persistent backbuffer onto
@@ -321,6 +404,13 @@ impl WindowDriver {
             size.height,
             display_phys.x,
             display_phys.y,
+        );
+        debug_assert_eq!(
+            self.target,
+            Some(TargetKey::of(target)),
+            "render_to_texture: target differs from the one `note_target` \
+             declared, so the retained backbuffer / damage baseline were never \
+             invalidated for it"
         );
         // The CPU phase already composed `GpuView`s into
         // `buffer.frame_targets` (callback + raster target — see
@@ -521,14 +611,58 @@ mod present_mode_tests {
 
 #[cfg(test)]
 mod output_validity_tests {
+    use glam::UVec2;
+
     use crate::host::shared::HostShared;
-    use crate::host::window_driver::{PresentMode, PresentStrategy, WindowDriver};
+    use crate::host::window_driver::{PresentMode, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::Color;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::plan::{RenderKind, RenderPlan};
     use crate::text::TextShaper;
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
-    use crate::window::WindowToken;
+    use crate::window::{WindowConfig, WindowToken};
+
+    fn driver(token: WindowToken, shared: &HostShared) -> WindowDriver {
+        WindowDriver::builder(token, shared).build()
+    }
+
+    /// A host with no window lifecycle refuses the request instead of dropping
+    /// it, and clears the veto flag a `keep_open` may have left behind.
+    #[test]
+    fn deny_window_requests_accepts_a_quiet_frame_and_clears_the_veto() {
+        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let mut quiet = driver(WindowToken(1), &shared);
+        quiet.ui.keep_open();
+
+        quiet.deny_window_requests();
+
+        assert!(
+            !quiet.ui.window_requests.close_vetoed,
+            "a veto against a close that was never requested must not persist"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Ui::open_window(WindowToken(9))")]
+    fn deny_window_requests_rejects_an_open() {
+        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let mut opener = driver(WindowToken(1), &shared);
+        opener
+            .ui
+            .open_window(WindowToken(9), WindowConfig::new("unservable"));
+
+        opener.deny_window_requests();
+    }
+
+    #[test]
+    #[should_panic(expected = "Ui::close_window(WindowToken(4))")]
+    fn deny_window_requests_rejects_a_close() {
+        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let mut closer = driver(WindowToken(1), &shared);
+        closer.ui.close_window(WindowToken(4));
+
+        closer.deny_window_requests();
+    }
 
     fn report(plan: Option<RenderPlan>) -> FrameReport {
         FrameReport {
@@ -537,6 +671,51 @@ mod output_validity_tests {
             plan,
             processing: FrameProcessing::SingleLayout,
         }
+    }
+
+    /// `note_target` is the single gate on retained target state: it reports a
+    /// change exactly once per distinct size/format, and every change clears
+    /// the last-frame pixels and the damage baseline.
+    #[test]
+    fn note_target_tracks_size_and_format_and_invalidates_on_change() {
+        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
+        let first = TargetKey {
+            physical: UVec2::new(64, 48),
+            format: wgpu::TextureFormat::Rgba8Unorm,
+        };
+        let resized = TargetKey {
+            physical: UVec2::new(65, 48),
+            ..first
+        };
+        let reformatted = TargetKey {
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            ..resized
+        };
+
+        assert!(driver.note_target(first), "the first target is a change");
+        assert!(!driver.note_target(first), "an identical target is not");
+
+        for changed in [resized, reformatted] {
+            driver.output_valid = true;
+            driver.backbuffer_fresh = true;
+            assert!(driver.note_target(changed));
+            assert!(!driver.output_valid, "target change invalidates output");
+            assert!(
+                !driver.backbuffer_fresh,
+                "target change invalidates retained target pixels"
+            );
+            assert!(!driver.note_target(changed));
+        }
+
+        // Repeats after a change must not re-invalidate: a swapchain window
+        // paints every frame against a steady target and would never keep a
+        // damage baseline if they did.
+        driver.output_valid = true;
+        driver.backbuffer_fresh = true;
+        assert!(!driver.note_target(reformatted));
+        assert!(driver.output_valid);
+        assert!(driver.backbuffer_fresh);
     }
 
     #[test]
@@ -549,20 +728,11 @@ mod output_validity_tests {
     }
 
     #[test]
-    fn output_validity_tracks_invalidation_pending_and_completion() {
+    fn output_validity_tracks_pending_and_completion() {
         let shared = HostShared::new(TextShaper::test_mono(), None);
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
         assert!(!driver.output_valid, "first frame has no presented output");
-
-        driver.output_valid = true;
-        driver.backbuffer_fresh = true;
-        driver.invalidate_target();
-        assert!(!driver.output_valid, "target change invalidates output");
-        assert!(
-            !driver.backbuffer_fresh,
-            "target change invalidates retained target pixels"
-        );
 
         driver.output_valid = true;
         let paint = driver.finish_cpu_frame(

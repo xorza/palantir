@@ -13,16 +13,14 @@ mod fixtures;
 mod golden;
 mod harness;
 
-use aperture::{
-    Color, OffscreenWindowScratch, WindowConfig, WindowToken, offscreen_window_scratch,
-};
+use aperture::{Color, WindowConfig, WindowToken};
 use glam::UVec2;
 use image::Rgba;
 
 use crate::harness::Harness;
 
-/// Smoke test of the harness and headless window-command contract: window-only
-/// requests leave both the offscreen lifecycle scratch and pixels unchanged.
+/// Smoke test of the harness: an empty scene reads back as the clear colour,
+/// and a replayed record pass reproduces it pixel-for-pixel.
 #[test]
 fn readback_returns_clear_color_for_empty_scene() {
     let mut h = Harness::new();
@@ -30,23 +28,15 @@ fn readback_returns_clear_color_for_empty_scene() {
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = Color::rgb(sr, sg, sb);
     let scene = |ui: &mut aperture::Ui| {
-        ui.open_window(WindowToken(1), WindowConfig::new("ignored"));
-        ui.close_window(WindowToken(1));
+        // Vetoing a close the offscreen host never requests is a no-op, not an
+        // error — unlike opening a window, which it cannot service at all.
         ui.keep_open();
         ui.request_relayout();
     };
     let img = h.render(size, 1.0, clear, scene);
-    assert_eq!(
-        offscreen_window_scratch(&h.host),
-        OffscreenWindowScratch::default()
-    );
 
     h.host.ui().request_repaint();
     let replayed = h.render(size, 1.0, clear, scene);
-    assert_eq!(
-        offscreen_window_scratch(&h.host),
-        OffscreenWindowScratch::default()
-    );
     assert_eq!(replayed, img);
     assert_eq!(img.dimensions(), (size.x, size.y));
 
@@ -66,4 +56,25 @@ fn readback_returns_clear_color_for_empty_scene() {
             );
         }
     }
+}
+
+/// The offscreen host has no window lifecycle, so a recorded open is a caller
+/// error rather than a silently dropped request.
+#[test]
+#[should_panic(expected = "Ui::open_window(WindowToken(1))")]
+fn opening_a_window_offscreen_panics() {
+    let mut h = Harness::new();
+    h.render(UVec2::new(16, 16), 1.0, Color::BLACK, |ui| {
+        ui.open_window(WindowToken(1), WindowConfig::new("unservable"));
+    });
+}
+
+/// Closing is denied on the same grounds as opening.
+#[test]
+#[should_panic(expected = "Ui::close_window(WindowToken(2))")]
+fn closing_a_window_offscreen_panics() {
+    let mut h = Harness::new();
+    h.render(UVec2::new(16, 16), 1.0, Color::BLACK, |ui| {
+        ui.close_window(WindowToken(2));
+    });
 }

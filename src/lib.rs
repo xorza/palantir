@@ -27,18 +27,25 @@ pub(crate) mod ui;
 pub(crate) mod widgets;
 pub(crate) mod window;
 
+/// Test reach-ins the supported surface deliberately excludes, gathered here
+/// rather than scattered through it so the published API stays exactly the
+/// list below. Everything in scope is the root re-export of a colocated
+/// crate-private `internals` module — those live beside the code whose
+/// privates they expose, and this is only the door out of the crate for
+/// integration tests. Benchmark entry points have their own gated facade in
+/// [`bench`].
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::host::offscreen::internals::TwoWindowOffscreenHost;
+    pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+}
+
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
 /// Consumers (debug overlay, benches) hold a `Clone` of the same
 /// `GpuPassStats` the backend writes into — no global state;
 /// `OffscreenHost::gpu_pass_stats` is the canonical handle.
 pub use diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
-#[cfg(feature = "internals")]
-pub use host::offscreen::internals::{
-    OffscreenWindowScratch, TwoWindowOffscreenHost, offscreen_window_scratch,
-};
-#[cfg(feature = "internals")]
-pub use host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;

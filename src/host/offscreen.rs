@@ -1,8 +1,10 @@
 //! [`OffscreenHost`] — the headless peer of
-//! [`WinitHost`](crate::WinitHost). Like `WinitHost` it owns one [`Frontend`],
-//! one [`WgpuBackend`], and drives a [`WindowDriver`] (built from a
-//! [`HostShared`]); unlike it there's no winit, no swapchain, and exactly one
-//! window — it renders to a caller-supplied `wgpu::Texture`.
+//! [`WinitHost`](crate::WinitHost). Both build on the same [`HostCore`]: one
+//! [`HostShared`](crate::host::shared::HostShared), one
+//! [`Frontend`](crate::renderer::frontend::Frontend), one
+//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), and one
+//! [`WindowDriver`] per render stream. Unlike `WinitHost` there's no winit and
+//! no swapchain — each stream renders into a caller-supplied `wgpu::Texture`.
 //! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
 //! the windowed host, so update and replay semantics do not depend on the
 //! output backend.
@@ -14,31 +16,29 @@
 //! so callers drive the backend through this bundle. The two
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
-
-use std::num::NonZeroU32;
-
-use glam::UVec2;
+//!
+//! **One stream, and no window lifecycle.** The host drives exactly the window
+//! its builder names, for as long as it lives. A frame that records
+//! [`Ui::open_window`] or [`Ui::close_window`] **panics** rather than silently
+//! discarding the request, since nothing here can service one and a swallowed
+//! request leaves the app believing a window appeared. Multi-window ownership
+//! is `WinitHost`'s job; the `internals`-gated `TwoWindowOffscreenHost` exists
+//! only so the visual suite can pin two drivers sharing one core.
 
 use crate::FrameReport;
 use crate::app::App;
+use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::gpu_stats::GpuPassStats;
 use crate::display::{self, Display};
 use crate::host::clock::{Clock, RealtimeClock};
-use crate::host::shared::HostShared;
-use crate::host::window_driver::{CpuFrame, PresentStrategy, WindowDriver};
+use crate::host::core::HostCore;
+use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::primitives::approx::EPS;
-use crate::renderer::backend::{BackendConfig, WgpuBackend};
-use crate::renderer::frontend::Frontend;
+use crate::renderer::backend::BackendConfig;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::window::{WindowFrameState, WindowToken};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct OffscreenTarget {
-    physical: UVec2,
-    format: wgpu::TextureFormat,
-}
+use crate::window::WindowToken;
 
 /// An offscreen frame was given a non-finite or near-zero display scale.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,15 +59,12 @@ impl std::fmt::Display for InvalidScaleFactorError {
 
 impl std::error::Error for InvalidScaleFactorError {}
 
-/// One shared renderer + one `WindowDriver`, rendering to a texture instead of
-/// a surface. The offscreen analogue of `WinitHost`.
+/// One shared renderer driving one render stream into a texture instead of a
+/// surface. The offscreen analogue of `WinitHost`.
 #[derive(Debug)]
 pub struct OffscreenHost {
-    shared: HostShared,
-    frontend: Frontend,
-    backend: WgpuBackend,
+    core: HostCore,
     driver: WindowDriver,
-    target: Option<OffscreenTarget>,
 }
 
 /// Seals offscreen policy before allocating the backend and window driver.
@@ -120,35 +117,28 @@ impl OffscreenHostBuilder {
         self
     }
 
-    /// Allocate the backend and window driver from the sealed settings.
+    /// Allocate the shared core and the first window driver from the sealed
+    /// settings.
     pub fn build(self) -> OffscreenHost {
-        let max_texture_dimension_2d =
-            NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
-                .expect("device texture dimension limit is zero");
-        let shaper = self.shaper.unwrap_or_default();
-        let shared = HostShared::new(shaper, Some(max_texture_dimension_2d));
-        shared.resources.windows.set_live(self.token, true);
-        let backend = WgpuBackend::new(
+        let core = HostCore::new(
             self.device,
             self.queue,
-            shared.backend_resources(),
+            self.shaper.unwrap_or_default(),
+            Clipboard::default(),
             BackendConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         );
-        let frontend = Frontend::new(backend.max_texture_dim(), shared.gradient_atlas.clone());
-        let driver = WindowDriver::builder(self.token, &shared)
+        let driver = core
+            .driver(self.token)
+            // The target's prior contents can't be relied on (a caller may
+            // hand in a fresh texture each call), so every frame must fill the
+            // whole thing.
             .strategy(PresentStrategy::BackbufferCopy)
             .clock(self.clock)
             .pixel_snap(self.pixel_snap)
             .build();
-        OffscreenHost {
-            shared,
-            frontend,
-            backend,
-            driver,
-            target: None,
-        }
+        OffscreenHost { core, driver }
     }
 }
 
@@ -181,9 +171,9 @@ impl OffscreenHost {
     /// Set the app-global debug overlay for subsequent frames. The
     /// headless analogue of a `WinitHost` window toggling it via
     /// `Ui::debug_overlay_mut` — it writes the same shared diagnostics state
-    /// the window's `Ui` reads.
+    /// every window's `Ui` reads.
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        *self.shared.resources.diagnostics.overlay.borrow_mut() = overlay;
+        *self.core.shared.resources.diagnostics.overlay.borrow_mut() = overlay;
     }
 
     /// Run one offscreen application frame against `target`, filling the
@@ -191,63 +181,56 @@ impl OffscreenHost {
     /// call. The target may be replaced between calls. The host's
     /// [`WindowToken`] is passed to [`App::update`] and [`App::record`], with
     /// the same once-only update and replayable record semantics as
-    /// [`crate::WinitHost`]. Window open/close requests recorded by the app are
-    /// discarded after rendering.
+    /// [`crate::WinitHost`].
     ///
     /// # Errors
     ///
     /// Returns [`InvalidScaleFactorError`] before changing host or application
     /// state when `scale_factor` is non-finite or less than `1e-4`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the frame recorded [`Ui::open_window`] or
+    /// [`Ui::close_window`] — this host has no window lifecycle.
     pub fn frame_offscreen<T: App>(
         &mut self,
         target: &wgpu::Texture,
         scale_factor: f32,
         app: &mut T,
     ) -> Result<FrameReport, InvalidScaleFactorError> {
-        render_frame(
-            &mut self.driver,
-            &mut self.frontend,
-            &mut self.backend,
-            &mut self.target,
-            target,
-            scale_factor,
-            app,
-        )
+        render_frame(&mut self.core, &mut self.driver, target, scale_factor, app)
     }
 
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
     pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.shared.resources.diagnostics.gpu_pass_stats
+        &self.core.shared.resources.diagnostics.gpu_pass_stats
     }
 }
 
+/// The offscreen frame, free-standing so the `internals` two-window harness
+/// can drive two drivers through one core without duplicating it.
 fn render_frame<T: App>(
+    core: &mut HostCore,
     driver: &mut WindowDriver,
-    frontend: &mut Frontend,
-    backend: &mut WgpuBackend,
-    current_target: &mut Option<OffscreenTarget>,
     target: &wgpu::Texture,
     scale_factor: f32,
     app: &mut T,
 ) -> Result<FrameReport, InvalidScaleFactorError> {
     validate_scale_factor(scale_factor)?;
 
-    let size = target.size();
-    let target_state = OffscreenTarget {
-        physical: UVec2::new(size.width, size.height),
-        format: target.format(),
-    };
-    if note_target(current_target, target_state) {
-        driver.invalidate_target();
-    }
+    let key = TargetKey::of(target);
+    driver.note_target(key);
     let display = Display {
         pixel_snap: driver.pixel_snap,
-        ..Display::from_physical(target_state.physical, scale_factor)
+        ..Display::from_physical(key.physical, scale_factor)
     };
-    let CpuFrame { report, mode } = driver.cpu_frame(frontend, display, app);
-    driver.render_to_texture(&frontend.buffer, backend, target, mode);
-    discard_window_output(driver);
+    let CpuFrame { report, mode } = core.cpu_frame(driver, display, app);
+    // Before submitting: a frame that asked for a window it can never get is a
+    // caller error, and reporting it against an untouched target keeps the
+    // failure clean.
+    driver.deny_window_requests();
+    core.submit(driver, target, mode);
     Ok(report)
 }
 
@@ -259,22 +242,6 @@ fn validate_scale_factor(scale_factor: f32) -> Result<(), InvalidScaleFactorErro
     }
 }
 
-fn note_target(current: &mut Option<OffscreenTarget>, target: OffscreenTarget) -> bool {
-    if *current == Some(target) {
-        false
-    } else {
-        *current = Some(target);
-        true
-    }
-}
-
-fn discard_window_output(driver: &mut WindowDriver) {
-    driver.ui.window_requests.commands.opens.clear();
-    driver.ui.window_requests.commands.closes.clear();
-    driver.ui.window_requests.close_vetoed = false;
-    driver.ui.window_frame = WindowFrameState::default();
-}
-
 /// Cache-introspection peepholes for the visual format-change test. Gated
 /// because they call `internals`-gated `WgpuBackend` helpers.
 #[cfg(any(test, feature = "internals"))]
@@ -283,40 +250,30 @@ impl OffscreenHost {
     /// Lets format-change tests confirm a new format materializes its own
     /// pipelines.
     pub fn has_format_pipelines(&self, format: wgpu::TextureFormat) -> bool {
-        self.backend.has_format_pipelines(format)
+        self.core.backend.has_format_pipelines(format)
     }
 
     /// Images resident in the GPU texture cache. Used by the format-change
     /// test to assert the cache survives a new format's pipeline build (no
     /// re-upload).
     pub fn gpu_image_cache_len(&self) -> usize {
-        self.backend.gpu_image_cache_len()
+        self.core.backend.gpu_image_cache_len()
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::num::NonZeroU32;
-
     use crate::app::internals::RecordApp;
+    use crate::common::clipboard::Clipboard;
     use crate::host::clock::Clock;
-    use crate::host::offscreen::{self, InvalidScaleFactorError, OffscreenHost, OffscreenTarget};
-    use crate::host::shared::HostShared;
+    use crate::host::core::HostCore;
+    use crate::host::offscreen::{self, InvalidScaleFactorError, OffscreenHost};
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::renderer::backend::{BackendConfig, WgpuBackend};
-    use crate::renderer::frontend::Frontend;
+    use crate::renderer::backend::BackendConfig;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::text::TextShaper;
     use crate::ui::Ui;
     use crate::window::WindowToken;
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct OffscreenWindowScratch {
-        pub opens: usize,
-        pub closes: usize,
-        pub close_vetoed: bool,
-        pub close_requested: bool,
-    }
 
     /// Draw list the most recent [`OffscreenHost::frame_offscreen`]
     /// composed. The `record_pass` benchmark replays the schedule over it
@@ -324,27 +281,23 @@ pub(crate) mod internals {
     /// backend never publishes, because counting steps on the production
     /// path would cost what the benchmark exists to measure.
     pub(crate) fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
-        &host.frontend.buffer
+        &host.core.frontend.buffer
     }
 
-    pub fn offscreen_window_scratch(host: &OffscreenHost) -> OffscreenWindowScratch {
-        OffscreenWindowScratch {
-            opens: host.driver.ui.window_requests.commands.opens.len(),
-            closes: host.driver.ui.window_requests.commands.closes.len(),
-            close_vetoed: host.driver.ui.window_requests.close_vetoed,
-            close_requested: host.driver.ui.window_frame.close_requested,
-        }
-    }
-
-    /// Two window render streams sharing one frontend, backend, and render
-    /// resources. This is intentionally test-only: production multi-window
-    /// ownership stays with `WinitHost`.
+    /// Two render streams sharing one [`HostCore`] — the headless stand-in for
+    /// two winit windows, used by the visual suite to pin that interleaved
+    /// windows keep their own retained pixels and owner-scoped `GpuView`
+    /// targets.
+    ///
+    /// Test-only on purpose: [`OffscreenHost`] drives exactly one stream, and
+    /// production multi-window ownership belongs to
+    /// [`WinitHost`](crate::WinitHost). This exists solely because proving
+    /// backend sharing needs two drivers on *one* core, which two separate
+    /// hosts cannot express.
     #[derive(Debug)]
     pub struct TwoWindowOffscreenHost {
-        frontend: Frontend,
-        backend: WgpuBackend,
+        core: HostCore,
         windows: [WindowDriver; 2],
-        targets: [Option<OffscreenTarget>; 2],
     }
 
     impl TwoWindowOffscreenHost {
@@ -354,35 +307,27 @@ pub(crate) mod internals {
             shaper: TextShaper,
             clocks: [Box<dyn Clock>; 2],
         ) -> Self {
-            let max_texture_dimension_2d =
-                NonZeroU32::new(device.limits().max_texture_dimension_2d)
-                    .expect("device texture dimension limit is zero");
-            let shared = HostShared::new(shaper, Some(max_texture_dimension_2d));
-            shared.resources.windows.set_live(WindowToken(0), true);
-            shared.resources.windows.set_live(WindowToken(1), true);
-            let backend = WgpuBackend::new(
+            let core = HostCore::new(
                 device,
                 queue,
-                shared.backend_resources(),
+                shaper,
+                Clipboard::default(),
                 BackendConfig::default(),
             );
-            let max_texture_dim = backend.max_texture_dim();
-            let frontend = Frontend::new(max_texture_dim, shared.gradient_atlas.clone());
             let [clock_a, clock_b] = clocks;
-            let window_a = WindowDriver::builder(WindowToken(0), &shared)
+            // Token equals the array index the harness addresses.
+            let windows = [
+                Self::stream(&core, WindowToken(0), clock_a),
+                Self::stream(&core, WindowToken(1), clock_b),
+            ];
+            Self { core, windows }
+        }
+
+        fn stream(core: &HostCore, token: WindowToken, clock: Box<dyn Clock>) -> WindowDriver {
+            core.driver(token)
                 .strategy(PresentStrategy::BackbufferCopy)
-                .clock(clock_a)
-                .build();
-            let window_b = WindowDriver::builder(WindowToken(1), &shared)
-                .strategy(PresentStrategy::BackbufferCopy)
-                .clock(clock_b)
-                .build();
-            Self {
-                frontend,
-                backend,
-                windows: [window_a, window_b],
-                targets: [None, None],
-            }
+                .clock(clock)
+                .build()
         }
 
         pub fn frame_offscreen(
@@ -394,10 +339,8 @@ pub(crate) mod internals {
         ) -> Result<(), InvalidScaleFactorError> {
             let mut app = RecordApp::new(record);
             offscreen::render_frame(
+                &mut self.core,
                 &mut self.windows[window],
-                &mut self.frontend,
-                &mut self.backend,
-                &mut self.targets[window],
                 target,
                 scale_factor,
                 &mut app,
@@ -409,65 +352,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use glam::UVec2;
-
-    use crate::Display;
-    use crate::app::App;
-    use crate::host::clock::FixedClock;
-    use crate::host::offscreen::{
-        InvalidScaleFactorError, OffscreenTarget, discard_window_output, note_target,
-        validate_scale_factor,
-    };
-    use crate::host::shared::HostShared;
-    use crate::host::window_driver::WindowDriver;
+    use crate::host::offscreen::{InvalidScaleFactorError, validate_scale_factor};
     use crate::primitives::approx::EPS;
-    use crate::renderer::frontend::Frontend;
-    use crate::text::TextShaper;
-    use crate::ui::Ui;
-    use crate::window::{WindowConfig, WindowToken};
-
-    #[derive(Debug, Default)]
-    struct WindowCommandApp {
-        records: usize,
-    }
-
-    impl App for WindowCommandApp {
-        fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-            self.records += 1;
-            let target = WindowToken(100 + self.records as u64);
-            ui.open_window(target, WindowConfig::new("ignored"));
-            ui.close_window(target);
-            ui.keep_open();
-            ui.request_relayout();
-        }
-    }
-
-    #[test]
-    fn target_change_tracks_size_and_format() {
-        let a = OffscreenTarget {
-            physical: UVec2::new(64, 48),
-            format: wgpu::TextureFormat::Rgba8Unorm,
-        };
-        let resized = OffscreenTarget {
-            physical: UVec2::new(65, 48),
-            ..a
-        };
-        let reformatted = OffscreenTarget {
-            format: wgpu::TextureFormat::Bgra8Unorm,
-            ..resized
-        };
-        let mut current = None;
-
-        assert!(note_target(&mut current, a));
-        assert_eq!(current, Some(a));
-        assert!(!note_target(&mut current, a));
-        assert!(note_target(&mut current, resized));
-        assert_eq!(current, Some(resized));
-        assert!(note_target(&mut current, reformatted));
-        assert_eq!(current, Some(reformatted));
-    }
 
     #[test]
     fn scale_validation_rejects_invalid_values_and_accepts_boundary() {
@@ -492,67 +378,6 @@ mod tests {
         assert_eq!(
             InvalidScaleFactorError { scale_factor: 0.0 }.to_string(),
             "offscreen scale factor must be finite and at least 0.0001, got 0"
-        );
-    }
-
-    #[test]
-    fn completion_discards_replayed_window_state_and_reuses_capacity() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
-        let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
-        let mut window = WindowDriver::builder(WindowToken(1), &shared)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
-        let display = Display::from_physical(UVec2::new(64, 64), 1.0);
-        let mut app = WindowCommandApp::default();
-        window.ui.window_frame.close_requested = true;
-
-        let _ = window.cpu_frame(&mut frontend, display, &mut app);
-        assert_eq!(
-            app.records, 3,
-            "cold-start warmup plus relayout must replay record three times"
-        );
-        assert_eq!(window.ui.window_requests.commands.opens.len(), 3);
-        assert_eq!(window.ui.window_requests.commands.closes.len(), 3);
-        assert!(window.ui.window_requests.close_vetoed);
-        let open_capacity = window.ui.window_requests.commands.opens.capacity();
-        let close_capacity = window.ui.window_requests.commands.closes.capacity();
-
-        discard_window_output(&mut window);
-        assert!(window.ui.window_requests.commands.opens.is_empty());
-        assert!(window.ui.window_requests.commands.closes.is_empty());
-        assert_eq!(
-            window.ui.window_requests.commands.opens.capacity(),
-            open_capacity
-        );
-        assert_eq!(
-            window.ui.window_requests.commands.closes.capacity(),
-            close_capacity
-        );
-        assert!(!window.ui.window_requests.close_vetoed);
-        assert!(!window.ui.window_frame.close_requested);
-
-        window.ui.request_repaint();
-        let _ = window.cpu_frame(&mut frontend, display, &mut app);
-        assert_eq!(app.records, 5, "relayout must replay the warm frame once");
-        assert_eq!(
-            window.ui.window_requests.commands.opens.capacity(),
-            open_capacity
-        );
-        assert_eq!(
-            window.ui.window_requests.commands.closes.capacity(),
-            close_capacity
-        );
-
-        discard_window_output(&mut window);
-        assert!(window.ui.window_requests.commands.opens.is_empty());
-        assert!(window.ui.window_requests.commands.closes.is_empty());
-        assert_eq!(
-            window.ui.window_requests.commands.opens.capacity(),
-            open_capacity
-        );
-        assert_eq!(
-            window.ui.window_requests.commands.closes.capacity(),
-            close_capacity
         );
     }
 }

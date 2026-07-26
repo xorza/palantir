@@ -353,13 +353,6 @@ impl WgpuBackend {
         });
     }
 
-    /// Device limit `max_texture_dimension_2d`, read by the frontend `Composer`
-    /// to cap each `GpuView`'s off-screen-target size (ceiled from the composed
-    /// paint rect). The only backend-owned input the composer needs.
-    pub(crate) fn max_texture_dim(&self) -> u32 {
-        self.device.limits().max_texture_dimension_2d
-    }
-
     /// Render one frame to the persistent backbuffer, then copy the
     /// backbuffer onto the swapchain texture. The caller's surface
     /// texture must have `COPY_DST` usage (set in

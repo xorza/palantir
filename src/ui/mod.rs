@@ -628,14 +628,21 @@ impl Ui {
     /// warmup, double-layout pass B), so repeat calls for one `token`
     /// collapse to a single request with the last `config` winning. A
     /// `token` already in use by a live window is ignored with a
-    /// warning. No-op in headless contexts; the offscreen host discards
-    /// the replayed request after rendering. If native creation later fails,
+    /// warning. If native creation later fails,
     /// [`WinitHost::run`](crate::WinitHost::run) exits and returns the error.
     ///
     /// `token` is yours to define — an enum discriminant, an index, a
     /// document-id hash. It must be unique across live windows. `config`
     /// is the backend-agnostic [`WindowConfig`] (title + size); the
     /// window inherits the app-global GPU settings from startup.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a host with no window lifecycle — the
+    /// [`OffscreenHost`](crate::OffscreenHost) cannot service the request,
+    /// and dropping it silently would leave you believing a window appeared.
+    /// Open every offscreen render stream up front with
+    /// [`OffscreenHost::add_window`](crate::OffscreenHost::add_window).
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
         if let Some(p) = self
             .window_requests
@@ -656,7 +663,13 @@ impl Ui {
     /// Request that the window addressed by `token` close. Deferred like
     /// [`Self::open_window`] — the host removes it after this frame. The
     /// last window closing exits the event loop. No-op if `token` names
-    /// no live window, or in headless contexts.
+    /// no live window.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a host with no window lifecycle, for the reason given on
+    /// [`Self::open_window`]. Drop an
+    /// [`OffscreenHost`](crate::OffscreenHost) to release its streams.
     pub fn close_window(&mut self, token: WindowToken) {
         self.window_requests.commands.closes.push(token);
     }

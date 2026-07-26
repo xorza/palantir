@@ -16,10 +16,6 @@ pub(crate) struct HostShared {
 }
 
 impl HostShared {
-    pub(crate) fn new(text: TextShaper, max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
-        Self::with_clipboard(text, Clipboard::default(), max_texture_dimension_2d)
-    }
-
     pub(super) fn with_clipboard(
         text: TextShaper,
         clipboard: Clipboard,
@@ -37,6 +33,24 @@ impl HostShared {
             images: self.resources.images.clone(),
             gradient_atlas: self.gradient_atlas.clone(),
             gpu_pass_stats: self.resources.diagnostics.gpu_pass_stats.clone(),
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::num::NonZeroU32;
+
+    use crate::common::clipboard::Clipboard;
+    use crate::host::shared::HostShared;
+    use crate::text::TextShaper;
+
+    impl HostShared {
+        /// Resources over a memory clipboard, for tests that drive a
+        /// `WindowDriver` without a host. Production hosts go through
+        /// `HostCore::new`, which supplies the platform clipboard.
+        pub(crate) fn new(text: TextShaper, max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
+            Self::with_clipboard(text, Clipboard::default(), max_texture_dimension_2d)
         }
     }
 }

@@ -199,6 +199,15 @@ pub(crate) struct WindowCommands {
     pub(crate) closes: Vec<WindowToken>,
 }
 
+impl WindowCommands {
+    /// Move every command out of `source` onto the end of `self`, leaving
+    /// `source` empty with its buffers — and their capacity — intact.
+    pub(crate) fn append(&mut self, source: &mut Self) {
+        self.opens.append(&mut source.opens);
+        self.closes.append(&mut source.closes);
+    }
+}
+
 /// Deferred recorder output consumed by the window host after a frame.
 #[derive(Debug, Default)]
 pub(crate) struct WindowRequests {
