@@ -5,9 +5,10 @@ use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
+use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::pointer::PointerButton;
-use crate::input::{self as native_input, InputEvent};
+use crate::input::zoom;
 
 pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
     let scale = scale_factor.max(f32::EPSILON);
@@ -33,7 +34,7 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
         }
         WindowEvent::PinchGesture { delta, .. } => {
             let factor = 1.0 + *delta as f32;
-            if native_input::zoom_factor_is_valid(factor) {
+            if zoom::is_valid(factor) {
                 emit(InputEvent::Zoom(factor));
             }
         }

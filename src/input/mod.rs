@@ -5,6 +5,7 @@ pub(crate) mod response;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
 pub(crate) mod watch;
+pub(crate) mod zoom;
 
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::pointer::{PointerButton, PointerEvent};
@@ -18,7 +19,7 @@ use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
-use crate::scene::layer::{Layer, PerLayer};
+use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::time::Duration;
 use strum::EnumCount as _;
@@ -208,36 +209,6 @@ pub enum InputEvent {
     ModifiersChanged(Modifiers),
 }
 
-const MIN_POSITIVE_ZOOM_FACTOR: f32 = f32::MIN_POSITIVE;
-
-#[inline]
-pub(crate) fn zoom_factor_is_valid(factor: f32) -> bool {
-    factor.is_finite() && factor > 0.0
-}
-
-/// Multiply zoom factors without allowing valid sequences to underflow
-/// to zero or overflow to infinity.
-#[inline]
-pub(crate) fn combine_zoom_factors(lhs: f32, rhs: f32) -> f32 {
-    debug_assert!(zoom_factor_is_valid(lhs));
-    debug_assert!(!rhs.is_nan() && rhs >= 0.0);
-    let product = f64::from(lhs) * f64::from(rhs);
-    if product <= f64::from(MIN_POSITIVE_ZOOM_FACTOR) {
-        MIN_POSITIVE_ZOOM_FACTOR
-    } else if product >= f64::from(f32::MAX) {
-        f32::MAX
-    } else {
-        product as f32
-    }
-}
-
-#[inline]
-pub(crate) fn wheel_zoom_factor(step: f32, notches: f32) -> f32 {
-    debug_assert!(zoom_factor_is_valid(step));
-    debug_assert!(!notches.is_nan());
-    combine_zoom_factors(1.0, step.powf(-notches))
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TargetScrollDelta {
     target: WidgetId,
@@ -256,22 +227,24 @@ impl TargetScrollDelta {
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
-/// A keyboard-capture owner and the layer its overlay *lives on*.
+/// One overlay's claim on **both** input streams, and the layer its
+/// overlay *lives on*. `Ui::modal_layer` is the only producer, so the
+/// two streams cannot be claimed apart and cannot be released apart.
 ///
 /// The layer does two jobs and both matter:
 ///
 /// - **Ordering.** [`InputState::finish_record`] commits the topmost
-///   candidate, so a `Modal` beats a `Popup` no matter which recorded
+///   claim, so a `Modal` beats a `Popup` no matter which recorded
 ///   first. Record order only breaks ties within one layer.
-/// - **Blocking.** A reader is silenced only by a capture *strictly
-///   above* it, so the capturing overlay's own body — a `TextEdit`
+/// - **Blocking.** A reader is silenced only by a claim *strictly
+///   above* it, so the claiming overlay's own body — a `TextEdit`
 ///   inside a popup, say — still reads the raw stream, while everything
 ///   beneath the overlay is cut off.
 ///
 /// Layer discriminants are the z-order (`Layer::PAINT_ORDER` is
 /// const-asserted to match them), so `idx()` comparison is the ordering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct KeyboardOwner {
+struct InputOwner {
     layer: Layer,
     id: WidgetId,
 }
@@ -337,34 +310,44 @@ pub(crate) struct InputState {
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
     pub(crate) focused: Option<WidgetId>,
-    /// Popup that exclusively owns this frame's keyboard stream. Kept
-    /// separate from focus because opening a context menu must not move
-    /// the caret focus it acts on, yet its shortcuts must not also reach
-    /// that focused widget.
-    keyboard_claim: Option<KeyboardOwner>,
-    /// Capture stack rebuilt in popup record order. Capacity is retained
-    /// so stable overlays stay allocation-free after their first frame.
-    keyboard_claims: Vec<KeyboardOwner>,
-    /// Topmost layer opened as a `Ui::modal_layer`, committed by
-    /// [`Self::finish_record`] and stable for the whole following record
-    /// pass. The watch stream's counterpart to the blocking a scrim
-    /// already does in the hit index — see [`Self::pointer_events`].
+    /// Claims made during the pass being recorded, in record order.
+    /// Rebuilt every pass; capacity is retained so stable overlays stay
+    /// allocation-free after their first frame. The two committed
+    /// values below are both derived from this list by
+    /// [`Self::finish_record`] and never written anywhere else, so the
+    /// keyboard and pointer halves of one claim can never fall out of
+    /// step.
+    claims: Vec<InputOwner>,
+    /// Overlay that owns this pass's keyboard stream — the topmost
+    /// entry of the previous pass's `claims`. Kept separate from focus
+    /// because opening a context menu must not move the caret focus it
+    /// acts on, yet its shortcuts must not also reach that focused
+    /// widget.
+    keyboard_claim: Option<InputOwner>,
+    /// Topmost claimed layer, the pointer half of the same resolution.
+    /// The watch stream's counterpart to the blocking a scrim already
+    /// does in the hit index — see [`Self::pointer_events`]. A layer,
+    /// not an owner: the pointer gate gives the whole layer away, so two
+    /// overlays sharing one layer are indistinguishable to it.
     pointer_claim: Option<Layer>,
-    /// Live claims per layer for the pass being recorded, rebuilt each
-    /// pass like `keyboard_claims`.
-    ///
-    /// A **count**, not a flag, and that is load-bearing: two overlays
-    /// can hold the same layer at once, and the first to close must not
-    /// unblock the layer while the second is still up.
-    pointer_claims: PerLayer<u8>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
-    /// Set in `on_input` when a routed event could drive a state mutation
-    /// (pointer press/release, `KeyDown`, `Text`). Read by `Ui::frame`
-    /// to decide whether to re-record the frame after pass 1's `end_frame`
-    /// drains the input queues. Hover-only events (`PointerMoved`,
-    /// `PointerLeft`) and modifier changes don't flip it. Unrouted actions
-    /// leave it clear because no widget or watcher can observe them.
+    /// Set in `on_input` when an event could drive a state mutation that
+    /// a *different* widget then reads. Read by `Ui::frame` to decide
+    /// whether to re-record the frame after pass 1's `end_frame` drains
+    /// the input queues.
+    ///
+    /// The rule, since the arms differ and the difference is not
+    /// obvious: an event flips this when the state it writes is read
+    /// through a channel that a widget recorded *earlier in the same
+    /// pass* may already have consulted — a press or release (capture,
+    /// focus), a `KeyDown` or `Text` (the keyboard queue), or a drag
+    /// latch crossing its threshold inside `PointerMoved`. Scroll, pinch
+    /// and `PointerLeft` do not, because their state reaches exactly one
+    /// widget, the routed target, which applies it in the pass that
+    /// receives it; modifier changes do not, because nothing routes on
+    /// them. Unrouted actions leave it clear because no widget or
+    /// watcher can observe them at all.
     frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
     /// pointer moves and mod changes), cleared by `Ui::frame`
@@ -423,10 +406,9 @@ impl Default for InputState {
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
+            claims: Vec::new(),
             keyboard_claim: None,
-            keyboard_claims: Vec::new(),
             pointer_claim: None,
-            pointer_claims: PerLayer::default(),
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
@@ -441,8 +423,7 @@ impl Default for InputState {
 impl InputState {
     pub(crate) fn begin_record(&mut self) {
         self.subs.clear();
-        self.keyboard_claims.clear();
-        self.pointer_claims = PerLayer::default();
+        self.claims.clear();
         self.snapshot_frame_quiescent();
     }
 
@@ -485,18 +466,6 @@ impl InputState {
         } else {
             &[]
         }
-    }
-
-    /// Note that `layer` was opened as a modal layer this pass.
-    pub(crate) fn claim_pointer(&mut self, layer: Layer) {
-        self.pointer_claims[layer] = self.pointer_claims[layer].saturating_add(1);
-    }
-
-    /// Withdraw one claim on `layer` from the pass being recorded.
-    /// Saturating, so a release without a matching claim is inert rather
-    /// than a way to unblock someone else's layer.
-    pub(crate) fn release_pointer(&mut self, layer: Layer) {
-        self.pointer_claims[layer] = self.pointer_claims[layer].saturating_sub(1);
     }
 
     pub(crate) fn claimed_keyboard_events(&self, owner: WidgetId) -> &[KeyboardEvent] {
@@ -545,59 +514,53 @@ impl InputState {
         )
     }
 
-    pub(crate) fn claim_keyboard(&mut self, owner: WidgetId, layer: Layer) {
-        let owner = KeyboardOwner { layer, id: owner };
-        self.keyboard_claims.push(owner);
-        if self.keyboard_claim.is_none() {
-            self.keyboard_claim = Some(owner);
+    /// Record that `owner` claimed both streams on `layer` this pass.
+    pub(crate) fn claim_input(&mut self, owner: WidgetId, layer: Layer) {
+        self.claims.push(InputOwner { layer, id: owner });
+    }
+
+    /// Withdraw `owner`'s claim from the pass being recorded, so the
+    /// resolution at the end of it doesn't see them. The pass's
+    /// *committed* ownership is deliberately untouched — see
+    /// [`Self::finish_record`].
+    pub(crate) fn release_input(&mut self, owner: WidgetId) {
+        if let Some(index) = self.claims.iter().rposition(|claim| claim.id == owner) {
+            self.claims.remove(index);
         }
     }
 
-    pub(crate) fn release_keyboard(&mut self, owner: WidgetId) {
-        if let Some(index) = self
-            .keyboard_claims
-            .iter()
-            .rposition(|candidate| candidate.id == owner)
-        {
-            self.keyboard_claims.remove(index);
-        }
-    }
-
-    /// Commit the frame's keyboard owner and pointer-absorbing layer: the
-    /// **topmost** candidate, with record order breaking ties inside one
-    /// layer.
+    /// Commit both halves of input ownership from this pass's
+    /// [`Self::claims`]: the **topmost** claim, with record order
+    /// breaking ties inside one layer.
     ///
     /// Was `candidates.last()`, which ignored layer entirely — so a
     /// `Popup` recorded after a `Modal` took the keyboard from it, and a
     /// modal and a popup could both act on the same Escape.
     ///
-    /// Resolving here rather than live is deliberate. Recomputing a
-    /// topmost-so-far on every claim looks like the fix and is worse: with
-    /// two same-layer popups recording in sequence, the first reads while
-    /// it is topmost and the second reads after displacing it, so *both*
-    /// receive the key. Ownership must be stable for the whole pass, which
-    /// costs one frame of lag when a new overlay opens on top.
+    /// **This is the only writer of either committed value**, which is
+    /// what keeps the two halves of a claim in step: they are two
+    /// projections of one list, resolved in one place, at one time.
     ///
-    /// The pointer scrim resolves here for the same reason. Raising it the
-    /// moment the overlay records would split the pass in two: watchers
-    /// recorded before it would read the stream and watchers recorded
-    /// after would not, making the gate depend on authoring order rather
-    /// than on layer.
+    /// Resolving here rather than live is deliberate, and applies to
+    /// claims *and* releases. Recomputing a topmost-so-far on every claim
+    /// looks like the fix and is worse: with two same-layer popups
+    /// recording in sequence, the first reads while it is topmost and the
+    /// second reads after displacing it, so *both* receive the key. For
+    /// the pointer gate the same live update would split the pass in two
+    /// — watchers recorded before the overlay would read the stream and
+    /// watchers recorded after would not, making the gate depend on
+    /// authoring order rather than on layer. Ownership is therefore
+    /// stable for a whole pass, at the cost of one frame of lag when an
+    /// overlay opens on top or releases.
     pub(crate) fn finish_record(&mut self) -> bool {
         self.keyboard_claim = self
-            .keyboard_claims
+            .claims
             .iter()
             .copied()
             .enumerate()
-            .max_by_key(|(index, candidate)| (candidate.layer.idx(), *index))
-            .map(|(_, candidate)| candidate);
-        // Paint order is bottom-up, so the last live claim is the topmost.
-        self.pointer_claim = self
-            .pointer_claims
-            .iter_paint_order()
-            .filter(|(_, claims)| **claims > 0)
-            .map(|(layer, _)| layer)
-            .last();
+            .max_by_key(|(index, claim)| (claim.layer.idx(), *index))
+            .map(|(_, claim)| claim);
+        self.pointer_claim = self.claims.iter().map(|claim| claim.layer).max();
         self.take_action_flag()
     }
 
@@ -672,15 +635,18 @@ impl InputState {
     /// `requests_repaint` false so the frame can be skipped entirely.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) -> InputDelta {
         if let InputEvent::Zoom(factor) = event
-            && !zoom_factor_is_valid(factor)
+            && !zoom::is_valid(factor)
         {
             return InputDelta::default();
         }
-        // Any host-pushed event disqualifies the next frame from the
-        // paint-anim-only short-circuit — the recording closure might
-        // observe even a pointer move (hover styling) or modifier
-        // change (shortcut hint). Cleared at the top of `frame`
-        // after the gate has read it.
+        // Any host-pushed event that survived the guard above
+        // disqualifies the next frame from the paint-anim-only
+        // short-circuit — the recording closure might observe even a
+        // pointer move (hover styling) or modifier change (shortcut
+        // hint). A rejected zoom returned before this on purpose: it
+        // mutates nothing, so there is nothing for the closure to
+        // observe. Cleared at the top of `frame` after the gate has read
+        // it.
         self.had_input_since_last_frame = true;
         let requests_repaint = match event {
             InputEvent::PointerMoved(p) => {
@@ -842,7 +808,7 @@ impl InputState {
                 let target = self.pinch_target;
                 if let Some(target) = target {
                     let delta = self.target_scroll_delta_mut(target);
-                    delta.zoom = combine_zoom_factors(delta.zoom, f);
+                    delta.zoom = zoom::combine(delta.zoom, f);
                 }
                 let subbed = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Zoom {
                     pos,

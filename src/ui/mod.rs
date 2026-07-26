@@ -882,8 +882,7 @@ impl Ui {
         owner: WidgetId,
         body: impl FnOnce(&mut Ui, InputClaim) -> R,
     ) -> R {
-        self.input.claim_pointer(layer);
-        self.input.claim_keyboard(owner, layer);
+        self.input.claim_input(owner, layer);
         let claim = InputClaim::new(owner, layer);
         self.placed_layer(layer, Placement::fixed(anchor, size), |ui| body(ui, claim))
     }

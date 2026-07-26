@@ -1,8 +1,8 @@
 pub(crate) mod state;
 
-use crate::input;
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
+use crate::input::zoom;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
@@ -73,10 +73,10 @@ impl ZoomConfig {
         let min = *range.start();
         let max = *range.end();
         assert!(
-            input::zoom_factor_is_valid(min) && input::zoom_factor_is_valid(max) && min <= max,
+            zoom::is_valid(min) && zoom::is_valid(max) && min <= max,
             "{ZOOM_RANGE_ERROR}"
         );
-        assert!(input::zoom_factor_is_valid(step), "{ZOOM_STEP_ERROR}");
+        assert!(zoom::is_valid(step), "{ZOOM_STEP_ERROR}");
         Self {
             range,
             step,
@@ -587,14 +587,11 @@ impl Scroll {
         // which by convention zooms *out* (factor < 1).
         let (pan_delta, wheel_zoom_factor) = if wheel_zoom_gate {
             let cfg = self.zoom.as_ref().unwrap();
-            (
-                Vec2::ZERO,
-                input::wheel_zoom_factor(cfg.step, wheel_notches.y),
-            )
+            (Vec2::ZERO, zoom::from_wheel(cfg.step, wheel_notches.y))
         } else {
             (pan_delta_raw, 1.0_f32)
         };
-        let zoom_delta = input::combine_zoom_factors(pinch_delta, wheel_zoom_factor);
+        let zoom_delta = zoom::combine(pinch_delta, wheel_zoom_factor);
         // Pivot in widget-local coords (outer rect origin). On the
         // first frame the response rect is None — fall back to viewport
         // center, which makes the zoom *feel* anchored even before

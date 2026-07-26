@@ -62,18 +62,19 @@ impl InputClaim {
         ui.input.pointer_events(self.layer)
     }
 
-    /// Withdraw **both** halves from the current record pass. Reads
-    /// through the handle after this see nothing, the owner takes no part
-    /// in the topmost-wins keyboard resolution at frame end, and the
-    /// layer stops gating pointer watchers below it.
+    /// Withdraw the claim so the resolution at the end of this pass does
+    /// not see it — both halves, since there is only one claim.
     ///
-    /// Call it on the frame the overlay decides it is closing. Claims
-    /// resolve at the end of a pass and are read by the *next* one, so an
-    /// overlay that records its claim and then dismisses keeps owning
-    /// input for one frame after it is gone — long enough to swallow the
-    /// click that lands where it used to be.
+    /// **The pass you call it in is unaffected.** Ownership is committed
+    /// once per pass and read by the next, deliberately (see
+    /// `InputState::finish_record`), so reads through this handle keep
+    /// working and layers below stay gated until the pass ends. What
+    /// release buys is the pass *after*: call it on the frame the overlay
+    /// decides it is closing, or the claim it already recorded is
+    /// committed anyway and the overlay owns input for one more frame
+    /// after it is gone — long enough to swallow the click that lands
+    /// where it used to be.
     pub fn release(&self, ui: &mut Ui) {
-        ui.input.release_keyboard(self.owner);
-        ui.input.release_pointer(self.layer);
+        ui.input.release_input(self.owner);
     }
 }
