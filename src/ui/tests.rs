@@ -15,6 +15,7 @@ use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::frame::{FrameRuntime, FrameStamp};
+use crate::ui::resources::UiResources;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
 use glam::{IVec2, UVec2, Vec2};
@@ -1496,7 +1497,7 @@ fn retained_arena_text_preserves_bytes_across_record_stores() {
         ("longer retained text", "x"),
         ("x", "longer replacement text"),
     ] {
-        let mut ui = Ui::default();
+        let mut ui = Ui::new(UiResources::isolated_mono());
         let mut retained = None;
         let mut pass = 0;
 
@@ -1878,14 +1879,14 @@ fn input_policy_routes_paint_only_gate() {
 // recorder has never run before, do a blackout record pass (input
 // swapped for `InputState::default()`) to build the cascade, then
 // re-route the held `pointer_pos` against it before the user-visible
-// pass. Tests below intentionally use `Ui::default()` to exercise true
+// pass. Tests below intentionally construct a bare `Ui` to exercise true
 // cold-start; `Ui::for_test()` pre-marks the recorder warm to keep the
 // rest of the test suite on single-record semantics.
 
 const COLD: UVec2 = UVec2::new(200, 200);
 
 fn cold_ui() -> Ui {
-    Ui::default()
+    Ui::new(UiResources::isolated_mono())
 }
 
 fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {

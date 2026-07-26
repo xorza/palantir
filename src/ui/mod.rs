@@ -1244,17 +1244,6 @@ impl Ui {
     }
 }
 
-/// Standalone CPU recorder with isolated resources and mono-fallback text.
-///
-/// Use [`crate::OffscreenHost`] when frames must be rendered or share
-/// resources with a GPU backend.
-#[cfg(any(test, feature = "internals"))]
-impl Default for Ui {
-    fn default() -> Self {
-        Self::new(UiResources::default())
-    }
-}
-
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod harness;
 

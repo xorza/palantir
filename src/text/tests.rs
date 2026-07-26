@@ -371,7 +371,7 @@ fn cosmic_text_weight_distinguishes_key_and_metrics() {
 
 #[test]
 fn identity_cache_is_keyed_by_actual_shaping_inputs() {
-    let mut text = TextSystem::default();
+    let mut text = TextSystem::mono();
     let wid = WidgetId::from_hash("a");
     let run_slot = slot(wid);
     let compact = TestShape {
@@ -442,7 +442,7 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
 
 #[test]
 fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
-    let mut text = TextSystem::default();
+    let mut text = TextSystem::mono();
     let wid = WidgetId::from_hash("a");
     let params = TestShape {
         font_size_px: 16.0,
@@ -498,7 +498,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         max_content: Size,
     }
 
-    let mut text = TextSystem::default();
+    let mut text = TextSystem::mono();
     let widget_id = WidgetId::from_hash("wrap policy");
     let cases = [
         Case {
@@ -1519,7 +1519,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
 /// version could not do.
 #[test]
 fn end_frame_drops_every_row_not_used_this_frame() {
-    let mut text = TextSystem::default();
+    let mut text = TextSystem::mono();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
     let params = TestShape {

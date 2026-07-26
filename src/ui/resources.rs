@@ -49,13 +49,6 @@ impl UiResources {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-impl Default for UiResources {
-    fn default() -> Self {
-        Self::isolated_mono()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::primitives::image::Image;
@@ -64,7 +57,7 @@ mod tests {
 
     #[test]
     fn images_and_gpu_views_share_one_texture_id_authority() {
-        let resources = UiResources::default();
+        let resources = UiResources::isolated_mono();
         let gpu_view_id = resources.texture_ids.reserve();
         let image = Image::from_rgba8(1, 1, vec![0, 0, 0, 0]);
         let image_id = resources.images.register(image).unwrap().id();

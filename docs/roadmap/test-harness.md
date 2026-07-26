@@ -572,12 +572,20 @@ unless noted:
 `release_left`, `click_at`, `secondary_click_at`, `under_outer`,
 `main_child_ids`, `main_child_rects`, `node_for_widget_id`,
 `encode_paint`, `encode_paint_for`, `damage_region`, `anim_row_count`
-— plus two gated `Default` impls: `Ui` in `ui/mod.rs` and
-`UiResources` in `ui/resources.rs`.
+— plus every `Default` impl that only exists under a `test` /
+`internals` gate. A `Default` that a production build never compiles is
+a test constructor wearing a trait's clothes: it hides which specific
+choice it makes, and on a `pub` type it is public under the feature no
+matter how the rest of the surface is arranged. There turned out to be
+exactly three in the crate — `Ui` (`ui/mod.rs`), `UiResources`
+(`ui/resources.rs`), and `TextSystem` (inside `text/system.rs`'s gated
+`internals` mod). **All three are gone.** `DamageEngine::default` looks
+like a fourth but is ungated production code; only a field inside it
+is gated.
 
-### The two `Default`s
+### The three `Default`s
 
-Both are deletions with **no replacement on `Ui`**, which is the part
+The `Ui` one is a deletion with **no replacement**, which is the part
 worth being precise about.
 
 `impl Default for Ui` is a trait impl on a `pub` type, so it cannot be
@@ -619,19 +627,23 @@ resources, `from_resources` takes whatever the caller already has —
 instead of being spread across `Default`, `for_test_text`, and a
 hand-rolled `Ui::new(shared.resources.clone())`.
 
-Nothing in production constructs a `Ui` either way; both impls are
+`TextSystem`'s is the same story one layer down and became
+`TextSystem::mono()`: four call sites, all in `text/tests.rs`, all of
+which read better naming the shaper they picked.
+
+Nothing in production constructs any of the three; every impl was
 already `#[cfg(any(test, feature = "internals"))]`.
 
-**This one is not free downstream.** Darkroom has 24 `Ui::default()`
+**The `Ui` one is not free downstream.** Darkroom had 23 `Ui::default()`
 sites, all `#[cfg(test)]`, none of which drive a frame: they want a
 string-interning arena, because `Scene` projections hold `InternedStr`
 and `Ui::intern` is the only public way to mint one. Deleting
-`Default` breaks all 24. Hence `UiHarness::arena()` on the `pub` rung
+`Default` breaks all 23. Hence `UiHarness::arena()` on the `pub` rung
 — a harness with a nominal surface that is never framed, whose `ui()`
-is the interner. The migration is mechanical (`Ui::default()` →
-`UiHarness::arena()`, then `&ui` → `h.ui()`, which coerces), but it is
-24 real edits in another crate and belongs in the plan rather than in
-a footnote.
+is the interner. The migration was mechanical (`Ui::default()` →
+`UiHarness::arena()`, then `&ui` / `&mut ui` → `arena.ui()`, which
+coerces), but it is 23 edits in another crate plus their imports, and
+it is what forced the export to land before the deletion.
 
 The deeper point that survives: `InternedStr` is public and there is
 no public way to make one without a whole `Ui`. That is worth fixing
@@ -684,45 +696,41 @@ cannot go until darkroom has `UiHarness::arena()` to replace it —
 which means the export step lands *before* the deletion, not after.
 
 1. **Landed.** `DRAG_THRESHOLD` and `DOUBLE_CLICK_WINDOW` promoted to
-   `pub(crate)`; `UiResources::isolated_mono` and `TextChunk::split`
-   added; `UiHarness` lives in `src/ui/harness/` with both rungs,
-   forwarding to the existing reach-ins, and 22 tests pinning the rules
-   above. Nothing deleted, nothing exported, no existing test touched —
-   the type is `pub(crate)` in a `pub(crate)` module, so `unreachable_pub`
-   forces the two rungs to be `pub(crate)` for now and the split is
-   carried by the two `impl` blocks until step 3 makes the first one
-   `pub`.
-2. Migrate palantir's 55 files, in the three shapes above. Delete the
-   kill list as its last caller goes — **all of it except `Default`**.
-   `impl Ui` is now test-free apart from that one trait impl.
-3. Add `pub use crate::ui::internals::UiHarness;` to `lib.rs`'s
-   `internals`. First step that exposes anything, and by now the `pub`
-   rung has been exercised by every in-crate test that didn't need the
-   other one.
-4. Move `tests/alloc` onto `UiHarness`. Its fixed `DISPLAY` const is
-   already `from_physical(800×600, 1.0)` with `pixel_snap: true` and no
-   refresh rate — the constructor's defaults — so nothing is lost.
-   Constraint: the alloc audit measures allocations per frame, so the
-   path it uses must allocate nothing — no boxed closures, and
-   `prime_stable`'s rect comparison must reuse a retained buffer.
-5. Migrate darkroom's 24 arena sites to `UiHarness::arena()`. Nothing
-   else in darkroom changes; this is the compatibility step, not the
-   adoption step.
-6. Delete `impl Default for Ui` — no replacement; `Ui::new` is already
-   the `pub(crate)` constructor. Swap `impl Default for UiResources`
-   for `UiResources::isolated_mono()`. The last public constructor for
-   a test recorder is gone, and `UiHarness` is the whole frame-driving
-   API.
-7. Port darkroom's dock test, then build darkroom's own
-   `Editor::frame`-level harness on top. Rule 5 is the one to watch
-   there: an editor-level harness accumulating intents across frames is
-   the first thing in-tree that could double-count.
+   `pub(crate)`; `UiResources::isolated_mono`, `TextSystem::mono`, and
+   `TextChunk::split` added; `UiHarness` lives in `src/ui/harness/` with
+   both rungs, forwarding to the existing reach-ins, and 22 tests
+   pinning the rules above.
+2. **Landed, out of order.** Steps 3–6 below came first, because
+   deleting the gated `Default`s was taken up before the bulk
+   migration. `UiHarness` is exported, `tests/alloc` runs on it,
+   darkroom's arena sites are migrated, and all three gated `Default`
+   impls are gone. `impl Ui` still carries the rest of the kill list.
+3. **Landed.** `pub use crate::ui::harness::UiHarness;` in `lib.rs`'s
+   `internals`; the first `impl` block is now `pub`. Note the lint
+   wrinkle: `palantir::internals` is `#[cfg(feature = "internals")]`, so
+   a plain `cargo test` build does not compile the door the `pub` rung
+   leaves by and `unreachable_pub` fires — hence the module-level allow,
+   which is about the build shape rather than about the design.
+4. **Landed.** `tests/alloc` runs on `UiHarness::new` / `with_text` and
+   no longer touches `Ui::default`, `Ui::for_test_text`, or
+   `record_test_frame`. Its fixed `DISPLAY` was already the
+   constructor's defaults, so nothing was lost, and the 24 audits pass
+   unchanged — the harness's warm start costs no steady-state allocation.
+5. **Landed.** Darkroom's 23 arena sites are on `UiHarness::arena()`.
+6. **Landed.** All three gated `Default` impls deleted. `Ui::new` was
+   already the `pub(crate)` constructor, so `Ui` needed no replacement;
+   `UiResources` and `TextSystem` got named ones.
+7. **Remaining.** The bulk migration (step 2's ~500 sites) and then
+   darkroom's dock test plus its own `Editor::frame`-level harness. Rule
+   5 is the one to watch there: an editor-level harness accumulating
+   intents across frames is the first thing in-tree that could
+   double-count.
 
-1–2 are the consolidation; 3–6 close the door; 7 is the adoption that
-motivated all of it. Sequencing this way means darkroom picks up an
-API that ~1200 tests have already shaken out, rather than one written
-for it — and that steps 5 and 6 are the only ones touching two crates
-at once.
+The ordering constraint that drove this: darkroom consumed
+`Ui::default()`, so the export had to land *before* the deletion. That
+is why 3–6 ran ahead of 2 — the bulk migration is independent of the
+door-closing, and only the door-closing was on darkroom's critical
+path.
 
 ## What it unlocks downstream
 

@@ -7,6 +7,7 @@ use crate::host::winit::{WinitHost, finish_run};
 use crate::input::InputEvent;
 use crate::ui::frame::{FrameInput, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::FrameProcessing;
+use crate::ui::resources::UiResources;
 use crate::window::{WindowConfig, WindowToken};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -108,7 +109,7 @@ fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessi
 
 #[test]
 fn app_lifecycle_follows_frame_plan_and_record_replays() {
-    let mut ui = Ui::default();
+    let mut ui = Ui::new(UiResources::isolated_mono());
     let mut app = CountingApp::default();
     let pointer = Vec2::new(24.0, 12.0);
     ui.on_input(InputEvent::PointerMoved(pointer));

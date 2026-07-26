@@ -10,19 +10,18 @@
 //! modifier state, and press origin so those rules can be enforced
 //! rather than documented.
 //!
-//! **Two rungs.** The first `impl` block is the surface intended to
-//! leave the crate through `palantir::internals`; it addresses widgets
-//! by [`WidgetId`] and nothing else. The second reaches into the tree,
-//! encoder, and damage engine, and must not leave. Both are `pub(crate)`
-//! today because the type is not exported yet — at export the first
-//! block becomes `pub` and the second does not.
+//! **Two rungs.** The first `impl` block is `pub` — the surface that
+//! leaves the crate through `palantir::internals`, addressing widgets by
+//! [`WidgetId`] and nothing else. The second is `pub(crate)`: it reaches
+//! into the tree, encoder, and damage engine, and must not leave.
 //!
-//! Nothing calls the harness from the library target (its callers are
-//! the `cfg(test)` suite and, later, out-of-crate integration tests), so
-//! the whole module would read as dead under `--features internals`
-//! alone. The allow below is that, not an invitation to leave real dead
-//! code here.
-#![allow(dead_code)]
+//! Both allows below are about the same thing — this module's callers
+//! are all outside the library target. `palantir::internals` is itself
+//! `#[cfg(feature = "internals")]`, so in a plain `cargo test` build the
+//! door the `pub` rung leaves by is not compiled and the lint sees it as
+//! unreachable; and nothing in the lib target calls the `pub(crate)`
+//! rung either. Neither is an invitation to leave real dead code here.
+#![allow(dead_code, unreachable_pub)]
 
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
@@ -50,7 +49,7 @@ use std::time::Duration;
 const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
 #[derive(Debug)]
-pub(crate) struct UiHarness {
+pub struct UiHarness {
     /// `pub(crate)` rather than behind an accessor so in-crate tests
     /// reach the engines they assert on (`h.ui.damage_engine`,
     /// `h.ui.cascades`) the way they reach them off a bare `Ui` today.
@@ -74,7 +73,7 @@ pub(crate) struct UiHarness {
 impl UiHarness {
     /// [`UiResources::isolated_mono`] — mono-fallback text: fast,
     /// deterministic, and wrong for width-follows-label assertions.
-    pub(crate) fn new(surface: UVec2) -> Self {
+    pub fn new(surface: UVec2) -> Self {
         Self::from_resources(UiResources::isolated_mono(), surface)
     }
 
@@ -82,7 +81,7 @@ impl UiHarness {
     /// anything under test sizes to its text. Metrics are not identical
     /// across machines — the bundled faces are joined by platform fonts
     /// as fallback — so assert relations, not exact widths.
-    pub(crate) fn with_text(surface: UVec2) -> Self {
+    pub fn with_text(surface: UVec2) -> Self {
         thread_local! {
             static SHARED: TextShaper = TextShaper::new();
         }
@@ -94,14 +93,14 @@ impl UiHarness {
     /// string-interning arena for tests that build `InternedStr`-bearing
     /// projections without recording. Exists because `InternedStr` is
     /// public and `Ui::intern` is the only public way to mint one.
-    pub(crate) fn arena() -> Self {
+    pub fn arena() -> Self {
         Self::new(ARENA_SURFACE)
     }
 
     /// Device pixel ratio. `surface` stays physical, so at `dpr = 2.0` a
     /// 600×200 surface is 300×100 logical — and every position below is
     /// logical.
-    pub(crate) fn scale(mut self, dpr: f32) -> Self {
+    pub fn scale(mut self, dpr: f32) -> Self {
         self.scale = dpr;
         self.sync_display();
         self.mark_warm();
@@ -109,14 +108,14 @@ impl UiHarness {
     }
 
     /// Monitor refresh, which repaint-wake coalescing reads.
-    pub(crate) fn refresh_millihertz(mut self, mhz: u32) -> Self {
+    pub fn refresh_millihertz(mut self, mhz: u32) -> Self {
         self.refresh_millihertz = Some(mhz);
         self.sync_display();
         self.mark_warm();
         self
     }
 
-    pub(crate) fn pixel_snap(mut self, on: bool) -> Self {
+    pub fn pixel_snap(mut self, on: bool) -> Self {
         self.pixel_snap = on;
         self.sync_display();
         self.mark_warm();
@@ -126,12 +125,12 @@ impl UiHarness {
     /// Change the surface between frames — the resize path. Deliberately
     /// not a builder and deliberately does not re-warm: the next frame
     /// must read this as `display_changed`, exactly as a real resize does.
-    pub(crate) fn resize(&mut self, surface: UVec2) {
+    pub fn resize(&mut self, surface: UVec2) {
         self.surface = surface;
         self.sync_display();
     }
 
-    pub(crate) fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
+    pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         let (display, time) = (self.display(), self.time);
         self.ui.record_test_frame(display, time, record)
     }
@@ -139,7 +138,7 @@ impl UiHarness {
     /// The value from the **input-observing** pass — pass A, the one
     /// that sees one-frame edges (`clicked`, `drag.started()`). Panics
     /// if the frame ran no record pass at all; see [`Self::try_frame_value`].
-    pub(crate) fn frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> R {
+    pub fn frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> R {
         self.try_frame_value(record).expect(
             "the frame ran no record pass — FrameProcessing::PaintOnly. A paint-anim \
              wake was the frame's only cause (a focused TextEdit's caret blink is \
@@ -149,7 +148,7 @@ impl UiHarness {
 
     /// [`Self::frame_value`] without the `PaintOnly` panic, for callers
     /// deliberately driving paint-anim frames.
-    pub(crate) fn try_frame_value<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Option<R> {
+    pub fn try_frame_value<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Option<R> {
         let mut first = None;
         self.frame(|ui| {
             // `record` runs on *every* pass — it is the scene, and a pass
@@ -168,7 +167,7 @@ impl UiHarness {
     ///
     /// Named `prime`, not `settle` — palantir already uses "settle" for
     /// the second record pass *within* one frame.
-    pub(crate) fn prime(&mut self, n: u32, mut record: impl FnMut(&mut Ui)) {
+    pub fn prime(&mut self, n: u32, mut record: impl FnMut(&mut Ui)) {
         for _ in 0..n {
             self.frame(&mut record);
         }
@@ -179,7 +178,7 @@ impl UiHarness {
     /// (scroll thumbs, container text), where a fixed `2` is a guess.
     /// Panics if it never converges — so an animated UI, which never
     /// will, must use [`Self::prime`].
-    pub(crate) fn prime_stable(&mut self, max: u32, mut record: impl FnMut(&mut Ui)) {
+    pub fn prime_stable(&mut self, max: u32, mut record: impl FnMut(&mut Ui)) {
         assert!(max > 0, "prime_stable needs at least one frame");
         let mut prev: Vec<Rect> = Vec::new();
         for i in 0..max {
@@ -205,13 +204,13 @@ impl UiHarness {
     /// Animation dt is a separate clock — it is clamped per frame to
     /// `MAX_ANIM_DT`, so one big jump here does not integrate one big
     /// step there. Use [`Self::advance_frames`] for that.
-    pub(crate) fn advance(&mut self, dt: Duration) {
+    pub fn advance(&mut self, dt: Duration) {
         self.time += dt;
     }
 
     /// `n` frames stepping `dt` each — the correct way to move an
     /// animation, since a single large jump is clamped to `MAX_ANIM_DT`.
-    pub(crate) fn advance_frames(&mut self, n: u32, dt: Duration, mut record: impl FnMut(&mut Ui)) {
+    pub fn advance_frames(&mut self, n: u32, dt: Duration, mut record: impl FnMut(&mut Ui)) {
         assert!(
             dt.as_secs_f32() <= MAX_ANIM_DT,
             "a {dt:?} step exceeds MAX_ANIM_DT ({MAX_ANIM_DT}s) and would silently \
@@ -227,51 +226,51 @@ impl UiHarness {
     /// fresh press run. Without this the clock never moves, every click
     /// is simultaneous, and a second `click_at` on the same spot always
     /// reports `double_clicked`.
-    pub(crate) fn advance_past_double_click(&mut self, record: impl FnMut(&mut Ui)) {
+    pub fn advance_past_double_click(&mut self, record: impl FnMut(&mut Ui)) {
         self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1));
         self.frame(record);
     }
 
-    pub(crate) fn move_to(&mut self, pos: Vec2) {
+    pub fn move_to(&mut self, pos: Vec2) {
         self.ui.on_input(InputEvent::PointerMoved(pos));
     }
 
-    pub(crate) fn pointer_left(&mut self) {
+    pub fn pointer_left(&mut self) {
         self.ui.on_input(InputEvent::PointerLeft);
     }
 
-    pub(crate) fn press_at(&mut self, pos: Vec2) {
+    pub fn press_at(&mut self, pos: Vec2) {
         self.press_button_at(PointerButton::Left, pos);
     }
 
-    pub(crate) fn press_button_at(&mut self, button: PointerButton, pos: Vec2) {
+    pub fn press_button_at(&mut self, button: PointerButton, pos: Vec2) {
         self.move_to(pos);
         self.pressed_at = Some(pos);
         self.ui.on_input(InputEvent::PointerPressed(button));
     }
 
-    pub(crate) fn release(&mut self) {
+    pub fn release(&mut self) {
         self.release_button(PointerButton::Left);
     }
 
-    pub(crate) fn release_button(&mut self, button: PointerButton) {
+    pub fn release_button(&mut self, button: PointerButton) {
         self.pressed_at = None;
         self.ui.on_input(InputEvent::PointerReleased(button));
     }
 
-    pub(crate) fn click_at(&mut self, pos: Vec2) {
+    pub fn click_at(&mut self, pos: Vec2) {
         self.press_at(pos);
         self.release();
     }
 
-    pub(crate) fn right_click_at(&mut self, pos: Vec2) {
+    pub fn right_click_at(&mut self, pos: Vec2) {
         self.press_button_at(PointerButton::Right, pos);
         self.release_button(PointerButton::Right);
     }
 
     /// Two clicks at one point with the clock still — which is what puts
     /// them inside `DOUBLE_CLICK_WINDOW` and `DOUBLE_CLICK_RADIUS`.
-    pub(crate) fn double_click_at(&mut self, pos: Vec2) {
+    pub fn double_click_at(&mut self, pos: Vec2) {
         self.click_at(pos);
         self.click_at(pos);
     }
@@ -279,7 +278,7 @@ impl UiHarness {
     /// Move while pressed. Panics if travel since the press has not
     /// crossed `DRAG_THRESHOLD` — the capture would not latch and the
     /// test would pass or fail for the wrong reason.
-    pub(crate) fn drag_to(&mut self, pos: Vec2) {
+    pub fn drag_to(&mut self, pos: Vec2) {
         let origin = self
             .pressed_at
             .expect("drag_to needs a press first — no button is down");
@@ -295,22 +294,22 @@ impl UiHarness {
     /// Scroll and pinch carry no position of their own: the target is
     /// whatever the pointer was last over, so these move it first.
     /// Positive `y` means the content scrolls down.
-    pub(crate) fn scroll_lines_at(&mut self, pos: Vec2, delta: Vec2) {
+    pub fn scroll_lines_at(&mut self, pos: Vec2, delta: Vec2) {
         self.move_to(pos);
         self.ui.on_input(InputEvent::ScrollLines(delta));
     }
 
-    pub(crate) fn scroll_pixels_at(&mut self, pos: Vec2, delta: Vec2) {
+    pub fn scroll_pixels_at(&mut self, pos: Vec2, delta: Vec2) {
         self.move_to(pos);
         self.ui.on_input(InputEvent::ScrollPixels(delta));
     }
 
-    pub(crate) fn pinch_at(&mut self, pos: Vec2, factor: f32) {
+    pub fn pinch_at(&mut self, pos: Vec2, factor: f32) {
         self.move_to(pos);
         self.ui.on_input(InputEvent::Zoom(factor));
     }
 
-    pub(crate) fn key(&mut self, key: Key) {
+    pub fn key(&mut self, key: Key) {
         self.ui.on_input(InputEvent::KeyDown {
             key,
             repeat: false,
@@ -320,7 +319,7 @@ impl UiHarness {
 
     /// Set modifiers, emit the key, restore. Modifiers are sticky state,
     /// so without the restore every later key inherits them.
-    pub(crate) fn key_mods(&mut self, key: Key, mods: Modifiers) {
+    pub fn key_mods(&mut self, key: Key, mods: Modifiers) {
         let saved = self.mods;
         self.set_modifiers(mods);
         self.key(key);
@@ -330,7 +329,7 @@ impl UiHarness {
     /// Emits `ModifiersChanged` only when the set actually changes —
     /// `Modifiers` is a snapshot the input machine holds, not a per-event
     /// flag.
-    pub(crate) fn set_modifiers(&mut self, mods: Modifiers) {
+    pub fn set_modifiers(&mut self, mods: Modifiers) {
         if self.mods != mods {
             self.mods = mods;
             self.ui.on_input(InputEvent::ModifiersChanged(mods));
@@ -341,14 +340,14 @@ impl UiHarness {
     /// window produces. The winit host emits `InputEvent::Text` only from
     /// an IME commit; see [`Self::ime_commit`], and do not use both for
     /// the same text (`TextEdit` consumes each, so it would double-insert).
-    pub(crate) fn type_text(&mut self, s: &str) {
+    pub fn type_text(&mut self, s: &str) {
         for c in s.chars() {
             self.key(Key::Char(c));
         }
     }
 
     /// The IME path: `InputEvent::Text`, split exactly as a commit is.
-    pub(crate) fn ime_commit(&mut self, s: &str) {
+    pub fn ime_commit(&mut self, s: &str) {
         for chunk in TextChunk::split(s) {
             self.ui.on_input(InputEvent::Text(chunk));
         }
@@ -357,12 +356,12 @@ impl UiHarness {
     /// Arranged rect from the previous frame's cascade. Safe to read
     /// between frames — geometry is stable across them, one-frame edges
     /// are not.
-    pub(crate) fn rect(&self, id: WidgetId) -> Option<Rect> {
+    pub fn rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui.response_for(id).rect
     }
 
     /// Center of `id`'s arranged rect.
-    pub(crate) fn center_of(&self, id: WidgetId) -> Vec2 {
+    pub fn center_of(&self, id: WidgetId) -> Vec2 {
         self.rect(id)
             .unwrap_or_else(|| {
                 panic!(
@@ -375,11 +374,7 @@ impl UiHarness {
     /// `id`'s response captured inside pass A — the only correct way to
     /// read a one-frame edge, since reading between frames sees the
     /// previous frame's input and pass B has already had the edges drained.
-    pub(crate) fn response_in(
-        &mut self,
-        id: WidgetId,
-        mut record: impl FnMut(&mut Ui),
-    ) -> ResponseState {
+    pub fn response_in(&mut self, id: WidgetId, mut record: impl FnMut(&mut Ui)) -> ResponseState {
         self.frame_value(move |ui| {
             record(ui);
             ui.response_for(id)
@@ -389,14 +384,14 @@ impl UiHarness {
     /// Topmost widget the pointer would hit at `pos`, by the same filter
     /// hover routing uses. Turns "the press didn't land and I don't know
     /// why" into one assertion.
-    pub(crate) fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
+    pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
         self.ui.cascades.hit_test(pos, Sense::hovers)
     }
 
     /// Explicit-id collisions recorded last frame, as the colliding
     /// pairs. These otherwise surface only as a magenta runtime overlay,
     /// which no test can see.
-    pub(crate) fn collisions(&self) -> Vec<(WidgetId, WidgetId)> {
+    pub fn collisions(&self) -> Vec<(WidgetId, WidgetId)> {
         self.ui
             .forest
             .collisions
@@ -410,7 +405,7 @@ impl UiHarness {
             .collect()
     }
 
-    pub(crate) fn assert_no_collisions(&self) {
+    pub fn assert_no_collisions(&self) {
         let collisions = self.collisions();
         assert!(
             collisions.is_empty(),
@@ -419,11 +414,11 @@ impl UiHarness {
         );
     }
 
-    pub(crate) fn clipboard_text(&self) -> String {
+    pub fn clipboard_text(&self) -> String {
         self.ui.resources.clipboard.get()
     }
 
-    pub(crate) fn set_clipboard_text(&mut self, text: &str) {
+    pub fn set_clipboard_text(&mut self, text: &str) {
         self.ui
             .resources
             .clipboard
@@ -433,7 +428,7 @@ impl UiHarness {
 
     /// Escape hatch. Reading `response_for` off this between frames sees
     /// the previous frame's input — prefer [`Self::response_in`].
-    pub(crate) fn ui(&mut self) -> &mut Ui {
+    pub fn ui(&mut self) -> &mut Ui {
         &mut self.ui
     }
 }

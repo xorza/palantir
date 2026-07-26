@@ -251,13 +251,14 @@ pub(crate) mod internals {
     use crate::text::system::{TextRunSlot, TextSystem};
     use crate::text::wrap::TextWrap;
 
-    impl Default for TextSystem {
-        fn default() -> Self {
+    impl TextSystem {
+        /// A system over the mono-fallback shaper — no font loading, and
+        /// deterministic metrics. Named rather than `Default` because
+        /// picking the mono shaper is a choice, not an absence of one.
+        pub(crate) fn mono() -> Self {
             Self::new(TextShaper::test_mono())
         }
-    }
 
-    impl TextSystem {
         /// Both entry points against one slot, the way a frame drives them:
         /// the intrinsic pass takes the root, then the measure pass resolves
         /// a width off the row it freshened. Dispatch count is unchanged from

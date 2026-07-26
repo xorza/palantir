@@ -9,10 +9,9 @@
 use crate::allocator::with_audit;
 use crate::harness;
 use crate::harness::{run_audit, user_frames};
-use palantir::{Button, Configure, Display, Sizing, Ui};
+use palantir::{Button, Configure, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::time::Duration;
 
 /// Force one heap alloc that the optimizer can't hoist or elide.
 fn one_alloc() {
@@ -172,20 +171,17 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     //   - exclude every `tests/alloc/` path — including this test
     //     module, since it's harness machinery, not a fixture,
     //   - drop the `alloc::` test-binary-crate prefix.
-    let display = Display::from_physical(glam::UVec2::new(800, 600), 1.0);
     let mut ui = harness::new_ui();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
-    for _ in 0..4 {
-        let _ = harness::record(&mut ui, display, Duration::ZERO, |ui| {
-            Button::new()
-                .auto_id()
-                .label("hello")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui);
-        });
-    }
+    ui.prime(4, |ui| {
+        Button::new()
+            .auto_id()
+            .label("hello")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui);
+    });
     let r = with_audit(|| {
-        let _ = harness::record(&mut ui, display, Duration::ZERO, |ui| {
+        let _ = ui.frame(|ui| {
             Button::new()
                 .auto_id()
                 .label("hello")
