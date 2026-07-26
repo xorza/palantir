@@ -15,9 +15,9 @@ use crate::primitives::image::Image;
 
 /// Caller-chosen opaque identity for a window. Supplied at
 /// [`Ui::open_window`](crate::Ui::open_window) (and
-/// [`WinitHost::builder`](crate::WinitHost::builder) or
-/// [`OffscreenHost::builder`](crate::OffscreenHost::builder) for a host's
-/// first window),
+/// [`WinitHost::builder`](crate::WinitHost::builder) for a host's bootstrap
+/// window; the offscreen host has one fixed window, so its token is the
+/// constant [`OffscreenHost::WINDOW`](crate::OffscreenHost::WINDOW)),
 /// handed back to [`App::update`](crate::App::update) and
 /// [`App::record`](crate::App::record), and used
 /// to address a window in [`Ui::close_window`](crate::Ui::close_window) /

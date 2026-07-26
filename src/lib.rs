@@ -33,7 +33,7 @@ pub(crate) mod window;
 /// crate-private `internals` module — those live beside the code whose
 /// privates they expose, and this is only the door out of the crate for
 /// integration tests. Benchmark entry points have their own gated facade in
-/// [`bench`].
+/// [`mod@bench`].
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::host::offscreen::internals::TwoWindowOffscreenHost;

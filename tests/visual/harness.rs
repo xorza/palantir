@@ -14,7 +14,6 @@ use image::RgbaImage;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 const BYTES_PER_PIXEL: u32 = 4;
-const WINDOW: WindowToken = WindowToken(0);
 
 #[derive(Debug)]
 struct RecordApp<F> {
@@ -62,7 +61,7 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::builder(WINDOW, gpu.device.clone(), gpu.queue.clone())
+        let host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
             .shaper(shaper)
             .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO))
