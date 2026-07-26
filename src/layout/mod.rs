@@ -5,6 +5,7 @@ pub(crate) mod engine;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod scroll;
+pub(crate) mod scrollbars;
 pub(crate) mod stack;
 mod support;
 pub(crate) mod types;

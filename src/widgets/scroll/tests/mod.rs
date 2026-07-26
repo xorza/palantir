@@ -753,6 +753,7 @@ mod bars {
     use crate::Ui;
     use crate::display::Display;
     use crate::input::InputEvent;
+    use crate::layout::scrollbars::bar_geometry;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
     use crate::primitives::color::Color;
@@ -767,9 +768,9 @@ mod bars {
     use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
+    use crate::widgets::scroll::Scroll;
     use crate::widgets::scroll::state::ScrollState;
     use crate::widgets::scroll::tests::{scroll_content, scroll_viewport};
-    use crate::widgets::scroll::{Scroll, bar_geometry};
     use crate::widgets::theme::scrollbar::ScrollbarTheme;
     use glam::{UVec2, Vec2};
     use std::time::Duration;
@@ -863,7 +864,7 @@ mod bars {
             ("none_when_track_zero", 200.0, 800.0, 0.0, 0.0, None),
         ];
         for (label, viewport, content, offset, track, want) in cases {
-            let got = bar_geometry(*viewport, *content, *offset, *track, &theme());
+            let got = bar_geometry(*viewport, *content, *offset, *track, theme().min_thumb_px);
             match (want, got) {
                 (None, None) => {}
                 (Some(want), Some(g)) => {
@@ -937,6 +938,14 @@ mod bars {
             let id = scroll_id.with(tag);
             if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
                 let r = layout.rect[idx];
+                // Both thumbs are recorded every frame — `layout::scrollbars`
+                // collapses the ones with nothing to show to zero extent
+                // rather than dropping them, so their ids and state rows
+                // survive an overflow toggle. A collapsed thumb is not a
+                // thumb, so it must not reach an assertion about placement.
+                if r.size.w <= 0.0 || r.size.h <= 0.0 {
+                    continue;
+                }
                 out.push(Rect {
                     min: r.min - outer_origin,
                     size: r.size,
@@ -1025,6 +1034,250 @@ mod bars {
             !thumb_rects(&ui, "scroll").is_empty(),
             "vertical overflow should emit at least one bar thumb"
         );
+    }
+
+    /// Content that stops overflowing must retire its bar, even though
+    /// the bar overlay's own subtree hash and slot are unchanged — the
+    /// showcase symptom was a scrollbar surviving a page switch.
+    ///
+    /// The bars' placement reads a *sibling's* measured `scroll_content`,
+    /// so it is not the pure function of its own slot that arrange replay
+    /// assumes; `LayoutEngine::arrange` exempts `ScrollBars` for exactly
+    /// this. Asserting the raw rects (not `thumb_rects`, which filters
+    /// collapsed bars) is what makes a stale bar visible to the test.
+    #[test]
+    fn content_that_stops_overflowing_retires_its_bar() {
+        let build = |tall: bool| {
+            move |ui: &mut Ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("root"))
+                    .size((Sizing::fixed(400.0), Sizing::fixed(300.0)))
+                    .show(ui, |ui| {
+                        Scroll::vertical()
+                            .id(WidgetId::from_hash("scroll"))
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .overlay_bars()
+                            .show(ui, |ui| {
+                                Frame::new()
+                                    .id(WidgetId::from_hash("body"))
+                                    .size((
+                                        Sizing::FILL,
+                                        Sizing::fixed(if tall { 900.0 } else { 50.0 }),
+                                    ))
+                                    .show(ui);
+                            });
+                    });
+            }
+        };
+        let surface = UVec2::new(400, 300);
+        let mut ui = Ui::for_test();
+        ui.run_at(surface, build(true));
+        ui.run_at(surface, build(true));
+        assert_eq!(
+            thumb_rects(&ui, "scroll").len(),
+            1,
+            "900px of content in a 300px viewport must show a thumb",
+        );
+
+        ui.run_at_without_baseline(surface, build(false));
+        for (tag, rect) in raw_bar_rects(&ui, "scroll") {
+            assert_eq!(
+                rect.size,
+                Size::ZERO,
+                "{tag} must collapse once the content fits, got {rect:?}",
+            );
+        }
+
+        // ...and come back, so the collapse isn't a one-way latch.
+        ui.run_at_without_baseline(surface, build(true));
+        assert_eq!(
+            thumb_rects(&ui, "scroll").len(),
+            1,
+            "the thumb must return when the content overflows again",
+        );
+    }
+
+    /// Every bar node's arranged rect, collapsed ones included.
+    fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
+        let tree = &ui.forest.trees[Layer::Main];
+        let layout = &ui.layout[Layer::Main];
+        let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
+        let widget_ids = tree.records.widget_id();
+        let mut out = Vec::new();
+        for tag in ["__vtrack", "__vthumb", "__htrack", "__hthumb"] {
+            let id = scroll_id.with(tag);
+            if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
+                out.push((tag, layout.rect[idx]));
+            }
+        }
+        out
+    }
+
+    /// A travelling thumb must not change *length* on screen. Physical
+    /// snapping rounds a rect's min and max independently, so a thumb on
+    /// fractional coordinates grows and shrinks by a pixel as it moves —
+    /// the shimmer reported against the showcase. `axis_rects` pins the
+    /// thumb to whole logical pixels to stop it; this asserts the
+    /// *snapped* extent, since the logical one was already constant and
+    /// so never caught the bug.
+    #[test]
+    fn a_travelling_thumb_keeps_its_snapped_length() {
+        let build = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::fixed(400.0), Sizing::fixed(300.0)))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .overlay_bars()
+                        .gap(12.0)
+                        .show(ui, |ui| {
+                            for i in 0..8 {
+                                Frame::new()
+                                    .id(WidgetId::from_hash(format!("row{i}")))
+                                    .size((Sizing::FILL, Sizing::fixed(90.0)))
+                                    .show(ui);
+                            }
+                        });
+                });
+        };
+        let surface = UVec2::new(400, 300);
+        let mut ui = Ui::for_test();
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
+
+        // What the compositor actually rasterizes, per `Rect::scaled_by`.
+        let snapped = |r: Rect, scale: f32| (r.max().y * scale).round() - (r.min.y * scale).round();
+        let first = thumb_rects(&ui, "scroll")[0];
+        let expected: Vec<f32> = [1.0, 2.0, 3.0].iter().map(|s| snapped(first, *s)).collect();
+
+        let mut travelled = Vec::new();
+        for _ in 0..8 {
+            ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 37.0)));
+            ui.run_at(surface, build);
+            let r = thumb_rects(&ui, "scroll")[0];
+            travelled.push(r.min.y);
+            for (i, scale) in [1.0f32, 2.0, 3.0].iter().enumerate() {
+                assert_eq!(
+                    snapped(r, *scale),
+                    expected[i],
+                    "thumb length changed at DPR {scale} once it moved to y={}",
+                    r.min.y,
+                );
+            }
+        }
+        assert!(
+            travelled.windows(2).any(|w| w[0] != w[1]),
+            "the thumb must actually travel for this to mean anything: {travelled:?}",
+        );
+    }
+
+    /// Thumb *extent* is `viewport / content * track` — no offset term.
+    /// Scrolling moves the thumb; it must never resize it.
+    #[test]
+    fn scrolling_moves_the_thumb_without_resizing_it() {
+        let build = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
+                                .show(ui);
+                        });
+                });
+        };
+        let surface = UVec2::new(400, 600);
+        let mut ui = Ui::for_test();
+        ui.run_at(surface, build);
+        ui.run_at(surface, build);
+        let before = thumb_rects(&ui, "scroll");
+        assert_eq!(before.len(), 1, "one vertical thumb");
+
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            // Wheel input routes to whatever the pointer is over.
+            ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+            ui.run_at(surface, build);
+            let now = thumb_rects(&ui, "scroll");
+            assert_eq!(now.len(), 1, "thumb must not vanish mid-scroll");
+            seen.push((now[0].min.y, now[0].size.h));
+        }
+        for (offset, height) in &seen {
+            assert!(
+                (height - before[0].size.h).abs() < 1e-3,
+                "thumb resized while scrolling: {} -> {height} (offsets so far {seen:?})",
+                before[0].size.h,
+            );
+            let _ = offset;
+        }
+        assert!(
+            seen.windows(2).any(|w| w[0].0 != w[1].0),
+            "the thumb should actually travel: {seen:?}",
+        );
+    }
+
+    /// The reason `layout::scrollbars` exists. A scroll that has never
+    /// recorded has no arranged viewport and no measured content — both
+    /// terms of the thumb's size ratio — so it used to call
+    /// `Ui::request_relayout` and re-record the entire frame to get them.
+    /// The driver resolves them after measure instead, so the thumb is
+    /// placed on the first painted frame *and* the frame stays one pass.
+    #[test]
+    fn cold_mount_places_the_thumb_in_one_record_pass() {
+        let build = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
+                                .show(ui);
+                        });
+                });
+        };
+        let surface = UVec2::new(400, 600);
+        let mut ui = Ui::for_test();
+        let mut passes = 0;
+        let report = ui.record_test_frame_without_baseline(
+            Display::from_physical(surface, 1.0),
+            Duration::from_millis(16),
+            |ui| {
+                passes += 1;
+                build(ui);
+            },
+        );
+        assert_eq!(passes, 1, "a cold-mounted scroll must not re-record");
+        assert_eq!(report.processing, FrameProcessing::SingleLayout);
+
+        // The vertical bar's gutter comes out of the *cross* axis (width),
+        // so its own main extent is the full 200 — only a horizontal bar
+        // would shorten it, and this scroll has none. Thumb is
+        // `viewport/content * track` with track == viewport: 200/800*200.
+        let theme = theme();
+        let track: f32 = 200.0;
+        let expected = (track / 800.0 * track).max(theme.min_thumb_px);
+        assert_eq!(expected, 50.0, "arithmetic guard on the expectation");
+        let thumbs = thumb_rects(&ui, "scroll");
+        assert_eq!(thumbs.len(), 1, "one vertical thumb, no collapsed peers");
+        assert!(
+            (thumbs[0].size.h - expected).abs() < 1e-3,
+            "first-frame thumb must already be sized from the measured \
+             content: expected {expected}, got {}",
+            thumbs[0].size.h,
+        );
+        assert_eq!(thumbs[0].size.w, theme.width);
     }
 
     #[test]

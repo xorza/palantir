@@ -4,12 +4,12 @@ use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::zoom;
 use crate::layout::axis::Axis;
+use crate::layout::scrollbars::{self, ScrollBarsDef};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
@@ -100,36 +100,6 @@ fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
     if panned { theme.width + theme.gap } else { 0.0 }
 }
 
-#[derive(Copy, Clone, Debug)]
-struct BarGeometry {
-    thumb_size: f32,
-    thumb_offset: f32,
-}
-
-/// Compute thumb size/offset along the bar's main axis. Returns `None`
-/// when the bar can't be drawn meaningfully (zero/negative track or no
-/// scrollable range).
-fn bar_geometry(
-    viewport: f32,
-    content: f32,
-    offset: f32,
-    track_len: f32,
-    theme: &ScrollbarTheme,
-) -> Option<BarGeometry> {
-    if track_len <= 0.0 || content <= viewport {
-        return None;
-    }
-    let raw = viewport / content * track_len;
-    let thumb_size = raw.max(theme.min_thumb_px).min(track_len);
-    let max_off = (content - viewport).max(f32::EPSILON);
-    let travel = (track_len - thumb_size).max(0.0);
-    let thumb_offset = (offset / max_off).clamp(0.0, 1.0) * travel;
-    Some(BarGeometry {
-        thumb_size,
-        thumb_offset,
-    })
-}
-
 /// Offset-independent bar layout: cross-axis gutter reservations,
 /// post-zoom content extent, and bar main-axis length.
 #[derive(Copy, Clone, Debug)]
@@ -150,15 +120,13 @@ fn bar_space(
     // paints the bar over content without reservation; `Hidden` has
     // no bar at all. Reservation is constant for `Reserved` (not
     // toggled by overflow) so a Hug ancestor doesn't shift between
-    // frames; the bar thumb itself is still drawn conditionally on
-    // `content > viewport` via `bar_plan`.
+    // frames; the bar thumb itself still appears conditionally on
+    // `content > viewport`, decided by `layout::scrollbars` after
+    // measure rather than here.
     let reserve = matches!(bar_mode, BarMode::Reserved);
     let reserve_y = bar_reservation(pan.y && reserve, theme);
     let reserve_x = bar_reservation(pan.x && reserve, theme);
-    let bar_viewport = Size::new(
-        (outer.w - reserve_y - user_padding.horiz()).max(0.0),
-        (outer.h - reserve_x - user_padding.vert()).max(0.0),
-    );
+    let bar_viewport = scrollbars::viewport(outer, reserve_y, reserve_x, user_padding);
     BarSpace {
         bar_viewport,
         reserve_y,
@@ -177,16 +145,6 @@ fn bar_layout(content: Size, zoom: f32, space: BarSpace) -> BarLayout {
         scaled_content: Size::new(content.w * zoom, content.h * zoom),
         space,
     }
-}
-
-/// Per-axis bar plan: rendered rects for the track + thumb (both in
-/// OUTER-local coords, so they land in the reserved gutter even when
-/// the viewport has user padding). Built from the *post-drag* offset
-/// so the visible thumb tracks the cursor 1:1.
-#[derive(Copy, Clone, Debug)]
-struct BarPlan {
-    track_rect: Rect,
-    thumb_rect: Rect,
 }
 
 #[derive(Debug)]
@@ -222,17 +180,10 @@ impl BarResponses {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-struct BarPlans {
-    vertical: Option<BarPlan>,
-    horizontal: Option<BarPlan>,
-}
-
 #[derive(Debug)]
 struct BarFrame {
     responses: BarResponses,
     layout: BarLayout,
-    plans: BarPlans,
 }
 
 #[derive(Debug)]
@@ -248,56 +199,30 @@ fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
     ui.layout[endpoint.layer].scroll_content[endpoint.node.idx()]
 }
 
-fn bar_plan(
-    bar_viewport: Size,
-    outer: Size,
-    content: Size,
-    offset: Vec2,
-    axis: Axis,
-    panned: bool,
-    theme: &ScrollbarTheme,
-) -> Option<BarPlan> {
-    if !panned {
-        return None;
-    }
-    let main = axis.main(bar_viewport);
-    let cross_outer = axis.cross(outer);
-    let main_content = axis.main(content);
-    let main_offset = axis.main_v(offset);
-    let geom = bar_geometry(main, main_content, main_offset, main, theme)?;
-    let cross_pos = cross_outer - theme.width;
-    let track_rect = axis.compose_rect(0.0, cross_pos, main, theme.width);
-    let thumb_rect = axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, theme.width);
-    Some(BarPlan {
-        track_rect,
-        thumb_rect,
-    })
-}
-
-/// Emit one bar's worth of nodes onto the overlay Canvas: a track
-/// leaf with `Sense::CLICK` (paging on press) and a thumb leaf with
-/// `Sense::DRAG` painted on top. Both expressed in OUTER-local coords;
-/// the overlay covers outer's full rect so position + local_rect line
-/// up. Track is always a leaf even when `theme.track` alpha is 0 so
-/// the click-to-page surface stays available — the gutter is reserved
-/// either way and matches OS scrollbar conventions.
+/// Emit one bar's worth of nodes onto the overlay: a track leaf with
+/// `Sense::CLICK` (paging on press) and a thumb leaf with `Sense::DRAG`
+/// painted on top. Neither carries a size or a position — the overlay is
+/// a [`crate::layout::scrollbars`] container, and its arrange assigns
+/// both rects once measure has produced the content extent they are a
+/// ratio of.
+///
+/// Both are recorded unconditionally, even on an axis showing no bar:
+/// arrange collapses those to zero extent. Recording them either way is
+/// what keeps the child list the same shape across an overflow toggle,
+/// which is what lets the driver address children positionally.
+///
+/// Track stays a leaf even when `theme.track` alpha is 0 so the
+/// click-to-page surface remains — the gutter is reserved either way,
+/// matching OS scrollbar conventions.
 fn push_bar_nodes(
     ui: &mut Ui,
-    plan: BarPlan,
     track_id: WidgetId,
     thumb_id: WidgetId,
     resp: ResponseState,
     theme: &ScrollbarTheme,
 ) {
     let radius = Corners::all(theme.radius);
-    let track = Node::leaf()
-        .id(track_id)
-        .size((
-            Sizing::fixed(plan.track_rect.size.w),
-            Sizing::fixed(plan.track_rect.size.h),
-        ))
-        .position(plan.track_rect.min)
-        .sense(Sense::CLICK);
+    let track = Node::leaf().id(track_id).sense(Sense::CLICK);
     if !theme.track.is_noop() {
         let chrome = Background::rounded(theme.track, radius);
         ui.widget(track).record(ui, Some(&chrome), |_| {});
@@ -312,14 +237,7 @@ fn push_bar_nodes(
     } else {
         theme.thumb
     };
-    let thumb = Node::leaf()
-        .id(thumb_id)
-        .size((
-            Sizing::fixed(plan.thumb_rect.size.w),
-            Sizing::fixed(plan.thumb_rect.size.h),
-        ))
-        .position(plan.thumb_rect.min)
-        .sense(Sense::DRAG);
+    let thumb = Node::leaf().id(thumb_id).sense(Sense::DRAG);
     let chrome = Background::rounded(fill, radius);
     ui.widget(thumb).record(ui, Some(&chrome), |_| {});
 }
@@ -655,12 +573,12 @@ impl Scroll {
                     }
                     let track_main = axis.main(bl.space.bar_viewport);
                     let main_content = axis.main(bl.scaled_content);
-                    let geom = bar_geometry(
+                    let geom = scrollbars::bar_geometry(
                         track_main,
                         main_content,
                         axis.main_v(state.offset),
                         track_main,
-                        &responses.theme,
+                        responses.theme.min_thumb_px,
                     )
                     .map(|g| {
                         let travel = (track_main - g.thumb_size).max(f32::EPSILON);
@@ -686,12 +604,12 @@ impl Scroll {
                     };
                     let page_step = axis.main(bl.space.bar_viewport);
                     let main_content = axis.main(bl.scaled_content);
-                    let page = bar_geometry(
+                    let page = scrollbars::bar_geometry(
                         page_step,
                         main_content,
                         axis.main_v(state.offset),
                         page_step,
-                        &responses.theme,
+                        responses.theme.min_thumb_px,
                     )
                     .map(|g| TrackPage {
                         click_main: axis.main_v(pointer_local),
@@ -702,30 +620,9 @@ impl Scroll {
                     });
                     state.apply_track_page(axis, page);
                 }
-                let plans = BarPlans {
-                    vertical: bar_plan(
-                        bl.space.bar_viewport,
-                        outer,
-                        bl.scaled_content,
-                        state.offset,
-                        Axis::Y,
-                        pan.y,
-                        &responses.theme,
-                    ),
-                    horizontal: bar_plan(
-                        bl.space.bar_viewport,
-                        outer,
-                        bl.scaled_content,
-                        state.offset,
-                        Axis::X,
-                        pan.x,
-                        &responses.theme,
-                    ),
-                };
                 BarFrame {
                     responses,
                     layout: bl,
-                    plans,
                 }
             });
             ScrollFrame {
@@ -734,11 +631,6 @@ impl Scroll {
             }
         };
 
-        if frame.bars.is_some() && widget_size.is_none() {
-            // Pass A has no previous geometry, so it cannot decide
-            // thumb visibility; pass B reads the just-measured layout.
-            ui.request_relayout();
-        }
         let zoom = frame.state.zoom;
         let offset = frame.state.offset;
         let (reserve_y, reserve_x) = frame
@@ -790,39 +682,50 @@ impl Scroll {
         widget.node = outer;
         let inner_value = widget.record(ui, None, |ui| {
             let inner_value = ui.widget(inner).record(ui, inner_chrome.as_ref(), body);
-            // Bar overlay: Canvas sibling of inner, Fill on both axes
-            // → covers outer's full rect. Tracks attach as shapes on
-            // the overlay (paint first); thumbs are Sense::DRAG leaves
-            // positioned absolutely on top. Painted after inner via
-            // record order, hit-tested above inner via cascade order.
-            if let Some(bars) = frame
-                .bars
-                .filter(|bars| bars.plans.vertical.is_some() || bars.plans.horizontal.is_some())
-            {
-                let overlay = Node::canvas()
+            // Bar overlay: a `scrollbars` sibling of inner, Fill on both
+            // axes → covers outer's full rect. Its four leaves are
+            // recorded bare and sized by that driver's arrange, which is
+            // the only place the content extent they are a ratio of
+            // exists. Painted after inner via record order, hit-tested
+            // above inner via cascade order.
+            if let Some(bars) = frame.bars {
+                // The viewport was opened on the line above, so the
+                // current pass's id map already holds its node — the
+                // handle the driver needs to reach `scroll_content`.
+                let content = ui.forest.ids.curr[&scroll_id].node;
+                let layer = ui.forest.current_layer();
+                let def_id = ui.forest.trees[layer].push_scrollbars_def(ScrollBarsDef {
+                    content,
+                    offset: frame.state.offset,
+                    zoom: frame.state.zoom,
+                    pan,
+                    reserve_y,
+                    reserve_x,
+                    padding: user_padding,
+                    bar_width: bars.responses.theme.width,
+                    min_thumb: bars.responses.theme.min_thumb_px,
+                });
+                let overlay = Node::scroll_bars(def_id)
                     .id(scroll_id.with("__bars"))
                     .size((Sizing::FILL, Sizing::FILL));
                 ui.widget(overlay).record(ui, None, |ui| {
-                    if let Some(p) = bars.plans.vertical {
-                        push_bar_nodes(
-                            ui,
-                            p,
-                            bars.responses.track_id_v,
-                            bars.responses.thumb_id_v,
-                            bars.responses.resp_v,
-                            &bars.responses.theme,
-                        );
-                    }
-                    if let Some(p) = bars.plans.horizontal {
-                        push_bar_nodes(
-                            ui,
-                            p,
-                            bars.responses.track_id_h,
-                            bars.responses.thumb_id_h,
-                            bars.responses.resp_h,
-                            &bars.responses.theme,
-                        );
-                    }
+                    // Fixed order — the driver addresses these
+                    // positionally: vertical track, vertical thumb,
+                    // horizontal track, horizontal thumb.
+                    push_bar_nodes(
+                        ui,
+                        bars.responses.track_id_v,
+                        bars.responses.thumb_id_v,
+                        bars.responses.resp_v,
+                        &bars.responses.theme,
+                    );
+                    push_bar_nodes(
+                        ui,
+                        bars.responses.track_id_h,
+                        bars.responses.thumb_id_h,
+                        bars.responses.resp_h,
+                        &bars.responses.theme,
+                    );
                 });
             }
             inner_value

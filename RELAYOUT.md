@@ -397,11 +397,35 @@ the power to double a frame.
    owner's `node[]`, re-fold `subtree[]` up the ancestor chain. `Tree` has
    `subtree_end` (descendants) but no parent column, so that walk needs one
    O(n) marking pass or a new column.
-5. **Convert the scrollbars** to anchored placement (Tier 2), then delete
-   `Ui::request_relayout` — now the only remaining item with a real
-   consumer. Worth doing on its own merits rather than as a step toward
-   deleting the API: the downstream caller that blocked that deletion is no
-   longer expensive, so the deletion is tidiness, not a win.
+5. ~~**Convert the scrollbars to arrange-time placement.**~~ **Done.**
+   `layout::scrollbars` is a new driver: `Scroll` records four bare bar
+   leaves in a fixed order under a `LayoutMode::ScrollBars` overlay, and
+   the driver assigns their rects after measure, reading the viewport
+   from its own arranged rect and the content extent from
+   `LayerLayout::scroll_content`. A bar with nothing to show arranges
+   zero-extent rather than going unrecorded, so ids and state rows
+   survive an overflow toggle and the driver can address children
+   positionally.
+
+   `LayoutMode::ScrollBars(ScrollBarsDefId)` is tag 9 with an `Index16`
+   payload into a `Tree::scrollbar_defs` side table — the `Grid` shape
+   exactly — so the packed 16-bit payload and every pinned hot-struct
+   size are untouched. `ScrollBarsDef::hash_visual` deliberately excludes
+   the `content` node handle: it is a positional index that shifts when
+   any earlier sibling's subtree grows, and folding it in would
+   invalidate the scroll's measure cache for changes that cannot reach
+   its bars.
+
+   Pinned by `cold_mount_places_the_thumb_in_one_record_pass` — a
+   never-recorded scroll now sizes its thumb from measured content on the
+   first painted frame, in one pass. All 73 visual goldens are unchanged,
+   so the driver reproduces the old geometry pixel-for-pixel.
+
+   **`Ui::request_relayout` stays.** Deleting it needs darkroom's caller
+   gone, and that one is legitimate (§3.2). What this achieves is zero
+   in-crate callers: every widget palantir ships now obeys "never force a
+   re-record", and the API is purely a downstream escape hatch. Its doc
+   comment says so.
 6. **Only if 3 leaves it hot:** the `StateMap` read/write-index tracking in
    B4. Nothing currently suggests it does.
 

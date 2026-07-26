@@ -227,6 +227,9 @@ fn content_intrinsic<const RANGE: bool>(
         // The non-panned axis falls back to a stack intrinsic on the
         // panned axis (pan-Y → stack on Y, pan-X → stack on X). If
         // both axes pan, the answer is unconditionally zero.
+        // Bars are absolutely placed chrome in a reserved gutter: they
+        // must never floor the scroll they decorate, on either axis.
+        LayoutMode::ScrollBars(_) => IntrinsicRange::ZERO,
         LayoutMode::Scroll(scroll_spec) => {
             let pan = scroll_spec.pan_mask();
             let pan_axis = match axis {

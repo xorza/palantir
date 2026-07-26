@@ -550,9 +550,19 @@ impl Ui {
         self.key_pressed(Shortcut::key(Key::Escape))
     }
 
-    /// Re-record this frame after measure runs (for widgets that
-    /// realize their record-time inputs were stale). Capped at one
-    /// re-record per frame.
+    /// Re-record this frame after measure runs, for authoring code that
+    /// realizes its record-time inputs were stale. Capped at one
+    /// re-record per frame — so it cannot converge a feedback loop, only
+    /// give a single retry.
+    ///
+    /// **The whole second pass is the record closure**, which makes this
+    /// roughly a 2× frame; measure and arrange are ~2% of it. No widget
+    /// this crate ships calls it any more. `Scroll` was the last, and it
+    /// now resolves its bar geometry in [`crate::layout::scrollbars`]
+    /// after measure instead. Prefer that shape — or handling the edge in
+    /// [`crate::App::update`], which runs before any recording — and
+    /// reach for this only when neither fits. `RELAYOUT.md` has the
+    /// measurements and the case law.
     pub fn request_relayout(&mut self) {
         self.frame_runtime.relayout_requested = true;
     }

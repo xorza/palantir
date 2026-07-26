@@ -14,6 +14,7 @@ pub(crate) enum LayoutMode {
     Canvas,
     Grid(GridDefId),
     Scroll(ScrollSpec),
+    ScrollBars(ScrollBarsDefId),
 }
 
 #[repr(transparent)]
@@ -77,6 +78,7 @@ impl From<LayoutMode> for PackedLayoutMeta {
             LayoutMode::Canvas => (6, 0),
             LayoutMode::Grid(id) => (7, u16::from(id.0)),
             LayoutMode::Scroll(spec) => (8, spec.0),
+            LayoutMode::ScrollBars(id) => (9, u16::from(id.0)),
         };
         Self(u32::from(payload) | (u32::from(tag) << Self::TAG_SHIFT))
     }
@@ -99,6 +101,9 @@ impl From<PackedLayoutMeta> for LayoutMode {
                 Index16::from_raw(payload).expect("packed grid mode has no definition id"),
             )),
             8 => Self::Scroll(ScrollSpec(payload)),
+            9 => Self::ScrollBars(ScrollBarsDefId(
+                Index16::from_raw(payload).expect("packed scrollbars mode has no definition id"),
+            )),
             _ => unreachable!("packed layout mode tag {tag} is invalid"),
         }
     }
@@ -121,6 +126,25 @@ impl GridDefId {
 
 impl From<GridDefId> for usize {
     fn from(value: GridDefId) -> Self {
+        value.0.idx()
+    }
+}
+
+/// Index into `Tree::scrollbar_defs`. Separate table rather than an
+/// inline payload because the def carries nine fields and `LayoutMode`
+/// packs into 16 bits — same arrangement as [`GridDefId`].
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct ScrollBarsDefId(Index16);
+
+impl ScrollBarsDefId {
+    pub(crate) fn from_index(index: usize) -> Self {
+        Self(Index16::new(index))
+    }
+}
+
+impl From<ScrollBarsDefId> for usize {
+    fn from(value: ScrollBarsDefId) -> Self {
         value.0.idx()
     }
 }
