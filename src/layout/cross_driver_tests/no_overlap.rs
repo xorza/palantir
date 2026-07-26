@@ -14,6 +14,7 @@ use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
@@ -66,10 +67,10 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
                      with five dozen liquor jugs. How vexingly quick daft zebras jump!";
     for (label_id, grid_main, cols, gap_xy) in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(800, 600));
         let mut left = None;
         let mut right = None;
-        ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
+        h.frame_without_baseline(|ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -103,7 +104,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                 });
         });
 
-        let layout = &ui.layout[Layer::Main];
+        let layout = &h.ui.layout[Layer::Main];
         let lr = layout.rect[left.unwrap().idx()];
         let rr = layout.rect[right.unwrap().idx()];
         assert!(lr.size.w > 0.0, "case: {label_id} left col width");
@@ -116,14 +117,14 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 
 #[test]
 fn text_layouts_two_sections_back_to_back_no_overlap() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(1500, 900));
 
     let mut hug_left = None;
     let mut hug_right = None;
     let mut prop_label = None;
     let mut prop_value = None;
 
-    ui.run_at_without_baseline(UVec2::new(1500, 900), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -188,7 +189,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
             });
     });
 
-    let layout = &ui.layout[Layer::Main];
+    let layout = &h.ui.layout[Layer::Main];
     let l1 = layout.rect[hug_left.unwrap().idx()];
     let r1 = layout.rect[hug_right.unwrap().idx()];
     let l2 = layout.rect[prop_label.unwrap().idx()];
@@ -210,8 +211,8 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// the emitted `DrawText` commands directly.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut ui = Ui::for_test_text();
-    ui.run_at_without_baseline(UVec2::new(1500, 900), |ui| {
+    let mut h = UiHarness::with_text(UVec2::new(1500, 900));
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -244,7 +245,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
             });
     });
 
-    let cmds = ui.encode_paint();
+    let cmds = h.encode_paint();
     let mut text_xs: Vec<f32> = Vec::new();
     for command in cmds.calls.iter() {
         if let PaintCall::Text(payload) = command {
@@ -265,8 +266,8 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 /// two distinct texts emit `DrawText` at the same (x, y).
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(UVec2::new(1620, 980), |ui| {
+    let mut h = UiHarness::new(UVec2::new(1620, 980));
+    h.frame_without_baseline(|ui| {
         Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)
@@ -343,7 +344,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
         });
     });
 
-    let cmds = ui.encode_paint();
+    let cmds = h.encode_paint();
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
     for command in cmds.calls.iter() {
         if let PaintCall::Text(payload) = command {

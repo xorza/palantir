@@ -91,7 +91,8 @@ fn fill_weights(fraction: f32) -> WeightSplit {
 
 #[cfg(test)]
 mod tests {
-    use crate::Ui;
+    use crate::ui::harness::UiHarness;
+
     use crate::layout::types::sizing::Sizing;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
@@ -104,9 +105,9 @@ mod tests {
     /// column → 400 × theme height 6).
     #[test]
     fn explicit_size_overrides_fill_default() {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 300));
         let (mut sized, mut hug, mut default) = (None, None, None);
-        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+        h.frame_without_baseline(|ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(
@@ -124,7 +125,7 @@ mod tests {
                 default = Some(ProgressBar::new(0.3).show(ui).node());
             });
         });
-        let rects = &ui.layout[Layer::Main].rect;
+        let rects = &h.ui.layout[Layer::Main].rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (80.0, 10.0), "explicit size");
         let h = rects[hug.unwrap().idx()];
@@ -160,14 +161,14 @@ mod tests {
     #[test]
     fn endpoint_segments_collapse_without_invalid_fill_weights() {
         for (fraction, expected) in [(0.0, [0.0, 100.0]), (1.0, [100.0, 0.0])] {
-            let mut ui = Ui::for_test();
-            let root = ui.run_at_value_without_baseline(UVec2::new(100, 20), |ui| {
+            let mut h = UiHarness::new(UVec2::new(100, 20));
+            let root = h.frame_value_without_baseline(|ui| {
                 ProgressBar::new(fraction)
                     .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))
                     .show(ui)
                     .node()
             });
-            let widths: Vec<_> = ui
+            let widths: Vec<_> = h
                 .main_child_rects(root)
                 .into_iter()
                 .map(|rect| rect.size.w)

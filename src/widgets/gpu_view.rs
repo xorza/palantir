@@ -118,7 +118,8 @@ impl Configure for GpuView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Ui;
+    use crate::ui::harness::UiHarness;
+
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
@@ -142,8 +143,8 @@ mod tests {
     /// committed size — the layout half of the widget, GPU-free.
     #[test]
     fn records_one_gpu_view_shape_at_committed_size() {
-        let mut ui = Ui::for_test();
-        let node = ui.run_at_value_without_baseline(UVec2::new(200, 120), |ui| {
+        let mut h = UiHarness::new(UVec2::new(200, 120));
+        let node = h.frame_value_without_baseline(|ui| {
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {
@@ -154,25 +155,23 @@ mod tests {
                 })
                 .inner
         });
-        let tree = &ui.forest.trees[Layer::Main];
+        let tree = &h.ui.forest.trees[Layer::Main];
         let mut shapes = tree.shapes_of(node);
         assert!(
             matches!(shapes.next(), Some(ShapeRecord::GpuView { .. })),
             "records exactly one GpuView shape",
         );
         assert!(shapes.next().is_none());
-        let r = ui.layout[Layer::Main].rect[node.idx()];
+        let r = h.ui.layout[Layer::Main].rect[node.idx()];
         assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
     }
 
     /// Default sizing fills the parent — a viewport has no intrinsic size.
     #[test]
     fn default_fills_parent() {
-        let mut ui = Ui::for_test();
-        let node = ui.run_at_value_without_baseline(UVec2::new(160, 100), |ui| {
-            GpuView::new(scene()).show(ui).node()
-        });
-        let r = ui.layout[Layer::Main].rect[node.idx()];
+        let mut h = UiHarness::new(UVec2::new(160, 100));
+        let node = h.frame_value_without_baseline(|ui| GpuView::new(scene()).show(ui).node());
+        let r = h.ui.layout[Layer::Main].rect[node.idx()];
         assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
     }
 
@@ -182,8 +181,8 @@ mod tests {
     fn senses_click_when_opted_in() {
         let id = WidgetId::from_hash("gpu_view_hitbox");
         let surface = UVec2::new(200, 100);
-        let mut ui = Ui::for_test();
-        ui.run_at(surface, |ui| {
+        let mut h = UiHarness::new(surface);
+        h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 GpuView::new(scene())
                     .id(id)
@@ -192,9 +191,9 @@ mod tests {
                     .show(ui);
             });
         });
-        ui.click_at(Vec2::new(50.0, 25.0));
+        h.click_at(Vec2::new(50.0, 25.0));
         let mut clicked = false;
-        ui.run_at_without_baseline(surface, |ui| {
+        h.frame_without_baseline(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 clicked |= GpuView::new(scene())
                     .id(id)

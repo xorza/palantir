@@ -9,15 +9,19 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel, text::Text};
 use glam::UVec2;
 
-fn run_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
-    run_frame_at(ui, UVec2::new(200, 200), record);
+fn run_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
+    run_frame_at(h, UVec2::new(200, 200), record);
 }
 
-fn run_frame_at(ui: &mut Ui, size: UVec2, mut record: impl FnMut(&mut Ui)) {
-    ui.run_at(size, |ui| {
+fn run_frame_at(h: &mut UiHarness, size: UVec2, mut record: impl FnMut(&mut Ui)) {
+    // The surface lives on the harness now, so a per-frame size has to be
+    // applied — the whole point of these cases is that available changes.
+    h.resize(size);
+    h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, &mut record);
@@ -76,8 +80,8 @@ fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: Color
 
 #[test]
 fn whole_tree_snapshot_populates_subtree_ranges_once() {
-    let mut ui = Ui::for_test();
-    run_frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    run_frame(&mut h, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("group"))
             .show(ui, |ui| {
@@ -87,8 +91,8 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
             });
     });
 
-    assert_snapshot_is_linear(&ui);
-    let view = snap_for(&ui, WidgetId::from_hash("group")).unwrap();
+    assert_snapshot_is_linear(&h.ui);
+    let view = snap_for(&h.ui, WidgetId::from_hash("group")).unwrap();
     assert_eq!(view.snap.nodes.len, 4);
     assert_eq!(
         view.desired,
@@ -103,25 +107,28 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
 
 #[test]
 fn unchanged_subtree_hits_and_replays_exact_output() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(200, 200));
     let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
 
-    run_frame(&mut ui, build);
-    let first_hash = snap_for(&ui, WidgetId::from_hash("a"))
+    run_frame(&mut h, build);
+    let first_hash = snap_for(&h.ui, WidgetId::from_hash("a"))
         .unwrap()
         .snap
         .subtree_hash;
-    let first_desired = ui.layout_engine.cache.previous.nodes.desired.clone();
-    let first_rects = ui.layout[Layer::Main].rect.clone();
+    let first_desired = h.ui.layout_engine.cache.previous.nodes.desired.clone();
+    let first_rects = h.ui.layout[Layer::Main].rect.clone();
 
-    run_frame(&mut ui, build);
-    let second = snap_for(&ui, WidgetId::from_hash("a")).unwrap();
+    run_frame(&mut h, build);
+    let second = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap();
 
     assert_eq!(first_hash, second.snap.subtree_hash);
-    assert_eq!(first_desired, ui.layout_engine.cache.previous.nodes.desired);
-    assert_eq!(first_rects, ui.layout[Layer::Main].rect);
     assert_eq!(
-        ui.layout_engine.scratch.cache_hits.len(),
+        first_desired,
+        h.ui.layout_engine.cache.previous.nodes.desired
+    );
+    assert_eq!(first_rects, h.ui.layout[Layer::Main].rect);
+    assert_eq!(
+        h.ui.layout_engine.scratch.cache_hits.len(),
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
@@ -129,71 +136,72 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     // re-deriving them — identical output either way, so without this the
     // assertion says nothing about which path ran.
     assert_eq!(
-        ui.layout_engine.scratch.arrange_replays,
+        h.ui.layout_engine.scratch.arrange_replays,
         crate::layout::engine::ReplayCounts {
             copied: 1,
             translated: 0,
         },
         "an unchanged frame must replay its one hit subtree verbatim",
     );
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
 fn changing_descendant_hash_replaces_ancestor_descriptor() {
-    let mut ui = Ui::for_test();
-    run_frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
     });
-    let first = snap_for(&ui, WidgetId::from_hash("a")).unwrap().snap;
+    let first = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap().snap;
 
-    run_frame(&mut ui, |ui| {
+    run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.9, 0.4, 0.8));
     });
-    let second = snap_for(&ui, WidgetId::from_hash("a")).unwrap().snap;
+    let second = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap().snap;
 
     assert_ne!(first.subtree_hash, second.subtree_hash);
     assert_eq!(
         first.nodes.start, second.nodes.start,
         "stable pre-order position must map to the same whole-tree row"
     );
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
 fn removed_widget_is_absent_from_next_snapshot() {
-    let mut ui = Ui::for_test();
-    run_frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "gone", 40.0, Color::rgb(0.5, 0.5, 0.5));
         build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
     });
     assert!(
-        ui.layout_engine
+        h.ui.layout_engine
             .cache
             .previous
             .snapshots
             .contains_key(&WidgetId::from_hash("gone"))
     );
 
-    run_frame(&mut ui, |ui| {
+    run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
     });
 
     assert!(
-        !ui.layout_engine
+        !h.ui
+            .layout_engine
             .cache
             .previous
             .snapshots
             .contains_key(&WidgetId::from_hash("gone"))
     );
     assert!(
-        ui.layout_engine
+        h.ui.layout_engine
             .cache
             .previous
             .snapshots
             .contains_key(&WidgetId::from_hash("kept"))
     );
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
@@ -216,24 +224,24 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
         }
     }
 
-    let mut ui = Ui::for_test();
-    run_frame(&mut ui, |ui| build(ui, false));
-    run_frame(&mut ui, |ui| build(ui, false));
-    run_frame(&mut ui, |ui| build(ui, true));
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    run_frame(&mut h, |ui| build(ui, false));
+    run_frame(&mut h, |ui| build(ui, false));
+    run_frame(&mut h, |ui| build(ui, true));
 
-    let a = snap_for(&ui, WidgetId::from_hash("a")).unwrap();
-    let b = snap_for(&ui, WidgetId::from_hash("b")).unwrap();
+    let a = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap();
+    let b = snap_for(&h.ui, WidgetId::from_hash("b")).unwrap();
     assert!(b.snap.nodes.start < a.snap.nodes.start);
     assert_eq!(a.desired, &[Size::new(10.0, 10.0), Size::new(10.0, 10.0)]);
     assert_eq!(b.desired, &[Size::new(20.0, 20.0), Size::new(20.0, 20.0)]);
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
 fn changing_available_remeasures_wrapping_text() {
     use crate::TextStyle;
 
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("inner"))
@@ -251,17 +259,17 @@ fn changing_available_remeasures_wrapping_text() {
             });
     };
 
-    run_frame_at(&mut ui, UVec2::new(400, 400), build);
-    let first = snap_for(&ui, WidgetId::from_hash("inner")).unwrap();
+    run_frame_at(&mut h, UVec2::new(400, 400), build);
+    let first = snap_for(&h.ui, WidgetId::from_hash("inner")).unwrap();
     let first_avail = first.avail;
     let first_leaf = first.desired[1];
 
-    run_frame_at(&mut ui, UVec2::new(100, 400), build);
-    let second = snap_for(&ui, WidgetId::from_hash("inner")).unwrap();
+    run_frame_at(&mut h, UVec2::new(100, 400), build);
+    let second = snap_for(&h.ui, WidgetId::from_hash("inner")).unwrap();
 
     assert_ne!(first_avail, second.avail);
     assert_ne!(first_leaf, second.desired[1]);
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
@@ -288,36 +296,36 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
             });
     }
 
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 200));
+    let mut h = UiHarness::with_text(UVec2::new(400, 200));
     let mut nodes = Vec::new();
-    run_frame_at(&mut ui, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
+    run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let cold_fill = ui.layout[Layer::Main].text_spans[nodes[0].idx()];
-    let cold_hug = ui.layout[Layer::Main].text_spans[nodes[1].idx()];
+    let cold_fill = h.ui.layout[Layer::Main].text_spans[nodes[0].idx()];
+    let cold_hug = h.ui.layout[Layer::Main].text_spans[nodes[1].idx()];
     assert_eq!(cold_hug, Span::new(0, 1));
     assert_eq!(cold_fill, Span::new(1, 1));
-    let inner = snap_for(&ui, WidgetId::from_hash("solver-order")).unwrap();
+    let inner = snap_for(&h.ui, WidgetId::from_hash("solver-order")).unwrap();
     assert_eq!(inner.snap.text_shapes, Span::new(0, 2));
-    let cold_fill_key = ui.layout[Layer::Main].text_shapes[cold_fill.start as usize].key;
-    let cold_hug_key = ui.layout[Layer::Main].text_shapes[cold_hug.start as usize].key;
+    let cold_fill_key = h.ui.layout[Layer::Main].text_shapes[cold_fill.start as usize].key;
+    let cold_hug_key = h.ui.layout[Layer::Main].text_shapes[cold_hug.start as usize].key;
     assert_ne!(cold_fill_key, cold_hug_key);
 
-    run_frame_at(&mut ui, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
+    run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let warm_fill = ui.layout[Layer::Main].text_spans[nodes[0].idx()];
-    let warm_hug = ui.layout[Layer::Main].text_spans[nodes[1].idx()];
+    let warm_fill = h.ui.layout[Layer::Main].text_spans[nodes[0].idx()];
+    let warm_hug = h.ui.layout[Layer::Main].text_spans[nodes[1].idx()];
     assert_eq!(warm_fill, cold_fill);
     assert_eq!(warm_hug, cold_hug);
     assert_eq!(
-        ui.layout[Layer::Main].text_shapes[warm_fill.start as usize].key,
+        h.ui.layout[Layer::Main].text_shapes[warm_fill.start as usize].key,
         cold_fill_key
     );
     assert_eq!(
-        ui.layout[Layer::Main].text_shapes[warm_hug.start as usize].key,
+        h.ui.layout[Layer::Main].text_shapes[warm_hug.start as usize].key,
         cold_hug_key
     );
     assert!(
-        ui.layout_engine
+        h.ui.layout_engine
             .scratch
             .cache_hits
             .contains(&WidgetId::VIEWPORT)
@@ -352,35 +360,36 @@ fn localized_change_hits_unchanged_sibling() {
                     });
             });
     };
-    let mut ui = Ui::for_test();
-    run_frame(&mut ui, |ui| build(ui, Color::rgb(1.0, 0.0, 0.0)));
-    let stable_hash = snap_for(&ui, WidgetId::from_hash("stable"))
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    run_frame(&mut h, |ui| build(ui, Color::rgb(1.0, 0.0, 0.0)));
+    let stable_hash = snap_for(&h.ui, WidgetId::from_hash("stable"))
         .unwrap()
         .snap
         .subtree_hash;
 
-    run_frame(&mut ui, |ui| build(ui, Color::rgb(0.0, 1.0, 0.0)));
+    run_frame(&mut h, |ui| build(ui, Color::rgb(0.0, 1.0, 0.0)));
 
     assert!(
-        ui.layout_engine
+        h.ui.layout_engine
             .scratch
             .cache_hits
             .contains(&WidgetId::from_hash("stable"))
     );
     assert!(
-        !ui.layout_engine
+        !h.ui
+            .layout_engine
             .scratch
             .cache_hits
             .contains(&WidgetId::from_hash("branch-root"))
     );
     assert_eq!(
         stable_hash,
-        snap_for(&ui, WidgetId::from_hash("stable"))
+        snap_for(&h.ui, WidgetId::from_hash("stable"))
             .unwrap()
             .snap
             .subtree_hash
     );
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
@@ -399,32 +408,32 @@ fn widget_reappearance_matches_cold_snapshot() {
                     });
             });
     };
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(200, 200));
     let blip = WidgetId::from_hash("blip");
 
-    run_frame(&mut ui, with_widget);
-    run_frame(&mut ui, |ui| {
+    run_frame(&mut h, with_widget);
+    run_frame(&mut h, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("inner"))
             .show(ui, |_| {});
     });
-    assert!(snap_for(&ui, blip).is_none());
+    assert!(snap_for(&h.ui, blip).is_none());
 
-    run_frame(&mut ui, with_widget);
-    let warm = snap_for(&ui, blip).unwrap().desired.to_vec();
+    run_frame(&mut h, with_widget);
+    let warm = snap_for(&h.ui, blip).unwrap().desired.to_vec();
 
-    ui.layout_engine.cache.clear();
-    run_frame(&mut ui, with_widget);
-    let cold = snap_for(&ui, blip).unwrap().desired.to_vec();
+    h.ui.layout_engine.cache.clear();
+    run_frame(&mut h, with_widget);
+    let cold = snap_for(&h.ui, blip).unwrap().desired.to_vec();
 
     assert_eq!(warm, cold);
-    assert_snapshot_is_linear(&ui);
+    assert_snapshot_is_linear(&h.ui);
 }
 
 #[test]
 fn oscillating_tree_size_reuses_both_snapshot_buffers() {
-    fn render(ui: &mut Ui, extra: bool) {
-        run_frame(ui, |ui| {
+    fn render(h: &mut UiHarness, extra: bool) {
+        run_frame(h, |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("oscillating"))
                 .show(ui, |ui| {
@@ -444,34 +453,34 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         });
     }
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(200, 200));
     for frame in 0..8 {
-        render(&mut ui, frame % 2 == 0);
+        render(&mut h, frame % 2 == 0);
     }
     let mut node_capacities = [
-        ui.layout_engine.cache.previous.nodes.desired.capacity(),
-        ui.layout_engine.cache.current.nodes.desired.capacity(),
-        ui.layout_engine.scratch.desired.capacity(),
+        h.ui.layout_engine.cache.previous.nodes.desired.capacity(),
+        h.ui.layout_engine.cache.current.nodes.desired.capacity(),
+        h.ui.layout_engine.scratch.desired.capacity(),
     ];
     node_capacities.sort_unstable();
     let mut descriptor_capacities = [
-        ui.layout_engine.cache.previous.snapshots.capacity(),
-        ui.layout_engine.cache.current.snapshots.capacity(),
+        h.ui.layout_engine.cache.previous.snapshots.capacity(),
+        h.ui.layout_engine.cache.current.snapshots.capacity(),
     ];
     descriptor_capacities.sort_unstable();
 
     for frame in 8..40 {
-        render(&mut ui, frame % 2 == 0);
-        assert_snapshot_is_linear(&ui);
+        render(&mut h, frame % 2 == 0);
+        assert_snapshot_is_linear(&h.ui);
         let mut current_node_capacities = [
-            ui.layout_engine.cache.previous.nodes.desired.capacity(),
-            ui.layout_engine.cache.current.nodes.desired.capacity(),
-            ui.layout_engine.scratch.desired.capacity(),
+            h.ui.layout_engine.cache.previous.nodes.desired.capacity(),
+            h.ui.layout_engine.cache.current.nodes.desired.capacity(),
+            h.ui.layout_engine.scratch.desired.capacity(),
         ];
         current_node_capacities.sort_unstable();
         let mut current_descriptor_capacities = [
-            ui.layout_engine.cache.previous.snapshots.capacity(),
-            ui.layout_engine.cache.current.snapshots.capacity(),
+            h.ui.layout_engine.cache.previous.snapshots.capacity(),
+            h.ui.layout_engine.cache.current.snapshots.capacity(),
         ];
         current_descriptor_capacities.sort_unstable();
         assert_eq!(

@@ -13,6 +13,7 @@ use crate::scene::seen_ids::Endpoint;
 use crate::scene::tree::node::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
+use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::state::ScrollState;
 use crate::{Ui, renderer::frontend::Frontend};
@@ -66,8 +67,8 @@ fn shape_rect_composes_self_transform() {
     let translate = Vec2::new(10.0, 20.0);
     let xform = TranslateScale::new(translate, scale);
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
@@ -82,7 +83,7 @@ fn shape_rect_composes_self_transform() {
         });
     });
 
-    let shape_rect = first_paint_screen(&ui, "xpanel");
+    let shape_rect = first_paint_screen(&h.ui, "xpanel");
     // The Panel sits at the hstack origin (0, 0). Owner-local
     // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
     //   min = (0, 0) * 3 + (10, 20) = (10, 20)
@@ -144,9 +145,9 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
     ];
 
     for case in cases {
-        let mut ui = Ui::for_test();
         let display = Display::from_physical(UVec2::splat(400), case.display_scale);
-        ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+        let mut h = UiHarness::new(display.physical);
+        h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             let mut panel = Panel::canvas()
                 .id(WidgetId::from_hash("stroke"))
                 .size(Sizing::fixed(case.panel_size))
@@ -168,7 +169,11 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
             });
         });
 
-        assert_eq!(first_paint_screen(&ui, "stroke"), case.expected, "{case:?}");
+        assert_eq!(
+            first_paint_screen(&h.ui, "stroke"),
+            case.expected,
+            "{case:?}"
+        );
     }
 }
 
@@ -184,8 +189,8 @@ fn self_transform_anchors_scale_at_panel_origin() {
     let zoom = 2.0;
     let xform = TranslateScale::from_scale(zoom);
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(|ui| {
         // Push the transformed panel off the surface origin with a
         // leading sibling — Spacer-style placeholder so the panel
         // sits at (sibling_width, 0) instead of (0, 0).
@@ -209,7 +214,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
         });
     });
 
-    let shape_rect = first_paint_screen(&ui, "xpanel");
+    let shape_rect = first_paint_screen(&h.ui, "xpanel");
     // Panel sits at (50, 0). Shape's panel-local (0, 0) should
     // map to screen (50, 0) under the anchor — the panel's own
     // top-left is the fixed point of its scale. Size is
@@ -241,8 +246,8 @@ fn self_transform_anchors_scale_at_panel_origin() {
 fn node_spans_rows_mirror_chrome_and_children() {
     use crate::primitives::background::Background;
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("chrome"))
@@ -269,7 +274,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
     });
 
     let layer = Layer::Main;
-    let cascades = &ui.cascades;
+    let cascades = &h.ui.cascades;
     let arena = &cascades.layers[layer].paint_arena;
     let chrome_idx = cascades.by_id[&WidgetId::from_hash("chrome")].node.idx();
     let bare_idx = cascades.by_id[&WidgetId::from_hash("bare")].node.idx();
@@ -315,9 +320,9 @@ fn node_spans_rows_mirror_chrome_and_children() {
 /// retained slot is overwritten with a valid row for the current tree.
 #[test]
 fn per_node_columns_track_tree_size() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(100, 100));
     for child_count in [3usize, 1, 4] {
-        ui.run_at(UVec2::new(100, 100), |ui| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("column-root"))
                 .show(ui, |ui| {
@@ -329,8 +334,8 @@ fn per_node_columns_track_tree_size() {
                 });
         });
         let layer = Layer::Main;
-        let nodes = ui.forest.trees[layer].records.len();
-        let cascades = &ui.cascades.layers[layer];
+        let nodes = h.ui.forest.trees[layer].records.len();
+        let cascades = &h.ui.cascades.layers[layer];
         assert_eq!(cascades.cascade_inputs.len(), nodes);
         assert_eq!(cascades.subtree_paint_rects.len(), nodes);
         assert_eq!(cascades.subtree_ends.len(), nodes);
@@ -364,8 +369,8 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // translate=(15,25), scale=2 — non-trivial on both axes.
     let xform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
 
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
@@ -383,7 +388,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     });
 
     // Cascade's screen rect for the child shape (what hit-test sees).
-    let cascade_rect = first_paint_screen(&ui, "xpanel");
+    let cascade_rect = first_paint_screen(&h.ui, "xpanel");
 
     // Composer's actual painted quad. Surface scale = 1, so physical px
     // == logical px and the rect compares directly. The transparent
@@ -391,9 +396,9 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // A rounded rect is the only one.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        ui.frame_scene(),
+        h.ui.frame_scene(),
         RenderPlan {
-            clear: ui.theme.window_clear,
+            clear: h.ui.theme.window_clear,
             kind: RenderKind::Full,
         },
     );
@@ -437,8 +442,8 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(glam::UVec2::new(200, 200), |ui| {
+    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    h.frame_without_baseline(|ui| {
         Panel::hstack().id(row).show(ui, |ui| {
             // Layout-only spacer: occupies 50 px, paints nothing.
             Panel::hstack()
@@ -455,8 +460,8 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
                 .show(ui);
         });
     });
-    let ep = ui.cascades.by_id[&row];
-    let rollup = ui.cascades.layers[ep.layer].subtree_paint_rects[ep.node.idx()];
+    let ep = h.ui.cascades.by_id[&row];
+    let rollup = h.ui.cascades.layers[ep.layer].subtree_paint_rects[ep.node.idx()];
     assert_eq!(
         rollup,
         Rect::new(50.0, 0.0, 50.0, 50.0),
@@ -474,8 +479,8 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     let focus = WidgetId::from_hash("focus");
     let disabled = WidgetId::from_hash("disabled");
     let popup_scroll = WidgetId::from_hash("popup-scroll");
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::splat(100), |ui| {
+    let mut h = UiHarness::new(UVec2::splat(100));
+    h.frame(|ui| {
         Panel::zstack()
             .auto_id()
             .size(Sizing::fixed(100.0))
@@ -509,31 +514,31 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     });
 
     assert_eq!(
-        ui.cascades.hits.entry_idx(),
+        h.ui.cascades.hits.entry_idx(),
         [
-            ui.cascades.entry_idx_of(hover).unwrap(),
-            ui.cascades.entry_idx_of(focus).unwrap(),
-            ui.cascades.entry_idx_of(popup_scroll).unwrap(),
+            h.ui.cascades.entry_idx_of(hover).unwrap(),
+            h.ui.cascades.entry_idx_of(focus).unwrap(),
+            h.ui.cascades.entry_idx_of(popup_scroll).unwrap(),
         ],
     );
-    assert_eq!(ui.cascades.hits.widget_id(), [hover, focus, popup_scroll],);
+    assert_eq!(h.ui.cascades.hits.widget_id(), [hover, focus, popup_scroll],);
     let pos = Vec2::splat(50.0);
-    assert_eq!(ui.cascades.hit_test(pos, Sense::hovers), Some(hover),);
-    assert_eq!(ui.cascades.hit_test(pos, Sense::clicks), None);
-    assert_eq!(ui.cascades.hit_test_focusable(pos), Some(focus));
-    let targets = ui
-        .cascades
-        .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);
+    assert_eq!(h.ui.cascades.hit_test(pos, Sense::hovers), Some(hover),);
+    assert_eq!(h.ui.cascades.hit_test(pos, Sense::clicks), None);
+    assert_eq!(h.ui.cascades.hit_test_focusable(pos), Some(focus));
+    let targets =
+        h.ui.cascades
+            .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);
     assert_eq!(targets.hover, Some(hover));
     assert_eq!(targets.scroll, Some(popup_scroll));
     assert_eq!(targets.pinch, None);
 
-    ui.run_at(UVec2::splat(100), |ui| {
+    h.frame(|ui| {
         Frame::new().id(inert).size(Sizing::FILL).show(ui);
     });
-    assert_eq!(ui.cascades.hits.len(), 0);
+    assert_eq!(h.ui.cascades.hits.len(), 0);
     assert_eq!(
-        ui.response_for(inert).layout_rect,
+        h.ui.response_for(inert).layout_rect,
         Some(Rect::new(0.0, 0.0, 100.0, 100.0)),
         "inert widgets remain addressable through the all-widget by-id snapshot",
     );
@@ -633,10 +638,10 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
 }
 
 fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::splat(300), base);
-    ui.run_at(UVec2::splat(300), changed);
-    assert_cascades_match_full(&ui, label);
+    let mut h = UiHarness::new(UVec2::splat(300));
+    h.frame(base);
+    h.frame(changed);
+    assert_cascades_match_full(&h.ui, label);
 }
 
 #[test]
@@ -817,12 +822,12 @@ fn incremental_scroll_matches_full() {
                     .show(ui);
             });
     };
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::splat(300), build);
-    ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
+    let mut h = UiHarness::new(UVec2::splat(300));
+    h.frame(build);
+    h.ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
         .offset
         .y = 40.0;
-    ui.run_at(UVec2::splat(300), build);
+    h.frame(build);
 
-    assert_cascades_match_full(&ui, "scroll");
+    assert_cascades_match_full(&h.ui, "scroll");
 }

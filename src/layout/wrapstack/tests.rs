@@ -11,6 +11,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -113,7 +114,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
     ];
 
     for case in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(200, 200));
         let mut children = Vec::new();
         let zero_size = match case.axis {
             Axis::X => Size::new(0.0, 30.0),
@@ -123,7 +124,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
             Axis::X => Size::new(20.0, 10.0),
             Axis::Y => Size::new(10.0, 20.0),
         };
-        let wrap_node = ui.under_outer(UVec2::new(200, 200), |ui| {
+        let wrap_node = h.under_outer(|ui| {
             let panel = match case.axis {
                 Axis::X => Panel::wrap_hstack(),
                 Axis::Y => Panel::wrap_vstack(),
@@ -142,13 +143,13 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
                 .node()
         });
 
-        let wrap = ui.layout[Layer::Main].rect[wrap_node.idx()];
+        let wrap = h.ui.layout[Layer::Main].rect[wrap_node.idx()];
         assert_eq!(wrap.size, case.expected_wrap, "case: {}", case.label);
-        let zero = ui.layout[Layer::Main].rect[children[0].idx()];
+        let zero = h.ui.layout[Layer::Main].rect[children[0].idx()];
         assert_eq!(zero.min, Vec2::ZERO, "case: {} zero origin", case.label);
         assert_eq!(zero.size, zero_size, "case: {} zero size", case.label);
         if let Some(expected) = case.expected_normal_min {
-            let normal = ui.layout[Layer::Main].rect[children[1].idx()];
+            let normal = h.ui.layout[Layer::Main].rect[children[1].idx()];
             assert_eq!(normal.min, expected, "case: {} normal origin", case.label);
         }
     }
@@ -173,9 +174,9 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
         ),
     ];
     for (label, count, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 400));
         let mut kids = Vec::new();
-        let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+        let _wrap = h.under_outer(|ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
                 .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -190,7 +191,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                 .node()
         });
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
-            let r = ui.layout[Layer::Main].rect[kids[i].idx()];
+            let r = h.ui.layout[Layer::Main].rect[kids[i].idx()];
             assert_eq!(
                 (r.min.x, r.min.y),
                 (*want_x, *want_y),
@@ -204,9 +205,9 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
 /// its line (no infinite recursion, no wrapping inside the child).
 #[test]
 fn wrap_hstack_oversize_child_owns_its_line() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut kids = Vec::new();
-    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _wrap = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(100.0), Sizing::HUG))
@@ -220,9 +221,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
             .response
             .node()
     });
-    let small = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let wide = ui.layout[Layer::Main].rect[kids[1].idx()];
-    let tail = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let small = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let wide = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let tail = h.ui.layout[Layer::Main].rect[kids[2].idx()];
     // line 0: small alone (50+10+200 > 100, wide overflows → wraps)
     assert_eq!((small.min.x, small.min.y), (0.0, 0.0));
     // line 1: wide alone (overflowed)
@@ -235,9 +236,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 /// lines start at the previous line's bottom + `line_gap`.
 #[test]
 fn wrap_hstack_line_height_is_max_child_cross() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut kids = Vec::new();
-    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _wrap = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -252,9 +253,9 @@ fn wrap_hstack_line_height_is_max_child_cross() {
             .response
             .node()
     });
-    let tall = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let short = ui.layout[Layer::Main].rect[kids[1].idx()];
-    let next = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let tall = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let short = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let next = h.ui.layout[Layer::Main].rect[kids[2].idx()];
     assert_eq!(tall.min.y, 0.0);
     assert_eq!(short.min.y, 0.0);
     // Line 0 height = 60; line_gap = 0 → next at y=60.
@@ -275,9 +276,9 @@ fn wrap_hstack_justify_per_line() {
         ("space_around", Justify::SpaceAround, [17.5, 122.5]),
     ];
     for (label, justify, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 400));
         let mut kids = Vec::new();
-        let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+        let _wrap = h.under_outer(|ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
                 .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -291,8 +292,8 @@ fn wrap_hstack_justify_per_line() {
                 .response
                 .node()
         });
-        let a = ui.layout[Layer::Main].rect[kids[0].idx()];
-        let b = ui.layout[Layer::Main].rect[kids[1].idx()];
+        let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+        let b = h.ui.layout[Layer::Main].rect[kids[1].idx()];
         assert!(
             (a.min.x - expected[0]).abs() < 0.5,
             "case: {label} a.x={}",
@@ -310,9 +311,9 @@ fn wrap_hstack_justify_per_line() {
 /// bottom, wrap to new column on the right.
 #[test]
 fn wrap_vstack_wraps_columns_when_main_overflows() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut kids = Vec::new();
-    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _wrap = h.under_outer(|ui| {
         Panel::wrap_vstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::HUG, Sizing::fixed(100.0)))
@@ -327,9 +328,9 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
             .response
             .node()
     });
-    let a = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let b = ui.layout[Layer::Main].rect[kids[1].idx()];
-    let c = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let b = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let c = h.ui.layout[Layer::Main].rect[kids[2].idx()];
     // Column 0: a, b at x=0.
     assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
     assert_eq!((b.min.x, b.min.y), (0.0, 50.0));
@@ -347,9 +348,9 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
 /// WrapHStack (or some ancestor) must commit a finite main size.
 #[test]
 fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut wrap_node = None;
-    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _wrap = h.under_outer(|ui| {
         wrap_node = Some(
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
@@ -367,7 +368,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         );
         wrap_node.unwrap()
     });
-    let r = ui.layout[Layer::Main].rect[wrap_node.unwrap().idx()];
+    let r = h.ui.layout[Layer::Main].rect[wrap_node.unwrap().idx()];
     assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
@@ -377,9 +378,9 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
 /// height (CSS `align-items: stretch` default). Mirrors Stack cross.
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut kids = Vec::new();
-    let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _ = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(300.0), Sizing::HUG))
@@ -404,8 +405,8 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
             .response
             .node()
     });
-    let tall = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let filler = ui.layout[Layer::Main].rect[kids[1].idx()];
+    let tall = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let filler = h.ui.layout[Layer::Main].rect[kids[1].idx()];
     assert_eq!(tall.size.h, 60.0);
     assert_eq!(
         filler.size.h, 60.0,
@@ -443,9 +444,9 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
 
     for axis in [Axis::X, Axis::Y] {
         for case in &cases {
-            let mut ui = Ui::for_test();
+            let mut h = UiHarness::new(UVec2::new(400, 400));
             let mut children = Vec::new();
-            let wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+            let wrap = h.under_outer(|ui| {
                 let panel = match axis {
                     Axis::X => Panel::wrap_hstack(),
                     Axis::Y => Panel::wrap_vstack(),
@@ -470,7 +471,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                     .node()
             });
 
-            let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+            let wrap_rect = h.ui.layout[Layer::Main].rect[wrap.idx()];
             assert_eq!(
                 axis.main(wrap_rect.size),
                 125.0,
@@ -484,7 +485,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                 case.label
             );
             for (index, child) in children.iter().enumerate() {
-                let rect = ui.layout[Layer::Main].rect[child.idx()];
+                let rect = h.ui.layout[Layer::Main].rect[child.idx()];
                 assert_eq!(
                     axis.main_v(rect.min),
                     [0.0, 65.0, 0.0][index],
@@ -517,9 +518,9 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
 #[test]
 fn fill_floor_can_establish_a_mixed_line_cross_extent() {
     for axis in [Axis::X, Axis::Y] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 400));
         let mut children = Vec::new();
-        let wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+        let wrap = h.under_outer(|ui| {
             let panel = match axis {
                 Axis::X => Panel::wrap_hstack(),
                 Axis::Y => Panel::wrap_vstack(),
@@ -540,11 +541,11 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
                 .node()
         });
 
-        let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+        let wrap_rect = h.ui.layout[Layer::Main].rect[wrap.idx()];
         assert_eq!(axis.cross(wrap_rect.size), 57.0, "{axis:?} wrap cross");
-        let fill = ui.layout[Layer::Main].rect[children[0].idx()];
-        let fixed = ui.layout[Layer::Main].rect[children[1].idx()];
-        let next = ui.layout[Layer::Main].rect[children[2].idx()];
+        let fill = h.ui.layout[Layer::Main].rect[children[0].idx()];
+        let fixed = h.ui.layout[Layer::Main].rect[children[1].idx()];
+        let next = h.ui.layout[Layer::Main].rect[children[2].idx()];
         assert_eq!(axis.cross(fill.size), 40.0, "{axis:?} fill cross");
         assert_eq!(axis.cross(fixed.size), 20.0, "{axis:?} fixed cross");
         assert_eq!(axis.cross_v(next.min), 47.0, "{axis:?} second line origin");
@@ -554,9 +555,9 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
 #[test]
 fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     for axis in [Axis::X, Axis::Y] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 400));
         let mut children = Vec::new();
-        let wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
+        let wrap = h.under_outer(|ui| {
             let panel = match axis {
                 Axis::X => Panel::wrap_hstack(),
                 Axis::Y => Panel::wrap_vstack(),
@@ -577,11 +578,11 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
                 .node()
         });
 
-        let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+        let wrap_rect = h.ui.layout[Layer::Main].rect[wrap.idx()];
         assert_eq!(axis.cross(wrap_rect.size), 55.0, "{axis:?} wrap cross");
-        let min_fill = ui.layout[Layer::Main].rect[children[0].idx()];
-        let max_fill = ui.layout[Layer::Main].rect[children[1].idx()];
-        let next_fill = ui.layout[Layer::Main].rect[children[2].idx()];
+        let min_fill = h.ui.layout[Layer::Main].rect[children[0].idx()];
+        let max_fill = h.ui.layout[Layer::Main].rect[children[1].idx()];
+        let next_fill = h.ui.layout[Layer::Main].rect[children[2].idx()];
         assert_eq!(axis.cross(min_fill.size), 35.0, "{axis:?} min fill");
         assert_eq!(axis.cross(max_fill.size), 35.0, "{axis:?} max fill");
         assert_eq!(
@@ -600,9 +601,9 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
 /// stale values from prior frames.
 #[test]
 fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut kids = Vec::new();
-    let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _ = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
@@ -622,9 +623,9 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
             .response
             .node()
     });
-    let a = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let hidden = ui.layout[Layer::Main].rect[kids[1].idx()];
-    let b = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let hidden = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
     // a at 0, b at 70 — collapsed didn't insert a gap.
     assert_eq!(a.min.x, 0.0);
     assert_eq!(b.min.x, 70.0);
@@ -639,9 +640,9 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
 /// test rather than introduce the new behavior silently.
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut filler_node = None;
-    let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _ = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::fixed(300.0), Sizing::HUG))
@@ -662,7 +663,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             .response
             .node()
     });
-    let r = ui.layout[Layer::Main].rect[filler_node.unwrap().idx()];
+    let r = h.ui.layout[Layer::Main].rect[filler_node.unwrap().idx()];
     // Fill child got its min_size width (40), NOT the row leftover
     // (300 - 60 - 10 - 10 = 220). If a future change distributes
     // leftover, this assertion flips and the test becomes the spec.
@@ -678,11 +679,11 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
 /// arrange takes a different slot than the outer.
 #[test]
 fn nested_wrap_hstacks_do_not_trample_scratch() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(600, 400));
     let mut inner_a = None;
     let mut inner_b = None;
     let mut outer_b = None;
-    let _ = ui.under_outer(UVec2::new(600, 400), |ui| {
+    let _ = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("outer"))
             .size((Sizing::fixed(500.0), Sizing::HUG))
@@ -704,9 +705,9 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
             .response
             .node()
     });
-    let ia = ui.layout[Layer::Main].rect[inner_a.unwrap().idx()];
-    let ib = ui.layout[Layer::Main].rect[inner_b.unwrap().idx()];
-    let ob = ui.layout[Layer::Main].rect[outer_b.unwrap().idx()];
+    let ia = h.ui.layout[Layer::Main].rect[inner_a.unwrap().idx()];
+    let ib = h.ui.layout[Layer::Main].rect[inner_b.unwrap().idx()];
+    let ob = h.ui.layout[Layer::Main].rect[outer_b.unwrap().idx()];
     // Inner card lays out two cells side by side: ia at 0, ib at 55.
     assert_eq!(ia.min.x, 0.0);
     assert_eq!(ib.min.x, 55.0);
@@ -776,13 +777,13 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
-        let mut ui = Ui::for_test();
-        let wrap_kids = ui.run_at_value_without_baseline(UVec2::new(surface_w, 600), build);
+        let mut h = UiHarness::new(UVec2::new(surface_w, 600));
+        let wrap_kids = h.frame_value_without_baseline(build);
         let (wrap, kids) = wrap_kids;
-        let wrap_rect = ui.layout[Layer::Main].rect[wrap.idx()];
+        let wrap_rect = h.ui.layout[Layer::Main].rect[wrap.idx()];
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for k in &kids {
-            let r = ui.layout[Layer::Main].rect[k.idx()];
+            let r = h.ui.layout[Layer::Main].rect[k.idx()];
             let right = r.min.x + r.size.w;
             assert!(
                 right <= wrap_right + 0.5,
@@ -801,9 +802,9 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
 /// each category's function list is a capped `wrap_vstack`.
 #[test]
 fn wrap_vstack_wraps_under_max_size_inside_vstack() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 600));
     let mut nodes = Vec::new();
-    ui.run_at_without_baseline(UVec2::new(400, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("col"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -829,7 +830,7 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
                     });
             });
     });
-    let rect = |n: NodeId| ui.layout[Layer::Main].rect[n.idx()];
+    let rect = |n: NodeId| h.ui.layout[Layer::Main].rect[n.idx()];
     // Column 0 holds cells 0 and 1 (x = 0); cell 2 wraps to column 1.
     assert_eq!(rect(nodes[0]).min.x, 0.0);
     assert_eq!(rect(nodes[1]).min.x, 0.0);
@@ -857,9 +858,9 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
 /// ergonomic — no per-wrap `max_size` needed.
 #[test]
 fn wrap_vstack_inherits_parent_stack_main_bound() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 600));
     let mut nodes = Vec::new();
-    ui.run_at_without_baseline(UVec2::new(400, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("col"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -885,7 +886,7 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
                     });
             });
     });
-    let rect = |n: NodeId| ui.layout[Layer::Main].rect[n.idx()];
+    let rect = |n: NodeId| h.ui.layout[Layer::Main].rect[n.idx()];
     assert_eq!(rect(nodes[0]).min.x, 0.0);
     assert_eq!(rect(nodes[1]).min.x, 0.0);
     assert!(
@@ -908,9 +909,9 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
 /// — since a bounded stack now constrains its children on the main axis.)
 #[test]
 fn capped_hstack_of_columns_wraps_func_lists() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(800, 600));
     let mut funcs = Vec::new();
-    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("cols"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -945,7 +946,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
                     });
             });
     });
-    let rect = |n: NodeId| ui.layout[Layer::Main].rect[n.idx()];
+    let rect = |n: NodeId| h.ui.layout[Layer::Main].rect[n.idx()];
     assert_eq!(rect(funcs[0]).min.x, 0.0);
     assert!(
         rect(funcs[2]).min.x > 0.0,
@@ -962,9 +963,9 @@ fn capped_hstack_of_columns_wraps_func_lists() {
 /// wrap. So the cap can live on the popup, not the inner columns.
 #[test]
 fn capped_vstack_bounds_wrap_through_hstack() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(800, 600));
     let mut funcs = Vec::new();
-    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("popup"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -1001,7 +1002,7 @@ fn capped_vstack_bounds_wrap_through_hstack() {
                     });
             });
     });
-    let rect = |n: NodeId| ui.layout[Layer::Main].rect[n.idx()];
+    let rect = |n: NodeId| h.ui.layout[Layer::Main].rect[n.idx()];
     assert!(
         rect(funcs[2]).min.x > 0.0,
         "func wrap respects the popup VStack's max-height, flowed through the hstack",

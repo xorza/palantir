@@ -8,6 +8,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -39,11 +40,11 @@ fn build_two_hover_targets(ui: &mut Ui) {
 
 #[test]
 fn move_over_inert_surface_does_not_request_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
     // Both positions are outside the hover target → hovered stays None.
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
-    let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
+    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
     assert!(
         !delta.requests_repaint,
         "move over empty surface: no repaint"
@@ -52,13 +53,13 @@ fn move_over_inert_surface_does_not_request_repaint() {
 
 #[test]
 fn move_within_same_hovered_widget_does_not_request_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
     // First move: empty → over target. Repaint expected.
-    let enter = ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+    let enter = h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     assert!(enter.requests_repaint, "enter hover target → repaint");
     // Second move: still over target. No hover change.
-    let inside = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let inside = h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert!(
         !inside.requests_repaint,
         "move inside same hover target: no repaint",
@@ -67,25 +68,25 @@ fn move_within_same_hovered_widget_does_not_request_repaint() {
 
 #[test]
 fn move_from_inert_into_hover_target_requests_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
-    let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
+    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     assert!(delta.requests_repaint);
 }
 
 #[test]
 fn move_between_two_hover_targets_requests_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 200), build_two_hover_targets);
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-    let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 20.0)));
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    h.frame(build_two_hover_targets);
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 20.0)));
     assert!(delta.requests_repaint, "hovered widget changed → repaint");
 }
 
 #[test]
 fn move_during_active_capture_requests_repaint() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("hot"))
@@ -93,12 +94,12 @@ fn move_during_active_capture_requests_repaint() {
             .sense(Sense::CLICK)
             .show(ui, |_| {});
     };
-    ui.run_at(UVec2::new(400, 400), build);
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.frame(build);
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let _ = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     // Tiny move (under drag threshold), still inside the same widget.
     // No hover change — but `active.is_some()` so widget reads drag_delta.
-    let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(51.0, 51.0)));
+    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(51.0, 51.0)));
     assert!(
         delta.requests_repaint,
         "move while capture is active → repaint (drag widgets consume delta)",
@@ -107,19 +108,19 @@ fn move_during_active_capture_requests_repaint() {
 
 #[test]
 fn pointer_left_after_hover_requests_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    let delta = ui.on_input(InputEvent::PointerLeft);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let delta = h.on_input(InputEvent::PointerLeft);
     assert!(delta.requests_repaint, "leave while hovered → repaint");
 }
 
 #[test]
 fn pointer_left_with_nothing_active_does_not_request_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
     // Never moved over the target, never captured → leaving is a no-op.
-    let delta = ui.on_input(InputEvent::PointerLeft);
+    let delta = h.on_input(InputEvent::PointerLeft);
     assert!(!delta.requests_repaint);
 }
 
@@ -131,42 +132,42 @@ fn non_pointer_events_wake_on_focus_or_watch() {
     use crate::input::keyboard::{Modifiers, TextChunk};
     use crate::input::watch::KeyboardWake;
     use crate::primitives::widget_id::WidgetId;
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
 
     // No focus, no watch → no wake.
     assert!(
-        !ui.on_input(InputEvent::Text(TextChunk::new("a").unwrap()))
+        !h.on_input(InputEvent::Text(TextChunk::new("a").unwrap()))
             .requests_repaint,
     );
     assert!(
-        !ui.input.take_action_flag(),
+        !h.ui.input.take_action_flag(),
         "unrouted text must not schedule a settling pass",
     );
     assert!(
-        !ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
+        !h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,
     );
 
     // Focus held → Text wakes.
-    ui.input.focused = Some(WidgetId::from_hash("editor"));
+    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
     assert!(
-        ui.on_input(InputEvent::Text(TextChunk::new("b").unwrap()))
+        h.on_input(InputEvent::Text(TextChunk::new("b").unwrap()))
             .requests_repaint,
     );
-    ui.input.focused = None;
+    h.ui.input.focused = None;
 
     // KeyboardWake watchers → Text + ModifiersChanged wake.
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    h.frame(|ui| {
         build_hover_target(ui);
         ui.watch_keyboard(KeyboardWake::TEXT | KeyboardWake::MODIFIER);
     });
     assert!(
-        ui.on_input(InputEvent::Text(TextChunk::new("c").unwrap()))
+        h.on_input(InputEvent::Text(TextChunk::new("c").unwrap()))
             .requests_repaint,
     );
     assert!(
-        ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
+        h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,
     );
 }
@@ -180,24 +181,24 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     use crate::input::shortcut::Shortcut;
     use crate::input::watch::PointerWake;
     use crate::primitives::widget_id::WidgetId;
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
 
     // No focus, no chord sub → no wake.
-    let delta = ui.on_input(InputEvent::KeyDown {
+    let delta = h.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
         physical: Key::Other,
     });
     assert!(!delta.requests_repaint, "idle key must skip the frame");
     assert!(
-        !ui.input.take_action_flag(),
+        !h.ui.input.take_action_flag(),
         "unrouted key must not schedule a settling pass",
     );
 
     // With focus held → wake.
-    ui.input.focused = Some(WidgetId::from_hash("editor"));
-    let delta = ui.on_input(InputEvent::KeyDown {
+    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    let delta = h.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
         physical: Key::Other,
@@ -206,14 +207,14 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
 
     // No focus, but chord watcher → wake. Watches are
     // cleared pre-record, so re-record with the sub re-asserted.
-    ui.input.focused = None;
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    h.ui.input.focused = None;
+    h.frame(|ui| {
         build_hover_target(ui);
         ui.watch_key(Shortcut::key(Key::Escape));
         // Also reassert this so it survives — but we only test Escape below.
         let _ = PointerWake::BUTTONS;
     });
-    let delta = ui.on_input(InputEvent::KeyDown {
+    let delta = h.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
         physical: Key::Other,
@@ -227,22 +228,22 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
 /// skip the frame entirely.
 #[test]
 fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
     // Pointer at (200, 200): well outside the 100×100 hover target.
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
     assert!(
-        !ui.on_input(InputEvent::PointerPressed(PointerButton::Left))
+        !h.on_input(InputEvent::PointerPressed(PointerButton::Left))
             .requests_repaint,
         "press on inert surface, no focus → no repaint",
     );
     assert!(
-        !ui.on_input(InputEvent::PointerReleased(PointerButton::Left))
+        !h.on_input(InputEvent::PointerReleased(PointerButton::Left))
             .requests_repaint,
         "stray release (no capture) → no repaint",
     );
     assert!(
-        !ui.input.take_action_flag(),
+        !h.ui.input.take_action_flag(),
         "unrouted button events must not schedule a settling pass",
     );
 }
@@ -255,15 +256,15 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
 #[test]
 fn press_on_inert_clears_focus_and_requests_repaint() {
     use crate::primitives::widget_id::WidgetId;
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 400), build_hover_target);
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(build_hover_target);
     // Forge a focused widget — emulating a prior TextEdit interaction.
-    ui.input.focused = Some(WidgetId::from_hash("editor"));
-    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
-    let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
+    let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert!(
         delta.requests_repaint,
         "press on inert with prior focus → focus clear → repaint",
     );
-    assert!(ui.input.focused.is_none(), "focus must be cleared");
+    assert!(h.ui.input.focused.is_none(), "focus must be cleared");
 }

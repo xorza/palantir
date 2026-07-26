@@ -677,11 +677,77 @@ private this would be 420 `.ui()` calls and the migration would be
 worth arguing about; it isn't, so it's `sd 'ui\.' 'h.ui.'` scoped per
 file.
 
-Ordering matters and is the standard phase discipline: rename bindings
-first, then signatures, then call sites, then imports, then
-`clippy --fix`, then `fmt`. Don't interleave.
+**4. Frame-driving helpers (16 fns) — the shape the first three miss.**
+A test-local `fn resp(ui: &mut Ui, surface, build, id)` that runs a
+frame has to take `&mut UiHarness` instead, and its redundant surface
+parameter has to go, and every caller changes. These are what turn a
+"three mechanical shapes" estimate into a real refactor.
 
-Two things are *not* mechanical and should land first, alone:
+### What the bulk pass established
+
+It is **landed**. A first attempt was reverted whole after stalling
+mid-way; the second went file-by-file with a compile check between each,
+which works because the old API stayed in place until its last caller
+went. What both taught:
+
+- **The compiler is the right driver.** Rename the binding
+  `ui` → `h` at its `let`, then compile: every *outer* use becomes
+  `cannot find value ui` while closure-parameter uses stay silent,
+  because the closure genuinely still binds `ui`. Patch by error span
+  — `E0425` → rename, `E0609`/`E0599` on `UiHarness` → insert `ui.` —
+  and loop. That resolved **2476 sites automatically** across 52 files.
+- **Never rewrite `ui.` textually inside a body.** Closure params shadow
+  the outer binding, so a blanket `sd` corrupts every `ui.add_shape` in
+  a record closure. Change the *parameter type* only and let the
+  compiler find the outer uses. (Cost me a full revert to learn.)
+- **Nested `fn`s break span-based edits.** A `run_at` inside a helper
+  `fn` sits within two function bodies; resolving surfaces per-body and
+  editing per-body applies the same rewrite twice on shifted indices and
+  produces unparseable output. Resolve each call against its *innermost*
+  body and apply every edit once, right-to-left.
+- **Where the script stops.** ~128 constructors had no inferable
+  surface: bench files driving explicit `display`/`time` (they took
+  `frame_at`), constructors whose only driver call lived in a nested
+  helper, and the multi-surface sweeps that needed `resize`. Those were
+  the actual work; everything else was a script.
+- **A size parameter that stops being applied is the dangerous case.**
+  A helper like `run_frame_at(h, size, record)` keeps compiling after
+  the surface moves onto the harness — and silently ignores `size`. It
+  cost one real failure (`changing_available_remeasures_wrapping_text`)
+  and an audit of every other helper carrying a `size`/`surface` param
+  found one more. Any such helper needs an explicit `h.resize(size)`.
+- **`resp()` in `input/tests/drag.rs` was `response_in` under another
+  name** — deleted rather than ported. So was `ui_at_no_cosmic(size)`
+  in `text_edit/tests`, which is exactly `UiHarness::new(size)`.
+
+Ordering: rename bindings first, then helper signatures, then call
+sites, then imports, then `clippy --fix`, then `fmt`. Don't interleave.
+`clippy --fix` will strip a `UiHarness` import that only a `#[cfg(test)]`
+block uses — re-add it inside that block.
+
+### Tests whose meaning changed
+
+Three cases could not be migrated mechanically, because they depended on
+the old API's incidental behaviour:
+
+- **`damage/tests.rs`'s two force-full cases.** `Ui::for_test()` left
+  `display` at its default, so the first real frame read as a *resize*
+  and hit `force_full` by accident. The harness matches its own display,
+  so it doesn't. Both moved to `UiHarness::cold` — which is what "first
+  frame" actually means.
+- **`retained_arena_text_preserves_bytes_across_record_stores`** counted
+  two record passes on frame 1. That second pass was the cold-start
+  warmup, which the warm constructors skip. Moved to `UiHarness::cold`;
+  its own assertion already said "cold first frame must record exactly
+  twice".
+- **`run_at_value_returns_the_final_relayout_pass`** pinned that
+  `run_at_value` returned the *last* pass. `frame_value` deliberately
+  returns the first. Rewritten as
+  `frame_value_records_both_relayout_passes_and_returns_the_first`,
+  which pins the new contract on the same fixture: relayout still runs
+  two passes, and the value comes from the input-observing one.
+
+Two things were *not* mechanical and are worth doing first next time:
 
 - `ui/tests.rs`'s cold-start block (rule 1) — it must move to
   `UiHarness::cold`, and it is the one place where getting warmth
@@ -691,20 +757,22 @@ Two things are *not* mechanical and should land first, alone:
 
 ## Phasing
 
-`Default` is what orders this. Darkroom consumes it today, so it
-cannot go until darkroom has `UiHarness::arena()` to replace it —
-which means the export step lands *before* the deletion, not after.
+All of it is landed. `Default` is what ordered it: darkroom consumed
+`Ui::default()`, so it could not go until darkroom had
+`UiHarness::arena()` — which put the export step *before* the deletion.
 
 1. **Landed.** `DRAG_THRESHOLD` and `DOUBLE_CLICK_WINDOW` promoted to
    `pub(crate)`; `UiResources::isolated_mono`, `TextSystem::mono`, and
    `TextChunk::split` added; `UiHarness` lives in `src/ui/harness/` with
    both rungs, forwarding to the existing reach-ins, and 22 tests
    pinning the rules above.
-2. **Landed, out of order.** Steps 3–6 below came first, because
-   deleting the gated `Default`s was taken up before the bulk
-   migration. `UiHarness` is exported, `tests/alloc` runs on it,
-   darkroom's arena sites are migrated, and all three gated `Default`
-   impls are gone. `impl Ui` still carries the rest of the kill list.
+2. **Landed, after one reverted attempt.** Steps 3–6 below came first,
+   because deleting the gated `Default`s was taken up before the bulk
+   migration. A single big-bang pass got ~2500 of ~2800 sites before
+   stalling, and was reverted whole rather than left half-applied; the
+   second pass went directory by directory with a compile-and-test check
+   between each, which works because the old API survives until its last
+   caller goes. See **What the bulk pass established**.
 3. **Landed.** `pub use crate::ui::harness::UiHarness;` in `lib.rs`'s
    `internals`; the first `impl` block is now `pub`. Note the lint
    wrinkle: `palantir::internals` is `#[cfg(feature = "internals")]`, so
@@ -720,17 +788,15 @@ which means the export step lands *before* the deletion, not after.
 6. **Landed.** All three gated `Default` impls deleted. `Ui::new` was
    already the `pub(crate)` constructor, so `Ui` needed no replacement;
    `UiResources` and `TextSystem` got named ones.
-7. **Remaining.** The bulk migration (step 2's ~500 sites) and then
-   darkroom's dock test plus its own `Editor::frame`-level harness. Rule
-   5 is the one to watch there: an editor-level harness accumulating
+7. **Landed.** The kill list is gone. `src/ui/internals.rs` now holds
+   only what genuinely cannot move: `record_test_frame{,_without_baseline}`
+   (they need `Ui::frame`'s private `FrameInput`), `damage_region`, and
+   the `#[cfg(test)]` tree/encoder reach-ins the harness forwards to.
+   Darkroom's dock test is ported — it is the sketch below, verbatim.
+8. **Remaining.** Darkroom's own `Editor::frame`-level harness. Rule 5
+   is the one to watch there: an editor-level harness accumulating
    intents across frames is the first thing in-tree that could
    double-count.
-
-The ordering constraint that drove this: darkroom consumed
-`Ui::default()`, so the export had to land *before* the deletion. That
-is why 3–6 ran ahead of 2 — the bulk migration is independent of the
-door-closing, and only the door-closing was on darkroom's critical
-path.
 
 ## What it unlocks downstream
 

@@ -18,6 +18,7 @@ use crate::renderer::frontend::record_sink::assert_same_paint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
@@ -25,30 +26,31 @@ use glam::UVec2;
 /// every captured node's arranged rect matches across the two frames.
 /// `record` pushes the nodes whose rects matter into `capture`.
 fn assert_warm_rects_match_cold(
-    ui: &mut Ui,
+    h: &mut UiHarness,
     size: UVec2,
     msg: &str,
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
+    h.resize(size);
     let mut cold_nodes = Vec::new();
-    ui.run_at(size, |ui| record(ui, &mut cold_nodes));
+    h.frame(|ui| record(ui, &mut cold_nodes));
     let cold: Vec<_> = cold_nodes
         .iter()
-        .map(|n| ui.layout[Layer::Main].rect[n.idx()])
+        .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
         .collect();
 
     let mut warm_nodes = Vec::new();
-    ui.run_at(size, |ui| record(ui, &mut warm_nodes));
+    h.frame(|ui| record(ui, &mut warm_nodes));
     let warm: Vec<_> = warm_nodes
         .iter()
-        .map(|n| ui.layout[Layer::Main].rect[n.idx()])
+        .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
         .collect();
 
     // Guard against the test going inert: if hash stability ever
     // regresses and the warm frame misses everywhere, cold == warm
     // would pass vacuously while pinning nothing.
     assert!(
-        !ui.layout_engine.scratch.cache_hits.is_empty(),
+        !h.ui.layout_engine.scratch.cache_hits.is_empty(),
         "warm frame produced no measure-cache hits — {msg} pins nothing",
     );
     assert_eq!(cold, warm, "{msg}");
@@ -203,9 +205,9 @@ fn cache_hit_preserves_grid_cell_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
+        let mut h = UiHarness::with_text(UVec2::new(800, 600));
         assert_warm_rects_match_cold(
-            &mut ui,
+            &mut h,
             UVec2::new(800, 600),
             &format!("case: {label}"),
             *record,
@@ -216,13 +218,13 @@ fn cache_hit_preserves_grid_cell_rects() {
         // exercised. A descendant-level hit would re-run grid measure
         // and pin nothing.
         assert!(
-            ui.layout_engine
+            h.ui.layout_engine
                 .scratch
                 .cache_hits
                 .contains(&WidgetId::VIEWPORT),
             "case {label}: warm cache hit didn't land at the viewport root — grid hug \
              restore not exercised. hits={:?}",
-            ui.layout_engine.scratch.cache_hits,
+            h.ui.layout_engine.scratch.cache_hits,
         );
     }
 }
@@ -360,9 +362,9 @@ fn cache_hit_preserves_per_driver_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
+        let mut h = UiHarness::with_text(UVec2::new(800, 600));
         assert_warm_rects_match_cold(
-            &mut ui,
+            &mut h,
             UVec2::new(800, 600),
             &format!("case: {label}"),
             *record,
@@ -441,12 +443,12 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
             });
     };
 
-    let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
-    ui.run_at(UVec2::new(800, 600), |ui| record(ui));
-    let cold = ui.encode_paint();
+    let mut h = UiHarness::with_text(UVec2::new(800, 600));
+    h.frame(|ui| record(ui));
+    let cold = h.encode_paint();
 
-    ui.run_at(UVec2::new(800, 600), |ui| record(ui));
-    let warm = ui.encode_paint();
+    h.frame(|ui| record(ui));
+    let warm = h.encode_paint();
 
     assert_same_paint(&cold, &warm);
 }
@@ -499,26 +501,27 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             });
     };
 
-    let mut ui = Ui::for_test();
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
+    let mut h = UiHarness::new(UVec2::new(widths[0], 600));
     for (i, &w) in widths.iter().enumerate() {
+        h.resize(UVec2::new(w, 600));
         let mut warm_nodes = Vec::new();
-        ui.run_at(UVec2::new(w, 600), |ui| {
+        h.frame(|ui| {
             record(ui, &mut warm_nodes);
         });
         let warm_rects: Vec<_> = warm_nodes
             .iter()
-            .map(|n| ui.layout[Layer::Main].rect[n.idx()])
+            .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
             .collect();
 
-        ui.layout_engine.cache.clear();
+        h.ui.layout_engine.cache.clear();
         let mut cold_nodes = Vec::new();
-        ui.run_at(UVec2::new(w, 600), |ui| {
+        h.frame(|ui| {
             record(ui, &mut cold_nodes);
         });
         let cold_rects: Vec<_> = cold_nodes
             .iter()
-            .map(|n| ui.layout[Layer::Main].rect[n.idx()])
+            .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
             .collect();
 
         assert_eq!(
@@ -560,12 +563,12 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
             });
     }
 
-    let mut ui = Ui::for_test();
     let size = UVec2::new(400, 600);
+    let mut h = UiHarness::new(size);
 
     // Cold frame computes intrinsics across the whole tree.
-    ui.run_at(size, |ui| build(ui, 0));
-    let cold = ui.layout_engine.scratch.intrinsic_computes as usize;
+    h.frame(|ui| build(ui, 0));
+    let cold = h.ui.layout_engine.scratch.intrinsic_computes as usize;
     assert!(
         cold > HEAVY,
         "cold frame should compute the whole tree's intrinsics, got {cold}",
@@ -575,8 +578,8 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     // restored intrinsics keep the root re-measure from re-walking it, so
     // the count collapses to the changed ancestor chain (~root + tiny),
     // not ~2·HEAVY for a full sibling re-walk.
-    ui.run_at(size, |ui| build(ui, 1));
-    let warm = ui.layout_engine.scratch.intrinsic_computes as usize;
+    h.frame(|ui| build(ui, 1));
+    let warm = h.ui.layout_engine.scratch.intrinsic_computes as usize;
     assert!(
         warm < HEAVY / 2,
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
@@ -642,21 +645,21 @@ fn moved_subtree_replays_translated_rects() {
             .collect()
     };
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(size);
     let mut before_nodes = Vec::new();
-    ui.run_at(size, |ui| record(ui, 10.0, &mut before_nodes));
-    let before = rects(&ui, &before_nodes);
+    h.frame(|ui| record(ui, 10.0, &mut before_nodes));
+    let before = rects(&h.ui, &before_nodes);
 
     let mut after_nodes = Vec::new();
-    ui.run_at(size, |ui| record(ui, 30.0, &mut after_nodes));
-    let after = rects(&ui, &after_nodes);
+    h.frame(|ui| record(ui, 30.0, &mut after_nodes));
+    let after = rects(&h.ui, &after_nodes);
 
     // Non-vacuity: the translate branch must be the one that ran. Without
     // this the test still passes if arrange re-derived every rect.
     assert!(
-        ui.layout_engine.scratch.arrange_replays.translated > 0,
+        h.ui.layout_engine.scratch.arrange_replays.translated > 0,
         "no subtree replayed via translation — fixture pins nothing, got {:?}",
-        ui.layout_engine.scratch.arrange_replays,
+        h.ui.layout_engine.scratch.arrange_replays,
     );
 
     // The header grew 10 → 30, so everything below shifts down exactly 20
@@ -670,12 +673,12 @@ fn moved_subtree_replays_translated_rects() {
 
     // Ground truth: clearing the cache forces a full remeasure of the same
     // frame, which must land on the identical geometry.
-    ui.layout_engine.cache.clear();
+    h.ui.layout_engine.cache.clear();
     let mut cold_nodes = Vec::new();
-    ui.run_at(size, |ui| record(ui, 30.0, &mut cold_nodes));
+    h.frame(|ui| record(ui, 30.0, &mut cold_nodes));
     assert_eq!(
         after,
-        rects(&ui, &cold_nodes),
+        rects(&h.ui, &cold_nodes),
         "translated replay diverged from a cold remeasure",
     );
 }

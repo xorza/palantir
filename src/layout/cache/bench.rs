@@ -24,9 +24,9 @@
 //! Requires the `internals` feature for the cache reach-in. Run with
 //! `cargo bench --features internals --bench caches`.
 //!
-//! The `measure/*` arms use `Ui::for_test()` (cosmic shaper unset → mono
+//! The `measure/*` arms use `UiHarness::new(glam::UVec2::new(1280, 800))` (cosmic shaper unset → mono
 //! text fallback, same path as the colocated frame bench); the `heavy/*` arms
-//! use `Ui::for_test_text()` so text-shaping cost is in the measurement.
+//! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
 use crate::display::Display;
 use crate::layout::engine::PhaseTimings;
@@ -40,6 +40,7 @@ use crate::primitives::stroke::Stroke;
 use crate::scene::node::Configure;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -328,38 +329,38 @@ fn bench_cache_pair(
     group: &mut BenchmarkGroup<'_, WallTime>,
     name: &str,
     display: Display,
-    make_ui: fn() -> Ui,
+    make_ui: fn() -> UiHarness,
     build: fn(&mut Ui),
 ) {
     {
-        let mut ui = make_ui();
+        let mut h = make_ui();
         report_phases(&format!("{name}/cached"), || {
-            let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
-            ui.layout_engine.phase_timings
+            let _ = h.frame_at_without_baseline(display, Duration::ZERO, build);
+            h.ui.layout_engine.phase_timings
         });
     }
     group.bench_function(format!("{name}/cached"), |b| {
-        let mut ui = make_ui();
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
+        let mut h = make_ui();
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, build);
         b.iter(|| {
-            black_box(ui.record_test_frame_without_baseline(display, Duration::ZERO, build));
+            black_box(h.frame_at_without_baseline(display, Duration::ZERO, build));
         });
     });
 
     {
-        let mut ui = make_ui();
+        let mut h = make_ui();
         report_phases(&format!("{name}/forced_miss"), || {
-            ui.layout_engine.cache.clear();
-            let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
-            ui.layout_engine.phase_timings
+            h.ui.layout_engine.cache.clear();
+            let _ = h.frame_at_without_baseline(display, Duration::ZERO, build);
+            h.ui.layout_engine.phase_timings
         });
     }
     group.bench_function(format!("{name}/forced_miss"), |b| {
-        let mut ui = make_ui();
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
+        let mut h = make_ui();
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, build);
         b.iter(|| {
-            ui.layout_engine.cache.clear();
-            black_box(ui.record_test_frame_without_baseline(display, Duration::ZERO, build));
+            h.ui.layout_engine.cache.clear();
+            black_box(h.frame_at_without_baseline(display, Duration::ZERO, build));
         });
     });
 }
@@ -368,7 +369,7 @@ fn bench_cache_workload(
     group: &mut BenchmarkGroup<'_, WallTime>,
     name: &str,
     display: Display,
-    make_ui: fn() -> Ui,
+    make_ui: fn() -> UiHarness,
     build: fn(&mut Ui),
 ) {
     bench_cache_pair(group, name, display, make_ui, build);
@@ -376,58 +377,48 @@ fn bench_cache_workload(
     let resize_displays = [1280, 1248, 1216, 1184]
         .map(|width| Display::from_physical(glam::UVec2::new(width, 800), 2.0));
     {
-        let mut ui = make_ui();
+        let mut h = make_ui();
         let mut frame = 0usize;
         report_phases(&format!("{name}/resizing"), || {
             frame = (frame + 1) % resize_displays.len();
-            let _ = ui.record_test_frame_without_baseline(
-                resize_displays[frame],
-                Duration::ZERO,
-                build,
-            );
-            ui.layout_engine.phase_timings
+            let _ = h.frame_at_without_baseline(resize_displays[frame], Duration::ZERO, build);
+            h.ui.layout_engine.phase_timings
         });
     }
     group.bench_function(format!("{name}/resizing"), |b| {
-        let mut ui = make_ui();
-        let _ = ui.record_test_frame_without_baseline(resize_displays[0], Duration::ZERO, build);
+        let mut h = make_ui();
+        let _ = h.frame_at_without_baseline(resize_displays[0], Duration::ZERO, build);
         let mut frame = 0usize;
         b.iter(|| {
             frame = (frame + 1) % resize_displays.len();
-            black_box(ui.record_test_frame_without_baseline(
-                resize_displays[frame],
-                Duration::ZERO,
-                build,
-            ));
+            black_box(h.frame_at_without_baseline(resize_displays[frame], Duration::ZERO, build));
         });
     });
 }
 
 fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str, display: Display) {
     {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
         let mut changed = false;
         report_phases(&format!("{name}/localized"), || {
             changed = !changed;
-            let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+            let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
                 build_broad_variant(ui, changed);
             });
-            ui.layout_engine.phase_timings
+            h.ui.layout_engine.phase_timings
         });
     }
     group.bench_function(format!("{name}/localized"), |b| {
-        let mut ui = Ui::for_test();
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             build_broad_variant(ui, false);
         });
         let mut changed = false;
         b.iter(|| {
             changed = !changed;
-            black_box(
-                ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
-                    build_broad_variant(ui, changed);
-                }),
-            );
+            black_box(h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+                build_broad_variant(ui, changed);
+            }));
         });
     });
 }
@@ -436,12 +427,18 @@ pub fn bench(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut group = c.benchmark_group("caches");
 
-    bench_cache_pair(&mut group, "measure", display, Ui::for_test, build);
+    bench_cache_pair(
+        &mut group,
+        "measure",
+        display,
+        || UiHarness::new(glam::UVec2::new(1280, 800)),
+        build,
+    );
     bench_cache_pair(
         &mut group,
         "heavy/measure",
         display,
-        Ui::for_test_text,
+        || UiHarness::with_text(glam::UVec2::new(1280, 800)),
         build_heavy,
     );
 
@@ -449,14 +446,14 @@ pub fn bench(c: &mut Criterion) {
         &mut group,
         "deep/measure",
         display,
-        Ui::for_test,
+        || UiHarness::new(glam::UVec2::new(1280, 800)),
         build_deep,
     );
     bench_cache_workload(
         &mut group,
         "broad/measure",
         display,
-        Ui::for_test,
+        || UiHarness::new(glam::UVec2::new(1280, 800)),
         build_broad,
     );
     bench_broad_localized(&mut group, "broad/measure", display);
@@ -464,7 +461,7 @@ pub fn bench(c: &mut Criterion) {
         &mut group,
         "grid/intrinsic",
         display,
-        Ui::for_test_text,
+        || UiHarness::with_text(glam::UVec2::new(1280, 800)),
         build_grid_intrinsics,
     );
 
@@ -476,17 +473,18 @@ mod tests {
     use crate::display::Display;
     use crate::scene::layer::Layer;
     use crate::ui::Ui;
+    use crate::ui::harness::UiHarness;
     use std::time::Duration;
 
     use crate::layout::cache::bench::{
         BROAD_DEPTH, BROAD_FANOUT, DEEP_DEPTH, build_broad, build_broad_variant, build_deep,
     };
 
-    fn cold_frame(build: fn(&mut Ui)) -> Ui {
+    fn cold_frame(build: fn(&mut Ui)) -> UiHarness {
         let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
-        let mut ui = Ui::for_test();
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, build);
-        ui
+        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, build);
+        h
     }
 
     #[test]
@@ -494,12 +492,12 @@ mod tests {
         let deep = cold_frame(build_deep);
         let deep_nodes = DEEP_DEPTH + 2;
         assert_eq!(
-            deep.forest.trees[Layer::Main].records.len(),
+            deep.ui.forest.trees[Layer::Main].records.len(),
             deep_nodes,
             "viewport + {DEEP_DEPTH} nested panels + leaf",
         );
         assert_eq!(
-            deep.layout_engine.cache.previous.nodes.desired.len(),
+            deep.ui.layout_engine.cache.previous.nodes.desired.len(),
             deep_nodes,
             "deep trees retain one row per node",
         );
@@ -510,13 +508,13 @@ mod tests {
             .sum::<usize>();
         let leaf_count = BROAD_FANOUT.pow(BROAD_DEPTH as u32);
         assert_eq!(
-            broad.forest.trees[Layer::Main].records.len(),
+            broad.ui.forest.trees[Layer::Main].records.len(),
             1 + panel_count + leaf_count,
             "viewport + balanced panels + one leaf per terminal panel",
         );
         let broad_nodes = 1 + panel_count + leaf_count;
         assert_eq!(
-            broad.layout_engine.cache.previous.nodes.desired.len(),
+            broad.ui.layout_engine.cache.previous.nodes.desired.len(),
             broad_nodes,
             "balanced trees retain one row per node",
         );
@@ -525,15 +523,15 @@ mod tests {
     #[test]
     fn localized_change_hits_unchanged_sibling_subtrees() {
         let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
-        let mut ui = Ui::for_test();
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             build_broad_variant(ui, false);
         });
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             build_broad_variant(ui, true);
         });
         assert_eq!(
-            ui.layout_engine.scratch.cache_hits.len(),
+            h.ui.layout_engine.scratch.cache_hits.len(),
             21,
             "seven unchanged siblings hit at each of the three branch levels",
         );

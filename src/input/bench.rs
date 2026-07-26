@@ -28,7 +28,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::node::Configure;
 use crate::ui::Ui;
-use crate::ui::resources::UiResources;
+use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -127,15 +127,15 @@ fn build_ui(ui: &mut Ui) {
         });
 }
 
-fn warmed_ui() -> Ui {
-    let mut ui = Ui::new(UiResources::isolated_mono());
+fn warmed_ui() -> UiHarness {
+    let mut h = UiHarness::new(SIZE);
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.
-    ui.record_test_frame_without_baseline(display, Duration::ZERO, build_ui);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
-    ui.record_test_frame_without_baseline(display, Duration::ZERO, build_ui);
-    ui
+    h.frame_at_without_baseline(display, Duration::ZERO, build_ui);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
+    h.frame_at_without_baseline(display, Duration::ZERO, build_ui);
+    h
 }
 
 /// Pointer position that walks a Lissajous path across the logical

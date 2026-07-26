@@ -14,7 +14,8 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::ui::frame::{FrameRuntime, FrameStamp};
+use crate::ui::frame::FrameRuntime;
+use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
@@ -28,10 +29,8 @@ fn measure_calls(ui: &Ui) -> u64 {
     ui.resources.text.measure_calls()
 }
 
-fn ui_with_shared(shared: &HostShared) -> Ui {
-    let mut ui = Ui::new(shared.resources.clone());
-    ui.frame_runtime.prev_stamp = Some(FrameStamp::new(ui.display, Duration::ZERO));
-    ui
+fn ui_with_shared(shared: &HostShared) -> UiHarness {
+    UiHarness::from_resources(shared.resources.clone(), SURFACE)
 }
 
 fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
@@ -67,10 +66,10 @@ fn add_blink_shape(ui: &mut Ui, half: Duration) {
 /// arranged rect after the regular paint walk.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(100, 100));
     let button_node = Cell::new(NodeId(0));
     let duplicate_id = WidgetId::from_hash("dup");
-    ui.run_at_without_baseline(UVec2::new(100, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let a_node = Button::new().id(duplicate_id).show(ui).node();
             Button::new().id(duplicate_id).show(ui);
@@ -80,16 +79,16 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // One collision pair should be recorded, survives until the next
     // `pre_record` so the encoder can read it.
     assert_eq!(
-        ui.forest.collisions.len(),
+        h.ui.forest.collisions.len(),
         1,
         "expected exactly one explicit collision recorded",
     );
     assert_eq!(
-        ui.cascades.hits.widget_id(),
+        h.ui.cascades.hits.widget_id(),
         [duplicate_id, duplicate_id.with(1)],
         "hit rows must retain both resolved IDs rather than the duplicated raw ID",
     );
-    let button_rect = ui.layout[Layer::Main].rect[button_node.get().idx()];
+    let button_rect = h.ui.layout[Layer::Main].rect[button_node.get().idx()];
     // Drive the encoder and check the emitted quads. The two overlay
     // quads should be stroked, magenta-ish, and rect-equal to the two
     // colliding buttons' arranged rects.
@@ -98,9 +97,9 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // for real apps.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        ui.frame_scene(),
+        h.ui.frame_scene(),
         RenderPlan {
-            clear: ui.theme.window_clear,
+            clear: h.ui.theme.window_clear,
             kind: RenderKind::Full,
         },
     );
@@ -136,8 +135,8 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 /// so the encoder paints each overlay at the correct per-layer rect.
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(UVec2::new(200, 200), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame_without_baseline(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
@@ -146,11 +145,11 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
         });
     });
     assert_eq!(
-        ui.forest.collisions.len(),
+        h.ui.forest.collisions.len(),
         1,
         "expected one collision pair across Main + Popup",
     );
-    let pair = ui.forest.collisions[0];
+    let pair = h.ui.forest.collisions[0];
     assert_eq!(
         pair.first.layer,
         Layer::Main,
@@ -164,16 +163,16 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
         pair.second.layer,
     );
     // Each endpoint's rect must come from its own layer's `LayerLayout`.
-    let main_rect = ui.layout[Layer::Main].rect[pair.first.node.idx()];
-    let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.idx()];
+    let main_rect = h.ui.layout[Layer::Main].rect[pair.first.node.idx()];
+    let popup_rect = h.ui.layout[Layer::Popup].rect[pair.second.node.idx()];
     // Share Ui's record store so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the WindowDriver wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        ui.frame_scene(),
+        h.ui.frame_scene(),
         RenderPlan {
-            clear: ui.theme.window_clear,
+            clear: h.ui.theme.window_clear,
             kind: RenderKind::Full,
         },
     );
@@ -196,7 +195,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 
 #[test]
 fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
-    let mut ui = Ui::for_test_text();
+    let mut h = UiHarness::with_text(SURFACE);
     let main_id = WidgetId::from_hash("layer-output-main");
     let popup_id = WidgetId::from_hash("layer-output-popup");
 
@@ -228,39 +227,39 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
         NodeId(index as u32)
     };
 
-    ui.run_at_without_baseline(SURFACE, &mut record);
-    let main_node = node_for(&ui, Layer::Main, main_id);
-    let popup_node = node_for(&ui, Layer::Popup, popup_id);
-    let cold_main = ui.layout[Layer::Main].rect[main_node.idx()];
-    let cold_popup = ui.layout[Layer::Popup].rect[popup_node.idx()];
+    h.frame_without_baseline(&mut record);
+    let main_node = node_for(&h.ui, Layer::Main, main_id);
+    let popup_node = node_for(&h.ui, Layer::Popup, popup_id);
+    let cold_main = h.ui.layout[Layer::Main].rect[main_node.idx()];
+    let cold_popup = h.ui.layout[Layer::Popup].rect[popup_node.idx()];
     assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
     assert_eq!(cold_popup, Rect::new(80.0, 60.0, 70.0, 30.0));
 
-    let main_span = ui.layout[Layer::Main].text_spans[main_node.idx()];
-    let popup_span = ui.layout[Layer::Popup].text_spans[popup_node.idx()];
+    let main_span = h.ui.layout[Layer::Main].text_spans[main_node.idx()];
+    let popup_span = h.ui.layout[Layer::Popup].text_spans[popup_node.idx()];
     assert_eq!(main_span, Span::new(0, 1));
     assert_eq!(popup_span, Span::new(0, 1));
-    assert_eq!(ui.layout[Layer::Main].text_shapes.len(), 1);
-    assert_eq!(ui.layout[Layer::Popup].text_shapes.len(), 1);
-    let cold_main_key = ui.layout[Layer::Main].text_shapes[main_span.start as usize].key;
-    let cold_popup_key = ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key;
+    assert_eq!(h.ui.layout[Layer::Main].text_shapes.len(), 1);
+    assert_eq!(h.ui.layout[Layer::Popup].text_shapes.len(), 1);
+    let cold_main_key = h.ui.layout[Layer::Main].text_shapes[main_span.start as usize].key;
+    let cold_popup_key = h.ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key;
     assert_ne!(cold_main_key, cold_popup_key);
 
-    ui.run_at_without_baseline(SURFACE, &mut record);
+    h.frame_without_baseline(&mut record);
     assert!(
-        !ui.layout_engine.scratch.cache_hits.is_empty(),
+        !h.ui.layout_engine.scratch.cache_hits.is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
-    let main_node = node_for(&ui, Layer::Main, main_id);
-    let popup_node = node_for(&ui, Layer::Popup, popup_id);
-    assert_eq!(ui.layout[Layer::Main].rect[main_node.idx()], cold_main);
-    assert_eq!(ui.layout[Layer::Popup].rect[popup_node.idx()], cold_popup);
+    let main_node = node_for(&h.ui, Layer::Main, main_id);
+    let popup_node = node_for(&h.ui, Layer::Popup, popup_id);
+    assert_eq!(h.ui.layout[Layer::Main].rect[main_node.idx()], cold_main);
+    assert_eq!(h.ui.layout[Layer::Popup].rect[popup_node.idx()], cold_popup);
     assert_eq!(
-        ui.layout[Layer::Main].text_shapes[main_span.start as usize].key,
+        h.ui.layout[Layer::Main].text_shapes[main_span.start as usize].key,
         cold_main_key,
     );
     assert_eq!(
-        ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key,
+        h.ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key,
         cold_popup_key,
     );
 }
@@ -270,23 +269,23 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
 /// the prior "sink in Debug" approach.
 #[test]
 fn collisions_do_not_record_into_debug_layer() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(100, 100));
     assert!(
-        !ui.resources.diagnostics.overlay.borrow().frame_stats,
+        !h.ui.resources.diagnostics.overlay.borrow().frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
     );
-    ui.run_at_without_baseline(UVec2::new(100, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
     });
     assert!(
-        !ui.forest.collisions.is_empty(),
+        !h.ui.forest.collisions.is_empty(),
         "collision should have been recorded",
     );
     assert_eq!(
-        ui.forest.trees[Layer::Debug].records.len(),
+        h.ui.forest.trees[Layer::Debug].records.len(),
         0,
         "encoder-direct overlay path must not record nodes into Layer::Debug",
     );
@@ -299,8 +298,8 @@ fn auto_id_collisions_disambiguate() {
     fn chip(ui: &mut Ui) {
         Frame::new().auto_id().show(ui);
     }
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(UVec2::new(100, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             chip(ui);
             chip(ui);
@@ -308,7 +307,7 @@ fn auto_id_collisions_disambiguate() {
         });
     });
     // Synthetic viewport root + 1 panel + 3 chips = 5 distinct ids, no panic.
-    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 5);
+    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 5);
 }
 
 /// Cascade runs in `post_record` (after each pass's measure+arrange),
@@ -325,8 +324,8 @@ fn cascade_visible_to_relayout_pass() {
     let pass_b_rect = Cell::new(None::<Rect>);
     let id_salt = "cascade-relayout-probe";
 
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         let probe_resp: std::cell::RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
@@ -369,17 +368,17 @@ fn cascade_visible_to_relayout_pass() {
 /// produces no draw commands.
 #[test]
 fn empty_ui_drives_a_frame_safely() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |_| {});
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|_| {});
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
     // No mesh/polyline bytes were recorded, so the Ui record store is empty.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        ui.frame_scene(),
+        h.ui.frame_scene(),
         RenderPlan {
-            clear: ui.theme.window_clear,
+            clear: h.ui.theme.window_clear,
             kind: RenderKind::Full,
         },
     );
@@ -389,36 +388,36 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.groups.is_empty());
 
     // Synthetic viewport root: even an empty user record produces one node.
-    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 1);
-    assert!(ui.damage_engine.prev.is_empty());
-    assert!(ui.damage_engine.dirty.is_empty());
-    assert!(ui.damage_region().rects.is_empty());
-    assert_eq!(Damage::new(ui.damage_region()), Damage::Skip,);
+    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
+    assert!(h.ui.damage_engine.prev.is_empty());
+    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.damage_region().rects.is_empty());
+    assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
 /// recorder retains no per-frame state across frames).
 #[test]
 fn empty_then_populated_frame() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(100, 100), |_| {});
-    ui.run_at(UVec2::new(100, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    h.frame(|_| {});
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
     // Synthetic viewport root + user Panel = 2 records.
-    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 2);
+    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 2);
     // The user Panel is rowless (no chrome, no shapes, no children) so
     // it gets no prev entry; the viewport root tracks it as a
     // child-marker row — one entry total.
-    assert_eq!(ui.damage_engine.prev.len(), 1);
+    assert_eq!(h.ui.damage_engine.prev.len(), 1);
 }
 
 /// Pin: `Ui::frame` panics if `display.scale_factor` is below `EPS`.
 #[test]
 #[should_panic(expected = "Display::scale_factor must be finite and ≥ EPSILON")]
 fn frame_rejects_zero_scale_factor() {
-    let mut ui = Ui::for_test();
-    let _ = ui.record_test_frame_without_baseline(
+    let mut h = UiHarness::new(SURFACE);
+    let _ = h.ui.record_test_frame_without_baseline(
         Display::from_physical(UVec2::new(800, 600), 0.0),
         Duration::ZERO,
         |_| {},
@@ -434,8 +433,8 @@ fn display_logical_rect_scales() {
 
 #[test]
 fn prev_frame_empty_before_first_frame() {
-    let ui = Ui::for_test();
-    assert!(ui.damage_engine.prev.is_empty());
+    let h = UiHarness::new(SURFACE);
+    assert!(h.ui.damage_engine.prev.is_empty());
 }
 
 /// Pin the row invariant: after the first frame, widgets with paint
@@ -445,9 +444,9 @@ fn prev_frame_empty_before_first_frame() {
 /// extent. A rowless node (childless Panel without chrome) stays out.
 #[test]
 fn prev_frame_captures_nodes_with_rows() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut frame_node = None;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -458,32 +457,32 @@ fn prev_frame_captures_nodes_with_rows() {
             });
     });
     let frame_node = frame_node.unwrap();
-    let prev = &ui.damage_engine.prev;
+    let prev = &h.ui.damage_engine.prev;
     let snap = &prev[&WidgetId::from_hash("a")];
 
     assert!(prev.contains_key(&WidgetId::from_hash("root")));
     assert!(!prev.contains_key(&WidgetId::from_hash("empty")));
     assert_eq!(
-        ui.damage_engine
+        h.ui.damage_engine
             .prev_paint_rect(WidgetId::from_hash("root")),
         None,
     );
     assert_eq!(
-        ui.damage_engine
+        h.ui.damage_engine
             .prev_paint_rect(WidgetId::from_hash("a"))
             .unwrap(),
-        ui.layout[Layer::Main].rect[frame_node.idx()],
+        h.ui.layout[Layer::Main].rect[frame_node.idx()],
     );
     assert_eq!(
         snap.hash,
-        ui.forest.trees[Layer::Main].rollups.node[frame_node.idx()],
+        h.ui.forest.trees[Layer::Main].rollups.node[frame_node.idx()],
     );
 }
 
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -494,18 +493,19 @@ fn prev_frame_drops_disappeared_widgets() {
             });
     });
     assert!(
-        ui.damage_engine
+        h.ui.damage_engine
             .prev
             .contains_key(&WidgetId::from_hash("gone"))
     );
 
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |_| {});
     });
     assert!(
-        !ui.damage_engine
+        !h.ui
+            .damage_engine
             .prev
             .contains_key(&WidgetId::from_hash("gone"))
     );
@@ -513,7 +513,7 @@ fn prev_frame_drops_disappeared_widgets() {
 
 #[test]
 fn prev_frame_updates_on_authoring_change() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let paint = |fill: Color| {
         move |ui: &mut Ui| {
             Frame::new()
@@ -526,11 +526,11 @@ fn prev_frame_updates_on_authoring_change() {
                 .show(ui);
         }
     };
-    ui.run_at(SURFACE, paint(Color::rgb(0.2, 0.4, 0.8)));
-    let h1 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
+    h.frame(paint(Color::rgb(0.2, 0.4, 0.8)));
+    let h1 = h.ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
 
-    ui.run_at(SURFACE, paint(Color::rgb(0.9, 0.4, 0.8)));
-    let h2 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
+    h.frame(paint(Color::rgb(0.9, 0.4, 0.8)));
+    let h2 = h.ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
 }
 
@@ -586,15 +586,15 @@ fn text_reshape_skipped_when_unchanged() {
         ("wrapped", wrapped),
         ("grid-intrinsic", grid_intrinsic),
     ] {
-        let mut ui = Ui::for_test();
-        ui.run_at(UVec2::new(400, 200), build);
-        let after_first = measure_calls(&ui);
+        let mut h = UiHarness::new(UVec2::new(400, 200));
+        h.frame(build);
+        let after_first = measure_calls(&h.ui);
         assert!(
             after_first > 0,
             "{label}: first frame should drive at least one measure call",
         );
-        ui.run_at(UVec2::new(400, 200), build);
-        let after_second = measure_calls(&ui);
+        h.frame(build);
+        let after_second = measure_calls(&h.ui);
         assert_eq!(
             after_second,
             after_first,
@@ -620,11 +620,11 @@ fn text_reshape_runs_when_content_changes() {
             });
         }
     };
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 200), render("first"));
-    let before = measure_calls(&ui);
-    ui.run_at(UVec2::new(400, 200), render("second"));
-    let after = measure_calls(&ui);
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    h.frame(render("first"));
+    let before = measure_calls(&h.ui);
+    h.frame(render("second"));
+    let after = measure_calls(&h.ui);
     assert!(
         after > before,
         "content change must trigger fresh measure (before={before}, after={after})",
@@ -637,8 +637,8 @@ fn text_reshape_runs_when_content_changes() {
 fn text_reuse_evicts_disappeared_widgets() {
     use crate::widgets::text::Text;
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 200), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("hello")
                 .id(WidgetId::from_hash("transient"))
@@ -647,15 +647,15 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let wid = WidgetId::from_hash("transient");
     assert!(
-        ui.layout_engine.text.has_entry(wid, 0),
+        h.ui.layout_engine.text.has_entry(wid, 0),
         "text widget should populate text_reuse on first render",
     );
 
-    ui.run_at(UVec2::new(400, 200), |ui| {
+    h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !ui.layout_engine.text.has_entry(wid, 0),
+        !h.ui.layout_engine.text.has_entry(wid, 0),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -681,43 +681,43 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
 
-    a.run_at(SURFACE, |ui| text_window(ui, "window A", 120.0));
-    let a_key = a.layout[Layer::Main].text_shapes[0].key;
-    b.run_at(SURFACE, |ui| text_window(ui, "window B", 120.0));
-    let b_key = b.layout[Layer::Main].text_shapes[0].key;
+    a.frame(|ui| text_window(ui, "window A", 120.0));
+    let a_key = a.ui.layout[Layer::Main].text_shapes[0].key;
+    b.frame(|ui| text_window(ui, "window B", 120.0));
+    let b_key = b.ui.layout[Layer::Main].text_shapes[0].key;
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    assert!(a.resources.text.has_cosmic_buffer(a_key));
-    assert!(a.resources.text.has_cosmic_buffer(b_key));
-    assert!(a.layout_engine.text.has_entry(text_id, 0));
-    assert!(b.layout_engine.text.has_entry(text_id, 0));
+    assert!(a.ui.resources.text.has_cosmic_buffer(a_key));
+    assert!(a.ui.resources.text.has_cosmic_buffer(b_key));
+    assert!(a.ui.layout_engine.text.has_entry(text_id, 0));
+    assert!(b.ui.layout_engine.text.has_entry(text_id, 0));
 
-    let after_b = a.resources.text.measure_calls();
-    a.run_at(SURFACE, |ui| text_window(ui, "window A", 140.0));
+    let after_b = a.ui.resources.text.measure_calls();
+    a.frame(|ui| text_window(ui, "window A", 140.0));
     assert_eq!(
-        a.resources.text.measure_calls(),
+        a.ui.resources.text.measure_calls(),
         after_b,
         "window B must not overwrite window A's reuse row",
     );
 
-    b.run_at(SURFACE, |ui| {
+    b.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("shared-root"))
             .size((Sizing::fixed(120.0), Sizing::HUG))
             .show(ui, |_| {});
     });
-    assert!(!b.layout_engine.text.has_entry(text_id, 0));
-    assert!(a.layout_engine.text.has_entry(text_id, 0));
+    assert!(!b.ui.layout_engine.text.has_entry(text_id, 0));
+    assert!(a.ui.layout_engine.text.has_entry(text_id, 0));
 
-    let after_b_removal = a.resources.text.measure_calls();
-    a.run_at(SURFACE, |ui| text_window(ui, "window A", 160.0));
+    let after_b_removal = a.ui.resources.text.measure_calls();
+    a.frame(|ui| text_window(ui, "window A", 160.0));
     assert_eq!(
-        a.resources.text.measure_calls(),
+        a.ui.resources.text.measure_calls(),
         after_b_removal,
         "window B removal must not evict window A's reuse row",
     );
-    assert!(a.resources.text.has_cosmic_buffer(a_key));
-    assert!(a.resources.text.has_cosmic_buffer(b_key));
+    assert!(a.ui.resources.text.has_cosmic_buffer(a_key));
+    assert!(a.ui.resources.text.has_cosmic_buffer(b_key));
 }
 
 #[test]
@@ -760,37 +760,37 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     }
 
     let shared = HostShared::new(TextShaper::new(), None);
-    let mut idle = Ui::new(shared.resources.clone());
-    let mut active = Ui::new(shared.resources.clone());
+    let mut idle = UiHarness::from_resources(shared.resources.clone(), SURFACE);
+    let mut active = UiHarness::from_resources(shared.resources.clone(), SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
 
-    let idle_first = idle.record_test_frame(display, Duration::ZERO, idle_body);
+    let idle_first = idle.frame_at(display, Duration::ZERO, idle_body);
     assert_eq!(idle_first.repaint_after, Some(HALF));
-    let idle_key = idle.layout[Layer::Main].text_shapes[0].key;
+    let idle_key = idle.ui.layout[Layer::Main].text_shapes[0].key;
 
-    active.run_at(SURFACE, |ui| {
+    active.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("active window one").auto_id().show(ui);
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    idle.resources.text.evict_cosmic_buffers(1);
+    idle.ui.resources.text.evict_cosmic_buffers(1);
     assert!(
-        !idle.resources.text.has_cosmic_buffer(idle_key),
+        !idle.ui.resources.text.has_cosmic_buffer(idle_key),
         "newer active-window churn must evict the idle window's key",
     );
 
-    let idle_paint = idle.record_test_frame(display, HALF, |_| {
+    let idle_paint = idle.frame_at(display, HALF, |_| {
         panic!("PaintOnly must retain the idle window's prior tree")
     });
     assert_eq!(idle_paint.processing, FrameProcessing::PaintOnly);
     let plan = idle_paint
         .plan
         .expect("the animated text boundary must produce a paint plan");
-    assert!(!idle.resources.text.has_cosmic_buffer(idle_key));
+    assert!(!idle.ui.resources.text.has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
-    frontend.build(idle.frame_scene(), plan);
+    frontend.build(idle.ui.frame_scene(), plan);
     let run = frontend
         .buffer
         .texts
@@ -798,7 +798,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         .find(|run| run.text.key == idle_key)
         .copied()
         .expect("PaintOnly must emit the retained text run");
-    let scene = idle.frame_scene();
+    let scene = idle.ui.frame_scene();
     let interned_text = scene.payloads.interned_text();
     assert_eq!(
         run.text.source.resolve(&interned_text),
@@ -806,7 +806,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         "PaintOnly must retain the source needed for backend reconstruction",
     );
     assert!(
-        !idle.resources.text.has_cosmic_buffer(idle_key),
+        !idle.ui.resources.text.has_cosmic_buffer(idle_key),
         "frontend composition must not reconstruct an evicted text buffer",
     );
 }
@@ -834,15 +834,15 @@ fn wrap_target_change_preserves_unbounded_cache() {
         }
     };
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(400, 200), render(60.0));
-    let after_first = measure_calls(&ui);
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    h.frame(render(60.0));
+    let after_first = measure_calls(&h.ui);
     assert!(
         after_first >= 2,
         "first frame should measure both unbounded and wrap (got {after_first})",
     );
-    ui.run_at(UVec2::new(400, 200), render(80.0));
-    let after_second = measure_calls(&ui);
+    h.frame(render(80.0));
+    let after_second = measure_calls(&h.ui);
     let delta = after_second - after_first;
     assert_eq!(
         delta, 1,
@@ -853,23 +853,23 @@ fn wrap_target_change_preserves_unbounded_cache() {
 
 #[test]
 fn state_map_persists_and_evicts_with_recorded_ids() {
-    let mut ui = Ui::for_test_at(UVec2::new(100, 100));
+    let mut h = UiHarness::new(UVec2::new(100, 100));
     let id_a = WidgetId::from_hash("a");
     let id_b = WidgetId::from_hash("b");
 
-    ui.run_at(UVec2::new(100, 100), |ui| {
+    h.frame(|ui| {
         Frame::new().id(WidgetId::from_hash("a")).show(ui);
         Frame::new().id(WidgetId::from_hash("b")).show(ui);
         *ui.state_mut::<u32>(id_a) = 11;
         *ui.state_mut::<u32>(id_b) = 22;
     });
-    ui.run_at(UVec2::new(100, 100), |ui| {
+    h.frame(|ui| {
         Frame::new().id(WidgetId::from_hash("a")).show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
         assert_eq!(*ui.state_mut::<u32>(id_a), 11);
     });
-    ui.run_at(UVec2::new(100, 100), |ui| {
+    h.frame(|ui| {
         Frame::new().id(WidgetId::from_hash("b")).show(ui);
         assert_eq!(
             *ui.state_mut::<u32>(id_b),
@@ -971,15 +971,15 @@ fn frame_pass_count_matches_action_trigger() {
     ];
 
     for (label, prime, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(100, 100));
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
-        ui.run_at(UVec2::new(100, 100), build_target);
-        prime(&mut ui);
+        h.frame(build_target);
+        prime(&mut h.ui);
 
         let count = Cell::new(0u32);
-        let frame_id_before = ui.frame_runtime.frame_id;
-        let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+        let frame_id_before = h.ui.frame_runtime.frame_id;
+        let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             count.set(count.get() + 1);
             build_target(ui);
         });
@@ -993,7 +993,7 @@ fn frame_pass_count_matches_action_trigger() {
         // pass count — pass B's anim ticks must see the same id as
         // pass A's so the integrator doesn't double-advance.
         assert_eq!(
-            ui.frame_runtime.frame_id,
+            h.ui.frame_runtime.frame_id,
             frame_id_before + 1,
             "{label}: frame_id must bump exactly once per frame (passes: {expected})",
         );
@@ -1007,8 +1007,8 @@ fn frame_pass_count_matches_action_trigger() {
 fn action_effect_runs_once_across_record_replay() {
     use crate::input::pointer::PointerButton;
 
-    let mut ui = Ui::for_test();
     let surface = UVec2::new(100, 100);
+    let mut h = UiHarness::new(surface);
     let display = Display::from_physical(surface, 1.0);
     let build = |ui: &mut Ui| {
         Button::new()
@@ -1020,16 +1020,16 @@ fn action_effect_runs_once_across_record_replay() {
             .clicked()
     };
 
-    ui.run_at(surface, |ui| {
+    h.frame(|ui| {
         let _ = build(ui);
     });
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     let mut passes = 0;
     let mut effects = 0;
-    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(16), |ui| {
+    let _ = h.frame_at_without_baseline(display, Duration::from_millis(16), |ui| {
         passes += 1;
         if build(ui) {
             effects += 1;
@@ -1049,16 +1049,16 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     const MAX_DT: f32 = FrameRuntime::MAX_DT;
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(100, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |_| {});
     });
 
     // Frame A: idle, no repaint request, now = 16ms.
-    let repaint = ui
-        .record_test_frame_without_baseline(display, Duration::from_millis(16), |ui| {
+    let repaint = h
+        .frame_at_without_baseline(display, Duration::from_millis(16), |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
@@ -1068,17 +1068,17 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         !repaint,
         "no animate-not-settled flag set — must stay false"
     );
-    assert_eq!(ui.frame_runtime.time, Duration::from_millis(16));
+    assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(16));
     assert!(
-        (ui.frame_runtime.dt - 0.016).abs() < 1e-6,
+        (h.ui.frame_runtime.dt - 0.016).abs() < 1e-6,
         "FrameRuntime::dt should be (now - prev) in seconds; got {}",
-        ui.frame_runtime.dt,
+        h.ui.frame_runtime.dt,
     );
 
     // Frame B: simulate an unsettled animation tick by setting the
     // internal flag during recording. The flag must reach `FrameOutput`.
-    let repaint = ui
-        .record_test_frame_without_baseline(display, Duration::from_millis(32), |ui| {
+    let repaint = h
+        .frame_at_without_baseline(display, Duration::from_millis(32), |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
@@ -1089,31 +1089,31 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         repaint,
         "repaint_requested set during recording must surface on FrameOutput",
     );
-    assert_eq!(ui.frame_runtime.time, Duration::from_millis(32));
+    assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(32));
     assert!(
-        (ui.frame_runtime.dt - 0.016).abs() < 1e-6,
+        (h.ui.frame_runtime.dt - 0.016).abs() < 1e-6,
         "FrameRuntime::dt should be next-frame delta; got {}",
-        ui.frame_runtime.dt,
+        h.ui.frame_runtime.dt,
     );
 
     // Frame C: oversized gap (5s) clamps dt to MAX_DT; `time` still
     // tracks true clock so animation math doesn't teleport.
-    let _ = ui.record_test_frame_without_baseline(display, Duration::from_millis(5_032), |ui| {
+    let _ = h.frame_at_without_baseline(display, Duration::from_millis(5_032), |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |_| {});
     });
-    assert_eq!(ui.frame_runtime.time, Duration::from_millis(5_032));
+    assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(5_032));
     assert!(
-        (ui.frame_runtime.dt - MAX_DT).abs() < 1e-6,
+        (h.ui.frame_runtime.dt - MAX_DT).abs() < 1e-6,
         "FrameRuntime::dt should clamp at MAX_DT; got {}",
-        ui.frame_runtime.dt,
+        h.ui.frame_runtime.dt,
     );
 
     // Frame D: prior frame's repaint_requested must NOT leak — resets
     // at the top of every `frame` regardless of pass count.
-    let repaint = ui
-        .record_test_frame_without_baseline(display, Duration::from_millis(5_048), |ui| {
+    let repaint = h
+        .frame_at_without_baseline(display, Duration::from_millis(5_048), |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
@@ -1130,22 +1130,22 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 /// and updates `fps_ema` once two frames have elapsed.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
-    let mut ui = Ui::for_test();
-    ui.debug_overlay_mut().frame_stats = true;
+    let mut h = UiHarness::new(SURFACE);
+    h.ui.debug_overlay_mut().frame_stats = true;
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    ui.record_test_frame(display, Duration::ZERO, |ui| {
+    h.ui.record_test_frame(display, Duration::ZERO, |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
             .show(ui);
     });
-    assert_eq!(ui.frame_runtime.fps_ema, 0.0);
+    assert_eq!(h.ui.frame_runtime.fps_ema, 0.0);
     assert!(
-        !ui.forest.trees[Layer::Debug].records.is_empty(),
+        !h.ui.forest.trees[Layer::Debug].records.is_empty(),
         "Debug layer must carry the frame_stats readout",
     );
 
@@ -1153,12 +1153,13 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report = ui.record_test_frame(display, Duration::from_millis(16), |ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("body"))
-            .size(50.0)
-            .show(ui);
-    });
+    let report =
+        h.ui.record_test_frame(display, Duration::from_millis(16), |ui| {
+            Frame::new()
+                .id(WidgetId::from_hash("body"))
+                .size(50.0)
+                .show(ui);
+        });
     assert!(
         matches!(
             report.plan,
@@ -1171,22 +1172,22 @@ fn frame_stats_overlay_records_partial_damage() {
         report.plan,
     );
     assert!(
-        ui.frame_runtime.fps_ema > 0.0,
+        h.ui.frame_runtime.fps_ema > 0.0,
         "fps_ema must update after the second frame; got {}",
-        ui.frame_runtime.fps_ema,
+        h.ui.frame_runtime.fps_ema,
     );
 
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
-    ui.debug_overlay_mut().frame_stats = false;
-    ui.record_test_frame_without_baseline(display, Duration::from_millis(32), |ui| {
+    h.ui.debug_overlay_mut().frame_stats = false;
+    h.ui.record_test_frame_without_baseline(display, Duration::from_millis(32), |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
             .show(ui);
     });
     assert!(
-        ui.forest.trees[Layer::Debug].records.is_empty(),
+        h.ui.forest.trees[Layer::Debug].records.is_empty(),
         "Debug layer must clear once frame_stats is turned off",
     );
 }
@@ -1196,10 +1197,10 @@ fn frame_stats_overlay_records_partial_damage() {
 /// past its deadline.
 #[test]
 fn request_repaint_after_queues_distinct_deadlines() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
     let report =
-        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
             ui.request_repaint_after(Duration::from_secs_f32(1.5));
         });
@@ -1211,7 +1212,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
     );
     // Both entries are still queued (neither has fired).
     assert_eq!(
-        ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes.len(),
         2,
         "both distinct deadlines stay queued"
     );
@@ -1219,19 +1220,19 @@ fn request_repaint_after_queues_distinct_deadlines() {
     // Run a frame at the first deadline. The earliest entry drains;
     // the second survives.
     let report =
-        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.5), |_| {});
+        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.5), |_| {});
     assert_eq!(
         report.repaint_after,
         Some(Duration::from_secs_f32(1.5)),
         "second deadline survives the first frame's drain",
     );
-    assert_eq!(ui.frame_runtime.repaint_wakes.len(), 1);
+    assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
 
     // Run a frame at the second deadline. Queue empties.
     let report =
-        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(1.5), |_| {});
+        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(1.5), |_| {});
     assert_eq!(report.repaint_after, None);
-    assert!(ui.frame_runtime.repaint_wakes.is_empty());
+    assert!(h.ui.frame_runtime.repaint_wakes.is_empty());
 }
 
 /// Re-requesting an already-queued deadline within the same frame
@@ -1241,16 +1242,16 @@ fn request_repaint_after_queues_distinct_deadlines() {
 /// spaced beyond the window stay distinct.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
-    ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+    h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
         for _ in 0..10 {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
         }
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
     });
     assert_eq!(
-        ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes.len(),
         1,
         "exact duplicate deadlines collapse to one entry",
     );
@@ -1258,8 +1259,8 @@ fn request_repaint_after_dedups_within_frame() {
     // Near-duplicates within the 1/120 s window collapse onto the
     // later deadline (prefer the longer wait); deadlines spaced
     // beyond the window stay distinct.
-    let mut ui = Ui::for_test();
-    ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
         // Earlier request first; second request lands ~4 ms later
         // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
         // to win.
@@ -1273,12 +1274,12 @@ fn request_repaint_after_dedups_within_frame() {
         // Beyond the window — must stay distinct.
         ui.request_repaint_after(Duration::from_secs_f32(0.600));
     });
-    let deadlines: Vec<Duration> = ui
-        .frame_runtime
-        .repaint_wakes
-        .iter()
-        .map(|w| w.deadline)
-        .collect();
+    let deadlines: Vec<Duration> =
+        h.ui.frame_runtime
+            .repaint_wakes
+            .iter()
+            .map(|w| w.deadline)
+            .collect();
     assert_eq!(
         deadlines,
         vec![
@@ -1303,28 +1304,28 @@ fn coalesce_floor_follows_refresh_rate() {
     };
 
     // Unknown refresh → 120 Hz fallback: 12 ms > 8.33 ms → distinct.
-    let mut ui = Ui::for_test();
-    schedule_pair(&mut ui, Display::from_physical(SURFACE, 1.0));
+    let mut h = UiHarness::new(SURFACE);
+    schedule_pair(&mut h.ui, Display::from_physical(SURFACE, 1.0));
     assert_eq!(
-        ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes.len(),
         2,
         "120 Hz fallback: 12 ms-apart wakes stay distinct",
     );
 
     // 60 Hz refresh → 16.67 ms window: 12 ms < window → collapse.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display_60 = Display {
         refresh_millihertz: Some(60_000),
         ..Display::from_physical(SURFACE, 1.0)
     };
-    schedule_pair(&mut ui, display_60);
+    schedule_pair(&mut h.ui, display_60);
     assert_eq!(
-        ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes.len(),
         1,
         "60 Hz floor: 12 ms-apart wakes collapse",
     );
     assert_eq!(
-        ui.frame_runtime.repaint_wakes[0].deadline,
+        h.ui.frame_runtime.repaint_wakes[0].deadline,
         Duration::from_millis(512),
         "the later deadline survives the collapse",
     );
@@ -1334,19 +1335,19 @@ fn coalesce_floor_follows_refresh_rate() {
 /// frame; entries strictly past `now` survive.
 #[test]
 fn request_repaint_after_drains_fired_entries() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
-    ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+    h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.0));
         ui.request_repaint_after(Duration::from_secs_f32(2.0));
     });
-    assert_eq!(ui.frame_runtime.repaint_wakes.len(), 3);
+    assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 3);
 
     // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
     let report =
-        ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(1.0), |_| {});
-    assert_eq!(ui.frame_runtime.repaint_wakes.len(), 1);
+        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(1.0), |_| {});
+    assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 
@@ -1375,16 +1376,17 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         });
     }
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record. Full path; schedules anim wake at `half`.
-    let r0 = ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+    let r0 =
+        h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
-    let r1 = ui.record_test_frame(display, half, |ui| body(ui, half));
+    let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // PaintOnly must emit a Partial damage plan covering the anim's
@@ -1410,18 +1412,21 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // is queued. Without this fold the caret stops blinking until
     // input forces a FullRecord (mouse-move regression).
     assert_eq!(r1.repaint_after, Some(half + half));
-    let r2 = ui.record_test_frame(display, half + half, |ui| body(ui, half));
+    let r2 =
+        h.ui.record_test_frame(display, half + half, |ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending OS close request vetoes the fast path: the app can only
     // read `close_requested` (and veto via `keep_open`) during record,
     // so an anim-wake frame escalates to Full while `wants_close` is
     // set — and drops back to PaintOnly once it clears.
-    ui.window_frame.close_requested = true;
-    let r3 = ui.record_test_frame(display, half * 3, |ui| body(ui, half));
+    h.ui.window_frame.close_requested = true;
+    let r3 =
+        h.ui.record_test_frame(display, half * 3, |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    ui.window_frame.close_requested = false;
-    let r4 = ui.record_test_frame(display, half * 4, |ui| body(ui, half));
+    h.ui.window_frame.close_requested = false;
+    let r4 =
+        h.ui.record_test_frame(display, half * 4, |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
 
@@ -1429,8 +1434,8 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 fn widget_text_inputs_lower_exact_bytes() {
     use crate::scene::shapes::record::ShapeRecord;
 
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
         let borrowed = String::from("borrowed");
         Text::new(borrowed.as_str())
             .id(WidgetId::from_hash("borrowed"))
@@ -1453,13 +1458,13 @@ fn widget_text_inputs_lower_exact_bytes() {
             .show(ui);
     });
 
-    let payloads = ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
     assert_eq!(
         &*interned_text.bytes,
         "borrowedownedowned internedinternedformatted 7"
     );
-    let records = &ui.forest.trees[Layer::Main].shapes.records;
+    let records = &h.ui.forest.trees[Layer::Main].shapes.records;
     assert_eq!(records.len(), 5);
     for (record, expected) in records.iter().zip([
         "borrowed",
@@ -1497,11 +1502,11 @@ fn retained_arena_text_preserves_bytes_across_record_stores() {
         ("longer retained text", "x"),
         ("x", "longer replacement text"),
     ] {
-        let mut ui = Ui::new(UiResources::isolated_mono());
+        let mut h = UiHarness::cold(SURFACE);
         let mut retained = None;
         let mut pass = 0;
 
-        ui.run_at_without_baseline(SURFACE, |ui| {
+        h.frame_without_baseline(|ui| {
             pass += 1;
             if pass == 1 {
                 let label = ui.intern(original);
@@ -1519,12 +1524,12 @@ fn retained_arena_text_preserves_bytes_across_record_stores() {
         });
 
         assert_eq!(pass, 2);
-        assert_recorded_text(&ui, original);
+        assert_recorded_text(&h.ui, original);
     }
 
-    let mut source = Ui::for_test();
+    let mut source = UiHarness::new(SURFACE);
     let mut retained = None;
-    source.run_at(SURFACE, |ui| {
+    source.frame(|ui| {
         let label = ui.intern("source window");
         retained = Some(label.clone());
         Text::new(label)
@@ -1532,20 +1537,20 @@ fn retained_arena_text_preserves_bytes_across_record_stores() {
             .show(ui);
     });
 
-    let mut destination = Ui::for_test();
-    destination.run_at(SURFACE, |ui| {
+    let mut destination = UiHarness::new(SURFACE);
+    destination.frame(|ui| {
         let _replacement = ui.intern("destination");
         Text::new(retained.as_ref().unwrap().clone())
             .id(WidgetId::from_hash("cross-window"))
             .show(ui);
     });
-    assert_recorded_text(&destination, "source window");
+    assert_recorded_text(&destination.ui, "source window");
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut retained = None;
     let mut arena_ptrs = Vec::new();
     for content in ["first arena", "second arena", "first arena reused"] {
-        ui.run_at(SURFACE, |ui| {
+        h.frame(|ui| {
             let label = ui.intern(content);
             arena_ptrs.push(Rc::as_ptr(&label.arena));
             drop(retained.replace(label.clone()));
@@ -1607,28 +1612,29 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
         });
     }
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: full record. Populates the gradient payloads and stamps
     // `ShapeBrush::Gradient(GradientId(0))` into the chrome row for the frame.
-    let r0 = ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+    let r0 =
+        h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
-        let payloads = ui.forest.record_store.payloads.borrow();
+        let payloads = h.ui.forest.record_store.payloads.borrow();
         assert_eq!(&*payloads.interned_text().bytes, "retained 7");
     }
 
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, the gradient payloads
     // would be empty here and the encoder below would panic.
-    let r1 = ui.record_test_frame(display, half, |ui| body(ui, half));
+    let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // Direct pin: the gradient interned during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        ui.forest
+        h.ui.forest
             .record_store
             .payloads
             .borrow()
@@ -1640,7 +1646,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
          ShapeBrush::Gradient indices remain valid",
     );
     {
-        let payloads = ui.forest.record_store.payloads.borrow();
+        let payloads = h.ui.forest.record_store.payloads.borrow();
         assert_eq!(
             &*payloads.interned_text().bytes,
             "retained 7",
@@ -1650,7 +1656,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     // Indirect pin: re-run the encoder against the retained tree
     // + record store. With the bug, this panicked on `gradients[id]`.
-    let _ = ui.encode_paint();
+    let _ = h.encode_paint();
 }
 
 #[test]
@@ -1701,11 +1707,11 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let mut b = ui_with_shared(&shared);
     let half = Duration::from_millis(500);
 
-    a.run_at(SURFACE, |ui| window_a(ui, half));
-    let original_row = rows(&a, &atlas)[0];
+    a.frame(|ui| window_a(ui, half));
+    let original_row = rows(&a.ui, &atlas)[0];
     atlas.flush_with(|_| ());
 
-    b.run_at_without_baseline(SURFACE, |ui| {
+    b.frame_without_baseline(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
             for index in 0..INITIAL_ATLAS_ROWS - 1 {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
@@ -1722,16 +1728,16 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             }
         });
     });
-    let b_rows: HashSet<LutRow> = rows(&b, &atlas).into_iter().collect();
+    let b_rows: HashSet<LutRow> = rows(&b.ui, &atlas).into_iter().collect();
     assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     atlas.flush_with(|_| ());
 
-    let report = a.record_test_frame(Display::from_physical(SURFACE, 1.0), half, |ui| {
+    let report = a.frame_at(Display::from_physical(SURFACE, 1.0), half, |ui| {
         window_a(ui, half)
     });
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
-    let resolved_row = rows(&a, &atlas)[0];
+    let resolved_row = rows(&a.ui, &atlas)[0];
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
@@ -1756,17 +1762,18 @@ fn paint_only_skipped_when_widget_requested_repaint() {
         });
     }
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record + `request_repaint`. Next frame must be Full.
-    let r0 = ui.record_test_frame(display, Duration::ZERO, |ui| {
+    let r0 = h.ui.record_test_frame(display, Duration::ZERO, |ui| {
         body(ui, half);
         ui.request_repaint();
     });
     assert!(r0.repaint_requested);
 
-    let r1 = ui.record_test_frame_without_baseline(display, half, |ui| body(ui, half));
+    let r1 =
+        h.ui.record_test_frame_without_baseline(display, half, |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::SingleLayout);
 }
 
@@ -1807,22 +1814,23 @@ fn input_policy_routes_paint_only_gate() {
     }
 
     {
-        let mut ui = Ui::for_test();
-        ui.input_policy = InputPolicy::OnDelta;
-        let r0 = ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.input_policy = InputPolicy::OnDelta;
+        let r0 =
+            h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+        h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         assert!(
-            ui.input.had_input_since_last_frame,
+            h.ui.input.had_input_since_last_frame,
             "had_input set after any event (precondition)",
         );
         assert!(
-            !ui.input.repaint_requested_since_last_frame,
+            !h.ui.input.repaint_requested_since_last_frame,
             "inert pointer move must not flip repaint_requested",
         );
 
-        let r1 = ui.record_test_frame(display, half, |ui| body(ui, half));
+        let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -1830,17 +1838,18 @@ fn input_policy_routes_paint_only_gate() {
         );
 
         // PaintOnly path must have drained input sticky bits and queues.
-        assert!(!ui.input.had_input_since_last_frame);
-        assert!(!ui.input.repaint_requested_since_last_frame);
+        assert!(!h.ui.input.had_input_since_last_frame);
+        assert!(!h.ui.input.repaint_requested_since_last_frame);
     }
 
     {
-        let mut ui = Ui::for_test();
-        ui.input_policy = InputPolicy::Always;
-        let _ = ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.input_policy = InputPolicy::Always;
+        let _ =
+            h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
 
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-        let r1 = ui.record_test_frame(display, half, |ui| body(ui, half));
+        h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+        let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::SingleLayout,
@@ -1851,21 +1860,22 @@ fn input_policy_routes_paint_only_gate() {
     // only with focus or a chord watcher, so prime focus first.
     {
         use crate::primitives::widget_id::WidgetId;
-        let mut ui = Ui::for_test();
-        ui.input_policy = InputPolicy::OnDelta;
-        let _ = ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
-        ui.input.focused = Some(WidgetId::from_hash("editor"));
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.input_policy = InputPolicy::OnDelta;
+        let _ =
+            h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+        h.ui.input.focused = Some(WidgetId::from_hash("editor"));
 
-        ui.on_input(InputEvent::KeyDown {
+        h.on_input(InputEvent::KeyDown {
             key: Key::Enter,
             repeat: false,
             physical: Key::Other,
         });
         assert!(
-            ui.input.repaint_requested_since_last_frame,
+            h.ui.input.repaint_requested_since_last_frame,
             "KeyDown with focus held must flip repaint_requested",
         );
-        let r1 = ui.record_test_frame(display, half, |ui| body(ui, half));
+        let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
         assert_ne!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -1880,7 +1890,7 @@ fn input_policy_routes_paint_only_gate() {
 // swapped for `InputState::default()`) to build the cascade, then
 // re-route the held `pointer_pos` against it before the user-visible
 // pass. Tests below intentionally construct a bare `Ui` to exercise true
-// cold-start; `Ui::for_test()` pre-marks the recorder warm to keep the
+// cold-start; `UiHarness::new(SURFACE)` pre-marks the recorder warm to keep the
 // rest of the test suite on single-record semantics.
 
 const COLD: UVec2 = UVec2::new(200, 200);
@@ -2023,27 +2033,31 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     );
 }
 
-/// `Ui::for_test*` constructors mark the recorder as warm by
+/// The warm `UiHarness` constructors mark the recorder as warm by
 /// synthesizing a `prev_stamp`. Tests must observe single-record
 /// semantics on their first `run_at` so they don't have to reason
 /// about the double-call contract for every assertion.
 #[test]
-fn for_test_constructors_skip_warmup() {
-    let mut ui = Ui::for_test();
+fn warm_constructors_skip_the_warmup_pass() {
+    let mut h = UiHarness::new(COLD);
     let mut calls = 0_u32;
-    ui.run_at(COLD, |_| calls += 1);
+    h.frame(|_| calls += 1);
     assert_eq!(
         calls, 1,
-        "for_test() ctor pre-marks warm; first user frame is single-pass",
+        "the warm constructors seed prev_stamp; frame 1 is single-pass",
     );
 }
 
+/// A relayout request forces a second record pass, exactly as pending
+/// action input does. `frame_value` still records both — skipping pass B
+/// would leave an empty tree — but hands back pass A's value, because
+/// pass A is the one that observes one-frame edges.
 #[test]
-fn run_at_value_returns_the_final_relayout_pass() {
-    let mut ui = Ui::for_test();
+fn frame_value_records_both_relayout_passes_and_returns_the_first() {
+    let mut h = UiHarness::new(COLD);
     let mut calls = 0_u32;
 
-    let final_call = ui.run_at_value(COLD, |ui| {
+    let captured = h.frame_value(|ui| {
         calls += 1;
         if calls == 1 {
             ui.request_relayout();
@@ -2052,7 +2066,7 @@ fn run_at_value_returns_the_final_relayout_pass() {
     });
 
     assert_eq!(calls, 2, "relayout runs exactly two record passes");
-    assert_eq!(final_call, 2, "capture returns the final pass's value");
+    assert_eq!(captured, 1, "capture returns the input-observing pass");
 }
 
 /// O5 stage 0: an unchanged frame skips the cascade (its output is
@@ -2069,34 +2083,35 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
             .show(ui);
     }
 
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| build(ui, 50.0));
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| build(ui, 50.0));
     assert!(
-        ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.dbg_cascade_ran,
         "first frame runs the cascade"
     );
 
-    ui.run_at(SURFACE, |ui| build(ui, 50.0));
+    h.frame(|ui| build(ui, 50.0));
     assert!(
-        !ui.frame_runtime.dbg_cascade_ran,
+        !h.ui.frame_runtime.dbg_cascade_ran,
         "unchanged frame skips the cascade"
     );
 
-    ui.run_at(SURFACE, |ui| build(ui, 80.0));
+    h.frame(|ui| build(ui, 80.0));
     assert!(
-        ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.dbg_cascade_ran,
         "authoring change re-runs the cascade"
     );
 
-    ui.run_at(SURFACE, |ui| build(ui, 80.0));
+    h.frame(|ui| build(ui, 80.0));
     assert!(
-        !ui.frame_runtime.dbg_cascade_ran,
+        !h.ui.frame_runtime.dbg_cascade_ran,
         "settles back to skipping"
     );
 
-    ui.run_at(UVec2::new(SURFACE.x + 1, SURFACE.y), |ui| build(ui, 80.0));
+    h.resize(UVec2::new(SURFACE.x + 1, SURFACE.y));
+    h.frame(|ui| build(ui, 80.0));
     assert!(
-        ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.dbg_cascade_ran,
         "exact-surface change re-runs the cascade"
     );
 }
@@ -2122,20 +2137,20 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
     // Settle `base` into the skip, then run `changed` and assert the
     // one-attribute delta re-runs the cascade.
     fn assert_reruns(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
-        let mut ui = Ui::for_test();
-        ui.run_at(SURFACE, |ui| base(ui));
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| base(ui));
         assert!(
-            ui.frame_runtime.dbg_cascade_ran,
+            h.ui.frame_runtime.dbg_cascade_ran,
             "{label}: first frame runs the cascade"
         );
-        ui.run_at(SURFACE, |ui| base(ui));
+        h.frame(|ui| base(ui));
         assert!(
-            !ui.frame_runtime.dbg_cascade_ran,
+            !h.ui.frame_runtime.dbg_cascade_ran,
             "{label}: unchanged frame skips the cascade"
         );
-        ui.run_at(SURFACE, |ui| changed(ui));
+        h.frame(|ui| changed(ui));
         assert!(
-            ui.frame_runtime.dbg_cascade_ran,
+            h.ui.frame_runtime.dbg_cascade_ran,
             "{label}: toggling it must re-run the cascade — the input is \
              missing from subtree_hash / the cascade fingerprint",
         );
@@ -2185,53 +2200,53 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
 fn window_requests_queue_and_survive_the_frame() {
     use crate::{WindowConfig, WindowToken};
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let open = WindowToken(7);
     let close = WindowToken(3);
 
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         ui.open_window(open, WindowConfig::new("inspector"));
         ui.close_window(close);
     });
 
     // Filed during record, still pending after the frame returned —
     // nothing in the frame pipeline clears them.
-    assert_eq!(ui.window_requests.commands.opens.len(), 1);
-    assert_eq!(ui.window_requests.commands.opens[0].token, open);
+    assert_eq!(h.ui.window_requests.commands.opens.len(), 1);
+    assert_eq!(h.ui.window_requests.commands.opens[0].token, open);
     assert_eq!(
-        ui.window_requests.commands.opens[0].config.title,
+        h.ui.window_requests.commands.opens[0].config.title,
         "inspector"
     );
-    assert_eq!(ui.window_requests.commands.closes, vec![close]);
+    assert_eq!(h.ui.window_requests.commands.closes, vec![close]);
 
     // A quiet frame (no new requests) must not drop the still-undrained
     // queue — the host might not have ticked between these two frames.
-    ui.run_at_without_baseline(SURFACE, |_| {});
+    h.frame_without_baseline(|_| {});
     assert_eq!(
-        ui.window_requests.commands.opens.len(),
+        h.ui.window_requests.commands.opens.len(),
         1,
         "queue must outlive a quiet frame"
     );
-    assert_eq!(ui.window_requests.commands.closes, vec![close]);
+    assert_eq!(h.ui.window_requests.commands.closes, vec![close]);
 
     // The host drains by `append`/`drain`-ing the vecs; emulate that and
     // confirm a third frame leaves them empty (no re-queue).
-    ui.window_requests.commands.opens.clear();
-    ui.window_requests.commands.closes.clear();
-    ui.run_at_without_baseline(SURFACE, |_| {});
-    assert!(ui.window_requests.commands.opens.is_empty());
-    assert!(ui.window_requests.commands.closes.is_empty());
+    h.ui.window_requests.commands.opens.clear();
+    h.ui.window_requests.commands.closes.clear();
+    h.frame_without_baseline(|_| {});
+    assert!(h.ui.window_requests.commands.opens.is_empty());
+    assert!(h.ui.window_requests.commands.closes.is_empty());
 
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
-    assert!(!ui.window_open(open), "empty live set ⇒ nothing open");
-    ui.resources.windows.set_live(open, true);
-    assert!(ui.window_open(open));
-    assert!(!ui.window_open(close), "only `open` is live");
+    assert!(!h.ui.window_open(open), "empty live set ⇒ nothing open");
+    h.ui.resources.windows.set_live(open, true);
+    assert!(h.ui.window_open(open));
+    assert!(!h.ui.window_open(close), "only `open` is live");
 
-    ui.window_frame.position = Some(IVec2::new(-120, 48));
-    ui.window_frame.maximized = true;
-    let geometry = ui.window_geometry();
+    h.ui.window_frame.position = Some(IVec2::new(-120, 48));
+    h.ui.window_frame.maximized = true;
+    let geometry = h.ui.window_geometry();
     assert_eq!(geometry.inner_size, SURFACE);
     assert_eq!(geometry.outer_position, Some(IVec2::new(-120, 48)));
     assert!(geometry.maximized);
@@ -2245,21 +2260,21 @@ fn window_requests_queue_and_survive_the_frame() {
 /// here so the two flags can't drift out from under that resolution.
 #[test]
 fn close_request_veto_protocol() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
 
     // No close pending: the flag is false and keep_open never fires.
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         assert!(
             !ui.close_requested(),
             "no close pending ⇒ close_requested() false"
         );
     });
-    assert!(!ui.window_requests.close_vetoed);
+    assert!(!h.ui.window_requests.close_vetoed);
 
     // Host signals a close; an app that vetoes keeps the window open.
-    ui.window_frame.close_requested = true;
-    ui.window_requests.close_vetoed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.ui.window_frame.close_requested = true;
+    h.ui.window_requests.close_vetoed = false;
+    h.frame_without_baseline(|ui| {
         assert!(
             ui.close_requested(),
             "host signalled close ⇒ close_requested() true"
@@ -2267,10 +2282,10 @@ fn close_request_veto_protocol() {
         ui.keep_open();
     });
     assert!(
-        ui.window_requests.close_vetoed,
+        h.ui.window_requests.close_vetoed,
         "keep_open must set the veto the host reads"
     );
-    let should_close = ui.window_frame.close_requested && !ui.window_requests.close_vetoed;
+    let should_close = h.ui.window_frame.close_requested && !h.ui.window_requests.close_vetoed;
     assert!(
         !should_close,
         "a vetoed request must NOT resolve to a close"
@@ -2278,12 +2293,12 @@ fn close_request_veto_protocol() {
 
     // Same signal, app ignores it: resolves to a real close. (The host
     // resets the veto before every draw.)
-    ui.window_requests.close_vetoed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.ui.window_requests.close_vetoed = false;
+    h.frame_without_baseline(|ui| {
         assert!(ui.close_requested());
     });
-    assert!(!ui.window_requests.close_vetoed, "untouched ⇒ no veto");
-    let should_close = ui.window_frame.close_requested && !ui.window_requests.close_vetoed;
+    assert!(!h.ui.window_requests.close_vetoed, "untouched ⇒ no veto");
+    let should_close = h.ui.window_frame.close_requested && !h.ui.window_requests.close_vetoed;
     assert!(should_close, "an un-vetoed request must resolve to a close");
 }
 
@@ -2314,16 +2329,16 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
         });
     }
     let assert_reruns = |label: &str, base: &dyn Fn(&mut Ui), changed: &dyn Fn(&mut Ui)| {
-        let mut ui = Ui::for_test();
-        ui.run_at(SURFACE, |ui| base(ui));
-        ui.run_at(SURFACE, |ui| base(ui));
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| base(ui));
+        h.frame(|ui| base(ui));
         assert!(
-            !ui.frame_runtime.dbg_cascade_ran,
+            !h.ui.frame_runtime.dbg_cascade_ran,
             "{label}: unchanged frame skips the cascade"
         );
-        ui.run_at(SURFACE, |ui| changed(ui));
+        h.frame(|ui| changed(ui));
         assert!(
-            ui.frame_runtime.dbg_cascade_ran,
+            h.ui.frame_runtime.dbg_cascade_ran,
             "{label}: identity change must re-run the cascade",
         );
     };
@@ -2348,10 +2363,10 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
 #[test]
 fn freshly_disabled_subtree_masks_stale_interactions() {
     let target = WidgetId::from_hash("target");
-    let mut ui = Ui::for_test();
-    let run = |ui: &mut Ui, disabled: bool| {
+    let mut h = UiHarness::new(SURFACE);
+    let run = |h: &mut UiHarness, disabled: bool| {
         let mut resp = None;
-        ui.run_at(SURFACE, |ui| {
+        h.frame(|ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("wrap"))
                 .disabled(disabled)
@@ -2362,14 +2377,14 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         });
         resp.unwrap()
     };
-    run(&mut ui, false);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-    let enabled = run(&mut ui, false);
+    run(&mut h, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+    let enabled = run(&mut h, false);
     assert!(enabled.hovered, "sanity: pointer hovers the button");
     assert!(!enabled.disabled);
     // Disable frame: stale cascade still routes the hover; the read
     // must mask it.
-    let disabled = run(&mut ui, true);
+    let disabled = run(&mut h, true);
     assert!(disabled.disabled, "ancestor-disabled ORs in lag-free");
     assert!(
         !disabled.hovered,
@@ -2381,9 +2396,9 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = Color::rgb(0.8, 0.1, 0.2);
-    let mut style = ui.theme.button.clone();
+    let mut style = h.ui.theme.button.clone();
     style.looks.disabled.background = Some(Background::fill(disabled_fill));
-    let response = ui.run_at_value(SURFACE, |ui| {
+    let response = h.frame_value(|ui| {
         Button::new()
             .id(self_id)
             .label("disabled")
@@ -2396,8 +2411,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         !response.disabled,
         "eager response must retain the unmerged cascade snapshot",
     );
-    let endpoint = ui.cascades.by_id[&self_id];
-    let chrome = ui.forest.trees[endpoint.layer]
+    let endpoint = h.ui.cascades.by_id[&self_id];
+    let chrome = h.ui.forest.trees[endpoint.layer]
         .chrome(endpoint.node)
         .expect("disabled button chrome");
     let ShapeBrush::Solid(actual_fill) = chrome.fill else {
@@ -2418,21 +2433,21 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
 /// longer the stall.
 #[test]
 fn fps_ema_reads_unclamped_frame_delta() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
     let mut noop = |_: &mut Ui| {};
-    ui.record_test_frame(display, Duration::ZERO, &mut noop);
-    ui.record_test_frame(display, Duration::from_secs(1), &mut noop);
+    h.ui.record_test_frame(display, Duration::ZERO, &mut noop);
+    h.ui.record_test_frame(display, Duration::from_secs(1), &mut noop);
     assert!(
-        (ui.frame_runtime.fps_ema - 1.0).abs() < 1e-6,
+        (h.ui.frame_runtime.fps_ema - 1.0).abs() < 1e-6,
         "got {}",
-        ui.frame_runtime.fps_ema
+        h.ui.frame_runtime.fps_ema
     );
-    ui.record_test_frame_without_baseline(display, Duration::from_secs(3), &mut noop);
+    h.ui.record_test_frame_without_baseline(display, Duration::from_secs(3), &mut noop);
     assert!(
-        (ui.frame_runtime.fps_ema - 0.95).abs() < 1e-6,
+        (h.ui.frame_runtime.fps_ema - 0.95).abs() < 1e-6,
         "got {}",
-        ui.frame_runtime.fps_ema
+        h.ui.frame_runtime.fps_ema
     );
 }
 
@@ -2442,13 +2457,16 @@ fn fps_ema_reads_unclamped_frame_delta() {
 #[test]
 fn open_window_dedups_by_token_within_a_frame() {
     use crate::window::{WindowConfig, WindowToken};
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let cfg = WindowConfig::new;
-    ui.open_window(WindowToken(7), cfg("first"));
-    ui.open_window(WindowToken(7), cfg("second"));
-    ui.open_window(WindowToken(8), cfg("other"));
-    assert_eq!(ui.window_requests.commands.opens.len(), 2);
-    assert_eq!(ui.window_requests.commands.opens[0].token, WindowToken(7));
-    assert_eq!(ui.window_requests.commands.opens[0].config.title, "second");
-    assert_eq!(ui.window_requests.commands.opens[1].token, WindowToken(8));
+    h.ui.open_window(WindowToken(7), cfg("first"));
+    h.ui.open_window(WindowToken(7), cfg("second"));
+    h.ui.open_window(WindowToken(8), cfg("other"));
+    assert_eq!(h.ui.window_requests.commands.opens.len(), 2);
+    assert_eq!(h.ui.window_requests.commands.opens[0].token, WindowToken(7));
+    assert_eq!(
+        h.ui.window_requests.commands.opens[0].config.title,
+        "second"
+    );
+    assert_eq!(h.ui.window_requests.commands.opens[1].token, WindowToken(8));
 }

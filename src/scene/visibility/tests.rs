@@ -8,6 +8,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
 use crate::scene::visibility::Visibility;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, spinner::Spinner};
 use glam::UVec2;
 use std::time::Duration;
@@ -53,11 +54,11 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
         InvisibleSpinnerCase::Collapsed,
         InvisibleSpinnerCase::HiddenAncestor,
     ] {
-        let mut ui = Ui::for_test();
-        let report = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+        let mut h = UiHarness::new(display.physical);
+        let report = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             show_spinner_case(ui, case);
         });
-        let tree = &ui.forest.trees[Layer::Main];
+        let tree = &h.ui.forest.trees[Layer::Main];
 
         assert_eq!(
             tree.shapes.records.len(),
@@ -88,39 +89,42 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
             .show(ui);
     }
 
-    let mut ui = Ui::for_test();
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
+    let mut h = UiHarness::new(display.physical);
 
-    let visible = ui.record_test_frame(display, Duration::ZERO, |ui| {
+    let visible = h.frame_at(display, Duration::ZERO, |ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
-    assert_eq!(ui.forest.trees[Layer::Main].paint_anims.entries.len(), 1,);
+    assert_eq!(h.ui.forest.trees[Layer::Main].paint_anims.entries.len(), 1,);
 
-    ui.request_repaint();
+    h.ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
-    let hidden = ui.record_test_frame(display, hidden_at, |ui| {
+    let hidden = h.frame_at(display, hidden_at, |ui| {
         show_spinner(ui, Visibility::Hidden);
     });
     assert_eq!(hidden.repaint_after, None);
     assert_eq!(
-        ui.forest.trees[Layer::Main].shapes.records.len(),
+        h.ui.forest.trees[Layer::Main].shapes.records.len(),
         1,
         "hiding must retain the authored spinner shape",
     );
     assert!(
-        ui.forest.trees[Layer::Main].paint_anims.entries.is_empty(),
+        h.ui.forest.trees[Layer::Main]
+            .paint_anims
+            .entries
+            .is_empty(),
         "hiding must drop the active animation row",
     );
 
-    ui.request_repaint();
+    h.ui.request_repaint();
     let shown_at = Duration::from_millis(32);
-    let shown = ui.record_test_frame_without_baseline(display, shown_at, |ui| {
+    let shown = h.frame_at_without_baseline(display, shown_at, |ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(shown.repaint_after, Some(shown_at));
     assert_eq!(
-        ui.forest.trees[Layer::Main].paint_anims.entries.len(),
+        h.ui.forest.trees[Layer::Main].paint_anims.entries.len(),
         1,
         "showing must restore the active animation row",
     );
@@ -128,9 +132,9 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 
 #[test]
 fn collapsed_child_consumes_no_space_in_hstack() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);
-    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -153,10 +157,10 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             .node();
     });
 
-    let kids: Vec<_> = ui.main_child_ids(root);
-    let a = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let gone = ui.layout[Layer::Main].rect[kids[1].idx()];
-    let b = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let kids: Vec<_> = h.main_child_ids(root);
+    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let gone = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
 
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.size.w, 40.0);
@@ -169,9 +173,9 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 
 #[test]
 fn collapsed_does_not_consume_fill_weight() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);
-    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -194,9 +198,9 @@ fn collapsed_does_not_consume_fill_weight() {
             .node();
     });
 
-    let kids: Vec<_> = ui.main_child_ids(root);
-    let a = ui.layout[Layer::Main].rect[kids[0].idx()];
-    let b = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let kids: Vec<_> = h.main_child_ids(root);
+    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
@@ -207,9 +211,9 @@ fn collapsed_does_not_consume_fill_weight() {
 fn hidden_keeps_slot_but_emits_no_draws() {
     use crate::renderer::frontend::record_sink::PaintCall;
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);
-    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -244,16 +248,16 @@ fn hidden_keeps_slot_but_emits_no_draws() {
             .node();
     });
 
-    let kids: Vec<_> = ui.main_child_ids(root);
-    let hid = ui.layout[Layer::Main].rect[kids[1].idx()];
-    let b = ui.layout[Layer::Main].rect[kids[2].idx()];
+    let kids: Vec<_> = h.main_child_ids(root);
+    let hid = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
     // Hidden node still occupies its slot.
     assert_eq!(hid.size.w, 40.0);
     // ...so b's offset includes hidden's width + both gaps.
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
     // ...but emits no DrawRect.
-    let cmds = ui.encode_paint();
+    let cmds = h.encode_paint();
     let draws = cmds
         .calls
         .iter()
@@ -266,9 +270,9 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 fn hidden_button_does_not_click() {
     use glam::Vec2;
 
-    let mut ui = Ui::for_test();
     let surface = UVec2::new(400, 200);
-    ui.run_at_without_baseline(surface, |ui| {
+    let mut h = UiHarness::new(surface);
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("invisible"))
@@ -278,10 +282,10 @@ fn hidden_button_does_not_click() {
         });
     });
 
-    ui.click_at(Vec2::new(50.0, 20.0));
+    h.click_at(Vec2::new(50.0, 20.0));
 
     let mut clicked = false;
-    ui.run_at_without_baseline(surface, |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked = Button::new()
                 .id(WidgetId::from_hash("invisible"))

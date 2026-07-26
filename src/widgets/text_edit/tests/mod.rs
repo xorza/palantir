@@ -38,6 +38,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
@@ -133,11 +134,8 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
 /// `ui_at_no_cosmic` constructs a Ui without cosmic, so the mono
 /// fallback drives caret-x (8 px/char at 16 px font) — predictable
 /// widths the click-positioning tests rely on.
-fn ui_at_no_cosmic(size: UVec2) -> Ui {
-    use crate::display::Display;
-    let mut ui = Ui::for_test();
-    ui.display = Display::from_physical(size, 1.0);
-    ui
+fn ui_at_no_cosmic(size: UVec2) -> UiHarness {
+    UiHarness::new(size)
 }
 
 /// Multi-line builder flag: `Enter` inserts `\n` (instead of being

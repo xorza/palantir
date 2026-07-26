@@ -7,6 +7,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -26,23 +27,23 @@ fn build_focusable_leaf(ui: &mut Ui) {
 
 #[test]
 fn focused_reflects_focused_id_synchronously() {
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(200, 200), build_focusable_leaf);
-    assert!(!ui.response_for(focusable_id()).focused);
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_focusable_leaf);
+    assert!(!h.ui.response_for(focusable_id()).focused);
 
-    ui.request_focus(Some(focusable_id()));
+    h.request_focus(Some(focusable_id()));
     assert!(
-        ui.response_for(focusable_id()).focused,
+        h.ui.response_for(focusable_id()).focused,
         "focused must be true the same frame as request_focus",
     );
 
-    ui.request_focus(None);
-    assert!(!ui.response_for(focusable_id()).focused);
+    h.request_focus(None);
+    assert!(!h.ui.response_for(focusable_id()).focused);
 }
 
 #[test]
 fn disabled_reflects_cascaded_ancestor_flag() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(200, 200));
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("parent"))
@@ -54,11 +55,11 @@ fn disabled_reflects_cascaded_ancestor_flag() {
                     .show(ui);
             });
     };
-    ui.run_at(UVec2::new(200, 200), build);
-    ui.run_at(UVec2::new(200, 200), build);
+    h.frame(build);
+    h.frame(build);
 
-    let parent_state = ui.response_for(WidgetId::from_hash("parent"));
-    let child_state = ui.response_for(WidgetId::from_hash("child"));
+    let parent_state = h.ui.response_for(WidgetId::from_hash("parent"));
+    let child_state = h.ui.response_for(WidgetId::from_hash("child"));
     assert!(parent_state.disabled);
     assert!(
         child_state.disabled,
@@ -68,7 +69,7 @@ fn disabled_reflects_cascaded_ancestor_flag() {
 
 #[test]
 fn disabled_false_when_chain_clean() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(200, 200));
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("parent"))
@@ -79,9 +80,9 @@ fn disabled_false_when_chain_clean() {
                     .show(ui);
             });
     };
-    ui.run_at(UVec2::new(200, 200), build);
-    ui.run_at(UVec2::new(200, 200), build);
-    assert!(!ui.response_for(WidgetId::from_hash("child")).disabled);
+    h.frame(build);
+    h.frame(build);
+    assert!(!h.ui.response_for(WidgetId::from_hash("child")).disabled);
 }
 
 /// The once-per-frame quiescence predicate that gates `response_for`'s
@@ -165,13 +166,13 @@ fn build_button(id: WidgetId) -> impl FnMut(&mut Ui) {
 /// interaction field reads its default.
 #[test]
 fn quiescent_frame_keeps_geometry_defaults_interaction() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(button_surface());
     let id = WidgetId::from_hash("btn");
     // No pointer is ever fed → the frame is quiescent, so the snapshot
     // taken at record-pass start stays valid for this post-frame read.
-    ui.run_at(button_surface(), build_button(id));
+    h.frame(build_button(id));
 
-    let r = ui.response_for(id);
+    let r = h.ui.response_for(id);
     let rect = r
         .rect
         .expect("arranged rect present on the quiescent fast path");
@@ -197,17 +198,17 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 /// pre-transform widget-local pointer.
 #[test]
 fn non_quiescent_frame_computes_interaction() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(button_surface());
     let id = WidgetId::from_hash("btn");
-    ui.run_at(button_surface(), build_button(id));
+    h.frame(build_button(id));
 
     let pointer = Vec2::new(50.0, 20.0);
-    ui.on_input(InputEvent::PointerMoved(pointer));
+    h.on_input(InputEvent::PointerMoved(pointer));
     // Run a frame *after* the pointer event so the snapshot reflects it,
     // then read — the pointer makes the frame non-quiescent (full path).
-    ui.run_at(button_surface(), build_button(id));
+    h.frame(build_button(id));
 
-    let r = ui.response_for(id);
+    let r = h.ui.response_for(id);
     let layout_rect = r.layout_rect.expect("arranged layout rect present");
     assert!(
         r.hovered,
@@ -227,7 +228,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
     let local_delta = Vec2::new(12.0, -8.0);
 
     for scale in [0.5, 1.0, 2.0] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(300, 200));
         let build = |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scaled-parent"))
@@ -240,20 +241,20 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
                         .show(ui);
                 });
         };
-        ui.run_at(UVec2::new(300, 200), build);
+        h.frame(build);
 
-        let arranged = ui.response_for(id);
+        let arranged = h.ui.response_for(id);
         let layout = arranged.layout_rect.expect("button arranged");
         let press = arranged.transform.apply_point(layout.min + local_pointer);
         let pointer = arranged
             .transform
             .apply_point(layout.min + local_pointer + local_delta);
-        ui.on_input(InputEvent::PointerMoved(press));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerMoved(pointer));
-        ui.run_at(UVec2::new(300, 200), build);
+        h.on_input(InputEvent::PointerMoved(press));
+        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.on_input(InputEvent::PointerMoved(pointer));
+        h.frame(build);
 
-        let response = ui.response_for(id);
+        let response = h.ui.response_for(id);
         assert_eq!(
             response.pointer_local,
             Some(local_pointer + local_delta),
@@ -269,7 +270,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
 
 #[test]
 fn pointer_local_uses_unclipped_widget_origin() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(button_surface());
     let id = WidgetId::from_hash("clipped-child");
     let build = |ui: &mut Ui| {
         Panel::canvas()
@@ -284,9 +285,9 @@ fn pointer_local_uses_unclipped_widget_origin() {
                     .show(ui);
             });
     };
-    ui.run_at(button_surface(), build);
+    h.frame(build);
 
-    let arranged = ui.response_for(id);
+    let arranged = h.ui.response_for(id);
     let visible = arranged.rect.expect("child visible through clip");
     let layout = arranged.layout_rect.expect("child arranged");
     let surface_origin = arranged.transform.apply_point(layout.min);
@@ -296,9 +297,9 @@ fn pointer_local_uses_unclipped_widget_origin() {
     );
 
     let pointer = visible.min + Vec2::new(10.0, 10.0);
-    ui.on_input(InputEvent::PointerMoved(pointer));
-    ui.run_at(button_surface(), build);
-    let response = ui.response_for(id);
+    h.on_input(InputEvent::PointerMoved(pointer));
+    h.frame(build);
+    let response = h.ui.response_for(id);
     assert_eq!(
         response.pointer_local,
         Some(response.transform.inverse_vector(pointer - surface_origin)),

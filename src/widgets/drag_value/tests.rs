@@ -6,6 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::drag_value::{DragNum, DragValue, DragValueState, round_to_decimals};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -27,7 +28,7 @@ struct Signals {
 /// frame's record passes (one-frame edges only show in the first pass);
 /// `commits` counts per pass so a double-fire is visible.
 fn deferred_frame(
-    ui: &mut Ui,
+    h: &mut UiHarness,
     id: WidgetId,
     canonical: &mut f64,
     editable: bool,
@@ -38,7 +39,7 @@ fn deferred_frame(
         committed: false,
         commits: 0,
     };
-    ui.run_at(UVec2::new(300, 100), |ui| {
+    h.frame(|ui| {
         let mut draft = *canonical;
         let r = DragValue::new(&mut draft)
             .editable(editable)
@@ -76,39 +77,39 @@ fn edit_buffer(ui: &mut Ui, id: WidgetId) -> &mut String {
 #[test]
 fn scrub_commits_once_on_release_for_deferred_caller() {
     let id = WidgetId::from_hash("dv-scrub-commit");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
 
     // Settle a layout frame so the cascade exists for pointer routing.
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // Press at x=50 inside the 100×40 chip, drag 20px right:
     // draft = anchor 10 + 20px * speed 1 = 30. Live write, no commit,
     // and the deferred caller leaves canonical untouched.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed, "mid-drag: live write, no commit");
     assert_eq!(canonical, 10.0, "deferred caller ignores mid-drag writes");
 
     // 5px more: anchor math re-derives 10 + 25 = 35 even though the
     // caller re-seeded the stale 10 into the draft.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed);
     assert_eq!(canonical, 10.0);
 
     // Release: exactly one commit (in exactly one record pass), carrying
     // the final scrubbed value into the stale-seeded draft.
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.committed, "release commits the scrub");
     assert_eq!(s.commits, 1, "one commit, one record pass");
     assert_eq!(canonical, 35.0);
 
     // Idle frame after: no residual signals — one commit per gesture.
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.changed && !s.committed);
     assert_eq!(canonical, 35.0);
 }
@@ -119,7 +120,7 @@ fn scrub_distance_is_scale_invariant() {
 
     let id = WidgetId::from_hash("scaled-drag-value");
     for scale in [0.5, 1.0, 2.0] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(300, 120));
         let mut value = 10.0_f64;
         let build = |ui: &mut Ui, value: &mut f64| {
             Panel::zstack()
@@ -136,9 +137,9 @@ fn scrub_distance_is_scale_invariant() {
                         .show(ui);
                 });
         };
-        ui.run_at(UVec2::new(300, 120), |ui| build(ui, &mut value));
+        h.frame(|ui| build(ui, &mut value));
 
-        let response = ui.response_for(id);
+        let response = h.ui.response_for(id);
         let layout = response.layout_rect.expect("drag value arranged");
         let press = response
             .transform
@@ -146,10 +147,10 @@ fn scrub_distance_is_scale_invariant() {
         let drag = response
             .transform
             .apply_point(layout.min + Vec2::new(70.0, 20.0));
-        ui.on_input(InputEvent::PointerMoved(press));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerMoved(drag));
-        ui.run_at(UVec2::new(300, 120), |ui| build(ui, &mut value));
+        h.on_input(InputEvent::PointerMoved(press));
+        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.on_input(InputEvent::PointerMoved(drag));
+        h.frame(|ui| build(ui, &mut value));
 
         assert_eq!(value, 30.0, "20 logical px at {scale}× must add exactly 20",);
     }
@@ -160,28 +161,28 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     // Mid-scrub window exit must not fire a premature commit, and the
     // resumed drag's remainder must still commit on the real release.
     let id = WidgetId::from_hash("dv-pointer-leave");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // Pointer crosses the window edge: drag unobservable, but latched.
-    ui.on_input(InputEvent::PointerLeft);
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerLeft);
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "window exit is not a release");
     assert_eq!(canonical, 10.0);
 
     // Re-enter with the button held and keep scrubbing: 10 + 25 = 35.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed, "resumed drag keeps writing");
 
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.committed && s.commits == 1);
     assert_eq!(canonical, 35.0, "one gesture, one commit, full travel");
 }
@@ -189,28 +190,28 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
 #[test]
 fn transient_disable_does_not_swallow_the_gesture() {
     let id = WidgetId::from_hash("dv-transient-disable");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // One disabled frame mid-drag: no write, but the gesture survives.
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, true);
+    let s = deferred_frame(&mut h, id, &mut canonical, false, true);
     assert!(!s.changed && !s.committed, "disabled frame writes nothing");
 
     // Re-enabled with the button still held: one settle frame (the
     // cascaded disabled flag is one frame stale), then scrubbing resumes.
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    deferred_frame(&mut h, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed, "scrub resumes after the disable blip");
 
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.committed && s.commits == 1, "release still commits");
     assert_eq!(canonical, 35.0);
 }
@@ -218,21 +219,21 @@ fn transient_disable_does_not_swallow_the_gesture() {
 #[test]
 fn release_while_disabled_drops_the_gesture() {
     let id = WidgetId::from_hash("dv-disabled-release");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // Released on a disabled frame: a locked control emits no edit, and
     // the gesture is over — a later enabled frame must not revive it.
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, true);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, true);
     assert!(!s.committed, "disabled release drops the gesture");
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed && !s.changed);
     assert_eq!(canonical, 10.0);
 }
@@ -242,18 +243,18 @@ fn non_left_drags_do_not_scrub() {
     // A right-button drag over the chip is someone else's gesture
     // (context menu, breaker) — it must neither write nor commit.
     let id = WidgetId::from_hash("dv-right-drag");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, false, false);
+    deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Right));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Right));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.changed && !s.committed, "right drag must not scrub");
 
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Right));
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Right));
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "right release must not commit");
     assert_eq!(canonical, 10.0);
 }
@@ -263,63 +264,63 @@ fn click_to_edit_types_and_commits_on_enter() {
     // The real pointer path: a plain click opens the editor seeded from
     // the current value; typing + Enter commits once.
     let id = WidgetId::from_hash("dv-click-edit");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed, "the click itself commits nothing");
 
     // Editor frame: entry seeds the buffer from the value.
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed);
-    assert_eq!(edit_buffer(&mut ui, id), "5.0", "seeded on entry");
+    assert_eq!(edit_buffer(&mut h.ui, id), "5.0", "seeded on entry");
 
     // First keystroke replaces the select-all'd seed; second appends.
-    key(&mut ui, Key::Char('7'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('2'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('7'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('2'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 5.0, "typing is a live draft, not a commit");
 
-    key(&mut ui, Key::Enter);
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Enter);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(s.committed && s.commits == 1, "Enter commits once");
     assert_eq!(canonical, 72.0);
 
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed, "commit is a one-frame edge");
 }
 
 #[test]
 fn escape_blur_commits_pending_draft_once() {
     let id = WidgetId::from_hash("dv-escape-blur");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    ui.request_focus(Some(id));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('4'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('2'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.request_focus(Some(id));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('4'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('2'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Escape blurs the editor (typing left no selection, so one Escape).
     // The pending draft resolves on the first chip record after the blur —
     // the same frame when it re-records, the next frame otherwise — with
     // exactly one commit either way.
-    key(&mut ui, Key::Escape);
-    let a = deferred_frame(&mut ui, id, &mut canonical, true, false);
-    let b = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Escape);
+    let a = deferred_frame(&mut h, id, &mut canonical, true, false);
+    let b = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(a.committed || b.committed, "blur commits the draft");
     assert_eq!(a.commits + b.commits, 1, "exactly one commit");
     assert_eq!(canonical, 42.0);
 
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed);
 }
 
@@ -329,29 +330,29 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     // request_focus re-opened the previous session's stale text and
     // committed it over an externally-changed value.
     let id = WidgetId::from_hash("dv-fresh-seed");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // First session commits 42 and leaves "42" in the buffer state.
-    ui.request_focus(Some(id));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('4'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('2'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Enter);
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.request_focus(Some(id));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('4'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('2'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Enter);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 42.0);
 
     // The value changes externally; a new focus must show 99, not 42.
     canonical = 99.0;
-    ui.request_focus(Some(id));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    assert_eq!(edit_buffer(&mut ui, id), "99.0");
+    h.request_focus(Some(id));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    assert_eq!(edit_buffer(&mut h.ui, id), "99.0");
 
-    key(&mut ui, Key::Enter);
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Enter);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(canonical, 99.0, "no stale-buffer revert to 42");
 }
 
@@ -360,26 +361,26 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // Edit entry must replace the scrub state; otherwise its release can
     // overwrite the typed value with the stale scrubbed result.
     let id = WidgetId::from_hash("dv-latch-vs-edit");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Scrub 10 → 30, then focus the editor mid-drag.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    ui.request_focus(Some(id));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    h.request_focus(Some(id));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(matches!(
-        ui.state_mut::<DragValueState>(id),
+        h.ui.state_mut::<DragValueState>(id),
         DragValueState::Editing { .. }
     ));
 
     // The release lands on an editor frame, so no scrub commit may surface
     // now or later.
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed, "disarmed scrub must not commit into the edit");
 
     // A typed draft (hand-set: the still-held-then-released button placed
@@ -387,13 +388,13 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // the typed path is covered by `click_to_edit_types_and_commits_on_enter`)
     // + Enter: the draft wins, exactly one commit — the stale scrubbed 30
     // must not overwrite it from the same-frame chip pass.
-    *edit_buffer(&mut ui, id) = "42".to_string();
-    key(&mut ui, Key::Enter);
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    *edit_buffer(&mut h.ui, id) = "42".to_string();
+    key(&mut h.ui, Key::Enter);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(s.committed && s.commits == 1);
     assert_eq!(canonical, 42.0, "typed value, not the stale scrub");
 
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed && !s.changed, "no residual scrub commit");
     assert_eq!(canonical, 42.0);
 }
@@ -401,19 +402,19 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
 #[test]
 fn unparseable_and_non_finite_drafts_commit_without_writing() {
     let id = WidgetId::from_hash("dv-bad-drafts");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 42.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Hand-set the buffer after entry (simulates typed garbage); the
     // blur resolve must not clobber the value with junk, NaN, or inf —
     // non-finite parses poison every later scrub, so they're rejected.
     for bad in ["junk", "nan", "inf", "-inf"] {
-        ui.request_focus(Some(id));
-        deferred_frame(&mut ui, id, &mut canonical, true, false);
-        *edit_buffer(&mut ui, id) = bad.to_string();
-        ui.request_focus(None);
-        let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+        h.request_focus(Some(id));
+        deferred_frame(&mut h, id, &mut canonical, true, false);
+        *edit_buffer(&mut h.ui, id) = bad.to_string();
+        h.request_focus(None);
+        let s = deferred_frame(&mut h, id, &mut canonical, true, false);
         assert!(
             s.committed && !s.changed,
             "{bad:?}: commit reported, nothing written"
@@ -425,28 +426,28 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
 #[test]
 fn disabling_mid_edit_discards_the_draft() {
     let id = WidgetId::from_hash("dv-disable-mid-edit");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    ui.request_focus(Some(id));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('9'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.request_focus(Some(id));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('9'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // The widget is disabled while the user edits: focus is kicked, the
     // draft is discarded — a locked control must not emit an edit.
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, true);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, true);
     assert!(!s.committed, "locked control emits no commit");
-    assert_eq!(ui.focused_id(), None, "disable kicks the editor's focus");
+    assert_eq!(h.focused_id(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
-        ui.state_mut::<DragValueState>(id),
+        h.ui.state_mut::<DragValueState>(id),
         DragValueState::Idle
     ));
 
     // Re-enabled later: no phantom replay of the stale "9".
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed && !s.changed);
     assert_eq!(canonical, 5.0);
 }
@@ -456,28 +457,28 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     // A pending draft must not survive a read-only frame and replay when
     // the caller later enables editing again.
     let id = WidgetId::from_hash("dv-editable-toggle");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    ui.request_focus(Some(id));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
-    key(&mut ui, Key::Char('9'));
-    key(&mut ui, Key::Char('9'));
-    key(&mut ui, Key::Char('9'));
-    deferred_frame(&mut ui, id, &mut canonical, true, false);
+    h.request_focus(Some(id));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
+    key(&mut h.ui, Key::Char('9'));
+    key(&mut h.ui, Key::Char('9'));
+    key(&mut h.ui, Key::Char('9'));
+    deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Rendered read-only mid-edit: the pending draft is discarded.
-    ui.request_focus(None);
-    let s = deferred_frame(&mut ui, id, &mut canonical, false, false);
+    h.request_focus(None);
+    let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "read-only frame commits nothing");
     assert!(matches!(
-        ui.state_mut::<DragValueState>(id),
+        h.ui.state_mut::<DragValueState>(id),
         DragValueState::Idle
     ));
 
     // Back to editable, focus elsewhere: nothing to replay.
-    let s = deferred_frame(&mut ui, id, &mut canonical, true, false);
+    let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed && !s.changed, "no phantom commit of '999'");
     assert_eq!(canonical, 5.0);
 }
@@ -622,15 +623,15 @@ fn editing_a_long_value_holds_the_field_width() {
         node.unwrap()
     };
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(surface);
     let mut node = None;
-    ui.run_at(surface, |ui| node = Some(render(ui, &mut v)));
-    let display_w = ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
+    h.frame(|ui| node = Some(render(ui, &mut v)));
+    let display_w = h.ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
 
     // Enter edit mode; entry seeds the full-precision text.
-    ui.request_focus(Some(id));
-    ui.run_at(surface, |ui| node = Some(render(ui, &mut v)));
-    let edit_w = ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
+    h.request_focus(Some(id));
+    h.frame(|ui| node = Some(render(ui, &mut v)));
+    let edit_w = h.ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
 
     assert!(display_w >= 40.0, "min_size floor honored ({display_w})");
     assert_eq!(
@@ -660,7 +661,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     // (logical, 120) width and floor at `min_size`, else feeding the 60px
     // post-transform width makes `resolve_axis_size`'s `clamp(100, 60)`
     // panic.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(surface);
     let draw = |ui: &mut Ui, v: &mut f64| {
         Panel::zstack()
             .id(WidgetId::from_hash("dv-zoom-row"))
@@ -676,9 +677,9 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
                     .show(ui);
             });
     };
-    ui.run_at(surface, |ui| draw(ui, &mut v));
-    ui.request_focus(Some(id));
-    ui.run_at(surface, |ui| draw(ui, &mut v));
+    h.frame(|ui| draw(ui, &mut v));
+    h.request_focus(Some(id));
+    h.frame(|ui| draw(ui, &mut v));
 }
 
 /// Entering edit mode must not move, resize, or re-place the widget.
@@ -751,14 +752,14 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
         )
     }
 
-    let mut ui = Ui::for_test();
-    ui.run_at(UVec2::new(300, 100), scene);
-    let chip = placement(&ui, id);
+    let mut h = UiHarness::new(UVec2::new(300, 100));
+    h.frame(scene);
+    let chip = placement(&h.ui, id);
 
     // Focus flips the same widget to its inline editor.
-    ui.request_focus(Some(id));
-    ui.run_at_without_baseline(UVec2::new(300, 100), scene);
-    let editor = placement(&ui, id);
+    h.request_focus(Some(id));
+    h.frame_without_baseline(scene);
+    let editor = placement(&h.ui, id);
 
     assert_eq!(
         chip, editor,
@@ -769,7 +770,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     // taken at all — then both frames would be chips and match trivially.
     assert!(
         matches!(
-            ui.state_mut::<DragValueState>(id),
+            h.ui.state_mut::<DragValueState>(id),
             DragValueState::Editing { .. }
         ),
         "second frame must have recorded the inline editor",

@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -7,13 +6,14 @@ use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
 fn frame_paints_a_single_rounded_rect() {
-    let mut ui = Ui::for_test();
-    let frame_node = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let frame_node = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -32,18 +32,18 @@ fn frame_paints_a_single_rounded_rect() {
     });
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
-        ui.forest.trees[Layer::Main]
+        h.ui.forest.trees[Layer::Main]
             .shapes_of(frame_node)
             .next()
             .is_none()
     );
     assert!(
-        ui.forest.trees[Layer::Main].chrome(frame_node).is_some(),
+        h.ui.forest.trees[Layer::Main].chrome(frame_node).is_some(),
         "frame chrome recorded in chrome table",
     );
 
     // Default sense is None — frame is not a hit-test target.
-    let r = ui.layout[Layer::Main].rect[frame_node.idx()];
+    let r = h.ui.layout[Layer::Main].rect[frame_node.idx()];
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -52,9 +52,9 @@ fn frame_paints_a_single_rounded_rect() {
 fn frame_with_sense_click_is_clickable() {
     use glam::Vec2;
 
-    let mut ui = Ui::for_test();
     let surface = UVec2::new(200, 100);
-    ui.run_at(surface, |ui| {
+    let mut h = UiHarness::new(surface);
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new()
                 .id(WidgetId::from_hash("hitbox"))
@@ -63,10 +63,10 @@ fn frame_with_sense_click_is_clickable() {
                 .show(ui);
         });
     });
-    ui.click_at(Vec2::new(50.0, 25.0));
+    h.click_at(Vec2::new(50.0, 25.0));
 
     let mut clicked = false;
-    ui.run_at_without_baseline(surface, |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked |= Frame::new()
                 .id(WidgetId::from_hash("hitbox"))

@@ -4,10 +4,10 @@
 //! These tests pin the contract we want, independent of the current
 //! implementation. Where an existing test in this crate contradicts
 //! one of these, this file wins and the older test is updated.
-use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -17,10 +17,10 @@ use glam::{UVec2, Vec2};
 /// a Hug ancestor.
 #[test]
 fn hug_parent_with_fill_children_hugs_to_content() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(800, 600));
     let node_id = WidgetId::from_hash("hug-parent");
     let button_id = WidgetId::from_hash("button");
-    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(node_id)
             .size((Sizing::HUG, Sizing::HUG))
@@ -32,8 +32,8 @@ fn hug_parent_with_fill_children_hugs_to_content() {
                     .show(ui);
             });
     });
-    let parent = ui.response_for(node_id).rect.expect("parent arranged");
-    let button = ui.response_for(button_id).rect.expect("button arranged");
+    let parent = h.ui.response_for(node_id).rect.expect("parent arranged");
+    let button = h.ui.response_for(button_id).rect.expect("button arranged");
     // Parent hugs to button's content width — somewhere near the
     // "Hi" label width plus button padding, definitely less than 100.
     assert!(
@@ -55,9 +55,9 @@ fn hug_parent_with_fill_children_hugs_to_content() {
 /// the Hug-fix doesn't regress it.
 #[test]
 fn fill_child_stretches_to_fixed_parent() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(800, 600));
     let child_id = WidgetId::from_hash("child");
-    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
@@ -68,7 +68,7 @@ fn fill_child_stretches_to_fixed_parent() {
                     .show(ui);
             });
     });
-    let r = ui.response_for(child_id).rect.expect("child arranged");
+    let r = h.ui.response_for(child_id).rect.expect("child arranged");
     assert_eq!(r.size.w, 400.0);
 }
 
@@ -76,10 +76,10 @@ fn fill_child_stretches_to_fixed_parent() {
 /// each get half of the parent's inner width at arrange.
 #[test]
 fn equal_weight_fill_siblings_split_fixed_parent_equally() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(800, 600));
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    ui.run_at_without_baseline(UVec2::new(800, 600), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
@@ -94,8 +94,8 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
                     .show(ui);
             });
     });
-    let ra = ui.response_for(a).rect.expect("a arranged");
-    let rb = ui.response_for(b).rect.expect("b arranged");
+    let ra = h.ui.response_for(a).rect.expect("a arranged");
+    let rb = h.ui.response_for(b).rect.expect("b arranged");
     assert_eq!(ra.size.w, 200.0);
     assert_eq!(rb.size.w, 200.0);
 }
@@ -109,10 +109,10 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
 #[test]
 fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let surface = UVec2::new(1600, 800);
-    let mut ui = Ui::for_test_at_text(surface);
+    let mut h = UiHarness::with_text(surface);
     let node_id = WidgetId::from_hash("node");
     let row_id = WidgetId::from_hash("row");
-    ui.run_at(surface, |ui| {
+    h.frame(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -134,8 +134,8 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
                     });
             });
     });
-    let node = ui.response_for(node_id).rect.expect("node arranged");
-    let row = ui.response_for(row_id).rect.expect("row arranged");
+    let node = h.ui.response_for(node_id).rect.expect("node arranged");
+    let row = h.ui.response_for(row_id).rect.expect("row arranged");
     // The node hugs to its content (the 50-wide frame), not the
     // surface (1600).
     assert!(
@@ -155,11 +155,11 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
 /// leftover to fill.
 #[test]
 fn hug_hstack_with_fill_spacer_hugs_to_button() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 100));
     let root = WidgetId::from_hash("root");
     let button = WidgetId::from_hash("button");
     let spacer = WidgetId::from_hash("spacer");
-    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().id(root).show(ui, |ui| {
             Button::new().id(button).label("Hi").show(ui);
             Frame::new()
@@ -168,9 +168,9 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
                 .show(ui);
         });
     });
-    let r_root = ui.response_for(root).rect.expect("root");
-    let r_button = ui.response_for(button).rect.expect("button");
-    let r_spacer = ui.response_for(spacer).rect.expect("spacer");
+    let r_root = h.ui.response_for(root).rect.expect("root");
+    let r_button = h.ui.response_for(button).rect.expect("button");
+    let r_spacer = h.ui.response_for(spacer).rect.expect("spacer");
     // Root hugs to the button — no expansion via the Fill spacer.
     assert_eq!(r_root.size.w, r_button.size.w);
     // The spacer in a Hug parent has zero leftover.

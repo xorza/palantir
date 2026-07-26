@@ -134,15 +134,16 @@ mod tests {
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::scene::tree::node::NodeId;
+    use crate::ui::harness::UiHarness;
     use crate::widgets::modal::Modal;
     use crate::widgets::popup::Popup;
     use glam::{UVec2, Vec2};
 
     #[test]
     fn explicit_zero_padding_and_minimum_override_card_theme() {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 300));
         let root_id = WidgetId::from_hash("modal-explicit-zero");
-        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+        h.frame_without_baseline(|ui| {
             Modal::new()
                 .id(root_id)
                 .background(Background::NONE)
@@ -152,7 +153,7 @@ mod tests {
         });
 
         let card_id = root_id.with("card");
-        let tree = &ui.forest.trees[Layer::Modal];
+        let tree = &h.ui.forest.trees[Layer::Modal];
         let index = tree
             .records
             .widget_id()
@@ -199,16 +200,16 @@ mod tests {
             // sees no Escape and would overwrite pass A's result. Real
             // callers have the same shape: they flip an `open` flag on
             // dismissal rather than reading the last pass's return.
-            let mut ui = Ui::for_test();
+            let mut h = UiHarness::new(SURFACE);
             let mut dismissed = false;
-            ui.run_at(SURFACE, |ui| scene(ui, &mut dismissed));
-            ui.on_input(InputEvent::KeyDown {
+            h.frame(|ui| scene(ui, &mut dismissed));
+            h.on_input(InputEvent::KeyDown {
                 key: Key::Escape,
                 repeat: false,
                 physical: Key::Escape,
             });
             let mut dismissed = false;
-            ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut dismissed));
+            h.frame_without_baseline(|ui| scene(ui, &mut dismissed));
             dismissed
         }
 
@@ -262,24 +263,24 @@ mod tests {
             }
         };
 
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let mut open = true;
-        ui.run_at(SURFACE, |ui| scene(ui, &mut open));
+        h.frame(|ui| scene(ui, &mut open));
 
         // Escape dismisses it during this frame's record.
-        ui.on_input(InputEvent::KeyDown {
+        h.on_input(InputEvent::KeyDown {
             key: Key::Escape,
             repeat: false,
             physical: Key::Escape,
         });
-        ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut open));
+        h.frame_without_baseline(|ui| scene(ui, &mut open));
         assert!(!open, "Escape must dismiss the modal");
 
         // The frame after. A `Main`-layer widget presses and types; both
         // must reach it during the record, which is when widgets read.
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::KeyDown {
+        h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.on_input(InputEvent::KeyDown {
             key: Key::Char('a'),
             repeat: false,
             physical: Key::Other,
@@ -290,7 +291,7 @@ mod tests {
         // `|=` in `modal_hears_escape_…` guards against.
         let mut pointer = 0;
         let mut keyboard = 0;
-        ui.run_at_without_baseline(SURFACE, |ui| {
+        h.frame_without_baseline(|ui| {
             scene(ui, &mut open);
             pointer = pointer.max(ui.pointer_events().len());
             keyboard = keyboard.max(ui.keyboard_events().len());
@@ -319,18 +320,16 @@ mod tests {
                 .dismissed;
         };
 
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let (mut m, mut p) = (false, false);
-        ui.run_at(SURFACE, |ui| scene(ui, &mut m, &mut p));
-        ui.on_input(InputEvent::KeyDown {
+        h.frame(|ui| scene(ui, &mut m, &mut p));
+        h.on_input(InputEvent::KeyDown {
             key: Key::Escape,
             repeat: false,
             physical: Key::Escape,
         });
         let (mut modal_closed, mut popup_closed) = (false, false);
-        ui.run_at_without_baseline(SURFACE, |ui| {
-            scene(ui, &mut modal_closed, &mut popup_closed)
-        });
+        h.frame_without_baseline(|ui| scene(ui, &mut modal_closed, &mut popup_closed));
 
         assert!(modal_closed, "the topmost overlay must take the Escape");
         assert!(

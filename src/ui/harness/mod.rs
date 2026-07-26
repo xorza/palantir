@@ -29,7 +29,7 @@ use crate::host::shared::HostShared;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::pointer::PointerButton;
-use crate::input::response::ResponseState;
+use crate::input::response::{InputDelta, ResponseState};
 use crate::input::sense::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -231,6 +231,16 @@ impl UiHarness {
         self.frame(record);
     }
 
+    /// The raw input door, for events with no typed helper above —
+    /// `Zoom`, a `KeyDown` with a specific `physical`, an
+    /// `InputEvent::Text` you built yourself — and for the tests that
+    /// assert on the returned [`InputDelta`]. Everything the typed
+    /// helpers cover should go through them: they are what enforce the
+    /// press-origin, modifier, and threshold rules.
+    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+        self.ui.on_input(event)
+    }
+
     pub fn move_to(&mut self, pos: Vec2) {
         self.ui.on_input(InputEvent::PointerMoved(pos));
     }
@@ -381,6 +391,35 @@ impl UiHarness {
         })
     }
 
+    /// Focus and pointer reads that carry no protocol hazard — unlike
+    /// `response_for`, none of these is one-frame-stale in a way that
+    /// makes a between-frames read wrong. `response_for` deliberately
+    /// stays off this rung; use [`Self::rect`] for geometry and
+    /// [`Self::response_in`] for edges.
+    pub fn focused_id(&self) -> Option<WidgetId> {
+        self.ui.focused_id()
+    }
+
+    pub fn request_focus(&mut self, id: Option<WidgetId>) {
+        self.ui.request_focus(id);
+    }
+
+    pub fn focus_within(&self, ancestor: WidgetId) -> bool {
+        self.ui.focus_within(ancestor)
+    }
+
+    pub fn hover_within(&self, ancestor: WidgetId) -> bool {
+        self.ui.hover_within(ancestor)
+    }
+
+    pub fn pointer_pos(&mut self) -> Option<Vec2> {
+        self.ui.pointer_pos()
+    }
+
+    pub fn escape_pressed(&mut self) -> bool {
+        self.ui.escape_pressed()
+    }
+
     /// Topmost widget the pointer would hit at `pos`, by the same filter
     /// hover routing uses. Turns "the press didn't land and I don't know
     /// why" into one assertion.
@@ -471,6 +510,19 @@ impl UiHarness {
             .record_test_frame_without_baseline(display, time, record)
     }
 
+    /// Explicit schedule *and* no damage baseline — the combination the
+    /// caret-blink and multi-click tests need, since they drive a real
+    /// clock and want every frame to repaint in full.
+    pub(crate) fn frame_at_without_baseline(
+        &mut self,
+        display: Display,
+        time: Duration,
+        record: impl FnMut(&mut Ui),
+    ) -> FrameReport {
+        self.ui
+            .record_test_frame_without_baseline(display, time, record)
+    }
+
     pub(crate) fn frame_value_without_baseline<R>(
         &mut self,
         mut record: impl FnMut(&mut Ui) -> R,
@@ -529,14 +581,6 @@ impl UiHarness {
 /// crate's style rules exist to prevent.
 #[cfg(test)]
 impl UiHarness {
-    pub(crate) fn under_outer(
-        &mut self,
-        f: impl FnMut(&mut Ui) -> crate::scene::tree::node::NodeId,
-    ) -> crate::scene::tree::node::NodeId {
-        let surface = self.surface;
-        self.ui.under_outer(surface, f)
-    }
-
     pub(crate) fn main_child_ids(
         &self,
         parent: crate::scene::tree::node::NodeId,

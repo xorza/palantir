@@ -1,34 +1,35 @@
+use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn multiline_enter_inserts_newline() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(300, 160));
+    let mut h = UiHarness::with_text(UVec2::new(300, 160));
     let mut buf = String::from("abc");
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
-    ui.request_focus(Some(ed_id));
+    h.request_focus(Some(ed_id));
     {
-        let st = ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_mut::<TextEditState>(ed_id);
         st.edit.caret = 3;
     }
-    ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
-    ui.on_input(InputEvent::KeyDown {
+    h.frame(multiline_editor(&mut buf));
+    h.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
+    h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
-    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
-    ui.on_input(InputEvent::KeyDown {
+    h.on_input(InputEvent::KeyDown {
         key: Key::Char('d'),
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at(UVec2::new(300, 160), multiline_editor(&mut buf));
+    h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "abc\nd");
 }
 
@@ -46,10 +47,10 @@ fn single_line_enter_does_not_insert_newline() {
 
 #[test]
 fn single_line_widget_normalizes_host_newlines() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(300, 80));
+    let mut h = UiHarness::with_text(UVec2::new(300, 80));
     let mut text = String::from("first\r\nsecond\nthird");
     let mut changed = false;
-    ui.run_at(UVec2::new(300, 80), |ui| {
+    h.frame(|ui| {
         changed |= TextEdit::new(&mut text)
             .id(WidgetId::from_hash("single-line"))
             .size((Sizing::fixed(240.0), Sizing::fixed(40.0)))
@@ -64,24 +65,24 @@ fn single_line_widget_normalizes_host_newlines() {
 /// sanitize-on-paste behaviour is gated to single-line only).
 #[test]
 fn multiline_paste_keeps_newlines() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
-    ui.resources.clipboard.set("line1\nline2\nline3").unwrap();
+    let mut h = UiHarness::with_text(UVec2::new(300, 200));
+    h.ui.resources.clipboard.set("line1\nline2\nline3").unwrap();
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
-    ui.request_focus(Some(ed_id));
-    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
-    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.request_focus(Some(ed_id));
+    h.frame(multiline_editor(&mut buf));
+    h.on_input(InputEvent::ModifiersChanged(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
     }));
-    ui.on_input(InputEvent::KeyDown {
+    h.on_input(InputEvent::KeyDown {
         key: Key::Char('v'),
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
+    h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
-    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, buf.len());
 }
 
@@ -90,27 +91,27 @@ fn multiline_paste_keeps_newlines() {
 /// straddles the `\n`.
 #[test]
 fn multiline_selection_crosses_newline() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
+    let mut h = UiHarness::with_text(UVec2::new(300, 200));
     let mut buf = String::from("first\nsecond");
     let ed_id = WidgetId::from_hash("ml-ed");
-    ui.request_focus(Some(ed_id));
+    h.request_focus(Some(ed_id));
     // Caret on line 1, column 3.
     {
-        let st = ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_mut::<TextEditState>(ed_id);
         st.edit.caret = 3;
     }
-    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
-    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.frame(multiline_editor(&mut buf));
+    h.on_input(InputEvent::ModifiersChanged(Modifiers {
         shift: true,
         ..Modifiers::NONE
     }));
-    ui.on_input(InputEvent::KeyDown {
+    h.on_input(InputEvent::KeyDown {
         key: Key::ArrowDown,
         repeat: false,
         physical: Key::Other,
     });
-    ui.run_at(UVec2::new(300, 200), multiline_editor(&mut buf));
-    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    h.frame(multiline_editor(&mut buf));
+    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(
         st.edit.selection.is_some(),
         "shift+down across newline establishes a selection",

@@ -13,6 +13,7 @@ use crate::scene::tree::node::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
+use crate::ui::harness::UiHarness;
 use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};
@@ -31,8 +32,8 @@ const DISPLAY: Display = Display {
 /// doesn't fire, and return the damage decision for the just-completed
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
-fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
-    let report = ui.record_test_frame(DISPLAY, Duration::ZERO, f);
+fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Damage {
+    let report = h.frame_at(DISPLAY, Duration::ZERO, f);
     match report.plan {
         None => Damage::Skip,
         Some(RenderPlan {
@@ -73,23 +74,23 @@ fn one_frame(ui: &mut Ui, color: Color) {
 /// non-painting and stays out of `dirty`/`region`.
 #[test]
 fn first_frame_marks_every_painting_node_dirty() {
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::cold(DISPLAY.physical);
+    frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = ui.cascades.layers[Layer::Main]
+    let painting = h.ui.cascades.layers[Layer::Main]
         .paint_arena
         .node_spans
         .iter()
         .filter(|s| s.len > 0)
         .count();
-    assert_eq!(ui.damage_engine.dirty.len(), painting);
+    assert_eq!(h.ui.damage_engine.dirty.len(), painting);
     // First frame is `force_full`, so `compute` short-circuits to
     // `Damage::Full` after the structural diff — and the Vacant arm
     // skips its raw-rect pushes (the region would be discarded), so
     // the buffer stays empty and its retained capacity never balloons
     // to whole-tree size on the first frame or a resize storm.
-    assert!(ui.damage_engine.raw_rects.is_empty());
+    assert!(h.ui.damage_engine.raw_rects.is_empty());
 }
 
 /// Pin: re-recording identical authoring → zero dirty nodes,
@@ -97,16 +98,16 @@ fn first_frame_marks_every_painting_node_dirty() {
 /// nothing.
 #[test]
 fn unchanged_authoring_produces_no_damage() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         one_frame(ui, BLUE);
     };
-    frame(&mut ui, build);
-    frame(&mut ui, build);
+    frame(&mut h, build);
+    frame(&mut h, build);
 
-    assert!(ui.damage_engine.dirty.is_empty());
-    assert!(ui.damage_region().rects.is_empty());
-    assert_eq!(Damage::new(ui.damage_region()), Damage::Skip,);
+    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.damage_region().rects.is_empty());
+    assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
 }
 
 /// Pin: removing a child of a fixed-size canvas that paints its own
@@ -154,11 +155,11 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
             });
     };
 
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, 2));
-    frame(&mut ui, |ui| canvas(ui, 1));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, 2));
+    frame(&mut h, |ui| canvas(ui, 1));
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(REMOVED_CHILD),
         "the vacated child's footprint must be damaged",
@@ -213,15 +214,15 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
 
     let a = ("a", (10.0, 10.0));
     let b = ("b", (120.0, 120.0));
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, [a, b]));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, [a, b]));
     // Same positions + content, only draw order flips.
-    frame(&mut ui, |ui| canvas(ui, [b, a]));
+    frame(&mut h, |ui| canvas(ui, [b, a]));
 
     assert!(
-        ui.damage_region().rects.is_empty(),
+        h.damage_region().rects.is_empty(),
         "reordering nodes must not damage unchanged leaves; region = {:?}",
-        ui.damage_region().iter_rects().collect::<Vec<_>>(),
+        h.damage_region().iter_rects().collect::<Vec<_>>(),
     );
 }
 
@@ -267,12 +268,12 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     let a = ("a", A);
     let b = ("b", B);
     let c = ("c", C);
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, [a, b, c]));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, [a, b, c]));
     // Raise `a` to the front (drawn last) — same positions + content.
-    frame(&mut ui, |ui| canvas(ui, [b, c, a]));
+    frame(&mut h, |ui| canvas(ui, [b, c, a]));
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(OVERLAP),
         "raising `a` over `b` must repaint their overlap; region = {:?}",
@@ -322,15 +323,15 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
     // Overlapping Y so their (formerly-inflated) label boxes would meet.
     let a = ("a", 40.0);
     let b = ("b", 44.0);
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, [a, b]));
-    frame(&mut ui, |ui| canvas(ui, [b, a]));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, [a, b]));
+    frame(&mut h, |ui| canvas(ui, [b, a]));
 
     assert!(
-        ui.damage_region().rects.is_empty(),
+        h.damage_region().rects.is_empty(),
         "off-screen text must not fabricate edge-of-window damage on \
          reorder; region = {:?}",
-        ui.damage_region().iter_rects().collect::<Vec<_>>(),
+        h.damage_region().iter_rects().collect::<Vec<_>>(),
     );
 }
 
@@ -363,13 +364,13 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
 
     let a = ("a", BLUE);
     let b = ("b", RED);
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| stack(ui, [a, b])); // a in the top slot, b below
-    frame(&mut ui, |ui| stack(ui, [b, a])); // swapped
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| stack(ui, [a, b])); // a in the top slot, b below
+    frame(&mut h, |ui| stack(ui, [b, a])); // swapped
 
     // Both slots changed content (colours swapped), so both must be
     // damaged — top slot y=[0,20], bottom y=[20,40].
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(Rect::new(0.0, 5.0, 40.0, 5.0))
             && region.any_intersects(Rect::new(0.0, 25.0, 40.0, 5.0)),
@@ -442,11 +443,11 @@ fn shape_crossing_child_boundary_is_redamaged() {
             });
     };
 
-    let mut ui = Ui::for_test();
-    frame(&mut ui, over);
-    frame(&mut ui, under);
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, over);
+    frame(&mut h, under);
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(PROBE),
         "the shape's overlap with the child must be re-damaged when the \
@@ -488,11 +489,11 @@ fn overlapping_direct_shape_swap_is_redamaged() {
                 line(ui, second);
             });
     };
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, BLUE, RED));
-    frame(&mut ui, |ui| canvas(ui, RED, BLUE));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, BLUE, RED));
+    frame(&mut h, |ui| canvas(ui, RED, BLUE));
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(PROBE),
         "swapping two overlapping direct shapes must damage their \
@@ -541,11 +542,11 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                 );
             });
     };
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, false));
-    frame(&mut ui, |ui| canvas(ui, true));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, false));
+    frame(&mut h, |ui| canvas(ui, true));
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(CHILD_B),
         "the inserted child must be damaged; region = {:?}",
@@ -594,11 +595,11 @@ fn rekeying_a_child_damages_only_the_child() {
                 );
             });
     };
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| canvas(ui, "k1"));
-    frame(&mut ui, |ui| canvas(ui, "k2"));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| canvas(ui, "k1"));
+    frame(&mut h, |ui| canvas(ui, "k2"));
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     assert!(
         region.any_intersects(CHILD),
         "a re-keyed child must be damaged (evict + re-add); region = {:?}",
@@ -621,7 +622,7 @@ fn rekeying_a_child_damages_only_the_child() {
 /// to a per-node walk that still produces correct damage.
 #[test]
 fn stable_painting_subtree_triggers_skip_jump() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     // Frame with a painting parent (background) wrapping painting
     // children — both root and children land in `prev` with matching
     // snapshots on the second frame, so the root's Occupied-equal arm
@@ -657,19 +658,19 @@ fn stable_painting_subtree_triggers_skip_jump() {
                     });
             });
     };
-    frame(&mut ui, build);
+    frame(&mut h, build);
     assert_eq!(
-        ui.damage_engine.subtree_skips, 0,
+        h.ui.damage_engine.subtree_skips, 0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
-    frame(&mut ui, build);
+    frame(&mut h, build);
     assert!(
-        ui.damage_engine.subtree_skips >= 1,
+        h.ui.damage_engine.subtree_skips >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        ui.damage_engine.subtree_skips,
+        h.ui.damage_engine.subtree_skips,
     );
-    assert!(ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.dirty.is_empty());
 }
 
 /// Pin: a widget that loses its background between frames flips from
@@ -679,7 +680,7 @@ fn stable_painting_subtree_triggers_skip_jump() {
 /// contribute no curr rect.
 #[test]
 fn paints_to_non_paints_transition_evicts_and_clears() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let with_bg = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -704,16 +705,16 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
                     .show(ui);
             });
     };
-    frame(&mut ui, with_bg);
+    frame(&mut h, with_bg);
     let id = WidgetId::from_hash("a");
-    assert!(ui.damage_engine.prev.contains_key(&id));
+    assert!(h.ui.damage_engine.prev.contains_key(&id));
 
-    frame(&mut ui, no_bg);
+    frame(&mut h, no_bg);
     assert!(
-        !ui.damage_engine.prev.contains_key(&id),
+        !h.ui.damage_engine.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
-    let rects: Vec<_> = ui.damage_region().iter_rects().collect();
+    let rects: Vec<_> = h.damage_region().iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(0.0, 0.0, 50.0, 50.0)],
@@ -728,10 +729,10 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
 /// rect lands in `region`.
 #[test]
 fn popup_eater_does_not_force_full_repaint() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let anchor = glam::Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
-    frame(&mut ui, |ui| {
+    frame(&mut h, |ui| {
         Popup::anchored_to(anchor)
             .id(WidgetId::from_hash("p"))
             .background(Background {
@@ -753,7 +754,7 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    let out = ui.record_test_frame(DISPLAY, Duration::ZERO, |ui| {
+    let out = h.frame_at(DISPLAY, Duration::ZERO, |ui| {
         Frame::new()
             .id(WidgetId::from_hash("placeholder"))
             .size(10.0)
@@ -784,7 +785,7 @@ fn popup_eater_does_not_force_full_repaint() {
 fn click_on_empty_bg_does_not_force_full() {
     use crate::input::pointer::PointerButton;
     use std::time::Duration;
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -800,16 +801,16 @@ fn click_on_empty_bg_does_not_force_full() {
             });
     };
     // Frame 0 (cold): expect Full. Submit.
-    ui.record_test_frame(DISPLAY, Duration::ZERO, build);
+    h.frame_at(DISPLAY, Duration::ZERO, build);
     // Frame 1 (warm): nothing changed → Skip.
-    let warm = ui.record_test_frame(DISPLAY, Duration::ZERO, build).plan;
+    let warm = h.frame_at(DISPLAY, Duration::ZERO, build).plan;
     assert!(warm.is_none(), "warm frame must Skip");
 
     // Click on empty background (far from the 50×50 frame at origin).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let click_plan = ui.record_test_frame(DISPLAY, Duration::ZERO, build).plan;
+    h.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let click_plan = h.frame_at(DISPLAY, Duration::ZERO, build).plan;
     assert!(
         !matches!(
             click_plan,
@@ -824,9 +825,9 @@ fn click_on_empty_bg_does_not_force_full() {
 
 #[test]
 fn valid_skip_preserves_incremental_damage_baseline() {
-    let mut ui = Ui::for_test();
-    let first = ui
-        .record_test_frame_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+    let mut h = UiHarness::new(DISPLAY.physical);
+    let first = h
+        .frame_at_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
         .plan;
     assert!(matches!(
         first,
@@ -835,13 +836,13 @@ fn valid_skip_preserves_incremental_damage_baseline() {
             ..
         })
     ));
-    let skip = ui
-        .record_test_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+    let skip = h
+        .frame_at(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
         .plan;
     assert!(skip.is_none(), "identical content must Skip");
 
-    let next = ui
-        .record_test_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
+    let next = h
+        .frame_at(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
         .plan;
     assert!(
         matches!(
@@ -857,11 +858,11 @@ fn valid_skip_preserves_incremental_damage_baseline() {
 
 #[test]
 fn invalid_prior_output_forces_full_damage() {
-    let mut ui = Ui::for_test();
-    ui.record_test_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    h.frame_at(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
 
-    let next = ui
-        .record_test_frame_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
+    let next = h
+        .frame_at_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
         .plan;
     assert!(
         matches!(
@@ -880,26 +881,26 @@ fn invalid_prior_output_forces_full_damage() {
 /// rect is identical) stays clean.
 #[test]
 fn fill_change_marks_only_the_changed_leaf() {
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    frame(&mut ui, |ui| {
+    frame(&mut h, |ui| {
         one_frame(ui, RED);
     });
 
-    assert_eq!(ui.damage_engine.dirty.len(), 1);
-    let dirty_id = ui.damage_engine.dirty[0];
+    assert_eq!(h.ui.damage_engine.dirty.len(), 1);
+    let dirty_id = h.ui.damage_engine.dirty[0];
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
+        h.ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
     // DamageEngine rect = Frame's rect (50x50 at (0,0)). Color change
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
-        ui.damage_region().iter_rects().next(),
-        Some(ui.layout[Layer::Main].rect[dirty_id.idx()])
+        h.damage_region().iter_rects().next(),
+        Some(h.ui.layout[Layer::Main].rect[dirty_id.idx()])
     );
 }
 
@@ -908,7 +909,7 @@ fn fill_change_marks_only_the_changed_leaf() {
 /// comparison even though their authoring didn't change.
 #[test]
 fn sibling_reflow_marks_downstream_neighbor_dirty() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |a_size: f32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -931,17 +932,17 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                     .show(ui);
             });
     };
-    frame(&mut ui, |ui| build(50.0, ui));
-    frame(&mut ui, |ui| build(80.0, ui));
+    frame(&mut h, |ui| build(50.0, ui));
+    frame(&mut h, |ui| build(80.0, ui));
 
     // `a` changed authoring (size). `b`'s authoring is unchanged
     // but its arranged x shifts from 50 → 80. Both are dirty.
-    let dirty_ids: Vec<WidgetId> = ui
-        .damage_engine
-        .dirty
-        .iter()
-        .map(|n| ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
-        .collect();
+    let dirty_ids: Vec<WidgetId> =
+        h.ui.damage_engine
+            .dirty
+            .iter()
+            .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
+            .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
 }
@@ -951,8 +952,8 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 /// region to erase the leftover pixels.
 #[test]
 fn removed_widget_contributes_prev_rect_to_damage() {
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -962,12 +963,12 @@ fn removed_widget_contributes_prev_rect_to_damage() {
                     .show(ui);
             });
     });
-    let prev_button_rect = ui
-        .damage_engine
-        .prev_paint_rect(WidgetId::from_hash("gone"))
-        .expect("gone painted last frame");
+    let prev_button_rect =
+        h.ui.damage_engine
+            .prev_paint_rect(WidgetId::from_hash("gone"))
+            .expect("gone painted last frame");
 
-    frame(&mut ui, |ui| {
+    frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |_| {});
@@ -976,7 +977,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
     // Button is gone; root Panel is non-painting (no chrome) so it
     // never entered prev. Only contribution is the Button's prev
     // rect, surfaced via the `removed` list.
-    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(rects, vec![prev_button_rect]);
 }
 
@@ -984,13 +985,13 @@ fn removed_widget_contributes_prev_rect_to_damage() {
 /// its current rect to damage and lands in the dirty list.
 #[test]
 fn added_widget_contributes_curr_rect_to_damage() {
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |_| {});
     });
-    frame(&mut ui, |ui| {
+    frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -1005,14 +1006,14 @@ fn added_widget_contributes_curr_rect_to_damage() {
             });
     });
 
-    let dirty_ids: Vec<WidgetId> = ui
-        .damage_engine
-        .dirty
-        .iter()
-        .map(|n| ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
-        .collect();
+    let dirty_ids: Vec<WidgetId> =
+        h.ui.damage_engine
+            .dirty
+            .iter()
+            .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
+            .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(!ui.damage_region().rects.is_empty());
+    assert!(!h.damage_region().rects.is_empty());
 }
 
 /// Pin: a single-leaf fill flip stays in the partial-repaint regime —
@@ -1020,19 +1021,19 @@ fn added_widget_contributes_curr_rect_to_damage() {
 /// below the full-repaint threshold (50×50 = 2500 ≪ 200×200 surface).
 #[test]
 fn damage_filter_returns_partial_when_small() {
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    frame(&mut ui, |ui| {
+    frame(&mut h, |ui| {
         one_frame(ui, RED);
     });
-    let region = ui.damage_region();
+    let region = h.damage_region();
     let r = region
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
-    assert_eq!(Damage::new(ui.damage_region()), Damage::Partial(r.into()),);
+    assert_eq!(Damage::new(h.damage_region()), Damage::Partial(r.into()),);
 }
 
 // DamageEngine rects must be in *screen space*. When an ancestor has a
@@ -1047,10 +1048,10 @@ fn damage_filter_returns_partial_when_small() {
 #[test]
 fn child_under_transformed_parent_damage_in_screen_space() {
     let translate = Vec2::new(100.0, 0.0);
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut child_node = None;
-    let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let build = |fill: Color, h: &mut UiHarness, child: &mut Option<NodeId>| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(translate))
@@ -1070,19 +1071,19 @@ fn child_under_transformed_parent_damage_in_screen_space() {
         });
     };
 
-    build(Color::rgb(0.2, 0.4, 0.8), &mut ui, &mut child_node);
-    build(Color::rgb(0.9, 0.4, 0.8), &mut ui, &mut child_node);
+    build(Color::rgb(0.2, 0.4, 0.8), &mut h, &mut child_node);
+    build(Color::rgb(0.9, 0.4, 0.8), &mut h, &mut child_node);
 
     // Layout rect of the child is at the parent's inner origin (0, 0
     // in this layout). Screen rect after the parent's translate is at
     // (100, 0) — that's where the GPU actually paints. The damage
     // rect must cover *that* position, not the layout one.
-    let child_layout_rect = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
+    let child_layout_rect = h.ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
     };
-    let region = ui.damage_region();
+    let region = h.damage_region();
     let damage_rect = region
         .iter_rects()
         .next()
@@ -1101,10 +1102,10 @@ fn child_under_transformed_parent_damage_in_screen_space() {
 /// frame's pixels would streak through `LoadOp::Load`).
 #[test]
 fn animated_parent_transform_unions_old_and_new_positions() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut child_node = None;
-    let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1124,8 +1125,8 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         });
     };
 
-    build(0.0, &mut ui, &mut child_node);
-    build(50.0, &mut ui, &mut child_node);
+    build(0.0, &mut h, &mut child_node);
+    build(50.0, &mut h, &mut child_node);
 
     // Child layout rect didn't change. Parent's transform shifted by
     // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
@@ -1134,7 +1135,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // into one bbox. (A *much* larger distance would push cost over
     // the budget; pinned by
     // `transform_animation_keeps_far_positions_split`.)
-    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
     assert_eq!(
@@ -1149,12 +1150,12 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // changed-paints arm — but that arm emits nothing for it: its
     // only row (the child marker) is unchanged and its own
     // `cascade_input` is stable, so all damage comes from the child.
-    let dirty_widget_ids: Vec<WidgetId> = ui
-        .damage_engine
-        .dirty
-        .iter()
-        .map(|n| ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
-        .collect();
+    let dirty_widget_ids: Vec<WidgetId> =
+        h.ui.damage_engine
+            .dirty
+            .iter()
+            .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
+            .collect();
     assert_eq!(
         dirty_widget_ids,
         vec![WidgetId::from_hash("outer"), WidgetId::from_hash("c")],
@@ -1167,14 +1168,14 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 /// can't silently flip behaviour without breaking a test.
 #[test]
 fn transform_animation_keeps_far_positions_split() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     // Drop the merge budget to strict-overlap-only so the prev/curr
     // pair (cost 6 400 < default budget) stays split. Pins both
     // ends of the merge rule against future budget tweaks.
-    ui.damage_engine.budget_px = 0.0;
+    h.ui.damage_engine.budget_px = 0.0;
     let mut child_node = None;
-    let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1194,14 +1195,14 @@ fn transform_animation_keeps_far_positions_split() {
         });
     };
 
-    build(0.0, &mut ui, &mut child_node);
-    build(200.0, &mut ui, &mut child_node);
+    build(0.0, &mut h, &mut child_node);
+    build(200.0, &mut h, &mut child_node);
 
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600.
     // bbox 240×40 = 9600. SAH cost = 6400 — under the default
     // 20 000 budget, this would merge; the guard above drops the
     // budget to 0 to pin the strict-overlap-only branch.
-    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");
@@ -1225,9 +1226,9 @@ fn transform_animation_keeps_far_positions_split() {
 fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_damage() {
     use crate::Shape;
 
-    let mut ui = Ui::for_test();
-    let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at(UVec2::new(100, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let build = |dx: f32, h: &mut UiHarness| {
+        h.frame(|ui| {
             // Outermost clip pins descendants to the surface viewport
             // — without it, `parent_clip = None` and inner's paint
             // rect translates freely (the bug then doesn't manifest;
@@ -1259,9 +1260,9 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                 });
         });
     };
-    build(0.0, &mut ui);
-    build(5.0, &mut ui);
-    let region = ui.damage_region();
+    build(0.0, &mut h);
+    build(5.0, &mut h);
+    let region = h.damage_region();
     let covered = region.iter_rects().any(|r| {
         // Damage must cover the inner node's clipped paint area
         // (0..100 × 0..50) — that's where the shape's pixels live
@@ -1287,9 +1288,9 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
 fn pan_with_invariant_clipped_paint_rect_stays_partial() {
     use crate::Shape;
 
-    let mut ui = Ui::for_test();
-    let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at(UVec2::new(100, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let build = |dx: f32, h: &mut UiHarness| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("clip"))
                 .clip_rect()
@@ -1313,10 +1314,10 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                 });
         });
     };
-    build(0.0, &mut ui);
+    build(0.0, &mut h);
     for dx in [3.0, 6.0, 9.0, 12.0] {
-        build(dx, &mut ui);
-        let region = ui.damage_region();
+        build(dx, &mut h);
+        let region = h.damage_region();
         let damage = Damage::new(region);
         assert!(
             matches!(damage, Damage::Partial(_)),
@@ -1343,9 +1344,9 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 fn self_transform_shift_damages_direct_shapes() {
     use crate::Shape;
 
-    let mut ui = Ui::for_test();
-    let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at(UVec2::new(200, 200), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let build = |dx: f32, h: &mut UiHarness| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -1366,9 +1367,9 @@ fn self_transform_shift_damages_direct_shapes() {
                 });
         });
     };
-    build(0.0, &mut ui);
-    build(20.0, &mut ui);
-    let region = ui.damage_region();
+    build(0.0, &mut h);
+    build(20.0, &mut h);
+    let region = h.damage_region();
 
     // After translating self by dx=20, the shape's prev pixels lived
     // at [40, 70] × [40, 70] (translation 0) and the new pixels live
@@ -1397,9 +1398,9 @@ fn self_transform_shift_damages_direct_shapes() {
 ///   `cascade_input` lets tier 1 skip at the subtree root).
 #[test]
 fn moved_subtree_damages_extents_and_refreshes_snapshots() {
-    let mut ui = Ui::for_test();
-    let build = |dx: f32, ui: &mut Ui| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let build = |dx: f32, h: &mut UiHarness| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1422,7 +1423,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
         });
     };
 
-    build(0.0, &mut ui);
+    build(0.0, &mut h);
 
     // Tick 1: dx 0 → 30. "outer"'s own transform rides its node_hash
     // (panel extras), so outer takes the changed-paints arm (child
@@ -1431,8 +1432,8 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // extent = both 40×40 frames side by side: prev (0,0,80,40),
     // curr (30,0,80,40) — intersecting, so the region merges them
     // into one bbox.
-    build(30.0, &mut ui);
-    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    build(30.0, &mut h);
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(0.0, 0.0, 110.0, 40.0)],
@@ -1442,8 +1443,8 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // Tick 2: dx 30 → 60. Damage must anchor at the tick-1 position —
     // its left edge is 30, not 0 — proving the tier refreshed the
     // rows' screens, not just `cascade_input`.
-    build(60.0, &mut ui);
-    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    build(60.0, &mut h);
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(30.0, 0.0, 110.0, 40.0)],
@@ -1453,13 +1454,13 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // Still frame: identical dx → tier 1 skips at the root, no dirty
     // nodes, clean Skip. Fails loudly if the bulk refresh corrupted
     // any snapshot field.
-    build(60.0, &mut ui);
+    build(60.0, &mut h);
     assert!(
-        ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.dirty.is_empty(),
         "still frame after motion must not dirty any node",
     );
     assert_eq!(
-        Damage::new(ui.damage_region()),
+        Damage::new(h.damage_region()),
         Damage::Skip,
         "still frame after motion",
     );
@@ -1470,9 +1471,9 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
 /// diff still produces leaf-tight damage, not the subtree extent.
 #[test]
 fn content_change_under_constant_transform_stays_row_tight() {
-    let mut ui = Ui::for_test();
-    let build = |fill: Color, ui: &mut Ui| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let build = |fill: Color, h: &mut UiHarness| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(30.0, 0.0)))
@@ -1500,12 +1501,12 @@ fn content_change_under_constant_transform_stays_row_tight() {
                 });
         });
     };
-    build(BLUE, &mut ui);
-    build(RED, &mut ui);
+    build(BLUE, &mut h);
+    build(RED, &mut h);
     // Only "a" changed; damage is its screen rect (layout 0..40 + the
     // 30 px transform), NOT the whole inner extent (which would reach
     // x = 110 and cover the untouched "b").
-    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(30.0, 0.0, 40.0, 40.0)],
@@ -1526,7 +1527,7 @@ fn content_change_under_constant_transform_stays_row_tight() {
 /// computes `Damage::Skip` outright.
 #[test]
 fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     // Surface is 200×200 (test DISPLAY). Three 100-wide frames: "c"
     // starts at x = 200 — exactly off-surface (edge-touching rects
     // don't intersect), so its Vacant visit skips the snapshot insert.
@@ -1553,13 +1554,13 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                     });
             });
     };
-    frame(&mut ui, |ui| build(0.0, Some(RED), ui));
+    frame(&mut h, |ui| build(0.0, Some(RED), ui));
 
     // Scroll left: "c" enters at (100..200). Tier 1.5 fires at
     // "inner"; "c" had no snapshot (off-surface skip last frame) — the
     // curr-extent push covers its pixels and the insert leg snapshots
     // it now that it's visible.
-    let damage = frame(&mut ui, |ui| build(-100.0, Some(RED), ui));
+    let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };
@@ -1573,13 +1574,13 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     );
 
     // Still frame: nothing changed — tier 1 skips at the root.
-    let damage = frame(&mut ui, |ui| build(-100.0, Some(RED), ui));
+    let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
     assert_eq!(damage, Damage::Skip, "still frame after the move");
 
     // Second move: "c" shifts to (0..100). Its just-inserted snapshot
     // joins the prev-extent fold, so its old pixels at (100..200)
     // repaint alongside the new position.
-    let damage = frame(&mut ui, |ui| build(-200.0, Some(RED), ui));
+    let damage = frame(&mut h, |ui| build(-200.0, Some(RED), ui));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };
@@ -1596,7 +1597,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
 
     // Content change on "c" (now snapshotted, at 0..100): the walk
     // descends and the changed-paints arm damages its rect.
-    let damage = frame(&mut ui, |ui| build(-200.0, Some(BLUE), ui));
+    let damage = frame(&mut h, |ui| build(-200.0, Some(BLUE), ui));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };
@@ -1609,7 +1610,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
 
     // Remove "c" while visible: the eviction tail finds the inserted
     // snapshot and clears its pixels.
-    let damage = frame(&mut ui, |ui| build(-200.0, None, ui));
+    let damage = frame(&mut h, |ui| build(-200.0, None, ui));
     let covers_removed = match damage {
         Damage::Full => true,
         Damage::Partial(region) => region.any_intersects(Rect::new(50.0, 0.0, 10.0, 40.0)),
@@ -1774,14 +1775,14 @@ fn display_change_forces_full_repaint() {
         ),
     ];
     for (label, mutated) in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(DISPLAY.physical);
         let mut build = |ui: &mut Ui| {
             one_frame(ui, BLUE);
         };
 
         // Steady-state: Full first frame, then Skip on identical re-record.
-        let f1 = ui
-            .record_test_frame_without_baseline(DISPLAY, Duration::ZERO, &mut build)
+        let f1 = h
+            .frame_at_without_baseline(DISPLAY, Duration::ZERO, &mut build)
             .plan;
         assert!(
             matches!(
@@ -1793,15 +1794,11 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} f1"
         );
-        let f2 = ui
-            .record_test_frame(DISPLAY, Duration::ZERO, &mut build)
-            .plan;
+        let f2 = h.frame_at(DISPLAY, Duration::ZERO, &mut build).plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
-        assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
+        assert!(h.ui.damage_engine.dirty.is_empty(), "case: {label} steady");
         // Mutate Display; identical authoring; must short-circuit to Full.
-        let mutated_plan = ui
-            .record_test_frame(*mutated, Duration::ZERO, &mut build)
-            .plan;
+        let mutated_plan = h.frame_at(*mutated, Duration::ZERO, &mut build).plan;
         assert!(
             matches!(
                 mutated_plan,
@@ -1813,20 +1810,18 @@ fn display_change_forces_full_repaint() {
             "case: {label} display change"
         );
         assert!(
-            !ui.damage_engine.dirty.is_empty(),
+            !h.ui.damage_engine.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
         // Stable surface at the new size, identical authoring → back to Skip.
-        let stable = ui
-            .record_test_frame(*mutated, Duration::ZERO, &mut build)
-            .plan;
+        let stable = h.frame_at(*mutated, Duration::ZERO, &mut build).plan;
         assert!(
             stable.is_none(),
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
-            ui.damage_engine.dirty.is_empty(),
+            h.ui.damage_engine.dirty.is_empty(),
             "case: {label} post-mutation dirty empty"
         );
     }
@@ -1847,7 +1842,7 @@ fn display_change_forces_full_repaint() {
 /// partial damage rect on the resize frame.
 #[test]
 fn small_damage_with_surface_change_forces_full_repaint() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let big = Display {
         physical: UVec2::new(2000, 2000),
         ..DISPLAY
@@ -1884,28 +1879,28 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    ui.record_test_frame(big, Duration::ZERO, &mut scene);
-    ui.record_test_frame(big, Duration::ZERO, &mut scene);
-    assert!(ui.damage_engine.dirty.is_empty());
+    h.frame_at(big, Duration::ZERO, &mut scene);
+    h.frame_at(big, Duration::ZERO, &mut scene);
+    assert!(h.ui.damage_engine.dirty.is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
     // diff sees it as a cascade-state change and damages its paint_rect
     // (50×60 = 3000 area) inside a 2000×2000 surface (4M area) —
     // ratio ≈ 0.075%, well below the full-repaint threshold.
     let target_wid = WidgetId::from_hash("small");
-    let snap = ui
-        .damage_engine
-        .prev
-        .get_mut(&target_wid)
-        .expect("small in prev");
+    let snap =
+        h.ui.damage_engine
+            .prev
+            .get_mut(&target_wid)
+            .expect("small in prev");
     snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
 
     let smaller = Display {
         physical: UVec2::new(1999, 2000),
         ..big
     };
-    let resize_plan = ui
-        .record_test_frame_without_baseline(smaller, Duration::ZERO, &mut scene)
+    let resize_plan = h
+        .frame_at_without_baseline(smaller, Duration::ZERO, &mut scene)
         .plan;
 
     assert!(
@@ -1931,23 +1926,23 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 /// would never apply.
 #[test]
 fn stable_surface_does_not_short_circuit() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |ui: &mut Ui, color: Color| {
         one_frame(ui, color);
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    ui.record_test_frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
-    let warm = ui
-        .record_test_frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
+    h.frame_at(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
+    let warm = h
+        .frame_at(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
         .plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
-    assert!(ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.dirty.is_empty());
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
-    let changed = ui
-        .record_test_frame(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
+    let changed = h
+        .frame_at(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
         .plan;
     let Some(RenderPlan {
         kind: RenderKind::Partial { region },
@@ -1976,11 +1971,11 @@ fn stable_surface_does_not_short_circuit() {
 /// the damage stream settle, then assert on the *transition* frame.
 #[test]
 fn button_hover_damage_covers_only_the_button() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let build = |h: &mut UiHarness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
+        h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
@@ -2004,15 +1999,15 @@ fn button_hover_damage_covers_only_the_button() {
 
     // Pointer parked off-button. Settle for two frames so hit-test +
     // damage are at steady state (no diff).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
-    build(&mut ui, &mut hot_node, &mut cold_node);
-    build(&mut ui, &mut hot_node, &mut cold_node);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
+    build(&mut h, &mut hot_node, &mut cold_node);
+    build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.dirty.is_empty(),
         "off-button pointer should reach a no-diff steady state"
     );
 
-    let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
+    let hot_rect = h.ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
     // Move pointer onto the hot button. The *next* post_record computes
@@ -2021,30 +2016,30 @@ fn button_hover_damage_covers_only_the_button() {
     // `on_input` recomputes hover against the existing hit_index
     // immediately, so the *next* recording sees `hovered=true` and
     // emits the hovered fill. DamageEngine = button rect only.
-    ui.on_input(InputEvent::PointerMoved(target));
-    build(&mut ui, &mut hot_node, &mut cold_node);
+    h.on_input(InputEvent::PointerMoved(target));
+    build(&mut h, &mut hot_node, &mut cold_node);
 
     assert_eq!(
-        ui.damage_engine.dirty.len(),
+        h.ui.damage_engine.dirty.len(),
         1,
         "only the hovered button should be dirty"
     );
-    let dirty_id = ui.damage_engine.dirty[0];
+    let dirty_id = h.ui.damage_engine.dirty[0];
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
+        h.ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
+    assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        Damage::new(ui.damage_region()),
+        Damage::new(h.damage_region()),
         Damage::Partial(hot_rect.into()),
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
     // Next frame at same cursor → no diff (settled).
-    build(&mut ui, &mut hot_node, &mut cold_node);
+    build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.dirty.is_empty(),
         "settled hover should produce no further damage"
     );
 }
@@ -2053,11 +2048,11 @@ fn button_hover_damage_covers_only_the_button() {
 /// is the button's fill flipping back, damage = button rect.
 #[test]
 fn button_unhover_damage_covers_only_the_button() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let build = |h: &mut UiHarness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
+        h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
@@ -2080,24 +2075,24 @@ fn button_unhover_damage_covers_only_the_button() {
     };
 
     // Settle two frames with cursor over the hot button.
-    build(&mut ui, &mut hot_node, &mut cold_node);
-    let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
-    ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
-    build(&mut ui, &mut hot_node, &mut cold_node);
-    build(&mut ui, &mut hot_node, &mut cold_node);
-    assert!(ui.damage_engine.dirty.is_empty(), "settled hover");
+    build(&mut h, &mut hot_node, &mut cold_node);
+    let hot_rect = h.ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
+    h.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
+    build(&mut h, &mut hot_node, &mut cold_node);
+    build(&mut h, &mut hot_node, &mut cold_node);
+    assert!(h.ui.damage_engine.dirty.is_empty(), "settled hover");
 
     // Pointer leaves the button.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
-    build(&mut ui, &mut hot_node, &mut cold_node);
-    assert_eq!(ui.damage_engine.dirty.len(), 1);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
+    build(&mut h, &mut hot_node, &mut cold_node);
+    assert_eq!(h.ui.damage_engine.dirty.len(), 1);
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.widget_id()[ui.damage_engine.dirty[0].idx()],
+        h.ui.forest.trees[Layer::Main].records.widget_id()[h.ui.damage_engine.dirty[0].idx()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
+    assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        Damage::new(ui.damage_region()),
+        Damage::new(h.damage_region()),
         Damage::Partial(hot_rect.into()),
     );
 }
@@ -2112,12 +2107,12 @@ fn button_unhover_damage_covers_only_the_button() {
 /// trip `FULL_REPAINT_THRESHOLD` every frame.
 #[test]
 fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut child_node = None;
     let viewport_size = 100.0;
     let child_size = 200.0;
-    let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        ui.run_at(UVec2::new(400, 400), |ui| {
+    let build = |fill: Color, h: &mut UiHarness, child: &mut Option<NodeId>| {
+        h.frame(|ui| {
             // Root hstack so the inner zstack honors its `Fixed` size
             // (root nodes get stretched to the surface anchor by the
             // layout engine, which would defeat the clip).
@@ -2145,13 +2140,13 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
         });
     };
 
-    build(BLUE, &mut ui, &mut child_node);
+    build(BLUE, &mut h, &mut child_node);
     // Authoring change on the child only — fill flips. The child's
     // layout rect is `child_size × child_size` (way past the clip),
     // but the damage rect must stay inside the parent's clip.
-    build(RED, &mut ui, &mut child_node);
+    build(RED, &mut h, &mut child_node);
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     let damage_rect = region
         .iter_rects()
         .next()
@@ -2219,28 +2214,28 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         }),
     ];
     for (label, build) in cases {
-        let mut ui = Ui::for_test();
-        frame(&mut ui, |ui| {
+        let mut h = UiHarness::new(DISPLAY.physical);
+        frame(&mut h, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, build);
         });
-        let prev_rect = ui
-            .damage_engine
-            .prev_paint_rect(WidgetId::from_hash("card"))
-            .expect("card painted last frame");
+        let prev_rect =
+            h.ui.damage_engine
+                .prev_paint_rect(WidgetId::from_hash("card"))
+                .expect("card painted last frame");
         assert_eq!(
             prev_rect.size,
             Size::new(expected_paint_size, expected_paint_size),
             "[{label}] offset moves the paint bbox without enlarging it",
         );
 
-        frame(&mut ui, |ui| {
+        frame(&mut h, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
         });
-        let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+        let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
         // `damage_engine.prev` stores the raw paint_rect including
         // the shadow halo, which extends off the top-left of the
         // 200×200 surface for a 50×50 frame at origin. The damage
@@ -2272,9 +2267,9 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     let card = 40.0;
     let blur = 8.0;
 
-    let mut ui = Ui::for_test();
-    let build = |fill: Color, ui: &mut Ui| {
-        ui.run_at(UVec2::new(200, 200), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let build = |fill: Color, h: &mut UiHarness| {
+        h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("host"))
                 .show(ui, |ui| {
@@ -2307,10 +2302,10 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
         });
     };
 
-    build(BLUE, &mut ui);
-    build(RED, &mut ui);
+    build(BLUE, &mut h);
+    build(RED, &mut h);
 
-    for r in ui.damage_region().iter_rects() {
+    for r in h.damage_region().iter_rects() {
         assert!(
             r.size.w <= viewport + 0.5 && r.size.h <= viewport + 0.5,
             "shadow halo damage must stay inside the {viewport}px clip; got {r:?}",
@@ -2412,8 +2407,8 @@ fn off_surface_first_seen_node_skips_prev_insert() {
         "the union can cross the surface even though no paint row does",
     );
 
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| {
         // Wrap in a transformed parent: `Panel::transform` applies to
         // the body (children), so the inner panel's chrome paint_rect
         // = parent_transform.apply_rect(inner.layout_rect). With a
@@ -2436,7 +2431,8 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     });
 
     assert!(
-        !ui.damage_engine
+        !h.ui
+            .damage_engine
             .prev
             .contains_key(&WidgetId::from_hash("off")),
         "Vacant + off-surface paint_rect must not seed a prev entry — \
@@ -2444,7 +2440,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
          node that contributes nothing visible",
     );
     assert!(
-        ui.damage_region().rects.is_empty(),
+        h.damage_region().rects.is_empty(),
         "no visible widgets means no damage rects on the second-frame \
          diff (first frame is Full and walks differently)",
     );
@@ -2456,8 +2452,8 @@ fn off_surface_first_seen_node_skips_prev_insert() {
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::Shape;
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| {
+    let mut h = UiHarness::cold(DISPLAY.physical);
+    frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
@@ -2477,11 +2473,13 @@ fn node_snapshot_decomposition_matches_cascade() {
             });
     });
 
-    let snap = ui.damage_engine.prev[&WidgetId::from_hash("multi")];
+    let snap = h.ui.damage_engine.prev[&WidgetId::from_hash("multi")];
     let layer = Layer::Main;
-    let node_idx = ui.cascades.by_id[&WidgetId::from_hash("multi")].node.idx();
-    let node_span = ui.cascades.layers[layer].paint_arena.node_spans[node_idx];
-    let layer_paints = &ui.cascades.layers[layer].paint_arena.rows;
+    let node_idx = h.ui.cascades.by_id[&WidgetId::from_hash("multi")]
+        .node
+        .idx();
+    let node_span = h.ui.cascades.layers[layer].paint_arena.node_spans[node_idx];
+    let layer_paints = &h.ui.cascades.layers[layer].paint_arena.rows;
 
     // Chrome lands at row 0 of the node's paint span when present.
     let chrome_paint = layer_paints[node_span.start as usize];
@@ -2491,7 +2489,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     );
 
     // Snapshot mirrors the cascade arena slice.
-    let snap_paints = &ui.damage_engine.arena.snaps[snap.paint_span.range()];
+    let snap_paints = &h.ui.damage_engine.arena.snaps[snap.paint_span.range()];
     assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
     let cascade_paints = &layer_paints[node_span.range()];
     for (ord, p) in snap_paints.iter().enumerate() {
@@ -2507,7 +2505,7 @@ fn node_snapshot_decomposition_matches_cascade() {
 
     // The force-full first frame skips the Vacant pushes (its region
     // is discarded) — the buffer stays empty.
-    assert!(ui.damage_engine.raw_rects.is_empty());
+    assert!(h.ui.damage_engine.raw_rects.is_empty());
 
     // A widget added on an *incremental* frame hits the same Vacant
     // arm with the pushes live: one rect per paint row (chrome + each
@@ -2523,7 +2521,7 @@ fn node_snapshot_decomposition_matches_cascade() {
                 .brush(Color::rgb(0.0, 1.0, 0.0)),
         );
     };
-    frame(&mut ui, |ui| {
+    frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
@@ -2541,16 +2539,16 @@ fn node_snapshot_decomposition_matches_cascade() {
             })
             .show(ui, |ui| two_lines(ui));
     });
-    let snap2 = ui.damage_engine.prev[&WidgetId::from_hash("multi2")];
-    let snap2_paints = &ui.damage_engine.arena.snaps[snap2.paint_span.range()];
+    let snap2 = h.ui.damage_engine.prev[&WidgetId::from_hash("multi2")];
+    let snap2_paints = &h.ui.damage_engine.arena.snaps[snap2.paint_span.range()];
     assert_eq!(
-        ui.damage_engine.raw_rects.len(),
+        h.ui.damage_engine.raw_rects.len(),
         3,
         "incremental Vacant insert pushes one rect per paint row",
     );
-    assert_eq!(ui.damage_engine.raw_rects[0], snap2_paints[0].screen);
-    assert_eq!(ui.damage_engine.raw_rects[1], snap2_paints[1].screen);
-    assert_eq!(ui.damage_engine.raw_rects[2], snap2_paints[2].screen);
+    assert_eq!(h.ui.damage_engine.raw_rects[0], snap2_paints[0].screen);
+    assert_eq!(h.ui.damage_engine.raw_rects[1], snap2_paints[1].screen);
+    assert_eq!(h.ui.damage_engine.raw_rects[2], snap2_paints[2].screen);
 }
 
 /// Slice 4 headline: a multi-shape owner whose shapes are spatially
@@ -2568,7 +2566,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // endpoint shifts between frames. Frame N records all three;
     // frame N+1 shifts only the third — the diff must push exactly
     // that shape's pair of rects.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |moving_y: f32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
@@ -2594,10 +2592,10 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     };
 
     // Frame 1 (cold) and frame 2 (steady — no diff).
-    frame(&mut ui, |ui| build(120.0, ui));
-    frame(&mut ui, |ui| build(120.0, ui));
+    frame(&mut h, |ui| build(120.0, ui));
+    frame(&mut h, |ui| build(120.0, ui));
     assert!(
-        ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.dirty.is_empty(),
         "steady frame must produce no diff"
     );
 
@@ -2606,28 +2604,29 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // the damage region. Chrome (canvas background) is unchanged in
     // geometry AND authoring → no chrome push. Shapes 0 and 1 are
     // bit-identical → no push.
-    let prev_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_arena_len = ui.damage_engine.arena.snaps.len();
-    let prev_orphaned = ui.damage_engine.arena.orphaned;
+    let prev_snap = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev_arena_len = h.ui.damage_engine.arena.snaps.len();
+    let prev_orphaned = h.ui.damage_engine.arena.orphaned;
     // paint_snaps row 0 is chrome; shapes follow at offset 1.
-    let prev_shape2_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][1 + 2].screen;
-    frame(&mut ui, |ui| build(140.0, ui));
+    let prev_shape2_rect =
+        h.ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][1 + 2].screen;
+    frame(&mut h, |ui| build(140.0, ui));
 
-    let canvas_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let canvas_snap = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     let curr_shape2_rect =
-        ui.damage_engine.arena.snaps[canvas_snap.paint_span.range()][1 + 2].screen;
+        h.ui.damage_engine.arena.snaps[canvas_snap.paint_span.range()][1 + 2].screen;
     assert_eq!(
         canvas_snap.paint_span, prev_snap.paint_span,
         "same-count paint changes must refresh the existing arena span",
     );
-    assert_eq!(ui.damage_engine.arena.snaps.len(), prev_arena_len);
-    assert_eq!(ui.damage_engine.arena.orphaned, prev_orphaned);
+    assert_eq!(h.ui.damage_engine.arena.snaps.len(), prev_arena_len);
+    assert_eq!(h.ui.damage_engine.arena.orphaned, prev_orphaned);
 
     // The damage region must intersect both old and new positions of
     // shape 2 (so the pixels-at-old-position get cleared and
     // pixels-at-new-position get painted). It must NOT intersect the
     // disjoint regions occupied by shapes 0 and 1 — those didn't move.
-    let region = ui.damage_region();
+    let region = h.damage_region();
     let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
     assert!(
         intersects(prev_shape2_rect),
@@ -2664,7 +2663,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
 /// would fall through the rect-only guard and emit no damage at all.
 #[test]
 fn chrome_authoring_change_pushes_chrome_paint_row() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |fill: Color, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
@@ -2675,13 +2674,13 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
             })
             .show(ui, |_| {});
     };
-    frame(&mut ui, |ui| build(BLUE, ui));
-    frame(&mut ui, |ui| build(BLUE, ui)); // settle
-    let snap = ui.damage_engine.prev[&WidgetId::from_hash("c")];
-    let snap_rect = ui.damage_engine.arena.snaps[snap.paint_span.start as usize].screen;
+    frame(&mut h, |ui| build(BLUE, ui));
+    frame(&mut h, |ui| build(BLUE, ui)); // settle
+    let snap = h.ui.damage_engine.prev[&WidgetId::from_hash("c")];
+    let snap_rect = h.ui.damage_engine.arena.snaps[snap.paint_span.start as usize].screen;
 
-    frame(&mut ui, |ui| build(RED, ui));
-    let region = ui.damage_region();
+    frame(&mut h, |ui| build(RED, ui));
+    let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     assert!(
         rects.iter().any(|r| r.intersects(snap_rect)),
@@ -2705,7 +2704,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
     use crate::Shape;
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |include_middle: bool, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
@@ -2726,14 +2725,14 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
             });
     };
 
-    frame(&mut ui, |ui| build(true, ui));
-    frame(&mut ui, |ui| build(true, ui)); // settle
+    frame(&mut h, |ui| build(true, ui));
+    frame(&mut h, |ui| build(true, ui)); // settle
 
     // Snapshot the prev rects for shapes 0/1/2 so we can verify the
     // post-delete damage region.
-    let prev = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
-    let prev_shapes = &ui.damage_engine.arena.snaps[prev.paint_span.range()];
+    let prev_shapes = &h.ui.damage_engine.arena.snaps[prev.paint_span.range()];
     assert_eq!(prev_shapes.len(), 3);
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
@@ -2742,15 +2741,15 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // and blue→blue between frames (same `(screen, hash)` despite the
     // ordinal shift); only the green paint is unmatched. Damage covers
     // green's prev rect and nothing else.
-    frame(&mut ui, |ui| build(false, ui));
+    frame(&mut h, |ui| build(false, ui));
 
-    let post = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let post = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(
         post.paint_span.len, 2,
         "snapshot tail must be trimmed to the new paint count",
     );
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
 
@@ -2779,7 +2778,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 fn shape_added_in_middle_damages_only_new() {
     use crate::Shape;
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);
     let green_rect = Rect::new(60.0, 0.0, 20.0, 20.0);
     let blue_rect = Rect::new(120.0, 0.0, 20.0, 20.0);
@@ -2796,22 +2795,22 @@ fn shape_added_in_middle_damages_only_new() {
             });
     };
 
-    frame(&mut ui, |ui| build(false, ui)); // red + blue
-    frame(&mut ui, |ui| build(false, ui)); // settle
+    frame(&mut h, |ui| build(false, ui)); // red + blue
+    frame(&mut h, |ui| build(false, ui)); // settle
 
-    let prev = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_shapes: Vec<_> = ui.damage_engine.arena.snaps[prev.paint_span.range()].to_vec();
+    let prev = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev_shapes: Vec<_> = h.ui.damage_engine.arena.snaps[prev.paint_span.range()].to_vec();
     assert_eq!(prev_shapes.len(), 2);
     let prev_red_screen = prev_shapes[0].screen;
     let prev_blue_screen = prev_shapes[1].screen;
 
-    frame(&mut ui, |ui| build(true, ui)); // insert green between
+    frame(&mut h, |ui| build(true, ui)); // insert green between
 
-    let post = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let post = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
-    let curr_shapes: Vec<_> = ui.damage_engine.arena.snaps[post.paint_span.range()].to_vec();
-    let region = ui.damage_region();
+    let curr_shapes: Vec<_> = h.ui.damage_engine.arena.snaps[post.paint_span.range()].to_vec();
+    let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
 
@@ -2850,7 +2849,7 @@ fn shape_added_in_middle_damages_only_new() {
 /// pins the producer side of that contract.
 #[test]
 fn chrome_only_owner_has_nonzero_paint_span() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("chrome_only"))
@@ -2861,18 +2860,18 @@ fn chrome_only_owner_has_nonzero_paint_span() {
             })
             .show(ui, |_| {});
     };
-    frame(&mut ui, build);
-    frame(&mut ui, build); // settle prev
+    frame(&mut h, build);
+    frame(&mut h, build); // settle prev
 
     let wid = WidgetId::from_hash("chrome_only");
-    let snap = ui.damage_engine.prev[&wid];
+    let snap = h.ui.damage_engine.prev[&wid];
     assert_eq!(
         snap.paint_span.len, 1,
         "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
 
     // Every entry in `prev` covers at least one row.
-    for (k, s) in &ui.damage_engine.prev {
+    for (k, s) in &h.ui.damage_engine.prev {
         assert!(
             s.paint_span.len > 0,
             "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
@@ -2881,7 +2880,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 
     // Compaction must accept the live state without tripping the
     // invariant assert.
-    ui.damage_engine.compact_paint_snaps(&ui.forest);
+    h.ui.damage_engine.compact_paint_snaps(&h.ui.forest);
 }
 
 /// Pin: changing the *content* of a `Shape::Text` with
@@ -2910,7 +2909,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     // Mono fallback geometry: glyph width = font_size_px * 0.5, line
     // height = font_size_px. With font_size_px = 14, "abc" measures
     // 21×14 and "abcdef" measures 42×14.
@@ -2940,10 +2939,10 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
             });
     };
 
-    frame(&mut ui, |ui| build("abc", ui));
-    frame(&mut ui, |ui| build("abc", ui));
+    frame(&mut h, |ui| build("abc", ui));
+    frame(&mut h, |ui| build("abc", ui));
     assert!(
-        ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.dirty.is_empty(),
         "steady frame must produce no diff"
     );
 
@@ -2955,8 +2954,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // `text_paint_bbox_local`. Expected shaped size scales by the
     // same factor.
     let inflate = 1.0 + TEXT_SCALE_STEP;
-    let prev_snap = ui.damage_engine.prev[&leaf_id];
-    let prev_text_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][0].screen;
+    let prev_snap = h.ui.damage_engine.prev[&leaf_id];
+    let prev_text_rect = h.ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert!(
         (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
@@ -2964,10 +2963,10 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         "prev text rect should have shaped size ≈ {prev_size_short:?}, got {prev_text_rect:?}",
     );
 
-    frame(&mut ui, |ui| build("abcdef", ui));
+    frame(&mut h, |ui| build("abcdef", ui));
 
-    let curr_snap = ui.damage_engine.prev[&leaf_id];
-    let curr_text_rect = ui.damage_engine.arena.snaps[curr_snap.paint_span.range()][0].screen;
+    let curr_snap = h.ui.damage_engine.prev[&leaf_id];
+    let curr_text_rect = h.ui.damage_engine.arena.snaps[curr_snap.paint_span.range()][0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert!(
         (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5
@@ -2975,7 +2974,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         "curr text rect should have shaped size ≈ {curr_size_long:?}, got {curr_text_rect:?}",
     );
 
-    let region = ui.damage_region();
+    let region = h.damage_region();
     let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
 
     // Probe deep inside the new "abcdef" rect but past where the old
@@ -3030,7 +3029,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // direct shape extends to x=400 (well past 80). After the cascade
     // walk, `shape_rects[idx]` must be clipped to the host's deflated
     // mask, not span the full 400 px.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(DISPLAY.physical);
     let host_id = WidgetId::from_hash("clip-host");
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -3050,17 +3049,17 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
                 });
         });
     };
-    frame(&mut ui, build);
-    frame(&mut ui, build);
+    frame(&mut h, build);
+    frame(&mut h, build);
 
     // Locate the host node by widget id and read its first shape's
     // cascaded screen rect. Pre-fix the rect spans the full 400 px;
     // post-fix it's clamped to (host_width − padding-fold).
-    let cascades = &ui.cascades;
+    let cascades = &h.ui.cascades;
     let host_ep = *cascades.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascades.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
     let host_rect = cascades.entries.rect()[host_entry_idx];
-    let tree = &ui.forest.trees[Layer::Main];
+    let tree = &h.ui.forest.trees[Layer::Main];
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");
     // The host paints chrome (the BLUE background), so row 0 of its
@@ -3109,9 +3108,9 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
             );
         });
     };
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| node(ui, false, BLUE));
-    let damage = frame(&mut ui, |ui| node(ui, true, RED));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| node(ui, false, BLUE));
+    let damage = frame(&mut h, |ui| node(ui, true, RED));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };
@@ -3168,9 +3167,9 @@ fn reparent_at_same_rect_damages_moved_subtree() {
                     });
             });
     };
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| build(ui, false));
-    let damage = frame(&mut ui, |ui| build(ui, true));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| build(ui, false));
+    let damage = frame(&mut h, |ui| build(ui, true));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial for the moved leaf, got {damage:?}");
     };
@@ -3180,7 +3179,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
     );
     // Follow-up frame with no further move settles back to Skip — the
     // refreshed snapshot carries the new parent_key.
-    let settled = frame(&mut ui, |ui| build(ui, true));
+    let settled = frame(&mut h, |ui| build(ui, true));
     assert_eq!(settled, Damage::Skip, "reparent damage must not repeat");
 }
 
@@ -3216,9 +3215,9 @@ fn front_insert_damages_only_the_new_shape() {
                 line(ui, 40.0);
             });
     };
-    let mut ui = Ui::for_test();
-    frame(&mut ui, |ui| build(ui, false));
-    let damage = frame(&mut ui, |ui| build(ui, true));
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| build(ui, false));
+    let damage = frame(&mut h, |ui| build(ui, true));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };

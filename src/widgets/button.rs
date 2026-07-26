@@ -118,7 +118,8 @@ impl Configure for Button<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::Ui;
+    use crate::ui::harness::UiHarness;
+
     use crate::primitives::background::Background;
     use crate::primitives::spacing::Spacing;
     use crate::scene::layer::Layer;
@@ -136,9 +137,9 @@ mod tests {
         };
         theme.looks.normal.background = Some(Background::NONE);
 
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(200, 120));
         let (mut explicit, mut inherited) = (None, None);
-        ui.run_at_without_baseline(UVec2::new(200, 120), |ui| {
+        h.frame_without_baseline(|ui| {
             explicit = Some(
                 Button::new()
                     .style(&theme)
@@ -150,7 +151,7 @@ mod tests {
             inherited = Some(Button::new().style(&theme).show(ui).node());
         });
 
-        let layouts = ui.forest.trees[Layer::Main].records.layout();
+        let layouts = h.ui.forest.trees[Layer::Main].records.layout();
         let explicit = layouts[explicit.unwrap().idx()];
         let inherited = layouts[inherited.unwrap().idx()];
         assert_eq!(explicit.padding, Spacing::ZERO);

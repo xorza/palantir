@@ -12,11 +12,11 @@
 //! Sweeps a width range and asserts the frame doesn't panic.
 use crate::primitives::widget_id::WidgetId;
 
-use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -42,11 +42,11 @@ use glam::UVec2;
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(outer_w, 400));
         let mut left_node = None;
         let mut right_node = None;
         let mut row_node = NodeId(0);
-        ui.run_at_without_baseline(UVec2::new(outer_w, 400), |ui| {
+        h.frame_without_baseline(|ui| {
             row_node = Panel::hstack()
                 .auto_id()
                 .gap(12.0)
@@ -98,9 +98,9 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 .node();
         });
 
-        let row = ui.layout[Layer::Main].rect[row_node.idx()];
-        let left = ui.layout[Layer::Main].rect[left_node.unwrap().idx()];
-        let right = ui.layout[Layer::Main].rect[right_node.unwrap().idx()];
+        let row = h.ui.layout[Layer::Main].rect[row_node.idx()];
+        let left = h.ui.layout[Layer::Main].rect[left_node.unwrap().idx()];
+        let right = h.ui.layout[Layer::Main].rect[right_node.unwrap().idx()];
 
         // The right cell's intrinsic_min along X is the Fixed
         // descendant's 180 + the cell's 24 padding = 204. When the
@@ -158,9 +158,10 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // discrete width tips the toolbar's wrap count past a threshold.
     //
     // Reuse one `Ui` across sweep — recreating it would re-load fonts (~120 ms each).
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(480, 600));
     for w in (480u32..=900).step_by(1) {
-        ui.run_at_without_baseline(UVec2::new(w, 600), |ui| {
+        h.resize(UVec2::new(w, 600));
+        h.frame_without_baseline(|ui| {
             Panel::vstack()
                 .auto_id()
                 .padding(12.0)
