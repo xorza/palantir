@@ -1,15 +1,15 @@
-use crate::Ui;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
 fn canvas_places_child_at_position_within_inner_rect() {
-    let mut ui = Ui::for_test();
-    let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
@@ -24,9 +24,9 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .response
             .node()
     });
-    let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
-    let kids: Vec<_> = ui.main_child_ids(panel);
-    let a = ui.layout[Layer::Main].rect[kids[0].idx()];
+    let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let kids: Vec<_> = h.main_child_ids(panel);
+    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
     assert_eq!(a.min.x - panel_rect.min.x, 40.0);
     assert_eq!(a.min.y, 50.0);
     assert_eq!(a.size.w, 20.0);
@@ -35,8 +35,8 @@ fn canvas_places_child_at_position_within_inner_rect() {
 
 #[test]
 fn canvas_hugs_to_bounding_box_of_placed_children() {
-    let mut ui = Ui::for_test();
-    let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
@@ -55,7 +55,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             .response
             .node()
     });
-    let r = ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
     // bbox = max(pos + desired) per axis: 50+20=70, 60+20=80
     assert_eq!(r.size.w, 70.0);
     assert_eq!(r.size.h, 80.0);
@@ -72,8 +72,8 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 /// `canvas_two_children_take_bbox_max_position_plus_size`).
 #[test]
 fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
-    let mut ui = Ui::for_test();
-    let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -87,7 +87,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
             .response
             .node()
     });
-    let r = ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
     // FILL canvas in a 200×200 outer: stays at 200×200 regardless of
     // the child's position. Pre-fix this was 860×200 (700 + 160).
     assert_eq!(
@@ -95,8 +95,8 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
         "FILL canvas width must not grow past available"
     );
     assert_eq!(r.size.h, 200.0);
-    let kids: Vec<_> = ui.main_child_ids(panel);
-    let child = ui.layout[Layer::Main].rect[kids[0].idx()];
+    let kids: Vec<_> = h.main_child_ids(panel);
+    let child = h.ui.layout[Layer::Main].rect[kids[0].idx()];
     // Child still arranges at its declared position — it just overflows
     // the canvas (and would be clipped by any ancestor with
     // `.clip_rect()`).
@@ -110,8 +110,8 @@ fn canvas_negative_position_does_not_extend_bbox() {
     // placed at negative coords don't grow the panel — they just bleed past
     // the inner top-left. Scrollable negative-origin canvases are a
     // userspace concern via `Scroll::anchor_canvas_origin`.
-    let mut ui = Ui::for_test();
-    let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
@@ -125,13 +125,13 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .response
             .node()
     });
-    let r = ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
     // pos + desired = (15, 15) per axis.
     assert_eq!(r.size.w, 15.0);
     assert_eq!(r.size.h, 15.0);
 
-    let kids: Vec<_> = ui.main_child_ids(panel);
-    let child = ui.layout[Layer::Main].rect[kids[0].idx()];
+    let kids: Vec<_> = h.main_child_ids(panel);
+    let child = h.ui.layout[Layer::Main].rect[kids[0].idx()];
     assert_eq!(child.min.x - r.min.x, -5.0);
     assert_eq!(child.min.y - r.min.y, -5.0);
 }
@@ -152,8 +152,8 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
         ("hug_canvas_falls_back_to_intrinsic", None, 0.0),
     ];
     for (label, fixed_size, expected) in cases {
-        let mut ui = Ui::for_test();
-        let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let panel = h.under_outer(|ui| {
             let mut canvas = Panel::canvas().auto_id();
             if let Some(s) = *fixed_size {
                 canvas = canvas.size((Sizing::fixed(s), Sizing::fixed(s)));
@@ -169,8 +169,8 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
                 .response
                 .node()
         });
-        let kids: Vec<_> = ui.main_child_ids(panel);
-        let f = ui.layout[Layer::Main].rect[kids[0].idx()];
+        let kids: Vec<_> = h.main_child_ids(panel);
+        let f = h.ui.layout[Layer::Main].rect[kids[0].idx()];
         assert_eq!(f.size.w, *expected, "case: {label} w");
         assert_eq!(f.size.h, *expected, "case: {label} h");
     }
@@ -178,8 +178,8 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
 
 #[test]
 fn canvas_collapsed_child_does_not_grow_bbox() {
-    let mut ui = Ui::for_test();
-    let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
@@ -199,7 +199,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
             .response
             .node()
     });
-    let r = ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
     assert_eq!(r.size.w, 10.0);
     assert_eq!(r.size.h, 10.0);
 }
@@ -213,9 +213,9 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
 /// rely on for free-form placement.
 #[test]
 fn canvas_ignores_child_align() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut child = None;
-    let _panel = ui.under_outer(UVec2::new(400, 400), |ui| {
+    let _panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
@@ -235,7 +235,7 @@ fn canvas_ignores_child_align() {
             .response
             .node()
     });
-    let r = ui.layout[Layer::Main].rect[child.unwrap().idx()];
+    let r = h.ui.layout[Layer::Main].rect[child.unwrap().idx()];
     assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }

@@ -10,6 +10,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::seen_ids::Endpoint;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -34,8 +35,8 @@ fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
         });
 }
 
-fn read_state(ui: &mut Ui) -> ScrollState {
-    *ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
+fn read_state(h: &mut UiHarness) -> ScrollState {
+    *h.ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
 }
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {
@@ -60,13 +61,13 @@ fn scroll_viewport(ui: &Ui, outer_id: WidgetId) -> Size {
 
 #[test]
 fn scroll_layout_records_viewport_and_content_after_arrange() {
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| build(ui, 200.0, 800.0));
     let id = WidgetId::from_hash("scroll");
-    assert_eq!(scroll_viewport(&ui, id).h, 200.0);
-    assert_eq!(scroll_content(&ui, id).h, 800.0);
+    assert_eq!(scroll_viewport(&h.ui, id).h, 200.0);
+    assert_eq!(scroll_content(&h.ui, id).h, 800.0);
     assert_eq!(
-        read_state(&mut ui).offset,
+        read_state(&mut h).offset,
         Vec2::ZERO,
         "no wheel input → offset stays at 0"
     );
@@ -74,10 +75,10 @@ fn scroll_layout_records_viewport_and_content_after_arrange() {
 
 #[test]
 fn explicit_no_clip_overrides_scroll_default() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 300));
     let unclipped_id = WidgetId::from_hash("unclipped-scroll");
     let clipped_id = WidgetId::from_hash("default-scroll");
-    ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+    h.frame_without_baseline(|ui| {
         Scroll::vertical()
             .id(unclipped_id)
             .clip(ClipMode::None)
@@ -89,7 +90,7 @@ fn explicit_no_clip_overrides_scroll_default() {
             .show(ui, |_| {});
     });
 
-    let tree = &ui.forest.trees[Layer::Main];
+    let tree = &h.ui.forest.trees[Layer::Main];
     let clip_for = |id: WidgetId| {
         let viewport_id = id.with("__viewport");
         let index = tree
@@ -106,7 +107,7 @@ fn explicit_no_clip_overrides_scroll_default() {
 
 #[test]
 fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let outer_id = WidgetId::from_hash("outer");
     let inner_id = WidgetId::from_hash("inner");
     let build = |ui: &mut Ui| {
@@ -126,23 +127,23 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
                     });
             });
     };
-    ui.run_at(UVec2::new(400, 400), build);
+    h.frame(build);
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    assert_eq!(ui.input.scroll_target, Some(inner_id));
-    assert_eq!(ui.input.pinch_target, Some(outer_id));
-    assert!(ui.on_input(InputEvent::Zoom(1.5)).requests_repaint);
-    ui.run_at(UVec2::new(400, 400), build);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    assert_eq!(h.ui.input.scroll_target, Some(inner_id));
+    assert_eq!(h.ui.input.pinch_target, Some(outer_id));
+    assert!(h.on_input(InputEvent::Zoom(1.5)).requests_repaint);
+    h.frame(build);
 
-    let outer_zoom = ui.state_mut::<ScrollState>(outer_id).zoom;
-    let inner_zoom = ui.state_mut::<ScrollState>(inner_id).zoom;
+    let outer_zoom = h.ui.state_mut::<ScrollState>(outer_id).zoom;
+    let inner_zoom = h.ui.state_mut::<ScrollState>(inner_id).zoom;
     assert_eq!(outer_zoom, 1.5);
     assert_eq!(inner_zoom, 1.0);
 }
 
 #[test]
 fn state_is_swept_when_scroll_disappears() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let id = WidgetId::from_hash("scroll");
     let build = |ui: &mut Ui| {
         Scroll::both()
@@ -152,16 +153,16 @@ fn state_is_swept_when_scroll_disappears() {
             .show(ui, |_| {});
     };
 
-    ui.run_at(SURFACE, build);
-    let state = ui.try_state_mut::<ScrollState>(id).unwrap();
+    h.frame(build);
+    let state = h.ui.try_state_mut::<ScrollState>(id).unwrap();
     state.offset = Vec2::new(12.0, 34.0);
     state.zoom = 2.0;
 
-    ui.run_at(SURFACE, |_| {});
-    assert!(ui.try_state::<ScrollState>(id).is_none());
+    h.frame(|_| {});
+    assert!(h.ui.try_state::<ScrollState>(id).is_none());
 
-    ui.run_at(SURFACE, build);
-    let state = ui.try_state::<ScrollState>(id).unwrap();
+    h.frame(build);
+    let state = h.ui.try_state::<ScrollState>(id).unwrap();
     assert_eq!(state.offset, Vec2::ZERO);
     assert_eq!(state.zoom, 1.0);
     assert!(state.drag_anchor_is_none());
@@ -197,15 +198,15 @@ fn wheel_delta_advances_offset_with_clamp() {
         ),
     ];
     for (label, viewport_h, content_h, pushes, expected) in cases {
-        let mut ui = Ui::for_test();
-        ui.run_at(SURFACE, |ui| build(ui, *viewport_h, *content_h));
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| build(ui, *viewport_h, *content_h));
+        h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
-            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
-            ui.run_at(SURFACE, |ui| build(ui, *viewport_h, *content_h));
+            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
+            h.frame(|ui| build(ui, *viewport_h, *content_h));
         }
 
-        assert_eq!(read_state(&mut ui).offset.y, *expected, "case: {label}");
+        assert_eq!(read_state(&mut h).offset.y, *expected, "case: {label}");
     }
 }
 
@@ -216,7 +217,7 @@ fn wheel_delta_advances_offset_with_clamp() {
 /// margin = symmetric range about the natural `[0, slack]`.
 #[test]
 fn content_margin_allows_negative_pan_into_left_top_band() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let m = 100.0;
     let build_m = |ui: &mut Ui| {
         Scroll::both()
@@ -231,27 +232,27 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
                     .show(ui);
             });
     };
-    ui.run_at(SURFACE, build_m);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.frame(build_m);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     // Pan left/up: large negative wheel delta should clamp at `-m` on
     // both axes (margin is symmetric and zoom is 1.0).
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
-    ui.run_at(SURFACE, build_m);
-    assert_eq!(read_state(&mut ui).offset, Vec2::new(-m, -m));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
+    h.frame(build_m);
+    assert_eq!(read_state(&mut h).offset, Vec2::new(-m, -m));
     // Pan back the other way: clamp at `raw_slack + m`. Raw slack =
     // 400 - 200 = 200; total max = 200 + 100 = 300.
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
-    ui.run_at(SURFACE, build_m);
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
+    h.frame(build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
-        read_state(&mut ui).offset,
+        read_state(&mut h).offset,
         Vec2::new(raw_slack + m, raw_slack + m)
     );
 }
 
 #[test]
 fn horizontal_scroll_pans_only_x() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build_h = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -267,19 +268,19 @@ fn horizontal_scroll_pans_only_x() {
                     });
             });
     };
-    ui.run_at(SURFACE, build_h);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(75.0, 200.0)));
+    h.frame(build_h);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(75.0, 200.0)));
 
-    ui.run_at(SURFACE, build_h);
+    h.frame(build_h);
     let id = WidgetId::from_hash("hscroll");
-    let row = *ui.state_mut::<ScrollState>(id);
+    let row = *h.ui.state_mut::<ScrollState>(id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
 }
 
 #[test]
 fn both_axis_scroll_pans_both_axes() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build_xy = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -295,18 +296,18 @@ fn both_axis_scroll_pans_both_axes() {
                     });
             });
     };
-    ui.run_at(SURFACE, build_xy);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
+    h.frame(build_xy);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
 
-    ui.run_at(SURFACE, build_xy);
+    h.frame(build_xy);
     let id = WidgetId::from_hash("xy");
-    let row = *ui.state_mut::<ScrollState>(id);
+    let row = *h.ui.state_mut::<ScrollState>(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
-    assert_eq!(scroll_content(&ui, id), Size::new(800.0, 800.0));
+    assert_eq!(scroll_content(&h.ui, id), Size::new(800.0, 800.0));
     // Viewport reserves `theme.width + theme.gap = 12px` per panned
     // axis when content overflows; 200 - 12 = 188.
-    assert_eq!(scroll_viewport(&ui, id), Size::new(188.0, 188.0));
+    assert_eq!(scroll_viewport(&h.ui, id), Size::new(188.0, 188.0));
 }
 
 /// `LayerLayout::scroll_content` records the extent the scroll
@@ -343,13 +344,13 @@ fn scroll_records_content_extent() {
         ("empty_records_zero", Axis::Empty, "empty", Size::ZERO),
     ];
     for (label, axis, scroll_key, expected) in cases {
-        let mut ui = Ui::for_test();
         let surface = match axis {
             Axis::V | Axis::Empty => UVec2::new(400, 600),
             Axis::H => UVec2::new(800, 200),
             Axis::XY => UVec2::new(400, 400),
         };
-        let scroll_node = ui.under_outer(surface, |ui| match axis {
+        let mut h = UiHarness::new(surface);
+        let scroll_node = h.under_outer(|ui| match axis {
             Axis::V => Scroll::vertical()
                 .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
@@ -402,11 +403,11 @@ fn scroll_records_content_extent() {
         });
         let scroll_id = WidgetId::from_hash(scroll_key);
         assert_eq!(
-            scroll_content(&ui, scroll_id),
+            scroll_content(&h.ui, scroll_id),
             *expected,
             "case: {label} content"
         );
-        let rect = ui.layout[Layer::Main].rect[scroll_node.idx()];
+        let rect = h.ui.layout[Layer::Main].rect[scroll_node.idx()];
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
             Axis::H => (200.0, 60.0),
@@ -443,17 +444,17 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
             });
     };
 
-    let mut ui = Ui::for_test();
-    ui.run_at(surface, build);
+    let mut h = UiHarness::new(surface);
+    h.frame(build);
     let scroll_id = WidgetId::from_hash("scroll");
-    let after_first = scroll_content(&ui, scroll_id);
-    let viewport_first = scroll_viewport(&ui, scroll_id);
+    let after_first = scroll_content(&h.ui, scroll_id);
+    let viewport_first = scroll_viewport(&h.ui, scroll_id);
     assert_eq!(after_first.h, 92.0);
 
-    ui.run_at(surface, build);
-    let after_second = scroll_content(&ui, scroll_id);
+    h.frame(build);
+    let after_second = scroll_content(&h.ui, scroll_id);
     assert!(
-        ui.layout_engine
+        h.ui.layout_engine
             .scratch
             .cache_hits
             .contains(&WidgetId::VIEWPORT),
@@ -463,7 +464,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
         after_second, after_first,
         "scroll content survives a measure-cache hit",
     );
-    assert_eq!(scroll_viewport(&ui, scroll_id), viewport_first);
+    assert_eq!(scroll_viewport(&h.ui, scroll_id), viewport_first);
 }
 
 #[test]
@@ -524,7 +525,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             pointer,
             pinches,
         } = *case;
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let build = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -547,16 +548,16 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                 });
         };
 
-        ui.run_at(SURFACE, build);
+        h.frame(build);
 
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
+        h.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
         for &(px, py) in pans {
-            ui.on_input(InputEvent::ScrollPixels(Vec2::new(px, py)));
-            ui.run_at(SURFACE, build);
+            h.on_input(InputEvent::ScrollPixels(Vec2::new(px, py)));
+            h.frame(build);
         }
 
         let id = WidgetId::from_hash("xy");
-        let before = *ui.state_mut::<ScrollState>(id);
+        let before = *h.ui.state_mut::<ScrollState>(id);
         let pivot_local = Vec2::new(pointer.0 - OUTER_PAD, pointer.1 - (OUTER_PAD + TEXT_GAP));
         let world_before = Vec2::new(
             (pivot_local.x + before.offset.x) / before.zoom,
@@ -564,11 +565,11 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         );
 
         for &pinch in pinches {
-            ui.on_input(InputEvent::Zoom(pinch));
-            ui.run_at(SURFACE, build);
+            h.on_input(InputEvent::Zoom(pinch));
+            h.frame(build);
         }
 
-        let after = *ui.state_mut::<ScrollState>(id);
+        let after = *h.ui.state_mut::<ScrollState>(id);
         let world_after = Vec2::new(
             (pivot_local.x + after.offset.x) / after.zoom,
             (pivot_local.y + after.offset.y) / after.zoom,
@@ -625,7 +626,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 /// natural range works, pan further out is blocked.
 #[test]
 fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -642,28 +643,28 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                     });
             });
     };
-    ui.run_at(SURFACE, build);
+    h.frame(build);
 
     let id = WidgetId::from_hash("xy");
     {
-        let row = ui.state_mut::<ScrollState>(id);
+        let row = h.ui.state_mut::<ScrollState>(id);
         row.offset = Vec2::new(0.0, -50.0);
     }
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
-    ui.run_at(SURFACE, build);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    h.frame(build);
 
-    let after = *ui.state_mut::<ScrollState>(id);
+    let after = *h.ui.state_mut::<ScrollState>(id);
     assert!(
         (after.offset.y - (-45.0)).abs() < 1e-3,
         "wheel pan from out-of-range offset snapped: -50 + 5 should be -45, got {}",
         after.offset.y,
     );
 
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
-    ui.run_at(SURFACE, build);
-    let after2 = *ui.state_mut::<ScrollState>(id);
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
+    h.frame(build);
+    let after2 = *h.ui.state_mut::<ScrollState>(id);
     assert!(
         (after2.offset.y - (-45.0)).abs() < 1e-3,
         "pan further out-of-range should be blocked at current ({}), got {}",
@@ -674,7 +675,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
 #[test]
 fn pivot_zoom_preserves_underflow_pan_range() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
@@ -687,20 +688,20 @@ fn pivot_zoom_preserves_underflow_pan_range() {
                     .show(ui);
             });
     };
-    ui.run_at(SURFACE, build);
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Zoom(0.5));
-    ui.run_at(SURFACE, build);
+    h.frame(build);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.on_input(InputEvent::Zoom(0.5));
+    h.frame(build);
 
     let id = WidgetId::from_hash("scroll");
-    let zoomed = *ui.state_mut::<ScrollState>(id);
+    let zoomed = *h.ui.state_mut::<ScrollState>(id);
     let expected_zoomed_offset = (0.0 + 50.0) * 0.5 - 50.0;
     assert_eq!(zoomed.zoom, 0.5);
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
-    ui.run_at(SURFACE, build);
-    let panned = *ui.state_mut::<ScrollState>(id);
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
+    h.frame(build);
+    let panned = *h.ui.state_mut::<ScrollState>(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset.y, zoomed.offset.y);
 }
@@ -711,7 +712,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
     let logical_pointer = Vec2::new(50.0, 70.0);
 
     for scale in [0.5, 1.0, 2.0] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let build = |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scaled-scroll-parent"))
@@ -730,16 +731,16 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                         });
                 });
         };
-        ui.run_at(SURFACE, build);
+        h.frame(build);
 
-        let response = ui.response_for(id);
+        let response = h.ui.response_for(id);
         let layout = response.layout_rect.expect("scroll arranged");
         let pointer = response.transform.apply_point(layout.min + logical_pointer);
-        ui.on_input(InputEvent::PointerMoved(pointer));
-        ui.on_input(InputEvent::Zoom(1.5));
-        ui.run_at(SURFACE, build);
+        h.on_input(InputEvent::PointerMoved(pointer));
+        h.on_input(InputEvent::Zoom(1.5));
+        h.frame(build);
 
-        let state = *ui.state_mut::<ScrollState>(id);
+        let state = *h.ui.state_mut::<ScrollState>(id);
         assert_eq!(state.zoom, 1.5, "zoom at {scale}×");
         assert_eq!(
             state.offset,
@@ -766,6 +767,7 @@ mod bars {
     use crate::scene::tree::node::NodeId;
     use crate::shape::rect::RectKind;
     use crate::ui::frame_report::FrameProcessing;
+    use crate::ui::harness::UiHarness;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::Scroll;
@@ -889,18 +891,18 @@ mod bars {
 
     /// Build a scroll over two frames so the second frame's record
     /// settles `ScrollState` before the bar-emit check.
-    fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
-        let mut ui = Ui::for_test();
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+    fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (UiHarness, NodeId) {
+        let mut h = UiHarness::new(surface);
+        h.frame(build);
+        h.frame(build);
         let scroll_id = WidgetId::from_hash("scroll");
-        let idx = ui.forest.trees[Layer::Main]
+        let idx = h.ui.forest.trees[Layer::Main]
             .records
             .widget_id()
             .iter()
             .position(|w| *w == scroll_id)
             .expect("scroll widget recorded");
-        (ui, NodeId(idx as u32))
+        (h, NodeId(idx as u32))
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
@@ -975,9 +977,9 @@ mod bars {
                 });
         };
 
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let mut records = 0;
-        let report = ui.record_test_frame(display, Duration::ZERO, |ui| {
+        let report = h.frame_at(display, Duration::ZERO, |ui| {
             records += 1;
             build(ui);
         });
@@ -987,7 +989,7 @@ mod bars {
             "hidden cold mount must not settle bar visibility"
         );
 
-        let tree = &ui.forest.trees[Layer::Main];
+        let tree = &h.ui.forest.trees[Layer::Main];
         for tag in ["__bars", "__vtrack", "__htrack", "__vthumb", "__hthumb"] {
             assert!(
                 !tree
@@ -999,12 +1001,12 @@ mod bars {
             );
         }
 
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-        ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
-        ui.on_input(InputEvent::Zoom(1.5));
-        ui.run_at(surface, build);
-        let state = *ui.state_mut::<ScrollState>(outer_id);
-        assert_eq!(scroll_viewport(&ui, outer_id), Size::new(200.0, 200.0));
+        h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        h.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
+        h.on_input(InputEvent::Zoom(1.5));
+        h.frame(build);
+        let state = *h.ui.state_mut::<ScrollState>(outer_id);
+        assert_eq!(scroll_viewport(&h.ui, outer_id), Size::new(200.0, 200.0));
         assert_eq!(state.zoom, 1.5);
         assert_eq!(
             state.offset,
@@ -1031,7 +1033,7 @@ mod bars {
                 });
         });
         assert!(
-            !thumb_rects(&ui, "scroll").is_empty(),
+            !thumb_rects(&ui.ui, "scroll").is_empty(),
             "vertical overflow should emit at least one bar thumb"
         );
     }
@@ -1070,17 +1072,17 @@ mod bars {
             }
         };
         let surface = UVec2::new(400, 300);
-        let mut ui = Ui::for_test();
-        ui.run_at(surface, build(true));
-        ui.run_at(surface, build(true));
+        let mut h = UiHarness::new(surface);
+        h.frame(build(true));
+        h.frame(build(true));
         assert_eq!(
-            thumb_rects(&ui, "scroll").len(),
+            thumb_rects(&h.ui, "scroll").len(),
             1,
             "900px of content in a 300px viewport must show a thumb",
         );
 
-        ui.run_at_without_baseline(surface, build(false));
-        for (tag, rect) in raw_bar_rects(&ui, "scroll") {
+        h.frame_without_baseline(build(false));
+        for (tag, rect) in raw_bar_rects(&h.ui, "scroll") {
             assert_eq!(
                 rect.size,
                 Size::ZERO,
@@ -1089,9 +1091,9 @@ mod bars {
         }
 
         // ...and come back, so the collapse isn't a one-way latch.
-        ui.run_at_without_baseline(surface, build(true));
+        h.frame_without_baseline(build(true));
         assert_eq!(
-            thumb_rects(&ui, "scroll").len(),
+            thumb_rects(&h.ui, "scroll").len(),
             1,
             "the thumb must return when the content overflows again",
         );
@@ -1143,21 +1145,21 @@ mod bars {
                 });
         };
         let surface = UVec2::new(400, 300);
-        let mut ui = Ui::for_test();
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+        let mut h = UiHarness::new(surface);
+        h.frame(build);
+        h.frame(build);
 
         // What the compositor actually rasterizes, per `Rect::scaled_by`.
         let snapped = |r: Rect, scale: f32| (r.max().y * scale).round() - (r.min.y * scale).round();
-        let first = thumb_rects(&ui, "scroll")[0];
+        let first = thumb_rects(&h.ui, "scroll")[0];
         let expected: Vec<f32> = [1.0, 2.0, 3.0].iter().map(|s| snapped(first, *s)).collect();
 
         let mut travelled = Vec::new();
         for _ in 0..8 {
-            ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
-            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 37.0)));
-            ui.run_at(surface, build);
-            let r = thumb_rects(&ui, "scroll")[0];
+            h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 37.0)));
+            h.frame(build);
+            let r = thumb_rects(&h.ui, "scroll")[0];
             travelled.push(r.min.y);
             for (i, scale) in [1.0f32, 2.0, 3.0].iter().enumerate() {
                 assert_eq!(
@@ -1194,19 +1196,19 @@ mod bars {
                 });
         };
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
-        let before = thumb_rects(&ui, "scroll");
+        let mut h = UiHarness::new(surface);
+        h.frame(build);
+        h.frame(build);
+        let before = thumb_rects(&h.ui, "scroll");
         assert_eq!(before.len(), 1, "one vertical thumb");
 
         let mut seen = Vec::new();
         for _ in 0..4 {
             // Wheel input routes to whatever the pointer is over.
-            ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
-            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
-            ui.run_at(surface, build);
-            let now = thumb_rects(&ui, "scroll");
+            h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+            h.frame(build);
+            let now = thumb_rects(&h.ui, "scroll");
             assert_eq!(now.len(), 1, "thumb must not vanish mid-scroll");
             seen.push((now[0].min.y, now[0].size.h));
         }
@@ -1248,9 +1250,9 @@ mod bars {
                 });
         };
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 600));
         let mut passes = 0;
-        let report = ui.record_test_frame_without_baseline(
+        let report = h.frame_at_without_baseline(
             Display::from_physical(surface, 1.0),
             Duration::from_millis(16),
             |ui| {
@@ -1269,7 +1271,7 @@ mod bars {
         let track: f32 = 200.0;
         let expected = (track / 800.0 * track).max(theme.min_thumb_px);
         assert_eq!(expected, 50.0, "arithmetic guard on the expectation");
-        let thumbs = thumb_rects(&ui, "scroll");
+        let thumbs = thumb_rects(&h.ui, "scroll");
         assert_eq!(thumbs.len(), 1, "one vertical thumb, no collapsed peers");
         assert!(
             (thumbs[0].size.h - expected).abs() < 1e-3,
@@ -1298,7 +1300,7 @@ mod bars {
                 });
         });
         assert_eq!(
-            count_positioned(&ui, node),
+            count_positioned(&ui.ui, node),
             0,
             "non-overflowing content should produce no bar shapes"
         );
@@ -1310,7 +1312,7 @@ mod bars {
     #[test]
     fn scroll_with_bars_composes_through_warm_cache() {
         let surface = UVec2::new(400, 300);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let build = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1328,8 +1330,8 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+        h.frame(build);
+        h.frame(build);
     }
 
     /// Showcase-style nested scroll cards. Pin that the deeper
@@ -1337,7 +1339,7 @@ mod bars {
     #[test]
     fn nested_clipped_scrolls_compose_through_warm_cache() {
         let surface = UVec2::new(800, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let build = |ui: &mut Ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
@@ -1375,9 +1377,9 @@ mod bars {
                     }
                 });
         };
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+        h.frame(build);
+        h.frame(build);
+        h.frame(build);
     }
 
     /// Reservation: when content overflows on the V axis, the inner
@@ -1386,7 +1388,7 @@ mod bars {
     fn vertical_overflow_reserves_bar_width_on_inner() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let build = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1402,10 +1404,10 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+        h.frame(build);
+        h.frame(build);
         assert_eq!(
-            scroll_viewport(&ui, WidgetId::from_hash("scroll")),
+            scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
             Size::new(188.0, 200.0),
             "V overflow reserves theme.width + theme.gap = 12px on the right; H axis untouched"
         );
@@ -1416,7 +1418,7 @@ mod bars {
     fn user_padding_is_preserved_when_bar_reserves() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let build = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1433,10 +1435,10 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+        h.frame(build);
+        h.frame(build);
         assert_eq!(
-            scroll_viewport(&ui, WidgetId::from_hash("scroll")),
+            scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
             Size::new(156.0, 168.0)
         );
     }
@@ -1465,7 +1467,7 @@ mod bars {
         let _ = node;
         let theme = theme();
         let expected_x = 200.0 - theme.width;
-        let overlays = thumb_rects(&ui, "scroll");
+        let overlays = thumb_rects(&ui.ui, "scroll");
         assert!(!overlays.is_empty(), "expected at least one thumb");
         for r in &overlays {
             assert_eq!(
@@ -1506,19 +1508,19 @@ mod bars {
                 });
         };
 
-        let mut ui = Ui::for_test();
-        ui.run_at(surface, |ui| build(ui, 800.0));
-        ui.run_at(surface, |ui| build(ui, 800.0));
+        let mut h = UiHarness::new(surface);
+        h.frame(|ui| build(ui, 800.0));
+        h.frame(|ui| build(ui, 800.0));
         assert_eq!(
-            read_viewport(&mut ui),
+            read_viewport(&mut h.ui),
             Size::new(188.0, 200.0),
             "viewport = 200 - (width + gap) when content overflows",
         );
 
-        ui.run_at(surface, |ui| build(ui, 50.0));
-        ui.run_at(surface, |ui| build(ui, 50.0));
+        h.frame(|ui| build(ui, 50.0));
+        h.frame(|ui| build(ui, 50.0));
         assert_eq!(
-            read_viewport(&mut ui),
+            read_viewport(&mut h.ui),
             Size::new(188.0, 200.0),
             "viewport stays the same when content fits — gutter is constant",
         );
@@ -1529,7 +1531,7 @@ mod bars {
     #[test]
     fn zoomed_content_shrinks_thumb_proportionally() {
         let surface = UVec2::new(400, 400);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let build = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1546,10 +1548,10 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
+        h.frame(build);
+        h.frame(build);
         let scroll_id = WidgetId::from_hash("scroll");
-        let z1_thumbs = thumb_rects(&ui, "scroll");
+        let z1_thumbs = thumb_rects(&h.ui, "scroll");
         assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
         let v1 = z1_thumbs
             .iter()
@@ -1558,10 +1560,10 @@ mod bars {
             .size
             .h;
 
-        ui.state_mut::<ScrollState>(scroll_id).zoom = 2.0;
-        ui.run_at(surface, build);
-        ui.run_at(surface, build);
-        let z2_thumbs = thumb_rects(&ui, "scroll");
+        h.ui.state_mut::<ScrollState>(scroll_id).zoom = 2.0;
+        h.frame(build);
+        h.frame(build);
+        let z2_thumbs = thumb_rects(&h.ui, "scroll");
         assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
         let v2 = z2_thumbs
             .iter()
@@ -1595,7 +1597,7 @@ mod bars {
                 });
         });
         assert_eq!(
-            thumb_rects(&ui, "scroll").len(),
+            thumb_rects(&ui.ui, "scroll").len(),
             2,
             "ScrollXY with overflow on both axes should emit two thumbs"
         );
@@ -1623,7 +1625,7 @@ mod bars {
         let theme = theme();
         let inner = 200.0 - theme.width - theme.gap;
         let outer_far = 200.0 - theme.width;
-        let overlays = thumb_rects(&ui, "scroll");
+        let overlays = thumb_rects(&ui.ui, "scroll");
         assert_eq!(overlays.len(), 2, "expected V + H thumbs");
         let v = overlays
             .iter()
@@ -1653,7 +1655,7 @@ mod bars {
     fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let theme = theme();
         let scroll_id = WidgetId::from_hash("scroll");
         let scene = |ui: &mut Ui| {
@@ -1671,17 +1673,17 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, scene);
+        h.frame(scene);
         let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
         assert_eq!(
-            scroll_viewport(&ui, scroll_id),
+            scroll_viewport(&h.ui, scroll_id),
             expected,
             "cold-mount overflowing scroll: gutter reservation must be \
              active on the first painted frame; viewport should already \
              be deflated by `theme.width + theme.gap` on the cross axis",
         );
         assert!(
-            scroll_content(&ui, scroll_id).h > scroll_viewport(&ui, scroll_id).h,
+            scroll_content(&h.ui, scroll_id).h > scroll_viewport(&h.ui, scroll_id).h,
             "overflow flag must reflect post-relayout measurement (Y \
              overflows, X doesn't)",
         );
@@ -1693,7 +1695,7 @@ mod bars {
     fn cold_mount_bar_geometry_matches_frame_two() {
         use crate::primitives::rect::Rect;
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -1720,12 +1722,12 @@ mod bars {
             rects
         };
 
-        ui.run_at(surface, scene);
-        let f1 = bar_rects(&ui);
+        h.frame(scene);
+        let f1 = bar_rects(&h.ui);
         assert_eq!(f1.len(), 2, "cold-mount must emit both V + H thumbs");
 
-        ui.run_at(surface, scene);
-        let f2 = bar_rects(&ui);
+        h.frame(scene);
+        let f2 = bar_rects(&h.ui);
 
         assert_eq!(
             f1, f2,
@@ -1746,7 +1748,7 @@ mod bars {
         use crate::BarMode;
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let scroll_id = WidgetId::from_hash("scroll");
         let scene = |ui: &mut Ui| {
             Panel::vstack()
@@ -1764,16 +1766,16 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, scene);
-        ui.run_at(surface, scene);
+        h.frame(scene);
+        h.frame(scene);
         assert_eq!(
-            scroll_viewport(&ui, scroll_id),
+            scroll_viewport(&h.ui, scroll_id),
             Size::new(200.0, 200.0),
             "Overlay: viewport = full outer (no gutter reservation), \
              even when content overflows and the bar is drawn",
         );
         assert!(
-            scroll_content(&ui, scroll_id).h > scroll_viewport(&ui, scroll_id).h,
+            scroll_content(&h.ui, scroll_id).h > scroll_viewport(&h.ui, scroll_id).h,
             "content > viewport on Y — bar should be drawn"
         );
     }
@@ -1785,7 +1787,7 @@ mod bars {
     fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(surface);
         let scroll_id = WidgetId::from_hash("scroll");
         let scene = |ui: &mut Ui| {
             Panel::vstack()
@@ -1802,16 +1804,16 @@ mod bars {
                         });
                 });
         };
-        ui.run_at(surface, scene);
+        h.frame(scene);
         assert_eq!(
-            scroll_viewport(&ui, scroll_id),
+            scroll_viewport(&h.ui, scroll_id),
             Size::new(188.0, 200.0),
             "gutter is constant — viewport = outer - (width + gap) even with no overflow",
         );
-        assert_eq!(scroll_content(&ui, scroll_id), Size::new(180.0, 50.0));
+        assert_eq!(scroll_content(&h.ui, scroll_id), Size::new(180.0, 50.0));
         assert!(
-            scroll_content(&ui, scroll_id).w <= scroll_viewport(&ui, scroll_id).w
-                && scroll_content(&ui, scroll_id).h <= scroll_viewport(&ui, scroll_id).h
+            scroll_content(&h.ui, scroll_id).w <= scroll_viewport(&h.ui, scroll_id).w
+                && scroll_content(&h.ui, scroll_id).h <= scroll_viewport(&h.ui, scroll_id).h
         );
     }
 }
@@ -1823,7 +1825,7 @@ mod bars {
 fn drag_thumb_pans_proportionally() {
     use crate::input::pointer::PointerButton;
     for scale in [0.5, 1.0, 2.0] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let build = |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scaled-scrollbar-parent"))
@@ -1841,37 +1843,37 @@ fn drag_thumb_pans_proportionally() {
                         });
                 });
         };
-        ui.run_at(SURFACE, build);
-        ui.run_at(SURFACE, build);
+        h.frame(build);
+        h.frame(build);
 
         let outer_id = WidgetId::from_hash("scroll");
         let scroll_id = outer_id.with("__viewport");
         let thumb_id = scroll_id.with("__vthumb");
-        let thumb_rect = ui.response_for(thumb_id).rect.expect("thumb visible");
+        let thumb_rect = h.ui.response_for(thumb_id).rect.expect("thumb visible");
         let press = thumb_rect.min + Vec2::new(thumb_rect.size.w * 0.5, thumb_rect.size.h * 0.5);
 
-        ui.on_input(InputEvent::PointerMoved(press));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerMoved(
+        h.on_input(InputEvent::PointerMoved(press));
+        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.on_input(InputEvent::PointerMoved(
             press + Vec2::new(0.0, 30.0 * scale),
         ));
-        ui.run_at(SURFACE, build);
+        h.frame(build);
 
         // viewport = 200, content = 800 ⇒ max_offset = 600.
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
         // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
-        let offset_y = ui.state_mut::<ScrollState>(outer_id).offset.y;
+        let offset_y = h.ui.state_mut::<ScrollState>(outer_id).offset.y;
         assert!(
             (offset_y - 120.0).abs() < 0.5,
             "30 logical px at {scale}× should produce offset 120, got {offset_y}",
         );
 
-        ui.on_input(InputEvent::PointerMoved(
+        h.on_input(InputEvent::PointerMoved(
             press + Vec2::new(0.0, 9_999.0 * scale),
         ));
-        ui.run_at(SURFACE, build);
+        h.frame(build);
         assert_eq!(
-            ui.state_mut::<ScrollState>(outer_id).offset.y,
+            h.ui.state_mut::<ScrollState>(outer_id).offset.y,
             600.0,
             "drag past end at {scale}× clamps to max offset",
         );
@@ -1894,7 +1896,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
     ];
     for scale in [0.5, 1.0, 2.0] {
         for (label, axis, scroll_key, track_suffix, page_step) in cases {
-            let mut ui = Ui::for_test();
+            let mut h = UiHarness::new(SURFACE);
             let build_axis = |ui: &mut Ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-track-parent"))
@@ -1919,12 +1921,12 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                         }
                     });
             };
-            ui.run_at(SURFACE, build_axis);
+            h.frame(build_axis);
 
             let outer_id = WidgetId::from_hash(*scroll_key);
             let scroll_id = outer_id.with("__viewport");
             let track_id = scroll_id.with(*track_suffix);
-            let track = ui.response_for(track_id);
+            let track = h.ui.response_for(track_id);
             let layout = track.layout_rect.expect("track arranged");
             let (forward_local, back_local) = match axis {
                 AxisCase::V => (Vec2::new(6.0, 196.0), Vec2::new(6.0, 4.0)),
@@ -1933,11 +1935,11 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             let forward_press = track.transform.apply_point(layout.min + forward_local);
             let back_press = track.transform.apply_point(layout.min + back_local);
 
-            ui.on_input(InputEvent::PointerMoved(forward_press));
-            ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-            ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-            ui.run_at(SURFACE, build_axis);
-            let offset = ui.state_mut::<ScrollState>(outer_id).offset;
+            h.on_input(InputEvent::PointerMoved(forward_press));
+            h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+            h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            h.frame(build_axis);
+            let offset = h.ui.state_mut::<ScrollState>(outer_id).offset;
             let forward = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -1947,11 +1949,11 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                 "case: {label} at {scale}× — click past thumb pages forward",
             );
 
-            ui.on_input(InputEvent::PointerMoved(back_press));
-            ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-            ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-            ui.run_at(SURFACE, build_axis);
-            let offset = ui.state_mut::<ScrollState>(outer_id).offset;
+            h.on_input(InputEvent::PointerMoved(back_press));
+            h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+            h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            h.frame(build_axis);
+            let offset = h.ui.state_mut::<ScrollState>(outer_id).offset;
             let back = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -1971,7 +1973,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // under ctrl still zooms — pre-split it did, and regressing that
     // breaks touchpad pinch-via-modifier. With line_px = 19.2 (default
     // 16 × 1.2), 38.4 px of touchpad scroll = 2 virtual notches.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build_zoom = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -1988,23 +1990,23 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                     });
             });
     };
-    ui.run_at(SURFACE, build_zoom);
+    h.frame(build_zoom);
 
     let scroll_id = WidgetId::from_hash("zoomy");
-    let before_zoom = ui.state_mut::<ScrollState>(scroll_id).zoom;
+    let before_zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
 
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
     use crate::input::keyboard::Modifiers;
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
-    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+    h.on_input(InputEvent::ModifiersChanged(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
     }));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
-    ui.run_at(SURFACE, build_zoom);
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
+    h.frame(build_zoom);
 
-    let after_zoom = ui.state_mut::<ScrollState>(scroll_id).zoom;
+    let after_zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
     let expected = before_zoom * 1.03_f32.powf(-2.0);
     assert!(
         (after_zoom - expected).abs() < 1e-3,
@@ -2020,8 +2022,8 @@ fn wheel_zoom_step_is_font_independent() {
     // font-scaled denominator on the zoom side fails loudly.
     let mut last_zoom: Option<f32> = None;
     for font_size in [12.0_f32, 16.0, 24.0] {
-        let mut ui = Ui::for_test();
-        ui.theme.text = ui.theme.text.with_font_size(font_size);
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.theme.text = h.ui.theme.text.with_font_size(font_size);
         let build_zoom = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -2038,19 +2040,19 @@ fn wheel_zoom_step_is_font_independent() {
                         });
                 });
         };
-        ui.run_at(SURFACE, build_zoom);
+        h.frame(build_zoom);
 
         use crate::input::keyboard::Modifiers;
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
-        ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+        h.on_input(InputEvent::ModifiersChanged(Modifiers {
             ctrl: true,
             ..Modifiers::NONE
         }));
-        ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
-        ui.run_at(SURFACE, build_zoom);
+        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
-        let zoom = ui.state_mut::<ScrollState>(scroll_id).zoom;
+        let zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
         if let Some(prev) = last_zoom {
             assert!(
                 (zoom - prev).abs() < 1e-4,
@@ -2071,20 +2073,20 @@ fn line_wheel_step_scales_with_theme_font_size() {
         ("larger_24px_text", 24.0, 1.5, 36.0),
     ];
     for (label, font_size, line_height_mult, expected_px) in cases {
-        let mut ui = Ui::for_test();
-        ui.theme.text = ui
-            .theme
-            .text
-            .with_font_size(*font_size)
-            .with_line_height_mult(*line_height_mult);
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.theme.text =
+            h.ui.theme
+                .text
+                .with_font_size(*font_size)
+                .with_line_height_mult(*line_height_mult);
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
-        ui.run_at(SURFACE, build_v);
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-        ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
-        ui.run_at(SURFACE, build_v);
+        h.frame(build_v);
+        h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        h.frame(build_v);
 
         let scroll_id = WidgetId::from_hash("scroll");
-        let offset_y = ui.state_mut::<ScrollState>(scroll_id).offset.y;
+        let offset_y = h.ui.state_mut::<ScrollState>(scroll_id).offset.y;
         assert!(
             (offset_y - expected_px).abs() < 0.01,
             "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",
@@ -2101,14 +2103,14 @@ fn line_wheel_step_scales_with_theme_font_size() {
 /// pan input, so a passive shrink never triggered it.
 #[test]
 fn shrinking_content_unstrands_offset_without_input() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     // Scroll an 800px content to the bottom of a 200px viewport.
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10_000.0)));
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
+    h.frame(|ui| build(ui, 200.0, 800.0));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10_000.0)));
+    h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(
-        read_state(&mut ui).offset.y,
+        read_state(&mut h).offset.y,
         600.0,
         "precondition: scrolled to max (800 - 200)",
     );
@@ -2117,10 +2119,10 @@ fn shrinking_content_unstrands_offset_without_input() {
     // records against the stale 800px content (offset stays 600) and
     // arranges the new 300px content; frame 2 records against the fresh
     // 300px content and clamps the stranded offset down.
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 300.0));
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 300.0));
+    h.frame(|ui| build(ui, 200.0, 300.0));
+    h.frame(|ui| build(ui, 200.0, 300.0));
     assert_eq!(
-        read_state(&mut ui).offset.y,
+        read_state(&mut h).offset.y,
         100.0,
         "offset must clamp to the new max (300 - 200) after a passive content shrink",
     );
@@ -2130,27 +2132,27 @@ fn shrinking_content_unstrands_offset_without_input() {
 /// its subtree hash must bust the cascade skip.
 #[test]
 fn cascade_skip_busts_on_scroll_offset_change() {
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.dbg_cascade_ran,
         "first frame runs the cascade"
     );
 
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
+    h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        !ui.frame_runtime.dbg_cascade_ran,
+        !h.ui.frame_runtime.dbg_cascade_ran,
         "unchanged scroll frame skips the cascade"
     );
 
     // Scroll the viewport: the offset shifts, so the content re-arranges
     // and the cascade must re-run.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
-    ui.run_at(SURFACE, |ui| build(ui, 200.0, 800.0));
-    assert_eq!(read_state(&mut ui).offset.y, 50.0, "offset advanced");
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+    h.frame(|ui| build(ui, 200.0, 800.0));
+    assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
     assert!(
-        ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.dbg_cascade_ran,
         "scroll offset change must re-run the cascade (offset is in the fingerprint)",
     );
 }

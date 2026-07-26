@@ -4,8 +4,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::{Cascades, CascadesEngine, EntryRow, HitRow};
-use crate::ui::Ui;
 use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
+use crate::ui::harness::UiHarness;
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
@@ -78,8 +78,8 @@ enum RunMutation {
 
 #[derive(Debug)]
 struct CascadeRunFixture {
-    first: Ui,
-    second: Ui,
+    first: UiHarness,
+    second: UiHarness,
     engine: CascadesEngine,
     cascades: Cascades,
     display: Display,
@@ -100,7 +100,7 @@ impl CascadeRunFixture {
         let second = record_fixture(second_state, display);
         let mut engine = CascadesEngine::default();
         let mut cascades = Cascades::default();
-        engine.run(&first.forest, &first.layout, display, &mut cascades);
+        engine.run(&first.ui.forest, &first.ui.layout, display, &mut cascades);
         Self {
             first,
             second,
@@ -118,8 +118,8 @@ impl CascadeRunFixture {
             &self.first
         };
         self.engine.run(
-            &source.forest,
-            &source.layout,
+            &source.ui.forest,
+            &source.ui.layout,
             self.display,
             &mut self.cascades,
         );
@@ -133,8 +133,8 @@ impl CascadeRunFixture {
             &self.first
         };
         self.engine.run_full(
-            &source.forest,
-            &source.layout,
+            &source.ui.forest,
+            &source.ui.layout,
             self.display,
             &mut self.cascades,
         );
@@ -142,12 +142,12 @@ impl CascadeRunFixture {
     }
 }
 
-fn record_fixture(mut state: FrameFixture, display: Display) -> Ui {
-    let mut ui = Ui::for_test_text();
-    let _ = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+fn record_fixture(mut state: FrameFixture, display: Display) -> UiHarness {
+    let mut h = UiHarness::with_text(FRAME_SIZE);
+    let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
         build_ui(&mut state, BENCH_SCALE, ui);
     });
-    ui
+    h
 }
 
 pub fn bench(c: &mut Criterion) {

@@ -1,10 +1,11 @@
+use crate::FocusPolicy;
 use crate::input::keyboard::{Key, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::shortcut::Shortcut;
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
 use crate::scene::layer::Layer;
-use crate::{FocusPolicy, Ui};
+use crate::ui::harness::UiHarness;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
@@ -158,67 +159,69 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
 /// is exactly what a per-stream test would stop catching.
 #[test]
 fn a_modal_layer_claim_retains_or_releases_both_streams() {
-    let mut ui = Ui::for_test();
-    ui.input.focused = Some(WidgetId::from_hash("editor"));
-    ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
-    ui.on_input(InputEvent::KeyDown {
+    let mut h = UiHarness::new(glam::UVec2::new(200, 80));
+    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    h.ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
+    h.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
         physical: Key::Escape,
     });
-    ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
-    ui.on_input(InputEvent::PointerPressed(
+    h.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
+    h.on_input(InputEvent::PointerPressed(
         crate::input::pointer::PointerButton::Left,
     ));
-    let key = ui.keyboard_events()[0];
-    let press = ui.pointer_events()[0];
+    let key = h.ui.keyboard_events()[0];
+    let press = h.ui.pointer_events()[0];
     let owner = WidgetId::from_hash("popup");
     let shortcut = Shortcut::key(Key::Escape);
 
     // The claim records the popup layer, and the handle outlives the
     // scope — the point of handing it to the body by value.
-    let claim = ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
-        claim
-    });
+    let claim =
+        h.ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
+            claim
+        });
     // Nothing moves until the pass resolves — for *either* stream. The
     // two used to disagree here: the keyboard half took effect on the
     // claiming pass and the pointer half on the next one, because
     // claiming eagerly wrote the committed keyboard owner when none was
     // held. One list resolved in one place is what removed that.
     assert_eq!(
-        ui.keyboard_events(),
+        h.ui.keyboard_events(),
         &[key],
         "the claiming pass reads as if unclaimed",
     );
-    assert_eq!(ui.pointer_events(), &[press], "and so does the pointer");
+    assert_eq!(h.ui.pointer_events(), &[press], "and so does the pointer");
 
-    ui.input.finish_record();
-    assert!(ui.keyboard_events().is_empty(), "Main is below the claim");
+    h.ui.input.finish_record();
+    assert!(h.ui.keyboard_events().is_empty(), "Main is below the claim");
     assert!(
-        ui.pointer_events().is_empty(),
+        h.ui.pointer_events().is_empty(),
         "the same claim gates the pointer stream",
     );
-    assert_eq!(claim.keyboard_events(&ui), &[key]);
-    assert!(claim.key_pressed(&mut ui, shortcut));
+    assert_eq!(claim.keyboard_events(&h.ui), &[key]);
+    assert!(claim.key_pressed(&mut h.ui, shortcut));
     // The trap the handle exists to close: out here the ambient layer is
     // `Main`, so an owner reading `ui.pointer_events()` is silenced by
     // its *own* claim. Reading through the claim sees the layer it holds.
-    assert_eq!(claim.pointer_events(&ui), &[press]);
+    assert_eq!(claim.pointer_events(&h.ui), &[press]);
 
     // Releasing is symmetric with claiming: it withdraws from the *next*
     // resolution, not from the pass it is called in.
-    ui.input.begin_record();
-    let claim = ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
-        claim
-    });
-    claim.release(&mut ui);
+    h.ui.input.begin_record();
+    let claim =
+        h.ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
+            claim
+        });
+    claim.release(&mut h.ui);
     assert!(
-        ui.keyboard_events().is_empty(),
+        h.ui.keyboard_events().is_empty(),
         "the released pass keeps the ownership it was committed with",
     );
-    ui.input.finish_record();
-    assert_eq!(ui.keyboard_events(), &[key]);
-    assert_eq!(ui.pointer_events(), &[press]);
+    h.ui.input.finish_record();
+    assert_eq!(h.ui.keyboard_events(), &[key]);
+    assert_eq!(h.ui.pointer_events(), &[press]);
 }
 
 /// Two overlays can hold one layer at once, so releasing is per-claim
@@ -226,22 +229,22 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
 /// while the second is still up.
 #[test]
 fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {
-    let mut ui = Ui::for_test();
-    ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
-    ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
-    ui.on_input(InputEvent::PointerPressed(
+    let mut h = UiHarness::new(glam::UVec2::new(200, 80));
+    h.ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
+    h.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
+    h.on_input(InputEvent::PointerPressed(
         crate::input::pointer::PointerButton::Left,
     ));
-    let press = ui.pointer_events()[0];
+    let press = h.ui.pointer_events()[0];
 
-    let first = ui.modal_layer(
+    let first = h.ui.modal_layer(
         Layer::Popup,
         glam::Vec2::ZERO,
         None,
         WidgetId::from_hash("first"),
         |_, claim| claim,
     );
-    let second = ui.modal_layer(
+    let second = h.ui.modal_layer(
         Layer::Popup,
         glam::Vec2::ZERO,
         None,
@@ -249,25 +252,25 @@ fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {
         |_, claim| claim,
     );
 
-    first.release(&mut ui);
-    ui.input.finish_record();
+    first.release(&mut h.ui);
+    h.ui.input.finish_record();
     assert!(
-        ui.pointer_events().is_empty(),
+        h.ui.pointer_events().is_empty(),
         "the second popup still holds Layer::Popup",
     );
 
-    ui.input.begin_record();
-    let second = ui.modal_layer(
+    h.ui.input.begin_record();
+    let second = h.ui.modal_layer(
         Layer::Popup,
         glam::Vec2::ZERO,
         None,
         WidgetId::from_hash("second"),
         |_, _| second,
     );
-    second.release(&mut ui);
-    ui.input.finish_record();
+    second.release(&mut h.ui);
+    h.ui.input.finish_record();
     assert_eq!(
-        ui.pointer_events(),
+        h.ui.pointer_events(),
         &[press],
         "the last claim leaving unblocks the layer",
     );
@@ -300,25 +303,28 @@ fn focus_policy_routing() {
         });
     };
     for (label, policy, expect_focus) in cases {
-        let mut ui = Ui::for_test();
-        ui.set_focus_policy(*policy);
-        ui.run_at(surface, build);
-        ui.click_at(glam::Vec2::new(50.0, 20.0));
-        assert_eq!(ui.focused_id(), Some(editable_id), "{label}: initial focus");
+        let mut h = UiHarness::new(surface);
+        h.ui.set_focus_policy(*policy);
+        h.frame(build);
+        h.click_at(glam::Vec2::new(50.0, 20.0));
+        assert_eq!(h.focused_id(), Some(editable_id), "{label}: initial focus");
 
-        ui.run_at(surface, build);
-        ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        h.frame(build);
+        h.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
+        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.on_input(InputEvent::PointerReleased(PointerButton::Left));
         let expected = if *expect_focus {
             Some(editable_id)
         } else {
             None
         };
-        assert_eq!(ui.focused_id(), expected, "{label}: after outside press");
+        assert_eq!(h.focused_id(), expected, "{label}: after outside press");
     }
     // Default policy is ClearOnMiss.
-    assert_eq!(Ui::for_test().focus_policy(), FocusPolicy::ClearOnMiss);
+    assert_eq!(
+        UiHarness::new(surface).ui.focus_policy(),
+        FocusPolicy::ClearOnMiss
+    );
 }
 
 #[test]
@@ -329,9 +335,9 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::scene::node::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
-    let mut ui = Ui::for_test();
-    ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let surface = glam::UVec2::new(400, 80);
+    let mut h = UiHarness::new(surface);
+    h.ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
@@ -345,14 +351,14 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
                 .show(ui);
         });
     };
-    ui.run_at(surface, build);
-    ui.click_at(glam::Vec2::new(50.0, 20.0));
-    assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editable")));
+    h.frame(build);
+    h.click_at(glam::Vec2::new(50.0, 20.0));
+    assert_eq!(h.focused_id(), Some(WidgetId::from_hash("editable")));
 
-    ui.run_at(surface, build);
-    ui.click_at(glam::Vec2::new(150.0, 20.0));
+    h.frame(build);
+    h.click_at(glam::Vec2::new(150.0, 20.0));
     assert_eq!(
-        ui.focused_id(),
+        h.focused_id(),
         Some(WidgetId::from_hash("editable")),
         "click on non-focusable widget must not steal focus",
     );
@@ -364,9 +370,9 @@ fn focus_is_evicted_when_widget_disappears() {
     use crate::scene::node::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
-    let mut ui = Ui::for_test();
     let surface = glam::UVec2::new(200, 80);
-    ui.run_at(surface, |ui| {
+    let mut h = UiHarness::new(surface);
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("editable"))
@@ -375,14 +381,14 @@ fn focus_is_evicted_when_widget_disappears() {
                 .show(ui);
         });
     });
-    ui.click_at(glam::Vec2::new(50.0, 20.0));
-    assert!(ui.focused_id().is_some());
+    h.click_at(glam::Vec2::new(50.0, 20.0));
+    assert!(h.focused_id().is_some());
 
-    ui.run_at(surface, |ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});
     });
     assert_eq!(
-        ui.focused_id(),
+        h.focused_id(),
         None,
         "focused widget removed from tree must drop focus",
     );
@@ -390,12 +396,12 @@ fn focus_is_evicted_when_widget_disappears() {
 
 #[test]
 fn request_focus_bypasses_policy() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(glam::UVec2::new(200, 80));
     let id = WidgetId::from_hash("manual");
-    ui.request_focus(Some(id));
-    assert_eq!(ui.focused_id(), Some(id));
-    ui.request_focus(None);
-    assert_eq!(ui.focused_id(), None);
+    h.request_focus(Some(id));
+    assert_eq!(h.focused_id(), Some(id));
+    h.request_focus(None);
+    assert_eq!(h.focused_id(), None);
 }
 
 #[test]
@@ -414,8 +420,8 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     }
     let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
     for (label, mode) in cases {
-        let mut ui = Ui::for_test();
-        ui.run_at(glam::UVec2::new(200, 80), |ui| {
+        let mut h = UiHarness::new(glam::UVec2::new(200, 80));
+        h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()
                     .id(WidgetId::from_hash("editable"))
@@ -427,8 +433,8 @@ fn invisible_or_disabled_focusable_refuses_focus() {
                 };
             });
         });
-        ui.click_at(glam::Vec2::new(50.0, 20.0));
-        assert_eq!(ui.focused_id(), None, "case {label}");
+        h.click_at(glam::Vec2::new(50.0, 20.0));
+        assert_eq!(h.focused_id(), None, "case {label}");
     }
 }
 

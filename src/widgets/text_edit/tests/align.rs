@@ -15,6 +15,7 @@ use crate::scene::layer::Layer;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node::NodeId;
 use crate::shape::rect::RectKind;
+use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 const EDIT_W: f32 = 280.0;
@@ -43,7 +44,7 @@ const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 /// frame before reading shapes for align assertions — `warmup_then`
 /// below packages that.
 fn frame(
-    ui: &mut Ui,
+    h: &mut UiHarness,
     buf: &mut String,
     text_align: Option<Align>,
     placeholder: Option<&'static str>,
@@ -63,7 +64,7 @@ fn frame(
             node = Some(e.show(ui).response.node());
         });
     };
-    ui.run_at(NARROW, &mut record);
+    h.frame(&mut record);
     node.unwrap()
 }
 
@@ -71,13 +72,13 @@ fn frame(
 /// has a real `response.rect`; the second frame's shape stream is
 /// what every align assertion reads.
 fn warmup_then(
-    ui: &mut Ui,
+    h: &mut UiHarness,
     buf: &mut String,
     text_align: Option<Align>,
     placeholder: Option<&'static str>,
 ) -> NodeId {
-    frame(ui, buf, text_align, placeholder);
-    frame(ui, buf, text_align, placeholder)
+    frame(h, buf, text_align, placeholder);
+    frame(h, buf, text_align, placeholder)
 }
 
 /// `(text_origin, caret_origin)` from the leaf's shape stream. The
@@ -124,10 +125,10 @@ fn single_line_default_is_left_vcenter() {
     // No `.text_align(...)` → mode default `Align::LEFT` (left +
     // vcenter). With "abcd" (32×19.203125) inside the inner rect,
     // dx = 0 and dy = (inner height − line height) / 2.
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
-    let node = warmup_then(&mut ui, &mut buf, None, None);
-    let (origin, _) = shape_origins(&ui, node);
+    let node = warmup_then(&mut h, &mut buf, None, None);
+    let (origin, _) = shape_origins(&h.ui, node);
     let o = origin.expect("text shape emitted for non-empty buffer");
     assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
     let dy = (INNER_H - LINE_H) * 0.5;
@@ -156,10 +157,10 @@ fn single_line_text_align_table() {
         (Align::BOTTOM_RIGHT, rx, by, "BOTTOM_RIGHT"),
     ];
     for &(align, dx, dy, label) in cases {
-        let mut ui = ui_at_no_cosmic(NARROW);
+        let mut h = ui_at_no_cosmic(NARROW);
         let mut buf = String::from("abcd");
-        let node = warmup_then(&mut ui, &mut buf, Some(align), None);
-        let (origin, _) = shape_origins(&ui, node);
+        let node = warmup_then(&mut h, &mut buf, Some(align), None);
+        let (origin, _) = shape_origins(&h.ui, node);
         let o = origin.expect("text shape emitted");
         assert!(
             (o.x - (PAD_L + dx)).abs() < 1e-3,
@@ -182,21 +183,21 @@ fn caret_tracks_aligned_text() {
     // origin shifts right by `ALIGN_W − TEXT_W_4CH`; the caret must
     // shift by the same dx so it sits at the rightmost glyph trailing
     // edge, leaving `CARET_W` of reserved room before the clip edge.
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     // Warmup so response.rect lands; click; then a final frame so
     // the post-click focus state drives a caret render with the
     // resolved align offset.
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    ui.click_at(glam::Vec2::new(260.0, 20.0));
-    ui.on_input(InputEvent::KeyDown {
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    h.click_at(glam::Vec2::new(260.0, 20.0));
+    h.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
         physical: Key::Other,
     });
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    let node = frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    let (text_origin, caret_origin) = shape_origins(&ui, node);
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    let (text_origin, caret_origin) = shape_origins(&h.ui, node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 233.5
@@ -223,13 +224,13 @@ fn empty_focused_caret_vcenters_against_one_line() {
     // used it directly the caret would sit below center. The widget
     // floors measured.h at `line_height_px`, so VAlign::Center
     // centers the caret against a full virtual line.
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::new();
-    frame(&mut ui, &mut buf, None, None);
-    ui.click_at(glam::Vec2::new(50.0, 20.0));
-    frame(&mut ui, &mut buf, None, None);
-    let node = frame(&mut ui, &mut buf, None, None);
-    let (_, caret_origin) = shape_origins(&ui, node);
+    frame(&mut h, &mut buf, None, None);
+    h.click_at(glam::Vec2::new(50.0, 20.0));
+    frame(&mut h, &mut buf, None, None);
+    let node = frame(&mut h, &mut buf, None, None);
+    let (_, caret_origin) = shape_origins(&h.ui, node);
     let c = caret_origin.expect("focused empty editor still paints caret");
     let authored_line_height = 16.0 * crate::text::LINE_HEIGHT_MULT;
     let dy = (INNER_H - authored_line_height) * 0.5;
@@ -242,10 +243,10 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     // Bug fix pin: empty + unfocused → render placeholder. Offset is
     // computed from the placeholder string ("wxyz", mono 32 px), not
     // the empty buffer (which would collapse any halign to zero).
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::new();
-    let node = warmup_then(&mut ui, &mut buf, Some(Align::RIGHT), Some("wxyz"));
-    let (origin, _) = shape_origins(&ui, node);
+    let node = warmup_then(&mut h, &mut buf, Some(Align::RIGHT), Some("wxyz"));
+    let (origin, _) = shape_origins(&h.ui, node);
     let o = origin.expect("placeholder paints when unfocused + empty");
     let dx = ALIGN_W - TEXT_W_4CH;
     assert!(
@@ -262,18 +263,18 @@ fn click_compensates_for_right_align() {
     // 5+238+8..5+238+16 = 251..259. Clicking at 254 (mid-glyph) must
     // land on byte 1, proving `handle_input` subtracts the same
     // `align_offset.x` from the local pointer coords.
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     // Two warmup frames so the second one carries response.rect and
     // the click hit-test runs against the right-aligned layout.
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(254.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    h.on_input(InputEvent::PointerMoved(glam::Vec2::new(254.0, 20.0)));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let id = WidgetId::from_hash("align-ed");
-    let caret = ui.state_mut::<TextEditState>(id).edit.caret;
+    let caret = h.ui.state_mut::<TextEditState>(id).edit.caret;
     assert!(
         (1..=2).contains(&caret),
         "click on right-aligned glyph 'b' must land near byte 1 (got {caret})",
@@ -288,10 +289,10 @@ fn align_overflow_clamps_to_zero() {
     // 800 px > 270 inner_w. LEFT, RIGHT, CENTER must all render text
     // at x = padding.left.
     for align in [Align::LEFT, Align::RIGHT, Align::CENTER] {
-        let mut ui = ui_at_no_cosmic(NARROW);
+        let mut h = ui_at_no_cosmic(NARROW);
         let mut buf = "a".repeat(100);
-        let node = warmup_then(&mut ui, &mut buf, Some(align), None);
-        let (origin, _) = shape_origins(&ui, node);
+        let node = warmup_then(&mut h, &mut buf, Some(align), None);
+        let (origin, _) = shape_origins(&h.ui, node);
         let o = origin.expect("text shape");
         assert!(
             (o.x - PAD_L).abs() < 1e-3,
@@ -307,23 +308,23 @@ fn selection_rects_offset_matches_text() {
     // Mono fallback emits one rect for [0..2] on "abcd" → x = 0,
     // w = 16 in text-local coords. Under HAlign::Right that becomes
     // editor-local x = PAD_L + (ALIGN_W − TEXT_W_4CH).
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
-    ui.click_at(glam::Vec2::new(260.0, 20.0));
-    ui.on_input(InputEvent::KeyDown {
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    frame(&mut h, &mut buf, Some(Align::RIGHT), None);
+    h.click_at(glam::Vec2::new(260.0, 20.0));
+    h.on_input(InputEvent::KeyDown {
         key: Key::Home,
         repeat: false,
         physical: Key::Other,
     });
-    shift_arrow_right(&mut ui);
-    shift_arrow_right(&mut ui);
-    let node = frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
+    shift_arrow_right(&mut h.ui);
+    shift_arrow_right(&mut h.ui);
+    let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
 
     // Selection wash is emitted *before* the text shape; pick the
     // first rounded rect with a `local_rect` in the leaf's stream.
-    let first_rounded = ui.forest.trees[Layer::Main]
+    let first_rounded = h.ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::Rect {
@@ -356,8 +357,8 @@ mod per_line {
     use crate::{Align, HAlign};
     use glam::UVec2;
 
-    fn cosmic_ui() -> Ui {
-        Ui::for_test_at_text(UVec2::new(800, 200))
+    fn cosmic_ui() -> UiHarness {
+        UiHarness::with_text(UVec2::new(800, 200))
     }
 
     #[test]
@@ -374,6 +375,7 @@ mod per_line {
         let text = "hi";
 
         let left = ui
+            .ui
             .resources
             .text
             .cursor_xy(
@@ -390,6 +392,7 @@ mod per_line {
             )
             .x;
         let center = ui
+            .ui
             .resources
             .text
             .cursor_xy(
@@ -406,6 +409,7 @@ mod per_line {
             )
             .x;
         let right = ui
+            .ui
             .resources
             .text
             .cursor_xy(
@@ -533,7 +537,7 @@ mod per_line {
     #[test]
     fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
         use crate::scene::layer::Layer;
-        let mut ui = cosmic_ui();
+        let mut h = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut node = None;
         let mut record = |ui: &mut Ui| {
@@ -552,13 +556,13 @@ mod per_line {
         };
         // Two frames — first warms up `response.rect`, second is the
         // one we inspect.
-        ui.run_at(UVec2::new(800, 200), &mut record);
-        ui.run_at(UVec2::new(800, 200), &mut record);
+        h.frame(&mut record);
+        h.frame(&mut record);
         // Read the layout's `ShapedText.key` for the rendered text.
         // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
         // on the leaf; multi-line TextEdit emits a single text shape.
         let node = node.unwrap();
-        let main = &ui.layout[Layer::Main];
+        let main = &h.ui.layout[Layer::Main];
         let span = main.text_spans[node.idx()];
         assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
         let shaped = main.text_shapes[span.start as usize];
@@ -594,7 +598,7 @@ mod per_line {
     /// so an extra layout-engine reshape cannot hide in the aggregate.
     #[test]
     fn stable_multiline_holds_constant_per_frame_cost() {
-        let mut ui = cosmic_ui();
+        let mut h = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut record = |ui: &mut Ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -608,18 +612,18 @@ mod per_line {
         };
         // Warmup: two frames so `response.rect` lands and every cache
         // is primed.
-        ui.run_at(UVec2::new(800, 200), &mut record);
-        ui.run_at(UVec2::new(800, 200), &mut record);
-        let a = ui.resources.text.measure_calls();
-        ui.run_at(UVec2::new(800, 200), &mut record);
-        let b = ui.resources.text.measure_calls();
+        h.frame(&mut record);
+        h.frame(&mut record);
+        let a = h.ui.resources.text.measure_calls();
+        h.frame(&mut record);
+        let b = h.ui.resources.text.measure_calls();
         let per_frame = b - a;
         // Drive several more frames with identical inputs and verify
         // each one costs exactly the same number of `measure_calls`.
         for i in 0..5 {
-            let before = ui.resources.text.measure_calls();
-            ui.run_at(UVec2::new(800, 200), &mut record);
-            let after = ui.resources.text.measure_calls();
+            let before = h.ui.resources.text.measure_calls();
+            h.frame(&mut record);
+            let after = h.ui.resources.text.measure_calls();
             assert_eq!(
                 after - before,
                 per_frame,
@@ -642,7 +646,7 @@ mod per_line {
     fn placeholder_per_line_aligns_under_wrap() {
         use crate::scene::layer::Layer;
         use crate::scene::shapes::record::ShapeRecord;
-        let mut ui = cosmic_ui();
+        let mut h = cosmic_ui();
         let mut buf = String::new();
         let mut node = None;
         let mut record = |ui: &mut Ui| {
@@ -660,13 +664,13 @@ mod per_line {
                 );
             });
         };
-        ui.run_at(UVec2::new(800, 200), &mut record);
-        ui.run_at(UVec2::new(800, 200), &mut record);
+        h.frame(&mut record);
+        h.frame(&mut record);
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
-        let payloads = ui.forest.record_store.payloads.borrow();
+        let payloads = h.ui.forest.record_store.payloads.borrow();
         let interned_text = payloads.interned_text();
-        let tree = &ui.forest.trees[Layer::Main];
+        let tree = &h.ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => {
                 Some((*align, text.resolve(&interned_text).to_owned()))
@@ -680,7 +684,7 @@ mod per_line {
             "rendered text must be the placeholder, got {shape_text:?}",
         );
         // (b) + (c) cached buffer key.
-        let main = &ui.layout[Layer::Main];
+        let main = &h.ui.layout[Layer::Main];
         let span = main.text_spans[node.idx()];
         assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
         let shaped = main.text_shapes[span.start as usize];
@@ -709,6 +713,7 @@ mod per_line {
         let lh = fs * 1.2;
         let wrap = 290.0_f32;
         let right = ui
+            .ui
             .resources
             .text
             .cursor_xy(
@@ -725,6 +730,7 @@ mod per_line {
             )
             .x;
         let center = ui
+            .ui
             .resources
             .text
             .cursor_xy(
@@ -741,6 +747,7 @@ mod per_line {
             )
             .x;
         let left = ui
+            .ui
             .resources
             .text
             .cursor_xy(
@@ -812,7 +819,7 @@ mod per_line {
         // collapsed this to (widest_line - line_w) ≈ 0 for the
         // widest line; per-line alignment offsets each shorter line
         // by `wrap_target - line_w`.
-        let mut ui = cosmic_ui();
+        let mut h = cosmic_ui();
         let buf_init = String::from("short\nlonger line here");
         let id = WidgetId::from_hash("ml-right");
         let mut buf = buf_init.clone();
@@ -826,32 +833,32 @@ mod per_line {
                     .show(ui);
             });
         };
-        ui.run_at(UVec2::new(800, 200), &mut record);
+        h.frame(&mut record);
         // Caret at end of "short" (byte 5): under right-align the
         // caret should sit far from the left edge.
-        ui.state_mut::<TextEditState>(id).edit.caret = 5;
-        ui.run_at(UVec2::new(800, 200), &mut record);
+        h.ui.state_mut::<TextEditState>(id).edit.caret = 5;
+        h.frame(&mut record);
         // Ask the shaper directly for the caret position the widget
         // would have seen this frame. wrap target = inner width =
         // 300 - 2*5 = 290.
         let fs = 16.0_f32;
         let lh = fs * 1.2;
-        let caret_short = ui
-            .resources
-            .text
-            .cursor_xy(
-                &buf,
-                5,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(290.0),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Right,
-                },
-            )
-            .x;
+        let caret_short =
+            h.ui.resources
+                .text
+                .cursor_xy(
+                    &buf,
+                    5,
+                    TestShape {
+                        font_size_px: fs,
+                        line_height_px: lh,
+                        max_width_px: Some(290.0),
+                        family: FontFamily::Sans,
+                        weight: FontWeight::Regular,
+                        halign: HAlign::Right,
+                    },
+                )
+                .x;
         // Without per-line alignment, the short line would land at
         // x ≈ line_w ≈ 35-40 px. With per-line alignment under
         // right-align, the caret at end-of-short sits near the wrap
@@ -867,7 +874,7 @@ mod per_line {
 fn multiline_default_is_top_left() {
     // Default for `multiline(true)` is `Align::TOP_LEFT`. With "abcd"
     // the text origin sits flush at the inner top-left = padding.
-    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
@@ -884,9 +891,9 @@ fn multiline_default_is_top_left() {
         });
     };
     // Two frames: first to warm up the cascade.
-    ui.run_at(NARROW, &mut record);
-    ui.run_at(NARROW, &mut record);
-    let (origin, _) = shape_origins(&ui, node.unwrap());
+    h.frame(&mut record);
+    h.frame(&mut record);
+    let (origin, _) = shape_origins(&h.ui, node.unwrap());
     let o = origin.expect("text shape");
     assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
     assert!((o.y - PAD_T).abs() < 1e-3, "y = {}", o.y);
@@ -905,7 +912,7 @@ fn multiline_default_is_top_left() {
 #[test]
 fn text_origin_invariant_under_ancestor_transform_zoom() {
     fn run(scale: f32) -> glam::Vec2 {
-        let mut ui = ui_at_no_cosmic(NARROW);
+        let mut h = ui_at_no_cosmic(NARROW);
         let mut buf = String::from("abcd");
         let mut node: Option<NodeId> = None;
         let mut record = |ui: &mut Ui| {
@@ -925,9 +932,9 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
         };
         // Two frames: cascade lags one frame, so the second frame is
         // the one whose `response.layout_rect` drives the offset math.
-        ui.run_at(NARROW, &mut record);
-        ui.run_at(NARROW, &mut record);
-        let (origin, _) = shape_origins(&ui, node.unwrap());
+        h.frame(&mut record);
+        h.frame(&mut record);
+        let (origin, _) = shape_origins(&h.ui, node.unwrap());
         origin.expect("text shape emitted for non-empty buffer")
     }
     let unscaled = run(1.0);

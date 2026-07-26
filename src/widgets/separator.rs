@@ -91,7 +91,8 @@ impl Configure for Separator {
 
 #[cfg(test)]
 mod tests {
-    use crate::Ui;
+    use crate::ui::harness::UiHarness;
+
     use crate::layout::types::sizing::Sizing;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
@@ -104,9 +105,9 @@ mod tests {
     /// the 400-wide FILL column at the theme thickness of 1.
     #[test]
     fn explicit_size_overrides_stretch_default() {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 300));
         let (mut sized, mut hug, mut default) = (None, None, None);
-        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+        h.frame_without_baseline(|ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(
@@ -124,7 +125,7 @@ mod tests {
                 default = Some(Separator::horizontal().show(ui).node());
             });
         });
-        let rects = &ui.layout[Layer::Main].rect;
+        let rects = &h.ui.layout[Layer::Main].rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (50.0, 3.0), "explicit size");
         let h = rects[hug.unwrap().idx()];

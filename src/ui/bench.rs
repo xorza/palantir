@@ -67,6 +67,7 @@ use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
 use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::ui::frame_report::FramePaint;
+use crate::ui::harness::UiHarness;
 use criterion::Criterion;
 use pollster::FutureExt;
 use std::fs::OpenOptions;
@@ -241,21 +242,21 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
 /// same cadence as production — otherwise a frozen clock could classify
 /// frames as `PaintOnly` and skip the record closure the arms depend on.
 struct CpuHarness {
-    ui: Ui,
+    ui: UiHarness,
     frontend: Frontend,
     start: std::time::Instant,
 }
 
 impl CpuHarness {
     fn new() -> Self {
-        let ui = Ui::for_test_text();
+        let ui = UiHarness::with_text(cached_size());
         let frontend = Frontend::for_test();
         let mut h = Self {
             ui,
             frontend,
             start: Instant::now(),
         };
-        h.ui.theme.window_clear = WINDOW_CLEAR;
+        h.ui.ui.theme.window_clear = WINDOW_CLEAR;
         h
     }
 
@@ -273,16 +274,14 @@ impl CpuHarness {
     /// (the partial-encode path is its real workload); the substitution
     /// only kicks in when there's nothing to paint at all.
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
-        let report = self
-            .ui
-            .record_test_frame(display, self.start.elapsed(), record);
+        let report = self.ui.frame_at(display, self.start.elapsed(), record);
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
             kind: RenderKind::Full,
         });
         // The deviceless CPU harness's `Frontend` carries the baseline
         // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
-        self.frontend.build(self.ui.frame_scene(), plan);
+        self.frontend.build(self.ui.ui.frame_scene(), plan);
     }
 }
 
@@ -360,7 +359,7 @@ fn assert_partial_invariant() {
         h.frame(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
     }
-    let report = h.ui.record_test_frame(display, h.start.elapsed(), |ui| {
+    let report = h.ui.frame_at(display, h.start.elapsed(), |ui| {
         build_ui(&mut state, BENCH_SCALE, ui)
     });
     assert_eq!(

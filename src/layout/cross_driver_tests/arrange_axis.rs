@@ -6,6 +6,7 @@ use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -67,11 +68,11 @@ fn add_child(ui: &mut Ui, id: WidgetId, case: ArrangeCase) {
 }
 
 fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
-    let mut ui = Ui::for_test();
     let child = WidgetId::from_hash("arrange-axis-child");
     let parent_size = case.axis.compose_size(case.slot, 100.0);
     let surface = UVec2::new(parent_size.w as u32, parent_size.h as u32);
-    ui.run_at_without_baseline(surface, |ui| match driver {
+    let mut h = UiHarness::new(surface);
+    h.frame_without_baseline(|ui| match driver {
         Driver::Root => add_child(ui, child, case),
         Driver::Canvas => {
             Panel::canvas()
@@ -123,7 +124,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
     });
-    ui.response_for(child).rect.expect("child arranged")
+    h.ui.response_for(child).rect.expect("child arranged")
 }
 
 #[test]

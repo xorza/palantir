@@ -181,6 +181,7 @@ mod tests {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
+    use crate::ui::harness::UiHarness;
     use crate::widgets::panel::Panel;
     use crate::widgets::slider::{
         Slider, clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step,
@@ -193,10 +194,10 @@ mod tests {
     /// (400-wide FILL column → 400 × knob_size 18).
     #[test]
     fn explicit_size_overrides_fill_default() {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 300));
         let mut v = 0.5_f32;
         let (mut sized, mut hug, mut default) = (None, None, None);
-        ui.run_at_without_baseline(UVec2::new(400, 300), |ui| {
+        h.frame_without_baseline(|ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(
@@ -214,7 +215,7 @@ mod tests {
                 default = Some(Slider::new(&mut v, 0.0..=1.0).show(ui).node());
             });
         });
-        let rects = &ui.layout[Layer::Main].rect;
+        let rects = &h.ui.layout[Layer::Main].rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
         let h = rects[hug.unwrap().idx()];
@@ -226,15 +227,15 @@ mod tests {
     #[test]
     fn endpoint_rails_collapse_without_invalid_fill_weights() {
         for (value, expected) in [(0.0, [0.0, 18.0, 102.0]), (1.0, [102.0, 18.0, 0.0])] {
-            let mut ui = Ui::for_test();
+            let mut h = UiHarness::new(UVec2::new(120, 30));
             let mut value = value;
-            let root = ui.run_at_value_without_baseline(UVec2::new(120, 30), |ui| {
+            let root = h.frame_value_without_baseline(|ui| {
                 Slider::new(&mut value, 0.0..=1.0)
                     .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
                     .show(ui)
                     .node()
             });
-            let widths: Vec<_> = ui
+            let widths: Vec<_> = h
                 .main_child_rects(root)
                 .into_iter()
                 .map(|rect| rect.size.w)
@@ -293,7 +294,7 @@ mod tests {
         let id = WidgetId::from_hash("scaled-slider");
         for scale in [0.5, 1.0, 2.0] {
             for (local_x, expected) in [(9.0, 0.0), (34.5, 0.25), (111.0, 1.0)] {
-                let mut ui = Ui::for_test();
+                let mut h = UiHarness::new(UVec2::new(300, 100));
                 let mut value = 0.5;
                 let build = |ui: &mut Ui, value: &mut f32| {
                     Panel::zstack()
@@ -307,15 +308,15 @@ mod tests {
                                 .show(ui);
                         });
                 };
-                ui.run_at(UVec2::new(300, 100), |ui| build(ui, &mut value));
+                h.frame(|ui| build(ui, &mut value));
 
-                let response = ui.response_for(id);
+                let response = h.ui.response_for(id);
                 let layout = response.layout_rect.expect("slider arranged");
                 let pointer = response
                     .transform
                     .apply_point(layout.min + Vec2::new(local_x, 9.0));
-                ui.press_at(pointer);
-                ui.run_at(UVec2::new(300, 100), |ui| build(ui, &mut value));
+                h.press_at(pointer);
+                h.frame(|ui| build(ui, &mut value));
 
                 assert!(
                     (value - expected).abs() < 1e-6,

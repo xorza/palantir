@@ -7,6 +7,7 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -49,8 +50,8 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
 /// the children's full height. State is populated post-arrange.
 #[test]
 fn vertical_scroll_records_content_extent() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Scroll::vertical()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
@@ -63,14 +64,14 @@ fn vertical_scroll_records_content_extent() {
                 }
             });
     });
-    assert_eq!(layout_for(&ui, "scroll").content.h, 5.0 * 50.0);
+    assert_eq!(layout_for(&h.ui, "scroll").content.h, 5.0 * 50.0);
 }
 
 /// Horizontal scroll measures children with INF on X.
 #[test]
 fn horizontal_scroll_records_content_extent() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -88,7 +89,7 @@ fn horizontal_scroll_records_content_extent() {
                     });
             });
     });
-    let content_w = layout_for(&ui, "scroll").content.w;
+    let content_w = layout_for(&h.ui, "scroll").content.w;
     assert!(
         content_w > 200.0,
         "content overflows the 200 viewport on X: got {}",
@@ -99,8 +100,8 @@ fn horizontal_scroll_records_content_extent() {
 /// Both-axis scroll measures with both axes unbounded.
 #[test]
 fn both_axis_scroll_records_content_extent() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -111,13 +112,13 @@ fn both_axis_scroll_records_content_extent() {
                     .show(ui);
             });
     });
-    assert_eq!(layout_for(&ui, "scroll").content, Size::new(300.0, 250.0));
+    assert_eq!(layout_for(&h.ui, "scroll").content, Size::new(300.0, 250.0));
 }
 
 /// Cached measure output restores every scroll geometry input.
 #[test]
 fn layout_output_survives_across_frames() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -135,10 +136,10 @@ fn layout_output_survives_across_frames() {
                     });
             });
     };
-    ui.run_at_without_baseline(SURFACE, build);
-    let f1 = layout_for(&ui, "scroll");
-    ui.run_at_without_baseline(SURFACE, build);
-    let f2 = layout_for(&ui, "scroll");
+    h.frame_without_baseline(build);
+    let f1 = layout_for(&h.ui, "scroll");
+    h.frame_without_baseline(build);
+    let f2 = layout_for(&h.ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
     assert_eq!(f1.outer, f2.outer);
@@ -150,8 +151,8 @@ fn layout_output_survives_across_frames() {
 /// content; the margin acts as invisible overscroll.
 #[test]
 fn content_margin_leaves_content_size_unchanged() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -163,7 +164,7 @@ fn content_margin_leaves_content_size_unchanged() {
                     .show(ui);
             });
     });
-    assert_eq!(layout_for(&ui, "scroll").content, Size::new(80.0, 160.0));
+    assert_eq!(layout_for(&h.ui, "scroll").content, Size::new(80.0, 160.0));
 }
 
 /// Arranged height of the scroll widget's outer wrapper (the node that
@@ -179,8 +180,8 @@ fn scroll_height(ui: &Ui, id_salt: &'static str) -> f32 {
 /// reports content extent on Hug panned axes); the wrapper isolates the
 /// assertion from how the root itself is arranged.
 fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -200,7 +201,7 @@ fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
                     });
             });
     });
-    scroll_height(&ui, "scroll")
+    scroll_height(&h.ui, "scroll")
 }
 
 /// A `Hug` scroll sizes to its content, clamped to `[min, max]` — the
@@ -230,8 +231,8 @@ fn hug_scroll_clamps_viewport_to_content() {
 /// 400 so the bar/thumb sizing is correct.
 #[test]
 fn hug_scroll_caps_at_max_and_scrolls() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -250,16 +251,16 @@ fn hug_scroll_caps_at_max_and_scrolls() {
                     });
             });
     });
-    assert_eq!(scroll_height(&ui, "scroll"), 200.0, "capped at max_size");
-    let st = layout_for(&ui, "scroll");
+    assert_eq!(scroll_height(&h.ui, "scroll"), 200.0, "capped at max_size");
+    let st = layout_for(&h.ui, "scroll");
     assert_eq!(st.content.h, 400.0, "records full content extent");
     assert!(
         st.content.h > st.viewport.h,
         "content past the cap overflows on Y"
     );
 
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
@@ -277,7 +278,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
                     });
             });
     });
-    let st = layout_for(&ui, "parent-capped-scroll");
+    let st = layout_for(&h.ui, "parent-capped-scroll");
     assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
     assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
     assert!(
@@ -293,8 +294,8 @@ fn hug_scroll_caps_at_max_and_scrolls() {
 /// out of, and it's unchanged from before.
 #[test]
 fn fill_scroll_does_not_grow_hug_parent() {
-    let mut ui = Ui::for_test();
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -311,7 +312,7 @@ fn fill_scroll_does_not_grow_hug_parent() {
             });
     });
     assert_eq!(
-        scroll_height(&ui, "scroll"),
+        scroll_height(&h.ui, "scroll"),
         0.0,
         "a Fill scroll reports zero pan-axis extent; the Hug parent doesn't grow",
     );
@@ -326,7 +327,7 @@ fn fill_scroll_does_not_grow_hug_parent() {
 /// stale frame-1 fit measure would be served — yielding 150 in frame 2.
 #[test]
 fn toggling_scroll_sizing_busts_measure_cache() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let build = |ui: &mut Ui, pan_h: Sizing| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -343,11 +344,15 @@ fn toggling_scroll_sizing_busts_measure_cache() {
                     });
             });
     };
-    ui.run_at_without_baseline(SURFACE, |ui| build(ui, Sizing::HUG));
-    assert_eq!(scroll_height(&ui, "scroll"), 150.0, "Hug fits its content");
-    ui.run_at_without_baseline(SURFACE, |ui| build(ui, Sizing::fill(1.0)));
+    h.frame_without_baseline(|ui| build(ui, Sizing::HUG));
     assert_eq!(
-        scroll_height(&ui, "scroll"),
+        scroll_height(&h.ui, "scroll"),
+        150.0,
+        "Hug fits its content"
+    );
+    h.frame_without_baseline(|ui| build(ui, Sizing::fill(1.0)));
+    assert_eq!(
+        scroll_height(&h.ui, "scroll"),
         0.0,
         "Fill collapses in the Hug parent — the frame-1 fit measure is not served stale",
     );

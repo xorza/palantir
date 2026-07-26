@@ -1,13 +1,13 @@
-use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-fn run(value: &mut bool, ui: &mut Ui, surface: UVec2) {
+fn run(value: &mut bool, h: &mut UiHarness) {
     let mut v = *value;
-    ui.run_at_without_baseline(surface, |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut v)
                 .id(WidgetId::from_hash("cb"))
@@ -20,13 +20,13 @@ fn run(value: &mut bool, ui: &mut Ui, surface: UVec2) {
 
 #[test]
 fn clicking_toggles_value() {
-    let mut ui = Ui::for_test();
     let surface = UVec2::new(300, 100);
+    let mut h = UiHarness::new(surface);
     let mut v = false;
 
     // Frame 1: lay out so the row has a rect.
     let mut rec = v;
-    ui.run_at(surface, |ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
                 .id(WidgetId::from_hash("cb"))
@@ -38,23 +38,23 @@ fn clicking_toggles_value() {
     assert!(!v, "starts unchecked");
 
     // Click on the box area.
-    ui.click_at(Vec2::new(8.0, 8.0));
-    run(&mut v, &mut ui, surface);
+    h.click_at(Vec2::new(8.0, 8.0));
+    run(&mut v, &mut h);
     assert!(v, "single click toggles on");
 
-    ui.click_at(Vec2::new(8.0, 8.0));
-    run(&mut v, &mut ui, surface);
+    h.click_at(Vec2::new(8.0, 8.0));
+    run(&mut v, &mut h);
     assert!(!v, "second click toggles off");
 }
 
 #[test]
 fn disabled_checkbox_does_not_toggle() {
-    let mut ui = Ui::for_test();
     let surface = UVec2::new(300, 100);
+    let mut h = UiHarness::new(surface);
     let mut v = false;
 
     let mut rec = v;
-    ui.run_at(surface, |ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
                 .id(WidgetId::from_hash("cb"))
@@ -65,9 +65,9 @@ fn disabled_checkbox_does_not_toggle() {
     });
     v = rec;
 
-    ui.click_at(Vec2::new(8.0, 8.0));
+    h.click_at(Vec2::new(8.0, 8.0));
     let mut rec = v;
-    ui.run_at_without_baseline(surface, |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
                 .id(WidgetId::from_hash("cb"))

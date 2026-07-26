@@ -15,6 +15,7 @@ use crate::scene::tree::recording::Placement;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::{RectKind, RectShape};
+use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -22,9 +23,9 @@ const SURFACE: UVec2 = UVec2::new(200, 200);
 
 #[test]
 fn shapes_attached_to_button_node() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut button_node = None;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             button_node = Some(Button::new().auto_id().label("X").show(ui).node());
         });
@@ -32,13 +33,13 @@ fn shapes_attached_to_button_node() {
 
     // Button chrome lives in `chrome_table`, not in shapes — only the
     // label `Text` shape lands here.
-    let shapes: Vec<&ShapeRecord> = ui.forest.trees[Layer::Main]
+    let shapes: Vec<&ShapeRecord> = h.ui.forest.trees[Layer::Main]
         .shapes_of(button_node.unwrap())
         .collect();
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], ShapeRecord::Text { .. }));
     assert!(
-        ui.forest.trees[Layer::Main]
+        h.ui.forest.trees[Layer::Main]
             .chrome(button_node.unwrap())
             .is_some(),
     );
@@ -54,8 +55,8 @@ fn interleaved_shapes_record_correct_order() {
         let s = (slot + 1) as f32 * 10.0;
         Shape::rect(Rect::new(0.0, 0.0, s, s)).fill(Color::rgb(1.0, 0.0, 0.0))
     }
-    let mut ui = Ui::for_test();
-    let p = ui.run_at_value(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    let p = h.frame_value(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
@@ -84,19 +85,19 @@ fn interleaved_shapes_record_correct_order() {
             .node()
     });
     let pi = p.idx();
-    let p_shapes = ui.forest.trees[Layer::Main].records.shape_span()[pi];
+    let p_shapes = h.ui.forest.trees[Layer::Main].records.shape_span()[pi];
     assert_eq!(p_shapes.len, 3);
-    let children: Vec<_> = ui.main_child_ids(p);
+    let children: Vec<_> = h.main_child_ids(p);
     assert_eq!(children.len(), 2);
-    let c0_shapes = ui.forest.trees[Layer::Main].records.shape_span()[children[0].idx()];
-    let c1_shapes = ui.forest.trees[Layer::Main].records.shape_span()[children[1].idx()];
+    let c0_shapes = h.ui.forest.trees[Layer::Main].records.shape_span()[children[0].idx()];
+    let c1_shapes = h.ui.forest.trees[Layer::Main].records.shape_span()[children[1].idx()];
     assert_eq!(c0_shapes.start, p_shapes.start + 1);
     assert_eq!(c1_shapes.start, p_shapes.start + 2);
     assert_eq!(
         p_shapes.start + p_shapes.len,
         c1_shapes.start + c1_shapes.len + 1
     );
-    let sizes: Vec<f32> = ui.forest.trees[Layer::Main]
+    let sizes: Vec<f32> = h.ui.forest.trees[Layer::Main]
         .shapes_of(p)
         .map(|s| match s {
             ShapeRecord::Rect {
@@ -109,7 +110,7 @@ fn interleaved_shapes_record_correct_order() {
         .collect();
     assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
 
-    let cmds = ui.encode_paint();
+    let cmds = h.encode_paint();
     let draw_rect_count = cmds
         .calls
         .iter()
@@ -131,10 +132,10 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     fn pos_rect() -> RectShape {
         Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(Color::rgb(1.0, 0.0, 0.0))
     }
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut child_id = None;
     let mut parent_id = None;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         parent_id = Some(
             Panel::vstack()
                 .auto_id()
@@ -162,44 +163,44 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     let child = child_id.unwrap().idx();
 
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.subtree_end()[parent],
-        ui.forest.trees[Layer::Main].records.subtree_end()[child],
+        h.ui.forest.trees[Layer::Main].records.subtree_end()[parent],
+        h.ui.forest.trees[Layer::Main].records.subtree_end()[child],
         "test setup: parent's only child shares the parent's end NodeId"
     );
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.shape_span()[parent].len,
+        h.ui.forest.trees[Layer::Main].records.shape_span()[parent].len,
         2
     );
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.shape_span()[child].len,
+        h.ui.forest.trees[Layer::Main].records.shape_span()[child].len,
         0,
         "child's subtree must NOT include parent's slot-N shapes"
     );
 
     // Encoder walks without panicking (the original symptom).
-    let _cmds = ui.encode_paint();
+    let _cmds = h.encode_paint();
 }
 
 fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
-    let mut ui = Ui::for_test();
-    let target = ui.run_at_value(SURFACE, |ui| f(ui));
-    ui.forest.trees[Layer::Main].rollups.node[target.idx()]
+    let mut h = UiHarness::new(SURFACE);
+    let target = h.frame_value(|ui| f(ui));
+    h.ui.forest.trees[Layer::Main].rollups.node[target.idx()]
 }
 
 fn record_cascade_static<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
-    let mut ui = Ui::for_test();
-    let _ = ui.run_at_value(SURFACE, |ui| f(ui));
-    ui.forest.trees[Layer::Main].rollups.cascade_static
+    let mut h = UiHarness::new(SURFACE);
+    let _ = h.frame_value(|ui| f(ui));
+    h.ui.forest.trees[Layer::Main].rollups.cascade_static
 }
 
 #[test]
 fn empty_tree_has_no_hashes() {
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |_| {});
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|_| {});
     // Synthetic viewport root: present even for an empty user record.
-    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 1);
-    assert_eq!(ui.forest.trees[Layer::Main].rollups.node.len(), 1);
-    assert_eq!(ui.forest.trees[Layer::Main].rollups.subtree.len(), 1);
+    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
+    assert_eq!(h.ui.forest.trees[Layer::Main].rollups.node.len(), 1);
+    assert_eq!(h.ui.forest.trees[Layer::Main].rollups.subtree.len(), 1);
 }
 
 #[test]
@@ -497,9 +498,9 @@ fn child_hash_does_not_affect_parent_hash() {
 }
 
 fn record_subtree_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
-    let mut ui = Ui::for_test();
-    let target = ui.run_at_value(SURFACE, |ui| f(ui));
-    ui.forest.trees[Layer::Main].rollups.subtree[target.idx()]
+    let mut h = UiHarness::new(SURFACE);
+    let target = h.frame_value(|ui| f(ui));
+    h.ui.forest.trees[Layer::Main].rollups.subtree[target.idx()]
 }
 
 #[test]
@@ -652,9 +653,9 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     let cols = [Track::fill(), Track::fill()];
     let rows = [Track::fill()];
 
-    let mut ui1 = Ui::for_test();
+    let mut ui1 = UiHarness::new(SURFACE);
     let mut g1 = None;
-    ui1.run_at(SURFACE, |ui| {
+    ui1.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -674,9 +675,9 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                     .show(ui, |_| {});
             });
     });
-    let mut ui2 = Ui::for_test();
+    let mut ui2 = UiHarness::new(SURFACE);
     let mut g2 = None;
-    ui2.run_at(SURFACE, |ui| {
+    ui2.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -697,15 +698,15 @@ fn grid_per_node_hash_independent_of_arena_slot() {
             });
     });
     assert_eq!(
-        ui1.forest.trees[Layer::Main].rollups.node[g1.unwrap().idx()],
-        ui2.forest.trees[Layer::Main].rollups.node[g2.unwrap().idx()],
+        ui1.ui.forest.trees[Layer::Main].rollups.node[g1.unwrap().idx()],
+        ui2.ui.forest.trees[Layer::Main].rollups.node[g2.unwrap().idx()],
     );
 }
 
 #[test]
 fn subtree_end_rolls_up_during_recording() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -734,8 +735,8 @@ fn subtree_end_rolls_up_during_recording() {
             .node()
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
-    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 7);
-    let ends = ui.forest.trees[Layer::Main].records.subtree_end();
+    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 7);
+    let ends = h.ui.forest.trees[Layer::Main].records.subtree_end();
     assert_eq!(ends[0].end(), 7, "synthetic viewport spans everything");
     assert_eq!(ends[root.idx()].end(), 7, "root");
     assert_eq!(ends[2].end(), 3, "leaf a");
@@ -759,20 +760,20 @@ fn subtree_end_handles_deep_nesting() {
             .id(WidgetId::from_hash(("nest", depth)))
             .show(ui, |ui| nest(ui, depth - 1));
     }
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| nest(ui, 16));
-    let n = ui.forest.trees[Layer::Main].records.len() as u32;
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| nest(ui, 16));
+    let n = h.ui.forest.trees[Layer::Main].records.len() as u32;
     // Synthetic viewport + 16 nested vstacks + 1 leaf frame.
     assert_eq!(n, 18);
     for i in 0..(n - 1) {
         assert_eq!(
-            ui.forest.trees[Layer::Main].records.subtree_end()[i as usize].end(),
+            h.ui.forest.trees[Layer::Main].records.subtree_end()[i as usize].end(),
             n,
             "every ancestor on the chain points past the leaf",
         );
     }
     assert_eq!(
-        ui.forest.trees[Layer::Main].records.subtree_end()[(n - 1) as usize].end(),
+        h.ui.forest.trees[Layer::Main].records.subtree_end()[(n - 1) as usize].end(),
         n,
     );
 }
@@ -806,28 +807,28 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
             });
         b_first
     }
-    let mut ui1 = Ui::for_test();
+    let mut ui1 = UiHarness::new(SURFACE);
     let mut b_first1 = 0;
-    ui1.run_at(SURFACE, |ui| {
+    ui1.frame(|ui| {
         b_first1 = build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
-    let h_b1 = ui1.forest.trees[Layer::Main].rollups.subtree[b_first1 as usize];
+    let h_b1 = ui1.ui.forest.trees[Layer::Main].rollups.subtree[b_first1 as usize];
 
-    let mut ui2 = Ui::for_test();
+    let mut ui2 = UiHarness::new(SURFACE);
     let mut b_first2 = 0;
-    ui2.run_at(SURFACE, |ui| {
+    ui2.frame(|ui| {
         b_first2 = build(ui, Color::rgb(0.0, 1.0, 0.0));
     });
-    let h_b2 = ui2.forest.trees[Layer::Main].rollups.subtree[b_first2 as usize];
+    let h_b2 = ui2.ui.forest.trees[Layer::Main].rollups.subtree[b_first2 as usize];
     assert_eq!(b_first1, b_first2);
     assert_eq!(h_b1, h_b2, "root B's subtree_hash must not fold root A");
 }
 
 #[test]
 fn ui_layer_records_popup_into_separate_tree() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-root"))
             .show(ui, |ui| {
@@ -851,8 +852,8 @@ fn ui_layer_records_popup_into_separate_tree() {
                 });
         });
     });
-    let main_tree = &ui.forest.trees[Layer::Main];
-    let popup_tree = &ui.forest.trees[Layer::Popup];
+    let main_tree = &h.ui.forest.trees[Layer::Main];
+    let popup_tree = &h.ui.forest.trees[Layer::Popup];
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);
@@ -898,9 +899,9 @@ fn ui_layer_size_caps_overlay_available() {
         // Some(mixed) → each axis clamps independently to surface.
         (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 300.0)),
     ];
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURF);
     for (cap, expected) in cases {
-        ui.run_at(SURF, |ui| {
+        h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -912,9 +913,9 @@ fn ui_layer_size_caps_overlay_available() {
                     .show(ui, |_| {});
             });
         });
-        let popup_tree = &ui.forest.trees[Layer::Popup];
+        let popup_tree = &h.ui.forest.trees[Layer::Popup];
         let root = popup_tree.roots[0].first_node.idx();
-        let rect = ui.layout[Layer::Popup].rect[root];
+        let rect = h.ui.layout[Layer::Popup].rect[root];
         assert_eq!(rect.min, anchor, "cap={cap:?}");
         assert_eq!(rect.size, *expected, "cap={cap:?}");
     }
@@ -922,8 +923,8 @@ fn ui_layer_size_caps_overlay_available() {
 
 #[test]
 fn empty_popup_body_leaves_popup_tree_empty() {
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("only-main"))
             .show(ui, |ui| {
@@ -934,9 +935,9 @@ fn empty_popup_body_leaves_popup_tree_empty() {
             });
         ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |_| {});
     });
-    assert_eq!(ui.forest.trees[Layer::Main].roots.len(), 1);
-    assert!(ui.forest.trees[Layer::Popup].roots.is_empty());
-    assert!(ui.forest.trees[Layer::Popup].records.is_empty());
+    assert_eq!(h.ui.forest.trees[Layer::Main].roots.len(), 1);
+    assert!(h.ui.forest.trees[Layer::Popup].roots.is_empty());
+    assert!(h.ui.forest.trees[Layer::Popup].records.is_empty());
 }
 
 #[test]
@@ -964,20 +965,20 @@ fn forest_independence_across_recording_orders() {
                 });
         });
     };
-    let mut ui_p_first = Ui::for_test();
-    ui_p_first.run_at(UVec2::new(400, 400), |ui| {
+    let mut ui_p_first = UiHarness::new(UVec2::new(400, 400));
+    ui_p_first.frame(|ui| {
         record_popup(ui);
         record_main(ui);
     });
-    let mut ui_m_first = Ui::for_test();
-    ui_m_first.run_at(UVec2::new(400, 400), |ui| {
+    let mut ui_m_first = UiHarness::new(UVec2::new(400, 400));
+    ui_m_first.frame(|ui| {
         record_main(ui);
         record_popup(ui);
     });
     for layer in [Layer::Main, Layer::Popup] {
         assert_eq!(
-            ui_p_first.forest.trees[layer].records.len(),
-            ui_m_first.forest.trees[layer].records.len(),
+            ui_p_first.ui.forest.trees[layer].records.len(),
+            ui_m_first.ui.forest.trees[layer].records.len(),
             "{layer:?} record count independent of recording order",
         );
     }
@@ -985,9 +986,9 @@ fn forest_independence_across_recording_orders() {
 
 #[test]
 fn mid_recording_popup_with_text_renders_through_encoder() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
     let popup_anchor = glam::Vec2::new(50.0, 100.0);
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("outer-main"))
             .show(ui, |ui| {
@@ -1007,12 +1008,12 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
                 });
             });
     });
-    let _cmds = ui.encode_paint();
+    let _cmds = h.encode_paint();
 
-    let payloads = ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
-    let main_tree = &ui.forest.trees[Layer::Main];
-    let popup_tree = &ui.forest.trees[Layer::Popup];
+    let main_tree = &h.ui.forest.trees[Layer::Main];
+    let popup_tree = &h.ui.forest.trees[Layer::Popup];
 
     let outer_span = main_tree.records.shape_span()[0];
     let main_texts: Vec<&str> = main_tree.shapes.records
@@ -1057,9 +1058,9 @@ fn mid_recording_popup_keeps_trees_independent() {
         }
     }
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 400));
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
-    let parent = ui.run_at_value(UVec2::new(400, 400), |ui| {
+    let parent = h.frame_value(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-parent"))
             .show(ui, |ui| {
@@ -1104,8 +1105,8 @@ fn mid_recording_popup_keeps_trees_independent() {
             .response
             .node()
     });
-    let main_tree = &ui.forest.trees[Layer::Main];
-    let popup_tree = &ui.forest.trees[Layer::Popup];
+    let main_tree = &h.ui.forest.trees[Layer::Main];
+    let popup_tree = &h.ui.forest.trees[Layer::Popup];
 
     // Synthetic viewport at NodeId(0); user "main-parent" at NodeId(1).
     assert_eq!(main_tree.records.len(), 6);
@@ -1147,8 +1148,8 @@ fn mid_recording_popup_keeps_trees_independent() {
 fn extras_columns_split_by_field_kind() {
     use crate::primitives::size::Size;
 
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("panel-with-gap"))
             .gap(8.0)
@@ -1163,14 +1164,14 @@ fn extras_columns_split_by_field_kind() {
                     .show(ui);
             });
     });
-    assert_eq!(ui.forest.trees[Layer::Main].panel_table.len(), 1);
-    assert_eq!(ui.forest.trees[Layer::Main].bounds_table.len(), 1);
+    assert_eq!(h.ui.forest.trees[Layer::Main].panel_table.len(), 1);
+    assert_eq!(h.ui.forest.trees[Layer::Main].bounds_table.len(), 1);
 }
 
 #[test]
 fn child_iter_traverses_correctly_after_finalize() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -1194,13 +1195,13 @@ fn child_iter_traverses_correctly_after_finalize() {
             .response
             .node()
     });
-    let kids: Vec<u32> = ui.forest.trees[Layer::Main]
+    let kids: Vec<u32> = h.ui.forest.trees[Layer::Main]
         .children(root)
         .map(|c| c.id.0)
         .collect();
     // Synthetic viewport at NodeId(0); user "root" at NodeId(1).
     assert_eq!(kids, vec![2, 3, 5], "root's direct children: a, inner, c");
-    let inner_kids: Vec<u32> = ui.forest.trees[Layer::Main]
+    let inner_kids: Vec<u32> = h.ui.forest.trees[Layer::Main]
         .children(NodeId(3))
         .map(|c| c.id.0)
         .collect();
@@ -1212,8 +1213,8 @@ fn child_iter_traverses_correctly_after_finalize() {
 /// `compute_rollups` walk so we don't pay a second per-shape sweep.
 #[test]
 fn shape_hashes_column_sized_to_shape_records() {
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
@@ -1236,7 +1237,7 @@ fn shape_hashes_column_sized_to_shape_records() {
                 );
             });
     });
-    let tree = &ui.forest.trees[Layer::Main];
+    let tree = &h.ui.forest.trees[Layer::Main];
     assert_eq!(
         tree.shapes.hashes.len(),
         tree.shapes.records.len(),
@@ -1280,11 +1281,11 @@ fn shape_hash_stable_across_frames() {
                 );
             });
     };
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, build);
-    let h0 = ui.forest.trees[Layer::Main].shapes.hashes[0];
-    ui.run_at(SURFACE, build);
-    let h1 = ui.forest.trees[Layer::Main].shapes.hashes[0];
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(build);
+    let h0 = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
+    h.frame(build);
+    let h1 = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
     assert_eq!(
         h0, h1,
         "same shape authoring must hash identically across frames",
@@ -1315,13 +1316,13 @@ fn one_shape_change_only_flips_its_own_hash() {
                 );
             });
     };
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| build(glam::Vec2::new(20.0, 20.0), ui));
-    let h0_a = ui.forest.trees[Layer::Main].shapes.hashes[0];
-    let h0_b = ui.forest.trees[Layer::Main].shapes.hashes[1];
-    ui.run_at(SURFACE, |ui| build(glam::Vec2::new(30.0, 30.0), ui));
-    let h1_a = ui.forest.trees[Layer::Main].shapes.hashes[0];
-    let h1_b = ui.forest.trees[Layer::Main].shapes.hashes[1];
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| build(glam::Vec2::new(20.0, 20.0), ui));
+    let h0_a = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
+    let h0_b = h.ui.forest.trees[Layer::Main].shapes.hashes[1];
+    h.frame(|ui| build(glam::Vec2::new(30.0, 30.0), ui));
+    let h1_a = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
+    let h1_b = h.ui.forest.trees[Layer::Main].shapes.hashes[1];
     assert_eq!(h0_a, h1_a, "unchanged shape 0 must keep its hash");
     assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
 }

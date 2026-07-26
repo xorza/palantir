@@ -2,13 +2,13 @@
 //! arranged extent, clamping at explicit and content-driven stops,
 //! the resulting pane re-layout, and the resize-cursor request.
 
-use crate::Ui;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
@@ -27,9 +27,9 @@ fn split_id() -> WidgetId {
 /// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
 /// straddling it. Tests run two warm-up frames before interacting so
 /// the divider has arranged geometry for hit-testing.
-fn frame_with(ui: &mut Ui, ratio: &mut f32) -> usize {
+fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> usize {
     let mut passes = 0;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         passes += 1;
         Splitter::horizontal(ratio)
             .id(split_id())
@@ -42,17 +42,17 @@ fn frame_with(ui: &mut Ui, ratio: &mut f32) -> usize {
 
 #[test]
 fn divider_drag_maps_pointer_to_ratio_without_relayout() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut ratio = 0.5;
-    frame_with(&mut ui, &mut ratio);
-    frame_with(&mut ui, &mut ratio);
+    frame_with(&mut h, &mut ratio);
+    frame_with(&mut h, &mut ratio);
 
     // ratio 0.5 → first pane [0, 200), rule [200, 201), grab bar
     // [197.5, 203.5). Press the seam center and drag 100 px right:
     // pointer 300.5 → first = 300 → 0.75.
-    ui.press_at(Vec2::new(200.5, 50.0));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(300.5, 50.0)));
-    frame_with(&mut ui, &mut ratio);
+    h.press_at(Vec2::new(200.5, 50.0));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(300.5, 50.0)));
+    frame_with(&mut h, &mut ratio);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
@@ -61,22 +61,22 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     // A later drag movement records once. Layout follows the current
     // pointer immediately, while the caller still receives the prior
     // arranged ratio until the next record.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(999.0, 50.0)));
-    assert_eq!(frame_with(&mut ui, &mut ratio), 1);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(999.0, 50.0)));
+    assert_eq!(frame_with(&mut h, &mut ratio), 1);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
-    let first = ui.node_for_widget_id(split_id().with("first"));
-    let rect = ui.layout[Layer::Main].rect[first.idx()];
+    let first = h.node_for_widget_id(split_id().with("first"));
+    let rect = h.ui.layout[Layer::Main].rect[first.idx()];
     assert!(
         (rect.size.w - 350.0).abs() < 0.5,
         "min_pane(50) stops the current layout at 350 px, got {}",
         rect.size.w
     );
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(998.0, 50.0)));
-    assert_eq!(frame_with(&mut ui, &mut ratio), 1);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(998.0, 50.0)));
+    assert_eq!(frame_with(&mut h, &mut ratio), 1);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
         "the next record writes back the arranged 350/400 ratio, got {ratio}"
@@ -84,9 +84,9 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 
     // Release ends the gesture; further pointer motion leaves the
     // ratio alone.
-    ui.release_left();
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 50.0)));
-    frame_with(&mut ui, &mut ratio);
+    h.release();
+    h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 50.0)));
+    frame_with(&mut h, &mut ratio);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
         "ratio holds after release, got {ratio}"
@@ -96,10 +96,10 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 #[test]
 fn divider_drag_is_scale_invariant() {
     for scale in [0.5, 1.0, 2.0] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(1_000, 400));
         let mut ratio = 0.5;
-        let frame = |ui: &mut Ui, ratio: &mut f32| {
-            ui.run_at(UVec2::new(1_000, 400), |ui| {
+        let frame = |h: &mut UiHarness, ratio: &mut f32| {
+            h.frame(|ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-split-parent"))
                     .transform(TranslateScale::from_scale(scale))
@@ -113,21 +113,21 @@ fn divider_drag_is_scale_invariant() {
                     });
             });
         };
-        frame(&mut ui, &mut ratio);
-        frame(&mut ui, &mut ratio);
+        frame(&mut h, &mut ratio);
+        frame(&mut h, &mut ratio);
 
-        let divider = ui
-            .response_for(split_id().with("divider"))
-            .rect
-            .expect("divider arranged");
-        ui.press_at(divider.center());
-        let splitter = ui.response_for(split_id());
+        let divider =
+            h.ui.response_for(split_id().with("divider"))
+                .rect
+                .expect("divider arranged");
+        h.press_at(divider.center());
+        let splitter = h.ui.response_for(split_id());
         let layout = splitter.layout_rect.expect("splitter arranged");
         let pointer = splitter
             .transform
             .apply_point(layout.min + Vec2::new(300.5, 50.0));
-        ui.on_input(InputEvent::PointerMoved(pointer));
-        frame(&mut ui, &mut ratio);
+        h.on_input(InputEvent::PointerMoved(pointer));
+        frame(&mut h, &mut ratio);
 
         assert!(
             (ratio - 0.75).abs() < 1e-6,
@@ -137,11 +137,11 @@ fn divider_drag_is_scale_invariant() {
         let beyond_limit = splitter
             .transform
             .apply_point(layout.min + Vec2::new(380.0, 50.0));
-        ui.on_input(InputEvent::PointerMoved(beyond_limit));
-        frame(&mut ui, &mut ratio);
-        let first = ui.node_for_widget_id(split_id().with("first"));
+        h.on_input(InputEvent::PointerMoved(beyond_limit));
+        frame(&mut h, &mut ratio);
+        let first = h.node_for_widget_id(split_id().with("first"));
         assert_eq!(
-            ui.layout[Layer::Main].rect[first.idx()].size.w,
+            h.ui.layout[Layer::Main].rect[first.idx()].size.w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
@@ -149,8 +149,8 @@ fn divider_drag_is_scale_invariant() {
         let next = splitter
             .transform
             .apply_point(layout.min + Vec2::new(381.0, 50.0));
-        ui.on_input(InputEvent::PointerMoved(next));
-        frame(&mut ui, &mut ratio);
+        h.on_input(InputEvent::PointerMoved(next));
+        frame(&mut h, &mut ratio);
         assert!(
             (ratio - 0.875).abs() < 1e-6,
             "minimum-pane ratio at {scale}× produced {ratio}",
@@ -166,11 +166,11 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         (false, SplitHalf::First, 0.45),
         (false, SplitHalf::Second, 0.55),
     ] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let mut ratio = 0.5;
-        let frame = |ui: &mut Ui, ratio: &mut f32| {
+        let frame = |h: &mut UiHarness, ratio: &mut f32| {
             let mut passes = 0;
-            ui.run_at(SURFACE, |ui| {
+            h.frame(|ui| {
                 passes += 1;
                 let splitter = if horizontal {
                     Splitter::horizontal(ratio)
@@ -200,34 +200,34 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             });
             passes
         };
-        frame(&mut ui, &mut ratio);
-        frame(&mut ui, &mut ratio);
+        frame(&mut h, &mut ratio);
+        frame(&mut h, &mut ratio);
 
-        ui.press_at(if horizontal {
+        h.press_at(if horizontal {
             Vec2::new(200.5, 50.0)
         } else {
             Vec2::new(50.0, 200.5)
         });
         let activation_main = 210.5;
-        ui.on_input(InputEvent::PointerMoved(if horizontal {
+        h.on_input(InputEvent::PointerMoved(if horizontal {
             Vec2::new(activation_main, 50.0)
         } else {
             Vec2::new(50.0, activation_main)
         }));
-        frame(&mut ui, &mut ratio);
+        frame(&mut h, &mut ratio);
 
         let pointer_main = if rigid_half == SplitHalf::First {
             -100.0
         } else {
             500.0
         };
-        ui.on_input(InputEvent::PointerMoved(if horizontal {
+        h.on_input(InputEvent::PointerMoved(if horizontal {
             Vec2::new(pointer_main, 50.0)
         } else {
             Vec2::new(50.0, pointer_main)
         }));
         assert_eq!(
-            frame(&mut ui, &mut ratio),
+            frame(&mut h, &mut ratio),
             1,
             "active drag movement must not request a second layout"
         );
@@ -236,11 +236,11 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             (ratio - 0.525).abs() < 1e-6,
             "model keeps the prior arranged ratio for one record"
         );
-        let shrinking = ui.node_for_widget_id(split_id().with(match rigid_half {
+        let shrinking = h.node_for_widget_id(split_id().with(match rigid_half {
             SplitHalf::First => "first",
             SplitHalf::Second => "second",
         }));
-        let shrinking_rect = ui.layout[Layer::Main].rect[shrinking.idx()];
+        let shrinking_rect = h.ui.layout[Layer::Main].rect[shrinking.idx()];
         assert_eq!(
             if horizontal {
                 shrinking_rect.size.w
@@ -250,8 +250,8 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "{rigid_half:?} pane stops at its rigid content floor"
         );
-        let rigid = ui.node_for_widget_id(split_id().with("rigid"));
-        let rigid_rect = ui.layout[Layer::Main].rect[rigid.idx()];
+        let rigid = h.node_for_widget_id(split_id().with("rigid"));
+        let rigid_rect = h.ui.layout[Layer::Main].rect[rigid.idx()];
         assert_eq!(
             if horizontal {
                 rigid_rect.size.w
@@ -261,12 +261,12 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "rigid content remains laid out"
         );
-        let first = ui.node_for_widget_id(split_id().with("first"));
-        let first_rect = ui.layout[Layer::Main].rect[first.idx()];
-        let divider_rect = ui
-            .response_for(split_id().with("divider"))
-            .rect
-            .expect("divider arranged");
+        let first = h.node_for_widget_id(split_id().with("first"));
+        let first_rect = h.ui.layout[Layer::Main].rect[first.idx()];
+        let divider_rect =
+            h.ui.response_for(split_id().with("divider"))
+                .rect
+                .expect("divider arranged");
         let divider_center = if horizontal {
             divider_rect.center().x
         } else {
@@ -288,12 +288,12 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             501.0
         };
-        ui.on_input(InputEvent::PointerMoved(if horizontal {
+        h.on_input(InputEvent::PointerMoved(if horizontal {
             Vec2::new(next_pointer, 50.0)
         } else {
             Vec2::new(50.0, next_pointer)
         }));
-        assert_eq!(frame(&mut ui, &mut ratio), 1);
+        assert_eq!(frame(&mut h, &mut ratio), 1);
         assert!(
             (ratio - expected_ratio).abs() < 1e-6,
             "{rigid_half:?} next record writes back its content floor"
@@ -303,75 +303,75 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
 
 #[test]
 fn divider_requests_the_resize_cursor() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut ratio = 0.5;
-    frame_with(&mut ui, &mut ratio);
-    frame_with(&mut ui, &mut ratio);
+    frame_with(&mut h, &mut ratio);
+    frame_with(&mut h, &mut ratio);
     assert_eq!(
-        ui.window_requests.cursor,
+        h.ui.window_requests.cursor,
         CursorIcon::Default,
         "idle frame keeps the arrow"
     );
 
     // Hovering the grab bar ([197.5, 203.5) at ratio 0.5) requests the
     // horizontal-resize cursor.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(200.5, 50.0)));
-    frame_with(&mut ui, &mut ratio);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(200.5, 50.0)));
+    frame_with(&mut h, &mut ratio);
     assert_eq!(
-        ui.window_requests.cursor,
+        h.ui.window_requests.cursor,
         CursorIcon::EwResize,
         "hover shows resize"
     );
 
     // Mid-drag the pointer leaves the thin bar; the cursor must hold
     // until release (drag-first, since `hovered` is capture-gated).
-    ui.press_at(Vec2::new(200.5, 50.0));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 50.0)));
-    frame_with(&mut ui, &mut ratio);
+    h.press_at(Vec2::new(200.5, 50.0));
+    h.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 50.0)));
+    frame_with(&mut h, &mut ratio);
     assert_eq!(
-        ui.window_requests.cursor,
+        h.ui.window_requests.cursor,
         CursorIcon::EwResize,
         "drag holds resize off-bar"
     );
 
     // Release with the pointer over a pane: the per-record-pass reset
     // returns the arrow because nothing re-requests.
-    ui.release_left();
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    frame_with(&mut ui, &mut ratio);
+    h.release();
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    frame_with(&mut h, &mut ratio);
     assert_eq!(
-        ui.window_requests.cursor,
+        h.ui.window_requests.cursor,
         CursorIcon::Default,
         "leave resets to the arrow"
     );
 
     // A vertical splitter's divider asks for the other axis.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut ratio = 0.5;
-    let frame = |ui: &mut Ui, ratio: &mut f32| {
-        ui.run_at(SURFACE, |ui| {
+    let frame = |h: &mut UiHarness, ratio: &mut f32| {
+        h.frame(|ui| {
             Splitter::vertical(ratio)
                 .id(split_id())
                 .size((Sizing::fixed(100.0), Sizing::fixed(201.0)))
                 .show(ui, |_, _| {});
         });
     };
-    frame(&mut ui, &mut ratio);
-    frame(&mut ui, &mut ratio);
+    frame(&mut h, &mut ratio);
+    frame(&mut h, &mut ratio);
     // Free span 200 at ratio 0.5 → grab bar rows [97.5, 103.5).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.5)));
-    frame(&mut ui, &mut ratio);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.5)));
+    frame(&mut h, &mut ratio);
     assert_eq!(
-        ui.window_requests.cursor,
+        h.ui.window_requests.cursor,
         CursorIcon::NsResize,
         "column split resizes vertically"
     );
 
     for (thickness, rule_thickness) in [(3.0, 9.0), (6.0, 0.0)] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let mut ratio = 0.5;
-        let frame = |ui: &mut Ui, ratio: &mut f32| {
-            ui.run_at(SURFACE, |ui| {
+        let frame = |h: &mut UiHarness, ratio: &mut f32| {
+            h.frame(|ui| {
                 let style = SplitterTheme {
                     thickness,
                     rule_thickness,
@@ -384,15 +384,15 @@ fn divider_requests_the_resize_cursor() {
                     .show(ui, |_, _| {});
             });
         };
-        frame(&mut ui, &mut ratio);
-        frame(&mut ui, &mut ratio);
+        frame(&mut h, &mut ratio);
+        frame(&mut h, &mut ratio);
 
-        let first = ui.node_for_widget_id(split_id().with("first"));
-        let first_rect = ui.layout[Layer::Main].rect[first.idx()];
-        let divider_rect = ui
-            .response_for(split_id().with("divider"))
-            .rect
-            .expect("divider arranged");
+        let first = h.node_for_widget_id(split_id().with("first"));
+        let first_rect = h.ui.layout[Layer::Main].rect[first.idx()];
+        let divider_rect =
+            h.ui.response_for(split_id().with("divider"))
+                .rect
+                .expect("divider arranged");
         assert_eq!(divider_rect.size.w, thickness);
         assert_eq!(
             divider_rect.center().x,
@@ -440,17 +440,17 @@ fn sanitize_ratio_clamps_and_pins_non_finite() {
 #[test]
 fn endpoint_ratios_collapse_exactly_one_pane() {
     for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let mut ratio = ratio;
-        ui.run_at(SURFACE, |ui| {
+        h.frame(|ui| {
             Splitter::horizontal(&mut ratio)
                 .id(split_id())
                 .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                 .show(ui, |_, _| {});
         });
-        let first = ui.node_for_widget_id(split_id().with("first"));
-        let second = ui.node_for_widget_id(split_id().with("second"));
-        let rects = &ui.layout[Layer::Main].rect;
+        let first = h.node_for_widget_id(split_id().with("first"));
+        let second = h.node_for_widget_id(split_id().with("second"));
+        let rects = &h.ui.layout[Layer::Main].rect;
         assert_eq!(
             [rects[first.idx()].size.w, rects[second.idx()].size.w],
             expected,

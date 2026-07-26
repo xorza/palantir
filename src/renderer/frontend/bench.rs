@@ -8,7 +8,7 @@ use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::scene::node::Configure;
-use crate::ui::Ui;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;
@@ -52,7 +52,7 @@ impl FillCase {
 
 #[derive(Debug)]
 struct GradientBench {
-    ui: Ui,
+    ui: UiHarness,
     frontend: Frontend,
     start: Instant,
 }
@@ -60,7 +60,7 @@ struct GradientBench {
 impl GradientBench {
     fn new() -> Self {
         Self {
-            ui: Ui::for_test(),
+            ui: UiHarness::new(PHYSICAL),
             frontend: Frontend::for_test(),
             start: Instant::now(),
         }
@@ -69,22 +69,20 @@ impl GradientBench {
     fn frame(&mut self, fill_case: FillCase) -> usize {
         let background = fill_case.background();
         let display = Display::from_physical(PHYSICAL, 1.0);
-        let report = self
-            .ui
-            .record_test_frame(display, self.start.elapsed(), |ui| {
-                for row in 0..ROWS {
-                    Frame::new()
-                        .id_salt(row)
-                        .size((8.0, 8.0))
-                        .background(background.clone())
-                        .show(ui);
-                }
-            });
+        let report = self.ui.frame_at(display, self.start.elapsed(), |ui| {
+            for row in 0..ROWS {
+                Frame::new()
+                    .id_salt(row)
+                    .size((8.0, 8.0))
+                    .background(background.clone())
+                    .show(ui);
+            }
+        });
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: Color::BLACK,
             kind: RenderKind::Full,
         });
-        self.frontend.build(self.ui.frame_scene(), plan);
+        self.frontend.build(self.ui.ui.frame_scene(), plan);
         self.frontend.buffer.quads.len()
     }
 }
@@ -107,6 +105,7 @@ pub fn bench(c: &mut Criterion) {
         };
         assert_eq!(
             fixture
+                .ui
                 .ui
                 .forest
                 .record_store

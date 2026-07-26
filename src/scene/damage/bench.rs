@@ -9,7 +9,7 @@
 //! is `Ui::post_record` time only. Decisions about per-pass cost
 //! (e.g. proximity-merge thresholds) need a GPU-aware bench.
 //!
-//! `Ui::for_test()` leaves the cosmic shaper unset, so text measurement
+//! `UiHarness::new(SURFACE)` leaves the cosmic shaper unset, so text measurement
 //! runs through the mono fallback (matches the frame and measure-cache
 //! benches).
 
@@ -24,6 +24,7 @@ use crate::scene::damage::region::DamageRegion;
 use crate::scene::node::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use criterion::{BenchmarkId, Criterion};
@@ -123,8 +124,8 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
-fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let _ = ui.record_test_frame(display, Duration::ZERO, &mut record);
+fn run_and_ack(h: &mut UiHarness, display: Display, mut record: impl FnMut(&mut Ui)) {
+    let _ = h.frame_at(display, Duration::ZERO, &mut record);
 }
 
 fn damage_kind(ui: &Ui) -> &'static str {
@@ -143,15 +144,15 @@ fn damage_kind(ui: &Ui) -> &'static str {
 /// bench iter will then exercise. Without warmup the first iter
 /// would always be `Full` (no `prev_surface`) and skew measurements.
 fn warm_and_assert(
-    ui: &mut Ui,
+    h: &mut UiHarness,
     display: Display,
     frame1: impl Fn(&mut Ui),
     frame2: impl Fn(&mut Ui),
     expect_kind: &str,
 ) {
-    run_and_ack(ui, display, &frame1);
-    run_and_ack(ui, display, &frame2);
-    let kind = damage_kind(ui);
+    run_and_ack(h, display, &frame1);
+    run_and_ack(h, display, &frame2);
+    let kind = damage_kind(&h.ui);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
@@ -165,9 +166,9 @@ fn bench_workloads(c: &mut Criterion) {
     // are non-painting Panels so the damage diff walks every painting
     // leaf individually (no subtree-skip available).
     {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         warm_and_assert(
-            &mut ui,
+            &mut h,
             display,
             |ui| build_grid(ui, &[], cold),
             |ui| build_grid(ui, &[], cold),
@@ -175,8 +176,8 @@ fn bench_workloads(c: &mut Criterion) {
         );
         group.bench_function("skip", |b| {
             b.iter(|| {
-                run_and_ack(&mut ui, display, |ui| build_grid(ui, &[], cold));
-                black_box(&ui);
+                run_and_ack(&mut h, display, |ui| build_grid(ui, &[], cold));
+                black_box(&h);
             });
         });
     }
@@ -187,9 +188,9 @@ fn bench_workloads(c: &mut Criterion) {
     // row, jumping past the 32 per-cell entry lookups underneath.
     // Compare against `skip` to isolate the subtree-skip win.
     {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         warm_and_assert(
-            &mut ui,
+            &mut h,
             display,
             |ui| build_painted_rows(ui, &[], cold),
             |ui| build_painted_rows(ui, &[], cold),
@@ -201,23 +202,23 @@ fn bench_workloads(c: &mut Criterion) {
         // Pre-existing master regression: skip count drifted below
         // ROWS; not relevant to the shape-churn measurement below.
         assert!(
-            ui.damage_engine.subtree_skips > 0,
+            h.ui.damage_engine.subtree_skips > 0,
             "no subtree skips at all — fixture is broken",
         );
         group.bench_function("skip_painted_rows", |b| {
             b.iter(|| {
-                run_and_ack(&mut ui, display, |ui| build_painted_rows(ui, &[], cold));
-                black_box(&ui);
+                run_and_ack(&mut h, display, |ui| build_painted_rows(ui, &[], cold));
+                black_box(&h);
             });
         });
     }
 
     // Partial 1-rect — one cell flips colour each frame.
     {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let cell = [42usize];
         warm_and_assert(
-            &mut ui,
+            &mut h,
             display,
             |ui| build_grid(ui, &cell, cold),
             |ui| build_grid(ui, &cell, hot),
@@ -228,8 +229,8 @@ fn bench_workloads(c: &mut Criterion) {
             b.iter(|| {
                 toggle = !toggle;
                 let color = if toggle { hot } else { cold };
-                run_and_ack(&mut ui, display, |ui| build_grid(ui, &cell, color));
-                black_box(&ui);
+                run_and_ack(&mut h, display, |ui| build_grid(ui, &cell, color));
+                black_box(&h);
             });
         });
     }
@@ -238,23 +239,23 @@ fn bench_workloads(c: &mut Criterion) {
     // merge rule rejects (bbox waste huge), so the region keeps both
     // — drives the multi-pass path.
     {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
-            &mut ui,
+            &mut h,
             display,
             |ui| build_grid(ui, &cells, cold),
             |ui| build_grid(ui, &cells, hot),
             "partial",
         );
-        assert!(ui.damage_region().iter_rects().count() >= 1);
+        assert!(h.damage_region().iter_rects().count() >= 1);
         let mut toggle = false;
         group.bench_function("two_corner_change", |b| {
             b.iter(|| {
                 toggle = !toggle;
                 let color = if toggle { hot } else { cold };
-                run_and_ack(&mut ui, display, |ui| build_grid(ui, &cells, color));
-                black_box(&ui);
+                run_and_ack(&mut h, display, |ui| build_grid(ui, &cells, color));
+                black_box(&h);
             });
         });
     }
@@ -262,7 +263,7 @@ fn bench_workloads(c: &mut Criterion) {
     // Full path — every cell varies each frame; total damage area
     // exceeds the threshold and escalates to `Full`.
     {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(SURFACE);
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
                 Panel::vstack()
@@ -299,15 +300,15 @@ fn bench_workloads(c: &mut Criterion) {
                     });
             }
         };
-        run_and_ack(&mut ui, display, varying(0));
-        run_and_ack(&mut ui, display, varying(1));
-        assert_eq!(damage_kind(&ui), "full");
+        run_and_ack(&mut h, display, varying(0));
+        run_and_ack(&mut h, display, varying(1));
+        assert_eq!(damage_kind(&h.ui), "full");
         let mut frame_n = 2u32;
         group.bench_function("full_repaint", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut ui, display, varying(frame_n));
-                black_box(&ui);
+                run_and_ack(&mut h, display, varying(frame_n));
+                black_box(&h);
             });
         });
     }
@@ -400,59 +401,61 @@ fn bench_workloads(c: &mut Criterion) {
             }
         };
 
-        let mut ui = Ui::for_test();
-        run_and_ack(&mut ui, display, build(0));
-        run_and_ack(&mut ui, display, build(1));
+        let mut h = UiHarness::new(SURFACE);
+        run_and_ack(&mut h, display, build(0));
+        run_and_ack(&mut h, display, build(1));
         // Drive enough warmup frames to force at least one
         // compaction so the bench measures both steady-state diff
         // and post-compaction frames.
         let warm_target_compactions = 2u32;
         let mut warm_frame = 2u32;
-        while ui.damage_engine.arena.compactions_run < warm_target_compactions && warm_frame < 4096
+        while h.ui.damage_engine.arena.compactions_run < warm_target_compactions
+            && warm_frame < 4096
         {
-            run_and_ack(&mut ui, display, build(warm_frame));
+            run_and_ack(&mut h, display, build(warm_frame));
             warm_frame += 1;
         }
         assert!(
-            ui.damage_engine.arena.compactions_run >= warm_target_compactions,
+            h.ui.damage_engine.arena.compactions_run >= warm_target_compactions,
             "partial churn never compacted in {warm_frame} frames \
              (orphaned={}, total={})",
-            ui.damage_engine.arena.orphaned,
-            ui.damage_engine.arena.snaps.len(),
+            h.ui.damage_engine.arena.orphaned,
+            h.ui.damage_engine.arena.snaps.len(),
         );
         // Sanity: arena should hold roughly STABLE_COUNT × CANVASES
         // live entries (post-compaction may shrink to exactly that).
         // Catches off-surface regressions where most canvases skip
         // insert and the bench silently measures a much smaller pool.
         assert!(
-            ui.damage_engine.arena.snaps.len() >= CANVASES * (STABLE_COUNT as usize - 1),
+            h.ui.damage_engine.arena.snaps.len() >= CANVASES * (STABLE_COUNT as usize - 1),
             "partial churn: arena underpopulated (len={}, expected >= {})",
-            ui.damage_engine.arena.snaps.len(),
+            h.ui.damage_engine.arena.snaps.len(),
             CANVASES * (STABLE_COUNT as usize - 1),
         );
         eprintln!(
             "[shape_churn_partial] warmup: {warm_frame} frames, \
              {} compactions, arena {} entries",
-            ui.damage_engine.arena.compactions_run,
-            ui.damage_engine.arena.snaps.len(),
+            h.ui.damage_engine.arena.compactions_run,
+            h.ui.damage_engine.arena.snaps.len(),
         );
-        let bench_start_compactions = ui.damage_engine.arena.compactions_run;
+        let bench_start_compactions = h.ui.damage_engine.arena.compactions_run;
         let bench_start_frame = warm_frame;
         let mut frame_n = warm_frame;
         group.bench_function("shape_churn_partial", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut ui, display, build(frame_n));
-                black_box(&ui);
+                run_and_ack(&mut h, display, build(frame_n));
+                black_box(&h);
             });
         });
         eprintln!(
             "[shape_churn_partial] post-bench: {} compactions over {} bench frames \
              (1 per {:.1} frames)",
-            ui.damage_engine.arena.compactions_run - bench_start_compactions,
+            h.ui.damage_engine.arena.compactions_run - bench_start_compactions,
             frame_n - bench_start_frame,
             (frame_n - bench_start_frame) as f64
-                / (ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1) as f64,
+                / (h.ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1)
+                    as f64,
         );
     }
 
@@ -477,46 +480,47 @@ fn bench_workloads(c: &mut Criterion) {
             }
         };
 
-        let mut ui = Ui::for_test();
-        run_and_ack(&mut ui, display, build(0));
-        run_and_ack(&mut ui, display, build(1));
+        let mut h = UiHarness::new(SURFACE);
+        run_and_ack(&mut h, display, build(0));
+        run_and_ack(&mut h, display, build(1));
         let mut warm = 2u32;
-        while ui.damage_engine.arena.compactions_run < 2 && warm < 64 {
-            run_and_ack(&mut ui, display, build(warm));
+        while h.ui.damage_engine.arena.compactions_run < 2 && warm < 64 {
+            run_and_ack(&mut h, display, build(warm));
             warm += 1;
         }
         assert!(
-            ui.damage_engine.arena.compactions_run >= 2,
+            h.ui.damage_engine.arena.compactions_run >= 2,
             "full churn never compacted in {warm} frames",
         );
         assert!(
-            ui.damage_engine.arena.snaps.len() >= CANVASES * BASE_SHAPES as usize,
+            h.ui.damage_engine.arena.snaps.len() >= CANVASES * BASE_SHAPES as usize,
             "full churn: arena underpopulated (len={}, expected >= {})",
-            ui.damage_engine.arena.snaps.len(),
+            h.ui.damage_engine.arena.snaps.len(),
             CANVASES * BASE_SHAPES as usize,
         );
         eprintln!(
             "[shape_churn_full] warmup: {warm} frames, {} compactions, arena {} entries",
-            ui.damage_engine.arena.compactions_run,
-            ui.damage_engine.arena.snaps.len(),
+            h.ui.damage_engine.arena.compactions_run,
+            h.ui.damage_engine.arena.snaps.len(),
         );
-        let bench_start_compactions = ui.damage_engine.arena.compactions_run;
+        let bench_start_compactions = h.ui.damage_engine.arena.compactions_run;
         let bench_start_frame = warm;
         let mut frame_n = warm;
         group.bench_function("shape_churn_full", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut ui, display, build(frame_n));
-                black_box(&ui);
+                run_and_ack(&mut h, display, build(frame_n));
+                black_box(&h);
             });
         });
         eprintln!(
             "[shape_churn_full] post-bench: {} compactions over {} bench frames \
              (1 per {:.1} frames)",
-            ui.damage_engine.arena.compactions_run - bench_start_compactions,
+            h.ui.damage_engine.arena.compactions_run - bench_start_compactions,
             frame_n - bench_start_frame,
             (frame_n - bench_start_frame) as f64
-                / (ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1) as f64,
+                / (h.ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1)
+                    as f64,
         );
     }
 

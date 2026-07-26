@@ -20,7 +20,7 @@ use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::ui::Ui;
 use crate::ui::bench_fixture::FrameFixture;
-use crate::ui::resources::UiResources;
+use crate::ui::harness::UiHarness;
 use crate::window::WindowToken;
 use glam::UVec2;
 use pollster::FutureExt;
@@ -74,22 +74,18 @@ pub fn alloc_free() {
     let display = Display::from_physical(PHYSICAL, SCALE);
     // `Ui::new` over isolated mono resources; warmed
     // manually below via `WARMUP_FRAMES` before measuring.
-    let mut ui = Ui::new(UiResources::isolated_mono());
+    let mut h = UiHarness::new(PHYSICAL);
     let mut state = FrameFixture::default();
 
     for _ in 0..WARMUP_FRAMES {
         black_box(
-            ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
-                state.render(NODE_SCALE, ui)
-            }),
+            h.frame_at_without_baseline(display, Duration::ZERO, |ui| state.render(NODE_SCALE, ui)),
         );
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
         black_box(
-            ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
-                state.render(NODE_SCALE, ui)
-            }),
+            h.frame_at_without_baseline(display, Duration::ZERO, |ui| state.render(NODE_SCALE, ui)),
         );
     }
     let after = dhat::HeapStats::get();
@@ -323,7 +319,7 @@ fn continuous_size(frame: usize) -> UVec2 {
 /// it doesn't assert. Use the output to find which call sites are
 /// still allocating after warmup.
 ///
-/// Uses `Ui::for_test_text()` (real cosmic-text), NOT the mono resources
+/// Uses `UiHarness::with_text(PHYSICAL)` (real cosmic-text), NOT the mono resources
 /// (mono fallback): the fallback emits a constant paint count across
 /// sizes, so the damage `PaintSnapArena` reuses its slots in place
 /// and the bench reports a misleading 0 blocks/frame. Real shaping
@@ -338,7 +334,7 @@ pub fn alloc_resize() {
 
     let _profiler = profiler();
 
-    let mut ui = Ui::for_test_text();
+    let mut h = UiHarness::with_text(PHYSICAL);
     let mut state = FrameFixture::default();
 
     // Two arms: pool-rotation (matches `frame/resizing_cpu` exactly)
@@ -347,20 +343,16 @@ pub fn alloc_resize() {
     let mut run = |label: &str, size: &mut dyn FnMut(usize) -> UVec2| {
         for f in 0..WARMUP_FRAMES {
             let display = Display::from_physical(size(f), SCALE);
-            black_box(
-                ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
-                    state.render(RESIZE_NODE_SCALE, ui)
-                }),
-            );
+            black_box(h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+                state.render(RESIZE_NODE_SCALE, ui)
+            }));
         }
         let before = dhat::HeapStats::get();
         for f in 0..MEASURE_FRAMES {
             let display = Display::from_physical(size(f + WARMUP_FRAMES), SCALE);
-            black_box(
-                ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
-                    state.render(RESIZE_NODE_SCALE, ui)
-                }),
-            );
+            black_box(h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+                state.render(RESIZE_NODE_SCALE, ui)
+            }));
         }
         let after = dhat::HeapStats::get();
 

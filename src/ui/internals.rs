@@ -1,20 +1,18 @@
+//! The two raw frame entry points [`UiHarness`] is built on, plus the
+//! tree/encoder reach-ins its in-crate rung forwards to.
+//!
+//! Nothing here is a test API in its own right — every caller goes
+//! through [`UiHarness`], which owns the surface, the clock, and the
+//! protocol rules. These stay on `Ui` only because they need
+//! `Ui::frame`'s private `FrameInput`.
+//!
+//! [`UiHarness`]: crate::ui::harness::UiHarness
+
 use crate::app::internals::RecordApp;
-use crate::host::shared::HostShared;
-use crate::input::InputEvent;
-use crate::input::pointer::PointerButton;
-use crate::scene::damage::region::DamageRegion;
-use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame::{FrameInput, FrameStamp};
-use crate::ui::resources::UiResources;
 use crate::{Display, FrameReport, WindowToken};
-use glam::{UVec2, Vec2};
 use std::time::Duration;
-
-fn mark_warm(ui: &mut Ui) {
-    // Prevent cold-start warmup from invoking a fixture's record closure twice.
-    ui.frame_runtime.prev_stamp = Some(FrameStamp::new(ui.display, Duration::ZERO));
-}
 
 impl Ui {
     pub(crate) fn record_test_frame_without_baseline(
@@ -34,7 +32,7 @@ impl Ui {
         )
     }
 
-    pub fn record_test_frame(
+    pub(crate) fn record_test_frame(
         &mut self,
         display: Display,
         time: Duration,
@@ -51,69 +49,8 @@ impl Ui {
         )
     }
 
-    pub(crate) fn for_test() -> Self {
-        let mut ui = Self::new(UiResources::isolated_mono());
-        mark_warm(&mut ui);
-        ui
-    }
-
-    pub fn for_test_text() -> Self {
-        thread_local! {
-            static SHARED: TextShaper = TextShaper::new();
-        }
-        let shared = HostShared::new(SHARED.with(Clone::clone), None);
-        let mut ui = Self::new(shared.resources.clone());
-        mark_warm(&mut ui);
-        ui
-    }
-
-    /// A `Ui` sized to `size`, warm (no cold-start double record).
-    pub fn for_test_at(size: UVec2) -> Self {
-        let display = Display::from_physical(size, 1.0);
-        let mut ui = Self {
-            display,
-            ..Self::new(UiResources::isolated_mono())
-        };
-        ui.frame_runtime.prev_stamp = Some(FrameStamp::new(display, Duration::ZERO));
-        ui
-    }
-
-    /// Drive one full frame — record, measure, arrange, cascade — so the
-    /// next frame's `response_for` reads real hit-tested input.
-    pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.record_test_frame(Display::from_physical(size, 1.0), Duration::ZERO, record)
-    }
-
-    /// Move the pointer with no button change. The click helpers emit this
-    /// internally; a *drag* needs it on its own, to travel past
-    /// `DRAG_THRESHOLD` between the press and the release so the capture
-    /// latches.
-    pub fn move_to(&mut self, pos: Vec2) {
-        self.on_input(InputEvent::PointerMoved(pos));
-    }
-
-    pub fn press_at(&mut self, pos: Vec2) {
-        self.move_to(pos);
-        self.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    }
-
-    pub fn release_left(&mut self) {
-        self.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    }
-
-    pub fn click_at(&mut self, pos: Vec2) {
-        self.press_at(pos);
-        self.release_left();
-    }
-
-    pub fn secondary_click_at(&mut self, pos: Vec2) {
-        self.move_to(pos);
-        self.on_input(InputEvent::PointerPressed(PointerButton::Right));
-        self.on_input(InputEvent::PointerReleased(PointerButton::Right));
-    }
-
-    pub(crate) fn damage_region(&self) -> DamageRegion {
-        DamageRegion::collapse_from(
+    pub(crate) fn damage_region(&self) -> crate::scene::damage::region::DamageRegion {
+        crate::scene::damage::region::DamageRegion::collapse_from(
             &self.damage_engine.raw_rects,
             self.damage_engine.budget_px,
             self.display.logical_rect(),
@@ -123,10 +60,9 @@ impl Ui {
 
 #[cfg(test)]
 mod unit {
-    use crate::FrameReport;
     use crate::Ui;
     use crate::animation::animatable::Animatable;
-    use crate::display::Display;
+    use crate::layout::types::sizing::Sizing;
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::encoder;
@@ -137,10 +73,8 @@ mod unit {
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::scene::tree::node::NodeId;
-    use crate::ui::frame::FrameStamp;
+    use crate::ui::harness::UiHarness;
     use crate::widgets::panel::Panel;
-    use glam::UVec2;
-    use std::time::Duration;
 
     impl Ui {
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
@@ -152,62 +86,6 @@ mod unit {
                 .position(|widget_id| *widget_id == id)
                 .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
             NodeId(idx as u32)
-        }
-
-        pub(crate) fn for_test_at_text(size: UVec2) -> Self {
-            let display = Display::from_physical(size, 1.0);
-            let mut ui = Self::for_test_text();
-            ui.display = display;
-            ui.frame_runtime.prev_stamp = Some(FrameStamp::new(display, Duration::ZERO));
-            ui
-        }
-
-        pub(crate) fn run_at_without_baseline(
-            &mut self,
-            size: UVec2,
-            record: impl FnMut(&mut Ui),
-        ) -> FrameReport {
-            self.record_test_frame_without_baseline(
-                Display::from_physical(size, 1.0),
-                Duration::ZERO,
-                record,
-            )
-        }
-
-        pub(crate) fn run_at_value<R>(
-            &mut self,
-            size: UVec2,
-            mut record: impl FnMut(&mut Ui) -> R,
-        ) -> R {
-            let mut value = None;
-            self.run_at(size, |ui| value = Some(record(ui)));
-            value.expect("test frame did not run a record pass")
-        }
-
-        pub(crate) fn run_at_value_without_baseline<R>(
-            &mut self,
-            size: UVec2,
-            mut record: impl FnMut(&mut Ui) -> R,
-        ) -> R {
-            let mut value = None;
-            self.run_at_without_baseline(size, |ui| value = Some(record(ui)));
-            value.expect("test frame did not run a record pass")
-        }
-
-        pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
-            &mut self,
-            surface: UVec2,
-            mut f: F,
-        ) -> NodeId {
-            use crate::layout::types::sizing::Sizing;
-
-            self.run_at_value_without_baseline(surface, |ui| {
-                Panel::hstack()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, &mut f)
-                    .inner
-            })
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
@@ -244,6 +122,21 @@ mod unit {
                 kind: RenderKind::Partial { region },
             };
             encoder::internals::encode(self.frame_scene(), &SharedGradientAtlas::default(), plan)
+        }
+    }
+
+    impl UiHarness {
+        /// A `FILL`/`FILL` hstack wrapped around `f`, returning the node
+        /// `f` produced — the standard fixture for "arrange this one
+        /// subtree against the whole surface".
+        pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(&mut self, mut f: F) -> NodeId {
+            self.frame_value_without_baseline(|ui| {
+                Panel::hstack()
+                    .auto_id()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, &mut f)
+                    .inner
+            })
         }
     }
 }

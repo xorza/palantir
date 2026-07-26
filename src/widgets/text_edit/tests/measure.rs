@@ -9,12 +9,13 @@
 
 use crate::scene::layer::Layer;
 use crate::scene::tree::node::NodeId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 const SIZE: UVec2 = UVec2::new(400, 80);
 const PLACEHOLDER: &str = "type something here";
 
-fn frame(ui: &mut Ui, buf: &mut String) -> NodeId {
+fn frame(h: &mut UiHarness, buf: &mut String) -> NodeId {
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
@@ -32,7 +33,7 @@ fn frame(ui: &mut Ui, buf: &mut String) -> NodeId {
                 );
             });
     };
-    ui.run_at(SIZE, &mut record);
+    h.frame(&mut record);
     node.unwrap()
 }
 
@@ -44,20 +45,20 @@ fn frame(ui: &mut Ui, buf: &mut String) -> NodeId {
 /// click.
 #[test]
 fn empty_editor_width_is_stable_across_focus() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SIZE);
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
     // Two unfocused warm-up frames so layout cache stabilises.
-    frame(&mut ui, &mut buf);
-    let node = frame(&mut ui, &mut buf);
-    let w_unfocused = ui.layout[Layer::Main].rect[node.idx()].size.w;
+    frame(&mut h, &mut buf);
+    let node = frame(&mut h, &mut buf);
+    let w_unfocused = h.ui.layout[Layer::Main].rect[node.idx()].size.w;
 
     // Focus the editor and re-measure.
-    ui.request_focus(Some(id));
-    frame(&mut ui, &mut buf);
-    let node = frame(&mut ui, &mut buf);
-    let w_focused = ui.layout[Layer::Main].rect[node.idx()].size.w;
+    h.request_focus(Some(id));
+    frame(&mut h, &mut buf);
+    let node = frame(&mut h, &mut buf);
+    let w_focused = h.ui.layout[Layer::Main].rect[node.idx()].size.w;
 
     assert!(
         w_unfocused > 0.0,
@@ -74,7 +75,7 @@ const LONG: &str = "the quick brown fox jumps over the lazy dog";
 /// Build one `container_w`-wide `Fixed` hstack holding a single-line
 /// editor sized `editor_w` on the main axis. Two frames so the layout
 /// cache stabilises, matching `frame` above.
-fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizing) -> NodeId {
+fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w: Sizing) -> NodeId {
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
@@ -91,8 +92,8 @@ fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizin
                 );
             });
     };
-    ui.run_at(UVec2::new(2100, 200), &mut record);
-    ui.run_at(UVec2::new(2100, 200), &mut record);
+    h.frame(&mut record);
+    h.frame(&mut record);
     node.unwrap()
 }
 
@@ -111,12 +112,12 @@ fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizin
 #[test]
 fn fill_width_editor_shrinks_below_text_content() {
     const NARROW_W: f32 = 120.0;
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(2100, 200));
 
     // Natural text width: a Hug editor in a wide container hugs its buffer.
     let mut buf = LONG.to_string();
-    let hug = sized_editor(&mut ui, &mut buf, 2000.0, Sizing::HUG);
-    let text_w = ui.layout[Layer::Main].rect[hug.idx()].size.w;
+    let hug = sized_editor(&mut h, &mut buf, 2000.0, Sizing::HUG);
+    let text_w = h.ui.layout[Layer::Main].rect[hug.idx()].size.w;
     assert!(
         text_w > NARROW_W,
         "fixture requires the text ({text_w}) to be wider than the narrow container ({NARROW_W})",
@@ -124,8 +125,8 @@ fn fill_width_editor_shrinks_below_text_content() {
 
     // Fill editor in a narrow container shrinks to fill it, well below the text.
     let mut buf = LONG.to_string();
-    let fill = sized_editor(&mut ui, &mut buf, NARROW_W, Sizing::FILL);
-    let fill_w = ui.layout[Layer::Main].rect[fill.idx()].size.w;
+    let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
+    let fill_w = h.ui.layout[Layer::Main].rect[fill.idx()].size.w;
     assert!(
         (fill_w - NARROW_W).abs() < 0.5,
         "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}",
@@ -139,7 +140,7 @@ fn fill_width_editor_shrinks_below_text_content() {
 #[test]
 fn stable_editor_uses_one_direct_layout_probe() {
     for (multiline, selected) in [(false, false), (true, true)] {
-        let mut ui = Ui::for_test_at_text(SIZE);
+        let mut h = UiHarness::with_text(SIZE);
         let id = WidgetId::from_hash((multiline, selected));
         let mut text = String::from("editable text across two lines\nwith a selection");
         let text_len = text.len();
@@ -150,19 +151,19 @@ fn stable_editor_uses_one_direct_layout_probe() {
                 .size((Sizing::fixed(240.0), Sizing::fixed(60.0)))
                 .show(ui);
         };
-        ui.run_at(SIZE, &mut record);
-        ui.run_at(SIZE, &mut record);
+        h.frame(&mut record);
+        h.frame(&mut record);
         if selected {
-            ui.request_focus(Some(id));
-            let state = ui.state_mut::<TextEditState>(id);
+            h.request_focus(Some(id));
+            let state = h.ui.state_mut::<TextEditState>(id);
             state.edit.selection = Some(0);
             state.edit.caret = text_len;
-            ui.run_at(SIZE, &mut record);
+            h.frame(&mut record);
         }
-        let before = ui.resources.text.measure_calls();
-        ui.run_at(SIZE, &mut record);
+        let before = h.ui.resources.text.measure_calls();
+        h.frame(&mut record);
         assert_eq!(
-            ui.resources.text.measure_calls() - before,
+            h.ui.resources.text.measure_calls() - before,
             1,
             "multiline={multiline}, selected={selected}: measurement, caret, and selection must share one direct layout probe",
         );

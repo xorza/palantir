@@ -15,6 +15,7 @@ use crate::primitives::color::Color;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::node::NodeId;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
@@ -40,9 +41,9 @@ fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
 /// inside a ZStack (Phase-1 column intrinsics need a finite slot).
 #[test]
 fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
     let mut node = None;
-    ui.run_at(UVec2::new(200, 400), |ui| {
+    h.frame(|ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -50,16 +51,16 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_within_surface(&ui, node.unwrap(), 200.0);
+    assert_wrapped_within_surface(&h.ui, node.unwrap(), 200.0);
 }
 
 /// Regression: same as above but for Canvas — also a "child-positioner"
 /// layout that historically passed `INFINITY` regardless of its own size.
 #[test]
 fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
     let mut node = None;
-    ui.run_at(UVec2::new(200, 400), |ui| {
+    h.frame(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -67,7 +68,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_within_surface(&ui, node.unwrap(), 200.0);
+    assert_wrapped_within_surface(&h.ui, node.unwrap(), 200.0);
 }
 
 /// Pin: a `Hug` ZStack containing a `Fill` child must NOT recursively
@@ -75,9 +76,9 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 /// `INFINITY` behavior on Hug axes precisely to avoid this.
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(800, 600));
     let mut zstack_node = None;
-    ui.run_at(UVec2::new(800, 600), |ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             zstack_node = Some(
                 Panel::zstack()
@@ -101,7 +102,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
             );
         });
     });
-    let r = ui.layout[Layer::Main].rect[zstack_node.unwrap().idx()];
+    let r = h.ui.layout[Layer::Main].rect[zstack_node.unwrap().idx()];
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -115,9 +116,9 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
 #[test]
 fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
     fn measure(surface_w: u32) -> f32 {
-        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
+        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
         let mut value_node = None;
-        ui.run_at(UVec2::new(surface_w, 400), |ui| {
+        h.frame(|ui| {
             Grid::new()
                 .auto_id()
                 .cols([Track::hug(), Track::fill()])
@@ -139,7 +140,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                     );
                 });
         });
-        support::shaped_text(&ui.layout[Layer::Main], value_node.unwrap())
+        support::shaped_text(&h.ui.layout[Layer::Main], value_node.unwrap())
             .measured
             .h
     }
@@ -167,9 +168,9 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
 /// pattern.
 #[test]
 fn fill_grid_fill_col_wraps_text_under_constrained_width() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
     let mut value_node = None;
-    ui.run_at(UVec2::new(200, 400), |ui| {
+    h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Grid::new()
                 .auto_id()
@@ -194,7 +195,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                 });
         });
     });
-    let shaped = support::shaped_text(&ui.layout[Layer::Main], value_node.unwrap());
+    let shaped = support::shaped_text(&h.ui.layout[Layer::Main], value_node.unwrap());
     assert!(
         shaped.measured.h > 32.0,
         "Fill grid + Fill col should wrap text under constrained width; got h={}",
@@ -212,9 +213,9 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 /// to the *wrapped* row heights, not the single-line intrinsic.
 #[test]
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 600));
+    let mut h = UiHarness::with_text(UVec2::new(400, 600));
     let mut grid_node = None;
-    ui.run_at(UVec2::new(400, 600), |ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -258,7 +259,9 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                 );
             });
     });
-    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size.h;
+    let h = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()]
+        .size
+        .h;
     assert!(
         h > 50.0,
         "grid must size to wrapped row heights, not single-line × 2; got h={h}"
@@ -270,9 +273,9 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 /// cross axis.
 #[test]
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 600));
+    let mut h = UiHarness::with_text(UVec2::new(400, 600));
     let mut grid_node = None;
-    ui.run_at(UVec2::new(400, 600), |ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
@@ -309,7 +312,9 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     });
             });
     });
-    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size.h;
+    let h = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()]
+        .size
+        .h;
     assert!(
         h > 30.0,
         "ZStack must pass `INF` on Hug axes so nested grid measures \

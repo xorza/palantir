@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::layout::axis::Axis;
 use crate::layout::types::{
     align::Align,
@@ -9,13 +8,14 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(800, 600), |ui| {
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -31,11 +31,11 @@ fn hstack_arranges_two_buttons_side_by_side() {
             .node()
     });
     assert_eq!(
-        ui.layout[Layer::Main].rect[root.idx()],
+        h.ui.layout[Layer::Main].rect[root.idx()],
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
-    let kids = ui.main_child_rects(root);
+    let kids = h.main_child_rects(root);
     assert_eq!(kids.len(), 2);
 
     // "Hi" → 16w label + 24 padding + 2×1 stroke = 42w. Canonical line
@@ -54,8 +54,8 @@ fn hstack_arranges_two_buttons_side_by_side() {
 
 #[test]
 fn vstack_with_fill_distributes_remainder() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(200, 300), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 300));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::HUG, Sizing::FILL))
@@ -69,7 +69,7 @@ fn vstack_with_fill_distributes_remainder() {
             .response
             .node()
     });
-    let kids = ui.main_child_rects(root);
+    let kids = h.main_child_rects(root);
     assert_eq!(kids[0].size.h, 50.0);
     assert_eq!(kids[1].min.y, 50.0);
     assert_eq!(kids[1].size.h, 250.0);
@@ -96,8 +96,8 @@ fn hstack_fill_weights_split_remainder_proportionally() {
             widths: [200.0, 200.0],
         },
     ] {
-        let mut ui = Ui::for_test();
-        let root = ui.run_at_value_without_baseline(UVec2::new(400, 100), |ui| {
+        let mut h = UiHarness::new(UVec2::new(400, 100));
+        let root = h.frame_value_without_baseline(|ui| {
             Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::HUG))
@@ -114,7 +114,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                 .response
                 .node()
         });
-        let kids = ui.main_child_rects(root);
+        let kids = h.main_child_rects(root);
         assert_eq!(kids[0].size.w, case.widths[0], "{} first", case.label);
         assert_eq!(kids[1].size.w, case.widths[1], "{} second", case.label);
         assert_eq!(kids[1].min.x, case.widths[0], "{} offset", case.label);
@@ -128,8 +128,8 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 /// `cross_driver_tests::stretch_semantics::hug_hstack_with_fill_spacer_hugs_to_button`.)
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(400, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -148,7 +148,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
             .response
             .node()
     });
-    let kids = ui.main_child_rects(root);
+    let kids = h.main_child_rects(root);
     assert_eq!(kids[0].size.w, 200.0);
     assert_eq!(kids[1].size.w, 200.0);
     assert_eq!(kids[0].min.x, 0.0);
@@ -168,8 +168,8 @@ fn hstack_justify_distributes_leftover() {
         ("space_around", Justify::SpaceAround, &[30.0, 130.0]),
     ];
     for (label, justify, expected_xs) in cases {
-        let mut ui = Ui::for_test();
-        let root = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+        let mut h = UiHarness::new(UVec2::new(200, 100));
+        let root = h.frame_value_without_baseline(|ui| {
             Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::HUG))
@@ -185,7 +185,7 @@ fn hstack_justify_distributes_leftover() {
                 .response
                 .node()
         });
-        let kids = ui.main_child_rects(root);
+        let kids = h.main_child_rects(root);
         for (i, want_x) in expected_xs.iter().enumerate() {
             assert_eq!(kids[i].min.x, *want_x, "case: {label} child[{i}].min.x");
         }
@@ -195,8 +195,8 @@ fn hstack_justify_distributes_leftover() {
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     use crate::layout::types::justify::Justify;
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -218,7 +218,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
             .response
             .node()
     });
-    let kids = ui.main_child_rects(root);
+    let kids = h.main_child_rects(root);
     assert_eq!(kids[0].min.x, 0.0);
     assert_eq!(kids[1].min.x, 40.0);
     assert_eq!(kids[1].size.w, 120.0);
@@ -227,8 +227,8 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 
 #[test]
 fn hstack_gap_inserts_space_between_children() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(400, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -249,7 +249,7 @@ fn hstack_gap_inserts_space_between_children() {
             .response
             .node()
     });
-    let kids = ui.main_child_rects(root);
+    let kids = h.main_child_rects(root);
     assert_eq!(kids[0].min.x, 0.0);
     assert_eq!(kids[1].min.x, 50.0);
     assert_eq!(kids[2].min.x, 100.0);
@@ -257,8 +257,8 @@ fn hstack_gap_inserts_space_between_children() {
 
 #[test]
 fn hstack_align_center_centers_child_on_cross_axis() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::fixed(100.0)))
@@ -272,7 +272,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
             .response
             .node()
     });
-    let r = ui.main_child_rects(root)[0];
+    let r = h.main_child_rects(root)[0];
     // Cross axis 100, child 20 → centered at 40.
     assert_eq!(r.min.y, 40.0);
     assert_eq!(r.size.h, 20.0);
@@ -281,9 +281,9 @@ fn hstack_align_center_centers_child_on_cross_axis() {
 #[test]
 fn negative_left_margin_spills_outside_slot() {
     // CSS-style negative margin: smaller slot, larger render, shifted negative.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(200, 100));
     let mut button_node = None;
-    ui.run_at_without_baseline(UVec2::new(200, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             button_node = Some(
                 Button::new()
@@ -295,7 +295,7 @@ fn negative_left_margin_spills_outside_slot() {
             );
         });
     });
-    let r = ui.layout[Layer::Main].rect[button_node.unwrap().idx()];
+    let r = h.ui.layout[Layer::Main].rect[button_node.unwrap().idx()];
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -314,8 +314,8 @@ fn negative_left_margin_spills_outside_slot() {
 /// (button + Fill's measured share).
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
-    let mut ui = Ui::for_test();
-    let [button_node, root] = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let [button_node, root] = h.frame_value_without_baseline(|ui| {
         let panel = Panel::hstack().auto_id().show(ui, |ui| {
             let button = Button::new().auto_id().label("Hi").show(ui).node();
             Frame::new()
@@ -326,7 +326,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         });
         [panel.inner, panel.response.node()]
     });
-    let desired = &ui.layout_engine.cache.previous.nodes.desired;
+    let desired = &h.ui.layout_engine.cache.previous.nodes.desired;
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
     // Hug HStack tracks the button's content width — no inflation from
@@ -338,8 +338,8 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 /// the cursor and does not count toward `total_gap`.
 #[test]
 fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
-    let mut ui = Ui::for_test();
-    let root = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let root = h.frame_value_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .gap(5.0)
@@ -361,7 +361,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
             .response
             .node()
     });
-    let kids = ui.main_child_rects(root);
+    let kids = h.main_child_rects(root);
     let a = kids[0];
     let hidden = kids[1];
     let b = kids[2];
@@ -393,8 +393,8 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
             viewport: UVec2::new(40, 200),
         },
     ] {
-        let mut ui = Ui::for_test();
-        let root = ui.run_at_value_without_baseline(case.viewport, |ui| {
+        let mut h = UiHarness::new(case.viewport);
+        let root = h.frame_value_without_baseline(|ui| {
             let panel = match case.axis {
                 Axis::X => Panel::hstack(),
                 Axis::Y => Panel::vstack(),
@@ -444,7 +444,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                 .node()
         });
 
-        let actual = ui.main_child_rects(root);
+        let actual = h.main_child_rects(root);
         let expected = [
             case.axis.compose_rect(0.0, 0.0, 20.0, 10.0),
             case.axis.compose_rect(25.0, 0.0, 30.0, 10.0),
@@ -453,7 +453,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         ];
         assert_eq!(actual, expected, "case: {}", case.label);
         assert!(
-            ui.layout_engine.scratch.stack_fill.pool.is_empty(),
+            h.ui.layout_engine.scratch.stack_fill.pool.is_empty(),
             "case: {} must release its planning scratch",
             case.label,
         );
@@ -468,9 +468,9 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
 fn hstack_fill_max_size_caps_arranged_share() {
     use crate::primitives::size::Size;
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut fill_node = None;
-    ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
+    h.frame_without_baseline(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
@@ -489,7 +489,7 @@ fn hstack_fill_max_size_caps_arranged_share() {
                 );
             });
     });
-    let arranged = ui.layout[Layer::Main].rect[fill_node.unwrap().idx()];
+    let arranged = h.ui.layout[Layer::Main].rect[fill_node.unwrap().idx()];
     assert_eq!(
         arranged.size.w, 50.0,
         "Fill arrange must clamp to max_size when leftover share > cap"
@@ -503,9 +503,9 @@ fn hstack_fill_max_size_caps_arranged_share() {
 fn parent_max_size_clamps_children_available() {
     use crate::primitives::size::Size;
 
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(UVec2::new(1000, 200));
     let mut child_node = None;
-    let parent_node = ui.under_outer(UVec2::new(1000, 200), |ui| {
+    let parent_node = h.under_outer(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("capped-parent"))
             .size((Sizing::FILL, Sizing::fixed(40.0)))
@@ -523,12 +523,12 @@ fn parent_max_size_clamps_children_available() {
             .response
             .node()
     });
-    let parent_rect = ui.layout[Layer::Main].rect[parent_node.idx()];
+    let parent_rect = h.ui.layout[Layer::Main].rect[parent_node.idx()];
     assert_eq!(
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
     );
-    let inner_rect = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
+    let inner_rect = h.ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
     assert_eq!(
         inner_rect.size.w, 200.0,
         "Fill child must not bleed past parent's max_size cap",
@@ -547,9 +547,9 @@ fn fill_cross_axis_stretches_regardless_of_align() {
     use crate::layout::types::align::Align;
 
     for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 100));
         let mut child = None;
-        ui.run_at_without_baseline(UVec2::new(400, 100), |ui| {
+        h.frame_without_baseline(|ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::fixed(400.0), Sizing::fixed(100.0)))
@@ -564,7 +564,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
                     );
                 });
         });
-        let r = ui.layout[Layer::Main].rect[child.unwrap().idx()];
+        let r = h.ui.layout[Layer::Main].rect[child.unwrap().idx()];
         assert_eq!(
             r.size.w, 400.0,
             "Fill child with align={align:?} must still stretch to parent's full width \
@@ -588,8 +588,8 @@ fn fill_cross_axis_stretches_regardless_of_align() {
 #[test]
 fn hug_panel_clamps_to_min_and_max_size() {
     // Content 60px tall, `min_size` 100 → floors at 100.
-    let mut ui = Ui::for_test();
-    let small = ui.run_at_value_without_baseline(UVec2::new(800, 600), |ui| {
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let small = h.frame_value_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("small"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -604,14 +604,14 @@ fn hug_panel_clamps_to_min_and_max_size() {
             .node()
     });
     assert_eq!(
-        ui.layout[Layer::Main].rect[small.idx()].size.h,
+        h.ui.layout[Layer::Main].rect[small.idx()].size.h,
         100.0,
         "Hug floors at min_size when content is smaller",
     );
 
     // Content 300px tall, `max_size` 120 → caps at 120.
-    let mut ui = Ui::for_test();
-    let big = ui.run_at_value_without_baseline(UVec2::new(800, 600), |ui| {
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let big = h.frame_value_without_baseline(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("big"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -626,7 +626,7 @@ fn hug_panel_clamps_to_min_and_max_size() {
             .node()
     });
     assert_eq!(
-        ui.layout[Layer::Main].rect[big.idx()].size.h,
+        h.ui.layout[Layer::Main].rect[big.idx()].size.h,
         120.0,
         "Hug caps at max_size when content is larger",
     );
@@ -648,8 +648,8 @@ fn hstack_child_align_per_axis_with_overrides() {
         ),
     ];
     for (label, second_override, second_y) in cases {
-        let mut ui = Ui::for_test();
-        let root = ui.run_at_value_without_baseline(UVec2::new(200, 100), |ui| {
+        let mut h = UiHarness::new(UVec2::new(200, 100));
+        let root = h.frame_value_without_baseline(|ui| {
             Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::fixed(100.0)))
@@ -670,7 +670,7 @@ fn hstack_child_align_per_axis_with_overrides() {
                 .response
                 .node()
         });
-        let kids = ui.main_child_rects(root);
+        let kids = h.main_child_rects(root);
         let (a, b) = (kids[0], kids[1]);
         assert_eq!(a.min.y, 40.0, "case: {label} a inherits default");
         assert_eq!(a.size.h, 20.0, "case: {label} a.size.h");

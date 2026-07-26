@@ -18,6 +18,7 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::{Sense, Ui};
@@ -58,36 +59,36 @@ fn main_panel_clicked(ui: &Ui) -> bool {
 
 #[test]
 fn click_inside_popup_does_not_dismiss() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
-    ui.click_at(inside);
+    h.click_at(inside);
 
     let mut dismissed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(!dismissed, "click inside body must not signal dismissal");
     assert!(
-        !main_panel_clicked(&ui),
+        !main_panel_clicked(&h.ui),
         "click inside body must not leak to Main"
     );
 }
 
 #[test]
 fn click_outside_popup_dismisses_and_blocks_main() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
-    ui.click_at(Vec2::new(300.0, 300.0));
+    h.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(
@@ -95,7 +96,7 @@ fn click_outside_popup_dismisses_and_blocks_main() {
         "outside click with `Dismiss` must signal dismissal"
     );
     assert!(
-        !main_panel_clicked(&ui),
+        !main_panel_clicked(&h.ui),
         "outside click must be eaten by the popup eater, not leak to Main",
     );
 }
@@ -109,28 +110,28 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     };
 
     // `Dismiss`: Esc folds into `dismissed`.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
-    ui.on_input(esc());
+    h.on_input(esc());
     let mut dismissed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(dismissed, "Esc dismisses a `Dismiss` popup");
 
     // `Block`: Esc is ignored (stop-the-world prompts close only on the
     // host's terms).
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
-    ui.on_input(esc());
+    h.on_input(esc());
     let mut dismissed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "Esc does not dismiss a `Block` popup");
@@ -143,7 +144,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
 /// has no popup-layer widgets — no stale frame ever reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut open = true;
     let scene = |ui: &mut Ui, open: &mut bool| {
         Panel::vstack()
@@ -166,12 +167,12 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                 }
             });
     };
-    ui.run_at(SURFACE, |ui| scene(ui, &mut open));
-    ui.click_at(Vec2::new(300.0, 300.0));
-    ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut open));
+    h.frame(|ui| scene(ui, &mut open));
+    h.click_at(Vec2::new(300.0, 300.0));
+    h.frame_without_baseline(|ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        ui.forest.trees[Layer::Popup].records.len(),
+        h.ui.forest.trees[Layer::Popup].records.len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );
@@ -205,8 +206,8 @@ fn popup_body_sizing_matches_sizing_mode() {
         ),
     ];
     for &(sw, sh, expected_size, expected_min) in cases {
-        let mut ui = Ui::for_test();
-        ui.run_at_without_baseline(SURFACE, |ui| {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame_without_baseline(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -223,9 +224,9 @@ fn popup_body_sizing_matches_sizing_mode() {
                         });
                 });
         });
-        let popup_tree = &ui.forest.trees[Layer::Popup];
+        let popup_tree = &h.ui.forest.trees[Layer::Popup];
         let body_root = popup_tree.roots[1].first_node.idx();
-        let body_rect = ui.layout[Layer::Popup].rect[body_root];
+        let body_rect = h.ui.layout[Layer::Popup].rect[body_root];
         assert_eq!(
             body_rect.size, expected_size,
             "size=({:?},{:?}) → expected {:?}, got {:?}",
@@ -246,7 +247,7 @@ fn popup_near_bottom_flips_upward() {
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // 20 px of room below.
     let content = Size::new(120.0, 200.0); // Body wants ~200 tall.
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -264,11 +265,11 @@ fn popup_near_bottom_flips_upward() {
                     });
             });
     };
-    ui.run_at_without_baseline(SURF, scene);
+    h.frame_without_baseline(scene);
 
-    let popup_tree = &ui.forest.trees[Layer::Popup];
+    let popup_tree = &h.ui.forest.trees[Layer::Popup];
     let body_root = popup_tree.roots[1].first_node.idx();
-    let body_rect = ui.layout[Layer::Popup].rect[body_root];
+    let body_rect = h.ui.layout[Layer::Popup].rect[body_root];
     assert_eq!(
         body_rect.size, content,
         "body measured at full content size (anchor-independent available)",
@@ -291,7 +292,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     let anchor = Vec2::new(20.0, 280.0); // near the bottom → must flip.
     let content = Size::new(120.0, 200.0);
     let body_id = WidgetId::from_hash("cascade-flip-popup");
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -309,21 +310,21 @@ fn popup_flip_reaches_cascade_not_just_layout() {
                     });
             });
     };
-    ui.run_at(SURF, scene);
+    h.frame(scene);
 
     let flipped_min = Vec2::new(anchor.x, anchor.y - content.h); // (20, 80)
-    let body_root = ui.forest.trees[Layer::Popup].roots[1].first_node.idx();
-    let layout_min = ui.layout[Layer::Popup].rect[body_root].min;
+    let body_root = h.ui.forest.trees[Layer::Popup].roots[1].first_node.idx();
+    let layout_min = h.ui.layout[Layer::Popup].rect[body_root].min;
     assert_eq!(layout_min, flipped_min, "layout sanity: popup flipped");
 
     // The cascade-backed response rect is what the encoder paints. It
     // must agree with the layout — a mismatch means the flip didn't
     // propagate to paint (the reported clipping bug).
-    let painted_min = ui
-        .response_for(body_id)
-        .rect
-        .expect("popup body has a cascade rect after the opening frame")
-        .min;
+    let painted_min =
+        h.ui.response_for(body_id)
+            .rect
+            .expect("popup body has a cascade rect after the opening frame")
+            .min;
     assert_eq!(
         painted_min, flipped_min,
         "painted (cascade) popup position must match the flipped layout, \
@@ -339,7 +340,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     // Anchor near the right edge so any body-width change between
     // passes would drift the placement.
     let anchor = Vec2::new(380.0, 20.0);
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -369,25 +370,25 @@ fn popup_with_scroll_settles_in_one_frame() {
             .rect
             .expect("popup body has a rect")
     };
-    ui.run_at(SURF, scene);
-    let first = body_rect(&ui);
+    h.frame(scene);
+    let first = body_rect(&h.ui);
     let viewport_id = WidgetId::from_hash("popup-scroll").with("__viewport");
-    let viewport = ui
-        .cascades
-        .by_id
-        .get(&viewport_id)
-        .expect("popup scroll viewport endpoint");
+    let viewport =
+        h.ui.cascades
+            .by_id
+            .get(&viewport_id)
+            .expect("popup scroll viewport endpoint");
     assert_eq!(viewport.layer, Layer::Popup);
     assert_eq!(
-        ui.layout[Layer::Popup].scroll_content[viewport.node.idx()],
+        h.ui.layout[Layer::Popup].scroll_content[viewport.node.idx()],
         Size::new(80.0, 300.0)
     );
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-        ui.run_at(SURF, scene);
+        h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        h.frame(scene);
         assert_eq!(
-            body_rect(&ui),
+            body_rect(&h.ui),
             first,
             "popup must hold its settled position from the opening frame on",
         );
@@ -400,7 +401,7 @@ fn popup_placement_is_stable_across_frames() {
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0);
     let content = Size::new(120.0, 200.0);
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -424,12 +425,12 @@ fn popup_placement_is_stable_across_frames() {
             .rect
             .expect("popup body has an arranged rect after the opening frame")
     };
-    ui.run_at(SURF, scene);
-    let first = body_rect_of(&ui);
+    h.frame(scene);
+    let first = body_rect_of(&h.ui);
     // Pretend an input arrived (cursor move over the popup).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
-    ui.run_at(SURF, scene);
-    let second = body_rect_of(&ui);
+    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
+    h.frame(scene);
+    let second = body_rect_of(&h.ui);
     assert_eq!(
         first, second,
         "popup must not shift between opening frame and the next input-triggered frame",
@@ -476,11 +477,11 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
     ];
 
     for (edge, anchor, small_min, large_min) in cases {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(EDGE_SURFACE);
         let body_id = WidgetId::from_hash("dynamic-popup");
-        let frame = |ui: &mut Ui, size: Size| {
+        let frame = |h: &mut UiHarness, size: Size| {
             let mut passes = 0;
-            ui.run_at(EDGE_SURFACE, |ui| {
+            h.frame(|ui| {
                 passes += 1;
                 let popup = match edge {
                     Edge::Top => Popup::above(anchor),
@@ -500,10 +501,12 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
                     });
             });
             assert_eq!(passes, 1, "{edge:?} must converge in one pass");
-            ui.response_for(body_id).rect.expect("popup body arranged")
+            h.ui.response_for(body_id)
+                .rect
+                .expect("popup body arranged")
         };
 
-        let small = frame(&mut ui, Size::new(80.0, 40.0));
+        let small = frame(&mut h, Size::new(80.0, 40.0));
         assert_eq!(
             small,
             Rect {
@@ -512,7 +515,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
             },
         );
 
-        let large = frame(&mut ui, Size::new(160.0, 100.0));
+        let large = frame(&mut h, Size::new(160.0, 100.0));
         assert_eq!(
             large,
             Rect {
@@ -521,7 +524,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
             },
         );
 
-        let shrunk = frame(&mut ui, Size::new(80.0, 40.0));
+        let shrunk = frame(&mut h, Size::new(80.0, 40.0));
         assert_eq!(shrunk, small, "{edge:?} shrink must reposition immediately");
     }
 }
@@ -533,7 +536,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
 /// pinch / drag while the popup was open.
 #[test]
 fn outside_pointer_gestures_do_not_leak_to_main() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let bg_id = WidgetId::from_hash("scroll-bg");
     let scene = |ui: &mut Ui| {
         // Main-layer background that senses everything pan/zoom-shaped.
@@ -554,21 +557,21 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
                     });
             });
     };
-    ui.run_at(SURFACE, scene);
+    h.frame(scene);
 
     // Move pointer well outside the popup body, then send a scroll
     // + zoom + middle-drag burst.
     let outside = Vec2::new(300.0, 300.0);
-    ui.on_input(InputEvent::PointerMoved(outside));
-    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
-    ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
-    ui.on_input(InputEvent::Zoom(1.4));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    ui.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Middle));
+    h.on_input(InputEvent::PointerMoved(outside));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
+    h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
+    h.on_input(InputEvent::Zoom(1.4));
+    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
+    h.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
+    h.on_input(InputEvent::PointerReleased(PointerButton::Middle));
 
-    ui.run_at_without_baseline(SURFACE, scene);
-    let bg = ui.response_for(bg_id);
+    h.frame_without_baseline(scene);
+    let bg = h.ui.response_for(bg_id);
     assert_eq!(
         bg.scroll.pixels,
         Vec2::ZERO,
@@ -591,20 +594,20 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
 
 #[test]
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let mut dismissed = false;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
-    ui.click_at(Vec2::new(300.0, 300.0));
+    h.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    ui.run_at_without_baseline(SURFACE, |ui| {
+    h.frame_without_baseline(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "`Block` mode must not signal dismissal");
     assert!(
-        !main_panel_clicked(&ui),
+        !main_panel_clicked(&h.ui),
         "`Block` mode must still eat the click — no leak to Main",
     );
 }
@@ -637,13 +640,13 @@ fn text_edit_inside_a_popup_receives_typing() {
             });
     };
 
-    let mut ui = Ui::for_test();
-    ui.run_at(SURFACE, |ui| scene(ui, &mut buf));
-    ui.request_focus(Some(field));
-    ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut buf));
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| scene(ui, &mut buf));
+    h.request_focus(Some(field));
+    h.frame_without_baseline(|ui| scene(ui, &mut buf));
 
-    ui.on_input(InputEvent::Text(TextChunk::new("x").unwrap()));
-    ui.run_at_without_baseline(SURFACE, |ui| scene(ui, &mut buf));
+    h.on_input(InputEvent::Text(TextChunk::new("x").unwrap()));
+    h.frame_without_baseline(|ui| scene(ui, &mut buf));
 
     assert_eq!(
         buf, "x",

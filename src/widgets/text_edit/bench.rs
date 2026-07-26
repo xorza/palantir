@@ -2,7 +2,7 @@ use crate::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
-use crate::ui::Ui;
+use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::{TextEdit, TextEditState};
 use criterion::Criterion;
 use glam::UVec2;
@@ -17,9 +17,9 @@ fn editor_id() -> WidgetId {
     WidgetId::from_hash("text-edit-bench")
 }
 
-fn run_frame(ui: &mut Ui, text: &mut String, multiline: bool) {
+fn run_frame(h: &mut UiHarness, text: &mut String, multiline: bool) {
     black_box(
-        ui.record_test_frame_without_baseline(display(), Duration::ZERO, |ui| {
+        h.frame_at_without_baseline(display(), Duration::ZERO, |ui| {
             TextEdit::new(text)
                 .id(editor_id())
                 .multiline(multiline)
@@ -30,20 +30,20 @@ fn run_frame(ui: &mut Ui, text: &mut String, multiline: bool) {
 }
 
 fn bench_stable(c: &mut Criterion, name: &str, text: String, multiline: bool, selected: bool) {
-    let mut ui = Ui::for_test_text();
+    let mut h = UiHarness::with_text(UVec2::new(800, 300));
     let mut text = text;
     for _ in 0..3 {
-        run_frame(&mut ui, &mut text, multiline);
+        run_frame(&mut h, &mut text, multiline);
     }
     if selected {
-        ui.request_focus(Some(editor_id()));
-        let state = ui.state_mut::<TextEditState>(editor_id());
+        h.request_focus(Some(editor_id()));
+        let state = h.ui.state_mut::<TextEditState>(editor_id());
         state.edit.selection = Some(0);
         state.edit.caret = text.len();
-        run_frame(&mut ui, &mut text, multiline);
+        run_frame(&mut h, &mut text, multiline);
     }
     c.bench_function(name, |bencher| {
-        bencher.iter(|| run_frame(&mut ui, &mut text, multiline));
+        bencher.iter(|| run_frame(&mut h, &mut text, multiline));
     });
 }
 

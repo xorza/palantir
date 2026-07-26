@@ -1,3 +1,4 @@
+use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
 /// The edit signals off one `TextEdit::show`, snapshotted out (the response
@@ -16,9 +17,9 @@ const EDITOR: &str = "response-editor";
 /// passes. `Ui::frame` re-records on relayout, and the second pass sees a
 /// drained input queue — the *buffer* survives (it's cross-frame state) but a
 /// per-frame edge signal would read `false` on the second pass, so combine them.
-fn frame(ui: &mut Ui, buf: &mut String) -> Signals {
+fn frame(h: &mut UiHarness, buf: &mut String) -> Signals {
     let mut out = Signals::default();
-    ui.run_at(SMALL, |ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = TextEdit::new(buf)
                 .id(WidgetId::from_hash(EDITOR))
@@ -35,51 +36,51 @@ fn frame(ui: &mut Ui, buf: &mut String) -> Signals {
 
 #[test]
 fn reports_gained_focus_as_a_one_frame_edge() {
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    assert!(!frame(&mut ui, &mut buf).gained, "unfocused: no gain");
-    ui.request_focus(Some(id));
-    assert!(frame(&mut ui, &mut buf).gained, "took focus this frame");
+    assert!(!frame(&mut h, &mut buf).gained, "unfocused: no gain");
+    h.request_focus(Some(id));
+    assert!(frame(&mut h, &mut buf).gained, "took focus this frame");
     assert!(
-        !frame(&mut ui, &mut buf).gained,
+        !frame(&mut h, &mut buf).gained,
         "gain clears after one frame"
     );
 }
 
 #[test]
 fn reports_changed_on_edit_but_not_submit() {
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    ui.request_focus(Some(id));
-    let _ = frame(&mut ui, &mut buf); // settle focus
-    ui.on_input(InputEvent::KeyDown {
+    h.request_focus(Some(id));
+    let _ = frame(&mut h, &mut buf); // settle focus
+    h.on_input(InputEvent::KeyDown {
         key: Key::Char('x'),
         repeat: false,
         physical: Key::Other,
     });
-    let s = frame(&mut ui, &mut buf);
+    let s = frame(&mut h, &mut buf);
     assert_eq!(buf, "x");
     assert!(s.changed && !s.submitted, "an edit is not a submit");
 }
 
 #[test]
 fn reports_submitted_on_single_line_enter() {
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("hi");
 
-    ui.request_focus(Some(id));
-    let _ = frame(&mut ui, &mut buf); // settle focus
-    ui.on_input(InputEvent::KeyDown {
+    h.request_focus(Some(id));
+    let _ = frame(&mut h, &mut buf); // settle focus
+    h.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
         physical: Key::Other,
     });
-    let s = frame(&mut ui, &mut buf);
+    let s = frame(&mut h, &mut buf);
     assert!(s.submitted, "single-line Enter submits");
     assert!(!s.changed, "Enter inserts nothing in single-line");
     assert_eq!(buf, "hi", "buffer untouched by the submit");
@@ -87,34 +88,34 @@ fn reports_submitted_on_single_line_enter() {
 
 #[test]
 fn reports_lost_focus_on_blur() {
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    ui.request_focus(Some(id));
-    let _ = frame(&mut ui, &mut buf); // settle focus
-    ui.request_focus(None);
-    assert!(frame(&mut ui, &mut buf).lost, "lost focus this frame");
+    h.request_focus(Some(id));
+    let _ = frame(&mut h, &mut buf); // settle focus
+    h.request_focus(None);
+    assert!(frame(&mut h, &mut buf).lost, "lost focus this frame");
 }
 
 #[test]
 fn escape_reports_lost_focus_on_the_blur_frame() {
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    ui.request_focus(Some(id));
-    let _ = frame(&mut ui, &mut buf);
-    ui.on_input(InputEvent::KeyDown {
+    h.request_focus(Some(id));
+    let _ = frame(&mut h, &mut buf);
+    h.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
         physical: Key::Other,
     });
-    let escaped = frame(&mut ui, &mut buf);
+    let escaped = frame(&mut h, &mut buf);
     assert!(escaped.lost, "Escape reports the focus edge immediately");
-    assert!(ui.focused_id().is_none());
+    assert!(h.focused_id().is_none());
     assert!(
-        !frame(&mut ui, &mut buf).lost,
+        !frame(&mut h, &mut buf).lost,
         "the edge is not repeated next frame",
     );
 }
@@ -124,30 +125,30 @@ fn escape_reports_lost_focus_on_the_blur_frame() {
 /// points, not a length delta ("a" → "b" keeps len 1).
 #[test]
 fn reports_changed_on_same_length_overwrite() {
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("a");
 
-    ui.request_focus(Some(id));
-    let _ = frame(&mut ui, &mut buf); // settle focus
+    h.request_focus(Some(id));
+    let _ = frame(&mut h, &mut buf); // settle focus
     // Ctrl+A select-all, then type the replacement.
-    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.on_input(InputEvent::ModifiersChanged(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
     }));
-    ui.on_input(InputEvent::KeyDown {
+    h.on_input(InputEvent::KeyDown {
         key: Key::Char('a'),
         repeat: false,
         physical: Key::Other,
     });
-    ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
-    let _ = frame(&mut ui, &mut buf);
-    ui.on_input(InputEvent::KeyDown {
+    h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+    let _ = frame(&mut h, &mut buf);
+    h.on_input(InputEvent::KeyDown {
         key: Key::Char('b'),
         repeat: false,
         physical: Key::Other,
     });
-    let sig = frame(&mut ui, &mut buf);
+    let sig = frame(&mut h, &mut buf);
     assert_eq!(buf, "b", "overwrite replaced the selection");
     assert!(sig.changed, "same-length overwrite reports changed");
 }
@@ -158,9 +159,9 @@ fn reports_changed_on_same_length_overwrite() {
 /// routing typing into the host's buffer.
 #[test]
 fn disabling_a_focused_editor_blurs_and_drops_input() {
-    fn disabled_frame(ui: &mut Ui, buf: &mut String) -> Signals {
+    fn disabled_frame(h: &mut UiHarness, buf: &mut String) -> Signals {
         let mut out = Signals::default();
-        ui.run_at(SMALL, |ui| {
+        h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let r = TextEdit::new(buf)
                     .id(WidgetId::from_hash(EDITOR))
@@ -174,20 +175,20 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
         out
     }
 
-    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut h = UiHarness::with_text(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    ui.request_focus(Some(id));
-    let _ = frame(&mut ui, &mut buf); // settle focus on the enabled editor
-    ui.on_input(InputEvent::KeyDown {
+    h.request_focus(Some(id));
+    let _ = frame(&mut h, &mut buf); // settle focus on the enabled editor
+    h.on_input(InputEvent::KeyDown {
         key: Key::Char('x'),
         repeat: false,
         physical: Key::Other,
     });
-    let sig = disabled_frame(&mut ui, &mut buf);
+    let sig = disabled_frame(&mut h, &mut buf);
     assert_eq!(buf, "", "typing into a disabled editor is dropped");
     assert!(!sig.changed, "no change reported");
     assert!(sig.lost, "disable frame reports lost_focus");
-    assert!(ui.focused_id().is_none(), "focus was kicked out");
+    assert!(h.focused_id().is_none(), "focus was kicked out");
 }

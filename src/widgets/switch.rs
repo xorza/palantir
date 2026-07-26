@@ -164,7 +164,8 @@ fn switch_geom(track_h: f32, inset: f32, stroke: f32) -> SwitchGeom {
 
 #[cfg(test)]
 mod tests {
-    use crate::Ui;
+    use crate::ui::harness::UiHarness;
+
     use crate::scene::layer::Layer;
     use crate::widgets::switch::{Switch, switch_geom};
     use glam::UVec2;
@@ -230,16 +231,14 @@ mod tests {
     /// (3 px) from every edge: offset (3, 3), 18 px of travel to the right.
     #[test]
     fn off_knob_is_centred_in_track() {
-        let mut ui = Ui::for_test();
+        let mut h = UiHarness::new(UVec2::new(400, 400));
         let mut on = false;
-        let root = ui.under_outer(UVec2::new(400, 400), |ui| {
-            Switch::new(&mut on).label("Wi-Fi").show(ui).node()
-        });
-        let tree = &ui.forest.trees[Layer::Main];
+        let root = h.under_outer(|ui| Switch::new(&mut on).label("Wi-Fi").show(ui).node());
+        let tree = &h.ui.forest.trees[Layer::Main];
         let track = tree.children(root).next().unwrap().id;
         let knob = tree.children(track).next().unwrap().id;
-        let tr = ui.layout[Layer::Main].rect[track.idx()];
-        let kr = ui.layout[Layer::Main].rect[knob.idx()];
+        let tr = h.ui.layout[Layer::Main].rect[track.idx()];
+        let kr = h.ui.layout[Layer::Main].rect[knob.idx()];
         let left = kr.min.x - tr.min.x;
         let top = kr.min.y - tr.min.y;
         let right = (tr.min.x + tr.size.w) - (kr.min.x + kr.size.w);

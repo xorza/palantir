@@ -17,6 +17,7 @@ use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
+use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
@@ -46,9 +47,9 @@ fn add_direct_text(
 
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
     let mut text_node = None;
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(60.0), Sizing::HUG))
@@ -64,14 +65,14 @@ fn wrapping_text_grows_height_in_narrow_frame() {
             });
     });
     let node = text_node.unwrap();
-    let r = ui.layout[Layer::Main].rect[node.idx()];
+    let r = h.ui.layout[Layer::Main].rect[node.idx()];
     assert!(
         r.size.h > 32.0,
         "wrapped paragraph should span multiple lines, got h={}",
         r.size.h,
     );
 
-    let shape = ui.forest.trees[Layer::Main]
+    let shape = h.ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .next()
         .expect("text shape");
@@ -80,7 +81,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         _ => panic!("expected ShapeRecord::Text"),
     };
     assert_eq!(wrap, TextWrap::WrapWithOverflow);
-    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
+    let shaped = support::shaped_text(&h.ui.layout[Layer::Main], node);
     assert!(shaped.measured.h > 32.0);
 }
 
@@ -91,9 +92,9 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 /// `TextWrap::SingleLine`.
 #[test]
 fn button_label_truncates_one_line_in_narrow_frame_by_default() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
     let mut node = None;
-    ui.run_at(UVec2::new(400, 400), |ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(80.0), Sizing::HUG))
@@ -103,7 +104,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     });
     let node = node.unwrap();
 
-    let wrap = ui.forest.trees[Layer::Main]
+    let wrap = h.ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::Text { wrap, .. } => Some(*wrap),
@@ -118,7 +119,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
 
     // The same paragraph wraps to >32 px tall in the wrap test; elided it
     // stays a single ~16 px line.
-    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
+    let shaped = support::shaped_text(&h.ui.layout[Layer::Main], node);
     assert!(
         shaped.measured.h <= 32.0,
         "elided label must stay one line, got h={}",
@@ -141,11 +142,9 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
 /// shape is multi-line and fits the slot.
 #[test]
 fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let node = ui.run_at_value(UVec2::new(200, 400), |ui| {
-        two_hug_cols_with_wrap(ui, PARAGRAPH)
-    });
-    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
+    let shaped = support::shaped_text(&h.ui.layout[Layer::Main], node);
     // 16 px font wraps to 3 lines at resolved col width — h ≈ 58.
     assert!(
         shaped.measured.h > 32.0,
@@ -164,28 +163,26 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 /// the API + cache + per-driver functions are wired correctly.
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let node = ui.run_at_value(UVec2::new(200, 400), |ui| {
-        two_hug_cols_with_wrap(ui, PARAGRAPH)
-    });
-    let payloads = ui.forest.record_store.payloads.borrow();
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
+    let payloads = h.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
-    let max_w = ui.layout_engine.intrinsic(
-        &ui.forest.trees[Layer::Main],
+    let max_w = h.ui.layout_engine.intrinsic(
+        &h.ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MaxContent,
         &interned_text,
     );
-    let min_w = ui.layout_engine.intrinsic(
-        &ui.forest.trees[Layer::Main],
+    let min_w = h.ui.layout_engine.intrinsic(
+        &h.ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MinContent,
         &interned_text,
     );
-    let max_h = ui.layout_engine.intrinsic(
-        &ui.forest.trees[Layer::Main],
+    let max_h = h.ui.layout_engine.intrinsic(
+        &h.ui.forest.trees[Layer::Main],
         node,
         Axis::Y,
         LenReq::MaxContent,
@@ -216,11 +213,9 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
 /// cached shape disagrees with arrange's slot.
 #[test]
 fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let msg = ui.run_at_value(UVec2::new(200, 400), |ui| {
-        chat_message(ui, 40.0, PARAGRAPH, 14.0)
-    });
-    let shaped = support::shaped_text(&ui.layout[Layer::Main], msg);
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let msg = h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
+    let shaped = support::shaped_text(&h.ui.layout[Layer::Main], msg);
     assert!(
         shaped.measured.h > 32.0,
         "Fill message should wrap inside its resolved share; got h={}",
@@ -239,11 +234,9 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
 /// further.
 #[test]
 fn hstack_fill_wrap_text_floors_at_min_content() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let msg = ui.run_at_value(UVec2::new(200, 400), |ui| {
-        chat_message(ui, 180.0, "supercalifragilistic", 14.0)
-    });
-    let shaped = support::shaped_text(&ui.layout[Layer::Main], msg);
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let msg = h.frame_value(|ui| chat_message(ui, 180.0, "supercalifragilistic", 14.0));
+    let shaped = support::shaped_text(&h.ui.layout[Layer::Main], msg);
     assert!(
         shaped.measured.w > 20.0,
         "min-content floor should keep message wider than the cramped slot; got w={}",
@@ -258,14 +251,12 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
 /// than its `available`, and an ancestor that can grow absorbs it).
 #[test]
 fn hstack_fill_grows_to_content_when_slot_smaller_than_content() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
-    let msg = ui.run_at_value(UVec2::new(200, 400), |ui| {
-        chat_message(ui, 180.0, "supercalifragilistic", 14.0)
-    });
-    let shaped_w = support::shaped_text(&ui.layout[Layer::Main], msg)
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let msg = h.frame_value(|ui| chat_message(ui, 180.0, "supercalifragilistic", 14.0));
+    let shaped_w = support::shaped_text(&h.ui.layout[Layer::Main], msg)
         .measured
         .w;
-    let rect_w = ui.layout[Layer::Main].rect[msg.idx()].size.w;
+    let rect_w = h.ui.layout[Layer::Main].rect[msg.idx()].size.w;
 
     assert!(
         shaped_w > 50.0,
@@ -345,11 +336,11 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     }
 
     fn measure_at(surface_w: u32) -> (f32, f32) {
-        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
-        let nodes = ui.run_at_value(UVec2::new(surface_w, 400), build);
+        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let nodes = h.frame_value(build);
         let (grid, section) = nodes;
-        let grid_w = ui.layout[Layer::Main].rect[grid.idx()].size.w;
-        let section_w = ui.layout[Layer::Main].rect[section.idx()].size.w;
+        let grid_w = h.ui.layout[Layer::Main].rect[grid.idx()].size.w;
+        let section_w = h.ui.layout[Layer::Main].rect[section.idx()].size.w;
         (grid_w, section_w)
     }
 
@@ -403,8 +394,8 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
 /// its arranged cell.
 #[test]
 fn nonwrapping_text_minconent_equals_full_width() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 200));
-    let label_node = ui.run_at_value(UVec2::new(400, 200), |ui| {
+    let mut h = UiHarness::with_text(UVec2::new(400, 200));
+    let label_node = h.frame_value(|ui| {
         Text::new("right column")
             .auto_id()
             .style(&TextStyle::default().with_font_size(14.0))
@@ -412,17 +403,17 @@ fn nonwrapping_text_minconent_equals_full_width() {
             .show(ui)
             .node()
     });
-    let payloads = ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
-    let max_w = ui.layout_engine.intrinsic(
-        &ui.forest.trees[Layer::Main],
+    let max_w = h.ui.layout_engine.intrinsic(
+        &h.ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MaxContent,
         &interned_text,
     );
-    let min_w = ui.layout_engine.intrinsic(
-        &ui.forest.trees[Layer::Main],
+    let min_w = h.ui.layout_engine.intrinsic(
+        &h.ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MinContent,
@@ -475,12 +466,12 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     }
 
     // Probe label's natural unbroken width at an unconstrained surface.
-    let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
-    let probe_label = probe.run_at_value(UVec2::new(2000, 400), |ui| build(ui).1);
-    let payloads = probe.forest.record_store.payloads.borrow();
+    let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
+    let probe_label = probe.frame_value(|ui| build(ui).1);
+    let payloads = probe.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
-    let label_full = probe.layout_engine.intrinsic(
-        &probe.forest.trees[Layer::Main],
+    let label_full = probe.ui.layout_engine.intrinsic(
+        &probe.ui.forest.trees[Layer::Main],
         probe_label,
         Axis::X,
         LenReq::MaxContent,
@@ -492,9 +483,9 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // than the grid's intrinsic floor, slack distribution kicks in.
     // The label cell must still get at least its full natural width.
     for surface_w in [400u32, 300, 250, 200] {
-        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
-        let label = ui.run_at_value(UVec2::new(surface_w, 400), |ui| build(ui).1);
-        let label_rect_w = ui.layout[Layer::Main].rect[label.idx()].size.w;
+        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let label = h.frame_value(|ui| build(ui).1);
+        let label_rect_w = h.ui.layout[Layer::Main].rect[label.idx()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
             "label cell shrank below the label's natural width — \
@@ -539,12 +530,12 @@ fn two_hug_cols_default_label_hugs_full_width() {
     }
 
     // Label's natural unbroken width, probed unconstrained.
-    let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
-    let probe_label = probe.run_at_value(UVec2::new(2000, 400), build);
-    let payloads = probe.forest.record_store.payloads.borrow();
+    let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
+    let probe_label = probe.frame_value(build);
+    let payloads = probe.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
-    let label_full = probe.layout_engine.intrinsic(
-        &probe.forest.trees[Layer::Main],
+    let label_full = probe.ui.layout_engine.intrinsic(
+        &probe.ui.forest.trees[Layer::Main],
         probe_label,
         Axis::X,
         LenReq::MaxContent,
@@ -556,9 +547,9 @@ fn two_hug_cols_default_label_hugs_full_width() {
     // is in the slack-distribution regime (paragraph wraps). The default
     // label must still occupy its full width at each.
     for surface_w in [600u32, 500, 400, 300] {
-        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
-        let label = ui.run_at_value(UVec2::new(surface_w, 400), build);
-        let label_rect_w = ui.layout[Layer::Main].rect[label.idx()].size.w;
+        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let label = h.frame_value(build);
+        let label_rect_w = h.ui.layout[Layer::Main].rect[label.idx()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
             "default-wrap label shrank below its natural width — it would clip. \
@@ -695,9 +686,9 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
 
 #[test]
 fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let scene = ui.run_at_value(UVec2::new(400, 400), build_wrapping_container_text);
-    let layout = &ui.layout[Layer::Main];
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let scene = h.frame_value(build_wrapping_container_text);
+    let layout = &h.ui.layout[Layer::Main];
     assert_eq!(layout.text_shapes.len(), 1);
     let container_rect = layout.rect[scene.container.idx()];
     let child_rect = layout.rect[scene.child.idx()];
@@ -710,7 +701,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let shaped = layout.text_shapes[span.start as usize];
     assert_eq!(shaped.measured, Size::new(73.0, 80.0));
 
-    let draw_keys: Vec<_> = ui
+    let draw_keys: Vec<_> = h
         .encode_paint()
         .calls
         .iter()
@@ -720,10 +711,8 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         })
         .collect();
     assert_eq!(draw_keys, [shaped.key]);
-    let leaf = ui.run_at_value(UVec2::new(400, 400), |ui| {
-        Text::new("leaf-only").show(ui).node()
-    });
-    let layout = &ui.layout[Layer::Main];
+    let leaf = h.frame_value(|ui| Text::new("leaf-only").show(ui).node());
+    let layout = &h.ui.layout[Layer::Main];
     assert_eq!(layout.text_shapes.len(), 1);
     assert_eq!(layout.text_spans[leaf.idx()].len, 1);
 }
@@ -731,11 +720,10 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
 #[test]
 fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     let surface = UVec2::new(400, 400);
-    let mut ui = Ui::for_test_at_text(surface);
-    let hidden_node = ui.run_at_value(surface, |ui| {
-        build_container_text_with_visibility(ui, Visibility::Hidden)
-    });
-    let hidden_layout = &ui.layout[Layer::Main];
+    let mut h = UiHarness::with_text(surface);
+    let hidden_node =
+        h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Hidden));
+    let hidden_layout = &h.ui.layout[Layer::Main];
     assert_eq!(
         hidden_layout.rect[hidden_node.idx()].size,
         Size::new(100.0, 100.0),
@@ -743,18 +731,16 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     assert_eq!(hidden_layout.text_spans[hidden_node.idx()].len, 0);
     assert!(hidden_layout.text_shapes.is_empty());
 
-    let collapsed_node = ui.run_at_value(surface, |ui| {
-        build_container_text_with_visibility(ui, Visibility::Collapsed)
-    });
-    let collapsed_layout = &ui.layout[Layer::Main];
+    let collapsed_node =
+        h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Collapsed));
+    let collapsed_layout = &h.ui.layout[Layer::Main];
     assert_eq!(collapsed_layout.rect[collapsed_node.idx()].size, Size::ZERO);
     assert_eq!(collapsed_layout.text_spans[collapsed_node.idx()].len, 0);
     assert!(collapsed_layout.text_shapes.is_empty());
 
-    let visible_node = ui.run_at_value(surface, |ui| {
-        build_container_text_with_visibility(ui, Visibility::Visible)
-    });
-    let visible_layout = &ui.layout[Layer::Main];
+    let visible_node =
+        h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Visible));
+    let visible_layout = &h.ui.layout[Layer::Main];
     assert_eq!(
         visible_layout.rect[visible_node.idx()].size,
         Size::new(100.0, 100.0),
@@ -769,11 +755,9 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
 
 #[test]
 fn container_and_child_text_keep_independent_order_across_cache_hit() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let first_scene = ui.run_at_value(UVec2::new(400, 400), |ui| {
-        build_interleaved_container_text(ui)
-    });
-    let first_layout = &ui.layout[Layer::Main];
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let first_scene = h.frame_value(build_interleaved_container_text);
+    let first_layout = &h.ui.layout[Layer::Main];
     assert_eq!(first_layout.text_shapes.len(), 3);
     let first_parent_span = first_layout.text_spans[first_scene.container.idx()];
     let first_child_span = first_layout.text_spans[first_scene.child.idx()];
@@ -786,7 +770,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     let first_child_key = first_layout.text_shapes[first_child_span.start as usize].key;
     assert_ne!(first_parent_keys[0], first_child_key);
     assert_ne!(first_parent_keys[1], first_child_key);
-    let first_draw_keys: Vec<_> = ui
+    let first_draw_keys: Vec<_> = h
         .encode_paint()
         .calls
         .iter()
@@ -799,14 +783,12 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         first_draw_keys,
         [first_parent_keys[0], first_child_key, first_parent_keys[1]],
     );
-    let second_scene = ui.run_at_value(UVec2::new(400, 400), |ui| {
-        build_interleaved_container_text(ui)
-    });
+    let second_scene = h.frame_value(build_interleaved_container_text);
     assert!(
-        !ui.layout_engine.scratch.cache_hits.is_empty(),
+        !h.ui.layout_engine.scratch.cache_hits.is_empty(),
         "second identical frame should exercise measure-cache replay",
     );
-    let second_layout = &ui.layout[Layer::Main];
+    let second_layout = &h.ui.layout[Layer::Main];
     assert_eq!(second_layout.text_shapes.len(), 3);
     let second_parent_span = second_layout.text_spans[second_scene.container.idx()];
     let second_child_span = second_layout.text_spans[second_scene.child.idx()];
@@ -819,7 +801,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     let second_child_key = second_layout.text_shapes[second_child_span.start as usize].key;
     assert_eq!(second_parent_keys, first_parent_keys);
     assert_eq!(second_child_key, first_child_key);
-    let second_draw_keys: Vec<_> = ui
+    let second_draw_keys: Vec<_> = h
         .encode_paint()
         .calls
         .iter()
@@ -844,15 +826,15 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
 /// old "one ShapeRecord::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
-    let span = ui.layout[Layer::Main].text_spans[leaf.idx()];
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let leaf = h.frame_value(build_multi_text_leaf);
+    let span = h.ui.layout[Layer::Main].text_spans[leaf.idx()];
     assert_eq!(
         span.len, 2,
         "leaf with two ShapeRecord::Text should record two text-shape entries"
     );
-    let first = ui.layout[Layer::Main].text_shapes[span.start as usize];
-    let second = ui.layout[Layer::Main].text_shapes[(span.start + 1) as usize];
+    let first = h.ui.layout[Layer::Main].text_shapes[span.start as usize];
+    let second = h.ui.layout[Layer::Main].text_shapes[(span.start + 1) as usize];
     assert!(
         first.measured.w > 0.0 && second.measured.w > 0.0,
         "both runs must have measured nonzero width: first={:?} second={:?}",
@@ -879,10 +861,10 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
 /// re-paint the first's shaped buffer or sit on top of the first.
 #[test]
 fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
-    let owner_min = ui.layout[Layer::Main].rect[leaf.idx()].min;
-    let cmds = ui.encode_paint();
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let leaf = h.frame_value(build_multi_text_leaf);
+    let owner_min = h.ui.layout[Layer::Main].rect[leaf.idx()].min;
+    let cmds = h.encode_paint();
     let mut drawn: Vec<glam::Vec2> = cmds
         .calls
         .iter()
@@ -926,16 +908,16 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
 /// see stale `TextShapeKey`s.
 #[test]
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
-    let f1_leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
-    let f1_span = ui.layout[Layer::Main].text_spans[f1_leaf.idx()];
-    let f1_first = ui.layout[Layer::Main].text_shapes[f1_span.start as usize];
-    let f1_second = ui.layout[Layer::Main].text_shapes[(f1_span.start + 1) as usize];
-    let f2_leaf = ui.run_at_value(UVec2::new(400, 400), build_multi_text_leaf);
-    let f2_span = ui.layout[Layer::Main].text_spans[f2_leaf.idx()];
+    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let f1_leaf = h.frame_value(build_multi_text_leaf);
+    let f1_span = h.ui.layout[Layer::Main].text_spans[f1_leaf.idx()];
+    let f1_first = h.ui.layout[Layer::Main].text_shapes[f1_span.start as usize];
+    let f1_second = h.ui.layout[Layer::Main].text_shapes[(f1_span.start + 1) as usize];
+    let f2_leaf = h.frame_value(build_multi_text_leaf);
+    let f2_span = h.ui.layout[Layer::Main].text_spans[f2_leaf.idx()];
     assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
-    let f2_first = ui.layout[Layer::Main].text_shapes[f2_span.start as usize];
-    let f2_second = ui.layout[Layer::Main].text_shapes[(f2_span.start + 1) as usize];
+    let f2_first = h.ui.layout[Layer::Main].text_shapes[f2_span.start as usize];
+    let f2_second = h.ui.layout[Layer::Main].text_shapes[(f2_span.start + 1) as usize];
 
     assert_eq!(
         (f1_first.key, f1_second.key),
@@ -999,14 +981,14 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
     // be at least that + chrome padding (16*2 = 32) on Y, at every
     // surface height — including ones smaller than the natural content.
     for h in [800u32, 400, 300, 200, 150, 100, 50] {
-        let mut ui = Ui::for_test_at_text(UVec2::new(800, h));
+        let mut harness = UiHarness::with_text(UVec2::new(800, h));
         let mut nodes = (NodeId(0), NodeId(0));
-        ui.run_at(UVec2::new(800, h), |ui| {
+        harness.frame(|ui| {
             nodes = build(ui);
         });
         let (chrome, inner) = nodes;
-        let chrome_h = ui.layout[Layer::Main].rect[chrome.idx()].size.h;
-        let inner_h = ui.layout[Layer::Main].rect[inner.idx()].size.h;
+        let chrome_h = harness.ui.layout[Layer::Main].rect[chrome.idx()].size.h;
+        let inner_h = harness.ui.layout[Layer::Main].rect[inner.idx()].size.h;
         let floor = inner_h + 32.0;
         assert!(
             chrome_h + 0.5 >= floor,

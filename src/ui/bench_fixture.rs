@@ -1117,6 +1117,7 @@ mod tests {
     use super::*;
     use crate::display::Display;
     use crate::ui::frame_report::FramePaint;
+    use crate::ui::harness::UiHarness;
 
     /// The `frame/partial_*` arms model an interactive steady state: one
     /// counter changes, everything else holds, so damage collapses to the
@@ -1139,7 +1140,7 @@ mod tests {
             (glam::UVec2::new(2560, 1600), 6),
             (glam::UVec2::new(3840, 4800), 32),
         ] {
-            let mut ui = Ui::for_test_text();
+            let mut h = UiHarness::with_text(px);
             let mut state = FrameFixture::default();
             let display = Display::from_physical(px, 2.0);
             let mut paint = FramePaint::Full;
@@ -1147,8 +1148,8 @@ mod tests {
             // last frame's status-bar rect); the rest are steady state.
             for i in 0..5u64 {
                 state.tick = state.tick.wrapping_add(1);
-                paint = ui
-                    .record_test_frame(display, Duration::from_millis(i * 16), |ui| {
+                paint = h
+                    .frame_at(display, Duration::from_millis(i * 16), |ui| {
                         build_ui(&mut state, scale, ui)
                     })
                     .paint();

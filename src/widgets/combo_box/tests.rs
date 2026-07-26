@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
+use crate::ui::harness::UiHarness;
 use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -10,7 +11,7 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 
 #[test]
 fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
-    let mut ui = Ui::for_test();
+    let mut h = UiHarness::new(SURFACE);
     let id = WidgetId::from_hash("combo");
     let options = ["One", "Two", "Three"];
     let mut selected = 0;
@@ -26,21 +27,21 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
                     .show(ui);
             });
     };
-    ui.run_at(SURFACE, |ui| build(ui, &mut selected));
-    ui.state_mut::<ComboState>(id).open = true;
+    h.frame(|ui| build(ui, &mut selected));
+    h.ui.state_mut::<ComboState>(id).open = true;
 
     let mut passes = 0;
-    ui.run_at(SURFACE, |ui| {
+    h.frame(|ui| {
         passes += 1;
         build(ui, &mut selected);
     });
     assert_eq!(passes, 1, "dropdown placement must converge in one pass");
 
-    let trigger = ui.response_for(id).rect.expect("combo trigger arranged");
-    let list = ui
-        .response_for(id.with("list"))
-        .rect
-        .expect("combo list arranged");
+    let trigger = h.ui.response_for(id).rect.expect("combo trigger arranged");
+    let list =
+        h.ui.response_for(id.with("list"))
+            .rect
+            .expect("combo list arranged");
     assert_eq!(list.min.x, trigger.min.x, "list starts at trigger left");
     assert_eq!(
         list.max().y,
