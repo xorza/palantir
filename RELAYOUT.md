@@ -4,28 +4,37 @@ Investigation of every case where Palantir runs more than one record pass
 inside a single frame, what each costs, and how to remove them.
 
 Measurements taken on ASUS ROG Strix SCAR 18 (i9-13980HX), release build,
-`cargo bench --features internals --bench caches`.
+`cargo bench --features internals --bench caches`. Everything attributed to
+darkroom below is code-read, not measured — see §7.
 
 ## 1. Inventory: every same-frame re-record
 
-There are exactly **three** triggers, all in `Ui::frame` (`src/ui/mod.rs:207-276`):
+All re-records funnel through the `double_layout` arm in `Ui::frame`
+(`src/ui/mod.rs:254-268`). Four things reach it:
 
 | # | Trigger | Where | Frequency |
 |---|---|---|---|
 | **A** | Cold-start warmup | `ui/mod.rs:233-249` | once per window, ever |
-| **B** | `action_flag` from `InputState::finish_record` | `ui/mod.rs:250-254` + `input/mod.rs:675,742,780,845,858` | **every press, every release, every keystroke, every drag latch** |
-| **C** | `Ui::request_relayout` | `ui/mod.rs:554`; sole production caller `widgets/scroll/mod.rs:737-741` | once per `Scroll` cold-mount |
+| **B** | `action_flag` from `InputState::finish_record` | `ui/mod.rs:250-253` + `input/mod.rs:675,742,780,845,858` | **every press, every release, every keystroke, every drag latch** |
+| **C** | `Ui::request_relayout` — in-crate | `ui/mod.rs:556`; `widgets/scroll/mod.rs:737-740` | once per `Scroll` cold-mount |
+| **D** | `Ui::request_relayout` — **downstream (darkroom)** | `gui/app/editor/mod.rs:341`, `gui/main_window.rs:154` | **every node-drag frame, every divider-drag frame, every tab switch** |
+
+D is the one that matters and the one an earlier revision of this document
+missed entirely — it claimed `Scroll` was the sole production caller. It is
+the sole caller *inside this crate*; the crate's only real consumer calls it
+far more often, on the two hottest gestures in the app.
 
 The one thing worth stating up front: **pass A's layout output is almost
 entirely thrown away.** The only durable products of an action pass A are
 user-state mutations, `StateMap` writes, the input-queue drain, and
 `self.cascades`. `forest` and `layout` are cleared/overwritten by pass B.
 
-`ContextMenu` no longer needs a relayout — the doc comment at
-`ui/tests.rs:313-318` is stale. Anchor clamping now happens inside arrange
-via `OverlayPosition::resolve(measured, bounds)`
-(`layout/types/overlay/mod.rs:73`). That is the existing precedent for the
-fix recommended below.
+`ContextMenu` no longer needs a relayout, but the invariant the doc comment
+at `ui/tests.rs:308-318` pins — cascade runs in `post_record`, so a pass-B
+record reads pass A's arranged rects through `response_for` — is still the
+mechanism every one of these triggers relies on. Anchor clamping itself now
+happens inside arrange via `OverlayPosition::resolve(measured, bounds)`
+(`layout/types/overlay/mod.rs:73`). That is the existing precedent for §5.
 
 ## 2. What a second pass actually costs (measured)
 
@@ -56,9 +65,86 @@ Pass B is *already* mostly optimized away by existing machinery:
 to make the second pass cheap — the second pass *is* the record closure.
 The only lever is not running it.**
 
-## 3. Case by case
+Two corollaries used throughout the rest of this document:
 
-### C — `request_relayout` (Scroll cold-mount): kill it outright
+- **Re-arranging is nearly free; re-recording costs a whole frame.** Any
+  design that converts a re-record into extra post-arrange work wins by
+  ~50×, and it does not have to be clever to win.
+- A downstream pass B costs *more* than 218 µs, because the host's `record`
+  closure is not just widget authoring. Darkroom's re-runs `Editor::frame`
+  end to end: navigate, `Scene::rebuild` (re-interns every port name into
+  the text arena, re-flattens the pooled per-node slices),
+  `CanvasGeometry::rebuild` (one `response_for` per port glyph), prepass,
+  drain, then the record. All of it scales with graph size.
+
+## 3. The downstream picture (darkroom)
+
+`Editor` accumulates a per-frame `needs_relayout` from
+`UndoStep::requires_relayout()` (`core/edit/intent/query.rs:34`) via
+`StepSignals::fold` → `absorb_signals`, and fires one `ui.request_relayout()`
+at the bottom of `Editor::frame` (`gui/app/editor/mod.rs:341`).
+
+The load-bearing detail: **`absorb_signals` folds identically regardless of
+which drain applied the step**, and three of darkroom's four drain points run
+*before* the record.
+
+| Drain | Runs | Is pass A already correct? |
+|---|---|---|
+| `navigate` (`editor/mod.rs:399`) — tab activate/close, undo/redo replay | pre-record | yes |
+| `sync_target` (`editor/mod.rs:419`) — active graph changed | pre-record | yes |
+| prepass (`editor/mod.rs:314`) — node drag, pan/zoom, connection commit, port dblclick | pre-record | mostly |
+| post-record (`editor/mod.rs:336`) — rename commit, node menu, divider ratio | post-record | no |
+
+### 3.1 Three over-triggers
+
+**Node drag.** `GroupDrag::advance` (`gui/canvas/drag_anchor.rs:117`) pushes
+an `Intent::MoveSelection` on *every frame of the gesture*, and a
+`MoveSelection` naming any node returns `requires_relayout() == true`
+(`query.rs:61`). It drains pre-record, so pass A already arranges at the
+cursor — `gui/node/mod.rs:285` says exactly that ("no Pass B relayout
+retry"). The comment describes the intent, not the behaviour: today **every
+drag frame runs the whole editor pipeline twice.**
+
+**Divider drag.** `render_node` (`gui/dock/mod.rs:220`) emits
+`DockOp::SetRatio` whenever `live_ratio != ratio`, i.e. every frame of a
+divider drag, and every `DocStep::Dock` returns `requires_relayout() == true`.
+But `Splitter` already lays out at the live pointer-derived ratio and writes
+back only the *arranged* one (`widgets/splitter/mod.rs:130-152`, pinned by
+`divider_drag_maps_pointer_to_ratio_without_relayout`). The intent merely
+persists what pass A already drew. **Second double-record on a per-frame
+gesture.**
+
+**Tab switch.** `sync_target` sets the flag directly. `CanvasGeometry` is
+built to survive exactly this case: its `offsets` tier is kept across tab
+switches so connections "draw on that first frame instead of popping in one
+frame late" (`gui/canvas/geometry.rs:60`). The relayout looks like
+belt-and-braces over a mechanism that already handles it.
+
+`gui/main_window.rs:154` adds a one-shot `first_frame` relayout — a *third*
+record pass on frame 1, on top of the cold-start warmup in §4-A. Introduced
+2026-05-17, one day before the warmup code last moved, so history can't
+settle whether it is redundant. Test and delete.
+
+### 3.2 The residue
+
+Strip those and one genuine case survives, documented at
+`gui/canvas/mod.rs:142`: committing a connection removes an input's inline
+const editor, so **the node resizes**. `CanvasGeometry`'s per-widget
+`offsets` (`widget_rect.center − node_rect.min`) are cached across frames, so
+after a resize the cached offset is stale and the new wire anchors to the old
+port position. Pass B rebuilds geometry against pass A's cascade and fixes it.
+
+Every other true arm of `requires_relayout` is the same shape: a rename
+changes a label's width, a boundary-port add/remove resizes the boundary
+node, `AddNode`/`RemoveNode` introduce nodes with no cached geometry at all.
+The two arms that are *not* a size change are precisely the over-triggers
+above — `MoveSelection`, and `DocStep::Dock` being one opaque
+before/after-layout snapshot with no way to tell a ratio nudge from a
+structural move.
+
+## 4. Case by case (in-crate)
+
+### C — `request_relayout` (Scroll cold-mount)
 
 `Scroll` asks for a relayout because pass A has no prior arranged rect
 (`widget_size.is_none()`), so `outer = Size::ZERO` and it cannot compute
@@ -72,37 +158,35 @@ looks:
   cull need geometry, and both are pure functions of
   `(bar_viewport, scaled_content, offset)` — **all known after arrange**.
 
-So: record the five bar nodes unconditionally, and resolve their rects in
-arrange, exactly like `OverlayPosition` does for popups. Thumbs stay
-`Sense::DRAG` leaves (the hit index is built from arranged rects, so this
-works), their chrome paints their own arranged rect, and "no thumb" becomes
-a zero-extent arrange. This removes the last caller and lets
-`Ui::request_relayout` be **deleted from the API** — it is a footgun that
-grants any widget the power to double a frame.
-
-Not a perf win (cold-mount only), but an architecture win.
+So: record the five bar nodes unconditionally and resolve their rects after
+arrange. Thumbs stay `Sense::DRAG` leaves (the hit index is built from
+arranged rects, so this works), their chrome paints their own arranged rect,
+and "no thumb" becomes a zero-extent arrange. Cold-mount only, so not a perf
+win — but it is the second consumer that justifies building §5 generically
+rather than hand-rolling one resolver.
 
 ### A — cold-start warmup: leave it
 
 One extra pass per window lifetime, zero steady-state cost. Not worth
-touching.
+touching. (Check whether it already subsumes darkroom's `first_frame`.)
 
-### B — action settle: the only case that matters
+### B — action settle
 
-Three findings, in increasing order of leverage.
+Independent of everything above, and still worth doing. Three findings, in
+increasing order of leverage.
 
 #### B1. Presses almost never need the settle
 
-`frame_had_action |= hit.is_some() || focused != prev_focus || buttons_subbed`
+`let observable = hit.is_some() || self.focused != prev_focus || buttons_subbed`
 (`input/mod.rs:741-742`). But:
 
 - The `Down` phase only feeds the press target's *own* theme picking —
   `slider.rs:76`, `scroll/mod.rs:308`, `theme/button.rs:128`,
   `theme/toggle.rs:55`. Nothing mutates state a prefix widget reads.
 - **`focused` is read live**, not from the cascade
-  (`input/mod.rs:1014-1022, 1032`), and `on_input` commits it *before* the
-  frame. Every widget in pass A already sees the new focus. A press whose
-  only effect is a focus change is already prefix-correct.
+  (`input/mod.rs:1015,1032`), and `on_input` commits it *before* the frame.
+  Every widget in pass A already sees the new focus. A press whose only
+  effect is a focus change is already prefix-correct.
 - Only `buttons_subbed` is genuinely opaque — and today the sole
   `PointerWake::BUTTONS` subscriber in-tree is `Modal` (`modal.rs:255`).
 
@@ -113,17 +197,16 @@ writing state a prefix widget shows would gain a one-frame lag.
 
 #### B2. `ReleaseKind::Miss` doesn't need it
 
-`input/mod.rs:779` sets the flag on `released.is_some()`. A `Miss` release
-fires no click, moves no focus, and only tears down a capture read by
+`input/mod.rs:779-780` sets the flag on `released.is_some()`. A `Miss`
+release fires no click, moves no focus, and only tears down a capture read by
 exactly one widget — which is precisely the rule the module doc at
-`input/mod.rs:341-352` states as *not* qualifying. `Click` and
-`DragStopped` must keep it (a graph-node drop rewires things a prefix
-widget draws).
+`input/mod.rs:341-352` states as *not* qualifying. `Click` and `DragStopped`
+must keep it (a graph-node drop rewires things a prefix widget draws).
 
 Together B1+B2 remove roughly half the settle passes in click-driven UI:
 only the release-click and keystrokes settle.
 
-#### B3. The structural answer for the rest: `App::update` is already a free settle pass
+#### B3. `App::update` is already a free settle pass
 
 `update` runs once per `FullRecord` frame, *before* pass A
 (`ui/mod.rs:218`), takes `&Ui`, and `response_for` is `&self` — so an app
@@ -137,6 +220,11 @@ The automatic settle exists only to support inline
 the fast path, and the automatic settle is the compatibility path for
 inline handling.
 
+Note that darkroom already applies the *shape* of this advice — its prepass
+emits every layout-affecting input-derived intent before the record
+(`gui/canvas/mod.rs:130-147`). §3.1 is what happens when the signal that
+says "I needed a settle" isn't retired alongside the restructuring.
+
 #### B4. For framework-mediated staleness, be exact instead of conservative
 
 Popup open flags, combo/menu state, scroll offsets, and text-edit state all
@@ -149,28 +237,122 @@ access, 8 bytes per row. That makes every widget Palantir ships exact.
 It does *not* cover user-struct writes — those fall back to B3 or an
 explicit `ui.request_settle()`.
 
-## 4. Recommended order
+## 5. The general fix: late-bound geometry (`Anchor`)
 
-1. **Move scrollbar geometry into arrange** (the `OverlayPosition` pattern),
-   then delete `Ui::request_relayout`. Removes trigger C and a public
-   footgun.
-2. **Narrow `frame_had_action`** — presses to `buttons_subbed` only,
-   releases to `kind != Miss`. Biggest cheap win; pin each narrowing with a
-   test, since these are exactly the "surprise behavior" cases.
-3. **Document `App::update` as the zero-settle input path** and use it in
-   Darkroom's hot subtrees. The only thing that removes the *remaining*
-   passes rather than trimming them.
-4. **Only if 2+3 leave it hot:** the `StateMap` read/write-index tracking in
+§4-C's recipe — "resolve it in arrange, like `OverlayPosition` does" — is
+per-widget work inside `src/layout/`, repeated for every new case. The
+downstream evidence says arrange was never the right place anyway. Look at
+what §3.2 actually is: **paint that wants another widget's geometry, and
+settles for a cached copy of the previous pass's.** Not a layout failure —
+layout ran once, on a correct tree.
+
+So make the reference late-bound instead of cached. Record an identity, not a
+number:
+
+```rust
+/// A geometry reference resolved after arrange, against this frame's
+/// arranged rects — not a value captured at record time.
+enum Anchor {
+    Widget(WidgetId),
+    Parent,
+    Surface,
+}
+```
+
+Two surfaces, both emitted from the **recorder**, so adding an anchored thing
+touches zero files under `src/layout/`:
+
+1. **Anchored shape coordinates.** Curve endpoints, polyline points, and rect
+   corners accept `{ anchor: Anchor, frac: Vec2, offset: Vec2 }` in place of
+   a resolved `Vec2`.
+2. **Anchored placement.** `OverlayPosition::anchor`
+   (`layout/types/overlay/mod.rs:37`) is already a dedicated anchor-rect
+   field, pre-resolved at record time; late-binding it to `Anchor` is a
+   one-field change. Add `Sizing::fraction_of(Anchor, axis, …)` for the
+   scroll thumb.
+
+Resolution is one sweep over a sparse side table of `(target, AnchorSpec)`,
+structurally identical to `PaintAnims` (`scene/tree/paint_anims/`), which
+already does exactly this shape of sparse post-arrange patching — so frames
+using no anchors pay nothing. The `WidgetId → Rect` map it needs is what the
+cascade's hit index already builds.
+
+Three properties that make it worth building:
+
+- **It degrades to today.** A dangling id or a reference cycle resolves to
+  last frame's rect, which is precisely current `response_for` semantics.
+  Strictly better, no new failure mode. `debug_assert` on the cycle.
+- **The budget is there.** Measure+arrange is 4.5 µs of a 218 µs pass. A
+  sparse fixup sweep — or even a whole second arrange — is free next to one
+  extra record.
+- **It fixes a correctness wart, not just a counter.** Darkroom's wires lag
+  one pass across any resize today. Anchored curves make them exact,
+  `CanvasGeometry.live` shrinks to the hover/drag bits that genuinely *are*
+  last-frame input state, the connection-commit pass B disappears, and
+  `SetInput` stops needing a relayout at all.
+
+### Open questions
+
+- **Placement anchors feed layout, shape anchors don't.** A shape anchor only
+  has to resolve before encode. An anchored *node* rect must resolve before
+  cascade, and if that node has descendants their subtree needs re-arranging
+  from the patched rect. Cheapest correct answer is probably a second arrange
+  restricted to anchored subtrees; at 1.05 µs for the whole tree, measure it
+  before optimising it.
+- **Ordering.** Because references are by `WidgetId` and resolution happens
+  after the full arrange, forward references work for shapes for free. Node
+  placement referencing a node that is itself anchored needs either a
+  topological order or one fixpoint iteration with the graceful-degradation
+  fallback above.
+
+### What this deliberately does not cover
+
+Tree *structure* that depends on geometry — virtualised lists, "how many
+items fit". That case stays uncovered and should: the answer there is a
+zero-extent arrange (§4-C's thumb-visibility argument) or an accepted frame
+of lag. Worth noting `request_relayout` is capped at one retry anyway
+(`ui/mod.rs:264-267`), so it never solved a converging-feedback problem —
+an oscillating widget is already broken today.
+
+Once §5 lands and §4-C is converted, nothing calls `Ui::request_relayout`
+and it can be **deleted from the API** — a footgun that grants any widget
+the power to double a frame.
+
+## 6. Recommended order
+
+1. **Split `requires_relayout` into resize-vs-move** and drop the signal for
+   pre-record move-only steps. `DocStep::Dock` already carries a
+   `structural: bool` that discriminates its cases. Pure downstream, no
+   framework change; removes the double-record from node drag and divider
+   drag — the two highest-frequency gestures in the editor. Pin each arm with
+   a test, since these are exactly the "surprise behavior" cases.
+2. **Test-and-delete `main_window.rs:154`** against the §4-A warmup.
+3. **Narrow `frame_had_action`** — presses to `buttons_subbed` only,
+   releases to `kind != Miss` (B1+B2). Independent of 1–2; same test
+   discipline.
+4. **Build `Anchor`** (§5) and land it on darkroom's wires first — the case
+   with a visible bug to prove it against, and the one that retires the last
+   genuine downstream caller.
+5. **Convert the scrollbars** to anchored placement, then delete
+   `Ui::request_relayout`.
+6. **Only if 3+4 leave it hot:** the `StateMap` read/write-index tracking in
    B4.
 
 Explicitly **not** worth doing: making pass A "silent" by skipping its
 `post_record` / layout / cascade. Measured at ~2% of a settle pass, and it
-would cost the pass-A-geometry invariant that `ui/tests.rs:320` pins.
+would cost the pass-A-geometry invariant that `ui/tests.rs:308-318` pins.
 
-## 5. Known gap
+## 7. Known gaps
 
-No measurement of a *diverging* pass B (where B's tree differs from A's, so
-the measure cache genuinely misses). The `broad/localized` arm (82 µs vs
-53 µs cached) suggests localized divergence stays cheap, but this was not
-confirmed — there is no double-layout bench arm in `benches/`, and adding
-one means touching the crate.
+- **No measurement of a *diverging* pass B** (where B's tree differs from A's,
+  so the measure cache genuinely misses). The `broad/localized` arm (82 µs vs
+  53 µs cached) suggests localized divergence stays cheap, but this was not
+  confirmed — there is no double-layout bench arm in `benches/`, and adding
+  one means touching the crate.
+- **Nothing in §3 is measured.** The frequencies and the "runs twice" claims
+  are read off the call graph. Before acting on §6-1, confirm with
+  `FrameProcessing::DoubleLayout` counted over a real drag — the
+  classification is already on `FrameReport`.
+- **No measurement of darkroom's pass B in absolute terms.** §2's corollary
+  argues it exceeds 218 µs and scales with graph size; that is reasoning, not
+  a number. `profile-with-tracy` spans both crates and would settle it.
