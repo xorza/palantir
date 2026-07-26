@@ -17,14 +17,28 @@ Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
 ![Frame 146 profile](docs/media/frame-146-profile.png)
 
-Steady-state cost per frame on `frame/cached_cpu` (AMD Ryzen 7 6800U,
-Zen3+, ~4.65 GHz single-core boost, ~177 µs/frame): **~2.8 M
-instructions retired**, **~821 K cycles**, **IPC ≈ 3.43**. The frame is
-retiring-bound, not stalled: **branch mispredicts are 0.16%** of ~377 K
-branches (~0.21 per 1K instructions) and the **L1-d cache miss rate is
-2.1%** of ~948 K loads (~7 per 1K instructions), with only 3.2% of
-cycles lost to a frontend stall. Measured via `perf stat -d`, pinned to
-one core.
+The `frame` bench drives one synthetic app screen — every layout driver,
+every widget, every `Shape` family — at 2560×1440, and runs each arm
+twice: once as the deviceless CPU pipeline (record → measure → arrange →
+cascade → damage → encode + compose), once as the full public path
+through `OffscreenHost` with the GPU drained before the next iteration.
+AMD Ryzen 7 6800U (Zen3+) with its integrated Radeon 680M:
+
+| arm         | CPU pipeline | CPU + GPU frame |
+| ----------- | -----------: | --------------: |
+| `cached`    |       146 µs |         1.08 ms |
+| `partial`   |       158 µs |         1.19 ms |
+| `scrolling` |       218 µs |         5.04 ms |
+| `resizing`  |       304 µs |         5.85 ms |
+
+Steady-state cost per frame on `frame/cached_cpu` (measured 4.65 GHz,
+~146 µs/frame): **~2.2 M instructions retired**, **~678 K cycles**,
+**IPC ≈ 3.25**. The frame is retiring-bound, not stalled: **branch
+mispredicts are 0.17%** of ~277 K branches (~0.21 per 1K instructions)
+and the **L1-d cache miss rate is 2.6%** of ~800 K loads (~9 per 1K
+instructions), with only 3.8% of cycles lost to a frontend stall.
+Measured via `perf stat -d`, pinned to one core.
+
 
 ---
 

@@ -28,6 +28,16 @@ cargo bench --bench curve_pipeline --features internals # curve GPU evidence + f
   alone is ~45 s. Forces every invocation to be an explicit decision
   rather than defaulting to the full matrix.
 
+Two optional knobs move the surface every arm renders into, so the same
+fixture can be measured at a real display size without editing the
+source: `PALANTIR_BENCH_SIZE=<w>x<h>` (physical pixels, default
+`3840x6000`) and `PALANTIR_BENCH_SCALE=<dpr>` (default `2.0`); the
+resize pool rescales with the former. Below the default the fixture's
+page no longer fits — the CPU arms still record / measure / arrange the
+whole tree, but only the visible part is painted, so numbers from
+different sizes are not comparable. The README's published numbers use
+`PALANTIR_BENCH_SIZE=2560x1440 PALANTIR_BENCH_SCALE=1`.
+
 ### `frame` has two benchmark modes
 
 `src/ui/bench.rs` owns both modes and runs the results
