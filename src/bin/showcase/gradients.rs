@@ -6,11 +6,11 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
+use glam::Vec2;
 use palantir::{
     Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
     Panel, RadialGradient, Sizing, Spread, Stop, Ui,
 };
-use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
 const NAVY: ColorU8 = ColorU8::hex(0x1a1a2e);

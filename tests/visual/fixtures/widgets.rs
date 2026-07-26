@@ -1,13 +1,13 @@
 //! Per-widget fixtures: smallest possible scene that exercises one
 //! widget's render path.
 
+use glam::{UVec2, Vec2};
+use image::Rgba;
 use palantir::{
     Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
     DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
     Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Switch, Text, ToggleTheme,
 };
-use glam::{UVec2, Vec2};
-use image::Rgba;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
 use crate::diff::Tolerance;

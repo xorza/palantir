@@ -8,9 +8,9 @@
 
 use std::path::Path;
 
-use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
 use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
+use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;

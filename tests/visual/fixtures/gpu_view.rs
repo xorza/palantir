@@ -5,9 +5,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 use glam::UVec2;
 use image::Rgba;
+use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;

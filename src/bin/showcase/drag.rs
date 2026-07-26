@@ -1,8 +1,8 @@
 use crate::support;
+use glam::Vec2;
 use palantir::{
     Background, Color, Configure, Corners, Frame, Panel, Sense, Sizing, Stroke, Ui, WidgetId,
 };
-use glam::Vec2;
 
 /// Three draggable cards on a Canvas. Each card stores its `Vec2`
 /// in per-id state; `r.drag_position()` returns the anchored,

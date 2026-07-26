@@ -1,6 +1,6 @@
-use palantir::{Color, Configure, Panel, Rect, Shape, Sizing, Ui};
 use glam::UVec2;
 use image::RgbaImage;
+use palantir::{Color, Configure, Panel, Rect, Shape, Sizing, Ui};
 
 use crate::diff::{Tolerance, diff};
 use crate::harness::Harness;

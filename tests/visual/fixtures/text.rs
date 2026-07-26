@@ -1,8 +1,8 @@
 //! Text rendering fixtures.
 
-use palantir::{Background, Color, Configure, Panel, Sizing, Text, TextStyle};
 use glam::UVec2;
 use image::Rgba;
+use palantir::{Background, Color, Configure, Panel, Sizing, Text, TextStyle};
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;

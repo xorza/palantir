@@ -14,13 +14,13 @@
 
 use crate::support;
 use crate::support::caption_style;
+use glam::Vec2;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
     Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,
     Scroll, Shape, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui,
     WidgetId, WidgetLook,
 };
-use glam::Vec2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Content {

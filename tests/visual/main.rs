@@ -13,9 +13,9 @@ mod fixtures;
 mod golden;
 mod harness;
 
-use palantir::{Color, WindowConfig, WindowToken};
 use glam::UVec2;
 use image::Rgba;
+use palantir::{Color, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
 

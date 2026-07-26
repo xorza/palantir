@@ -6,8 +6,8 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 use glam::Vec2;
+use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 
 pub(crate) fn build(ui: &mut Ui) {
     support::page(ui, |ui| {

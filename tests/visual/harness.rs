@@ -4,12 +4,12 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use glam::UVec2;
+use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
 use palantir::{
     App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui, WindowToken,
 };
-use glam::UVec2;
-use image::RgbaImage;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
