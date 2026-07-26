@@ -1,72 +1,58 @@
-//! Text measurement and wrapping. Left column: single-text wrapping
-//! mechanics in fixed-width containers — the simplest demonstrations
-//! of `TextWrap::WrapWithOverflow` and the intrinsic-min overflow
-//! rule. Right column: composition patterns from the
-//! intrinsic-dimensions plan — Grid Auto under constraint, a property
-//! grid, and a chat-message HStack with Fill wrapping text.
+//! Text measurement and wrapping. The left column is single-text
+//! wrapping mechanics in fixed-width containers — the simplest
+//! demonstrations of `TextWrap::WrapWithOverflow` and the intrinsic-min
+//! overflow rule. The right column is composition: Grid Auto under
+//! constraint, a property grid, and a chat row whose Fill message column
+//! reflows live.
 
 use crate::support;
-use crate::support::section;
+use crate::support::{body_style, section, well_bg};
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, TextWrap,
-    Track, Ui,
+    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextWrap, Track, Ui,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
-fn body_style() -> TextStyle {
-    TextStyle::default().with_font_size(14.0)
+pub(crate) fn build(ui: &mut Ui) {
+    Panel::hstack()
+        .id_salt("columns")
+        .gap(24.0)
+        .size((Sizing::FILL, Sizing::HUG))
+        .show(ui, |ui| {
+            column(ui, "col-l", wrapping);
+            column(ui, "col-r", compositions);
+        });
 }
 
-pub(crate) fn build(ui: &mut Ui) {
-    support::page(ui, |ui| {
-        support::header(
-            ui,
-            "Text wrapping mechanics (left) and intrinsic-dimension composition \
-             patterns (right). Resize the window — the right column reflows live.",
-        );
-        Panel::hstack()
-            .auto_id()
-            .gap(24.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Panel::vstack()
-                    .id_salt("col-l")
-                    .gap(16.0)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui, wrapping);
-                Panel::vstack()
-                    .id_salt("col-r")
-                    .gap(16.0)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui, compositions);
-            });
-    });
+fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+    Panel::vstack()
+        .id_salt(id)
+        .gap(support::PAGE_GAP)
+        .size((Sizing::FILL, Sizing::HUG))
+        .show(ui, body);
 }
 
 fn wrapping(ui: &mut Ui) {
     section(
         ui,
-        "single",
-        "single-line label, hugs natural width",
+        "single line",
+        "single line — hugs its natural width",
         |ui| {
             Text::new("The quick brown fox jumps over the lazy dog")
                 .auto_id()
+                .style(&body_style())
                 .show(ui);
         },
     );
 
-    section(ui, "wide", "wrapping paragraph in a 360 px panel", |ui| {
-        wrap_panel(ui, "wide-inner", 360.0, PARAGRAPH);
-    });
-
     section(
         ui,
-        "narrow",
-        "same text in a 140 px panel — wraps to more lines",
+        "wrapping",
+        "wrapping — the same text at two container widths",
         |ui| {
+            wrap_panel(ui, "wide-inner", 360.0, PARAGRAPH);
             wrap_panel(ui, "narrow-inner", 140.0, PARAGRAPH);
         },
     );
@@ -74,7 +60,8 @@ fn wrapping(ui: &mut Ui) {
     section(
         ui,
         "overflow",
-        "unbreakable word in a 40 px slot — overflows at intrinsic_min",
+        "overflow — an unbreakable word in a 40 px slot spills at intrinsic_min \
+         rather than breaking mid-word",
         |ui| {
             wrap_panel(ui, "overflow-inner", 40.0, "supercalifragilistic");
         },
@@ -86,7 +73,7 @@ fn wrap_panel(ui: &mut Ui, id: &'static str, width: f32, text: &'static str) {
         .id_salt(id)
         .size((Sizing::fixed(width), Sizing::HUG))
         .padding(8.0)
-        .background(support::panel_bg())
+        .background(well_bg())
         .show(ui, |ui| {
             Text::new(text)
                 .auto_id()
@@ -99,8 +86,9 @@ fn wrap_panel(ui: &mut Ui, id: &'static str, width: f32, text: &'static str) {
 fn compositions(ui: &mut Ui) {
     section(
         ui,
-        "two-hug-columns",
-        "two Hug columns: paragraph wraps to fit, label stays natural",
+        "two Hug columns",
+        "two Hug columns — the paragraph wraps to fit, the label keeps its \
+         natural width",
         |ui| {
             Grid::new()
                 .id_salt("two-hug-inner")
@@ -125,8 +113,8 @@ fn compositions(ui: &mut Ui) {
 
     section(
         ui,
-        "property-grid",
-        "property grid: Hug label column + Fill value column with wrapping",
+        "property grid",
+        "property grid — a Hug label column plus a Fill value column that wraps",
         |ui| {
             Grid::new()
                 .id_salt("property-grid-inner")
@@ -163,8 +151,8 @@ fn compositions(ui: &mut Ui) {
 
     section(
         ui,
-        "chat-message",
-        "chat: Fixed avatar + Fill wrapping message",
+        "chat",
+        "chat — a Fixed avatar plus a Fill message that reflows with the window",
         |ui| {
             Panel::vstack()
                 .id_salt("chat-list")
@@ -181,9 +169,9 @@ fn compositions(ui: &mut Ui) {
                         ui,
                         "bob-1",
                         support::B,
-                        "Yeah — the Step B/C distinction finally clicked once I saw \
-                         the showcase property-grid card actually wrapping. Resizing \
-                         the window confirms the message column reflows live.",
+                        "Yeah — the Step B/C distinction finally clicked once I saw the \
+                         property-grid card actually wrapping. Resizing the window \
+                         confirms the message column reflows live.",
                     );
                     chat_row(ui, "alice-2", support::A, "Right? layout is fun.");
                 });
@@ -192,7 +180,7 @@ fn compositions(ui: &mut Ui) {
 }
 
 /// One chat row: avatar (Fixed circle) + Fill wrapping message.
-fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
+fn chat_row(ui: &mut Ui, key: &'static str, avatar: Color, message: &'static str) {
     Panel::hstack()
         .id_salt(("chat-row", key))
         .size((Sizing::FILL, Sizing::HUG))
@@ -201,11 +189,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
             Frame::new()
                 .id_salt(("avatar", key))
                 .size((Sizing::fixed(36.0), Sizing::fixed(36.0)))
-                .background(Background {
-                    fill: avatar_color.into(),
-                    corners: Corners::all(18.0),
-                    ..Default::default()
-                })
+                .background(Background::rounded(avatar, Corners::all(18.0)))
                 .show(ui);
             Text::new(message)
                 .id_salt(("message", key))

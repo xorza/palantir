@@ -1,18 +1,18 @@
-//! Modal flows: ComboBox dropdown, a confirm Modal, and close-request
+//! Modal flows: a ComboBox dropdown, a confirm Modal, and close-request
 //! interception (`Ui::close_requested` / `Ui::keep_open`). The page
-//! exposes a toggle standing in for "the document has unsaved
-//! changes"; [`intercept`], wired into the window's frame at the top
-//! level in `main.rs`, catches the OS close request, vetoes it while
-//! changes are pending, and shows a Save / Discard / Cancel dialog
-//! instead of letting the window vanish.
+//! exposes a toggle standing in for "the document has unsaved changes";
+//! [`intercept`], wired into the window's frame at the top level in the
+//! shell, catches the OS close request, vetoes it while changes are
+//! pending, and shows a Save / Discard / Cancel dialog instead of
+//! letting the window vanish.
 
 use crate::support;
-use crate::support::{row, section};
+use crate::support::{note_style, row, section};
 use palantir::{
     Button, Checkbox, ComboBox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken,
 };
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct State {
     fruit: usize,
     modal_open: bool,
@@ -20,7 +20,7 @@ struct State {
 
 /// Shared between the page (writes `pretend_dirty`) and [`intercept`]
 /// (reads it, drives `show_dialog`). Keyed on one stable id so both
-/// reach the same row regardless of which tab is active.
+/// reach the same row regardless of which page is open.
 #[derive(Debug, Default)]
 struct ExitState {
     /// Stand-in for "unsaved changes exist".
@@ -41,64 +41,64 @@ pub(crate) fn build(ui: &mut Ui) {
     let state_id = state_id();
     let options = ["Apple", "Banana", "Cherry", "Durian", "Elderberry"];
 
-    support::page(ui, |ui| {
-        support::header(
-            ui,
-            "Modal flows — a dropdown, a confirm dialog, and OS close-request \
-             interception.",
-        );
-
-        section(
-            ui,
-            "combo",
-            "ComboBox — click to open the dropdown",
-            |ui| {
-                row(ui, "combo-row", |ui| {
-                    let mut fruit = ui.state_mut::<State>(state_id).fruit;
-                    ComboBox::new(&mut fruit, &options)
-                        .size((Sizing::fixed(180.0), Sizing::HUG))
-                        .id_salt("combo")
-                        .show(ui);
-                    ui.state_mut::<State>(state_id).fruit = fruit;
-                    let chosen = ui.fmt(format_args!("selected: {}", options[fruit]));
-                    Text::new(chosen).id_salt("chosen").show(ui);
-                });
-            },
-        );
-
-        section(
-            ui,
-            "modal",
-            "Modal — dims the background; Esc or backdrop click closes",
-            |ui| {
-                if Button::new()
-                    .id_salt("open")
-                    .label("Open dialog")
-                    .show(ui)
-                    .left
-                    .clicked()
-                {
-                    ui.state_mut::<State>(state_id).modal_open = true;
-                }
-            },
-        );
-
-        section(
-            ui,
-            "exit",
-            "close interception — toggle 'unsaved changes', then close the window: \
-             the app vetoes via ui.keep_open() and prompts instead",
-            |ui| {
-                let id = exit_state_id();
-                let mut dirty = ui.state_mut::<ExitState>(id).pretend_dirty;
-                Checkbox::new(&mut dirty)
-                    .id_salt("dirty")
-                    .label("simulate unsaved changes")
+    section(
+        ui,
+        "combo box",
+        "combo box — click to open the dropdown",
+        |ui| {
+            row(ui, "combo-row", |ui| {
+                let mut fruit = ui.state_mut::<State>(state_id).fruit;
+                ComboBox::new(&mut fruit, &options)
+                    .size((Sizing::fixed(180.0), Sizing::HUG))
+                    .id_salt("combo")
                     .show(ui);
-                ui.state_mut::<ExitState>(id).pretend_dirty = dirty;
-            },
-        );
-    });
+                ui.state_mut::<State>(state_id).fruit = fruit;
+                let chosen = ui.fmt(format_args!("selected: {}", options[fruit]));
+                Text::new(chosen)
+                    .id_salt("chosen")
+                    .style(&note_style())
+                    .show(ui);
+            });
+        },
+    );
+
+    section(
+        ui,
+        "modal",
+        "modal — dims the background and takes every pointer; Esc or a backdrop \
+         click closes",
+        |ui| {
+            if Button::new()
+                .id_salt("open")
+                .label("Open dialog")
+                .show(ui)
+                .left
+                .clicked()
+            {
+                ui.state_mut::<State>(state_id).modal_open = true;
+            }
+        },
+    );
+
+    section(
+        ui,
+        "close interception",
+        "close interception — the app decides whether the window may go away",
+        |ui| {
+            support::note(
+                ui,
+                "Turn on 'unsaved changes', then close the window: the app vetoes \
+                 the OS request via ui.keep_open() and prompts instead of vanishing.",
+            );
+            let id = exit_state_id();
+            let mut dirty = ui.state_mut::<ExitState>(id).pretend_dirty;
+            Checkbox::new(&mut dirty)
+                .id_salt("dirty")
+                .label("simulate unsaved changes")
+                .show(ui);
+            ui.state_mut::<ExitState>(id).pretend_dirty = dirty;
+        },
+    );
 
     if ui.state_mut::<State>(state_id).modal_open {
         let resp = Modal::new().id_salt("confirm-modal").show(ui, |ui| {
