@@ -35,11 +35,14 @@ struct ContextMenuState {
 /// Typical usage chains [`Self::attach`] off a trigger's `Response`,
 /// which auto-opens at the pointer on a right-click (`right.clicked()`):
 ///
-/// ```ignore
-/// let trigger = Button::new().label("…").show(ui);
+/// ```
+/// # use palantir::{Button, ContextMenu, MenuItem, Ui};
+/// # fn demo(ui: &mut Ui) {
+/// let trigger = Button::new().label("…").show(ui).snapshot();
 /// ContextMenu::attach(ui, &trigger)
 ///     .max_size((280.0, 400.0))
-///     .show(ui, |ui, popup| { MenuItem::new("…").show(ui, popup); });
+///     .show(ui, |ui, popup| { MenuItem::new("Delete").show(ui, popup); });
+/// # }
 /// ```
 ///
 /// For programmatic opens (keyboard shortcut, custom gesture) call

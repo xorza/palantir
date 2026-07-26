@@ -558,11 +558,10 @@ impl Ui {
     /// **The whole second pass is the record closure**, which makes this
     /// roughly a 2× frame; measure and arrange are ~2% of it. No widget
     /// this crate ships calls it any more. `Scroll` was the last, and it
-    /// now resolves its bar geometry in [`crate::layout::scrollbars`]
+    /// now resolves its bar geometry in the `layout::scrollbars` driver
     /// after measure instead. Prefer that shape — or handling the edge in
-    /// [`crate::App::update`], which runs before any recording — and
-    /// reach for this only when neither fits. `RELAYOUT.md` has the
-    /// measurements and the case law.
+    /// [`App::update`](crate::App::update), which runs before any
+    /// recording — and reach for this only when neither fits.
     pub fn request_relayout(&mut self) {
         self.frame_runtime.relayout_requested = true;
     }
@@ -692,13 +691,19 @@ impl Ui {
     /// at all (X just works), while an app that wants a "save changes?"
     /// prompt vetoes the auto-close and shows a dialog:
     ///
-    /// ```ignore
-    /// if ui.close_requested() && self.has_unsaved_changes() {
+    /// ```
+    /// # use palantir::{Ui, WindowToken};
+    /// # struct App { unsaved: bool, show_quit_dialog: bool }
+    /// # impl App {
+    /// # fn demo(&mut self, ui: &mut Ui, win: WindowToken) {
+    /// if ui.close_requested() && self.unsaved {
     ///     ui.keep_open();               // veto this frame's auto-close
     ///     self.show_quit_dialog = true; // remember to prompt
     /// }
     /// // …later, on the dialog's "Discard"/"Save" button:
     /// ui.close_window(win);             // close for real
+    /// # }
+    /// # }
     /// ```
     ///
     /// Always `false` in headless / offscreen contexts (no OS window).
@@ -1059,7 +1064,7 @@ impl Ui {
     /// Advance an animation row keyed by `(id, slot)` and return the
     /// current value. `spec = None` snaps to `target` and drops any
     /// stale row without requesting a repaint — the canonical
-    /// "no animation" path. See `src/animation/animations.md`.
+    /// "no animation" path.
     // Generic and reached through cross-module widget helpers. Keep the
     // dominant no-map/no-spec return in the widget's block so a static theme
     // doesn't pay an outlined call plus a large `V` return-slot handoff.

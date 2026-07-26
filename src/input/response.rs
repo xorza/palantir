@@ -16,6 +16,9 @@ use crate::primitives::transform::TranslateScale;
 /// changed something the next frame must reflect.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InputDelta {
+    /// `true` when the event moved state the next frame has to show —
+    /// hover crossing a widget boundary, a press latching, focus moving.
+    /// A host that idles between frames wakes on this.
     pub requests_repaint: bool,
 }
 
@@ -39,13 +42,22 @@ pub struct InputDelta {
 /// gesture supersedes the stale stop edge.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Drag {
+    /// No drag on this button: either nothing is pressed, or a press is
+    /// down but hasn't travelled past the latch threshold yet.
     #[default]
     None,
     /// One-frame edge: the drag latched this frame. Snapshot anchors
     /// here.
-    Started { delta: Vec2 },
+    Started {
+        /// Cumulative travel since press, widget-local and pre-transform.
+        delta: Vec2,
+    },
     /// Latched on an earlier frame, still held.
-    Active { delta: Vec2 },
+    Active {
+        /// Cumulative travel since press, widget-local and pre-transform —
+        /// not the per-frame increment.
+        delta: Vec2,
+    },
     /// One-frame edge: the latched drag ended this frame (release).
     Stopped,
 }
@@ -106,6 +118,8 @@ impl Drag {
 /// capture outranks the stale release).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ButtonPhase {
+    /// The button is not down on this widget, and no edge fired this
+    /// frame. The resting phase.
     #[default]
     Idle,
     /// One-frame edge: the press landed this frame. `press` = its
@@ -113,7 +127,11 @@ pub enum ButtonPhase {
     /// fire on the release — so press-driven gestures (caret
     /// placement, press-select-drag) react while the button is still
     /// down.
-    Down { press: u8 },
+    Down {
+        /// Position of this press in its multi-press run: 1 for a single
+        /// press, 2 for the second press of a double, 3+ for triple and up.
+        press: u8,
+    },
     /// The press is latched on the widget (level, frames after the
     /// press edge).
     Held,
@@ -122,7 +140,13 @@ pub enum ButtonPhase {
     /// no drag latched), with `n` the click's position in its
     /// multi-press run; `None` when a drag suppressed the click or
     /// the release landed off the widget.
-    Up { click: Option<u8> },
+    Up {
+        /// `Some(n)` when this release completed a click, `n` being the
+        /// click's position in its multi-press run — `Some(2)` *is* the
+        /// double-click. `None` when a drag ate the click or the release
+        /// landed outside the widget.
+        click: Option<u8>,
+    },
 }
 
 /// One pointer button's slice of a widget's interaction snapshot.
@@ -241,6 +265,10 @@ impl Default for ScrollDelta {
 /// the same frame.
 #[derive(Clone, Copy, Debug)]
 pub struct ResponseState {
+    /// Last frame's *visible* rect in surface space — after ancestor
+    /// transforms and clipping, so it is what the pointer actually hit.
+    /// `None` on the widget's first frame, before it has been arranged.
+    /// For the untrimmed geometry use [`Self::layout_rect`].
     pub rect: Option<Rect>,
     /// Pre-transform, unclipped layout rect in world coords — the
     /// widget's arranged position before any ancestor `transform`
@@ -259,8 +287,15 @@ pub struct ResponseState {
     /// is off-surface or the widget didn't arrange. This remains relative
     /// to the full widget when ancestor clipping trims [`Self::rect`].
     pub pointer_local: Option<Vec2>,
+    /// Pointer is over this widget's visible rect. Read from the previous
+    /// frame's cascade, so it lags input by one frame.
     pub hovered: bool,
+    /// Cascaded disabled flag — this widget *or* any ancestor. One frame
+    /// stale; merge your own `Node::disabled` on top for lag-free
+    /// self-disabled visuals.
     pub disabled: bool,
+    /// This widget holds keyboard focus. Unlike the other flags this is
+    /// current, not one frame stale.
     pub focused: bool,
     /// Primary-button state. The classic single-pointer surface
     /// (`clicked`, `held`, press runs, drags) lives here.
@@ -268,6 +303,8 @@ pub struct ResponseState {
     /// Secondary-button state — `right.clicked` is the context-menu
     /// trigger.
     pub right: ButtonState,
+    /// Middle / wheel-button state, with the same surface as
+    /// [`Self::left`] — press runs and drags included.
     pub middle: ButtonState,
     /// Wheel / touchpad / pinch deltas routed to this widget.
     pub scroll: ScrollDelta,

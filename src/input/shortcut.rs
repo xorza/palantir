@@ -35,37 +35,46 @@ use std::fmt;
 /// 3-field projection the matcher compares against.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mods {
+    /// The primary command key — Cmd on macOS, Ctrl on Windows and Linux.
     pub ctrl: bool,
+    /// Shift, literally.
     pub shift: bool,
+    /// Alt / Option, literally.
     pub alt: bool,
 }
 
 impl Mods {
+    /// No modifiers — a bare key.
     pub const NONE: Self = Self {
         ctrl: false,
         shift: false,
         alt: false,
     };
+    /// Primary command key alone.
     pub const CTRL: Self = Self {
         ctrl: true,
         shift: false,
         alt: false,
     };
+    /// Shift alone.
     pub const SHIFT: Self = Self {
         ctrl: false,
         shift: true,
         alt: false,
     };
+    /// Alt alone.
     pub const ALT: Self = Self {
         ctrl: false,
         shift: false,
         alt: true,
     };
+    /// Primary command key plus Shift.
     pub const CTRL_SHIFT: Self = Self {
         ctrl: true,
         shift: true,
         alt: false,
     };
+    /// Primary command key plus Alt.
     pub const CTRL_ALT: Self = Self {
         ctrl: true,
         shift: false,
@@ -92,11 +101,16 @@ impl Mods {
 /// alongside menu definitions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Shortcut {
+    /// Modifier set. Matched **exactly** — `Ctrl+A` never fires on
+    /// `Ctrl+Shift+A`.
     pub mods: Mods,
+    /// The key. `Char` compares ignore-case, since it arrives post-shift.
     pub key: Key,
 }
 
 impl Shortcut {
+    /// Any modifier set plus any key. The other constructors are shorthands
+    /// over this one.
     pub const fn new(mods: Mods, key: Key) -> Self {
         Self { mods, key }
     }
@@ -114,10 +128,12 @@ impl Shortcut {
         Self::new(Mods::CTRL, Key::Char(c))
     }
 
+    /// `Ctrl+Shift+<c>`. Same casing convention as [`Self::ctrl`].
     pub const fn ctrl_shift(c: char) -> Self {
         Self::new(Mods::CTRL_SHIFT, Key::Char(c))
     }
 
+    /// `Ctrl+Alt+<c>`. Same casing convention as [`Self::ctrl`].
     pub const fn ctrl_alt(c: char) -> Self {
         Self::new(Mods::CTRL_ALT, Key::Char(c))
     }

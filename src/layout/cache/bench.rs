@@ -18,9 +18,8 @@
 //!   paired min/max-content recursion on Hug columns.
 //!
 //! Ratio of `cached / forced_miss` quantifies what MeasureCache buys
-//! on a comparable workload. See `src/layout/measure-cache.md`. The
-//! encode and compose caches were removed after their contributions
-//! turned out to be < 1%.
+//! on a comparable workload. The encode and compose caches were removed
+//! after their contributions turned out to be < 1%.
 //!
 //! Requires the `internals` feature for the cache reach-in. Run with
 //! `cargo bench --features internals --bench caches`.

@@ -5,12 +5,25 @@ use strum::EnumCount as _;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
+/// Which recording arena a widget lands in. Each layer is an independent
+/// tree; they are painted bottom-up in declaration order and hit-tested
+/// top-down, so a popup rejects a pointer before the content beneath it
+/// ever sees the event — no per-node z-index anywhere.
+///
+/// Switch arenas with [`Ui::layer`](crate::Ui::layer). Widgets that manage
+/// their own overlay ([`Popup`](crate::Popup), [`Modal`](crate::Modal),
+/// [`Tooltip`](crate::Tooltip)) do this for you.
 pub enum Layer {
+    /// Ordinary content. Everything lands here unless it asks otherwise.
     #[default]
     Main = 0,
+    /// Transient overlays anchored to a trigger — dropdowns, context menus.
     Popup = 1,
+    /// Dialogs that take the whole window, above popups.
     Modal = 2,
+    /// Hover bubbles, above modals so they can annotate a dialog.
     Tooltip = 3,
+    /// Diagnostics overlays. Painted last, hit-tested first.
     Debug = 4,
 }
 

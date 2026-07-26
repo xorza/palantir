@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo/palantir-mark.svg" width="116" alt="Palantir logo" />
+  <img src="https://raw.githubusercontent.com/xorza/palantir/master/assets/logo/palantir-mark.svg" width="116" alt="Palantir logo" />
 </p>
 
 <h1 align="center">Palantir</h1>
@@ -11,11 +11,11 @@
 Status: **beta** — feature-rich and usable, but still pre-1.0: the public
 API can still change and break between releases.
 
-![Showcase screenshot](docs/media/frame_bench.png)
+![Frame bench timings](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
 
 Worst-case frame timing captured while resizing the window on a **MacBook Air M5**.
 
-![Frame 146 profile](docs/media/tracy-frame.png)
+![Frame 146 profile](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame-146-profile.png)
 
 The `frame` bench drives one synthetic app screen — every layout driver,
 every widget, every `Shape` family — at 2560×1440, and runs each arm
@@ -42,14 +42,15 @@ Measured via `perf stat -d`, pinned to one core.
 
 ---
 
-A short screen recording of the [showcase](src/bin/showcase) tabs:
+A short screen recording of the
+[showcase](https://github.com/xorza/palantir/tree/master/src/bin/showcase) tabs:
 
 https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
 
 ---
 
 [Darkroom app](https://github.com/xorza/Darkroom)
-![Darkroom app screenshot](docs/media/darkroom-screenshot.png)
+![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
 
 ## Highlights
 
@@ -61,7 +62,7 @@ https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
 - **Layered recording** — `Main` / `Popup` / `Modal` / `Tooltip` / `Debug`
   arenas painted bottom-up, hit-tested top-down.
 - **Cross-frame work-skip cache** keyed on `(WidgetId, subtree_hash,
-available_q)`; subtree hits blit last frame's measure result and skip
+  available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
@@ -101,7 +102,7 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 
 ## Example
 
-```rust
+```rust,no_run
 use palantir::{
     App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
     WinitHostError,
@@ -116,7 +117,7 @@ impl App for Counter {
         Panel::vstack()
             .auto_id()
             .gap(8.0)
-            .size((Sizing::Hug, Sizing::Hug))
+            .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Text::new(format!("clicks: {}", self.clicks)).auto_id().show(ui);
                 if Button::new().label("click me").show(ui).left.clicked() {
@@ -134,14 +135,16 @@ fn main() -> Result<(), WinitHostError> {
 }
 ```
 
-Run the bundled [showcase](src/bin/showcase) for a tour of every widget:
+Run the bundled
+[showcase](https://github.com/xorza/palantir/tree/master/src/bin/showcase)
+for a tour of every widget:
 
 ```sh
 cargo run --release --features showcase --bin showcase
 ```
 
 To author your own widget from the public API, see
-[`examples/custom_widget.rs`](examples/custom_widget.rs) — a `Stepper`
+[`examples/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/custom_widget.rs) — a `Stepper`
 built from `Element` + `Configure`, `Ui::widget_id` / `Ui::node` /
 `Ui::add_shape` / `Ui::response_for`, with nothing reaching into crate
 internals:
@@ -154,17 +157,25 @@ cargo run --example custom_widget
 
 Palantir is dual-licensed:
 
-- **Open source / non-commercial use** — [GPL-3.0-or-later](LICENSE).
+- **Open source / non-commercial use** —
+  [GPL-3.0-or-later](https://github.com/xorza/palantir/blob/master/LICENSE).
   Free to use, modify, and redistribute, provided your combined work is also
   released under GPL-3.0-or-later with complete corresponding source.
 
-- **Commercial use** — see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
+- **Commercial use** — see
+  [LICENSE-COMMERCIAL.md](https://github.com/xorza/palantir/blob/master/LICENSE-COMMERCIAL.md).
   If you want to ship Palantir as part of a proprietary, closed-source
   product, contact xxorza@gmail.com for a commercial license.
 
+The bundled Inter and JetBrains Mono faces under `assets/fonts` are licensed
+separately under the SIL Open Font License 1.1; their `*-OFL.txt` sit beside
+them.
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions are accepted
-under the [Contributor License Agreement](CLA.md), which preserves the
-dual-license model by granting the maintainer the right to relicense
-contributions (including commercially).
+See
+[CONTRIBUTING.md](https://github.com/xorza/palantir/blob/master/CONTRIBUTING.md).
+All contributions are accepted under the
+[Contributor License Agreement](https://github.com/xorza/palantir/blob/master/CLA.md),
+which preserves the dual-license model by granting the maintainer the right to
+relicense contributions (including commercially).

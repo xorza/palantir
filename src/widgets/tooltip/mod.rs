@@ -43,9 +43,12 @@ static GLOBAL_STATE_ID: LazyLock<WidgetId> =
 ///
 /// Two-line attachment:
 ///
-/// ```ignore
-/// let r = Button::new().label("Save").show(ui);
+/// ```
+/// # use palantir::{Button, Tooltip, Ui};
+/// # fn demo(ui: &mut Ui) {
+/// let r = Button::new().label("Save").show(ui).snapshot();
 /// Tooltip::on(&r).text("Persist changes (Ctrl+S)").show(ui);
+/// # }
 /// ```
 ///
 /// Tooltips are pointer-driven only and skip recording on disabled

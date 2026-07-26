@@ -21,12 +21,23 @@ use std::rc::Rc;
 /// when the view next paints. Per-frame parameters are natural: mutate your own
 /// `Rc` before constructing the widget.
 ///
-/// ```ignore
+/// ```
+/// # use std::{cell::RefCell, rc::Rc};
+/// # use palantir::{Configure, GpuFrameCtx, GpuPaint, GpuView, Sizing, Ui};
+/// # struct MyScene { camera: [f32; 3] }
+/// # impl GpuPaint for MyScene {
+/// #     fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
+/// # }
+/// # struct App { scene: Rc<RefCell<MyScene>>, camera: [f32; 3] }
+/// # impl App {
+/// # fn demo(&mut self, ui: &mut Ui) {
 /// let scene = self.scene.clone();          // Rc<RefCell<MyScene>>
 /// scene.borrow_mut().camera = self.camera;
 /// GpuView::new(scene)
 ///     .size((Sizing::fill(1.0), Sizing::fill(1.0)))  // Configure::size
 ///     .show(ui);
+/// # }
+/// # }
 /// ```
 ///
 /// Defaults to filling its parent on both axes (a viewport has no

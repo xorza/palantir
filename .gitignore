@@ -1,6 +1,7 @@
 **/target
 **/tmp/
 **/.tmp/
+.notes/
 **/.DS_Store
 tests/visual/golden/
 tests/visual/output/

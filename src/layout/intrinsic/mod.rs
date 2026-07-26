@@ -1,5 +1,4 @@
-//! Intrinsic-dimensions queries — the on-demand `LenReq` API spec'd in
-//! `../intrinsic.md`.
+//! Intrinsic-dimensions queries — the on-demand `LenReq` API.
 //!
 //! This module owns:
 //! - The query type `LenReq`.
@@ -152,8 +151,8 @@ pub(crate) fn compute<const RANGE: bool>(
     let min_clamp = axis.main(bounds.min_size);
     let max_clamp = axis.main(bounds.max_size);
 
-    // Hug + Fill both report content-driven intrinsic. Per
-    // `../intrinsic.md`: Fill in intrinsic context returns its content's
+    // Hug + Fill both report content-driven intrinsic: Fill in intrinsic
+    // context returns its content's
     // intrinsic, ignoring weight — `resolve_axis_size` with `available =
     // INFINITY` enforces exactly that (Fill falls back to
     // `content_plus_padding`). Skip the content query and padding read

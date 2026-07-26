@@ -957,8 +957,7 @@ fn resolve_axis(
 /// - `Fill(_)`: same content floor as Hug; weight is ignored until
 ///   distribution.
 ///
-/// Span > 1 cells are excluded (matches existing `measure` and the
-/// commitment in `src/layout/intrinsic.md`).
+/// Span > 1 cells are excluded, matching `measure`.
 pub(crate) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,

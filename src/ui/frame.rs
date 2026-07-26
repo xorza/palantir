@@ -131,8 +131,7 @@ pub(crate) struct FrameRuntime {
     /// which a decaying average smears. `PaintOnly` frames are excluded
     /// from both: they can't settle, so counting them would drift the
     /// ratio toward zero while the UI merely idles. Displayed by the
-    /// opt-in frame-stats overlay; see `RELAYOUT.md` for why the number
-    /// matters.
+    /// opt-in frame-stats overlay.
     pub(crate) record_frames: u32,
     pub(crate) settle_frames: u32,
     /// Set when an unsettled animation or widget requests another frame.

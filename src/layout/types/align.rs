@@ -9,11 +9,18 @@ use crate::primitives::size::Size;
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HAlign {
+    /// Inherit: parent's `child_align` first, then the child's own
+    /// cross-axis [`Sizing`](crate::Sizing) — `Fill` stretches, anything
+    /// else starts.
     #[default]
     Auto,
+    /// Pin to the inner rect's left edge.
     Left,
+    /// Center within the inner rect.
     Center,
+    /// Pin to the inner rect's right edge.
     Right,
+    /// Fill the inner rect's width, overriding the child's measured width.
     Stretch,
 }
 
@@ -22,11 +29,16 @@ pub enum HAlign {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum VAlign {
+    /// Inherit, by the same rule as [`HAlign::Auto`].
     #[default]
     Auto,
+    /// Pin to the inner rect's top edge.
     Top,
+    /// Center within the inner rect.
     Center,
+    /// Pin to the inner rect's bottom edge.
     Bottom,
+    /// Fill the inner rect's height, overriding the child's measured height.
     Stretch,
 }
 
@@ -40,6 +52,9 @@ impl Align {
     const HMASK: u8 = 0b111;
     const VMASK: u8 = 0b111 << Self::VSHIFT;
 
+    /// Pack both axes. [`Self::h`] / [`Self::v`] set one axis and leave
+    /// the other `Auto`; the named constants below cover the nine corners
+    /// plus [`Self::STRETCH`].
     pub const fn new(h: HAlign, v: VAlign) -> Self {
         Self((h as u8) | ((v as u8) << Self::VSHIFT))
     }
@@ -67,6 +82,7 @@ impl Align {
     pub const fn v(v: VAlign) -> Self {
         Self::new(HAlign::Auto, v)
     }
+    /// Unpack the horizontal axis.
     pub const fn halign(self) -> HAlign {
         match self.0 & Self::HMASK {
             0 => HAlign::Auto,
@@ -77,6 +93,7 @@ impl Align {
             _ => unreachable!(),
         }
     }
+    /// Unpack the vertical axis.
     pub const fn valign(self) -> VAlign {
         match (self.0 & Self::VMASK) >> Self::VSHIFT {
             0 => VAlign::Auto,
@@ -87,15 +104,25 @@ impl Align {
             _ => unreachable!(),
         }
     }
+    /// Top-left corner.
     pub const TOP_LEFT: Self = Self::new(HAlign::Left, VAlign::Top);
+    /// Top edge, horizontally centered.
     pub const TOP: Self = Self::new(HAlign::Center, VAlign::Top);
+    /// Top-right corner.
     pub const TOP_RIGHT: Self = Self::new(HAlign::Right, VAlign::Top);
+    /// Left edge, vertically centered.
     pub const LEFT: Self = Self::new(HAlign::Left, VAlign::Center);
+    /// Centered on both axes.
     pub const CENTER: Self = Self::new(HAlign::Center, VAlign::Center);
+    /// Right edge, vertically centered.
     pub const RIGHT: Self = Self::new(HAlign::Right, VAlign::Center);
+    /// Bottom-left corner.
     pub const BOTTOM_LEFT: Self = Self::new(HAlign::Left, VAlign::Bottom);
+    /// Bottom edge, horizontally centered.
     pub const BOTTOM: Self = Self::new(HAlign::Center, VAlign::Bottom);
+    /// Bottom-right corner.
     pub const BOTTOM_RIGHT: Self = Self::new(HAlign::Right, VAlign::Bottom);
+    /// Fill the inner rect on both axes.
     pub const STRETCH: Self = Self::new(HAlign::Stretch, VAlign::Stretch);
 }
 

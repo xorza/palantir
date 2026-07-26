@@ -36,18 +36,23 @@ impl std::fmt::Debug for Spacing {
 }
 
 impl Spacing {
+    /// No spacing on any edge.
     pub const ZERO: Self = Self(F16x4::ZERO);
 
+    /// The same value on all four edges.
     #[inline]
     pub fn all(v: f32) -> Self {
         Self(F16x4::from_lanes([v, v, v, v]))
     }
 
+    /// `x` on left and right, `y` on top and bottom — the CSS two-value
+    /// shorthand.
     #[inline]
     pub fn xy(x: f32, y: f32) -> Self {
         Self(F16x4::from_lanes([x, y, x, y]))
     }
 
+    /// Each edge independently, in logical pixels.
     #[inline]
     pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
         Self(F16x4::from_lanes([left, top, right, bottom]))
@@ -69,11 +74,13 @@ impl Spacing {
         Self(F16x4::from_lanes(v))
     }
 
+    /// `left + right` — how much width this spacing costs.
     #[inline]
     pub fn horiz(&self) -> f32 {
         let [l, _t, r, _b] = self.as_array();
         l + r
     }
+    /// `top + bottom` — how much height this spacing costs.
     #[inline]
     pub fn vert(&self) -> f32 {
         let [_l, t, _r, b] = self.as_array();
@@ -95,7 +102,9 @@ impl Spacing {
 /// left + right`, `vert = top + bottom`.
 #[derive(Clone, Copy, Debug)]
 pub struct Sums {
+    /// `left + right`.
     pub horiz: f32,
+    /// `top + bottom`.
     pub vert: f32,
 }
 

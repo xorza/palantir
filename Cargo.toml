@@ -2,8 +2,36 @@
 name = "palantir"
 version = "0.3.0"
 edition = "2024"
-license = "GPL-3.0-or-later"
-exclude = ["AGENTS.md", "CLAUDE.md", ".tmp/"]
+rust-version = "1.89"
+authors = ["xxorza <xxorza@gmail.com>"]
+description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
+repository = "https://github.com/xorza/palantir"
+homepage = "https://github.com/xorza/palantir"
+documentation = "https://docs.rs/palantir"
+readme = "README.md"
+keywords = ["gui", "ui", "immediate-mode", "wgpu", "graphics"]
+categories = ["gui", "graphics", "rendering::engine"]
+# The bundled Inter / JetBrains Mono faces in `assets/fonts` ship under the
+# SIL Open Font License, so the tarball as a whole carries both terms.
+license = "GPL-3.0-or-later AND OFL-1.1"
+exclude = [
+    ".github/",
+    ".notes/",
+    ".tmp/",
+    ".zed/",
+    "AGENTS.md",
+    "CLA.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "docs/",
+    "scripts/",
+]
+
+# `internals` pulls in criterion/dhat and exposes test-only reach-ins that
+# aren't part of the supported surface, so document the default features —
+# exactly what a consumer gets.
+[package.metadata.docs.rs]
+all-features = false
 
 [lints.rust]
 missing_debug_implementations = "deny"
@@ -13,7 +41,6 @@ unreachable_pub = "deny"
 items_after_test_module = "deny"
 
 [lib]
-doctest = false
 
 [[bin]]
 name = "showcase"
@@ -21,7 +48,7 @@ path = "src/bin/showcase/main.rs"
 required-features = ["showcase"]
 
 [dependencies]
-palantir-anim-derive = { path = "anim-derive" }
+palantir-anim-derive = { path = "anim-derive", version = "0.1" }
 arboard = { version = "3.6", default-features = false, optional = true }
 bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }

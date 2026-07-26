@@ -14,8 +14,7 @@ use fixedbitset::FixedBitSet;
 /// - `subtree[i]` — rollup of `node[i]` together with the subtree
 ///   hashes of `i`'s direct children, in declaration order. Equality
 ///   across frames means nothing in the subtree changed; the
-///   cross-frame measure cache keys on this. See
-///   `src/layout/measure-cache.md`.
+///   cross-frame measure cache keys on this.
 /// - `cascade_static` — tree-wide hash of widget identity, layout,
 ///   flags, bounds, and panel inputs, excluding chrome and direct
 ///   shapes. The cascade engine pairs it with retained structure and

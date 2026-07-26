@@ -8,7 +8,7 @@
 //! rect, and the content extent is written by `scroll::measure` into
 //! [`LayerLayout::scroll_content`]. Resolving it here is what lets
 //! `Scroll` record its bars unconditionally instead of asking `Ui` to
-//! re-record the whole frame — see `RELAYOUT.md` §4-C.
+//! re-record the whole frame.
 //!
 //! Children are recorded in a fixed order (vertical track, vertical
 //! thumb, horizontal track, horizontal thumb) and an *absent* bar

@@ -27,9 +27,15 @@ use crate::widgets::theme::text_style::TextStyle;
 /// To tweak one axis, build a `TextStyle` from the theme and override
 /// the field you want:
 ///
-/// ```ignore
-/// let style = TextStyle { color: red, ..ui.theme.text.clone() };
-/// Text::new("hi").style(&style)
+/// ```
+/// # use palantir::{Color, Text, TextStyle, Ui};
+/// # fn demo(ui: &mut Ui) {
+/// let style = TextStyle {
+///     color: Color::hex(0xd94f4f),
+///     ..ui.theme.text.clone()
+/// };
+/// Text::new("hi").style(&style).show(ui);
+/// # }
 /// ```
 #[derive(Debug)]
 pub struct Text<'a> {
