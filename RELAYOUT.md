@@ -348,7 +348,21 @@ the power to double a frame.
    that passes either way.
 4. **Build `Anchor`** (§5) and land it on darkroom's wires first — the case
    with a visible bug to prove it against, and the one that retires the last
-   genuine downstream caller.
+   genuine downstream caller. Scoped but not started; the constraint found
+   while scoping is worth recording:
+
+   Shape hashes are computed at lowering time (`Shapes::add`) and folded by
+   `compute_rollups` inside `forest.post_record()`, which runs *before*
+   `layout_engine.run()`. A resolved anchor coordinate therefore cannot be
+   in the hash, and late-binding a wire endpoint removes the very signal
+   that makes damage repaint it today. The repair is tractable because
+   `cascade_static` is deliberately paint-excluding — it folds from
+   layout/extras before chrome and shapes, so anchor resolution leaves it
+   valid, which matters because it's an all-nodes fold with no incremental
+   path. What remains is bounded: rehash the patched shape, re-fold the
+   owner's `node[]`, re-fold `subtree[]` up the ancestor chain. `Tree` has
+   `subtree_end` (descendants) but no parent column, so that walk needs one
+   O(n) marking pass or a new column.
 5. **Convert the scrollbars** to anchored placement, then delete
    `Ui::request_relayout`.
 6. **Only if 3+4 leave it hot:** the `StateMap` read/write-index tracking in
@@ -365,10 +379,23 @@ would cost the pass-A-geometry invariant that `ui/tests.rs:308-318` pins.
   53 µs cached) suggests localized divergence stays cheap, but this was not
   confirmed — there is no double-layout bench arm in `benches/`, and adding
   one means touching the crate.
-- **Nothing in §3 is measured.** The frequencies and the "runs twice" claims
-  are read off the call graph, and §6-1 shipped on that reading. Confirming
-  it is one counter: `FrameProcessing::DoubleLayout` tallied over a real
-  drag, before and after. The classification is already on `FrameReport`.
+- **§3's frequencies are read off the call graph, not measured** — §6-1 and
+  §6-3 both shipped on that reading. The counter to check them against now
+  exists: `FrameRuntime` tallies `settle_frames` / `record_frames` from each
+  frame's `FrameProcessing`, and the opt-in frame-stats overlay renders them
+  as `settle n/m` (darkroom turns the overlay on in debug builds). Read the
+  *delta* across one gesture — a drag that still double-records advances
+  both halves in lockstep; one that doesn't advances only the right.
+  `PaintOnly` frames are excluded from both halves, so idling can't drift
+  the ratio.
+
+  What that counter does **not** do is capture a before/after by itself:
+  taking the reading requires a human on the mouse, and the "before" side
+  needs §6-1 and §6-3 reverted. The headless half is pinned instead by
+  `input/tests/settle.rs` (palantir contributes one settle per drag, at the
+  latch) and `invalidates_cached_geometry_splits_resizes_from_moves`
+  (darkroom contributes none). Their composition is the claim; the overlay
+  is how to falsify it in the running editor.
 - **No measurement of darkroom's pass B in absolute terms.** §2's corollary
   argues it exceeds 218 µs and scales with graph size; that is reasoning, not
   a number. `profile-with-tracy` spans both crates and would settle it.

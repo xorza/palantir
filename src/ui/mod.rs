@@ -276,6 +276,8 @@ impl Ui {
             }
         };
 
+        self.frame_runtime.note_processing(processing);
+
         // Damage compute reads `ids.removed` to know which widgets
         // dropped between frames. On `PaintOnly` no widgets were
         // recorded so nothing was removed — pass an empty set
