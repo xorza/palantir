@@ -11,10 +11,10 @@
 //! and that format-independent resources (the uploaded image texture)
 //! survive the switch with no re-upload.
 
+use glam::UVec2;
 use palantir::{
     Background, Button, Color, Configure, Corners, Frame, Image, Panel, Shape, Sizing, Stroke,
 };
-use glam::UVec2;
 use std::cell::RefCell;
 use wgpu::TextureFormat;
 

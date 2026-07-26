@@ -53,7 +53,6 @@ pub use app::App;
 // Same-name re-export: the derive lives in the macro namespace,
 // the trait in the type namespace — `use palantir::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
-pub use palantir_anim_derive::Animatable;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
@@ -83,6 +82,7 @@ pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
+pub use palantir_anim_derive::Animatable;
 pub use primitives::background::Background;
 pub use primitives::brush::gradient::conic::{ConicGradient, ConicGradientBuilder};
 pub use primitives::brush::gradient::linear::{LinearGradient, LinearGradientBuilder};

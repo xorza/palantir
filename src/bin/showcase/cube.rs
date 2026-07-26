@@ -7,11 +7,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use glam::camera::rh::{proj::directx, view};
+use glam::{Mat4, UVec2, Vec3};
 use palantir::{
     Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sense, Sizing, Text, Ui,
 };
-use glam::camera::rh::{proj::directx, view};
-use glam::{Mat4, UVec2, Vec3};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]

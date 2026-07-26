@@ -3,8 +3,8 @@
 //! is machine-independent and pins the *sampling semantics*, not a
 //! rendered snapshot.
 
-use palantir::{Color, Configure, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui};
 use glam::{UVec2, Vec2};
+use palantir::{Color, Configure, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui};
 
 use crate::harness::Harness;
 

@@ -1,8 +1,8 @@
 //! Pixel-level shadow fixtures.
 
-use palantir::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
 use glam::{IVec2, UVec2, Vec2};
 use image::RgbaImage;
+use palantir::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
 
 use crate::diff::{Tolerance, diff};
 use crate::harness::Harness;

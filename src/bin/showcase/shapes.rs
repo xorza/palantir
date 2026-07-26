@@ -7,8 +7,8 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use palantir::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui};
 use glam::Vec2;
+use palantir::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {

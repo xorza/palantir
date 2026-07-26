@@ -9,10 +9,10 @@
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, swatch_bg};
+use glam::Vec2;
 use palantir::{
     Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, TranslateScale, Ui,
 };
-use glam::Vec2;
 use std::hash::Hash;
 
 /// Card with a rounded background. The radius is large so the

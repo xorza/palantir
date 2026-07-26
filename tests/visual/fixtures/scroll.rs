@@ -2,10 +2,10 @@
 //! bar positioning, corner avoidance) and the encoder-cache replay
 //! correctness that bit us with the `exit_idx` panic.
 
+use glam::UVec2;
 use palantir::{
     Background, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing,
 };
-use glam::UVec2;
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;

@@ -2,9 +2,9 @@
 //! authoring more distinct gradients than the atlas holds still paints
 //! every one of them correctly.
 
-use palantir::{Color, ColorU8, Configure, LinearGradient, Panel, Rect, Shape, Sizing};
 use glam::UVec2;
 use image::RgbaImage;
+use palantir::{Color, ColorU8, Configure, LinearGradient, Panel, Rect, Shape, Sizing};
 
 use crate::diff::Tolerance;
 use crate::golden::assert_matches_golden;

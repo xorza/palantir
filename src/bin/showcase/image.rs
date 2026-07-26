@@ -5,8 +5,8 @@
 
 use crate::support;
 use crate::support::{cell_row, demo_cell};
-use palantir::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
 use glam::Vec2;
+use palantir::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
 use std::cell::RefCell;
 
 /// Synthesize a 64×64 sRGB checkerboard.
