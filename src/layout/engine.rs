@@ -887,15 +887,9 @@ impl LayoutEngine {
         // its bars must be re-placed even when its own subtree hash and
         // slot are unchanged — otherwise a scroll whose content stopped
         // overflowing keeps painting the old thumb.
-        // Replay's precondition is that arrange is a pure function of the
-        // slot (see `replay_arranged`). `ScrollBars` is the one driver
-        // that isn't: it reads a *sibling's* measured `scroll_content`, so
-        // its bars must be re-placed even when its own subtree hash and
-        // slot are unchanged — otherwise a scroll whose content stopped
-        // overflowing keeps painting the old thumb.
-        if !matches!(mode, LayoutMode::ScrollBars(_))
-            && self.replay_arranged(tree, node, rendered, out)
-        {
+        // Replay is only sound for a driver whose arrange reads nothing
+        // but its own subtree and this slot; the mode declares that.
+        if mode.arrange_depends_only_on_slot() && self.replay_arranged(tree, node, rendered, out) {
             return;
         }
         out.rect[node.idx()] = rendered;
@@ -933,6 +927,11 @@ impl LayoutEngine {
     /// whose authoring and `desired` are both known identical to the
     /// snapshot — which is exactly what a measure hit proves — arrange is
     /// a pure function of the slot it is handed.
+    ///
+    /// That reasoning covers every driver whose arrange stays inside its
+    /// own subtree, which is not all of them; the caller gates on
+    /// [`LayoutMode::arrange_depends_only_on_slot`] so a driver reading
+    /// outside itself never reaches here.
     ///
     /// Two of the three slot outcomes replay:
     ///
