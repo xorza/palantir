@@ -638,11 +638,11 @@ impl Ui {
     ///
     /// # Panics
     ///
-    /// Panics on a host with no window lifecycle — the
-    /// [`OffscreenHost`](crate::OffscreenHost) cannot service the request,
-    /// and dropping it silently would leave you believing a window appeared.
-    /// Open every offscreen render stream up front with
-    /// [`OffscreenHost::add_window`](crate::OffscreenHost::add_window).
+    /// Panics on a host with no window lifecycle. The
+    /// [`OffscreenHost`](crate::OffscreenHost) drives one window and cannot
+    /// service the request, and dropping it silently would leave you believing
+    /// a window appeared — an app that opens windows needs
+    /// [`WinitHost`](crate::WinitHost).
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
         if let Some(p) = self
             .window_requests

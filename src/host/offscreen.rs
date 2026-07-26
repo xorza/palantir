@@ -4,7 +4,7 @@
 //! [`Frontend`](crate::renderer::frontend::Frontend), one
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), and one
 //! [`WindowDriver`] per render stream. Unlike `WinitHost` there's no winit and
-//! no swapchain — each stream renders into a caller-supplied `wgpu::Texture`.
+//! no swapchain — the stream renders into a caller-supplied `wgpu::Texture`.
 //! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
 //! the windowed host, so update and replay semantics do not depend on the
 //! output backend.
@@ -17,8 +17,10 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 //!
-//! **One stream, and no window lifecycle.** The host drives exactly the window
-//! its builder names, for as long as it lives. A frame that records
+//! **One stream, and no window lifecycle.** The host has exactly one window,
+//! created with it and addressed by the fixed [`OffscreenHost::WINDOW`], for
+//! as long as the host lives — there is no window API at all. A frame that
+//! records
 //! [`Ui::open_window`] or [`Ui::close_window`] **panics** rather than silently
 //! discarding the request, since nothing here can service one and a swallowed
 //! request leaves the app believing a window appeared. Multi-window ownership
@@ -70,7 +72,6 @@ pub struct OffscreenHost {
 /// Seals offscreen policy before allocating the backend and window driver.
 #[derive(Debug)]
 pub struct OffscreenHostBuilder {
-    token: WindowToken,
     device: wgpu::Device,
     queue: wgpu::Queue,
     /// `None` until [`Self::shaper`] overrides; resolved to the
@@ -117,7 +118,7 @@ impl OffscreenHostBuilder {
         self
     }
 
-    /// Allocate the shared core and the first window driver from the sealed
+    /// Allocate the shared core and the window driver from the sealed
     /// settings.
     pub fn build(self) -> OffscreenHost {
         let core = HostCore::new(
@@ -130,7 +131,7 @@ impl OffscreenHostBuilder {
             },
         );
         let driver = core
-            .driver(self.token)
+            .driver(OffscreenHost::WINDOW)
             // The target's prior contents can't be relied on (a caller may
             // hand in a fresh texture each call), so every frame must fill the
             // whole thing.
@@ -143,17 +144,17 @@ impl OffscreenHostBuilder {
 }
 
 impl OffscreenHost {
-    /// Start building an offscreen host whose single window is addressed by
-    /// `token`. The text shaper defaults to bundled fonts, GPU timing
-    /// defaults off, the clock defaults to realtime, and physical-pixel
-    /// snapping defaults on.
-    pub fn builder(
-        token: WindowToken,
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-    ) -> OffscreenHostBuilder {
+    /// The token this host's one window is addressed by — handed to
+    /// [`App::update`] and [`App::record`], and all an offscreen app ever
+    /// sees. Fixed rather than caller-chosen: there is exactly one window and
+    /// no lifecycle, so a choice here would carry no information.
+    pub const WINDOW: WindowToken = WindowToken(0);
+
+    /// Start building an offscreen host. The text shaper defaults to bundled
+    /// fonts, GPU timing defaults off, the clock defaults to realtime, and
+    /// physical-pixel snapping defaults on.
+    pub fn builder(device: wgpu::Device, queue: wgpu::Queue) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
-            token,
             device,
             queue,
             shaper: None,
@@ -178,10 +179,9 @@ impl OffscreenHost {
 
     /// Run one offscreen application frame against `target`, filling the
     /// supplied texture even when the UI has not changed since the previous
-    /// call. The target may be replaced between calls. The host's
-    /// [`WindowToken`] is passed to [`App::update`] and [`App::record`], with
-    /// the same once-only update and replayable record semantics as
-    /// [`crate::WinitHost`].
+    /// call. The target may be replaced between calls. [`Self::WINDOW`] is
+    /// passed to [`App::update`] and [`App::record`], with the same once-only
+    /// update and replayable record semantics as [`crate::WinitHost`].
     ///
     /// # Errors
     ///
@@ -284,7 +284,7 @@ pub(crate) mod internals {
         &host.core.frontend.buffer
     }
 
-    /// Two render streams sharing one [`HostCore`] — the headless stand-in for
+    /// Two render streams sharing one `HostCore` — the headless stand-in for
     /// two winit windows, used by the visual suite to pin that interleaved
     /// windows keep their own retained pixels and owner-scoped `GpuView`
     /// targets.

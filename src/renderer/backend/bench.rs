@@ -78,7 +78,6 @@ use crate::ui::frame_report::FramePaint;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::window::WindowToken;
 use criterion::{Criterion, Throughput};
 use glam::Vec2;
 use pollster::FutureExt;
@@ -327,8 +326,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(gpu: &Gpu, workload: Workload) -> Self {
-        let mut host =
-            OffscreenHost::builder(WindowToken(0), gpu.device.clone(), gpu.queue.clone()).build();
+        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
         // No theme panel background: each arm should record exactly the
         // one shape family it names, not that plus a chrome quad per cell.
         host.ui().theme.panel_background = None;

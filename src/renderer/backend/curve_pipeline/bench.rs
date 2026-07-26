@@ -20,7 +20,6 @@ use crate::shape::polyline::PolylineColors;
 use crate::shape::style::LineJoin;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
-use crate::window::WindowToken;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
 use pollster::FutureExt;
@@ -125,7 +124,7 @@ fn target(device: &wgpu::Device) -> wgpu::Texture {
 }
 
 fn host(gpu: &Gpu) -> OffscreenHost {
-    let mut host = OffscreenHost::builder(WindowToken(0), gpu.device.clone(), gpu.queue.clone())
+    let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
         .collect_gpu_stats(true)
         .build();
     host.ui().theme.panel_background = None;

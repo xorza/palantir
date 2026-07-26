@@ -60,7 +60,6 @@ use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
 use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::ui::frame_report::FramePaint;
-use crate::window::WindowToken;
 use criterion::Criterion;
 use pollster::FutureExt;
 use std::fs::OpenOptions;
@@ -158,7 +157,7 @@ fn gpu() -> &'static Gpu {
 /// the shared bench device with GPU instrumentation on. Every bench arm
 /// wants the same shape — bundled fonts and a timestamp-enabled device.
 fn bench_host(g: &Gpu) -> OffscreenHost {
-    OffscreenHost::builder(WindowToken(0), g.device.clone(), g.queue.clone())
+    OffscreenHost::builder(g.device.clone(), g.queue.clone())
         .collect_gpu_stats(true)
         .build()
 }
