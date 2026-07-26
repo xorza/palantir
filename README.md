@@ -13,9 +13,9 @@ API can still change and break between releases.
 
 ![Showcase screenshot](docs/media/frame_bench.png)
 
-Worst-case frame timing captured while resizing the window on a MacBook Air M5.
+Worst-case frame timing captured while resizing the window on a **MacBook Air M5**.
 
-![Frame 146 profile](docs/media/frame-146-profile.png)
+![Frame 146 profile](docs/media/tracy-frame.png)
 
 The `frame` bench drives one synthetic app screen — every layout driver,
 every widget, every `Shape` family — at 2560×1440, and runs each arm
