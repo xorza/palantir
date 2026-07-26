@@ -157,6 +157,60 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     ));
 }
 
+/// `SCROLL` and `PINCH` are separate wake categories, mirroring the
+/// `Sense` split — a wheel tick and a touchpad pinch are different
+/// gestures with different routing targets, and watching one must not
+/// wake on the other. Both directions, because a one-sided assertion
+/// would still pass if the two bits were aliased.
+#[test]
+fn scroll_and_pinch_wake_categories_are_independent() {
+    // (label, watched category, expects scroll, expects zoom)
+    let cases: &[(&str, PointerWake, bool, bool)] = &[
+        ("scroll only", PointerWake::SCROLL, true, false),
+        ("pinch only", PointerWake::PINCH, false, true),
+        (
+            "both",
+            PointerWake::SCROLL.union(PointerWake::PINCH),
+            true,
+            true,
+        ),
+    ];
+
+    for (label, watched, wants_scroll, wants_zoom) in cases {
+        let mut ui = Ui::for_test();
+        ui.run_at(UVec2::new(200, 200), |ui| {
+            empty(ui);
+            ui.watch_pointer(*watched);
+        });
+        let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        let scroll = ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
+        let zoom = ui.on_input(InputEvent::Zoom(1.25));
+
+        assert_eq!(
+            scroll.requests_repaint, *wants_scroll,
+            "{label}: scroll wake"
+        );
+        assert_eq!(zoom.requests_repaint, *wants_zoom, "{label}: pinch wake");
+
+        let scrolls = ui
+            .pointer_events()
+            .iter()
+            .filter(|e| matches!(e, PointerEvent::Scroll { .. }))
+            .count();
+        let zooms = ui
+            .pointer_events()
+            .iter()
+            .filter(|e| matches!(e, PointerEvent::Zoom { .. }))
+            .count();
+        assert_eq!(
+            scrolls,
+            usize::from(*wants_scroll),
+            "{label}: scroll stream"
+        );
+        assert_eq!(zooms, usize::from(*wants_zoom), "{label}: pinch stream");
+    }
+}
+
 /// Reading `Ui::pointer_pos` during record auto-asserts `MOVE`: record
 /// output derived from the raw pointer may change on any move, so moves
 /// must wake even over an inert surface. A pass that stops reading

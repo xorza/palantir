@@ -36,8 +36,9 @@ bitflags! {
         /// Captures touchpad pinch zoom factors. Independent of
         /// `SCROLL` — a graph canvas wanting pan-via-scroll *and*
         /// zoom-via-pinch sets both; a list that scrolls without
-        /// reacting to pinch sets only `SCROLL`. Hit-tested in the
-        /// same `PointerWake::SCROLL` wake category as scroll.
+        /// reacting to pinch sets only `SCROLL`. Off-target watchers
+        /// draw the same line through
+        /// [`PointerWake::PINCH`](crate::PointerWake::PINCH).
         const PINCH = 1 << 4;
     }
 }
