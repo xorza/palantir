@@ -95,7 +95,9 @@ which drain applied the step**, and three of darkroom's four drain points run
 | prepass (`editor/mod.rs:314`) — node drag, pan/zoom, connection commit, port dblclick | pre-record | mostly |
 | post-record (`editor/mod.rs:336`) — rename commit, node menu, divider ratio | post-record | no |
 
-### 3.1 Three over-triggers
+### 3.1 Three over-triggers — fixed, §6-1 and §6-2
+
+Kept as the diagnosis; all three are resolved.
 
 **Node drag.** `GroupDrag::advance` (`gui/canvas/drag_anchor.rs:117`) pushes
 an `Intent::MoveSelection` on *every frame of the gesture*, and a
@@ -120,10 +122,13 @@ switches so connections "draw on that first frame instead of popping in one
 frame late" (`gui/canvas/geometry.rs:60`). The relayout looks like
 belt-and-braces over a mechanism that already handles it.
 
-`gui/main_window.rs:154` adds a one-shot `first_frame` relayout — a *third*
-record pass on frame 1, on top of the cold-start warmup in §4-A. Introduced
-2026-05-17, one day before the warmup code last moved, so history can't
-settle whether it is redundant. Test and delete.
+`gui/main_window.rs:154` adds a one-shot `first_frame` relayout — meant as a
+*third* record pass on frame 1, on top of the cold-start warmup in §4-A. It
+was **dead code**: the warmup calls `record_pass`, which reaches
+`MainWindow::frame`, so `take(&mut self.first_frame)` fires *inside the
+blackout pass* — and `ui/mod.rs:247` then clears exactly that pass's relayout
+request, by design. Pass A saw `first_frame == false` and never asked. Deleted;
+nothing observable changes.
 
 ### 3.2 The residue
 
@@ -320,13 +325,17 @@ the power to double a frame.
 
 ## 6. Recommended order
 
-1. **Split `requires_relayout` into resize-vs-move** and drop the signal for
-   pre-record move-only steps. `DocStep::Dock` already carries a
-   `structural: bool` that discriminates its cases. Pure downstream, no
-   framework change; removes the double-record from node drag and divider
-   drag — the two highest-frequency gestures in the editor. Pin each arm with
-   a test, since these are exactly the "surprise behavior" cases.
-2. **Test-and-delete `main_window.rs:154`** against the §4-A warmup.
+1. ~~**Split `requires_relayout` into resize-vs-move.**~~ **Done.** Now
+   `UndoStep::invalidates_cached_geometry`, asking the one question that
+   matters — does this strand `CanvasGeometry`'s cross-frame caches?
+   `MoveSelection` and every `DocStep::Dock` arm are false; resizes and
+   node-introducing steps stay true. No phase plumbing was needed in the
+   end: once the arms are right, the pre-record drains simply fold `false`,
+   so `absorb_signals` stays unconditional. Pinned by
+   `invalidates_cached_geometry_splits_resizes_from_moves`, which also
+   asserts every table entry is a real (non-no-op) step — the first draft
+   silently pinned a degenerate `ActivateTab`.
+2. ~~**Delete `main_window.rs:154`.**~~ **Done** — see §3.1, it was dead.
 3. **Narrow `frame_had_action`** — presses to `buttons_subbed` only,
    releases to `kind != Miss` (B1+B2). Independent of 1–2; same test
    discipline.
@@ -350,9 +359,9 @@ would cost the pass-A-geometry invariant that `ui/tests.rs:308-318` pins.
   confirmed — there is no double-layout bench arm in `benches/`, and adding
   one means touching the crate.
 - **Nothing in §3 is measured.** The frequencies and the "runs twice" claims
-  are read off the call graph. Before acting on §6-1, confirm with
-  `FrameProcessing::DoubleLayout` counted over a real drag — the
-  classification is already on `FrameReport`.
+  are read off the call graph, and §6-1 shipped on that reading. Confirming
+  it is one counter: `FrameProcessing::DoubleLayout` tallied over a real
+  drag, before and after. The classification is already on `FrameReport`.
 - **No measurement of darkroom's pass B in absolute terms.** §2's corollary
   argues it exceeds 218 µs and scales with graph size; that is reasoning, not
   a number. `profile-with-tracy` spans both crates and would settle it.
