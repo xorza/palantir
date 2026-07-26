@@ -148,6 +148,25 @@ impl TextChunk {
         // and `len` always reflects the byte count written.
         unsafe { std::str::from_utf8_unchecked(&self.bytes[..self.len as usize]) }
     }
+
+    /// Split `s` into chunks at char boundaries, each within
+    /// [`Self::INLINE_CAP`] — the shape an IME commit arrives in.
+    /// An empty `s` yields nothing.
+    pub fn split(s: &str) -> impl Iterator<Item = Self> + '_ {
+        let mut rest = s;
+        std::iter::from_fn(move || {
+            if rest.is_empty() {
+                return None;
+            }
+            let mut end = rest.len().min(Self::INLINE_CAP);
+            while !rest.is_char_boundary(end) {
+                end -= 1;
+            }
+            let (head, tail) = rest.split_at(end);
+            rest = tail;
+            Some(Self::new(head).expect("chunk fits by construction"))
+        })
+    }
 }
 
 impl std::fmt::Debug for TextChunk {

@@ -178,6 +178,15 @@ gets silently wrong.
     dead in production today. `TextEdit` consumes **both** — so a
     harness that emits `Text` pins a path no window produces, and a
     harness that emits both double-inserts.
+15. **Keyboard events are discarded at ingress when nothing is
+    focused.** `InputState::on_input` gates both `KeyDown` and `Text` on
+    `focused.is_some() || subs.matches_press(kp) || keyboard_mask`, and
+    a non-observable event is *dropped*, not queued and ignored. So a
+    keyboard test has to establish focus first — by clicking, or via the
+    already-ungated `Ui::request_focus` — and one that forgets sees an
+    empty event queue rather than an unconsumed one. Found by writing
+    the harness's own text test, which asserted on a queue that could
+    never fill.
 
 ## What is exposed now, and why it is the wrong cut
 
@@ -478,6 +487,16 @@ Design calls worth defending:
   `let mut x = …` boilerplate. It is only unambiguous because the
   harness is always warm (rule 1) — the warmup pass would otherwise be
   "first".
+- **`frame_value` must still run `record` on every pass.** Only the
+  *value* is pass A's. The obvious implementation —
+  `frame(|ui| { first.get_or_insert_with(|| record(ui)); })` — skips the
+  scene entirely on pass B, so pass B records an empty tree and wipes
+  the cascade the *next* frame hit-tests against. The symptom is remote
+  from the cause: a later click silently misses. `resp()` in
+  `input/tests/drag.rs` has this right — `build(ui)` sits outside the
+  `get_or_insert_with`, and only the `response_for` sits inside. This is
+  the subtlest line in the type and is worth a pinning test of its own
+  (`frame_value must not skip pass B's recording`).
 - Closures are taken **by value** (`impl FnMut`), not `&mut impl
   FnMut`. `&mut F` is itself `FnMut`, so a caller reusing one scene
   across `prime` + `frame_value` writes `&mut scene` once instead of
@@ -664,11 +683,15 @@ Two things are *not* mechanical and should land first, alone:
 cannot go until darkroom has `UiHarness::arena()` to replace it —
 which means the export step lands *before* the deletion, not after.
 
-1. Promote `DRAG_THRESHOLD` (and `DOUBLE_CLICK_WINDOW` /
-   `DOUBLE_CLICK_RADIUS`, if `advance_past_double_click` names them) to
-   `pub(crate)`. Add `UiHarness` with both rungs beside the existing
-   reach-ins, forwarding to them. Nothing is deleted, so the suite
-   stays green throughout.
+1. **Landed.** `DRAG_THRESHOLD` and `DOUBLE_CLICK_WINDOW` promoted to
+   `pub(crate)`; `UiResources::isolated_mono` and `TextChunk::split`
+   added; `UiHarness` lives in `src/ui/harness/` with both rungs,
+   forwarding to the existing reach-ins, and 22 tests pinning the rules
+   above. Nothing deleted, nothing exported, no existing test touched —
+   the type is `pub(crate)` in a `pub(crate)` module, so `unreachable_pub`
+   forces the two rungs to be `pub(crate)` for now and the split is
+   carried by the two `impl` blocks until step 3 makes the first one
+   `pub`.
 2. Migrate palantir's 55 files, in the three shapes above. Delete the
    kill list as its last caller goes — **all of it except `Default`**.
    `impl Ui` is now test-free apart from that one trait impl.

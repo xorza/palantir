@@ -37,9 +37,22 @@ impl UiResources {
 }
 
 #[cfg(any(test, feature = "internals"))]
+impl UiResources {
+    /// Recorder capabilities that share nothing with any other
+    /// recorder: a mono-fallback shaper (no font loading, deterministic
+    /// metrics, wrong for width-follows-label), a memory clipboard, and
+    /// no texture cap. The cosmic-shaping peer goes through
+    /// [`crate::host::shared::HostShared`], which is also what pairs two
+    /// recorders onto one text cache.
+    pub(crate) fn isolated_mono() -> Self {
+        Self::new(TextShaper::test_mono(), Clipboard::default(), None)
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
 impl Default for UiResources {
     fn default() -> Self {
-        Self::new(TextShaper::test_mono(), Clipboard::default(), None)
+        Self::isolated_mono()
     }
 }
 
