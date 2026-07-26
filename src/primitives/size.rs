@@ -2,8 +2,16 @@ use crate::primitives::{approx, num::Num};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
+/// A 2D extent in logical pixels. Distinct from a `Vec2` because it is a
+/// *magnitude*, not a position: negative components are meaningless, and
+/// [`Self::INF`] is the "no upper bound" sentinel measure passes down.
+///
+/// Hashing is approximate (`1e-4` tolerance) so a sub-pixel float wobble
+/// doesn't invalidate the measure cache.
 pub struct Size {
+    /// Width.
     pub w: f32,
+    /// Height.
     pub h: f32,
 }
 
@@ -15,12 +23,16 @@ impl std::hash::Hash for Size {
 }
 
 impl Size {
+    /// Zero on both axes.
     pub const ZERO: Self = Self { w: 0.0, h: 0.0 };
+    /// Positive infinity on both axes — the "unconstrained" available size
+    /// an unbounded parent hands a child during measure.
     pub const INF: Self = Self {
         w: f32::INFINITY,
         h: f32::INFINITY,
     };
 
+    /// A size from width and height, in logical pixels.
     pub const fn new(w: f32, h: f32) -> Self {
         Self { w, h }
     }
@@ -51,12 +63,14 @@ impl Size {
         approx::noop_f32(self.w) || approx::noop_f32(self.h)
     }
 
+    /// Per-axis minimum — clamping a desired size down to what's available.
     pub const fn min(self, other: Self) -> Self {
         Self {
             w: self.w.min(other.w),
             h: self.h.min(other.h),
         }
     }
+    /// Per-axis maximum — applying an intrinsic-minimum floor.
     pub const fn max(self, other: Self) -> Self {
         Self {
             w: self.w.max(other.w),

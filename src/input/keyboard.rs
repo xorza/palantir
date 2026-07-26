@@ -74,13 +74,22 @@ pub enum Key {
 /// [`InputEvent::ModifiersChanged`]: crate::InputEvent::ModifiersChanged
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Modifiers {
+    /// Either Shift key is held.
     pub shift: bool,
+    /// The **primary command modifier** is held — Cmd (⌘) on macOS, Ctrl
+    /// on Windows and Linux. Normalized at the input boundary, so
+    /// consumers never branch on platform.
     pub ctrl: bool,
+    /// Either Alt / Option key is held.
     pub alt: bool,
+    /// The raw macOS Control key is held. Always `false` off macOS, where
+    /// the physical Ctrl is the primary and lands in [`Self::ctrl`]. Only
+    /// for Mac-specific bindings; most code should ignore it.
     pub mac_ctrl: bool,
 }
 
 impl Modifiers {
+    /// Nothing held.
     pub const NONE: Self = Self {
         shift: false,
         ctrl: false,
@@ -110,6 +119,9 @@ pub struct TextChunk {
 }
 
 impl TextChunk {
+    /// Longest UTF-8 byte sequence one chunk can hold. Text past this is
+    /// split across several [`InputEvent::Text`](crate::InputEvent::Text)
+    /// events at char boundaries.
     pub const INLINE_CAP: usize = 15;
 
     /// Build a chunk from `s`. Returns `None` if `s` exceeds the inline
@@ -129,6 +141,8 @@ impl TextChunk {
         })
     }
 
+    /// The chunk's text. Always valid UTF-8, but may end mid-grapheme
+    /// when a long commit was split — consumers re-assemble on append.
     pub fn as_str(&self) -> &str {
         // SAFETY: `new` only stores valid UTF-8 from a `&str`,
         // and `len` always reflects the byte count written.
@@ -157,7 +171,12 @@ impl Eq for TextChunk {}
 /// when the event was pushed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyPress {
+    /// The **logical** key, after the active layout and Shift have been
+    /// applied — Shift+'a' arrives as `Char('A')`. For layout-independent
+    /// chord matching use [`Self::physical`].
     pub key: Key,
+    /// Modifier state captured when the event was pushed, not when it was
+    /// drained — rapid chord input would otherwise mis-attribute mods.
     pub mods: Modifiers,
     /// `true` for OS-level key-repeat re-emissions; `false` for the
     /// initial press. Editors typically treat both the same; some

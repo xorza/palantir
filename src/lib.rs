@@ -1,3 +1,72 @@
+// The README's showcase recording is a bare GitHub attachment URL, which is
+// the only form GitHub expands into an inline video player — wrapping it for
+// rustdoc's sake would turn it back into a dead link on the repo page.
+#![allow(rustdoc::bare_urls)]
+#![doc = include_str!("../README.md")]
+//!
+//! # Where to start
+//!
+//! - [`App`] is the lifecycle trait your application implements. Its
+//!   [`record`](App::record) runs every frame and describes the whole UI from
+//!   scratch — there is no retained widget tree to mutate.
+//! - [`WinitHost`] owns the event loop, windows, and GPU device, and calls
+//!   `record` for you. [`OffscreenHost`] is its headless peer: same `Ui`, same
+//!   frame lifecycle, rendering into a `wgpu::Texture` you supply.
+//! - [`Ui`] is the recorder handed to `record`. Widgets are appended to it,
+//!   cross-frame widget state hangs off it, and [`Ui::layer`] switches which
+//!   of the [`Layer`] arenas (main / popup / modal / tooltip / debug) receives
+//!   subsequent records.
+//! - Widgets are builders terminated by `show(ui)`: [`Button`], [`Text`],
+//!   [`TextEdit`], [`Slider`], [`Checkbox`], [`ComboBox`], [`Scroll`],
+//!   [`Popup`], [`Modal`] and the rest. Layout containers are [`Panel`]
+//!   (h/v/z-stack and canvas) and [`Grid`].
+//! - [`Configure`] carries the settings every node shares — identity, size,
+//!   padding, margin, alignment, visibility — so the same builder methods work
+//!   on any widget.
+//! - [`Theme`] is the one serializable style tree; per-widget sub-themes hang
+//!   off it.
+//! - [`GpuView`] hands a widget-sized `wgpu` render target to your own
+//!   [`GpuPaint`] implementation and composites the result like any other
+//!   image, so it clips, rounds, and z-orders with everything else.
+//!
+//! # Sizing
+//!
+//! Layout is a WPF-style two pass (measure, then arrange), and [`Sizing`] is
+//! the vocabulary both passes speak:
+//!
+//! - [`Sizing::fixed`] is an exact extent, and is allowed to exceed the parent.
+//! - [`Sizing::HUG`] is `min(content, available)`, floored at the largest
+//!   non-shrinkable thing inside (a fixed descendant, an explicit minimum, the
+//!   longest unbreakable word).
+//! - [`Sizing::fill`] takes the leftover, split between fill siblings by
+//!   weight; a sibling whose floor exceeds its share freezes at the floor and
+//!   the rest re-divide.
+//!
+//! Children clamp down to fit their parent — a parent never grows to fit a
+//! child. Overflow happens only when rigid descendants genuinely do not fit.
+//!
+//! # Feature flags
+//!
+//! | flag | default | what it does |
+//! | --- | --- | --- |
+//! | `winit-host` | yes | The winit-backed [`WinitHost`] — real windows, real event loop. Without it only [`OffscreenHost`] exists. |
+//! | `system-clipboard` | yes | Routes [`TextEdit`] cut/copy/paste through the OS clipboard. Without it clipboard traffic stays in an in-process buffer. |
+//! | `showcase` | no | Builds the bundled `showcase` binary, a tour of every widget. |
+//! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
+//! | `profile-with-tracy` | no | Routes the crate's profiling spans to a Tracy client. Needs the external Tracy viewer. |
+//! | `internals` | no | Test and benchmark reach-ins — adds the `internals` and `bench` modules. **Not a supported API**: it exists so the integration tests and benches under `tests/` and `benches/` can reach crate privates, and it breaks without notice. |
+//!
+//! # Colour
+//!
+//! [`Color`] holds **straight-alpha linear RGB**. The convenience constructors
+//! ([`Color::rgb`], [`Color::hex`], [`Color::rgb_u8`]) read their input as
+//! sRGB-perceptual and linearise it for you; [`Color::linear_rgb`] and
+//! [`Color::linear_rgba`] take values that are already linear. Everything
+//! downstream — blending, anti-aliasing, animation — runs in linear, and the
+//! sRGB encode happens on the GPU when writing the swapchain. Writing
+//! already-sRGB-encoded values into [`Color`] skips the linearisation and will
+//! come out wrong.
+
 // Re-import `palantir` as a self-alias so proc-macros that emit
 // `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,

@@ -12,11 +12,18 @@
 use glam::Vec2;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
+/// Which pointer button an event came from. The discriminants are the
+/// indices of the matching [`ButtonState`](crate::ButtonState) slots on
+/// [`ResponseState`](crate::ResponseState), so the three buttons get an
+/// identical query surface — middle-click is as queryable as left.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumCount, EnumIter)]
 #[repr(u8)]
 pub enum PointerButton {
+    /// Primary button. Drives clicks, drags, and focus.
     Left = 0,
+    /// Secondary button. `right.clicked()` is the context-menu trigger.
     Right = 1,
+    /// Wheel button.
     Middle = 2,
 }
 
@@ -59,23 +66,42 @@ pub enum PointerEvent {
     /// Hit-test + capture routing happens independently; a watcher
     /// that can see the stream at all sees every press regardless of
     /// where it landed.
-    Down { pos: Vec2, button: PointerButton },
+    Down {
+        /// Cursor position in logical pixels, surface space.
+        pos: Vec2,
+        /// Which button went down.
+        button: PointerButton,
+    },
     /// Button released at `pos`. Same gating + routing as `Down`.
-    Up { pos: Vec2, button: PointerButton },
+    Up {
+        /// Cursor position in logical pixels, surface space.
+        pos: Vec2,
+        /// Which button came up.
+        button: PointerButton,
+    },
     /// Wheel / touchpad scroll at `pos`. `pixels` is pixel-precise
     /// touchpad deltas; `lines` is notched wheel ticks. One or both
     /// may be non-zero per event. Gated on
     /// [`PointerWake::SCROLL`](crate::input::watch::PointerWake::SCROLL).
     Scroll {
+        /// Cursor position in logical pixels, surface space.
         pos: Vec2,
+        /// Pixel-precise delta, as touchpads report it.
         pixels: Vec2,
+        /// Notched wheel ticks. Use this for "one wheel notch" intent
+        /// (zoom by steps) rather than deriving it from `pixels`.
         lines: Vec2,
     },
     /// Pinch-zoom factor at `pos`. `factor` is the multiplicative
     /// delta (1.0 = no zoom). Gated on
     /// [`PointerWake::PINCH`](crate::input::watch::PointerWake::PINCH) —
     /// not `SCROLL`, so watching wheel ticks doesn't also wake on pinch.
-    Zoom { pos: Vec2, factor: f32 },
+    Zoom {
+        /// Pinch centroid in logical pixels, surface space.
+        pos: Vec2,
+        /// Multiplicative zoom delta for this event; `1.0` is no change.
+        factor: f32,
+    },
     /// Pointer left the surface. No position — by the time this
     /// fires there isn't one. Emitted when any pointer-class
     /// watch is active so watchers can clean up.

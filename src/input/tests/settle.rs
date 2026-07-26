@@ -2,7 +2,7 @@
 //! and which do not. The pass *count* is the contract:
 //! `InputState::frame_had_action` is what `Ui::frame` reads to decide, and
 //! the second pass is a whole re-record, so a spurious settle roughly
-//! doubles the frame. See `RELAYOUT.md` §4-B.
+//! doubles the frame.
 //!
 //! The two deliberately-narrow arms are the point of this file: a bare
 //! press and a `ReleaseKind::Miss` write only state their own target
@@ -135,8 +135,8 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
 
 /// The tally behind the frame-stats overlay's `settle n/m`, which is how
 /// a real gesture's cost gets read in the running app. A sustained drag is
-/// the case `RELAYOUT.md` §6-1 and §6-3 were aimed at: after the latch
-/// frame, holding and moving must cost exactly one record pass each.
+/// the case that matters: after the latch frame, holding and moving must
+/// cost exactly one record pass each.
 #[test]
 fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     let (mut ui, rect) = warm(button);

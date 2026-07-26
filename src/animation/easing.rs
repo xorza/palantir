@@ -4,15 +4,27 @@
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+/// The easing curve a duration-based tween follows.
 pub enum Easing {
+    /// No easing — constant rate.
     Linear,
+    /// Fast start, decelerating to a stop. The default feel for UI
+    /// transitions.
     OutCubic,
+    /// Accelerate out of rest, decelerate into it. Symmetric; reads well
+    /// for a value moving between two resting states.
     InOutCubic,
+    /// Like [`Self::OutCubic`] but with a sharper initial burst and a
+    /// longer settle.
     OutQuart,
+    /// Overshoots past the target and settles back. **Leaves 0..1**, so
+    /// only use it on values that tolerate exceeding their endpoints.
     OutBack,
 }
 
 impl Easing {
+    /// Ease normalized progress `t`. Input is clamped to 0..1; output is
+    /// also 0..1 except for [`Self::OutBack`], which overshoots.
     pub fn apply(self, t: f32) -> f32 {
         let t = t.clamp(0.0, 1.0);
         match self {

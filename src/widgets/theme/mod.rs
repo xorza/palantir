@@ -61,8 +61,12 @@ pub struct Theme {
     /// and from `context_menu.item` which is for *rows inside* the
     /// popup. Default built by [`ButtonTheme::menu_button`].
     pub menu_button: ButtonTheme,
+    /// The three toggle widgets share a theme *type* but not a *slot* —
+    /// restyling one leaves the other two alone.
     pub checkbox: ToggleTheme,
+    /// See [`Self::checkbox`].
     pub radio: ToggleTheme,
+    /// See [`Self::checkbox`].
     pub switch: ToggleTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
@@ -81,6 +85,10 @@ pub struct Theme {
     pub slider: SliderTheme,
     pub spinner: SpinnerTheme,
     pub splitter: SplitterTheme,
+    /// Ambient text style — size, colour, family, leading — that every
+    /// [`Text`](crate::Text) falls back to when its builder didn't
+    /// override the axis. Not a per-widget theme: `Button` and `TextEdit`
+    /// carry their own state-dependent colours.
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,

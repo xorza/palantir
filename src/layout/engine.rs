@@ -41,7 +41,7 @@ use glam::Vec2;
 /// - `wrap` — wrapstack flat per-depth line buffer.
 /// - `desired` — measure-pass output, read by arrange.
 /// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
-///   queries (see `intrinsic.md`). Pure function of subtree; safe to
+///   queries. Pure function of subtree; safe to
 ///   memoize within a frame. Flat `Vec` indexed by node, four slots
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed".
@@ -190,8 +190,7 @@ pub(crate) struct PhaseTimings {
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
 /// - `text` — per-window text shaping and reuse slots.
-/// - `cache` — cross-frame measure cache. See [`cache`] and
-///   `src/layout/measure-cache.md`.
+/// - `cache` — cross-frame measure cache. See [`cache`].
 ///
 /// Per-frame *output* is **not** held here: `run` threads it through an
 /// `out: &mut Layout`, so the finalized layout is owned by the caller
@@ -440,7 +439,7 @@ impl LayoutEngine {
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
-    /// `axis` under content-sizing `req`. See `intrinsic.md`.
+    /// `axis` under content-sizing `req`.
     ///
     /// Pure function of the subtree at `node`: doesn't depend on the
     /// parent's available width or the arranged rect. Memoized via the

@@ -2,6 +2,15 @@
 name = "palantir-anim-derive"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+authors = ["xxorza <xxorza@gmail.com>"]
+description = "Derive macro for palantir's Animatable trait"
+repository = "https://github.com/xorza/palantir"
+homepage = "https://github.com/xorza/palantir"
+documentation = "https://docs.rs/palantir-anim-derive"
+keywords = ["palantir", "gui", "animation", "derive", "macro"]
+categories = ["gui", "rust-patterns"]
+license = "GPL-3.0-or-later"
 exclude = ["AGENTS.md", "CLAUDE.md"]
 
 [lints.rust]

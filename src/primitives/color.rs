@@ -11,10 +11,33 @@ use crate::primitives::{approx, half_simd::F16x4};
     bytemuck::Zeroable,
     palantir_anim_derive::Animatable,
 )]
+/// An RGBA colour in **straight-alpha linear RGB**, the space every blend,
+/// anti-aliasing step, and tween in the crate operates in. The sRGB encode
+/// happens on the GPU when writing the swapchain.
+///
+/// Which constructor you reach for decides whether your input gets
+/// linearised:
+///
+/// - [`Self::rgb`] / [`Self::rgba`] / [`Self::hex`] / [`Self::rgb_u8`] read
+///   their argument as **sRGB-perceptual** — the numbers CSS, Figma, and
+///   Photoshop show you — and linearise it for you. This is what you want
+///   for colours a human picked.
+/// - [`Self::linear_rgb`] / [`Self::linear_rgba`] take values that are
+///   **already linear**: tween outputs, physically-derived values, interop
+///   with another linear pipeline.
+///
+/// Writing an sRGB-encoded value straight into the fields skips the
+/// linearisation and will render too bright. Components may exceed `1.0`
+/// for HDR-shaped tween outputs. Hashing is approximate (`1e-4`).
 pub struct Color {
+    /// Red, linear, nominally 0..1.
     pub r: f32,
+    /// Green, linear, nominally 0..1.
     pub g: f32,
+    /// Blue, linear, nominally 0..1.
     pub b: f32,
+    /// Alpha, 0..1. **Straight**, not premultiplied — the shader does the
+    /// premultiply on the way to the blend unit.
     pub a: f32,
 }
 
@@ -29,18 +52,22 @@ impl std::hash::Hash for Color {
 }
 
 impl Color {
+    /// Fully transparent black. [`Self::is_noop`] is `true` for it, so it
+    /// paints nothing at all.
     pub const TRANSPARENT: Self = Self {
         r: 0.0,
         g: 0.0,
         b: 0.0,
         a: 0.0,
     };
+    /// Opaque white.
     pub const WHITE: Self = Self {
         r: 1.0,
         g: 1.0,
         b: 1.0,
         a: 1.0,
     };
+    /// Opaque black.
     pub const BLACK: Self = Self {
         r: 0.0,
         g: 0.0,
@@ -62,6 +89,8 @@ impl Color {
     pub const fn rgb(r: f32, g: f32, b: f32) -> Self {
         Self::rgba(r, g, b, 1.0)
     }
+    /// [`Self::rgb`] with an explicit alpha. `a` is straight and is *not*
+    /// linearised — alpha is already linear.
     pub const fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
             r: srgb_to_linear(r),
@@ -76,6 +105,7 @@ impl Color {
     pub const fn linear_rgb(r: f32, g: f32, b: f32) -> Self {
         Self { r, g, b, a: 1.0 }
     }
+    /// [`Self::linear_rgb`] with an explicit straight alpha.
     pub const fn linear_rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
@@ -175,10 +205,21 @@ impl Color {
     serde::Serialize,
     serde::Deserialize,
 )]
+/// A 4-byte **linear**-u8 colour, for places where 8-bit linear precision
+/// is enough and footprint matters (currently gradient stops).
+///
+/// The default `From<Color>` / `From<ColorU8>` pair is a straight linear
+/// quantize — **no sRGB encode**. For the sRGB-encoded byte form (what a
+/// CSS hex string means) use [`Color::to_srgb_u8`], or construct with
+/// [`Self::hex`] / [`Self::hexa`], which read their argument as sRGB.
 pub struct ColorU8 {
+    /// Red, linear, 0..255.
     pub r: u8,
+    /// Green, linear, 0..255.
     pub g: u8,
+    /// Blue, linear, 0..255.
     pub b: u8,
+    /// Alpha, 0..255, straight.
     pub a: u8,
 }
 
@@ -190,18 +231,21 @@ impl std::hash::Hash for ColorU8 {
 }
 
 impl ColorU8 {
+    /// Fully transparent black.
     pub const TRANSPARENT: Self = Self {
         r: 0,
         g: 0,
         b: 0,
         a: 0,
     };
+    /// Opaque white.
     pub const WHITE: Self = Self {
         r: 0xff,
         g: 0xff,
         b: 0xff,
         a: 0xff,
     };
+    /// Opaque black.
     pub const BLACK: Self = Self {
         r: 0,
         g: 0,
@@ -209,6 +253,8 @@ impl ColorU8 {
         a: 0xff,
     };
 
+    /// Opaque colour from **linear** bytes. For sRGB-perceptual bytes use
+    /// [`Self::hex`].
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 0xff }
     }

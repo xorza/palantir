@@ -1,7 +1,16 @@
 use crate::primitives::{approx, num::Num, size::Size};
 
+/// How one axis of a node resolves during layout.
+///
 /// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
 /// Fill = Star (take remainder, distributed by `weight` across Fill siblings).
+///
+/// The floor under Hug and Fill is the node's *intrinsic minimum* — the
+/// largest non-shrinkable thing on that axis (a fixed descendant, an
+/// explicit `min_size`, the longest unbreakable word). Fill siblings whose
+/// floor exceeds their weighted share freeze at the floor and the rest
+/// re-divide, CSS-flexbox style. A parent never grows to fit a child, so
+/// overflow only happens when rigid descendants genuinely do not fit.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Sizing(SizingValue);
 
@@ -14,7 +23,11 @@ enum SizingValue {
 }
 
 impl Sizing {
+    /// Shrink-wrap the content: `min(content, available)`, floored at the
+    /// intrinsic minimum. The default.
     pub const HUG: Self = Self(SizingValue::Hug);
+    /// Take the leftover space at weight `1.0` — [`Self::fill`] with the
+    /// weight you'd almost always pass.
     pub const FILL: Self = Self::fill(1.0);
 
     /// An exact pixel extent.
@@ -64,6 +77,7 @@ impl Sizing {
         }
     }
 
+    /// The pixel extent if this is a [`Self::fixed`], else `None`.
     #[inline]
     pub const fn fixed_value(self) -> Option<f32> {
         match self.0 {
@@ -72,6 +86,7 @@ impl Sizing {
         }
     }
 
+    /// The weight if this is a [`Self::fill`], else `None`.
     #[inline]
     pub const fn fill_weight(self) -> Option<f32> {
         match self.0 {
@@ -80,6 +95,7 @@ impl Sizing {
         }
     }
 
+    /// `true` for [`Self::HUG`].
     #[inline]
     pub const fn is_hug(self) -> bool {
         matches!(self.0, SizingValue::Hug)
@@ -179,6 +195,7 @@ const fn decode_sizing(packed: u32) -> Sizing {
 }
 
 impl Sizes {
+    /// Both axes, packed into eight bytes.
     #[inline]
     pub const fn new(w: Sizing, h: Sizing) -> Self {
         Self {
@@ -192,10 +209,12 @@ impl Sizes {
     pub(crate) const fn as_u64(self) -> u64 {
         ((self.h_packed as u64) << 32) | self.w_packed as u64
     }
+    /// The horizontal axis.
     #[inline]
     pub const fn w(self) -> Sizing {
         decode_sizing(self.w_packed)
     }
+    /// The vertical axis.
     #[inline]
     pub const fn h(self) -> Sizing {
         decode_sizing(self.h_packed)

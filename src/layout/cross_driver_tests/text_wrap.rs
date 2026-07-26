@@ -133,7 +133,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     );
 }
 
-/// Pinned by `src/layout/intrinsic.md`: a wrapping `Text` inside a
+/// A wrapping `Text` inside a
 /// `Grid` `Hug` column constrained by the parent's available width
 /// reshapes to fit. The grid column-resolution algorithm runs during
 /// measure with the grid's `inner_avail` (200 px here); the wrapping

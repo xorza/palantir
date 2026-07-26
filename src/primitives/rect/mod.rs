@@ -4,8 +4,18 @@ use glam::Vec2;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
+/// An axis-aligned rectangle in logical pixels, stored as origin + extent
+/// rather than two corners — layout produces sizes, so this is the form
+/// that avoids a subtraction on every read.
+///
+/// Half-open on both axes: [`Self::contains`] accepts the min edge and
+/// rejects the max, so adjacent rects tile without double-hitting a
+/// pointer on the seam. Hashing is approximate (`1e-4` tolerance).
 pub struct Rect {
+    /// Top-left corner.
     pub min: Vec2,
+    /// Extent from [`Self::min`]. The bottom-right corner is
+    /// [`Self::max`].
     pub size: Size,
 }
 
@@ -17,11 +27,13 @@ impl std::hash::Hash for Rect {
 }
 
 impl Rect {
+    /// Origin at `(0, 0)` with zero extent.
     pub const ZERO: Self = Self {
         min: Vec2::ZERO,
         size: Size::ZERO,
     };
 
+    /// A rect from its top-left corner and extent.
     #[inline]
     pub const fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self {
@@ -30,6 +42,11 @@ impl Rect {
         }
     }
 
+    /// A rect from two corners.
+    ///
+    /// # Panics
+    ///
+    /// Debug-asserts that `min` is componentwise `<= max`.
     #[inline]
     pub const fn from_min_max(min: Vec2, max: Vec2) -> Self {
         debug_assert!(min.x <= max.x && min.y <= max.y);
@@ -39,10 +56,12 @@ impl Rect {
         }
     }
 
+    /// Bottom-right corner — exclusive, per the half-open convention.
     #[inline]
     pub const fn max(&self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }
+    /// Midpoint of the rect.
     #[inline]
     pub const fn center(&self) -> Vec2 {
         Vec2::new(
@@ -50,6 +69,7 @@ impl Rect {
             self.min.y + self.size.h * 0.5,
         )
     }
+    /// `width * height`.
     #[inline]
     pub const fn area(&self) -> f32 {
         self.size.w * self.size.h
@@ -73,6 +93,8 @@ impl Rect {
         self.size.is_paint_empty()
     }
 
+    /// Half-open containment: the min edges are inside, the max edges are
+    /// not, so tiled rects never both claim the same point.
     #[inline]
     pub const fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();

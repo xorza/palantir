@@ -36,7 +36,9 @@
 //!
 //! Usage:
 //!
-//! ```ignore
+//! ```no_run
+//! # use palantir::{AnimSpec, Ui, WindowToken, WinitHost, WinitHostError};
+//! # fn demo() -> Result<(), WinitHostError> {
 //! struct MyApp;
 //! impl palantir::App for MyApp {
 //!     fn record(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
@@ -48,6 +50,8 @@
 //!         MyApp
 //!     })?
 //!     .run()?;
+//! # Ok(())
+//! # }
 //! ```
 
 pub(crate) mod config;
