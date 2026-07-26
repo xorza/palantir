@@ -7,11 +7,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::support;
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
-use palantir::{
-    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sense, Sizing, Text, Ui,
-};
+use palantir::{Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Ui};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -76,6 +75,7 @@ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// GPU resources, built lazily in [`GpuPaint::init`] (the device isn't
 /// available before first paint).
+#[derive(Debug)]
 struct CubeGpu {
     pipeline: wgpu::RenderPipeline,
     vertices: wgpu::Buffer,
@@ -89,6 +89,7 @@ struct CubeGpu {
 /// The app's persistent renderer. `spin` accumulates the auto-rotation;
 /// `yaw`/`pitch` are driven by drag. `'static` (no borrows) so it can
 /// live behind the `Rc<RefCell<…>>` the framework holds across frames.
+#[derive(Debug)]
 pub(crate) struct Cube {
     gpu: Option<CubeGpu>,
     spin: f32,
@@ -297,31 +298,30 @@ impl GpuPaint for Cube {
     }
 }
 
-/// Showcase page. `cube` persists across frames in `State` (the device
-/// isn't available at construction, so its GPU resources build lazily on
-/// first paint).
+/// Showcase page. `cube` persists across frames on the shell's `State`
+/// (the device isn't available at construction, so its GPU resources
+/// build lazily on first paint).
 pub(crate) fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
     // A GpuView re-renders on every painted frame, so keep frames coming to
     // animate the spin.
     ui.request_repaint();
-    Panel::vstack()
-        .auto_id()
-        .gap(10.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Text::new("Slowly rotating cube — drag inside the view to orbit it.")
-                .auto_id()
-                .show(ui);
+    support::note(
+        ui,
+        "The cube is drawn with raw wgpu into a framework-owned off-screen \
+         texture, then composited as an ordinary image — so clipping, rounded \
+         corners, z-order, and partial-damage recompositing all come for free. \
+         Drag inside the view to orbit it.",
+    );
 
-            let paint: Rc<RefCell<dyn GpuPaint>> = cube.clone();
-            // GpuView doesn't sense by default — opt into drag so the
-            // returned `Response` reports the orbit delta.
-            let resp = GpuView::new(paint)
-                .sense(Sense::DRAG)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui);
-            if let Some(delta) = resp.left.drag.delta() {
-                cube.borrow_mut().orbit(delta.x * 0.05, delta.y * 0.05);
-            }
-        });
+    let paint: Rc<RefCell<dyn GpuPaint>> = cube.clone();
+    // GpuView doesn't sense by default — opt into drag so the returned
+    // `Response` reports the orbit delta.
+    let resp = GpuView::new(paint)
+        .auto_id()
+        .sense(Sense::DRAG)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui);
+    if let Some(delta) = resp.left.drag.delta() {
+        cube.borrow_mut().orbit(delta.x * 0.05, delta.y * 0.05);
+    }
 }

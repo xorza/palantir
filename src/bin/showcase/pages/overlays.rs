@@ -1,34 +1,26 @@
-//! Side-layer widgets on one page. `Popup::anchored_to` records a side
-//! root in the `Popup` layer that paints above the main tree, escapes
-//! ancestor clip, and hit-tests on top. Tooltips live one layer higher
-//! still, with a ~0.5 s delay and a warmup window (move between
-//! adjacent triggers within ~1 s and the next bubble skips the delay).
-//! ContextMenus attach to any sensed widget and auto-open on
-//! secondary-click at the pointer position.
+//! Side-layer widgets. `Popup::anchored_to` records a side root in the
+//! `Popup` layer that paints above the main tree, escapes ancestor clip,
+//! and hit-tests on top. Tooltips live one layer higher still, with a
+//! ~0.5 s delay and a warmup window — move between adjacent triggers
+//! within ~1 s and the next bubble skips the delay. ContextMenus attach
+//! to any sensed widget and auto-open on secondary-click at the pointer.
 
 use std::time::Duration;
 
 use crate::support;
-use crate::support::{row, section, surface_bg};
+use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
     Align, Button, Configure, ContextMenu, Frame, Justify, Key, MenuItem, Mods, Panel, Popup, Rect,
     ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
-    support::page(ui, |ui| {
-        support::header(
-            ui,
-            "Side layers — popup, tooltips, and context menus paint above the \
-             main tree and hit-test on top.",
-        );
-        popup_section(ui);
-        tooltip_section(ui);
-        context_menu_section(ui);
-    });
+    popup_section(ui);
+    tooltip_section(ui);
+    context_menu_section(ui);
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct MenuState {
     open: bool,
     last_choice: Option<&'static str>,
@@ -42,7 +34,8 @@ fn popup_section(ui: &mut Ui) {
     section(
         ui,
         "popup",
-        "Popup — click the button; the menu paints on the Popup layer, outside-click dismisses",
+        "popup — paints on the Popup layer, above and outside the main tree; an \
+         outside click dismisses it",
         |ui| {
             row(ui, "popup-trigger-row", |ui| {
                 let r = Button::new()
@@ -58,7 +51,10 @@ fn popup_section(ui: &mut Ui) {
                     .state_mut::<MenuState>(menu_id)
                     .last_choice
                     .unwrap_or("(no selection yet)");
-                Text::new(label).id_salt("popup-choice").show(ui);
+                Text::new(label)
+                    .id_salt("popup-choice")
+                    .style(&note_style())
+                    .show(ui);
             });
         },
     );
@@ -88,7 +84,7 @@ fn popup_section(ui: &mut Ui) {
         .justify(Justify::Center)
         .child_align(Align::CENTER)
         .gap(10.0)
-        .background(surface_bg())
+        .background(raised_bg())
         .show(ui, |ui, _popup| {
             for label in ["copy", "paste", "delete"] {
                 if Button::new()
@@ -117,7 +113,7 @@ fn tooltip_section(ui: &mut Ui) {
     section(
         ui,
         "tooltips",
-        "Tooltip — hover ~0.5 s; delays, wrap width, disabled rules, and the warmup window",
+        "tooltips — hover ~0.5 s; delays, wrap width, and the disabled rules",
         |ui| {
             row(ui, "tt-delays", |ui| {
                 let r = Button::new()
@@ -156,10 +152,9 @@ fn tooltip_section(ui: &mut Ui) {
                     .snapshot();
                 Tooltip::on(&r)
                     .text(
-                        "Tooltips wrap to the configured max width — the default \
-                         is 280 logical pixels. Long bodies stack into multiple \
-                         lines automatically; the bubble's height hugs the \
-                         shaped text.",
+                        "Tooltips wrap to the configured max width — the default is \
+                         280 logical pixels. Long bodies stack into multiple lines \
+                         automatically; the bubble's height hugs the shaped text.",
                     )
                     .show(ui);
 
@@ -172,9 +167,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .text("Override max width to force tighter wrap on a single tooltip.")
                     .max_size((140.0, f32::INFINITY))
                     .show(ui);
-            });
 
-            row(ui, "tt-disabled", |ui| {
                 let r = Button::new()
                     .id_salt("dis-1")
                     .label("disabled (no tooltip)")
@@ -192,10 +185,20 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("Opt-in via .show_when_disabled(true) for 'why is this disabled' hints.")
+                    .text("Opt in via .show_when_disabled(true) for 'why is this disabled' hints.")
                     .show_when_disabled(true)
                     .show(ui);
+            });
+        },
+    );
 
+    section(
+        ui,
+        "tooltip warmup",
+        "tooltip warmup — hover one, then move along the row within ~1 s and the \
+         next bubble skips its delay; pause and it re-delays",
+        |ui| {
+            row(ui, "tt-warm", |ui| {
                 for i in 0..5 {
                     let r = Button::new()
                         .id_salt(("warm", i))
@@ -206,7 +209,7 @@ fn tooltip_section(ui: &mut Ui) {
                         .text(match i {
                             0 => "Hover, then move to the next item within ~1 s.",
                             1 => "See how the next bubble appears instantly?",
-                            2 => "Warmup window keeps scanning a row snappy.",
+                            2 => "The warmup window keeps scanning a row snappy.",
                             3 => "Pause for ~1 s and the next one re-delays.",
                             _ => "Last one.",
                         })
@@ -217,7 +220,7 @@ fn tooltip_section(ui: &mut Ui) {
     );
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CtxState {
     last_action: Option<&'static str>,
 }
@@ -227,8 +230,9 @@ fn context_menu_section(ui: &mut Ui) {
 
     section(
         ui,
-        "ctx",
-        "ContextMenu — right-click the button or either surface; item click, outside-click, or Esc dismisses",
+        "context menu",
+        "context menu — right-click the button or either surface; an item click, an \
+         outside click, or Esc dismisses",
         |ui| {
             row(ui, "ctx-trigger-row", |ui| {
                 let trigger = Button::new()
@@ -236,14 +240,17 @@ fn context_menu_section(ui: &mut Ui) {
                     .label("right-click me")
                     .show(ui)
                     .snapshot();
-                attach_menu(ui, &trigger, state_id, MenuFlavor::Default);
+                attach_menu(ui, &trigger, state_id, Flavor::Default);
 
                 // Static strings only — no per-frame alloc.
                 let label = ui
                     .state_mut::<CtxState>(state_id)
                     .last_action
                     .unwrap_or("last action: (none yet)");
-                Text::new(label).id_salt("ctx-status").show(ui);
+                Text::new(label)
+                    .id_salt("ctx-status")
+                    .style(&note_style())
+                    .show(ui);
             });
 
             Panel::hstack()
@@ -258,10 +265,10 @@ fn context_menu_section(ui: &mut Ui) {
                         .id_salt("ctx-surface")
                         .size((Sizing::FILL, Sizing::fixed(90.0)))
                         .sense(Sense::CLICK)
-                        .background(surface_bg())
+                        .background(raised_bg())
                         .show(ui)
                         .snapshot();
-                    attach_menu(ui, &surface, state_id, MenuFlavor::Default);
+                    attach_menu(ui, &surface, state_id, Flavor::Default);
 
                     // Same items, configured wider with bigger padding and
                     // a maximum width.
@@ -269,53 +276,43 @@ fn context_menu_section(ui: &mut Ui) {
                         .id_salt("ctx-wide-surface")
                         .size((Sizing::FILL, Sizing::fixed(90.0)))
                         .sense(Sense::CLICK)
-                        .background(support::panel_bg())
+                        .background(support::well_bg())
                         .show(ui)
                         .snapshot();
-                    attach_menu(ui, &wide, state_id, MenuFlavor::Wide);
+                    attach_menu(ui, &wide, state_id, Flavor::Wide);
                 });
         },
     );
 }
 
-#[derive(Copy, Clone)]
-enum MenuFlavor {
+#[derive(Copy, Clone, Debug)]
+enum Flavor {
     Default,
     Wide,
 }
 
-fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flavor: MenuFlavor) {
+fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flavor: Flavor) {
     let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::HUG, Sizing::HUG));
-    if let MenuFlavor::Wide = flavor {
+    if let Flavor::Wide = flavor {
         menu = menu
             .min_size((260.0, 0.0))
             .max_size((320.0, 280.0))
             .padding(Spacing::all(10.0));
     }
     menu.show(ui, |ui, popup| {
-        if MenuItem::new("Copy")
-            .shortcut(Shortcut::ctrl('C'))
-            .show(ui, popup)
-            .left
-            .clicked()
-        {
-            ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Copy");
-        }
-        if MenuItem::new("Cut")
-            .shortcut(Shortcut::ctrl('X'))
-            .show(ui, popup)
-            .left
-            .clicked()
-        {
-            ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Cut");
-        }
-        if MenuItem::new("Paste")
-            .shortcut(Shortcut::ctrl('V'))
-            .show(ui, popup)
-            .left
-            .clicked()
-        {
-            ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Paste");
+        for (label, shortcut, action) in [
+            ("Copy", Shortcut::ctrl('C'), "last action: Copy"),
+            ("Cut", Shortcut::ctrl('X'), "last action: Cut"),
+            ("Paste", Shortcut::ctrl('V'), "last action: Paste"),
+        ] {
+            if MenuItem::new(label)
+                .shortcut(shortcut)
+                .show(ui, popup)
+                .left
+                .clicked()
+            {
+                ui.state_mut::<CtxState>(state_id).last_action = Some(action);
+            }
         }
         MenuItem::separator(ui);
         MenuItem::new("Disabled").enabled(false).show(ui, popup);
