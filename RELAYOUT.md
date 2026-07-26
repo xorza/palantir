@@ -312,6 +312,36 @@ Three properties that make it worth building:
   topological order or one fixpoint iteration with the graceful-degradation
   fallback above.
 
+### Tier 1 has no consumer — do not build it
+
+Scoping it against darkroom's wires killed it. `Wire` does not merely paint
+from geometry, it *computes* with it at record time
+(`gui/canvas/wire.rs:147`): a hull-based viewport cull
+(`CullRegion::keeps_wire`) and the breaker intersection
+(`BreakerProbe::crosses_wire`, an `intersects_cubic` against all four
+control points) both run before anything is painted. A resolver that
+patches paint coordinates after arrange leaves those two on the stale path.
+
+Worse, a wire is not its endpoints. `Wire::data` derives `p1`/`p2` from
+`p0`/`p3` through a real rule — vertical gap clamped to `[MIN_HANDLE,
+MAX_HANDLE]`, versus `BACKREACH_GAIN * sqrt(dx)` when the target sits left
+of the source — so anchoring the ends leaves the control points stale and
+the curve mis-shaped. Hoisting that rule into the layout crate is wrong on
+its face; a per-shape resolver closure means boxed callbacks in the
+retained shape table, against the crate's allocation posture.
+
+The economics are gone too. After §6-1 and §6-3, every surviving downstream
+relayout (rename commit, const-editor flip, boundary-port add/remove, node
+add/remove, tab switch) is a **discrete user action** — none fires per
+frame. The per-gesture double-record that motivated all of this is already
+removed. One extra pass on a discrete edit is what a settle pass is for.
+
+**Tier 2 (anchored placement) is unaffected** — scroll thumbs, popups, and
+tooltips genuinely only need their *rect* resolved, `OverlayPosition`
+already proves the pattern, and no caller computes with the result at
+record time. If the scroll cold-mount relayout is worth removing, build
+that and only that.
+
 ### What this deliberately does not cover
 
 Tree *structure* that depends on geometry — virtualised lists, "how many
@@ -346,10 +376,14 @@ the power to double a frame.
    two narrowing assertions were confirmed to fail (2 vs 1) against the
    pre-change code before landing; the drag arm there is a regression guard
    that passes either way.
-4. **Build `Anchor`** (§5) and land it on darkroom's wires first — the case
-   with a visible bug to prove it against, and the one that retires the last
-   genuine downstream caller. Scoped but not started; the constraint found
-   while scoping is worth recording:
+4. ~~**Build `Anchor` for darkroom's wires.**~~ **Dropped** — scoped, and the
+   scoping killed it; see §5's "Tier 1 has no consumer". Two findings from
+   that scoping are worth keeping even so, for whoever builds Tier 2:
+
+   `cascade_fingerprint` folds `rollups.subtree[root]`, which includes shape
+   hashes — so a repaired hash correctly re-runs the cascade, and a
+   resolver's natural seam is between `layout_engine.run()` and the
+   fingerprint in `Ui::post_record`.
 
    Shape hashes are computed at lowering time (`Shapes::add`) and folded by
    `compute_rollups` inside `forest.post_record()`, which runs *before*
@@ -363,10 +397,13 @@ the power to double a frame.
    owner's `node[]`, re-fold `subtree[]` up the ancestor chain. `Tree` has
    `subtree_end` (descendants) but no parent column, so that walk needs one
    O(n) marking pass or a new column.
-5. **Convert the scrollbars** to anchored placement, then delete
-   `Ui::request_relayout`.
-6. **Only if 3+4 leave it hot:** the `StateMap` read/write-index tracking in
-   B4.
+5. **Convert the scrollbars** to anchored placement (Tier 2), then delete
+   `Ui::request_relayout` — now the only remaining item with a real
+   consumer. Worth doing on its own merits rather than as a step toward
+   deleting the API: the downstream caller that blocked that deletion is no
+   longer expensive, so the deletion is tidiness, not a win.
+6. **Only if 3 leaves it hot:** the `StateMap` read/write-index tracking in
+   B4. Nothing currently suggests it does.
 
 Explicitly **not** worth doing: making pass A "silent" by skipping its
 `post_record` / layout / cascade. Measured at ~2% of a settle pass, and it
