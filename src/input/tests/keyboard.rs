@@ -123,7 +123,8 @@ fn keyboard_views_and_shortcuts_follow_capture_owner() {
 
     let owner = WidgetId::from_hash("popup");
     let other = WidgetId::from_hash("other-popup");
-    state.claim_keyboard(owner, Layer::Popup);
+    state.claim_input(owner, Layer::Popup);
+    state.finish_record();
 
     assert!(state.keyboard_events(Layer::Main).is_empty());
     assert!(!state.key_pressed(Layer::Main, shortcut));
@@ -179,38 +180,49 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
     let claim = ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
         claim
     });
-    assert!(
-        ui.keyboard_events().is_empty(),
-        "Main sits below the claim and is cut off",
+    // Nothing moves until the pass resolves — for *either* stream. The
+    // two used to disagree here: the keyboard half took effect on the
+    // claiming pass and the pointer half on the next one, because
+    // claiming eagerly wrote the committed keyboard owner when none was
+    // held. One list resolved in one place is what removed that.
+    assert_eq!(
+        ui.keyboard_events(),
+        &[key],
+        "the claiming pass reads as if unclaimed",
     );
-    assert_eq!(claim.keyboard_events(&ui), &[key]);
-    assert!(claim.key_pressed(&mut ui, shortcut));
+    assert_eq!(ui.pointer_events(), &[press], "and so does the pointer");
+
     ui.input.finish_record();
-    assert!(ui.keyboard_events().is_empty());
+    assert!(ui.keyboard_events().is_empty(), "Main is below the claim");
     assert!(
         ui.pointer_events().is_empty(),
         "the same claim gates the pointer stream",
     );
+    assert_eq!(claim.keyboard_events(&ui), &[key]);
+    assert!(claim.key_pressed(&mut ui, shortcut));
     // The trap the handle exists to close: out here the ambient layer is
     // `Main`, so an owner reading `ui.pointer_events()` is silenced by
     // its *own* claim. Reading through the claim sees the layer it holds.
     assert_eq!(claim.pointer_events(&ui), &[press]);
 
-    // Releasing withdraws both immediately, so the next resolution finds
-    // no candidate and each raw stream reaches `Main` again.
+    // Releasing is symmetric with claiming: it withdraws from the *next*
+    // resolution, not from the pass it is called in.
     ui.input.begin_record();
     let claim = ui.modal_layer(Layer::Popup, glam::Vec2::ZERO, None, owner, |_, claim| {
         claim
     });
-    assert_eq!(claim.keyboard_events(&ui), &[key]);
     claim.release(&mut ui);
+    assert!(
+        ui.keyboard_events().is_empty(),
+        "the released pass keeps the ownership it was committed with",
+    );
     ui.input.finish_record();
     assert_eq!(ui.keyboard_events(), &[key]);
     assert_eq!(ui.pointer_events(), &[press]);
 }
 
-/// Two overlays can hold one layer at once, so the pointer claim counts
-/// rather than flags: the first to close must not unblock the layer
+/// Two overlays can hold one layer at once, so releasing is per-claim
+/// and not per-layer: the first to close must not unblock the layer
 /// while the second is still up.
 #[test]
 fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {

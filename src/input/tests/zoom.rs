@@ -1,4 +1,5 @@
-use crate::input::{InputEvent, InputState, wheel_zoom_factor, zoom_factor_is_valid};
+use crate::input::zoom;
+use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
 
@@ -50,9 +51,7 @@ fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
         let mut state = pinch_state();
         for _ in 0..10_000 {
             state.on_input(InputEvent::Zoom(factor), &cascades);
-            assert!(zoom_factor_is_valid(
-                state.scroll_delta_for(pinch_id()).zoom
-            ));
+            assert!(zoom::is_valid(state.scroll_delta_for(pinch_id()).zoom));
         }
         let expected = if factor > 1.0 {
             f32::MAX
@@ -67,8 +66,8 @@ fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
         let mut factor = 1.0;
         for _ in 0..10_000 {
             notches += direction;
-            factor = wheel_zoom_factor(1.03, notches);
-            assert!(zoom_factor_is_valid(factor));
+            factor = zoom::from_wheel(1.03, notches);
+            assert!(zoom::is_valid(factor));
         }
         let expected = if direction < 0.0 {
             f32::MAX
