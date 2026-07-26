@@ -360,9 +360,7 @@ impl Fixture {
         let workload = *workload;
         let phase = *phase;
         let mut app = RecordApp::new(|ui| record(ui, handles, workload, phase));
-        let report = host
-            .frame_offscreen(target, 1.0, &mut app)
-            .expect("valid benchmark scale factor");
+        let report = host.frame_offscreen(target, 1.0, &mut app);
         // A `Partial` frame walks the schedule once per damage rect, so a
         // drift to Partial would quietly turn every number below into a
         // multi-walk measurement that isn't comparable across arms.

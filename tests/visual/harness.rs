@@ -4,7 +4,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use aperture::internals::{HeadlessTestGpuLease, TwoWindowOffscreenHost, headless_test_gpu};
+use aperture::internals::{HeadlessTestGpuLease, headless_test_gpu};
 use aperture::{
     App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui, WindowToken,
 };
@@ -36,14 +36,6 @@ thread_local! {
 
 pub(crate) struct Harness {
     pub host: OffscreenHost,
-    gpu: HeadlessTestGpuLease,
-}
-
-/// Two render streams sharing one frontend, backend, and app-global
-/// resources — the headless stand-in for two winit windows.
-#[derive(Debug)]
-pub(crate) struct TwoWindowHarness {
-    host: TwoWindowOffscreenHost,
     gpu: HeadlessTestGpuLease,
 }
 
@@ -98,8 +90,7 @@ impl Harness {
 
         self.host.ui().theme.window_clear = clear;
         self.host
-            .frame_offscreen(&target, scale, &mut RecordApp { record: scene })
-            .expect("valid visual-test scale factor");
+            .frame_offscreen(&target, scale, &mut RecordApp { record: scene });
 
         let mut img = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
@@ -148,38 +139,6 @@ impl Harness {
         let img = self.render(physical, scale, clear, scene);
         self.host.set_debug_overlay(DebugOverlayConfig::default());
         img
-    }
-}
-
-impl TwoWindowHarness {
-    pub(crate) fn new() -> Self {
-        let gpu = headless_test_gpu();
-        let shaper = COSMIC.with(|c| c.clone());
-        let clocks: [Box<dyn aperture::Clock>; 2] = [
-            Box::new(FixedClock::new(Duration::ZERO)),
-            Box::new(FixedClock::new(Duration::ZERO)),
-        ];
-        let host =
-            TwoWindowOffscreenHost::new(gpu.device.clone(), gpu.queue.clone(), shaper, clocks);
-        Self { host, gpu }
-    }
-
-    pub(crate) fn render(
-        &mut self,
-        window: usize,
-        physical: UVec2,
-        scale: f32,
-        clear: Color,
-        mut scene: impl FnMut(&mut Ui),
-    ) -> RgbaImage {
-        let target = make_target(&self.gpu.device, FORMAT, physical);
-        self.host
-            .frame_offscreen(window, &target, scale, |ui| {
-                ui.theme.window_clear = clear;
-                scene(ui);
-            })
-            .expect("valid visual-test scale factor");
-        readback(&self.gpu.device, &self.gpu.queue, &target, physical)
     }
 }
 

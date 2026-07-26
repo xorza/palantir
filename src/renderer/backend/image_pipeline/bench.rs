@@ -237,8 +237,7 @@ impl Fixture {
         } = self;
         let phase = *phase;
         let mut app = RecordApp::new(|ui| record(ui, handle, workload, phase));
-        host.frame_offscreen(target, 1.0, &mut app)
-            .expect("valid benchmark scale factor");
+        host.frame_offscreen(target, 1.0, &mut app);
         poll(&gpu.device);
     }
 }

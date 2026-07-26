@@ -36,7 +36,6 @@ pub(crate) mod window;
 /// [`mod@bench`].
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::host::offscreen::internals::TwoWindowOffscreenHost;
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 }
 
@@ -62,7 +61,7 @@ pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
 /// instead of a swapchain (screenshots, thumbnails, server-side
 /// compositing); also backs the visual harness + GPU benches.
-pub use host::offscreen::{InvalidScaleFactorError, OffscreenHost, OffscreenHostBuilder};
+pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 #[cfg(feature = "winit-host")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,

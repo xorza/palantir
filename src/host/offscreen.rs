@@ -3,8 +3,8 @@
 //! [`HostShared`](crate::host::shared::HostShared), one
 //! [`Frontend`](crate::renderer::frontend::Frontend), one
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), and one
-//! [`WindowDriver`] per render stream. Unlike `WinitHost` there's no winit and
-//! no swapchain — the stream renders into a caller-supplied `wgpu::Texture`.
+//! [`WindowDriver`]. Unlike `WinitHost` there's no winit and no swapchain —
+//! the driver renders into a caller-supplied `wgpu::Texture`.
 //! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
 //! the windowed host, so update and replay semantics do not depend on the
 //! output backend.
@@ -17,15 +17,17 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 //!
-//! **One stream, and no window lifecycle.** The host has exactly one window,
-//! created with it and addressed by the fixed [`OffscreenHost::WINDOW`], for
-//! as long as the host lives — there is no window API at all. A frame that
-//! records
+//! **One window, and no window lifecycle.** The window is created with the
+//! host and addressed by the fixed [`OffscreenHost::WINDOW`] for as long as
+//! the host lives — there is no window API at all. A frame that records
 //! [`Ui::open_window`] or [`Ui::close_window`] **panics** rather than silently
 //! discarding the request, since nothing here can service one and a swallowed
 //! request leaves the app believing a window appeared. Multi-window ownership
-//! is `WinitHost`'s job; the `internals`-gated `TwoWindowOffscreenHost` exists
-//! only so the visual suite can pin two drivers sharing one core.
+//! is `WinitHost`'s alone.
+//!
+//! Everything the host can reject is a caller mistake — an unusable scale
+//! factor, a window request it has no lifecycle for — so `frame_offscreen`
+//! panics rather than returning a `Result` no caller could act on.
 
 use crate::FrameReport;
 use crate::app::App;
@@ -41,25 +43,6 @@ use crate::renderer::backend::BackendConfig;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::WindowToken;
-
-/// An offscreen frame was given a non-finite or near-zero display scale.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct InvalidScaleFactorError {
-    /// The rejected logical-to-physical conversion factor.
-    pub scale_factor: f32,
-}
-
-impl std::fmt::Display for InvalidScaleFactorError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "offscreen scale factor must be finite and at least {EPS}, got {}",
-            self.scale_factor
-        )
-    }
-}
-
-impl std::error::Error for InvalidScaleFactorError {}
 
 /// One shared renderer driving one render stream into a texture instead of a
 /// surface. The offscreen analogue of `WinitHost`.
@@ -183,62 +166,43 @@ impl OffscreenHost {
     /// passed to [`App::update`] and [`App::record`], with the same once-only
     /// update and replayable record semantics as [`crate::WinitHost`].
     ///
-    /// # Errors
-    ///
-    /// Returns [`InvalidScaleFactorError`] before changing host or application
-    /// state when `scale_factor` is non-finite or less than `1e-4`.
-    ///
     /// # Panics
     ///
-    /// Panics if the frame recorded [`Ui::open_window`] or
-    /// [`Ui::close_window`] — this host has no window lifecycle.
+    /// Panics if `scale_factor` is non-finite or below `1e-4`, or if the frame
+    /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
+    /// window lifecycle.
     pub fn frame_offscreen<T: App>(
         &mut self,
         target: &wgpu::Texture,
         scale_factor: f32,
         app: &mut T,
-    ) -> Result<FrameReport, InvalidScaleFactorError> {
-        render_frame(&mut self.core, &mut self.driver, target, scale_factor, app)
+    ) -> FrameReport {
+        assert!(
+            display::scale_factor_is_valid(scale_factor),
+            "offscreen scale factor must be finite and at least {EPS}, got \
+             {scale_factor}"
+        );
+
+        let key = TargetKey::of(target);
+        let driver = &mut self.driver;
+        driver.note_target(key);
+        let display = Display {
+            pixel_snap: driver.pixel_snap,
+            ..Display::from_physical(key.physical, scale_factor)
+        };
+        let CpuFrame { report, mode } = self.core.cpu_frame(driver, display, app);
+        // Before submitting: a frame that asked for a window it can never get
+        // is a caller error, and reporting it against an untouched target
+        // keeps the failure clean.
+        driver.deny_window_requests();
+        self.core.submit(driver, target, mode);
+        report
     }
 
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
     pub fn gpu_pass_stats(&self) -> &GpuPassStats {
         &self.core.shared.resources.diagnostics.gpu_pass_stats
-    }
-}
-
-/// The offscreen frame, free-standing so the `internals` two-window harness
-/// can drive two drivers through one core without duplicating it.
-fn render_frame<T: App>(
-    core: &mut HostCore,
-    driver: &mut WindowDriver,
-    target: &wgpu::Texture,
-    scale_factor: f32,
-    app: &mut T,
-) -> Result<FrameReport, InvalidScaleFactorError> {
-    validate_scale_factor(scale_factor)?;
-
-    let key = TargetKey::of(target);
-    driver.note_target(key);
-    let display = Display {
-        pixel_snap: driver.pixel_snap,
-        ..Display::from_physical(key.physical, scale_factor)
-    };
-    let CpuFrame { report, mode } = core.cpu_frame(driver, display, app);
-    // Before submitting: a frame that asked for a window it can never get is a
-    // caller error, and reporting it against an untouched target keeps the
-    // failure clean.
-    driver.deny_window_requests();
-    core.submit(driver, target, mode);
-    Ok(report)
-}
-
-fn validate_scale_factor(scale_factor: f32) -> Result<(), InvalidScaleFactorError> {
-    if display::scale_factor_is_valid(scale_factor) {
-        Ok(())
-    } else {
-        Err(InvalidScaleFactorError { scale_factor })
     }
 }
 
@@ -263,17 +227,8 @@ impl OffscreenHost {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::app::internals::RecordApp;
-    use crate::common::clipboard::Clipboard;
-    use crate::host::clock::Clock;
-    use crate::host::core::HostCore;
-    use crate::host::offscreen::{self, InvalidScaleFactorError, OffscreenHost};
-    use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::renderer::backend::BackendConfig;
+    use crate::host::offscreen::OffscreenHost;
     use crate::renderer::render_buffer::RenderBuffer;
-    use crate::text::TextShaper;
-    use crate::ui::Ui;
-    use crate::window::WindowToken;
 
     /// Draw list the most recent [`OffscreenHost::frame_offscreen`]
     /// composed. The `record_pass` benchmark replays the schedule over it
@@ -282,102 +237,5 @@ pub(crate) mod internals {
     /// path would cost what the benchmark exists to measure.
     pub(crate) fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
         &host.core.frontend.buffer
-    }
-
-    /// Two render streams sharing one `HostCore` — the headless stand-in for
-    /// two winit windows, used by the visual suite to pin that interleaved
-    /// windows keep their own retained pixels and owner-scoped `GpuView`
-    /// targets.
-    ///
-    /// Test-only on purpose: [`OffscreenHost`] drives exactly one stream, and
-    /// production multi-window ownership belongs to
-    /// [`WinitHost`](crate::WinitHost). This exists solely because proving
-    /// backend sharing needs two drivers on *one* core, which two separate
-    /// hosts cannot express.
-    #[derive(Debug)]
-    pub struct TwoWindowOffscreenHost {
-        core: HostCore,
-        windows: [WindowDriver; 2],
-    }
-
-    impl TwoWindowOffscreenHost {
-        pub fn new(
-            device: wgpu::Device,
-            queue: wgpu::Queue,
-            shaper: TextShaper,
-            clocks: [Box<dyn Clock>; 2],
-        ) -> Self {
-            let core = HostCore::new(
-                device,
-                queue,
-                shaper,
-                Clipboard::default(),
-                BackendConfig::default(),
-            );
-            let [clock_a, clock_b] = clocks;
-            // Token equals the array index the harness addresses.
-            let windows = [
-                Self::stream(&core, WindowToken(0), clock_a),
-                Self::stream(&core, WindowToken(1), clock_b),
-            ];
-            Self { core, windows }
-        }
-
-        fn stream(core: &HostCore, token: WindowToken, clock: Box<dyn Clock>) -> WindowDriver {
-            core.driver(token)
-                .strategy(PresentStrategy::BackbufferCopy)
-                .clock(clock)
-                .build()
-        }
-
-        pub fn frame_offscreen(
-            &mut self,
-            window: usize,
-            target: &wgpu::Texture,
-            scale_factor: f32,
-            record: impl FnMut(&mut Ui),
-        ) -> Result<(), InvalidScaleFactorError> {
-            let mut app = RecordApp::new(record);
-            offscreen::render_frame(
-                &mut self.core,
-                &mut self.windows[window],
-                target,
-                scale_factor,
-                &mut app,
-            )
-            .map(|_| ())
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::host::offscreen::{InvalidScaleFactorError, validate_scale_factor};
-    use crate::primitives::approx::EPS;
-
-    #[test]
-    fn scale_validation_rejects_invalid_values_and_accepts_boundary() {
-        for scale_factor in [
-            0.0,
-            -1.0,
-            EPS / 2.0,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-            f32::NAN,
-        ] {
-            let error = validate_scale_factor(scale_factor).unwrap_err();
-            assert_eq!(error.scale_factor.to_bits(), scale_factor.to_bits());
-        }
-
-        assert_eq!(validate_scale_factor(EPS), Ok(()));
-        assert_eq!(validate_scale_factor(1.0), Ok(()));
-        assert_eq!(
-            validate_scale_factor(0.0),
-            Err(InvalidScaleFactorError { scale_factor: 0.0 })
-        );
-        assert_eq!(
-            InvalidScaleFactorError { scale_factor: 0.0 }.to_string(),
-            "offscreen scale factor must be finite and at least 0.0001, got 0"
-        );
     }
 }

@@ -169,8 +169,7 @@ fn frame_offscreen(
     record: impl FnMut(&mut Ui),
 ) {
     let mut app = RecordApp::new(record);
-    host.frame_offscreen(target, scale_factor, &mut app)
-        .expect("valid benchmark scale factor");
+    host.frame_offscreen(target, scale_factor, &mut app);
 }
 
 fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::Texture {
