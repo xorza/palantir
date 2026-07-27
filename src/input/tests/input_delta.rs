@@ -3,7 +3,6 @@
 
 use crate::Ui;
 use crate::input::InputEvent;
-use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -232,13 +231,11 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
     // Pointer at (200, 200): well outside the 100×100 hover target.
     h.move_to(Vec2::new(200.0, 200.0));
     assert!(
-        !h.on_input(InputEvent::PointerPressed(PointerButton::Left))
-            .requests_repaint,
+        !h.press().requests_repaint,
         "press on inert surface, no focus → no repaint",
     );
     assert!(
-        !h.on_input(InputEvent::PointerReleased(PointerButton::Left))
-            .requests_repaint,
+        !h.release().requests_repaint,
         "stray release (no capture) → no repaint",
     );
     assert!(
@@ -260,7 +257,7 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
     // Forge a focused widget — emulating a prior TextEdit interaction.
     h.ui.input.focused = Some(WidgetId::from_hash("editor"));
     h.move_to(Vec2::new(200.0, 200.0));
-    let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    let delta = h.press();
     assert!(
         delta.requests_repaint,
         "press on inert with prior focus → focus clear → repaint",

@@ -2,7 +2,6 @@ use crate::TextStyle;
 use crate::Ui;
 use crate::display::Display;
 use crate::host::shared::HostShared;
-use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
@@ -998,8 +997,6 @@ fn frame_pass_count_matches_action_trigger() {
 /// the effect.
 #[test]
 fn action_effect_runs_once_across_record_replay() {
-    use crate::input::pointer::PointerButton;
-
     let surface = UVec2::new(100, 100);
     let mut h = UiHarness::new(surface);
     let build = |ui: &mut Ui| {
@@ -1016,7 +1013,7 @@ fn action_effect_runs_once_across_record_replay() {
         let _ = build(ui);
     });
     h.press_at(Vec2::new(10.0, 10.0));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
 
     let mut passes = 0;
     let mut effects = 0;

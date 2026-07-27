@@ -271,7 +271,7 @@ fn click_compensates_for_right_align() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.press_at(glam::Vec2::new(254.0, 20.0));
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let id = WidgetId::from_hash("align-ed");
     let caret = h.ui.state_mut::<TextEditState>(id).edit.caret;
     assert!(

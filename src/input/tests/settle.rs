@@ -14,8 +14,6 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 
 use crate::Ui;
-use crate::input::InputEvent;
-use crate::input::pointer::PointerButton;
 use crate::input::sense::DRAG_THRESHOLD;
 use crate::input::watch::PointerWake;
 use crate::primitives::rect::Rect;
@@ -177,6 +175,6 @@ fn a_drag_settles_on_its_latch_and_again_on_its_stop() {
 
     // Frame 2: the release is `DragStopped` on its own, with no latch in
     // the batch to mask it.
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     assert_eq!(passes(&mut h, button), 2, "the drag stop settles");
 }

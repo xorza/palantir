@@ -167,10 +167,10 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
         repeat: false,
         physical: Key::Escape,
     });
-    h.move_to(glam::Vec2::new(5.0, 5.0));
-    h.on_input(InputEvent::PointerPressed(
+    h.press_button_at(
         crate::input::pointer::PointerButton::Left,
-    ));
+        glam::Vec2::new(5.0, 5.0),
+    );
     let key = h.ui.keyboard_events()[0];
     let press = h.ui.pointer_events()[0];
     let owner = WidgetId::from_hash("popup");
@@ -231,10 +231,10 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
 fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 80));
     h.ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
-    h.move_to(glam::Vec2::new(5.0, 5.0));
-    h.on_input(InputEvent::PointerPressed(
+    h.press_button_at(
         crate::input::pointer::PointerButton::Left,
-    ));
+        glam::Vec2::new(5.0, 5.0),
+    );
     let press = h.ui.pointer_events()[0];
 
     let first = h.ui.modal_layer(
@@ -280,7 +280,6 @@ fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {
 fn focus_policy_routing() {
     use crate::FocusPolicy;
     use crate::Ui;
-    use crate::input::pointer::PointerButton;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::node::Configure;
@@ -311,7 +310,7 @@ fn focus_policy_routing() {
 
         h.frame(build);
         h.press_at(glam::Vec2::new(180.0, 5.0));
-        h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        h.release();
         let expected = if *expect_focus {
             Some(editable_id)
         } else {

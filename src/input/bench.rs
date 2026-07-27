@@ -22,7 +22,6 @@
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
 use crate::input::InputEvent;
-use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::node::Configure;
@@ -167,7 +166,7 @@ pub fn bench(c: &mut Criterion) {
                 // this every press lands on the same active widget and
                 // the focus hit-test gets memoized into the warm path.
                 ui.press_at(pointer_at(i));
-                let d = ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+                let d = ui.release();
                 i = i.wrapping_add(1);
                 black_box(d);
             });
@@ -202,8 +201,8 @@ pub fn bench(c: &mut Criterion) {
                 ui.move_to(pointer_at(i.wrapping_add(2)));
                 ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)));
                 if i.is_multiple_of(16) {
-                    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-                    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+                    ui.press();
+                    ui.release();
                 }
                 i = i.wrapping_add(3);
                 black_box(&ui);

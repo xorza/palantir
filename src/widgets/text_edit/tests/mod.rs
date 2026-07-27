@@ -33,7 +33,6 @@ use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
-use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;

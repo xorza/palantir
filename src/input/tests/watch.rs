@@ -53,7 +53,7 @@ fn buttons_watcher_wakes_press_on_inert() {
     h.frame(empty_watch_buttons);
 
     h.move_to(Vec2::new(50.0, 50.0));
-    let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    let delta = h.press();
     assert!(delta.requests_repaint);
 
     let events = h.ui.pointer_events();
@@ -72,7 +72,7 @@ fn press_on_inert_with_no_watcher_does_not_wake() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(empty);
     h.move_to(Vec2::new(50.0, 50.0));
-    let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    let delta = h.press();
     assert!(!delta.requests_repaint);
     assert!(h.ui.pointer_events().is_empty());
 }
@@ -84,7 +84,7 @@ fn record_without_rewatch_drops_wake() {
     h.frame(empty);
 
     h.move_to(Vec2::new(50.0, 50.0));
-    let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    let delta = h.press();
     assert!(!delta.requests_repaint);
 }
 
@@ -94,7 +94,7 @@ fn press_and_release_both_captured() {
     h.frame(empty_watch_buttons);
 
     h.press_at(Vec2::new(50.0, 50.0));
-    let release = h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let release = h.release();
     assert!(release.requests_repaint);
 
     let events = h.ui.pointer_events();
