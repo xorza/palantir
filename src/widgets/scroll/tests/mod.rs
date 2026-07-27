@@ -1831,10 +1831,8 @@ fn drag_thumb_pans_proportionally() {
         let outer_id = WidgetId::from_hash("scroll");
         let scroll_id = outer_id.with("__viewport");
         let thumb_id = scroll_id.with("__vthumb");
-        let thumb_rect = h.ui.response_for(thumb_id).rect.expect("thumb visible");
-        let press = thumb_rect.min + Vec2::new(thumb_rect.size.w * 0.5, thumb_rect.size.h * 0.5);
-
-        h.press_at(press);
+        let press = h.center_of(thumb_id);
+        h.press_on(thumb_id);
         h.move_to(press + Vec2::new(0.0, 30.0 * scale));
         h.frame(build);
 
@@ -1972,7 +1970,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
     use crate::input::keyboard::Modifiers;
-    h.move_to(Vec2::new(100.0, 100.0));
+    h.move_onto(scroll_id);
     h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
@@ -2017,7 +2015,7 @@ fn wheel_zoom_step_is_font_independent() {
         h.frame(build_zoom);
 
         use crate::input::keyboard::Modifiers;
-        h.move_to(Vec2::new(100.0, 100.0));
+        h.move_onto(WidgetId::from_hash("fz"));
         h.set_modifiers(Modifiers {
             ctrl: true,
             ..Modifiers::NONE

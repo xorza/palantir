@@ -283,14 +283,9 @@ fn delay_gates_visibility() {
     record_at_secs(&mut h, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
 
-    // Move pointer to the center of the button's last-frame rect.
-    let trigger_rect = h.ui.response_for(trigger_id).rect.expect("button rect");
-    let trigger_pos =
-        trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
-
-    h.move_to(trigger_pos);
+    h.move_onto(trigger_id);
     record_at_secs(&mut h, 0.05, &mut captured);
-    h.move_to(trigger_pos);
+    h.move_onto(trigger_id);
     record_at_secs(&mut h, 0.1, &mut captured);
     let early =
         h.ui.try_state::<TooltipState>(trigger_id)
@@ -308,7 +303,7 @@ fn delay_gates_visibility() {
     let mut t = 0.1_f32;
     for _ in 0..20 {
         t += 0.1;
-        h.move_to(trigger_pos);
+        h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
     }
 
@@ -334,7 +329,7 @@ fn delay_gates_visibility() {
     assert!(!h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
 
     t += 0.1;
-    h.move_to(trigger_pos);
+    h.move_onto(trigger_id);
     record_at_secs(&mut h, t, &mut captured);
     assert!(
         !h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible,
@@ -372,14 +367,10 @@ fn hover_clears_after_tooltip_visible() {
 
     record_at_secs(&mut h, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
-    let trigger_rect = h.ui.response_for(trigger_id).rect.expect("button rect");
-    let trigger_pos =
-        trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
-
     let mut t = 0.0_f32;
     for _ in 0..10 {
         t += 0.1;
-        h.move_to(trigger_pos);
+        h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
     }
     let state =
@@ -450,16 +441,12 @@ fn tooltip_inside_popup_records_without_panic() {
     record_at_secs(&mut h, 0.0, &mut captured);
     record_at_secs(&mut h, 0.01, &mut captured);
     let trigger_id = captured.expect("button id");
-    let trigger_rect = h.ui.response_for(trigger_id).rect.expect("button rect");
-    let trigger_pos =
-        trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
-
     // Hover the popup-nested trigger and tick past the delay. Each frame
     // re-hovers and advances Ui-time by 0.1 s; hover lag is one frame.
     let mut t = 0.01_f32;
     for _ in 0..20 {
         t += 0.1;
-        h.move_to(trigger_pos);
+        h.move_onto(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
     }
 
