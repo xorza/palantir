@@ -53,8 +53,8 @@ use crate::ui::state::StateMap;
 use crate::widgets::Widget;
 use crate::widgets::theme::Theme;
 use crate::window::{
-    CursorIcon, PendingWindow, WindowConfig, WindowFrameState, WindowGeometry, WindowRequests,
-    WindowToken,
+    CursorIcon, PendingWindow, Vsync, WindowConfig, WindowFrameState, WindowGeometry,
+    WindowRequests, WindowToken,
 };
 use glam::UVec2;
 use std::cell::{RefCell, RefMut};
@@ -588,6 +588,22 @@ impl Ui {
     /// after the frame, only on change; ignored in headless contexts.
     pub fn set_cursor(&mut self, cursor: CursorIcon) {
         self.window_requests.cursor = cursor;
+    }
+
+    /// Ask the host to switch this window's swapchain to `vsync`.
+    ///
+    /// Unlike [`Self::set_cursor`] this is a **one-shot request**, not a
+    /// per-frame value: call it when the setting changes, not every
+    /// frame. Applying one recreates the swapchain, which waits for the
+    /// GPU to go idle — cheap to ask for repeatedly (the host drops a
+    /// request matching the mode already in force) but not something to
+    /// re-assert from a hot record pass.
+    ///
+    /// The host applies it after the frame and schedules the repaint that
+    /// carries it, so an idle window still picks the change up. Ignored by
+    /// hosts with no swapchain, which is every headless one.
+    pub fn set_vsync(&mut self, vsync: Vsync) {
+        self.window_requests.vsync = Some(vsync);
     }
 
     /// Ask the host to schedule another frame after this one. Cleared
