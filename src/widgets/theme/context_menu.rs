@@ -15,6 +15,11 @@ use glam::Vec2;
 /// radius); `item` drives [`crate::MenuItem`] rows. `min_width` is the
 /// floor for the menu's container Sizing on the main axis so single-
 /// character labels don't paint as a one-glyph-wide pill.
+///
+/// Every menu widget reads this bundle: globally through
+/// [`crate::Theme::context_menu`], or per instance through
+/// [`crate::ContextMenu::style`] / [`crate::MenuItem::style`] /
+/// [`crate::MenuSeparator::style`].
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ContextMenuTheme {
     /// Panel chrome behind the items. Container's `padding` carves the
@@ -24,16 +29,36 @@ pub struct ContextMenuTheme {
     pub padding: Spacing,
     /// Floor for the menu's container width.
     pub min_width: f32,
+    /// Vertical gutter between rows. `0.0` (the default) stacks them
+    /// flush, so a hovered row's chip meets its neighbour's — the look
+    /// every native menu has. Raise it for a spaced, card-like list.
+    pub gap: f32,
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,
-    /// Thin horizontal divider between groups (for `MenuItem::separator`).
-    pub separator: Color,
+    /// Thin horizontal divider between groups (for
+    /// [`crate::MenuItem::separator`]).
+    pub separator: MenuSeparatorTheme,
 }
 
 impl ContextMenuTheme {
     /// `panel` / `separator` are chrome only; the rows carry the text.
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.item.for_each_text(f);
+    }
+
+    /// Reround the panel and re-nest the row chips inside it. Both radii
+    /// are plain fields (`panel.corners`, and each `item` look's
+    /// `background.corners`), but they are not independent: a chip at or
+    /// above the panel's radius out-rounds the corner it sits in, so
+    /// setting one by hand and not the other is how a menu ends up
+    /// looking like pills in a box. `chip` defaults to one px under
+    /// `panel`, the relationship [`Self::from_palette`] ships.
+    pub fn with_radius(mut self, panel: f32, chip: Option<f32>) -> Self {
+        self.panel.corners = Corners::all(panel);
+        self.item = self
+            .item
+            .with_radius(chip.unwrap_or((panel - 1.0).max(0.0)));
+        self
     }
 }
 
@@ -52,6 +77,11 @@ pub struct MenuItemTheme {
     pub shortcut: Color,
     /// Padding inside one row.
     pub padding: Spacing,
+    /// Minimum gutter between the label and its right-aligned shortcut
+    /// hint. The row is `SpaceBetween`, so this is the floor the two
+    /// texts are held apart by while the menu hugs its widest row —
+    /// it is what stops "Copy ⌘C" from reading as one word.
+    pub gap: f32,
 }
 
 impl MenuItemTheme {
@@ -62,6 +92,19 @@ impl MenuItemTheme {
     /// Pick the visual state: `active` = pressed.
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())
+    }
+
+    /// Reround the row chip in every state that paints one. States with
+    /// no background (`normal` by default — rows are transparent at
+    /// rest) stay transparent.
+    pub fn with_radius(mut self, radius: f32) -> Self {
+        let corners = Corners::all(radius);
+        for look in self.looks.each_mut() {
+            if let Some(bg) = &mut look.background {
+                bg.corners = corners;
+            }
+        }
+        self
     }
 }
 
@@ -85,8 +128,9 @@ impl ContextMenuTheme {
             panel,
             padding: Spacing::all(4.0),
             min_width: 160.0,
+            gap: 0.0,
             item: MenuItemTheme::from_palette(p),
-            separator: p.border_soft(),
+            separator: MenuSeparatorTheme::from_palette(p),
         }
     }
 }
@@ -130,11 +174,46 @@ impl MenuItemTheme {
             // label 12 px off the panel edge to 9 px off its top, the
             // slightly-wider-than-tall gutter a column of labels wants.
             padding: Spacing::xy(8.0, 5.0),
+            gap: 16.0,
         }
     }
 }
 
 impl Default for MenuItemTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
+
+/// Visuals for [`crate::MenuSeparator`], the divider between menu
+/// groups. Its own bundle rather than a reach into
+/// [`crate::Theme::separator`]: a menu rule is a different object from
+/// an in-flow one — it spans a 4 px-padded popup, not a content column,
+/// and restyling the menu shouldn't have to drag every other rule in
+/// the app along with it.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct MenuSeparatorTheme {
+    /// Rule color.
+    pub color: Color,
+    /// Rule breadth in logical px.
+    pub thickness: f32,
+    /// Breathing room around the rule. Vertical only by default — the
+    /// rule spans the full padded width, so a horizontal inset would
+    /// leave it visibly short of the labels it divides.
+    pub margin: Spacing,
+}
+
+impl MenuSeparatorTheme {
+    pub fn from_palette(p: &Palette) -> Self {
+        Self {
+            color: p.border_soft(),
+            thickness: 1.0,
+            margin: Spacing::xy(0.0, 4.0),
+        }
+    }
+}
+
+impl Default for MenuSeparatorTheme {
     fn default() -> Self {
         Self::from_palette(&Palette::DEFAULT)
     }
