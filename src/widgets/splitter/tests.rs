@@ -314,7 +314,7 @@ fn divider_requests_the_resize_cursor() {
 
     // Hovering the grab bar ([197.5, 203.5) at ratio 0.5) requests the
     // horizontal-resize cursor.
-    h.move_to(Vec2::new(200.5, 50.0));
+    h.move_onto(split_id().with("divider"));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
         h.ui.window_requests.cursor,
@@ -324,7 +324,7 @@ fn divider_requests_the_resize_cursor() {
 
     // Mid-drag the pointer leaves the thin bar; the cursor must hold
     // until release (drag-first, since `hovered` is capture-gated).
-    h.press_at(Vec2::new(200.5, 50.0));
+    h.press_on(split_id().with("divider"));
     h.drag_to(Vec2::new(320.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
@@ -358,7 +358,7 @@ fn divider_requests_the_resize_cursor() {
     frame(&mut h, &mut ratio);
     frame(&mut h, &mut ratio);
     // Free span 200 at ratio 0.5 → grab bar rows [97.5, 103.5).
-    h.move_to(Vec2::new(50.0, 100.5));
+    h.move_onto(split_id().with("divider"));
     frame(&mut h, &mut ratio);
     assert_eq!(
         h.ui.window_requests.cursor,

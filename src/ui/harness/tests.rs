@@ -165,6 +165,58 @@ fn center_of_matches_the_arranged_rect() {
     assert_eq!(rect.size.h, 40.0);
     assert_eq!(harness.center_of(target()), rect.center());
     assert_eq!(harness.hit_at(harness.center_of(target())), Some(target()));
+
+    // Addressing the widget instead of its coordinates lands the same
+    // click as the hand-computed `INSIDE`.
+    harness.click_on(target());
+    assert!(harness.response_in(target(), button).left.clicked());
+}
+
+#[test]
+fn addressing_a_widget_refuses_to_click_through_something_on_top() {
+    // The whole reason the `_on` helpers check rather than just aiming:
+    // a covered widget's center belongs to whatever is over it, so an
+    // unchecked `click_on` would report success while the event went
+    // somewhere else entirely.
+    let under = WidgetId::from_hash("under");
+    let over = WidgetId::from_hash("over");
+    let stacked = |ui: &mut Ui| {
+        Panel::zstack().auto_id().show(ui, |ui| {
+            Button::new()
+                .id(under)
+                .label("under")
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .show(ui);
+            Button::new()
+                .id(over)
+                .label("over")
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .show(ui);
+        });
+    };
+
+    let mut harness = UiHarness::new(SURFACE);
+    harness.prime(2, stacked);
+
+    // Both occupy the same rect, so their centers coincide — geometry
+    // alone cannot tell them apart.
+    assert_eq!(harness.center_of(under), harness.center_of(over));
+
+    harness.click_on(over);
+    assert!(
+        harness.response_in(over, stacked).left.clicked(),
+        "the topmost widget is reachable by id",
+    );
+
+    let covered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut harness = UiHarness::new(SURFACE);
+        harness.prime(2, stacked);
+        harness.click_on(under);
+    }));
+    assert!(
+        covered.is_err(),
+        "a covered widget must refuse, not silently click the cover",
+    );
 }
 
 #[test]

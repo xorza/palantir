@@ -505,7 +505,7 @@ fn press_started_counts_multi_press_runs() {
     let mut h = UiHarness::new(SURFACE);
     probe(&mut h); // settle layout
 
-    h.press_at(Vec2::new(50.0, 20.0));
+    h.press_on(WidgetId::from_hash("target"));
     assert_eq!(probe(&mut h), (true, 1), "first press starts a run");
     h.release();
     assert_eq!(

@@ -439,6 +439,58 @@ impl UiHarness {
         self.release_button(PointerButton::Right);
     }
 
+    /// `id`'s center, **checked**: panics unless the pointer would
+    /// actually reach `id` there.
+    ///
+    /// The check is the point. A widget's center is not the same thing
+    /// as a hit on that widget — anything overlapping it that senses
+    /// hover wins the topmost-first scan, so aiming at a rect and
+    /// assuming the event lands is how a test ends up passing for the
+    /// wrong reason. The `_on` / `_onto` helpers below all route through
+    /// here; a case that *wants* to aim at an occluded widget is
+    /// deliberate and says so by computing the position itself.
+    ///
+    /// Reads last frame's cascade, so it needs a primed frame — see
+    /// [`Self::center_of`] for the failure when nothing recorded.
+    ///
+    /// The filter is "senses anything", deliberately wider than
+    /// [`Self::hit_at`]'s hover filter: a `SCROLL`-only widget is
+    /// invisible to the hover layer *by design* (`Sense::hovers`), so
+    /// checking against hover alone would reject aiming at a scroll or
+    /// pinch target — which is one of the main reasons to aim at all.
+    fn hit_center_of(&self, id: WidgetId) -> Vec2 {
+        let center = self.center_of(id);
+        let senses_anything = |sense: Sense| sense != Sense::NONE;
+        let hit = self.ui.cascades.hit_test(center, senses_anything);
+        assert_eq!(
+            hit,
+            Some(id),
+            "{id:?} does not receive the pointer at its own center {center:?} — \
+             {hit:?} is on top there. Aim by position if that is intended.",
+        );
+        center
+    }
+
+    /// Click `id` at its center. See [`Self::hit_center_of`] for what is
+    /// checked and why.
+    pub fn click_on(&mut self, id: WidgetId) {
+        self.click_at(self.hit_center_of(id));
+    }
+
+    pub fn right_click_on(&mut self, id: WidgetId) {
+        self.right_click_at(self.hit_center_of(id));
+    }
+
+    pub fn press_on(&mut self, id: WidgetId) -> InputDelta {
+        self.press_at(self.hit_center_of(id))
+    }
+
+    /// Hover `id` — the move half of [`Self::press_on`], for a test that
+    /// aims at a widget and then feeds something positionless.
+    pub fn move_onto(&mut self, id: WidgetId) -> InputDelta {
+        self.move_to(self.hit_center_of(id))
+    }
+
     /// Move while pressed, returning the move's [`InputDelta`] like
     /// [`Self::move_to`]. Panics if travel since the press has not
     /// crossed `DRAG_THRESHOLD` — the capture would not latch and the
