@@ -31,7 +31,7 @@ use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
 use crate::ui::frame::{FrameInput, FrameStamp};
-use crate::window::{CursorIcon, WindowCommands, WindowFrameState, WindowToken};
+use crate::window::{WindowCommands, WindowFrameState, WindowOutput, WindowToken};
 use crate::{Display, FrameReport};
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
@@ -86,10 +86,19 @@ pub(super) struct WindowDriver {
 /// Identity of the surface or texture a window renders into: everything a
 /// change of which invalidates the driver's retained target state (last-frame
 /// pixels, damage baseline, backbuffer format).
+///
+/// This is the **single gate** on that state, and on a swapchain host it is
+/// also what decides when to reconfigure the surface. Any
+/// `wgpu::SurfaceConfiguration` field that becomes mutable at runtime must
+/// therefore be added here, or the new value sits in the host's config and
+/// silently never reaches the swapchain — nothing else re-reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TargetKey {
     pub(super) physical: UVec2,
     pub(super) format: wgpu::TextureFormat,
+    /// `None` for a plain texture target, which is never presented and so
+    /// has no swapchain to reconfigure.
+    pub(super) present_mode: Option<wgpu::PresentMode>,
 }
 
 impl TargetKey {
@@ -98,6 +107,7 @@ impl TargetKey {
         Self {
             physical: UVec2::new(size.width, size.height),
             format: texture.format(),
+            present_mode: None,
         }
     }
 }
@@ -330,19 +340,27 @@ impl WindowDriver {
     }
 
     /// Drain the recorder's post-frame window scratch into `commands` and
-    /// return the cursor this frame asked for. Settles the pending close
+    /// return what the host applies afterwards. Settles the pending close
     /// first: a close request app code did not veto becomes this window's own
     /// close command, so every host applies the veto the same way. Shared by
     /// the offscreen and surface adapters — the offscreen one drains into a
     /// scratch buffer it then drops, since a headless render has no window
     /// lifecycle to service.
     ///
+    /// The vsync request is **taken**, not copied: it is a one-shot ask, so
+    /// leaving it set would re-apply the same swapchain reconfigure every
+    /// frame.
+    ///
     /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
     /// buffers' capacity across frames.
-    // Multi-window lifecycle plumbing: every caller is under
-    // `src/host/winit/`, so a `--no-default-features` build (no
-    // `winit-host`) compiles this with nothing to call it.
-    pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> CursorIcon {
+    #[cfg_attr(
+        not(feature = "winit-host"),
+        expect(
+            dead_code,
+            reason = "multi-window lifecycle plumbing: every caller is under                       src/host/winit/, so a build without that feature has                       nothing to call it"
+        )
+    )]
+    pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> WindowOutput {
         let requests = &mut self.ui.window_requests;
         if self.ui.window_frame.close_requested && !requests.close_vetoed {
             requests.commands.closes.push(self.token);
@@ -350,7 +368,10 @@ impl WindowDriver {
         commands.append(&mut requests.commands);
         requests.close_vetoed = false;
         self.ui.window_frame = WindowFrameState::default();
-        requests.cursor
+        WindowOutput {
+            cursor: requests.cursor,
+            vsync: requests.vsync.take(),
+        }
     }
 
     /// The counterpart to [`Self::drain_window_output`] for a host with no
@@ -677,15 +698,21 @@ mod output_validity_tests {
     }
 
     /// `note_target` is the single gate on retained target state: it reports a
-    /// change exactly once per distinct size/format, and every change clears
-    /// the last-frame pixels and the damage baseline.
+    /// change exactly once per distinct size/format/present-mode, and every
+    /// change clears the last-frame pixels and the damage baseline.
+    ///
+    /// The present-mode axis is what a runtime vsync toggle rides: applying
+    /// one only rewrites the host's `SurfaceConfiguration`, and this gate is
+    /// the sole thing that re-reads it, so a key blind to the field would
+    /// leave the swapchain on the old mode forever.
     #[test]
-    fn note_target_tracks_size_and_format_and_invalidates_on_change() {
+    fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
         let shared = HostShared::new(TextShaper::test_mono(), None);
         let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
             format: wgpu::TextureFormat::Rgba8Unorm,
+            present_mode: Some(wgpu::PresentMode::AutoVsync),
         };
         let resized = TargetKey {
             physical: UVec2::new(65, 48),
@@ -695,11 +722,21 @@ mod output_validity_tests {
             format: wgpu::TextureFormat::Bgra8Unorm,
             ..resized
         };
+        let vsync_off = TargetKey {
+            present_mode: Some(wgpu::PresentMode::AutoNoVsync),
+            ..reformatted
+        };
+        // A texture target is never presented, so it carries no mode at all —
+        // and must still read as a change against an otherwise-equal surface.
+        let offscreen = TargetKey {
+            present_mode: None,
+            ..vsync_off
+        };
 
         assert!(driver.note_target(first), "the first target is a change");
         assert!(!driver.note_target(first), "an identical target is not");
 
-        for changed in [resized, reformatted] {
+        for changed in [resized, reformatted, vsync_off, offscreen] {
             driver.output_valid = true;
             driver.backbuffer_fresh = true;
             assert!(driver.note_target(changed));
@@ -716,7 +753,7 @@ mod output_validity_tests {
         // damage baseline if they did.
         driver.output_valid = true;
         driver.backbuffer_fresh = true;
-        assert!(!driver.note_target(reformatted));
+        assert!(!driver.note_target(offscreen));
         assert!(driver.output_valid);
         assert!(driver.backbuffer_fresh);
     }

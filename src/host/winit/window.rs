@@ -10,7 +10,7 @@ use crate::Display;
 use crate::app::App;
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
-use crate::host::winit::gpu::{SurfaceManager, WindowSurface};
+use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
 use crate::host::winit::native;
 use crate::input::InputEvent;
 use crate::input::response::InputDelta;
@@ -119,9 +119,9 @@ impl Window {
                 .and_then(|monitor| monitor.refresh_rate_millihertz()),
         };
 
-        // A size or format change invalidates the driver's retained target
-        // state *and* needs the swapchain reconfigured before the next
-        // acquire. Identical repeats cost nothing (Wayland resends configures
+        // A size, format, or present-mode change invalidates the driver's
+        // retained target state *and* needs the swapchain reconfigured before
+        // the next acquire. Identical repeats cost nothing (Wayland resends configures
         // on focus / output changes), which matters because
         // `surface.configure` waits for GPU idle and reallocates the
         // swapchain — wgpu #7447 measures 100ms+ stalls when called per
@@ -129,6 +129,7 @@ impl Window {
         if self.driver.note_target(TargetKey {
             physical,
             format: self.config.format,
+            present_mode: Some(self.config.present_mode),
         }) {
             surfaces.configure(&self.surface, &self.config);
         }
@@ -196,15 +197,37 @@ impl Window {
 
     /// Settle everything the frame produced for the host: drain the recorder's
     /// window commands (which converts an un-vetoed close request into this
-    /// window's own close command), push the requested cursor to the OS, and
-    /// consume the one-shot close request.
+    /// window's own close command), push the requested cursor to the OS, apply
+    /// a requested vsync change, and consume the one-shot close request.
     fn finish(&mut self, commands: &mut WindowCommands) {
-        let cursor = self.driver.drain_window_output(commands);
-        if cursor != self.cursor {
-            self.window.set_cursor(native::cursor(cursor));
-            self.cursor = cursor;
+        let output = self.driver.drain_window_output(commands);
+        if output.cursor != self.cursor {
+            self.window.set_cursor(native::cursor(output.cursor));
+            self.cursor = output.cursor;
+        }
+        if let Some(vsync) = output.vsync {
+            self.set_present_mode(gpu::present_mode(vsync));
         }
         self.close_requested = false;
+    }
+
+    /// Point the swapchain config at `mode`. The reconfigure itself is left
+    /// to the next frame's [`TargetKey`] check rather than done here: that
+    /// check is the one gate on the retained target state, and recreating the
+    /// swapchain invalidates it (the images are new, so the damage baseline
+    /// and last-frame pixels describe nothing). Doing it here would reconfigure
+    /// behind the gate's back and leave the next partial repaint loading
+    /// contents that no longer exist.
+    ///
+    /// Hence the forced repaint: an idle window schedules no next frame, so
+    /// without it the change would sit in `config` until something else
+    /// happened to wake the window.
+    fn set_present_mode(&mut self, mode: wgpu::PresentMode) {
+        if mode == self.config.present_mode {
+            return;
+        }
+        self.config.present_mode = mode;
+        self.next = FramePresent::Immediate;
     }
 }
 
@@ -236,7 +259,7 @@ mod tests {
     use crate::host::window_driver::WindowDriver;
     use crate::host::winit::window::FramePresent;
     use crate::text::TextShaper;
-    use crate::window::{CursorIcon, WindowCommands, WindowConfig, WindowToken};
+    use crate::window::{CursorIcon, Vsync, WindowCommands, WindowConfig, WindowToken};
 
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {
@@ -252,8 +275,9 @@ mod tests {
         driver.ui.set_cursor(CursorIcon::Pointer);
         driver.ui.window_frame.close_requested = true;
 
-        let cursor = driver.drain_window_output(&mut commands);
-        assert_eq!(cursor, CursorIcon::Pointer);
+        let output = driver.drain_window_output(&mut commands);
+        assert_eq!(output.cursor, CursorIcon::Pointer);
+        assert_eq!(output.vsync, None, "no vsync change was asked for");
         assert_eq!(commands.opens.len(), 1);
         assert_eq!(commands.opens[0].token, opened);
         assert_eq!(
@@ -290,6 +314,42 @@ mod tests {
         assert_eq!(
             driver.ui.window_requests.commands.closes.capacity(),
             close_capacity
+        );
+    }
+
+    /// A vsync change is a one-shot request, not a per-frame value like the
+    /// cursor: the drain **takes** it. Re-delivering would re-apply the same
+    /// swapchain reconfigure — a GPU-idle wait and a fresh swapchain — on
+    /// every subsequent frame.
+    #[test]
+    fn a_vsync_request_drains_once_and_then_clears() {
+        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let mut driver = WindowDriver::builder(WindowToken(3), &shared).build();
+        let mut commands = WindowCommands::default();
+
+        assert_eq!(
+            driver.drain_window_output(&mut commands).vsync,
+            None,
+            "a frame that asked for nothing reports no change"
+        );
+
+        driver.ui.set_vsync(Vsync::Off);
+        assert_eq!(
+            driver.drain_window_output(&mut commands).vsync,
+            Some(Vsync::Off)
+        );
+        assert_eq!(
+            driver.drain_window_output(&mut commands).vsync,
+            None,
+            "the request is consumed by the drain that delivered it"
+        );
+
+        // Within one pass the last writer wins, matching `set_cursor`.
+        driver.ui.set_vsync(Vsync::Off);
+        driver.ui.set_vsync(Vsync::On);
+        assert_eq!(
+            driver.drain_window_output(&mut commands).vsync,
+            Some(Vsync::On)
         );
     }
 

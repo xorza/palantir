@@ -9,6 +9,7 @@ use winit::window::{Window as WinitWindow, WindowId};
 
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
+use crate::window::Vsync;
 
 const REQUIRED_IMMEDIATE_SIZE: u32 = 16;
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
@@ -267,6 +268,18 @@ fn build_surface_config(
     })
 }
 
+/// The present mode a [`Vsync`] setting asks for. Both map to *automatic*
+/// policies, which every surface accepts — wgpu resolves each against what
+/// the surface actually supports — so unlike an explicit mode from
+/// [`WinitHostConfig`](crate::WinitHostConfig) this needs no negotiation
+/// and can be applied to a live swapchain directly.
+pub(super) fn present_mode(vsync: Vsync) -> wgpu::PresentMode {
+    match vsync {
+        Vsync::On => wgpu::PresentMode::AutoVsync,
+        Vsync::Off => wgpu::PresentMode::AutoNoVsync,
+    }
+}
+
 fn negotiate_present_mode(
     requested: wgpu::PresentMode,
     supported: &[wgpu::PresentMode],
@@ -292,8 +305,31 @@ mod tests {
     use crate::host::winit::error::WinitHostError;
     use crate::host::winit::gpu::{
         REQUIRED_IMMEDIATE_SIZE, REQUIRED_SURFACE_USAGES, build_surface_config,
-        device_requirements, negotiate_present_mode,
+        device_requirements, negotiate_present_mode, present_mode,
     };
+    use crate::window::Vsync;
+
+    /// The runtime vsync toggle maps onto *automatic* policies on purpose:
+    /// every surface accepts those, so switching a live swapchain needs no
+    /// capability re-query — which is what lets `Window::set_present_mode`
+    /// assign straight into the config.
+    #[test]
+    fn vsync_maps_to_automatic_present_modes_that_survive_negotiation() {
+        assert_eq!(present_mode(Vsync::On), PresentMode::AutoVsync);
+        assert_eq!(present_mode(Vsync::Off), PresentMode::AutoNoVsync);
+        assert_eq!(Vsync::default(), Vsync::On, "vsync is on unless asked off");
+
+        // `[]` is the worst case a surface can report. An explicit mode would
+        // be rewritten here; both automatic ones pass through untouched.
+        for vsync in [Vsync::On, Vsync::Off] {
+            let mode = present_mode(vsync);
+            assert_eq!(
+                negotiate_present_mode(mode, &[]),
+                mode,
+                "{vsync:?} must not depend on what the surface enumerates"
+            );
+        }
+    }
 
     #[derive(Debug)]
     struct PresentModeCase {

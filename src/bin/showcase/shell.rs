@@ -9,7 +9,7 @@
 use palantir::{
     Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
     FontWeight, Frame, Key, Palette, Panel, Scroll, Shortcut, Sizing, Spacing, StatefulLook,
-    Stroke, Text, TextStyle, TextWrap, Theme, Ui, WidgetLook, WindowConfig, WindowToken,
+    Stroke, Text, TextStyle, TextWrap, Theme, Ui, Vsync, WidgetLook, WindowConfig, WindowToken,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -219,6 +219,10 @@ const PAGES: &[Page] = &[
 #[derive(Debug)]
 pub(crate) struct State {
     active: usize,
+    /// Mirrors what the host was last told, so the toggle only *asks* on a
+    /// real flip — `Ui::set_vsync` is a one-shot request and applying one
+    /// recreates the swapchain.
+    vsync: Vsync,
     app: pages::state::AppState,
     /// Persistent renderer for the `gpu view` page — its GPU resources
     /// build lazily on first paint (no device at construction).
@@ -233,6 +237,7 @@ impl State {
         ui.theme.button.anim = Some(AnimSpec::SPRING);
         State {
             active: 0,
+            vsync: Vsync::default(),
             app: pages::state::AppState { counter: 0 },
             cube: Rc::new(RefCell::new(pages::gpu_view::Cube::new())),
         }
@@ -294,7 +299,7 @@ impl State {
                             }
                         }
                     });
-                debug_toggles(ui);
+                debug_toggles(ui, &mut self.vsync);
             });
     }
 
@@ -412,7 +417,7 @@ fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
 
 /// The overlay switches, mirroring the F-key shortcuts so they're
 /// discoverable instead of living only in a comment.
-fn debug_toggles(ui: &mut Ui) {
+fn debug_toggles(ui: &mut Ui, vsync: &mut Vsync) {
     Frame::new()
         .id_salt("footer-rule")
         .size((Sizing::FILL, Sizing::fixed(1.0)))
@@ -421,6 +426,7 @@ fn debug_toggles(ui: &mut Ui) {
     let mut damage = ui.debug_overlay_mut().damage_rect;
     let mut dim = ui.debug_overlay_mut().dim_undamaged;
     let mut stats = ui.debug_overlay_mut().frame_stats;
+    let mut vsync_on = *vsync == Vsync::On;
     Panel::vstack()
         .id_salt("debug-toggles")
         .size((Sizing::FILL, Sizing::HUG))
@@ -438,7 +444,18 @@ fn debug_toggles(ui: &mut Ui) {
                 .id_salt("dbg-stats")
                 .label("frame stats  F9")
                 .show(ui);
+            // Paired with `frame stats` on purpose: turning vsync off is
+            // visible there as the frame rate coming off the refresh cap.
+            Checkbox::new(&mut vsync_on)
+                .id_salt("dbg-vsync")
+                .label("vsync")
+                .show(ui);
         });
+    let requested = if vsync_on { Vsync::On } else { Vsync::Off };
+    if requested != *vsync {
+        *vsync = requested;
+        ui.set_vsync(requested);
+    }
     let mut overlay = ui.debug_overlay_mut();
     overlay.damage_rect = damage;
     overlay.dim_undamaged = dim;

@@ -182,6 +182,27 @@ pub enum CursorIcon {
     NotAllowed,
 }
 
+/// Whether a window's swapchain waits for the display's refresh before
+/// presenting, requested through [`Ui::set_vsync`](crate::Ui::set_vsync).
+/// Backend-agnostic like [`CursorIcon`] — the two states map onto the
+/// host's *automatic* present policies, so the backend still picks the
+/// concrete swapchain mode each surface actually supports.
+///
+/// Deliberately two-state. The full presentation vocabulary (Fifo,
+/// Mailbox, Immediate, …) stays a startup knob on the host's own config,
+/// where naming backend types is fine; this is the runtime toggle an
+/// application puts in front of a user, and "wait for vblank or don't" is
+/// the whole of what that question means to them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Vsync {
+    /// Present in step with the display. Tear-free, frame rate capped to
+    /// the refresh rate.
+    #[default]
+    On,
+    /// Present as soon as a frame is ready. Uncapped, and may tear.
+    Off,
+}
+
 /// A window-open request enqueued by
 /// [`Ui::open_window`](crate::Ui::open_window), drained by
 /// [`WinitHost`](crate::WinitHost) in `about_to_wait` once it holds
@@ -202,9 +223,13 @@ pub(crate) struct WindowCommands {
 impl WindowCommands {
     /// Move every command out of `source` onto the end of `self`, leaving
     /// `source` empty with its buffers — and their capacity — intact.
-    // Multi-window lifecycle plumbing: every caller is under
-    // `src/host/winit/`, so a `--no-default-features` build (no
-    // `winit-host`) compiles this with nothing to call it.
+    #[cfg_attr(
+        not(feature = "winit-host"),
+        expect(
+            dead_code,
+            reason = "multi-window lifecycle plumbing: every caller is under                       src/host/winit/, so a build without that feature has                       nothing to call it"
+        )
+    )]
     pub(crate) fn append(&mut self, source: &mut Self) {
         self.opens.append(&mut source.opens);
         self.closes.append(&mut source.closes);
@@ -219,6 +244,30 @@ pub(crate) struct WindowRequests {
     pub(crate) close_vetoed: bool,
     /// Last cursor requested during a record pass; retained across PaintOnly.
     pub(crate) cursor: CursorIcon,
+    /// A vsync change asked for this pass, taken by the drain. `None` —
+    /// the common case — means "leave it alone", which is why this is a
+    /// one-shot request rather than a per-frame value like `cursor`:
+    /// reconfiguring a swapchain is expensive, so the recorder must not
+    /// have to re-assert the current setting every frame to keep it.
+    pub(crate) vsync: Option<Vsync>,
+}
+
+/// What the host applies after draining a frame's recorder output.
+#[cfg_attr(
+    not(feature = "winit-host"),
+    expect(
+        dead_code,
+        reason = "multi-window lifecycle plumbing: every caller is under \
+                  src/host/winit/, so a build without that feature has \
+                  nothing to call it"
+    )
+)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WindowOutput {
+    /// The cursor this frame asked for; applied on change.
+    pub(crate) cursor: CursorIcon,
+    /// A vsync change this frame asked for, if any.
+    pub(crate) vsync: Option<Vsync>,
 }
 
 /// Host-owned facts copied into `Ui` at the start of a window frame.
