@@ -4,6 +4,8 @@
 //! inside `const fn` bodies.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+// `PLATFORM` is cfg-selected, so on any one target the other two
+// variants are never constructed. That is the point of the type.
 #[allow(dead_code)]
 pub(crate) enum Platform {
     Mac,
