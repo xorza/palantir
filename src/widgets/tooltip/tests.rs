@@ -193,7 +193,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
             ..ResponseState::default()
         },
     };
-    let frame_at = |h: &mut UiHarness, time: Duration| {
+    let record_at = |h: &mut UiHarness, time: Duration| {
         h.at(time).frame(|ui| {
             Tooltip::on(&snapshot)
                 .text("tip")
@@ -203,7 +203,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     };
 
     let started_at = Duration::from_secs(1 << 24);
-    frame_at(&mut h, started_at);
+    record_at(&mut h, started_at);
     assert_eq!(
         h.ui.try_state::<TooltipState>(trigger_id)
             .unwrap()
@@ -211,10 +211,10 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
         Some(started_at),
     );
 
-    frame_at(&mut h, started_at + Duration::from_millis(249));
+    record_at(&mut h, started_at + Duration::from_millis(249));
     assert!(!h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
 
-    frame_at(&mut h, started_at + Duration::from_millis(250));
+    record_at(&mut h, started_at + Duration::from_millis(250));
     assert!(h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
 }
 
@@ -258,7 +258,7 @@ fn delay_gates_visibility() {
     let mut h = UiHarness::new(SURFACE);
 
     let mut captured: Option<WidgetId> = None;
-    let frame_at = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
+    let record_at_secs = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
         h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -280,7 +280,7 @@ fn delay_gates_visibility() {
 
     // First frame — pointer not yet over the button. State row exists,
     // but `elapsed == 0` and `visible == false`.
-    frame_at(&mut h, 0.0, &mut captured);
+    record_at_secs(&mut h, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
 
     // Move pointer to the center of the button's last-frame rect.
@@ -289,9 +289,9 @@ fn delay_gates_visibility() {
         trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
 
     h.move_to(trigger_pos);
-    frame_at(&mut h, 0.05, &mut captured);
+    record_at_secs(&mut h, 0.05, &mut captured);
     h.move_to(trigger_pos);
-    frame_at(&mut h, 0.1, &mut captured);
+    record_at_secs(&mut h, 0.1, &mut captured);
     let early =
         h.ui.try_state::<TooltipState>(trigger_id)
             .copied()
@@ -309,7 +309,7 @@ fn delay_gates_visibility() {
     for _ in 0..20 {
         t += 0.1;
         h.move_to(trigger_pos);
-        frame_at(&mut h, t, &mut captured);
+        record_at_secs(&mut h, t, &mut captured);
     }
 
     let late =
@@ -330,12 +330,12 @@ fn delay_gates_visibility() {
     h.ui.theme.tooltip.warmup = Duration::ZERO;
     t += 0.1;
     h.move_to(Vec2::new(350.0, 250.0));
-    frame_at(&mut h, t, &mut captured);
+    record_at_secs(&mut h, t, &mut captured);
     assert!(!h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
 
     t += 0.1;
     h.move_to(trigger_pos);
-    frame_at(&mut h, t, &mut captured);
+    record_at_secs(&mut h, t, &mut captured);
     assert!(
         !h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible,
         "zero warmup must not bypass the delay on a new hover",
@@ -350,7 +350,7 @@ fn hover_clears_after_tooltip_visible() {
     let mut h = UiHarness::new(SURFACE);
 
     let mut captured: Option<WidgetId> = None;
-    let frame_at = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
+    let record_at_secs = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
         h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -370,7 +370,7 @@ fn hover_clears_after_tooltip_visible() {
         });
     };
 
-    frame_at(&mut h, 0.0, &mut captured);
+    record_at_secs(&mut h, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
     let trigger_rect = h.ui.response_for(trigger_id).rect.expect("button rect");
     let trigger_pos =
@@ -380,7 +380,7 @@ fn hover_clears_after_tooltip_visible() {
     for _ in 0..10 {
         t += 0.1;
         h.move_to(trigger_pos);
-        frame_at(&mut h, t, &mut captured);
+        record_at_secs(&mut h, t, &mut captured);
     }
     let state =
         h.ui.try_state::<TooltipState>(trigger_id)
@@ -395,7 +395,7 @@ fn hover_clears_after_tooltip_visible() {
     let away = Vec2::new(350.0, 250.0);
     h.move_to(away);
     t += 0.1;
-    frame_at(&mut h, t, &mut captured);
+    record_at_secs(&mut h, t, &mut captured);
 
     let hovered = h.ui.response_for(trigger_id).hovered;
     let state =
@@ -420,7 +420,7 @@ fn tooltip_inside_popup_records_without_panic() {
     // Near top-left so the popup never flips and the trigger stays put.
     let popup_anchor = Vec2::new(40.0, 40.0);
     let mut captured: Option<WidgetId> = None;
-    let frame_at = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
+    let record_at_secs = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
         h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -447,8 +447,8 @@ fn tooltip_inside_popup_records_without_panic() {
     };
 
     // Record once so the trigger rect is available to the next frame.
-    frame_at(&mut h, 0.0, &mut captured);
-    frame_at(&mut h, 0.01, &mut captured);
+    record_at_secs(&mut h, 0.0, &mut captured);
+    record_at_secs(&mut h, 0.01, &mut captured);
     let trigger_id = captured.expect("button id");
     let trigger_rect = h.ui.response_for(trigger_id).rect.expect("button rect");
     let trigger_pos =
@@ -460,7 +460,7 @@ fn tooltip_inside_popup_records_without_panic() {
     for _ in 0..20 {
         t += 0.1;
         h.move_to(trigger_pos);
-        frame_at(&mut h, t, &mut captured);
+        record_at_secs(&mut h, t, &mut captured);
     }
 
     let state =
