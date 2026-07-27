@@ -6,7 +6,7 @@
 // Run with `cargo run --example frame_visual --release`.
 
 use palantir::{
-    App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost, WinitHostError,
+    App, HostHandle, UVec2, Ui, Vsync, WindowConfig, WindowToken, WinitHost, WinitHostError,
     bench::FrameFixture,
 };
 
@@ -35,6 +35,9 @@ fn main() -> Result<(), WinitHostError> {
         .min_inner_size(UVec2::new(640, 480));
     WinitHost::builder(WindowToken(0))
         .window(window)
+        // Unthrottled, like the bench this mirrors: a frame presents as soon
+        // as it is ready rather than waiting for the next vblank.
+        .vsync(Vsync::Off)
         .build(FrameVisual::new)?
         .run()
 }
