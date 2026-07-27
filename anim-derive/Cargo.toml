@@ -1,8 +1,7 @@
 [package]
 name = "palantir-anim-derive"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
-rust-version = "1.85"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "Derive macro for palantir's Animatable trait"
 repository = "https://github.com/xorza/palantir"
