@@ -9,7 +9,6 @@
 //! - `Dismiss` surfaces the outside-click via `PopupResponse.dismissed`
 //!   while `Block` swallows it silently.
 
-use crate::input::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
@@ -620,7 +619,6 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
 /// test is here to catch.
 #[test]
 fn text_edit_inside_a_popup_receives_typing() {
-    use crate::input::keyboard::TextChunk;
     use crate::widgets::text_edit::TextEdit;
 
     let field = WidgetId::from_hash("popup-field");
@@ -638,7 +636,7 @@ fn text_edit_inside_a_popup_receives_typing() {
     h.request_focus(Some(field));
     h.frame(|ui| scene(ui, &mut buf));
 
-    h.on_input(InputEvent::Text(TextChunk::new("x").unwrap()));
+    h.ime_commit("x");
     h.frame(|ui| scene(ui, &mut buf));
 
     assert_eq!(

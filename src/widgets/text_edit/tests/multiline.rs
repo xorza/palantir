@@ -58,7 +58,7 @@ fn single_line_widget_normalizes_host_newlines() {
 #[test]
 fn multiline_paste_keeps_newlines() {
     let mut h = UiHarness::with_text(UVec2::new(300, 200));
-    h.ui.resources.clipboard.set("line1\nline2\nline3").unwrap();
+    h.set_clipboard_text("line1\nline2\nline3");
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
     h.request_focus(Some(ed_id));

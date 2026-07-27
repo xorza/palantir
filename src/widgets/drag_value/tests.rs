@@ -168,7 +168,7 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // Pointer crosses the window edge: drag unobservable, but latched.
-    h.on_input(InputEvent::PointerLeft);
+    h.pointer_left();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "window exit is not a release");
     assert_eq!(canonical, 10.0);

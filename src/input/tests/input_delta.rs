@@ -109,7 +109,7 @@ fn pointer_left_after_hover_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     h.move_to(Vec2::new(50.0, 50.0));
-    let delta = h.on_input(InputEvent::PointerLeft);
+    let delta = h.pointer_left();
     assert!(delta.requests_repaint, "leave while hovered → repaint");
 }
 
@@ -118,7 +118,7 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Never moved over the target, never captured → leaving is a no-op.
-    let delta = h.on_input(InputEvent::PointerLeft);
+    let delta = h.pointer_left();
     assert!(!delta.requests_repaint);
 }
 
