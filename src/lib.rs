@@ -108,6 +108,7 @@ pub(crate) mod window;
 /// [`mod@bench`].
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::app::internals::RecordApp;
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     pub use crate::ui::harness::UiHarness;
 }

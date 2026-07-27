@@ -6,25 +6,12 @@ use std::time::Duration;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
-use palantir::{
-    App, Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui, WindowToken,
-};
+use palantir::internals::{HeadlessTestGpuLease, RecordApp, headless_test_gpu};
+use palantir::{Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 const BYTES_PER_PIXEL: u32 = 4;
-
-#[derive(Debug)]
-struct RecordApp<F> {
-    record: F,
-}
-
-impl<F: FnMut(&mut Ui)> App for RecordApp<F> {
-    fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-        (self.record)(ui);
-    }
-}
 
 thread_local! {
     /// `TextShaper` is `Rc<RefCell<CosmicMeasure>>` — not `Send`, so
@@ -90,7 +77,7 @@ impl Harness {
 
         self.host.ui().theme.window_clear = clear;
         self.host
-            .frame_offscreen(&target, scale, &mut RecordApp { record: scene });
+            .frame_offscreen(&target, scale, &mut RecordApp::new(scene));
 
         let mut img = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
