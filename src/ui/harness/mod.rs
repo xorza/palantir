@@ -16,8 +16,11 @@
 //! `FrameProcessing` reports `SingleLayout` / `DoubleLayout` — it counts
 //! A and B, not the warmup. `PaintOnly` is a fourth case that runs
 //! **zero** record passes. Every rule below is a corollary, and this
-//! type holds the display, clock, modifier state, and press origin so
-//! they can be *enforced* rather than documented.
+//! type holds the display, the clock, and the press origin so they can
+//! be *enforced* rather than documented. It deliberately holds *no*
+//! copy of anything `InputState` already owns — the pointer position
+//! and the modifier set are read back out of it, because a mirror
+//! desyncs the moment one event goes through [`UiHarness::on_input`].
 //!
 //! Holding them is also why there is one frame driver and not a matrix:
 //! a caller changes the surface with [`UiHarness::resize`] and the clock
@@ -98,9 +101,10 @@
 //!     widths.
 //! 12. **Scroll and pinch route to the widget under the pointer at
 //!     event time.** They carry no position of their own; `InputState`
-//!     resolves them against the last `PointerMoved`. Hence
-//!     [`scroll_lines_at`](UiHarness::scroll_lines_at) and friends take
-//!     one. Signs follow winit: positive `y` scrolls content down.
+//!     resolves them against the last `PointerMoved`. Hence each comes
+//!     in two forms: [`pinch`](UiHarness::pinch) and friends fire at
+//!     wherever the pointer already is, and the `_at` peers move it
+//!     first. Signs follow winit: positive `y` scrolls content down.
 //! 13. **Modifiers are sticky state, not per-event.**
 //!     `ModifiersChanged` carries a snapshot that persists, so a chord
 //!     set through [`set_modifiers`](UiHarness::set_modifiers) is still
@@ -127,9 +131,11 @@
 //! 1. `impl UiHarness` (`pub`) — the surface that leaves the crate
 //!    through `palantir::internals`, addressing widgets by [`WidgetId`]
 //!    and nothing else.
-//! 2. `impl UiHarness` (`pub(crate)`) — the schedule and damage knobs the
-//!    **benches** need. They compile under `internals` without
-//!    `cfg(test)`, which is why this tier cannot be narrowed further.
+//! 2. `impl UiHarness` (`pub(crate)`) — construction plus the one knob
+//!    the **benches** read, `damage_region`. Benches compile under
+//!    `internals` without `cfg(test)`, which is why that one method
+//!    cannot drop to tier 3; `from_resources` stays because tier 1's
+//!    constructors call it.
 //! 3. `mod unit` (`#[cfg(test)]`) — what only the *in-tree* suite calls:
 //!    the tree/encoder reach-ins, the cold constructor, the
 //!    no-baseline frame driver.
