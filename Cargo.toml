@@ -47,7 +47,7 @@ path = "src/bin/showcase/main.rs"
 required-features = ["showcase"]
 
 [dependencies]
-palantir-anim-derive = { path = "anim-derive", version = "0.1" }
+palantir-anim-derive = { path = "anim-derive", version = "0.3" }
 arboard = { version = "3.6", default-features = false, optional = true }
 bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
