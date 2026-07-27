@@ -78,7 +78,7 @@ use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
 use crate::ui::Ui;
-use crate::window::WindowToken;
+use crate::window::{Vsync, WindowToken};
 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
@@ -172,8 +172,24 @@ where
 
     /// Set the app-global presentation policy. An explicit mode unsupported by
     /// a surface falls back to its matching automatic policy.
+    ///
+    /// Naming a [`wgpu::PresentMode`] means depending on wgpu directly, at a
+    /// version matching the one palantir links. [`Self::vsync`] covers the
+    /// common case without that.
     pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
         self.config.present_mode = mode;
+        self
+    }
+
+    /// Start every window with `vsync` — the launch-time twin of
+    /// [`Ui::set_vsync`](crate::Ui::set_vsync), in the same backend-neutral
+    /// vocabulary.
+    ///
+    /// Prefer this over asking for the same thing from the first frame: set
+    /// here it reaches the *initial* swapchain, where the runtime request
+    /// would build one swapchain and immediately replace it.
+    pub fn vsync(mut self, vsync: Vsync) -> Self {
+        self.config.present_mode = gpu::present_mode(vsync);
         self
     }
 
