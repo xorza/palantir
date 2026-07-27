@@ -1,4 +1,5 @@
 use crate::input::keyboard::KeyboardEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::overlay::OverlayPosition;
@@ -236,7 +237,13 @@ impl Popup {
                 widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
             });
             let dismiss_mode = click_outside == ClickOutside::Dismiss;
-            let eater_clicked = ui.response_for(eater_id).left.clicked();
+            // Every button dismisses, not just the primary. The eater
+            // senses all four pointer interactions, so a secondary press
+            // outside is absorbed either way; reading only `left` meant it
+            // was absorbed *and* ignored, leaving an open context menu with
+            // no way to close it by the button that opened it.
+            let outside = ui.response_for(eater_id);
+            let eater_clicked = PointerButton::all().any(|b| outside.button(b).clicked());
             let response = PopupResponse {
                 // A `Dismiss` popup closes on an eaten outside-press OR an Esc
                 // press — so overlay hosts (ComboBox / ContextMenu) read one

@@ -31,8 +31,13 @@ impl PointerButton {
     /// Iterate every variant in declaration order. Wraps
     /// `strum::IntoEnumIterator` so callers don't need to bring the
     /// trait into scope.
+    ///
+    /// Widget code reaches for this when a rule is "any button" rather
+    /// than a named one — `Popup`'s outside-click dismissal — so that
+    /// adding a fourth button doesn't leave a hand-written
+    /// `left || right || middle` silently short.
     #[inline]
-    pub(super) fn all() -> impl Iterator<Item = Self> {
+    pub(crate) fn all() -> impl Iterator<Item = Self> {
         <Self as IntoEnumIterator>::iter()
     }
 

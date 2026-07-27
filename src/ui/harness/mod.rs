@@ -421,13 +421,18 @@ impl UiHarness {
     }
 
     pub fn click_at(&mut self, pos: Vec2) {
-        self.press_at(pos);
-        self.release();
+        self.click_button_at(PointerButton::Left, pos);
     }
 
     pub fn right_click_at(&mut self, pos: Vec2) {
-        self.press_button_at(PointerButton::Right, pos);
-        self.release_button(PointerButton::Right);
+        self.click_button_at(PointerButton::Right, pos);
+    }
+
+    /// The button-generic form the two above name — for a test sweeping
+    /// every [`PointerButton`] rather than exercising a named one.
+    pub fn click_button_at(&mut self, button: PointerButton, pos: Vec2) {
+        self.press_button_at(button, pos);
+        self.release_button(button);
     }
 
     /// `id`'s center, **checked**: panics unless the pointer would
