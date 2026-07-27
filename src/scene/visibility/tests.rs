@@ -55,7 +55,7 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
         InvisibleSpinnerCase::HiddenAncestor,
     ] {
         let mut h = UiHarness::new(display.physical);
-        let report = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+        let report = h.frame(|ui| {
             show_spinner_case(ui, case);
         });
         let tree = &h.ui.forest.trees[Layer::Main];
@@ -92,7 +92,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
     let mut h = UiHarness::new(display.physical);
 
-    let visible = h.frame_at(display, Duration::ZERO, |ui| {
+    let visible = h.frame(|ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
@@ -100,7 +100,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 
     h.ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
-    let hidden = h.frame_at(display, hidden_at, |ui| {
+    let hidden = h.at(hidden_at).frame(|ui| {
         show_spinner(ui, Visibility::Hidden);
     });
     assert_eq!(hidden.repaint_after, None);
@@ -119,7 +119,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 
     h.ui.request_repaint();
     let shown_at = Duration::from_millis(32);
-    let shown = h.frame_at_without_baseline(display, shown_at, |ui| {
+    let shown = h.at(shown_at).frame(|ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(shown.repaint_after, Some(shown_at));
@@ -134,7 +134,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -175,7 +175,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 fn collapsed_does_not_consume_fill_weight() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -213,7 +213,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -272,7 +272,7 @@ fn hidden_button_does_not_click() {
 
     let surface = UVec2::new(400, 200);
     let mut h = UiHarness::new(surface);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id(WidgetId::from_hash("invisible"))
@@ -285,7 +285,7 @@ fn hidden_button_does_not_click() {
     h.click_at(Vec2::new(50.0, 20.0));
 
     let mut clicked = false;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked = Button::new()
                 .id(WidgetId::from_hash("invisible"))

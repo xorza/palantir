@@ -197,7 +197,7 @@ mod tests {
         let mut h = UiHarness::new(UVec2::new(400, 300));
         let mut v = 0.5_f32;
         let (mut sized, mut hug, mut default) = (None, None, None);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(
@@ -229,7 +229,7 @@ mod tests {
         for (value, expected) in [(0.0, [0.0, 18.0, 102.0]), (1.0, [102.0, 18.0, 0.0])] {
             let mut h = UiHarness::new(UVec2::new(120, 30));
             let mut value = value;
-            let root = h.frame_value_without_baseline(|ui| {
+            let root = h.frame_value(|ui| {
                 Slider::new(&mut value, 0.0..=1.0)
                     .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
                     .show(ui)

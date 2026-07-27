@@ -15,7 +15,7 @@ use glam::UVec2;
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -55,7 +55,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
 #[test]
 fn vstack_with_fill_distributes_remainder() {
     let mut h = UiHarness::new(UVec2::new(200, 300));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::HUG, Sizing::FILL))
@@ -97,7 +97,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
         },
     ] {
         let mut h = UiHarness::new(UVec2::new(400, 100));
-        let root = h.frame_value_without_baseline(|ui| {
+        let root = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::HUG))
@@ -129,7 +129,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -169,7 +169,7 @@ fn hstack_justify_distributes_leftover() {
     ];
     for (label, justify, expected_xs) in cases {
         let mut h = UiHarness::new(UVec2::new(200, 100));
-        let root = h.frame_value_without_baseline(|ui| {
+        let root = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::HUG))
@@ -196,7 +196,7 @@ fn hstack_justify_distributes_leftover() {
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     use crate::layout::types::justify::Justify;
     let mut h = UiHarness::new(UVec2::new(200, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -228,7 +228,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 #[test]
 fn hstack_gap_inserts_space_between_children() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -258,7 +258,7 @@ fn hstack_gap_inserts_space_between_children() {
 #[test]
 fn hstack_align_center_centers_child_on_cross_axis() {
     let mut h = UiHarness::new(UVec2::new(200, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::fixed(100.0)))
@@ -283,7 +283,7 @@ fn negative_left_margin_spills_outside_slot() {
     // CSS-style negative margin: smaller slot, larger render, shifted negative.
     let mut h = UiHarness::new(UVec2::new(200, 100));
     let mut button_node = None;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             button_node = Some(
                 Button::new()
@@ -315,7 +315,7 @@ fn negative_left_margin_spills_outside_slot() {
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let mut h = UiHarness::new(UVec2::new(200, 100));
-    let [button_node, root] = h.frame_value_without_baseline(|ui| {
+    let [button_node, root] = h.frame_value(|ui| {
         let panel = Panel::hstack().auto_id().show(ui, |ui| {
             let button = Button::new().auto_id().label("Hi").show(ui).node();
             Frame::new()
@@ -339,7 +339,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 #[test]
 fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
     let mut h = UiHarness::new(UVec2::new(200, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .gap(5.0)
@@ -394,7 +394,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         },
     ] {
         let mut h = UiHarness::new(case.viewport);
-        let root = h.frame_value_without_baseline(|ui| {
+        let root = h.frame_value(|ui| {
             let panel = match case.axis {
                 Axis::X => Panel::hstack(),
                 Axis::Y => Panel::vstack(),
@@ -470,7 +470,7 @@ fn hstack_fill_max_size_caps_arranged_share() {
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut fill_node = None;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
@@ -549,7 +549,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
     for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
         let mut h = UiHarness::new(UVec2::new(400, 100));
         let mut child = None;
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::fixed(400.0), Sizing::fixed(100.0)))
@@ -589,7 +589,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
 fn hug_panel_clamps_to_min_and_max_size() {
     // Content 60px tall, `min_size` 100 → floors at 100.
     let mut h = UiHarness::new(UVec2::new(800, 600));
-    let small = h.frame_value_without_baseline(|ui| {
+    let small = h.frame_value(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("small"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -611,7 +611,7 @@ fn hug_panel_clamps_to_min_and_max_size() {
 
     // Content 300px tall, `max_size` 120 → caps at 120.
     let mut h = UiHarness::new(UVec2::new(800, 600));
-    let big = h.frame_value_without_baseline(|ui| {
+    let big = h.frame_value(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("big"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -649,7 +649,7 @@ fn hstack_child_align_per_axis_with_overrides() {
     ];
     for (label, second_override, second_y) in cases {
         let mut h = UiHarness::new(UVec2::new(200, 100));
-        let root = h.frame_value_without_baseline(|ui| {
+        let root = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::fixed(100.0)))

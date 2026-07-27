@@ -18,7 +18,6 @@ use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};
 use glam::{UVec2, Vec2};
-use std::time::Duration;
 
 const DISPLAY: Display = Display {
     physical: UVec2::new(200, 200),
@@ -33,7 +32,7 @@ const DISPLAY: Display = Display {
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
 fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Damage {
-    let report = h.frame_at(DISPLAY, Duration::ZERO, f);
+    let report = h.frame(f);
     match report.plan {
         None => Damage::Skip,
         Some(RenderPlan {
@@ -754,7 +753,7 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    let out = h.frame_at(DISPLAY, Duration::ZERO, |ui| {
+    let out = h.frame(|ui| {
         Frame::new()
             .id(WidgetId::from_hash("placeholder"))
             .size(10.0)
@@ -784,7 +783,6 @@ fn popup_eater_does_not_force_full_repaint() {
 #[test]
 fn click_on_empty_bg_does_not_force_full() {
     use crate::input::pointer::PointerButton;
-    use std::time::Duration;
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::vstack()
@@ -801,16 +799,16 @@ fn click_on_empty_bg_does_not_force_full() {
             });
     };
     // Frame 0 (cold): expect Full. Submit.
-    h.frame_at(DISPLAY, Duration::ZERO, build);
+    h.frame(build);
     // Frame 1 (warm): nothing changed → Skip.
-    let warm = h.frame_at(DISPLAY, Duration::ZERO, build).plan;
+    let warm = h.frame(build).plan;
     assert!(warm.is_none(), "warm frame must Skip");
 
     // Click on empty background (far from the 50×50 frame at origin).
     h.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
     h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let click_plan = h.frame_at(DISPLAY, Duration::ZERO, build).plan;
+    let click_plan = h.frame(build).plan;
     assert!(
         !matches!(
             click_plan,
@@ -826,9 +824,7 @@ fn click_on_empty_bg_does_not_force_full() {
 #[test]
 fn valid_skip_preserves_incremental_damage_baseline() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    let first = h
-        .frame_at_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
-        .plan;
+    let first = h.frame_without_baseline(|ui| one_frame(ui, BLUE)).plan;
     assert!(matches!(
         first,
         Some(RenderPlan {
@@ -836,14 +832,10 @@ fn valid_skip_preserves_incremental_damage_baseline() {
             ..
         })
     ));
-    let skip = h
-        .frame_at(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
-        .plan;
+    let skip = h.frame(|ui| one_frame(ui, BLUE)).plan;
     assert!(skip.is_none(), "identical content must Skip");
 
-    let next = h
-        .frame_at(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
-        .plan;
+    let next = h.frame(|ui| one_frame(ui, RED)).plan;
     assert!(
         matches!(
             next,
@@ -859,11 +851,9 @@ fn valid_skip_preserves_incremental_damage_baseline() {
 #[test]
 fn invalid_prior_output_forces_full_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    h.frame_at(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
+    h.frame(|ui| one_frame(ui, BLUE));
 
-    let next = h
-        .frame_at_without_baseline(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
-        .plan;
+    let next = h.frame_without_baseline(|ui| one_frame(ui, RED)).plan;
     assert!(
         matches!(
             next,
@@ -1781,9 +1771,7 @@ fn display_change_forces_full_repaint() {
         };
 
         // Steady-state: Full first frame, then Skip on identical re-record.
-        let f1 = h
-            .frame_at_without_baseline(DISPLAY, Duration::ZERO, &mut build)
-            .plan;
+        let f1 = h.frame_without_baseline(&mut build).plan;
         assert!(
             matches!(
                 f1,
@@ -1794,11 +1782,11 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} f1"
         );
-        let f2 = h.frame_at(DISPLAY, Duration::ZERO, &mut build).plan;
+        let f2 = h.frame(&mut build).plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(h.ui.damage_engine.dirty.is_empty(), "case: {label} steady");
         // Mutate Display; identical authoring; must short-circuit to Full.
-        let mutated_plan = h.frame_at(*mutated, Duration::ZERO, &mut build).plan;
+        let mutated_plan = h.set_display(*mutated).frame(&mut build).plan;
         assert!(
             matches!(
                 mutated_plan,
@@ -1815,7 +1803,7 @@ fn display_change_forces_full_repaint() {
         );
 
         // Stable surface at the new size, identical authoring → back to Skip.
-        let stable = h.frame_at(*mutated, Duration::ZERO, &mut build).plan;
+        let stable = h.frame(&mut build).plan;
         assert!(
             stable.is_none(),
             "case: {label} post-mutation steady must Skip",
@@ -1842,11 +1830,7 @@ fn display_change_forces_full_repaint() {
 /// partial damage rect on the resize frame.
 #[test]
 fn small_damage_with_surface_change_forces_full_repaint() {
-    let mut h = UiHarness::new(DISPLAY.physical);
-    let big = Display {
-        physical: UVec2::new(2000, 2000),
-        ..DISPLAY
-    };
+    let mut h = UiHarness::new(UVec2::new(2000, 2000));
     // Root: Fixed-size VStack containing two Fixed children. Stacked
     // vertically so both children's `paint_rect`s land inside the
     // 2000×2000 surface — required since the Vacant arm in the diff
@@ -1879,8 +1863,8 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    h.frame_at(big, Duration::ZERO, &mut scene);
-    h.frame_at(big, Duration::ZERO, &mut scene);
+    h.frame(&mut scene);
+    h.frame(&mut scene);
     assert!(h.ui.damage_engine.dirty.is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
@@ -1895,12 +1879,9 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             .expect("small in prev");
     snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
 
-    let smaller = Display {
-        physical: UVec2::new(1999, 2000),
-        ..big
-    };
     let resize_plan = h
-        .frame_at_without_baseline(smaller, Duration::ZERO, &mut scene)
+        .resize(UVec2::new(1999, 2000))
+        .frame_without_baseline(&mut scene)
         .plan;
 
     assert!(
@@ -1932,18 +1913,14 @@ fn stable_surface_does_not_short_circuit() {
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    h.frame_at(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
-    let warm = h
-        .frame_at(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
-        .plan;
+    h.frame(|ui| build(ui, BLUE));
+    let warm = h.frame(|ui| build(ui, BLUE)).plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(h.ui.damage_engine.dirty.is_empty());
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
-    let changed = h
-        .frame_at(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
-        .plan;
+    let changed = h.frame(|ui| build(ui, RED)).plan;
     let Some(RenderPlan {
         kind: RenderKind::Partial { region },
         ..

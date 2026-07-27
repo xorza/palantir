@@ -1,4 +1,3 @@
-use crate::display::Display;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
@@ -18,7 +17,6 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::state::ScrollState;
 use crate::{Ui, renderer::frontend::Frontend};
 use glam::{UVec2, Vec2};
-use std::time::Duration;
 
 /// Screen rect of the first paint row for the widget keyed by
 /// `WidgetId::from_hash(key)` on `Layer::Main`.
@@ -145,9 +143,8 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
     ];
 
     for case in cases {
-        let display = Display::from_physical(UVec2::splat(400), case.display_scale);
-        let mut h = UiHarness::new(display.physical);
-        h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+        let mut h = UiHarness::new(UVec2::splat(400)).scale(case.display_scale);
+        h.frame(|ui| {
             let mut panel = Panel::canvas()
                 .id(WidgetId::from_hash("stroke"))
                 .size(Sizing::fixed(case.panel_size))
@@ -370,7 +367,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     let xform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
@@ -443,7 +440,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().id(row).show(ui, |ui| {
             // Layout-only spacer: occupies 50 px, paints nothing.
             Panel::hstack()

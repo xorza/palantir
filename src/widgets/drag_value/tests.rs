@@ -758,7 +758,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 
     // Focus flips the same widget to its inline editor.
     h.request_focus(Some(id));
-    h.frame_without_baseline(scene);
+    h.frame(scene);
     let editor = placement(&h.ui, id);
 
     assert_eq!(

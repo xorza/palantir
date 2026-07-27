@@ -1115,7 +1115,6 @@ fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::display::Display;
     use crate::ui::frame_report::FramePaint;
     use crate::ui::harness::UiHarness;
 
@@ -1140,18 +1139,16 @@ mod tests {
             (glam::UVec2::new(2560, 1600), 6),
             (glam::UVec2::new(3840, 4800), 32),
         ] {
-            let mut h = UiHarness::with_text(px);
+            let mut h = UiHarness::with_text(px).scale(2.0);
             let mut state = FrameFixture::default();
-            let display = Display::from_physical(px, 2.0);
             let mut paint = FramePaint::Full;
             // Two frames settle the caches and the popup's anchor (it reads
             // last frame's status-bar rect); the rest are steady state.
             for i in 0..5u64 {
                 state.tick = state.tick.wrapping_add(1);
                 paint = h
-                    .frame_at(display, Duration::from_millis(i * 16), |ui| {
-                        build_ui(&mut state, scale, ui)
-                    })
+                    .at(Duration::from_millis(i * 16))
+                    .frame(|ui| build_ui(&mut state, scale, ui))
                     .paint();
             }
             assert_eq!(

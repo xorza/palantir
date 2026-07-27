@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn records_one_gpu_view_shape_at_committed_size() {
         let mut h = UiHarness::new(UVec2::new(200, 120));
-        let node = h.frame_value_without_baseline(|ui| {
+        let node = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn default_fills_parent() {
         let mut h = UiHarness::new(UVec2::new(160, 100));
-        let node = h.frame_value_without_baseline(|ui| GpuView::new(scene()).show(ui).node());
+        let node = h.frame_value(|ui| GpuView::new(scene()).show(ui).node());
         let r = h.ui.layout[Layer::Main].rect[node.idx()];
         assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
     }
@@ -193,7 +193,7 @@ mod tests {
         });
         h.click_at(Vec2::new(50.0, 25.0));
         let mut clicked = false;
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 clicked |= GpuView::new(scene())
                     .id(id)

@@ -7,7 +7,7 @@ use glam::{UVec2, Vec2};
 
 fn run(value: &mut bool, h: &mut UiHarness) {
     let mut v = *value;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut v)
                 .id(WidgetId::from_hash("cb"))
@@ -67,7 +67,7 @@ fn disabled_checkbox_does_not_toggle() {
 
     h.click_at(Vec2::new(8.0, 8.0));
     let mut rec = v;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
                 .id(WidgetId::from_hash("cb"))

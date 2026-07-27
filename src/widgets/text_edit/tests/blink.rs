@@ -1,4 +1,5 @@
 use crate::widgets::text_edit::tests::*;
+use std::time::Duration;
 
 /// Caret blink: visible for the first half-period, hidden for the
 /// second, repeats. Reset to "visible" by any caret / selection /
@@ -9,7 +10,6 @@ fn caret_blinks_on_and_off_while_focused() {
     use crate::scene::tree::iter::{TreeItem, TreeItems};
     use crate::scene::tree::node::NodeId;
     use crate::shape::rect::RectKind;
-    use std::time::Duration;
 
     fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -54,9 +54,7 @@ fn caret_blinks_on_and_off_while_focused() {
     }
 
     fn frame_at(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
-        use crate::display::Display;
-        let display = Display::from_physical(NARROW, 1.0);
-        h.frame_at(display, Duration::from_secs_f32(now_secs), |ui| f(ui));
+        h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui));
     }
 
     let mut h = ui_at_no_cosmic(NARROW);
@@ -135,13 +133,10 @@ fn caret_blinks_on_and_off_while_focused() {
 /// `entry.anim.next_wake(prev_now) <= now`.
 #[test]
 fn caret_anim_does_not_damage_between_quantum_boundaries() {
-    use crate::display::Display;
     use crate::ui::frame_report::FrameReport;
-    use std::time::Duration;
 
     let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::new();
-    let display = Display::from_physical(NARROW, 1.0);
 
     // Single recording site keeps `track_caller` happy — every
     // frame's `Panel::hstack` resolves to the same source location,
@@ -156,7 +151,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         });
     }
     let frame = |h: &mut UiHarness, buf: &mut String, t_secs: f32| -> FrameReport {
-        h.frame_at(display, Duration::from_secs_f32(t_secs), |ui| {
+        h.at(Duration::from_secs_f32(t_secs)).frame(|ui| {
             record(ui, buf);
         })
     };
@@ -199,12 +194,8 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
 /// the mouse" bug.
 #[test]
 fn focus_gain_resets_blink_even_without_caret_change() {
-    use crate::display::Display;
-    use std::time::Duration;
-
     let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::new();
-    let display = Display::from_physical(NARROW, 1.0);
 
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -215,7 +206,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         });
     }
     let frame = |h: &mut UiHarness, buf: &mut String, t: f32| {
-        h.frame_at(display, Duration::from_secs_f32(t), |ui| body(ui, buf))
+        h.at(Duration::from_secs_f32(t)).frame(|ui| body(ui, buf))
     };
 
     // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any
@@ -241,15 +232,11 @@ fn focus_gain_resets_blink_even_without_caret_change() {
 /// last frame landed on.
 #[test]
 fn focused_text_edit_schedules_blink_wake() {
-    use crate::display::Display;
-    use std::time::Duration;
-
     let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::new();
-    let display = Display::from_physical(NARROW, 1.0);
 
     // Unfocused: no blink schedule.
-    let report = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+    let report = h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))
@@ -265,7 +252,7 @@ fn focused_text_edit_schedules_blink_wake() {
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
     h.click_at(Vec2::new(20.0, 20.0));
-    let report = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+    let report = h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))

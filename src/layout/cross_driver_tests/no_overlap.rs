@@ -70,7 +70,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
         let mut h = UiHarness::new(UVec2::new(800, 600));
         let mut left = None;
         let mut right = None;
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -124,7 +124,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let mut prop_label = None;
     let mut prop_value = None;
 
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -212,7 +212,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
     let mut h = UiHarness::with_text(UVec2::new(1500, 900));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -267,7 +267,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
     let mut h = UiHarness::new(UVec2::new(1620, 980));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)

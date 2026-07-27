@@ -16,8 +16,14 @@
 //! `FrameProcessing` reports `SingleLayout` / `DoubleLayout` — it counts
 //! A and B, not the warmup. `PaintOnly` is a fourth case that runs
 //! **zero** record passes. Every rule below is a corollary, and this
-//! type holds the surface, scale, clock, modifier state, and press
-//! origin so they can be *enforced* rather than documented.
+//! type holds the display, clock, modifier state, and press origin so
+//! they can be *enforced* rather than documented.
+//!
+//! Holding them is also why there is one frame driver and not a matrix:
+//! a caller changes the surface with [`UiHarness::resize`] and the clock
+//! with [`UiHarness::at`], then calls [`UiHarness::frame`]. Passing a
+//! `Display` per frame only ever let a test disagree with itself about
+//! what it was rendering at.
 //!
 //! # The protocol rules
 //!
@@ -54,9 +60,10 @@
 //!
 //! 6. **The frame clock only moves at a frame boundary.** `Ui::frame`
 //!    copies its stamp into `input.frame_time`, so events fed between
-//!    frames carry the value the *last* frame published. Advancing time
-//!    is [`advance`](UiHarness::advance) → `frame` → *then* the input;
-//!    advance-then-input with no frame between changes nothing.
+//!    frames carry the value the *last* frame published. Moving time is
+//!    [`advance`](UiHarness::advance) or [`at`](UiHarness::at) → `frame`
+//!    → *then* the input; either one with no frame between changes
+//!    nothing.
 //! 7. **A frozen clock makes every click simultaneous.**
 //!    `DOUBLE_CLICK_WINDOW` is 500 ms against `input.frame_time`, so
 //!    without an `advance` a second `click_at` within
@@ -124,7 +131,7 @@
 //!    `cfg(test)`, which is why this tier cannot be narrowed further.
 //! 3. `mod unit` (`#[cfg(test)]`) — what only the *in-tree* suite calls:
 //!    the tree/encoder reach-ins, the cold constructor, the
-//!    no-baseline frame drivers.
+//!    no-baseline frame driver.
 //!
 //! Tier 3's extra gate is not about encapsulation — `pub(crate)` already
 //! stops all of this leaving the crate. It is the only way to say "the
@@ -179,12 +186,12 @@ pub struct UiHarness {
     /// `h.ui.cascades`) the way they reach them off a bare `Ui` today.
     /// Consumers cannot see the field and go through [`Self::ui`].
     pub(crate) ui: Ui,
-    /// Physical pixels. Pointer positions are logical — see [`Self::scale`].
-    surface: UVec2,
-    scale: f32,
-    pixel_snap: bool,
-    refresh_millihertz: Option<u32>,
-    /// Absolute; each frame stamps with it. Only moves on `advance`.
+    /// What every frame stamps with — the harness owns it so no caller
+    /// has to rebuild one. `physical` is in physical pixels; pointer
+    /// positions are logical (see [`Self::scale`]).
+    display: Display,
+    /// Absolute; each frame stamps with it. Only moves on
+    /// [`Self::advance`] / [`Self::at`].
     time: Duration,
     /// Mirrors what the `Ui` was last told, so `ModifiersChanged` is
     /// emitted on change and `key_mods` can restore.
@@ -224,11 +231,11 @@ impl UiHarness {
         Self::new(ARENA_SURFACE)
     }
 
-    /// Device pixel ratio. `surface` stays physical, so at `dpr = 2.0` a
-    /// 600×200 surface is 300×100 logical — and every position below is
+    /// Device pixel ratio. The surface stays physical, so at `dpr = 2.0`
+    /// a 600×200 surface is 300×100 logical — and every position below is
     /// logical.
     pub fn scale(mut self, dpr: f32) -> Self {
-        self.scale = dpr;
+        self.display.scale_factor = dpr;
         self.sync_display();
         self.mark_warm();
         self
@@ -236,30 +243,41 @@ impl UiHarness {
 
     /// Monitor refresh, which repaint-wake coalescing reads.
     pub fn refresh_millihertz(mut self, mhz: u32) -> Self {
-        self.refresh_millihertz = Some(mhz);
+        self.display.refresh_millihertz = Some(mhz);
         self.sync_display();
         self.mark_warm();
         self
     }
 
     pub fn pixel_snap(mut self, on: bool) -> Self {
-        self.pixel_snap = on;
+        self.display.pixel_snap = on;
         self.sync_display();
         self.mark_warm();
         self
     }
 
-    /// Change the surface between frames — the resize path. Deliberately
-    /// not a builder and deliberately does not re-warm: the next frame
-    /// must read this as `display_changed`, exactly as a real resize does.
-    pub fn resize(&mut self, surface: UVec2) {
-        self.surface = surface;
+    /// Change the surface between frames — the resize path. Takes
+    /// `&mut self` rather than `self` for a reason the three builders
+    /// above do not share: it deliberately does **not** re-warm, so the
+    /// next frame reads it as `display_changed` exactly as a real resize
+    /// does.
+    pub fn resize(&mut self, surface: UVec2) -> &mut Self {
+        self.display.physical = surface;
         self.sync_display();
+        self
+    }
+
+    /// Swap the whole display between frames, for the changes
+    /// [`Self::resize`] cannot express — a DPI move (physical *and*
+    /// scale together), a pixel-snap flip. Same no-re-warm contract.
+    pub fn set_display(&mut self, display: Display) -> &mut Self {
+        self.display = display;
+        self.sync_display();
+        self
     }
 
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
-        let (display, time) = (self.display(), self.time);
-        self.drive(display, time, true, record)
+        self.drive(true, record)
     }
 
     /// The value from the **input-observing** pass — pass A, the one
@@ -331,8 +349,18 @@ impl UiHarness {
     /// Animation dt is a separate clock — it is clamped per frame to
     /// `MAX_ANIM_DT`, so one big jump here does not integrate one big
     /// step there. Use [`Self::advance_frames`] for that.
-    pub fn advance(&mut self, dt: Duration) {
+    pub fn advance(&mut self, dt: Duration) -> &mut Self {
         self.time += dt;
+        self
+    }
+
+    /// Park the absolute clock at `time` — [`Self::advance`] for a test
+    /// written against absolute stamps rather than deltas. Same timing
+    /// rule: it reaches the input machine only through the next frame,
+    /// so the order is `at` → `frame` → input.
+    pub fn at(&mut self, time: Duration) -> &mut Self {
+        self.time = time;
+        self
     }
 
     /// `n` frames stepping `dt` each — the correct way to move an
@@ -607,10 +635,7 @@ impl UiHarness {
     pub(crate) fn from_resources(resources: UiResources, surface: UVec2) -> Self {
         let mut harness = Self {
             ui: Ui::new(resources),
-            surface,
-            scale: 1.0,
-            pixel_snap: true,
-            refresh_millihertz: None,
+            display: Display::from_physical(surface, 1.0),
             time: Duration::ZERO,
             mods: Modifiers::NONE,
             pressed_at: None,
@@ -620,43 +645,14 @@ impl UiHarness {
         harness
     }
 
-    /// Explicit schedule *and* no damage baseline — the combination the
-    /// caret-blink and multi-click tests need, since they drive a real
-    /// clock and want every frame to repaint in full.
-    pub(crate) fn frame_at_without_baseline(
-        &mut self,
-        display: Display,
-        time: Duration,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
-        self.drive(display, time, false, record)
-    }
-
-    /// Explicit display and time, bypassing `surface` / `scale` / the
-    /// clock — for callers driving their own schedule.
-    pub(crate) fn frame_at(
-        &mut self,
-        display: Display,
-        time: Duration,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
-        self.drive(display, time, true, record)
-    }
-
     /// The one place a frame is actually entered. `Ui::frame` is
     /// `pub(crate)`, so the harness drives it directly rather than
     /// through a test method on `Ui`.
-    fn drive(
-        &mut self,
-        display: Display,
-        time: Duration,
-        damage_baseline_valid: bool,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
+    fn drive(&mut self, damage_baseline_valid: bool, record: impl FnMut(&mut Ui)) -> FrameReport {
         let mut app = RecordApp::new(record);
         self.ui.frame(
             FrameInput {
-                stamp: FrameStamp::new(display, time),
+                stamp: FrameStamp::new(self.display, self.time),
                 damage_baseline_valid,
             },
             WindowToken(0),
@@ -664,23 +660,14 @@ impl UiHarness {
         )
     }
 
-    /// The `Display` this harness frames at.
-    pub(crate) fn display(&self) -> Display {
-        Display {
-            pixel_snap: self.pixel_snap,
-            refresh_millihertz: self.refresh_millihertz,
-            ..Display::from_physical(self.surface, self.scale)
-        }
-    }
-
     fn sync_display(&mut self) {
-        self.ui.display = self.display();
+        self.ui.display = self.display;
     }
 
     /// Seed `prev_stamp` so frame 1 skips the cold-start warmup pass and
     /// runs one record pass like every later frame.
     fn mark_warm(&mut self) {
-        self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display(), self.time));
+        self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, self.time));
     }
 
     pub(crate) fn damage_region(&self) -> DamageRegion {
@@ -731,34 +718,24 @@ mod unit {
             harness
         }
 
-        /// `damage_baseline_valid: false` — forces a full frame.
+        /// One frame with the damage baseline dropped — the host's "the
+        /// last frame never reached the screen" path
+        /// (`WindowDriver::output_valid == false`), which forces a full
+        /// repaint. Only the damage tests pinning *that* want it: a test
+        /// after a record pass, a full repaint, or a settled layout gets
+        /// all three from plain [`UiHarness::frame`].
         pub(crate) fn frame_without_baseline(
             &mut self,
             record: impl FnMut(&mut Ui),
         ) -> FrameReport {
-            let (display, time) = (self.display(), self.time);
-            self.drive(display, time, false, record)
-        }
-
-        pub(crate) fn frame_value_without_baseline<R>(
-            &mut self,
-            mut record: impl FnMut(&mut Ui) -> R,
-        ) -> R {
-            let mut first = None;
-            self.frame_without_baseline(|ui| {
-                let value = record(ui);
-                if first.is_none() {
-                    first = Some(value);
-                }
-            });
-            first.expect("the frame ran no record pass")
+            self.drive(false, record)
         }
 
         /// A `FILL`/`FILL` hstack wrapped around `f`, returning the node
         /// `f` produced — the fixture for "arrange this one subtree
         /// against the whole surface".
         pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(&mut self, mut f: F) -> NodeId {
-            self.frame_value_without_baseline(|ui| {
+            self.frame_value(|ui| {
                 Panel::hstack()
                     .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))

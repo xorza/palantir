@@ -13,7 +13,6 @@
 //! runs through the mono fallback (matches the frame and measure-cache
 //! benches).
 
-use crate::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -29,7 +28,6 @@ use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
-use std::time::Duration;
 
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
 const COLS: usize = 32;
@@ -124,8 +122,8 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
-fn run_and_ack(h: &mut UiHarness, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let _ = h.frame_at(display, Duration::ZERO, &mut record);
+fn run_and_ack(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) {
+    let _ = h.frame(&mut record);
 }
 
 fn damage_kind(h: &UiHarness) -> &'static str {
@@ -145,19 +143,17 @@ fn damage_kind(h: &UiHarness) -> &'static str {
 /// would always be `Full` (no `prev_surface`) and skew measurements.
 fn warm_and_assert(
     h: &mut UiHarness,
-    display: Display,
     frame1: impl Fn(&mut Ui),
     frame2: impl Fn(&mut Ui),
     expect_kind: &str,
 ) {
-    run_and_ack(h, display, &frame1);
-    run_and_ack(h, display, &frame2);
+    run_and_ack(h, &frame1);
+    run_and_ack(h, &frame2);
     let kind = damage_kind(h);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
 fn bench_workloads(c: &mut Criterion) {
-    let display = Display::from_physical(SURFACE, 2.0);
     let cold = Color::rgb(0.2, 0.4, 0.8);
     let hot = Color::rgb(0.9, 0.4, 0.2);
     let mut group = c.benchmark_group("damage/workload");
@@ -166,17 +162,16 @@ fn bench_workloads(c: &mut Criterion) {
     // are non-painting Panels so the damage diff walks every painting
     // leaf individually (no subtree-skip available).
     {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
             &mut h,
-            display,
             |ui| build_grid(ui, &[], cold),
             |ui| build_grid(ui, &[], cold),
             "skip",
         );
         group.bench_function("skip", |b| {
             b.iter(|| {
-                run_and_ack(&mut h, display, |ui| build_grid(ui, &[], cold));
+                run_and_ack(&mut h, |ui| build_grid(ui, &[], cold));
                 black_box(&h);
             });
         });
@@ -188,10 +183,9 @@ fn bench_workloads(c: &mut Criterion) {
     // row, jumping past the 32 per-cell entry lookups underneath.
     // Compare against `skip` to isolate the subtree-skip win.
     {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
             &mut h,
-            display,
             |ui| build_painted_rows(ui, &[], cold),
             |ui| build_painted_rows(ui, &[], cold),
             "skip",
@@ -207,7 +201,7 @@ fn bench_workloads(c: &mut Criterion) {
         );
         group.bench_function("skip_painted_rows", |b| {
             b.iter(|| {
-                run_and_ack(&mut h, display, |ui| build_painted_rows(ui, &[], cold));
+                run_and_ack(&mut h, |ui| build_painted_rows(ui, &[], cold));
                 black_box(&h);
             });
         });
@@ -215,11 +209,10 @@ fn bench_workloads(c: &mut Criterion) {
 
     // Partial 1-rect — one cell flips colour each frame.
     {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
         let cell = [42usize];
         warm_and_assert(
             &mut h,
-            display,
             |ui| build_grid(ui, &cell, cold),
             |ui| build_grid(ui, &cell, hot),
             "partial",
@@ -229,7 +222,7 @@ fn bench_workloads(c: &mut Criterion) {
             b.iter(|| {
                 toggle = !toggle;
                 let color = if toggle { hot } else { cold };
-                run_and_ack(&mut h, display, |ui| build_grid(ui, &cell, color));
+                run_and_ack(&mut h, |ui| build_grid(ui, &cell, color));
                 black_box(&h);
             });
         });
@@ -239,11 +232,10 @@ fn bench_workloads(c: &mut Criterion) {
     // merge rule rejects (bbox waste huge), so the region keeps both
     // — drives the multi-pass path.
     {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
             &mut h,
-            display,
             |ui| build_grid(ui, &cells, cold),
             |ui| build_grid(ui, &cells, hot),
             "partial",
@@ -254,7 +246,7 @@ fn bench_workloads(c: &mut Criterion) {
             b.iter(|| {
                 toggle = !toggle;
                 let color = if toggle { hot } else { cold };
-                run_and_ack(&mut h, display, |ui| build_grid(ui, &cells, color));
+                run_and_ack(&mut h, |ui| build_grid(ui, &cells, color));
                 black_box(&h);
             });
         });
@@ -263,7 +255,7 @@ fn bench_workloads(c: &mut Criterion) {
     // Full path — every cell varies each frame; total damage area
     // exceeds the threshold and escalates to `Full`.
     {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
                 Panel::vstack()
@@ -300,14 +292,14 @@ fn bench_workloads(c: &mut Criterion) {
                     });
             }
         };
-        run_and_ack(&mut h, display, varying(0));
-        run_and_ack(&mut h, display, varying(1));
+        run_and_ack(&mut h, varying(0));
+        run_and_ack(&mut h, varying(1));
         assert_eq!(damage_kind(&h), "full");
         let mut frame_n = 2u32;
         group.bench_function("full_repaint", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut h, display, varying(frame_n));
+                run_and_ack(&mut h, varying(frame_n));
                 black_box(&h);
             });
         });
@@ -401,9 +393,9 @@ fn bench_workloads(c: &mut Criterion) {
             }
         };
 
-        let mut h = UiHarness::new(SURFACE);
-        run_and_ack(&mut h, display, build(0));
-        run_and_ack(&mut h, display, build(1));
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        run_and_ack(&mut h, build(0));
+        run_and_ack(&mut h, build(1));
         // Drive enough warmup frames to force at least one
         // compaction so the bench measures both steady-state diff
         // and post-compaction frames.
@@ -412,7 +404,7 @@ fn bench_workloads(c: &mut Criterion) {
         while h.ui.damage_engine.arena.compactions_run < warm_target_compactions
             && warm_frame < 4096
         {
-            run_and_ack(&mut h, display, build(warm_frame));
+            run_and_ack(&mut h, build(warm_frame));
             warm_frame += 1;
         }
         assert!(
@@ -444,7 +436,7 @@ fn bench_workloads(c: &mut Criterion) {
         group.bench_function("shape_churn_partial", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut h, display, build(frame_n));
+                run_and_ack(&mut h, build(frame_n));
                 black_box(&h);
             });
         });
@@ -480,12 +472,12 @@ fn bench_workloads(c: &mut Criterion) {
             }
         };
 
-        let mut h = UiHarness::new(SURFACE);
-        run_and_ack(&mut h, display, build(0));
-        run_and_ack(&mut h, display, build(1));
+        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        run_and_ack(&mut h, build(0));
+        run_and_ack(&mut h, build(1));
         let mut warm = 2u32;
         while h.ui.damage_engine.arena.compactions_run < 2 && warm < 64 {
-            run_and_ack(&mut h, display, build(warm));
+            run_and_ack(&mut h, build(warm));
             warm += 1;
         }
         assert!(
@@ -509,7 +501,7 @@ fn bench_workloads(c: &mut Criterion) {
         group.bench_function("shape_churn_full", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut h, display, build(frame_n));
+                run_and_ack(&mut h, build(frame_n));
                 black_box(&h);
             });
         });

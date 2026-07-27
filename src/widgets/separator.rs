@@ -107,7 +107,7 @@ mod tests {
     fn explicit_size_overrides_stretch_default() {
         let mut h = UiHarness::new(UVec2::new(400, 300));
         let (mut sized, mut hug, mut default) = (None, None, None);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(

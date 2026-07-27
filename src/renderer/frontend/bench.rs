@@ -1,6 +1,5 @@
 //! Record-to-compose comparison for repeated solid and gradient chrome.
 
-use crate::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear::LinearGradient;
@@ -68,8 +67,7 @@ impl GradientBench {
 
     fn frame(&mut self, fill_case: FillCase) -> usize {
         let background = fill_case.background();
-        let display = Display::from_physical(PHYSICAL, 1.0);
-        let report = self.harness.frame_at(display, self.start.elapsed(), |ui| {
+        let report = self.harness.at(self.start.elapsed()).frame(|ui| {
             for row in 0..ROWS {
                 Frame::new()
                     .id_salt(row)

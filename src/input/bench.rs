@@ -21,7 +21,6 @@
 //!   accumulator-only path.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
-use crate::display::Display;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
@@ -37,7 +36,6 @@ use crate::widgets::text::Text;
 use criterion::Criterion;
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
-use std::time::Duration;
 
 // Constructs via `Ui::new` over isolated mono resources.
 const SIZE: UVec2 = UVec2::new(1280, 800);
@@ -128,13 +126,12 @@ fn build_ui(ui: &mut Ui) {
 }
 
 fn warmed_ui() -> UiHarness {
-    let mut h = UiHarness::new(SIZE);
-    let display = Display::from_physical(SIZE, SCALE);
+    let mut h = UiHarness::new(SIZE).scale(SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.
-    h.frame_at_without_baseline(display, Duration::ZERO, build_ui);
+    h.frame(build_ui);
     h.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
-    h.frame_at_without_baseline(display, Duration::ZERO, build_ui);
+    h.frame(build_ui);
     h
 }
 

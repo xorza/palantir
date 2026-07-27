@@ -58,7 +58,6 @@
 
 use crate::app::internals::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;
-use crate::display::Display;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::renderer::backend::write_stats;
@@ -249,7 +248,7 @@ struct CpuHarness {
 
 impl CpuHarness {
     fn new() -> Self {
-        let harness = UiHarness::with_text(cached_size());
+        let harness = UiHarness::with_text(cached_size()).scale(bench_scale());
         let frontend = Frontend::for_test();
         let mut h = Self {
             harness,
@@ -260,7 +259,7 @@ impl CpuHarness {
         h
     }
 
-    /// Drive one full CPU frame against `display` and ack the present so
+    /// Drive one full CPU frame and ack the present so
     /// the next frame's `take_frame_plan` matches what the host would see
     /// after a real submit (lets `cached` settle into `Skip`).
     ///
@@ -273,8 +272,8 @@ impl CpuHarness {
     /// than the other arms. `partial` keeps its small `Partial` region
     /// (the partial-encode path is its real workload); the substitution
     /// only kicks in when there's nothing to paint at all.
-    fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
-        let report = self.harness.frame_at(display, self.start.elapsed(), record);
+    fn frame(&mut self, record: impl FnMut(&mut Ui)) {
+        let report = self.harness.at(self.start.elapsed()).frame(record);
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
             kind: RenderKind::Full,
@@ -303,9 +302,7 @@ where
 
 fn cpu_cached(c: &mut Criterion) {
     run_cpu_arm(c, "frame/cached_cpu", |h, state| {
-        h.frame(Display::from_physical(cached_size(), bench_scale()), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
     });
 }
 
@@ -316,9 +313,7 @@ fn cpu_partial(c: &mut Criterion) {
         // resizing arms — so every arm sets up this frame's input then
         // records it, rather than relying on the prior iter's leftover.
         state.tick = state.tick.wrapping_add(1);
-        h.frame(Display::from_physical(cached_size(), bench_scale()), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
     });
 }
 
@@ -328,9 +323,7 @@ fn cpu_scrolling(c: &mut Criterion) {
         // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        h.frame(Display::from_physical(cached_size(), bench_scale()), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
     });
 }
 
@@ -340,9 +333,8 @@ fn cpu_resizing(c: &mut Criterion) {
     run_cpu_arm(c, "frame/resizing_cpu", move |h, state| {
         let size = pool[idx % pool.len()];
         idx = idx.wrapping_add(1);
-        h.frame(Display::from_physical(size, bench_scale()), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        h.harness.resize(size);
+        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
     });
 }
 
@@ -354,14 +346,14 @@ fn cpu_resizing(c: &mut Criterion) {
 fn assert_partial_invariant() {
     let mut h = CpuHarness::new();
     let mut state = FrameFixture::default();
-    let display = Display::from_physical(cached_size(), bench_scale());
     for _ in 0..2 {
-        h.frame(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+        h.frame(|ui| build_ui(&mut state, BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
     }
-    let report = h.harness.frame_at(display, h.start.elapsed(), |ui| {
-        build_ui(&mut state, BENCH_SCALE, ui)
-    });
+    let report = h
+        .harness
+        .at(h.start.elapsed())
+        .frame(|ui| build_ui(&mut state, BENCH_SCALE, ui));
     assert_eq!(
         report.paint(),
         FramePaint::Partial,

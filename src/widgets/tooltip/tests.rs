@@ -3,7 +3,6 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
-use crate::display::Display;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -127,7 +126,7 @@ fn explicit_zero_padding_and_infinite_maximum_override_tooltip_theme() {
             ..ResponseState::default()
         },
     };
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Tooltip::on(&snapshot)
             .text("tip")
             .background(Background::NONE)
@@ -186,7 +185,6 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
 #[test]
 fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     let mut h = UiHarness::new(SURFACE);
-    let display = Display::from_physical(SURFACE, 1.0);
     let trigger_id = WidgetId::from_hash("long-uptime-trigger");
     let snapshot = ResponseSnapshot {
         id: trigger_id,
@@ -197,7 +195,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
         },
     };
     let frame_at = |h: &mut UiHarness, time: Duration| {
-        h.frame_at_without_baseline(display, time, |ui| {
+        h.at(time).frame(|ui| {
             Tooltip::on(&snapshot)
                 .text("tip")
                 .delay(Duration::from_millis(250))
@@ -224,11 +222,10 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
 #[test]
 fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let mut h = UiHarness::new(SURFACE);
-    let display = Display::from_physical(SURFACE, 1.0);
     let trigger_id = WidgetId::from_hash("transient-trigger");
     let root_id = WidgetId::from_hash("root");
 
-    h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+    h.frame(|ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
             Tooltip::on(&trigger).text("tip").show(ui);
@@ -246,7 +243,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "the intentional global singleton must exist",
     );
 
-    h.frame_at_without_baseline(display, Duration::from_millis(16), |ui| {
+    h.at(Duration::from_millis(16)).frame(|ui| {
         Panel::vstack().id(root_id).show(ui, |_ui| {});
     });
 
@@ -260,11 +257,10 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
 #[test]
 fn delay_gates_visibility() {
     let mut h = UiHarness::new(SURFACE);
-    let display = Display::from_physical(SURFACE, 1.0);
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
-        h.frame_at_without_baseline(display, Duration::from_secs_f32(secs), |ui| {
+        h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -353,11 +349,10 @@ fn delay_gates_visibility() {
 #[test]
 fn hover_clears_after_tooltip_visible() {
     let mut h = UiHarness::new(SURFACE);
-    let display = Display::from_physical(SURFACE, 1.0);
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
-        h.frame_at_without_baseline(display, Duration::from_secs_f32(secs), |ui| {
+        h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -422,13 +417,12 @@ fn tooltip_inside_popup_records_without_panic() {
     use crate::widgets::popup::{ClickOutside, Popup};
 
     let mut h = UiHarness::new(SURFACE);
-    let display = Display::from_physical(SURFACE, 1.0);
 
     // Near top-left so the popup never flips and the trigger stays put.
     let popup_anchor = Vec2::new(40.0, 40.0);
     let mut captured: Option<WidgetId> = None;
     let frame_at = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
-        h.frame_at_without_baseline(display, Duration::from_secs_f32(secs), |ui| {
+        h.at(Duration::from_secs_f32(secs)).frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
