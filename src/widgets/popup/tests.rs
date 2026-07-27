@@ -103,19 +103,13 @@ fn click_outside_popup_dismisses_and_blocks_main() {
 
 #[test]
 fn escape_dismisses_dismiss_popup_but_not_block() {
-    let esc = || InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Escape,
-    };
-
     // `Dismiss`: Esc folds into `dismissed`.
     let mut h = UiHarness::new(SURFACE);
     let mut dismissed = false;
     h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
-    h.on_input(esc());
+    h.key(Key::Escape);
     let mut dismissed = false;
     h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
@@ -129,7 +123,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     h.frame(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
-    h.on_input(esc());
+    h.key(Key::Escape);
     let mut dismissed = false;
     h.frame(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);

@@ -193,9 +193,6 @@ pub struct UiHarness {
     /// Absolute; each frame stamps with it. Only moves on
     /// [`Self::advance`] / [`Self::at`].
     time: Duration,
-    /// Mirrors what the `Ui` was last told, so `ModifiersChanged` is
-    /// emitted on change and `key_mods` can restore.
-    mods: Modifiers,
     /// Press origin, solely so `drag_to` can check `DRAG_THRESHOLD`.
     pressed_at: Option<Vec2>,
 }
@@ -493,29 +490,43 @@ impl UiHarness {
         self.ui.on_input(InputEvent::Zoom(factor));
     }
 
-    pub fn key(&mut self, key: Key) {
+    /// A non-repeat press whose `physical` is [`Key::Other`]. That is
+    /// only consulted for a non-ASCII `Char` under a command modifier
+    /// (`Shortcut::matches`), so it is inert for every other key; a case
+    /// that needs a real physical position builds the event through
+    /// [`Self::on_input`].
+    pub fn key(&mut self, key: Key) -> InputDelta {
         self.ui.on_input(InputEvent::KeyDown {
             key,
             repeat: false,
             physical: Key::Other,
-        });
+        })
     }
 
     /// Set modifiers, emit the key, restore. Modifiers are sticky state,
     /// so without the restore every later key inherits them.
-    pub fn key_mods(&mut self, key: Key, mods: Modifiers) {
-        let saved = self.mods;
+    pub fn key_mods(&mut self, key: Key, mods: Modifiers) -> InputDelta {
+        let saved = self.ui.input.modifiers;
         self.set_modifiers(mods);
-        self.key(key);
+        let delta = self.key(key);
         self.set_modifiers(saved);
+        delta
     }
 
     /// Emits `ModifiersChanged` only when the set actually changes —
     /// `Modifiers` is a snapshot the input machine holds, not a per-event
-    /// flag.
+    /// flag, and a redundant emit would wake a `KeyboardWake::MODIFIER`
+    /// watcher for nothing. That conditional emit is also why this
+    /// returns no [`InputDelta`] where its neighbours do: a test
+    /// asserting on the modifier wake wants the event unconditionally
+    /// and goes through [`Self::on_input`].
+    ///
+    /// The "actually changes" is read off `InputState`, not a mirror on
+    /// this type. A mirror desyncs the moment one modifier goes through
+    /// [`Self::on_input`] — and then this suppresses the very emit that
+    /// would have cleared it, leaving a chord silently held.
     pub fn set_modifiers(&mut self, mods: Modifiers) {
-        if self.mods != mods {
-            self.mods = mods;
+        if self.ui.input.modifiers != mods {
             self.ui.on_input(InputEvent::ModifiersChanged(mods));
         }
     }
@@ -656,7 +667,6 @@ impl UiHarness {
             ui: Ui::new(resources),
             display: Display::from_physical(surface, 1.0),
             time: Duration::ZERO,
-            mods: Modifiers::NONE,
             pressed_at: None,
         };
         harness.sync_display();

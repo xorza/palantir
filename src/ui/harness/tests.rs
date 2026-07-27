@@ -319,19 +319,39 @@ fn modifiers_are_sticky_and_key_mods_restores_them() {
     };
     let mut harness = UiHarness::new(SURFACE);
 
+    // The set under test is `InputState`'s, not a copy on the harness —
+    // a copy desyncs the moment one modifier goes through `on_input`,
+    // and `set_modifiers` would then suppress the emit that clears it.
     harness.key_mods(Key::Char('a'), ctrl);
     assert_eq!(
-        harness.mods,
+        harness.ui.input.modifiers,
         Modifiers::NONE,
         "key_mods restores the previous set",
     );
 
     harness.set_modifiers(ctrl);
     harness.key(Key::Char('b'));
-    assert_eq!(harness.mods, ctrl, "set_modifiers is the sticky path");
+    assert_eq!(
+        harness.ui.input.modifiers, ctrl,
+        "set_modifiers is the sticky path"
+    );
 
     harness.key_mods(Key::Char('c'), Modifiers::NONE);
-    assert_eq!(harness.mods, ctrl, "…and key_mods restores back onto it");
+    assert_eq!(
+        harness.ui.input.modifiers, ctrl,
+        "…and key_mods restores back onto it"
+    );
+
+    // Mixing the raw door with the helper must stay coherent: the raw
+    // event moves the real set, so the helper still sees a change and
+    // emits the clearing event rather than leaving ctrl silently held.
+    harness.on_input(InputEvent::ModifiersChanged(ctrl));
+    harness.set_modifiers(Modifiers::NONE);
+    assert_eq!(
+        harness.ui.input.modifiers,
+        Modifiers::NONE,
+        "set_modifiers clears a set the raw door installed",
+    );
 }
 
 #[test]

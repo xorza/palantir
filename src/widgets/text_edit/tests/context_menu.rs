@@ -106,15 +106,11 @@ fn context_menu_cut_copy_paste_clear() {
     // Select All is menu-owned while the popup is open. The captured
     // command stream executes it once and closes the popup.
     open_menu_and_record(&mut h, &mut buf);
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
-    }));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('a'),
-        repeat: false,
-        physical: Key::Other,
     });
+    h.key(Key::Char('a'));
     h.frame(|ui| body(ui, &mut buf));
     let state = h.ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(state.edit.sel_range(), Some(0..buf.len()));
@@ -350,16 +346,12 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         body(ui, &mut a, &mut b);
     });
 
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
-    }));
+    });
     for key in [Key::Char('a'), Key::Char('x')] {
-        h.on_input(InputEvent::KeyDown {
-            key,
-            repeat: false,
-            physical: Key::Other,
-        });
+        h.key(key);
     }
     h.frame(|ui| {
         body(ui, &mut a, &mut b);

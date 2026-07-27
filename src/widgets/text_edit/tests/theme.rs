@@ -394,21 +394,13 @@ fn shift_end_paints_selection_highlight() {
     };
     h.frame(|ui| body(ui, &mut leaf, &mut buf));
     h.click_at(Vec2::new(20.0, 20.0));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Home,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Home);
     h.frame(|ui| body(ui, &mut leaf, &mut buf));
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         shift: true,
         ..Modifiers::NONE
-    }));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::End,
-        repeat: false,
-        physical: Key::Other,
     });
+    h.key(Key::End);
     h.frame(|ui| body(ui, &mut leaf, &mut buf));
 
     let rects: Vec<_> = h.ui.forest.trees[Layer::Main]
@@ -450,11 +442,7 @@ fn drag_select_extends_selection() {
     h.release();
 
     // Type 'X' — replaces the selected range.
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('X'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('X'));
     h.frame(editor_at(&mut buf, None));
     assert_eq!(
         buf, "hXo",
@@ -476,16 +464,12 @@ fn click_without_drag_clears_prior_selection() {
 
     h.frame(editor_at(&mut buf, None));
     h.click_at(Vec2::new(60.0, 20.0));
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
-    }));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('a'),
-        repeat: false,
-        physical: Key::Other,
     });
-    h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+    h.key(Key::Char('a'));
+    h.set_modifiers(Modifiers::NONE);
     h.frame(editor_at(&mut buf, None));
 
     // Now press at offset 2 (x = 8 + 16 = 24), let a frame run, release.
@@ -493,11 +477,7 @@ fn click_without_drag_clears_prior_selection() {
     h.frame(editor_at(&mut buf, None));
     h.release();
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('Z'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('Z'));
     h.frame(editor_at(&mut buf, None));
     assert_eq!(
         buf, "heZllo",

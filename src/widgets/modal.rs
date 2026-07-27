@@ -125,7 +125,6 @@ impl Configure for Modal {
 #[cfg(test)]
 mod tests {
     use crate::Ui;
-    use crate::input::InputEvent;
     use crate::input::keyboard::Key;
     use crate::primitives::background::Background;
     use crate::primitives::size::Size;
@@ -203,11 +202,7 @@ mod tests {
             let mut h = UiHarness::new(SURFACE);
             let mut dismissed = false;
             h.frame(|ui| scene(ui, &mut dismissed));
-            h.on_input(InputEvent::KeyDown {
-                key: Key::Escape,
-                repeat: false,
-                physical: Key::Escape,
-            });
+            h.key(Key::Escape);
             let mut dismissed = false;
             h.frame(|ui| scene(ui, &mut dismissed));
             dismissed
@@ -267,22 +262,14 @@ mod tests {
         h.frame(|ui| scene(ui, &mut open));
 
         // Escape dismisses it during this frame's record.
-        h.on_input(InputEvent::KeyDown {
-            key: Key::Escape,
-            repeat: false,
-            physical: Key::Escape,
-        });
+        h.key(Key::Escape);
         h.frame(|ui| scene(ui, &mut open));
         assert!(!open, "Escape must dismiss the modal");
 
         // The frame after. A `Main`-layer widget presses and types; both
         // must reach it during the record, which is when widgets read.
         h.press_at(Vec2::new(20.0, 20.0));
-        h.on_input(InputEvent::KeyDown {
-            key: Key::Char('a'),
-            repeat: false,
-            physical: Key::Other,
-        });
+        h.key(Key::Char('a'));
         // `max`, not `=`: a frame may record twice and `post_record`
         // drains the queues between passes, so pass B legitimately sees
         // nothing and would overwrite pass A's reading. Same hazard the
@@ -321,11 +308,7 @@ mod tests {
         let mut h = UiHarness::new(SURFACE);
         let (mut m, mut p) = (false, false);
         h.frame(|ui| scene(ui, &mut m, &mut p));
-        h.on_input(InputEvent::KeyDown {
-            key: Key::Escape,
-            repeat: false,
-            physical: Key::Escape,
-        });
+        h.key(Key::Escape);
         let (mut modal_closed, mut popup_closed) = (false, false);
         h.frame(|ui| scene(ui, &mut modal_closed, &mut popup_closed));
 

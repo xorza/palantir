@@ -183,11 +183,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     h.frame(build_hover_target);
 
     // No focus, no chord sub → no wake.
-    let delta = h.on_input(InputEvent::KeyDown {
-        key: Key::Enter,
-        repeat: false,
-        physical: Key::Other,
-    });
+    let delta = h.key(Key::Enter);
     assert!(!delta.requests_repaint, "idle key must skip the frame");
     assert!(
         !h.ui.input.take_action_flag(),
@@ -196,11 +192,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
 
     // With focus held → wake.
     h.ui.input.focused = Some(WidgetId::from_hash("editor"));
-    let delta = h.on_input(InputEvent::KeyDown {
-        key: Key::Enter,
-        repeat: false,
-        physical: Key::Other,
-    });
+    let delta = h.key(Key::Enter);
     assert!(delta.requests_repaint);
 
     // No focus, but chord watcher → wake. Watches are
@@ -212,11 +204,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
         // Also reassert this so it survives — but we only test Escape below.
         let _ = PointerWake::BUTTONS;
     });
-    let delta = h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Other,
-    });
+    let delta = h.key(Key::Escape);
     assert!(delta.requests_repaint);
 }
 

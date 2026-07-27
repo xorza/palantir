@@ -334,6 +334,8 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
         (Modifiers::NONE, Color::BLACK),
     ];
     for (modifiers, expected) in states {
+        // Raw, not `set_modifiers`: this asserts the modifier wake, and
+        // the helper's change-only emit has no delta to hand back.
         let delta = h.on_input(InputEvent::ModifiersChanged(modifiers));
         assert!(
             delta.requests_repaint,
@@ -350,11 +352,7 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     h.frame(empty_watch_escape);
     assert!(h.ui.input.focused.is_none());
 
-    let delta = h.on_input(InputEvent::KeyDown {
-        key: Key::Enter,
-        repeat: false,
-        physical: Key::Other,
-    });
+    let delta = h.key(Key::Enter);
     assert!(!delta.requests_repaint);
 
     // Alt+Escape: watcher asked for bare Escape → no match.
@@ -365,20 +363,12 @@ fn key_chord_watcher_wakes_only_exact_chord() {
         alt: true,
         ..Modifiers::NONE
     };
-    let _ = h.on_input(InputEvent::ModifiersChanged(alt));
-    let delta = h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.set_modifiers(alt);
+    let delta = h.key(Key::Escape);
     assert!(!delta.requests_repaint);
 
-    let _ = h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
-    let delta = h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.set_modifiers(Modifiers::NONE);
+    let delta = h.key(Key::Escape);
     assert!(delta.requests_repaint);
 }
 

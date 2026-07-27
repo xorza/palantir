@@ -1755,7 +1755,6 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    use crate::input::InputEvent;
     use crate::input::keyboard::Key;
     use crate::input::policy::InputPolicy;
     use crate::ui::frame_report::FrameProcessing;
@@ -1828,11 +1827,7 @@ fn input_policy_routes_paint_only_gate() {
         let _ = h.frame(|ui| body(ui, half));
         h.ui.input.focused = Some(WidgetId::from_hash("editor"));
 
-        h.on_input(InputEvent::KeyDown {
-            key: Key::Enter,
-            repeat: false,
-            physical: Key::Other,
-        });
+        h.key(Key::Enter);
         assert!(
             h.ui.input.repaint_requested_since_last_frame,
             "KeyDown with focus held must flip repaint_requested",

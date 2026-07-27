@@ -57,11 +57,7 @@ fn reports_changed_on_edit_but_not_submit() {
 
     h.request_focus(Some(id));
     let _ = frame(&mut h, &mut buf); // settle focus
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('x'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('x'));
     let s = frame(&mut h, &mut buf);
     assert_eq!(buf, "x");
     assert!(s.changed && !s.submitted, "an edit is not a submit");
@@ -75,11 +71,7 @@ fn reports_submitted_on_single_line_enter() {
 
     h.request_focus(Some(id));
     let _ = frame(&mut h, &mut buf); // settle focus
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Enter,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Enter);
     let s = frame(&mut h, &mut buf);
     assert!(s.submitted, "single-line Enter submits");
     assert!(!s.changed, "Enter inserts nothing in single-line");
@@ -106,11 +98,7 @@ fn escape_reports_lost_focus_on_the_blur_frame() {
 
     h.request_focus(Some(id));
     let _ = frame(&mut h, &mut buf);
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Escape);
     let escaped = frame(&mut h, &mut buf);
     assert!(escaped.lost, "Escape reports the focus edge immediately");
     assert!(h.focused_id().is_none());
@@ -132,22 +120,14 @@ fn reports_changed_on_same_length_overwrite() {
     h.request_focus(Some(id));
     let _ = frame(&mut h, &mut buf); // settle focus
     // Ctrl+A select-all, then type the replacement.
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
-    }));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('a'),
-        repeat: false,
-        physical: Key::Other,
     });
-    h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+    h.key(Key::Char('a'));
+    h.set_modifiers(Modifiers::NONE);
     let _ = frame(&mut h, &mut buf);
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('b'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('b'));
     let sig = frame(&mut h, &mut buf);
     assert_eq!(buf, "b", "overwrite replaced the selection");
     assert!(sig.changed, "same-length overwrite reports changed");
@@ -181,11 +161,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
 
     h.request_focus(Some(id));
     let _ = frame(&mut h, &mut buf); // settle focus on the enabled editor
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('x'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('x'));
     let sig = disabled_frame(&mut h, &mut buf);
     assert_eq!(buf, "", "typing into a disabled editor is dropped");
     assert!(!sig.changed, "no change reported");

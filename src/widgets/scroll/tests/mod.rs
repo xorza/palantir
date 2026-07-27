@@ -1983,10 +1983,10 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
     use crate::input::keyboard::Modifiers;
     h.move_to(Vec2::new(100.0, 100.0));
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
-    }));
+    });
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
     h.frame(build_zoom);
 
@@ -2028,10 +2028,10 @@ fn wheel_zoom_step_is_font_independent() {
 
         use crate::input::keyboard::Modifiers;
         h.move_to(Vec2::new(100.0, 100.0));
-        h.on_input(InputEvent::ModifiersChanged(Modifiers {
+        h.set_modifiers(Modifiers {
             ctrl: true,
             ..Modifiers::NONE
-        }));
+        });
         h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
         h.frame(build_zoom);
 
