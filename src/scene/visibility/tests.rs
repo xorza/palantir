@@ -157,10 +157,10 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             .node();
     });
 
-    let kids: Vec<_> = h.main_child_ids(root);
-    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
-    let gone = h.ui.layout[Layer::Main].rect[kids[1].idx()];
-    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
+    let kids: Vec<_> = h.main_child_rects(root);
+    let a = kids[0];
+    let gone = kids[1];
+    let b = kids[2];
 
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.size.w, 40.0);
@@ -198,9 +198,9 @@ fn collapsed_does_not_consume_fill_weight() {
             .node();
     });
 
-    let kids: Vec<_> = h.main_child_ids(root);
-    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
-    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
+    let kids: Vec<_> = h.main_child_rects(root);
+    let a = kids[0];
+    let b = kids[2];
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
@@ -248,9 +248,9 @@ fn hidden_keeps_slot_but_emits_no_draws() {
             .node();
     });
 
-    let kids: Vec<_> = h.main_child_ids(root);
-    let hid = h.ui.layout[Layer::Main].rect[kids[1].idx()];
-    let b = h.ui.layout[Layer::Main].rect[kids[2].idx()];
+    let kids: Vec<_> = h.main_child_rects(root);
+    let hid = kids[1];
+    let b = kids[2];
     // Hidden node still occupies its slot.
     assert_eq!(hid.size.w, 40.0);
     // ...so b's offset includes hidden's width + both gaps.
