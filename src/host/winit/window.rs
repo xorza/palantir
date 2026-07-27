@@ -158,8 +158,19 @@ impl Window {
                     surfaces.present(frame);
                     report.repaint_requested
                 }
-                Suboptimal(_) | Outdated | Lost => {
-                    tracing::warn!("surface acquire: suboptimal / outdated / lost");
+                // A match scrutinee outlives its arm body, so binding and
+                // dropping is what releases the acquired texture here —
+                // `configure` fails with `PreviousOutputExists` while one is
+                // still alive, and that failure is a panic (wgpu surface
+                // configuration reports through the device error sink).
+                Suboptimal(frame) => {
+                    tracing::warn!("surface acquire: suboptimal");
+                    drop(frame);
+                    surfaces.configure(&self.surface, &self.config);
+                    true
+                }
+                Outdated | Lost => {
+                    tracing::warn!("surface acquire: outdated / lost");
                     surfaces.configure(&self.surface, &self.config);
                     true
                 }
