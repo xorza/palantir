@@ -77,27 +77,34 @@ fn click_inside_popup_does_not_dismiss() {
     );
 }
 
+/// Every pointer button dismisses, not just the primary. The secondary
+/// case is the one users hit: a context menu opens on right-click, so
+/// right-clicking elsewhere is the natural way to move or drop it — and
+/// while only `left` was read, that press was absorbed by the eater and
+/// then ignored, leaving the menu stuck open.
 #[test]
-fn click_outside_popup_dismisses_and_blocks_main() {
-    let mut h = UiHarness::new(SURFACE);
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
-    h.click_at(Vec2::new(300.0, 300.0));
+fn outside_click_dismisses_on_any_button_and_blocks_main() {
+    for button in PointerButton::all() {
+        let mut h = UiHarness::new(SURFACE);
+        let mut dismissed = false;
+        h.frame(|ui| {
+            record_body(ui, ClickOutside::Dismiss, &mut dismissed);
+        });
+        h.click_button_at(button, Vec2::new(300.0, 300.0));
 
-    let mut dismissed = false;
-    h.frame(|ui| {
-        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
-    });
-    assert!(
-        dismissed,
-        "outside click with `Dismiss` must signal dismissal"
-    );
-    assert!(
-        !main_panel_clicked(&h.ui),
-        "outside click must be eaten by the popup eater, not leak to Main",
-    );
+        let mut dismissed = false;
+        h.frame(|ui| {
+            record_body(ui, ClickOutside::Dismiss, &mut dismissed);
+        });
+        assert!(
+            dismissed,
+            "{button:?} outside click with `Dismiss` must signal dismissal",
+        );
+        assert!(
+            !main_panel_clicked(&h.ui),
+            "{button:?} outside click must be eaten by the popup eater, not leak to Main",
+        );
+    }
 }
 
 #[test]
