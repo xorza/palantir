@@ -28,18 +28,13 @@ pub(crate) mod internals {
     use crate::window::WindowToken;
 
     /// An [`App`] that is nothing but its record closure — what every
-    /// test driving frames actually wants.
-    ///
-    /// Same reachability story as `UiHarness`: `pub` because
-    /// `palantir::internals` re-exports it for the visual suite, and a
-    /// default-feature build does not compile that door.
-    #[allow(unreachable_pub)]
+    /// test driving frames actually wants. `pub` because
+    /// `palantir::internals` re-exports it for the visual suite.
     #[derive(Debug)]
     pub struct RecordApp<F> {
         record: F,
     }
 
-    #[allow(unreachable_pub)]
     impl<F: FnMut(&mut Ui)> RecordApp<F> {
         pub fn new(record: F) -> Self {
             Self { record }
