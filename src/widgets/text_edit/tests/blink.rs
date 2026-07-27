@@ -232,14 +232,15 @@ fn focused_text_edit_schedules_blink_wake() {
     let mut buf = String::new();
 
     // Unfocused: no blink schedule.
-    let report = h.frame(|ui| {
+    let mut scene = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id(WidgetId::from_hash("blink-wake"))
                 .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
         });
-    });
+    };
+    let report = h.frame(&mut scene);
     assert_eq!(
         report.repaint_after, None,
         "unfocused editor doesn't schedule blink wakes",
@@ -248,14 +249,7 @@ fn focused_text_edit_schedules_blink_wake() {
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
     h.click_at(Vec2::new(20.0, 20.0));
-    let report = h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            TextEdit::new(&mut buf)
-                .id(WidgetId::from_hash("blink-wake"))
-                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    });
+    let report = h.frame(&mut scene);
     assert!(
         report.repaint_after.is_some(),
         "focused editor schedules a blink wake",

@@ -1126,12 +1126,13 @@ fn frame_stats_overlay_records_partial_damage() {
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    h.frame(|ui| {
+    let mut body = |ui: &mut Ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
             .show(ui);
-    });
+    };
+    h.frame(&mut body);
     assert_eq!(h.ui.frame_runtime.fps_ema, 0.0);
     assert!(
         !h.ui.forest.trees[Layer::Debug].records.is_empty(),
@@ -1142,12 +1143,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report = h.at(Duration::from_millis(16)).frame(|ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("body"))
-            .size(50.0)
-            .show(ui);
-    });
+    let report = h.at(Duration::from_millis(16)).frame(&mut body);
     assert!(
         matches!(
             report.plan,
@@ -1168,12 +1164,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
     h.ui.debug_overlay_mut().frame_stats = false;
-    h.at(Duration::from_millis(32)).frame(|ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("body"))
-            .size(50.0)
-            .show(ui);
-    });
+    h.at(Duration::from_millis(32)).frame(&mut body);
     assert!(
         h.ui.forest.trees[Layer::Debug].records.is_empty(),
         "Debug layer must clear once frame_stats is turned off",
