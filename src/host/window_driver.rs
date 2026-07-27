@@ -110,6 +110,19 @@ impl TargetKey {
             present_mode: None,
         }
     }
+
+    /// Whether this key describes a target with the given texture facts.
+    ///
+    /// Compares only what a `wgpu::Texture` can answer for. `present_mode` is
+    /// a *swapchain* property, so a surface key legitimately holds `Some(..)`
+    /// while the frame's acquired texture — an ordinary texture — carries no
+    /// trace of it. Equality would therefore never hold on a swapchain host;
+    /// this is the predicate for "same target", as opposed to [`PartialEq`]'s
+    /// "same target *configuration*", which is what [`WindowDriver::note_target`]
+    /// gates invalidation and surface reconfiguration on.
+    pub(super) fn describes(&self, physical: UVec2, format: wgpu::TextureFormat) -> bool {
+        self.physical == physical && self.format == format
+    }
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
@@ -429,12 +442,17 @@ impl WindowDriver {
             display_phys.x,
             display_phys.y,
         );
-        debug_assert_eq!(
+        debug_assert!(
+            self.target.is_some_and(|key| {
+                key.describes(UVec2::new(size.width, size.height), target.format())
+            }),
+            "render_to_texture: target ({}x{}, {:?}) differs from the one \
+             `note_target` declared ({:?}), so the retained backbuffer / damage \
+             baseline were never invalidated for it",
+            size.width,
+            size.height,
+            target.format(),
             self.target,
-            Some(TargetKey::of(target)),
-            "render_to_texture: target differs from the one `note_target` \
-             declared, so the retained backbuffer / damage baseline were never \
-             invalidated for it"
         );
         // The CPU phase already composed `GpuView`s into
         // `buffer.frame_targets` (callback + raster target — see
@@ -756,6 +774,61 @@ mod output_validity_tests {
         assert!(!driver.note_target(offscreen));
         assert!(driver.output_valid);
         assert!(driver.backbuffer_fresh);
+    }
+
+    /// The submit-time "same target" check must ignore `present_mode`, which
+    /// is the one field of the key a `wgpu::Texture` cannot answer for.
+    ///
+    /// The regression: `render_to_texture` asserted the noted key *equals*
+    /// `TargetKey::of(target)`, and `of` reports `present_mode: None` because
+    /// a plain texture has no swapchain. Once a surface key started carrying
+    /// `Some(..)`, the two could never be equal — every debug-build swapchain
+    /// frame tripped it on the first submit.
+    #[test]
+    fn a_surface_key_describes_its_acquired_texture_whatever_the_present_mode() {
+        let physical = UVec2::new(3078, 1908);
+        let format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let surface = TargetKey {
+            physical,
+            format,
+            present_mode: Some(wgpu::PresentMode::AutoVsync),
+        };
+
+        // An acquired swapchain texture reports size + format and nothing
+        // else; every present mode describes it, including no mode at all.
+        for present_mode in [
+            Some(wgpu::PresentMode::AutoVsync),
+            Some(wgpu::PresentMode::AutoNoVsync),
+            None,
+        ] {
+            let key = TargetKey {
+                present_mode,
+                ..surface
+            };
+            assert!(
+                key.describes(physical, format),
+                "{present_mode:?} must still describe its own texture"
+            );
+        }
+
+        // What it must still catch: the target the GPU half was handed is
+        // genuinely not the one the CPU half ran against.
+        assert!(!surface.describes(UVec2::new(3078, 1907), format), "size");
+        assert!(
+            !surface.describes(physical, wgpu::TextureFormat::Rgba8Unorm),
+            "format"
+        );
+        // And the mode axis stays live for `note_target`'s own equality —
+        // that gate is what reconfigures the swapchain.
+        assert_ne!(
+            surface,
+            TargetKey {
+                present_mode: Some(wgpu::PresentMode::AutoNoVsync),
+                ..surface
+            },
+            "describes() is deliberately weaker than equality, not a \
+             replacement for it"
+        );
     }
 
     #[test]
