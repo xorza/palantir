@@ -52,10 +52,10 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
             .response
             .node()
     });
-    let kids: Vec<_> = h.main_child_ids(panel);
+    let kids: Vec<_> = h.main_child_rects(panel);
     let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
-    let a = h.ui.layout[Layer::Main].rect[kids[0].idx()];
-    let b = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let a = kids[0];
+    let b = kids[1];
     assert_eq!(a.min.x, panel_rect.min.x + 8.0);
     assert_eq!(a.min.y, 8.0);
     assert_eq!(b.min.x, panel_rect.min.x + 8.0);
@@ -114,9 +114,9 @@ fn zstack_per_axis_alignment() {
             .node()
         });
         let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
-        let kids: Vec<_> = h.main_child_ids(panel);
+        let kids: Vec<_> = h.main_child_rects(panel);
         for (i, (_, _, expected)) in children.iter().enumerate() {
-            let r = h.ui.layout[Layer::Main].rect[kids[i].idx()];
+            let r = kids[i];
             assert_eq!(
                 (r.min.x - panel_rect.min.x, r.min.y - panel_rect.min.y),
                 *expected,
@@ -144,8 +144,8 @@ fn zstack_fill_child_stretches_to_inner() {
             .node()
     });
     let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
-    let kids: Vec<_> = h.main_child_ids(panel);
-    let f = h.ui.layout[Layer::Main].rect[kids[0].idx()];
+    let kids: Vec<_> = h.main_child_rects(panel);
+    let f = kids[0];
     assert_eq!(f.min.x - panel_rect.min.x, 10.0);
     assert_eq!(f.min.y, 10.0);
     assert_eq!(f.size.w, 80.0);
@@ -199,8 +199,8 @@ fn zstack_collapsed_child_does_not_grow_panel() {
     let r = h.ui.layout[Layer::Main].rect[panel.idx()];
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
-    let kids: Vec<_> = h.main_child_ids(panel);
-    let collapsed = h.ui.layout[Layer::Main].rect[kids[1].idx()];
+    let kids: Vec<_> = h.main_child_rects(panel);
+    let collapsed = kids[1];
     assert_eq!(collapsed.size.w, 0.0);
     assert_eq!(collapsed.size.h, 0.0);
 }
