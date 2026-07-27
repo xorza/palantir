@@ -131,4 +131,16 @@ impl StatefulLook {
         self.active.for_each_text(f);
         self.disabled.for_each_text(f);
     }
+
+    /// The four looks in pick order, for restyling every state at once.
+    /// A look whose `background` is `None` paints nothing in that state
+    /// and stays that way — visit the field, don't materialize it.
+    pub fn each_mut(&mut self) -> [&mut WidgetLook; 4] {
+        [
+            &mut self.normal,
+            &mut self.hovered,
+            &mut self.active,
+            &mut self.disabled,
+        ]
+    }
 }

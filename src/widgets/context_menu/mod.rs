@@ -13,6 +13,7 @@ use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
+use crate::widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme, MenuSeparatorTheme};
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, enter_widget};
 
@@ -55,15 +56,22 @@ struct ContextMenuState {
 /// Chain `.size(...)`, `.max_size(...)`, `.min_size(...)`, `.padding(...)`,
 /// `.gap(...)`, and `.background(...)` to configure the menu body. Theme-driven
 /// defaults fill in any field the caller leaves untouched (`chrome`, `padding`,
-/// `min_size.w`). Identity and input behavior remain owned by the trigger.
+/// `min_size.w`, `gap`). Identity and input behavior remain owned by the trigger.
+///
+/// [`Self::style`] swaps the whole [`ContextMenuTheme`] for one instance.
+/// It restyles the *panel* only — the rows are recorded by the caller's
+/// body closure, so pass the matching sub-themes down to them
+/// ([`MenuItem::style`], [`MenuSeparator::style`]).
 #[derive(Debug)]
-pub struct ContextMenu {
+pub struct ContextMenu<'a> {
     for_id: WidgetId,
     node: Node,
     chrome: Option<Background>,
+    gap: Option<f32>,
+    style: Option<&'a ContextMenuTheme>,
 }
 
-impl ContextMenu {
+impl<'a> ContextMenu<'a> {
     pub fn for_id(for_id: WidgetId) -> Self {
         let mut node = Node::vstack();
         node.flags.set_sense(Sense::CLICK);
@@ -71,12 +79,21 @@ impl ContextMenu {
             for_id,
             node,
             chrome: None,
+            gap: None,
+            style: None,
         }
+    }
+
+    /// Per-instance theme override. `None` (the default) reads
+    /// [`crate::Theme::context_menu`].
+    pub fn style(mut self, s: &'a ContextMenuTheme) -> Self {
+        self.style = Some(s);
+        self
     }
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme.context_menu.panel` when unset. Pass
+    /// from the resolved theme's `panel` when unset. Pass
     /// [`Background::NONE`] to suppress the themed menu chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
@@ -103,8 +120,10 @@ impl ContextMenu {
         self
     }
 
+    /// Vertical gutter between rows. Unset inherits the resolved
+    /// theme's `gap`.
     pub fn gap(mut self, gap: f32) -> Self {
-        self.node = self.node.gap(gap);
+        self.gap = Some(gap);
         self
     }
 
@@ -145,17 +164,19 @@ impl ContextMenu {
 
         let body_id = self.for_id.with("ctx_menu_body");
 
-        // Borrow the sub-theme to copy out the two scalars and the single
+        // Borrow the sub-theme to copy out the three scalars and the single
         // `Background` we keep — avoids cloning the whole `ContextMenuTheme`
         // (including the unused per-item looks) every open frame.
-        let ctx = &ui.theme.context_menu;
+        let ctx = self.style.unwrap_or(&ui.theme.context_menu);
         let theme_padding = ctx.padding;
         let theme_min_width = ctx.min_width;
+        let gap = self.gap.unwrap_or(ctx.gap);
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
         let mut e = self.node.id(body_id);
         e.padding.get_or_insert(theme_padding);
         e.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
+        e.gaps.set_gap(gap);
 
         // `Popup::show` resolves the current body against the surface.
         let mut popup = Popup::anchored_to(raw_anchor)
@@ -217,6 +238,7 @@ pub struct MenuItem<'a> {
     node: Node,
     label: TextInput<'a>,
     shortcut: MenuShortcut,
+    style: Option<&'a MenuItemTheme>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -235,7 +257,15 @@ impl<'a> MenuItem<'a> {
             node,
             label: label.into(),
             shortcut: MenuShortcut::None,
+            style: None,
         }
+    }
+
+    /// Per-instance theme override. `None` (the default) reads
+    /// [`crate::Theme::context_menu`]'s `item`.
+    pub fn style(mut self, s: &'a MenuItemTheme) -> Self {
+        self.style = Some(s);
+        self
     }
 
     /// Attach a keyboard shortcut. Renders the right-aligned hint
@@ -257,16 +287,11 @@ impl<'a> MenuItem<'a> {
         self.disabled(!e)
     }
 
-    /// Thin horizontal divider — no label, no input. Free function in
-    /// disguise: chain `.show(ui)` and ignore the response. The
-    /// [`crate::Separator`] widget, colored by
-    /// `theme.context_menu.separator` and given a little breathing room.
-    #[track_caller]
-    pub fn separator(ui: &mut Ui) -> Response<'_> {
-        Separator::horizontal()
-            .color(ui.theme.context_menu.separator)
-            .margin(Spacing::xy(0.0, 4.0))
-            .show(ui)
+    /// Thin horizontal divider between groups — no label, no input.
+    /// Chain `.show(ui)` and ignore the response. See
+    /// [`MenuSeparator`].
+    pub fn separator<'s>() -> MenuSeparator<'s> {
+        MenuSeparator { style: None }
     }
 
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
@@ -281,11 +306,12 @@ impl<'a> MenuItem<'a> {
         // — avoids cloning the whole `MenuItemTheme` (three looks) per
         // row, per frame. `pick` returns a borrow, so read everything off
         // it before the borrow ends.
-        let item = &ui.theme.context_menu.item;
+        let item = self.style.unwrap_or(&ui.theme.context_menu.item);
         let look = item.pick(&entry.state);
         let look_bg = look.background.clone();
         let text_style = look.text.as_ref().unwrap_or(&ui.theme.text).clone();
         let padding = item.padding;
+        let gap = item.gap;
         // Shortcut hint reads muted — same style as the label but the
         // theme's `shortcut` color.
         let shortcut_style = TextStyle {
@@ -301,7 +327,7 @@ impl<'a> MenuItem<'a> {
         node.align = Align::h(HAlign::Stretch);
         node.justify = Justify::SpaceBetween;
         node.padding = Some(padding);
-        node.gaps.set_gap(16.0);
+        node.gaps.set_gap(gap);
 
         let label = ui.intern(self.label);
         // Passive hints watch for wake-up while their parent owns dispatch.
@@ -353,6 +379,43 @@ impl<'a> MenuItem<'a> {
 impl Configure for MenuItem<'_> {
     fn node_mut(&mut self) -> ConfigureNode<'_> {
         self.node.node_mut()
+    }
+}
+
+/// The rule [`MenuItem::separator`] records between menu groups: a
+/// [`crate::Separator`] wearing [`MenuSeparatorTheme`] instead of the
+/// app-wide `theme.separator`.
+///
+/// ```
+/// # use palantir::{MenuItem, Ui};
+/// # fn demo(ui: &mut Ui) {
+/// MenuItem::separator().show(ui);
+/// # }
+/// ```
+#[derive(Debug)]
+pub struct MenuSeparator<'a> {
+    style: Option<&'a MenuSeparatorTheme>,
+}
+
+impl<'a> MenuSeparator<'a> {
+    /// Per-instance theme override. `None` (the default) reads
+    /// [`crate::Theme::context_menu`]'s `separator`.
+    pub fn style(mut self, s: &'a MenuSeparatorTheme) -> Self {
+        self.style = Some(s);
+        self
+    }
+
+    #[track_caller]
+    pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
+        let sep = self.style.unwrap_or(&ui.theme.context_menu.separator);
+        let color = sep.color;
+        let thickness = sep.thickness;
+        let margin = sep.margin;
+        Separator::horizontal()
+            .color(color)
+            .thickness(thickness)
+            .margin(margin)
+            .show(ui)
     }
 }
 

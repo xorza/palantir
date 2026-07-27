@@ -53,7 +53,7 @@ pub(super) fn show(
         let has_text = !text.is_empty();
         for item in EditAction::MENU {
             if item.separator_before {
-                MenuItem::separator(ui);
+                MenuItem::separator().show(ui);
             }
             let enabled = match item.availability {
                 ActionAvailability::Always => true,

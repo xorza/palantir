@@ -10,8 +10,9 @@ use std::time::Duration;
 use crate::support;
 use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
-    Align, Button, Configure, ContextMenu, Frame, Justify, Key, MenuItem, Mods, Panel, Popup, Rect,
-    ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,
+    Align, Button, Configure, ContextMenu, ContextMenuTheme, Frame, Justify, Key, MenuItem, Mods,
+    Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui,
+    WidgetId,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -291,22 +292,46 @@ enum Flavor {
     Wide,
 }
 
+/// The `Wide` flavor's per-instance theme: same palette, looser
+/// everything. Built per call rather than kept in a static because a
+/// `ContextMenuTheme` isn't `const`-constructible; it's one small
+/// struct on an already-open menu's frame.
+fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
+    let mut t = ui.theme.context_menu.clone();
+    t.padding = Spacing::all(10.0);
+    t.gap = 4.0;
+    t.item.padding = Spacing::xy(12.0, 8.0);
+    t.item.gap = 32.0;
+    t.separator.thickness = 2.0;
+    t.separator.margin = Spacing::xy(0.0, 8.0);
+    t
+}
+
 fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flavor: Flavor) {
+    // `Wide` restyles through the theme bundle every menu widget reads;
+    // the panel takes it via `.style`, and the rows — recorded by this
+    // closure, not by `ContextMenu` — take their own halves of it.
+    let style = matches!(flavor, Flavor::Wide).then(|| roomy_menu_theme(ui));
     let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::HUG, Sizing::HUG));
-    if let Flavor::Wide = flavor {
+    if let Some(style) = &style {
         menu = menu
+            .style(style)
             .min_size((260.0, 0.0))
-            .max_size((320.0, 280.0))
-            .padding(Spacing::all(10.0));
+            .max_size((320.0, 280.0));
     }
     menu.show(ui, |ui, popup| {
+        let item = style.as_ref().map(|s| &s.item);
+        let rule = style.as_ref().map(|s| &s.separator);
+        let row = |m: MenuItem<'static>| match item {
+            Some(s) => m.style(s),
+            None => m,
+        };
         for (label, shortcut, action) in [
             ("Copy", Shortcut::ctrl('C'), "last action: Copy"),
             ("Cut", Shortcut::ctrl('X'), "last action: Cut"),
             ("Paste", Shortcut::ctrl('V'), "last action: Paste"),
         ] {
-            if MenuItem::new(label)
-                .shortcut(shortcut)
+            if row(MenuItem::new(label).shortcut(shortcut))
                 .show(ui, popup)
                 .left
                 .clicked()
@@ -314,11 +339,19 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
                 ui.state_mut::<CtxState>(state_id).last_action = Some(action);
             }
         }
-        MenuItem::separator(ui);
-        MenuItem::new("Disabled").enabled(false).show(ui, popup);
-        MenuItem::separator(ui);
-        if MenuItem::new("Delete")
-            .shortcut(Shortcut::new(Mods::NONE, Key::Backspace))
+        // Written out rather than folded into a helper: `MenuSeparator::show`
+        // is what captures the authoring call site, and `#[track_caller]`
+        // doesn't reach through a closure body.
+        match rule {
+            Some(r) => MenuItem::separator().style(r).show(ui),
+            None => MenuItem::separator().show(ui),
+        };
+        row(MenuItem::new("Disabled").enabled(false)).show(ui, popup);
+        match rule {
+            Some(r) => MenuItem::separator().style(r).show(ui),
+            None => MenuItem::separator().show(ui),
+        };
+        if row(MenuItem::new("Delete").shortcut(Shortcut::new(Mods::NONE, Key::Backspace)))
             .show(ui, popup)
             .left
             .clicked()
