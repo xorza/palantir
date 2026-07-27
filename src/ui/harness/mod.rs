@@ -2,13 +2,115 @@
 //! driving a [`Ui`] with synthetic input, in-crate and (once exported)
 //! from consumers.
 //!
-//! The design and the protocol rules it enforces are in
-//! `docs/roadmap/test-harness.md`. In short: `Ui::frame` calls the
-//! record closure one, two, or three times per frame and each call sees
-//! different input, and almost every way to get a driven test wrong is a
-//! corollary of that. This type holds the surface, scale, clock,
-//! modifier state, and press origin so those rules can be enforced
-//! rather than documented.
+//! # The one fact everything follows from
+//!
+//! [`Ui::frame`] calls the record closure **one, two, or three times**,
+//! and each call sees different input:
+//!
+//! | pass | when it runs | what it sees |
+//! |---|---|---|
+//! | warmup | `prev_stamp.is_none()` — the very first frame | `InputState` swapped for an empty one: no pointer, no keys. Purely to build the cascade so pass A hit-tests against something. |
+//! | A | always (except `PaintOnly`) | The real input, including one-frame edges — `clicked`, `drag.started()`. |
+//! | B | `frame_had_action` \|\| `relayout_requested` | Post-`drain_per_frame_queues`: the edges are **gone**. Capped at one retry. |
+//!
+//! `FrameProcessing` reports `SingleLayout` / `DoubleLayout` — it counts
+//! A and B, not the warmup. `PaintOnly` is a fourth case that runs
+//! **zero** record passes. Every rule below is a corollary, and this
+//! type holds the surface, scale, clock, modifier state, and press
+//! origin so they can be *enforced* rather than documented.
+//!
+//! # The protocol rules
+//!
+//! None of these appear in a signature. They are what a caller driving
+//! frames by hand gets silently wrong.
+//!
+//! ## Passes
+//!
+//! 1. **Warm the recorder.** A bare `Ui` is cold, so frame 1 runs the
+//!    warmup pass; seeding `prev_stamp` skips it. That is the split
+//!    between [`UiHarness::cold`] and every other constructor. On a cold
+//!    recorder "the first pass" means the input-blind one, so rules 3–4
+//!    resolve to the wrong pass.
+//! 2. **Prime before reading.** `response_for`'s `rect` / `layout_rect`
+//!    / `hovered` / `disabled` come from *last* frame's cascade. Any
+//!    input assertion needs a prior frame; a stable arranged rect needs
+//!    two ([`UiHarness::prime`]); content sized after arrange (scroll
+//!    thumbs, container text) can need more
+//!    ([`UiHarness::prime_stable`]).
+//! 3. **Read the response inside the record.** Between frames you get
+//!    the prior frame's input — the `frame_quiescent` snapshot is taken
+//!    at record-pass start. That is what [`UiHarness::response_in`] is.
+//! 4. **Read the first record pass.** Pass B runs after
+//!    `drain_per_frame_queues`, which clears the one-frame edges, so
+//!    [`UiHarness::frame_value`] keeps pass A's value while still
+//!    recording both.
+//! 5. **The closure's *side effects* run once per pass too.** The
+//!    write-direction peer of 3–4, and the easiest to miss: a closure
+//!    that pushes into a `Vec` or drains an intent queue does it twice
+//!    on an action frame and twice on frame 1. Anything accumulating
+//!    *across* frames must read pass one only or be idempotent.
+//!
+//! ## Clocks — there are two, and they diverge
+//!
+//! 6. **The frame clock only moves at a frame boundary.** `Ui::frame`
+//!    copies its stamp into `input.frame_time`, so events fed between
+//!    frames carry the value the *last* frame published. Advancing time
+//!    is [`advance`](UiHarness::advance) → `frame` → *then* the input;
+//!    advance-then-input with no frame between changes nothing.
+//! 7. **A frozen clock makes every click simultaneous.**
+//!    `DOUBLE_CLICK_WINDOW` is 500 ms against `input.frame_time`, so
+//!    without an `advance` a second `click_at` within
+//!    `DOUBLE_CLICK_RADIUS` (5 px) *always* reports `double_clicked`.
+//!    Two deliberately separate clicks need
+//!    [`advance_past_double_click`](UiHarness::advance_past_double_click)
+//!    or >5 px of travel.
+//! 8. **Animation time is not the frame clock.** `advance_clock` clamps
+//!    per-frame animation dt to `MAX_ANIM_DT` (0.1 s) and quantizes
+//!    through an accumulator at `ANIM_SUBSTEP_DT` (1/240 s). One frame
+//!    at +500 ms moves the double-click clock 500 ms and animations
+//!    100 ms; one at +1 ms moves animations not at all. Use
+//!    [`advance_frames`](UiHarness::advance_frames).
+//! 9. **A frame can run no record pass.** `FrameProcessing::PaintOnly`
+//!    fires when a paint-anim wake is the frame's only cause. A focused
+//!    `TextEdit` is enough — its caret blink re-queues an `ANIM` wake
+//!    every frame for 30 s. Hence
+//!    [`try_frame_value`](UiHarness::try_frame_value).
+//!
+//! ## Coordinates, text, routing
+//!
+//! 10. **Surface size is physical; pointer positions are logical.**
+//!     `Display::from_physical` derives logical as `physical / dpr`. At
+//!     `dpr = 1.0` they coincide, which is why a DPI test can look right
+//!     and not be.
+//! 11. **Mono vs. real text.** [`UiHarness::new`] uses the mono fallback
+//!     shaper; [`UiHarness::with_text`] uses cosmic with bundled Inter +
+//!     JetBrains Mono. Anything whose width follows its label measures
+//!     wrong under mono. But real shaping is *not* pixel-identical
+//!     across machines — `FontSystem::new_with_fonts` also loads
+//!     platform fonts as fallback — so assert relations, not exact
+//!     widths.
+//! 12. **Scroll and pinch route to the widget under the pointer at
+//!     event time.** They carry no position of their own; `InputState`
+//!     resolves them against the last `PointerMoved`. Hence
+//!     [`scroll_lines_at`](UiHarness::scroll_lines_at) and friends take
+//!     one. Signs follow winit: positive `y` scrolls content down.
+//! 13. **Modifiers are sticky state, not per-event.**
+//!     `ModifiersChanged` carries a snapshot that persists, so
+//!     [`key_mods`](UiHarness::key_mods) restores what it set.
+//!     `Modifiers.ctrl` is platform-normalized — Cmd on macOS.
+//! 14. **Typed text arrives as `KeyDown { key: Key::Char(c) }`.** The
+//!     winit host emits `InputEvent::Text` only from `Ime::Commit` and
+//!     never calls `set_ime_allowed`, so that path is dead in production
+//!     today. `TextEdit` consumes **both**, so emitting both
+//!     double-inserts — hence [`type_text`](UiHarness::type_text) vs.
+//!     [`ime_commit`](UiHarness::ime_commit).
+//! 15. **Keyboard events are discarded at ingress when nothing is
+//!     focused.** `InputState::on_input` gates `KeyDown` and `Text` on
+//!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
+//!     and drops what is not observable rather than queueing it. A
+//!     keyboard test must establish focus first — by clicking, or via
+//!     `Ui::request_focus` — or it asserts on a queue that can never
+//!     fill.
 //!
 //! **Three tiers, one per block.** The whole module is already
 //! `#[cfg(any(test, feature = "internals"))]`; the tiers say *who inside
@@ -96,7 +198,7 @@ pub struct UiHarness {
 /// lints.
 #[allow(dead_code, unreachable_pub)]
 impl UiHarness {
-    /// [`UiResources::isolated_mono`] — mono-fallback text: fast,
+    /// `UiResources::isolated_mono` — mono-fallback text: fast,
     /// deterministic, and wrong for width-follows-label assertions.
     pub fn new(surface: UVec2) -> Self {
         Self::from_resources(UiResources::isolated_mono(), surface)
