@@ -169,9 +169,9 @@ fn content_margin_leaves_content_size_unchanged() {
 
 /// Arranged height of the scroll widget's outer wrapper (the node that
 /// carries the user's `id`).
-fn scroll_height(ui: &Ui, id_salt: &'static str) -> f32 {
-    let node = ui.node_for_widget_id(WidgetId::from_hash(id_salt));
-    ui.layout[Layer::Main].rect[node.idx()].size.h
+fn scroll_height(h: &UiHarness, id_salt: &'static str) -> f32 {
+    let node = h.node_for_widget_id(WidgetId::from_hash(id_salt));
+    h.ui.layout[Layer::Main].rect[node.idx()].size.h
 }
 
 /// Build a `count`-row vertical **Hug** scroll (each row 50px tall)
@@ -201,7 +201,7 @@ fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
                     });
             });
     });
-    scroll_height(&h.ui, "scroll")
+    scroll_height(&h, "scroll")
 }
 
 /// A `Hug` scroll sizes to its content, clamped to `[min, max]` — the
@@ -251,7 +251,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
                     });
             });
     });
-    assert_eq!(scroll_height(&h.ui, "scroll"), 200.0, "capped at max_size");
+    assert_eq!(scroll_height(&h, "scroll"), 200.0, "capped at max_size");
     let st = layout_for(&h.ui, "scroll");
     assert_eq!(st.content.h, 400.0, "records full content extent");
     assert!(
@@ -312,7 +312,7 @@ fn fill_scroll_does_not_grow_hug_parent() {
             });
     });
     assert_eq!(
-        scroll_height(&h.ui, "scroll"),
+        scroll_height(&h, "scroll"),
         0.0,
         "a Fill scroll reports zero pan-axis extent; the Hug parent doesn't grow",
     );
@@ -345,14 +345,10 @@ fn toggling_scroll_sizing_busts_measure_cache() {
             });
     };
     h.frame_without_baseline(|ui| build(ui, Sizing::HUG));
-    assert_eq!(
-        scroll_height(&h.ui, "scroll"),
-        150.0,
-        "Hug fits its content"
-    );
+    assert_eq!(scroll_height(&h, "scroll"), 150.0, "Hug fits its content");
     h.frame_without_baseline(|ui| build(ui, Sizing::fill(1.0)));
     assert_eq!(
-        scroll_height(&h.ui, "scroll"),
+        scroll_height(&h, "scroll"),
         0.0,
         "Fill collapses in the Hug parent — the frame-1 fit measure is not served stale",
     );

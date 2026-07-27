@@ -10,19 +10,36 @@
 //! modifier state, and press origin so those rules can be enforced
 //! rather than documented.
 //!
-//! **Two rungs.** The first `impl` block is `pub` — the surface that
-//! leaves the crate through `palantir::internals`, addressing widgets by
-//! [`WidgetId`] and nothing else. The second is `pub(crate)`: it reaches
-//! into the tree, encoder, and damage engine, and must not leave.
+//! **Three tiers, one per block.** The whole module is already
+//! `#[cfg(any(test, feature = "internals"))]`; the tiers say *who inside
+//! that* a given method is for.
 //!
-//! Both allows below are about the same thing — this module's callers
-//! are all outside the library target. `palantir::internals` is itself
-//! `#[cfg(feature = "internals")]`, so in a plain `cargo test` build the
-//! door the `pub` rung leaves by is not compiled and the lint sees it as
-//! unreachable; and nothing in the lib target calls the `pub(crate)`
-//! rung either. Neither is an invitation to leave real dead code here.
-#![allow(dead_code, unreachable_pub)]
+//! 1. `impl UiHarness` (`pub`) — the surface that leaves the crate
+//!    through `palantir::internals`, addressing widgets by [`WidgetId`]
+//!    and nothing else.
+//! 2. `impl UiHarness` (`pub(crate)`) — the schedule and damage knobs the
+//!    **benches** need. They compile under `internals` without
+//!    `cfg(test)`, which is why this tier cannot be narrowed further.
+//! 3. `mod unit` (`#[cfg(test)]`) — what only the *in-tree* suite calls:
+//!    the tree/encoder reach-ins, the cold constructor, the
+//!    no-baseline frame drivers.
+//!
+//! Tier 3's extra gate is not about encapsulation — `pub(crate)` already
+//! stops all of this leaving the crate. It is the only way to say "the
+//! benches don't use this", and it is what lets the module carry no
+//! `dead_code` allow: under `--features internals` alone, tier 3 simply
+//! isn't compiled, so nothing is spuriously unused and a genuinely dead
+//! method still gets reported.
+//!
+//! Tier 1 carries the only lint allows, and they are about build shape
+//! rather than design: `palantir::internals` is itself
+//! `#[cfg(feature = "internals")]`, so a default-feature build does not
+//! compile the door tier 1 leaves by, and every method on it reads as
+//! both unreachable and dead. Scoping the allows to that block keeps
+//! tiers 2 and 3 honest — a genuinely unused method there still fails
+//! the build.
 
+use crate::app::internals::RecordApp;
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::host::shared::HostShared;
@@ -38,9 +55,10 @@ use crate::scene::layer::Layer;
 use crate::scene::seen_ids::Endpoint;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::ui::frame::FrameStamp;
+use crate::ui::frame::{FrameInput, FrameStamp};
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
+use crate::window::WindowToken;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -48,6 +66,10 @@ use std::time::Duration;
 /// to be non-degenerate.
 const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
+// Same reachability story as tier 1 below: the type is `pub` because it
+// is re-exported from `palantir::internals`, which a default-feature
+// build does not compile.
+#[allow(unreachable_pub)]
 #[derive(Debug)]
 pub struct UiHarness {
     /// `pub(crate)` rather than behind an accessor so in-crate tests
@@ -69,7 +91,10 @@ pub struct UiHarness {
     pressed_at: Option<Vec2>,
 }
 
-/// The rung intended to leave the crate.
+/// Tier 1 — the surface that leaves the crate. See the module doc for
+/// why this block, and only this block, silences the two reachability
+/// lints.
+#[allow(dead_code, unreachable_pub)]
 impl UiHarness {
     /// [`UiResources::isolated_mono`] — mono-fallback text: fast,
     /// deterministic, and wrong for width-follows-label assertions.
@@ -132,7 +157,7 @@ impl UiHarness {
 
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         let (display, time) = (self.display(), self.time);
-        self.ui.record_test_frame(display, time, record)
+        self.drive(display, time, true, record)
     }
 
     /// The value from the **input-observing** pass — pass A, the one
@@ -475,15 +500,6 @@ impl UiHarness {
 /// The in-crate rung: tree, encoder, damage, and the schedule knobs.
 /// None of this leaves the crate when the type is exported.
 impl UiHarness {
-    /// Cold recorder — `prev_stamp` unseeded, so frame 1 runs the extra
-    /// blackout warmup pass. For the tests that pin cold start itself;
-    /// every other constructor is warm.
-    pub(crate) fn cold(surface: UVec2) -> Self {
-        let mut harness = Self::new(surface);
-        harness.ui.frame_runtime.prev_stamp = None;
-        harness
-    }
-
     /// Two recorders over one `HostShared`, for the shared-text-cache and
     /// idle/active-window tests.
     pub(crate) fn from_resources(resources: UiResources, surface: UVec2) -> Self {
@@ -502,14 +518,6 @@ impl UiHarness {
         harness
     }
 
-    /// `damage_baseline_valid: false` — forces a full frame. A damage
-    /// knob, so it stays in-crate.
-    pub(crate) fn frame_without_baseline(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
-        let (display, time) = (self.display(), self.time);
-        self.ui
-            .record_test_frame_without_baseline(display, time, record)
-    }
-
     /// Explicit schedule *and* no damage baseline — the combination the
     /// caret-blink and multi-click tests need, since they drive a real
     /// clock and want every frame to repaint in full.
@@ -519,22 +527,7 @@ impl UiHarness {
         time: Duration,
         record: impl FnMut(&mut Ui),
     ) -> FrameReport {
-        self.ui
-            .record_test_frame_without_baseline(display, time, record)
-    }
-
-    pub(crate) fn frame_value_without_baseline<R>(
-        &mut self,
-        mut record: impl FnMut(&mut Ui) -> R,
-    ) -> R {
-        let mut first = None;
-        self.frame_without_baseline(|ui| {
-            let value = record(ui);
-            if first.is_none() {
-                first = Some(value);
-            }
-        });
-        first.expect("the frame ran no record pass")
+        self.drive(display, time, false, record)
     }
 
     /// Explicit display and time, bypassing `surface` / `scale` / the
@@ -545,7 +538,28 @@ impl UiHarness {
         time: Duration,
         record: impl FnMut(&mut Ui),
     ) -> FrameReport {
-        self.ui.record_test_frame(display, time, record)
+        self.drive(display, time, true, record)
+    }
+
+    /// The one place a frame is actually entered. `Ui::frame` is
+    /// `pub(crate)`, so the harness drives it directly rather than
+    /// through a test method on `Ui`.
+    fn drive(
+        &mut self,
+        display: Display,
+        time: Duration,
+        damage_baseline_valid: bool,
+        record: impl FnMut(&mut Ui),
+    ) -> FrameReport {
+        let mut app = RecordApp::new(record);
+        self.ui.frame(
+            FrameInput {
+                stamp: FrameStamp::new(display, time),
+                damage_baseline_valid,
+            },
+            WindowToken(0),
+            &mut app,
+        )
     }
 
     /// The `Display` this harness frames at.
@@ -568,47 +582,129 @@ impl UiHarness {
     }
 
     pub(crate) fn damage_region(&self) -> DamageRegion {
-        self.ui.damage_region()
+        DamageRegion::collapse_from(
+            &self.ui.damage_engine.raw_rects,
+            self.ui.damage_engine.budget_px,
+            self.ui.display.logical_rect(),
+        )
     }
 }
 
-/// Tree and encoder reach-ins. Narrower than the block above because
-/// their `Ui` counterparts live in `ui/internals.rs`'s `#[cfg(test)] mod
-/// unit` and so do not exist under `--features internals` alone. They
-/// widen to match the rest once those move onto this type for real.
-/// Full paths rather than imports: these types are needed only by this
-/// gated block, and a cfg'd `use` at the top of the file is what the
-/// crate's style rules exist to prevent.
+/// The third tier: everything only the *in-tree* suite calls.
+///
+/// The module as a whole is already `any(test, feature = "internals")`,
+/// and `pub(crate)` already stops any of this leaving the crate. This
+/// narrower `cfg(test)` says something the other two cannot — that the
+/// benches, which compile under `internals` alone, do not use it. Keeping
+/// it as one gated `mod` rather than attributes sprinkled through the
+/// rung above means the tier is visible at a glance, its imports live
+/// with it, and nothing needs a `dead_code` allow.
 #[cfg(test)]
-impl UiHarness {
-    pub(crate) fn main_child_ids(
-        &self,
-        parent: crate::scene::tree::node::NodeId,
-    ) -> Vec<crate::scene::tree::node::NodeId> {
-        self.ui.main_child_ids(parent)
-    }
+mod unit {
+    use crate::animation::animatable::Animatable;
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::rect::Rect;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::renderer::frontend::encoder;
+    use crate::renderer::frontend::record_sink::RecordedPaint;
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::scene::damage::region::DamageRegion;
+    use crate::scene::layer::Layer;
+    use crate::scene::node::Configure;
+    use crate::scene::tree::node::NodeId;
+    use crate::ui::Ui;
+    use crate::ui::frame_report::FrameReport;
+    use crate::ui::harness::UiHarness;
+    use crate::widgets::panel::Panel;
+    use glam::UVec2;
 
-    pub(crate) fn main_child_rects(&self, parent: crate::scene::tree::node::NodeId) -> Vec<Rect> {
-        self.ui.main_child_rects(parent)
-    }
+    impl UiHarness {
+        /// Cold recorder — `prev_stamp` unseeded, so frame 1 runs the
+        /// extra blackout warmup pass. For the tests that pin cold start
+        /// itself; every other constructor is warm.
+        pub(crate) fn cold(surface: UVec2) -> Self {
+            let mut harness = Self::new(surface);
+            harness.ui.frame_runtime.prev_stamp = None;
+            harness
+        }
 
-    pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> crate::scene::tree::node::NodeId {
-        self.ui.node_for_widget_id(id)
-    }
+        /// `damage_baseline_valid: false` — forces a full frame.
+        pub(crate) fn frame_without_baseline(
+            &mut self,
+            record: impl FnMut(&mut Ui),
+        ) -> FrameReport {
+            let (display, time) = (self.display(), self.time);
+            self.drive(display, time, false, record)
+        }
 
-    pub(crate) fn encode_paint(&self) -> crate::renderer::frontend::record_sink::RecordedPaint {
-        self.ui.encode_paint()
-    }
+        pub(crate) fn frame_value_without_baseline<R>(
+            &mut self,
+            mut record: impl FnMut(&mut Ui) -> R,
+        ) -> R {
+            let mut first = None;
+            self.frame_without_baseline(|ui| {
+                let value = record(ui);
+                if first.is_none() {
+                    first = Some(value);
+                }
+            });
+            first.expect("the frame ran no record pass")
+        }
 
-    pub(crate) fn encode_paint_for(
-        &self,
-        region: DamageRegion,
-    ) -> crate::renderer::frontend::record_sink::RecordedPaint {
-        self.ui.encode_paint_for(region)
-    }
+        /// A `FILL`/`FILL` hstack wrapped around `f`, returning the node
+        /// `f` produced — the fixture for "arrange this one subtree
+        /// against the whole surface".
+        pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(&mut self, mut f: F) -> NodeId {
+            self.frame_value_without_baseline(|ui| {
+                Panel::hstack()
+                    .auto_id()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, &mut f)
+                    .inner
+            })
+        }
 
-    pub(crate) fn anim_row_count<T: crate::animation::animatable::Animatable>(&mut self) -> usize {
-        self.ui.anim_row_count::<T>()
+        pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
+            self.ui.forest.node_for_widget_id(Layer::Main, id)
+        }
+
+        pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
+            self.ui.forest.trees[Layer::Main]
+                .children(parent)
+                .map(|child| child.id)
+                .collect()
+        }
+
+        pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
+            self.ui.forest.trees[Layer::Main]
+                .children(parent)
+                .map(|child| self.ui.layout[Layer::Main].rect[child.id.idx()])
+                .collect()
+        }
+
+        pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
+            self.ui
+                .anim
+                .try_typed_mut::<T>()
+                .map_or(0, |rows| rows.rows.len())
+        }
+
+        pub(crate) fn encode_paint(&self) -> RecordedPaint {
+            self.encode(RenderKind::Full)
+        }
+
+        pub(crate) fn encode_paint_for(&self, region: DamageRegion) -> RecordedPaint {
+            self.encode(RenderKind::Partial { region })
+        }
+
+        fn encode(&self, kind: RenderKind) -> RecordedPaint {
+            let plan = RenderPlan {
+                clear: self.ui.theme.window_clear,
+                kind,
+            };
+            encoder::internals::encode(self.ui.frame_scene(), &SharedGradientAtlas::default(), plan)
+        }
     }
 }
 

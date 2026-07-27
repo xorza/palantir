@@ -5,11 +5,11 @@ crate-private or half-exposed. Consumers — darkroom first — want the
 same thing: synthetic input, a real record pass, assertions on
 responses and on whatever the app derives from them.
 
-This proposes one type, `UiHarness`, as **the** frame-driving test API
-— for palantir's own ~500 driven tests and for consumers alike. Not a
-consumer wrapper over an internal API that stays: a replacement. When
-it lands, `impl Ui` has no test methods left and `src/ui/internals.rs`
-holds the harness instead of a pile of reach-ins.
+`UiHarness` is now **the** frame-driving test API — for palantir's own
+~500 driven tests and for consumers alike. Not a consumer wrapper over
+an internal API that stayed: a replacement. `impl Ui` has no test
+methods left at all, and `src/ui/internals.rs` — which used to hold
+them — is gone.
 
 One type serves both audiences through two visibility rungs on the same
 struct — `pub` for the protocol-enforcing surface that leaves the crate
@@ -18,9 +18,11 @@ must not. That is the whole trick, and it is why "consolidate" and
 "expose something to darkroom" are the same piece of work rather than
 two.
 
-## How palantir tests itself today
+## How palantir tested itself before this
 
-Three tiers. Only the middle one is what a consumer wants.
+The state the migration started from, kept because it is what the design
+argues against. Three tiers; only the middle one is what a consumer
+wants.
 
 **Pure.** No recorder at all — layout math, `EditState` editing,
 geometry. A large share of the ~118 `mod tests` files.
@@ -83,10 +85,9 @@ gets silently wrong.
 
 ### Passes
 
-1. **Warm the recorder.** `Ui::default()` is cold, so frame 1 runs the
-   warmup pass. `for_test*` seed `prev_stamp` to skip it — the split
-   the harness keeps as `UiHarness::cold` vs. every other constructor.
-   `tests/alloc` survives only because it warms up explicitly. On a
+1. **Warm the recorder.** A bare `Ui` is cold, so frame 1 runs the
+   warmup pass; seeding `prev_stamp` skips it. That is the split the
+   harness keeps as `UiHarness::cold` vs. every other constructor. On a
    cold recorder "the first pass" means the input-blind one — every
    read in rules 3–4 resolves to the wrong pass.
 2. **Prime before reading.** `response_for`'s `rect` / `layout_rect` /
@@ -96,16 +97,17 @@ gets silently wrong.
    (scroll thumbs, container text) can need more.
 3. **Read the response inside the record.** Between frames you get the
    prior frame's input — the `frame_quiescent` snapshot is taken at
-   record-pass start. All in-tree reads go through the `resp()` helper
-   in `input/tests/drag.rs` for this reason.
+   record-pass start. This is what `response_in` exists for; before the
+   harness, every in-tree read went through a hand-rolled `resp()`
+   helper in `input/tests/drag.rs` that did the same thing.
 4. **Read the first record pass.** Pass B runs after
-   `drain_per_frame_queues`, which clears the one-frame edges.
-   `resp()` uses `get_or_insert_with` to capture pass one.
+   `drain_per_frame_queues`, which clears the one-frame edges. So
+   `frame_value` keeps pass A's value while still recording both.
 5. **The record closure's *side effects* run once per pass too.** The
    write-direction peer of 3–4, and the easiest one to miss. A closure
    that pushes into a `Vec`, mutates retained widget state, or drains
    an intent queue does it twice on an action frame
-   and twice on frame 1. Darkroom is currently safe by accident: pass
+   and twice on frame 1. Darkroom is safe by accident here: pass
    B sees no `clicked()`, so no intent is re-emitted, and the warmup
    pass sees no input at all. A consumer harness that accumulates
    *across* frames must either read pass one only or make the closure
@@ -258,8 +260,8 @@ trait's methods are all as visible as the trait, so the reach-ins
 would have to live on a *second*, crate-private trait. Two traits is
 two APIs again.
 
-It lives in `src/ui/internals.rs`, which is where the reach-ins already
-are — so this is mostly a move, not a new layer.
+It lives in `src/ui/harness/`, and the reach-ins moved onto it — so
+`src/ui/internals.rs` was deleted rather than kept as a second layer.
 
 ### What the internal audience needs that a consumer must not get
 
@@ -562,7 +564,7 @@ double-layout" today, through `frame`'s return value, with no new API.
 ## What gets deleted
 
 The consolidation is only real if `impl Ui` ends up with no test
-methods. The full kill list, all currently in `src/ui/internals.rs`
+methods. The full kill list, all of which lived in `src/ui/internals.rs`
 unless noted:
 
 `Ui::for_test`, `for_test_at`, `for_test_text`, `for_test_at_text`,
@@ -788,15 +790,39 @@ All of it is landed. `Default` is what ordered it: darkroom consumed
 6. **Landed.** All three gated `Default` impls deleted. `Ui::new` was
    already the `pub(crate)` constructor, so `Ui` needed no replacement;
    `UiResources` and `TextSystem` got named ones.
-7. **Landed.** The kill list is gone. `src/ui/internals.rs` now holds
-   only what genuinely cannot move: `record_test_frame{,_without_baseline}`
-   (they need `Ui::frame`'s private `FrameInput`), `damage_region`, and
-   the `#[cfg(test)]` tree/encoder reach-ins the harness forwards to.
-   Darkroom's dock test is ported — it is the sketch below, verbatim.
-8. **Remaining.** Darkroom's own `Editor::frame`-level harness. Rule 5
-   is the one to watch there: an editor-level harness accumulating
-   intents across frames is the first thing in-tree that could
-   double-count.
+7. **Landed.** The kill list is gone and `src/ui/internals.rs` with it.
+   `Ui::frame` and `FrameInput` are both already `pub(crate)`, so the
+   harness enters frames itself through one private `drive` — there was
+   never a need for `record_test_frame` to sit on `Ui`. The reach-ins
+   moved onto the harness's `#[cfg(test)]` rung; `node_for_widget_id`
+   became `Forest::node_for_widget_id`, which is where a tree query
+   belongs and which `Response::node()` also needed. Darkroom's dock
+   test is ported — it is the sketch below, verbatim.
+8. **Landed.** Darkroom's `EditorHarness`
+   (`gui/app/editor/harness.rs`) drives `Editor::frame` through
+   `UiHarness`, so a test can feed a real pointer event and assert on
+   what the editor did with it — the level above `TestEditor`, which
+   calls `apply_edit` directly and never records. Rule 5 is why its
+   `frame()` returns the *first* pass's `AppCommand`: `Editor::frame`
+   runs once per record pass, so an action frame calls it twice, exactly
+   as production does.
+
+   The first case through it (`clicking_a_tab_chip_activates_it_through_
+   the_real_hit_test`) also shows what `hit_at` is for. The topmost hit
+   at a `Local` tab chip's center is *not* the chip — it is the
+   `InlineRename` label's panel sitting over it. The click still routes
+   to the chip, which is what the test pins; but a bare
+   `assert_eq!(hit_at(..), Some(chip))` would fail for a reason that has
+   nothing to do with the behaviour under test. That overlap is the same
+   one `dock::tests` guards from the other side.
+
+## What is still open
+
+The harness exists; the 61 darkroom input paths are still mostly
+unpinned. That is now ordinary test-writing rather than infrastructure —
+the pane-scoping cases in `canvas/` are the sharpest, since their current
+unit tests pin the *predicate* and not whether it is wired to the pane
+the pointer is over.
 
 ## What it unlocks downstream
 

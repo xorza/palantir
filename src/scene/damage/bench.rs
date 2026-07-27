@@ -128,8 +128,8 @@ fn run_and_ack(h: &mut UiHarness, display: Display, mut record: impl FnMut(&mut 
     let _ = h.frame_at(display, Duration::ZERO, &mut record);
 }
 
-fn damage_kind(ui: &Ui) -> &'static str {
-    match Damage::new(ui.damage_region()) {
+fn damage_kind(h: &UiHarness) -> &'static str {
+    match Damage::new(h.damage_region()) {
         Damage::Skip => "skip",
         Damage::Full => "full",
         Damage::Partial(_) => "partial",
@@ -152,7 +152,7 @@ fn warm_and_assert(
 ) {
     run_and_ack(h, display, &frame1);
     run_and_ack(h, display, &frame2);
-    let kind = damage_kind(&h.ui);
+    let kind = damage_kind(h);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
@@ -302,7 +302,7 @@ fn bench_workloads(c: &mut Criterion) {
         };
         run_and_ack(&mut h, display, varying(0));
         run_and_ack(&mut h, display, varying(1));
-        assert_eq!(damage_kind(&h.ui), "full");
+        assert_eq!(damage_kind(&h), "full");
         let mut frame_n = 2u32;
         group.bench_function("full_repaint", |b| {
             b.iter(|| {

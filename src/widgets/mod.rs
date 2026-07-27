@@ -274,6 +274,7 @@ pub struct InnerResponse<'a, R> {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::scene::layer::Layer;
     use crate::scene::tree::node::NodeId;
     use crate::widgets::drag_value::DragValueResponse;
     use crate::widgets::text_edit::TextEditResponse;
@@ -287,7 +288,7 @@ pub(crate) mod internals {
 
     impl Response<'_> {
         pub(crate) fn node(&self) -> NodeId {
-            self.ui.node_for_widget_id(self.id)
+            self.ui.forest.node_for_widget_id(Layer::Main, self.id)
         }
     }
 }

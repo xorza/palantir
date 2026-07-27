@@ -337,7 +337,7 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
         Panel::hstack()
             .id(scroller)
             .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-            .sense(crate::input::sense::Sense::SCROLL)
+            .sense(Sense::SCROLL)
             .show(ui, |_| {});
     };
 

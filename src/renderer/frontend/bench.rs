@@ -52,7 +52,7 @@ impl FillCase {
 
 #[derive(Debug)]
 struct GradientBench {
-    ui: UiHarness,
+    harness: UiHarness,
     frontend: Frontend,
     start: Instant,
 }
@@ -60,7 +60,7 @@ struct GradientBench {
 impl GradientBench {
     fn new() -> Self {
         Self {
-            ui: UiHarness::new(PHYSICAL),
+            harness: UiHarness::new(PHYSICAL),
             frontend: Frontend::for_test(),
             start: Instant::now(),
         }
@@ -69,7 +69,7 @@ impl GradientBench {
     fn frame(&mut self, fill_case: FillCase) -> usize {
         let background = fill_case.background();
         let display = Display::from_physical(PHYSICAL, 1.0);
-        let report = self.ui.frame_at(display, self.start.elapsed(), |ui| {
+        let report = self.harness.frame_at(display, self.start.elapsed(), |ui| {
             for row in 0..ROWS {
                 Frame::new()
                     .id_salt(row)
@@ -82,7 +82,7 @@ impl GradientBench {
             clear: Color::BLACK,
             kind: RenderKind::Full,
         });
-        self.frontend.build(self.ui.ui.frame_scene(), plan);
+        self.frontend.build(self.harness.ui.frame_scene(), plan);
         self.frontend.buffer.quads.len()
     }
 }
@@ -105,7 +105,7 @@ pub fn bench(c: &mut Criterion) {
         };
         assert_eq!(
             fixture
-                .ui
+                .harness
                 .ui
                 .forest
                 .record_store

@@ -1247,8 +1247,5 @@ impl Ui {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod harness;
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals;
-
 #[cfg(test)]
 mod tests;
