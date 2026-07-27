@@ -43,8 +43,6 @@ use glam::UVec2;
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
         let mut h = UiHarness::new(UVec2::new(outer_w, 400));
-        let mut left_node = None;
-        let mut right_node = None;
         let mut row_node = NodeId(0);
         h.frame(|ui| {
             row_node = Panel::hstack()
@@ -54,53 +52,49 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 .show(ui, |ui| {
                     // Left: FILL/FILL with a FILL/FILL child (no rigid
                     // descendant). intrinsic_min ≈ 0 — fully shrinkable.
-                    left_node = Some(
-                        Panel::vstack()
-                            .id(WidgetId::from_hash("left"))
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .padding(12.0)
-                            .show(ui, |ui| {
-                                Frame::new()
-                                    .id(WidgetId::from_hash("left-bg"))
-                                    .size((Sizing::FILL, Sizing::FILL))
-                                    .show(ui);
-                            })
-                            .response
-                            .node(),
-                    );
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("left"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(12.0)
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("left-bg"))
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui);
+                        });
                     // Right: FILL/FILL with a Fixed(180×80) descendant.
                     // intrinsic_min = 180 + 24 padding = 204 — rigid below.
-                    right_node = Some(
-                        Panel::vstack()
-                            .id(WidgetId::from_hash("right"))
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .padding(12.0)
-                            .show(ui, |ui| {
-                                Panel::zstack()
-                                    .id(WidgetId::from_hash("right-z"))
-                                    .size((Sizing::FILL, Sizing::FILL))
-                                    .show(ui, |ui| {
-                                        Frame::new()
-                                            .id(WidgetId::from_hash("right-bg"))
-                                            .size((Sizing::FILL, Sizing::FILL))
-                                            .show(ui);
-                                        Frame::new()
-                                            .id(WidgetId::from_hash("right-fixed"))
-                                            .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
-                                            .show(ui);
-                                    });
-                            })
-                            .response
-                            .node(),
-                    );
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("right"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(12.0)
+                        .show(ui, |ui| {
+                            Panel::zstack()
+                                .id(WidgetId::from_hash("right-z"))
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui, |ui| {
+                                    Frame::new()
+                                        .id(WidgetId::from_hash("right-bg"))
+                                        .size((Sizing::FILL, Sizing::FILL))
+                                        .show(ui);
+                                    Frame::new()
+                                        .id(WidgetId::from_hash("right-fixed"))
+                                        .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
+                                        .show(ui);
+                                });
+                        });
                 })
                 .response
                 .node();
         });
 
         let row = h.ui.layout[Layer::Main].rect[row_node.idx()];
-        let left = h.ui.layout[Layer::Main].rect[left_node.unwrap().idx()];
-        let right = h.ui.layout[Layer::Main].rect[right_node.unwrap().idx()];
+        let left = h
+            .layout_rect(WidgetId::from_hash("left"))
+            .expect("arranged");
+        let right = h
+            .layout_rect(WidgetId::from_hash("right"))
+            .expect("arranged");
 
         // The right cell's intrinsic_min along X is the Fixed
         // descendant's 180 + the cell's 24 padding = 204. When the

@@ -591,11 +591,29 @@ impl UiHarness {
         }
     }
 
-    /// Arranged rect from the previous frame's cascade. Safe to read
-    /// between frames — geometry is stable across them, one-frame edges
-    /// are not.
+    /// The **visible** rect from the previous frame's cascade — after
+    /// ancestor transforms and clipping, so it is what the pointer
+    /// actually hits and what [`Self::center_of`] aims at. For the
+    /// arranged geometry a layout assertion wants, see
+    /// [`Self::layout_rect`]; the two differ under any transform or
+    /// clip, and only there, which is what makes picking the wrong one
+    /// pass everywhere except the scroll and canvas cases.
+    ///
+    /// Safe to read between frames — geometry is stable across them,
+    /// one-frame edges are not.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui.response_for(id).rect
+    }
+
+    /// The **arranged** rect: pre-transform and unclipped, in world
+    /// coordinates — what the layout pass produced, before a scrolling
+    /// or zooming ancestor moved it. This is the one a layout test
+    /// means; [`Self::rect`] is the post-transform peer.
+    ///
+    /// Equal to indexing the layout pass output by the widget's node,
+    /// without making a test carry a `NodeId` to get there.
+    pub fn layout_rect(&self, id: WidgetId) -> Option<Rect> {
+        self.ui.response_for(id).layout_rect
     }
 
     /// Center of `id`'s arranged rect.

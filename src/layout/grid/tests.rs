@@ -647,7 +647,9 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
                 );
             });
     });
-    let r = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
+    let r = h
+        .layout_rect(WidgetId::from_hash("hug-grid"))
+        .expect("arranged");
     assert_eq!(r.size.w, 80.0, "empty Fill col contributes no floor");
     assert_eq!(r.size.h, 40.0);
 }
@@ -683,7 +685,9 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
 
     let grid = h.ui.layout[Layer::Main].rect[root.idx()];
     let cell = h.main_child_rects(root)[0];
-    let rigid = h.ui.layout[Layer::Main].rect[rigid_node.unwrap().idx()];
+    let rigid = h
+        .layout_rect(WidgetId::from_hash("rigid"))
+        .expect("arranged");
     assert_eq!(grid.size, Size::new(120.0, 20.0));
     assert_eq!(cell.size, Size::new(120.0, 20.0));
     assert_eq!(rigid.size, Size::new(120.0, 20.0));
@@ -728,7 +732,9 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     });
 
     let siblings = h.main_child_rects(root);
-    let rigid = h.ui.layout[Layer::Main].rect[rigid_node.unwrap().idx()];
+    let rigid = h
+        .layout_rect(WidgetId::from_hash("rigid"))
+        .expect("arranged");
     assert_eq!(siblings[0].size.w, 200.0);
     assert_eq!(siblings[1].min.x, 200.0);
     assert_eq!(siblings[1].size.w, 100.0);
@@ -831,7 +837,6 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut grid_node = None;
-    let mut ghost_node = None;
     let empty: [Track; 0] = [];
     h.frame(|ui| {
         Panel::hstack()
@@ -845,24 +850,25 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                         .rows(empty)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
-                            ghost_node = Some(
-                                Frame::new()
-                                    .id(WidgetId::from_hash("ghost"))
-                                    .size((20.0, 20.0))
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Frame::new()
+                                .id(WidgetId::from_hash("ghost"))
+                                .size((20.0, 20.0))
+                                .show(ui);
                         })
                         .response
                         .node(),
                 );
             });
     });
-    let r = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
+    let r = h
+        .layout_rect(WidgetId::from_hash("empty-grid"))
+        .expect("arranged");
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 
-    let ghost = h.ui.layout[Layer::Main].rect[ghost_node.unwrap().idx()];
+    let ghost = h
+        .layout_rect(WidgetId::from_hash("ghost"))
+        .expect("arranged");
     assert_eq!(ghost.size.w, 0.0);
     assert_eq!(ghost.size.h, 0.0);
 }
@@ -873,7 +879,6 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     let cols: [Track; COLS] = std::array::from_fn(|i| Track::fixed((i + 1) as f32));
     let mut h = UiHarness::new(UVec2::new(3_000, 100));
     let mut grid_node = None;
-    let mut last_node = None;
     h.frame(|ui| {
         grid_node = Some(
             Grid::new()
@@ -882,13 +887,10 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
                 .cols(cols)
                 .gap_xy(0.0, 2.0)
                 .show(ui, |ui| {
-                    last_node = Some(
-                        Frame::new()
-                            .id(WidgetId::from_hash("last-cell"))
-                            .grid_cell((0, (COLS - 1) as u16))
-                            .show(ui)
-                            .node(),
-                    );
+                    Frame::new()
+                        .id(WidgetId::from_hash("last-cell"))
+                        .grid_cell((0, (COLS - 1) as u16))
+                        .show(ui);
                 })
                 .response
                 .node(),
@@ -896,11 +898,15 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     });
 
     // Sum 1..=64 = 2,080; 63 gaps × 2 = 126.
-    let grid = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
+    let grid = h
+        .layout_rect(WidgetId::from_hash("large-grid"))
+        .expect("arranged");
     assert_eq!(grid.size, Size::new(2_206.0, 10.0));
 
     // Sum 1..=63 = 2,016; 63 preceding gaps × 2 = 126.
-    let last = h.ui.layout[Layer::Main].rect[last_node.unwrap().idx()];
+    let last = h
+        .layout_rect(WidgetId::from_hash("last-cell"))
+        .expect("arranged");
     assert_eq!(last.min, glam::Vec2::new(2_142.0, 0.0));
     assert_eq!(last.size, Size::new(64.0, 10.0));
 }
@@ -958,7 +964,8 @@ fn grid_multi_row_hug_heights_resolve_independently() {
     assert_eq!(h.ui.layout[Layer::Main].rect[kids[1].idx()].size.h, 80.0);
     assert_eq!(h.ui.layout[Layer::Main].rect[kids[2].idx()].size.h, 30.0);
     assert_eq!(
-        h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()]
+        h.layout_rect(WidgetId::from_hash("multi-row"))
+            .expect("arranged")
             .size
             .h,
         120.0

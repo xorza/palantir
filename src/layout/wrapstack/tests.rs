@@ -368,7 +368,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         );
         wrap_node.unwrap()
     });
-    let r = h.ui.layout[Layer::Main].rect[wrap_node.unwrap().idx()];
+    let r = h.layout_rect(WidgetId::from_hash("w")).expect("arranged");
     assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
@@ -641,7 +641,6 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let mut filler_node = None;
     let _ = h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
@@ -649,21 +648,20 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             .gap(10.0)
             .show(ui, |ui| {
                 cell(ui, "fixed-a", 60.0, 20.0);
-                filler_node = Some(
-                    Frame::new()
-                        .id(WidgetId::from_hash("filler"))
-                        .size((Sizing::FILL, Sizing::fixed(20.0)))
-                        // min_size makes Fill measurable as a positive
-                        // number even with no row-leftover distribution.
-                        .min_size((40.0, 0.0))
-                        .show(ui)
-                        .node(),
-                );
+                Frame::new()
+                    .id(WidgetId::from_hash("filler"))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
+                    // min_size makes Fill measurable as a positive
+                    // number even with no row-leftover distribution.
+                    .min_size((40.0, 0.0))
+                    .show(ui);
             })
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[filler_node.unwrap().idx()];
+    let r = h
+        .layout_rect(WidgetId::from_hash("filler"))
+        .expect("arranged");
     // Fill child got its min_size width (40), NOT the row leftover
     // (300 - 60 - 10 - 10 = 220). If a future change distributes
     // leftover, this assertion flips and the test becomes the spec.

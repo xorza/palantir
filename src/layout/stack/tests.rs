@@ -295,7 +295,9 @@ fn negative_left_margin_spills_outside_slot() {
             );
         });
     });
-    let r = h.ui.layout[Layer::Main].rect[button_node.unwrap().idx()];
+    let r = h
+        .layout_rect(WidgetId::from_hash("spill"))
+        .expect("arranged");
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -469,7 +471,6 @@ fn hstack_fill_max_size_caps_arranged_share() {
     use crate::primitives::size::Size;
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
-    let mut fill_node = None;
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
@@ -479,17 +480,16 @@ fn hstack_fill_max_size_caps_arranged_share() {
                     .id(WidgetId::from_hash("fixed"))
                     .size((20.0, 20.0))
                     .show(ui);
-                fill_node = Some(
-                    Frame::new()
-                        .id(WidgetId::from_hash("fill"))
-                        .size((Sizing::FILL, 20.0))
-                        .max_size(Size::new(50.0, f32::INFINITY))
-                        .show(ui)
-                        .node(),
-                );
+                Frame::new()
+                    .id(WidgetId::from_hash("fill"))
+                    .size((Sizing::FILL, 20.0))
+                    .max_size(Size::new(50.0, f32::INFINITY))
+                    .show(ui);
             });
     });
-    let arranged = h.ui.layout[Layer::Main].rect[fill_node.unwrap().idx()];
+    let arranged = h
+        .layout_rect(WidgetId::from_hash("fill"))
+        .expect("arranged");
     assert_eq!(
         arranged.size.w, 50.0,
         "Fill arrange must clamp to max_size when leftover share > cap"
@@ -504,21 +504,16 @@ fn parent_max_size_clamps_children_available() {
     use crate::primitives::size::Size;
 
     let mut h = UiHarness::new(UVec2::new(1000, 200));
-    let mut child_node = None;
     let parent_node = h.under_outer(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("capped-parent"))
             .size((Sizing::FILL, Sizing::fixed(40.0)))
             .max_size(Size::new(200.0, f32::INFINITY))
             .show(ui, |ui| {
-                child_node = Some(
-                    Panel::hstack()
-                        .id(WidgetId::from_hash("inner"))
-                        .size((Sizing::FILL, Sizing::fixed(20.0)))
-                        .show(ui, |_| {})
-                        .response
-                        .node(),
-                );
+                Panel::hstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .size((Sizing::FILL, Sizing::fixed(20.0)))
+                    .show(ui, |_| {});
             })
             .response
             .node()
@@ -528,7 +523,9 @@ fn parent_max_size_clamps_children_available() {
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
     );
-    let inner_rect = h.ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
+    let inner_rect = h
+        .layout_rect(WidgetId::from_hash("inner"))
+        .expect("arranged");
     assert_eq!(
         inner_rect.size.w, 200.0,
         "Fill child must not bleed past parent's max_size cap",
