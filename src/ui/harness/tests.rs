@@ -237,12 +237,31 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     harness.prime(2, button);
 
     harness.press_at(INSIDE);
-    harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
+    let latch = harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
+    // The move helpers hand back `on_input`'s own `InputDelta`, so
+    // asserting on the repaint hint never needs the raw door. A latching
+    // drag is exactly the "state the next frame has to show" case.
+    assert!(
+        latch.requests_repaint,
+        "the latching move must report a repaint, same as on_input would",
+    );
     assert!(
         harness.response_in(target(), button).left.drag.started(),
         "travel past DRAG_THRESHOLD latches a drag",
     );
     harness.release();
+
+    // The value is the event's, not a stub: leaving the button crosses a
+    // hover boundary and reports a repaint, while a second move over the
+    // same bare surface crosses nothing and reports none.
+    assert!(
+        harness.move_to(OUTSIDE).requests_repaint,
+        "leaving the button is a hover crossing",
+    );
+    assert!(
+        !harness.move_to(OUTSIDE + Vec2::splat(1.0)).requests_repaint,
+        "a second move over bare surface crosses nothing",
+    );
 
     let under = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut harness = UiHarness::new(SURFACE);

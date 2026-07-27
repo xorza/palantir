@@ -2,7 +2,6 @@
 //! arranged extent, clamping at explicit and content-driven stops,
 //! the resulting pane re-layout, and the resize-cursor request.
 
-use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -51,7 +50,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     // [197.5, 203.5). Press the seam center and drag 100 px right:
     // pointer 300.5 → first = 300 → 0.75.
     h.press_at(Vec2::new(200.5, 50.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(300.5, 50.0)));
+    h.drag_to(Vec2::new(300.5, 50.0));
     frame_with(&mut h, &mut ratio);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
@@ -61,7 +60,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     // A later drag movement records once. Layout follows the current
     // pointer immediately, while the caller still receives the prior
     // arranged ratio until the next record.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(999.0, 50.0)));
+    h.drag_to(Vec2::new(999.0, 50.0));
     assert_eq!(frame_with(&mut h, &mut ratio), 1);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
@@ -75,7 +74,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         rect.size.w
     );
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(998.0, 50.0)));
+    h.drag_to(Vec2::new(998.0, 50.0));
     assert_eq!(frame_with(&mut h, &mut ratio), 1);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
@@ -85,7 +84,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     // Release ends the gesture; further pointer motion leaves the
     // ratio alone.
     h.release();
-    h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 50.0)));
+    h.move_to(Vec2::new(100.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
@@ -126,7 +125,7 @@ fn divider_drag_is_scale_invariant() {
         let pointer = splitter
             .transform
             .apply_point(layout.min + Vec2::new(300.5, 50.0));
-        h.on_input(InputEvent::PointerMoved(pointer));
+        h.move_to(pointer);
         frame(&mut h, &mut ratio);
 
         assert!(
@@ -137,7 +136,7 @@ fn divider_drag_is_scale_invariant() {
         let beyond_limit = splitter
             .transform
             .apply_point(layout.min + Vec2::new(380.0, 50.0));
-        h.on_input(InputEvent::PointerMoved(beyond_limit));
+        h.move_to(beyond_limit);
         frame(&mut h, &mut ratio);
         let first = h.node_for_widget_id(split_id().with("first"));
         assert_eq!(
@@ -149,7 +148,7 @@ fn divider_drag_is_scale_invariant() {
         let next = splitter
             .transform
             .apply_point(layout.min + Vec2::new(381.0, 50.0));
-        h.on_input(InputEvent::PointerMoved(next));
+        h.move_to(next);
         frame(&mut h, &mut ratio);
         assert!(
             (ratio - 0.875).abs() < 1e-6,
@@ -209,11 +208,11 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             Vec2::new(50.0, 200.5)
         });
         let activation_main = 210.5;
-        h.on_input(InputEvent::PointerMoved(if horizontal {
+        h.move_to(if horizontal {
             Vec2::new(activation_main, 50.0)
         } else {
             Vec2::new(50.0, activation_main)
-        }));
+        });
         frame(&mut h, &mut ratio);
 
         let pointer_main = if rigid_half == SplitHalf::First {
@@ -221,11 +220,11 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             500.0
         };
-        h.on_input(InputEvent::PointerMoved(if horizontal {
+        h.move_to(if horizontal {
             Vec2::new(pointer_main, 50.0)
         } else {
             Vec2::new(50.0, pointer_main)
-        }));
+        });
         assert_eq!(
             frame(&mut h, &mut ratio),
             1,
@@ -288,11 +287,11 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             501.0
         };
-        h.on_input(InputEvent::PointerMoved(if horizontal {
+        h.move_to(if horizontal {
             Vec2::new(next_pointer, 50.0)
         } else {
             Vec2::new(50.0, next_pointer)
-        }));
+        });
         assert_eq!(frame(&mut h, &mut ratio), 1);
         assert!(
             (ratio - expected_ratio).abs() < 1e-6,
@@ -315,7 +314,7 @@ fn divider_requests_the_resize_cursor() {
 
     // Hovering the grab bar ([197.5, 203.5) at ratio 0.5) requests the
     // horizontal-resize cursor.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(200.5, 50.0)));
+    h.move_to(Vec2::new(200.5, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
         h.ui.window_requests.cursor,
@@ -326,7 +325,7 @@ fn divider_requests_the_resize_cursor() {
     // Mid-drag the pointer leaves the thin bar; the cursor must hold
     // until release (drag-first, since `hovered` is capture-gated).
     h.press_at(Vec2::new(200.5, 50.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 50.0)));
+    h.drag_to(Vec2::new(320.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
         h.ui.window_requests.cursor,
@@ -337,7 +336,7 @@ fn divider_requests_the_resize_cursor() {
     // Release with the pointer over a pane: the per-record-pass reset
     // returns the arrow because nothing re-requests.
     h.release();
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.move_to(Vec2::new(50.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
         h.ui.window_requests.cursor,
@@ -359,7 +358,7 @@ fn divider_requests_the_resize_cursor() {
     frame(&mut h, &mut ratio);
     frame(&mut h, &mut ratio);
     // Free span 200 at ratio 0.5 → grab bar rows [97.5, 103.5).
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.5)));
+    h.move_to(Vec2::new(50.0, 100.5));
     frame(&mut h, &mut ratio);
     assert_eq!(
         h.ui.window_requests.cursor,

@@ -167,7 +167,7 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
         repeat: false,
         physical: Key::Escape,
     });
-    h.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
+    h.move_to(glam::Vec2::new(5.0, 5.0));
     h.on_input(InputEvent::PointerPressed(
         crate::input::pointer::PointerButton::Left,
     ));
@@ -231,7 +231,7 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
 fn releasing_one_of_two_claims_on_a_layer_leaves_it_blocked() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 80));
     h.ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
-    h.on_input(InputEvent::PointerMoved(glam::Vec2::new(5.0, 5.0)));
+    h.move_to(glam::Vec2::new(5.0, 5.0));
     h.on_input(InputEvent::PointerPressed(
         crate::input::pointer::PointerButton::Left,
     ));
@@ -310,8 +310,7 @@ fn focus_policy_routing() {
         assert_eq!(h.focused_id(), Some(editable_id), "{label}: initial focus");
 
         h.frame(build);
-        h.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
-        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.press_at(glam::Vec2::new(180.0, 5.0));
         h.on_input(InputEvent::PointerReleased(PointerButton::Left));
         let expected = if *expect_focus {
             Some(editable_id)

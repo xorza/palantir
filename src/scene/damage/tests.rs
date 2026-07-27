@@ -805,8 +805,7 @@ fn click_on_empty_bg_does_not_force_full() {
     assert!(warm.is_none(), "warm frame must Skip");
 
     // Click on empty background (far from the 50×50 frame at origin).
-    h.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(180.0, 180.0));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let click_plan = h.frame(build).plan;
     assert!(
@@ -1976,7 +1975,7 @@ fn button_hover_damage_covers_only_the_button() {
 
     // Pointer parked off-button. Settle for two frames so hit-test +
     // damage are at steady state (no diff).
-    h.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
+    h.move_to(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
@@ -1993,7 +1992,7 @@ fn button_hover_damage_covers_only_the_button() {
     // `on_input` recomputes hover against the existing hit_index
     // immediately, so the *next* recording sees `hovered=true` and
     // emits the hovered fill. DamageEngine = button rect only.
-    h.on_input(InputEvent::PointerMoved(target));
+    h.move_to(target);
     build(&mut h, &mut hot_node, &mut cold_node);
 
     assert_eq!(
@@ -2054,13 +2053,13 @@ fn button_unhover_damage_covers_only_the_button() {
     // Settle two frames with cursor over the hot button.
     build(&mut h, &mut hot_node, &mut cold_node);
     let hot_rect = h.ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
-    h.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
+    h.move_to(hot_rect.min + Vec2::new(5.0, 5.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(h.ui.damage_engine.dirty.is_empty(), "settled hover");
 
     // Pointer leaves the button.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
+    h.move_to(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     assert_eq!(h.ui.damage_engine.dirty.len(), 1);
     assert_eq!(

@@ -86,16 +86,15 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
     // Press at x=50 inside the 100×40 chip, drag 20px right:
     // draft = anchor 10 + 20px * speed 1 = 30. Live write, no commit,
     // and the deferred caller leaves canonical untouched.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed, "mid-drag: live write, no commit");
     assert_eq!(canonical, 10.0, "deferred caller ignores mid-drag writes");
 
     // 5px more: anchor math re-derives 10 + 25 = 35 even though the
     // caller re-seeded the stale 10 into the draft.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
+    h.drag_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed);
     assert_eq!(canonical, 10.0);
@@ -147,9 +146,8 @@ fn scrub_distance_is_scale_invariant() {
         let drag = response
             .transform
             .apply_point(layout.min + Vec2::new(70.0, 20.0));
-        h.on_input(InputEvent::PointerMoved(press));
-        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        h.on_input(InputEvent::PointerMoved(drag));
+        h.press_at(press);
+        h.move_to(drag);
         h.frame(|ui| build(ui, &mut value));
 
         assert_eq!(value, 30.0, "20 logical px at {scale}× must add exactly 20",);
@@ -165,9 +163,8 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     let mut canonical = 10.0_f64;
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // Pointer crosses the window edge: drag unobservable, but latched.
@@ -177,7 +174,7 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     assert_eq!(canonical, 10.0);
 
     // Re-enter with the button held and keep scrubbing: 10 + 25 = 35.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
+    h.move_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed, "resumed drag keeps writing");
 
@@ -194,9 +191,8 @@ fn transient_disable_does_not_swallow_the_gesture() {
     let mut canonical = 10.0_f64;
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // One disabled frame mid-drag: no write, but the gesture survives.
@@ -206,7 +202,7 @@ fn transient_disable_does_not_swallow_the_gesture() {
     // Re-enabled with the button still held: one settle frame (the
     // cascaded disabled flag is one frame stale), then scrubbing resumes.
     deferred_frame(&mut h, id, &mut canonical, false, false);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 20.0)));
+    h.drag_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed, "scrub resumes after the disable blip");
 
@@ -223,9 +219,8 @@ fn release_while_disabled_drops_the_gesture() {
     let mut canonical = 10.0_f64;
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
     // Released on a disabled frame: a locked control emits no edit, and
@@ -247,9 +242,8 @@ fn non_left_drags_do_not_scrub() {
     let mut canonical = 10.0_f64;
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Right));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    h.press_button_at(PointerButton::Right, Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.changed && !s.committed, "right drag must not scrub");
 
@@ -268,8 +262,7 @@ fn click_to_edit_types_and_commits_on_enter() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(50.0, 20.0));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed, "the click itself commits nothing");
@@ -366,9 +359,8 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Scrub 10 → 30, then focus the editor mid-drag.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 20.0)));
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.request_focus(Some(id));
     deferred_frame(&mut h, id, &mut canonical, true, false);

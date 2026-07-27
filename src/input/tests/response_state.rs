@@ -1,8 +1,6 @@
 use crate::Ui;
 use crate::input::pointer::PointerButton;
-use crate::input::{
-    InputEvent, InputState, Press, PressDrag, Release, ReleaseKind, TargetScrollDelta,
-};
+use crate::input::{InputState, Press, PressDrag, Release, ReleaseKind, TargetScrollDelta};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -203,7 +201,7 @@ fn non_quiescent_frame_computes_interaction() {
     h.frame(build_button(id));
 
     let pointer = Vec2::new(50.0, 20.0);
-    h.on_input(InputEvent::PointerMoved(pointer));
+    h.move_to(pointer);
     // Run a frame *after* the pointer event so the snapshot reflects it,
     // then read — the pointer makes the frame non-quiescent (full path).
     h.frame(build_button(id));
@@ -249,9 +247,8 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
         let pointer = arranged
             .transform
             .apply_point(layout.min + local_pointer + local_delta);
-        h.on_input(InputEvent::PointerMoved(press));
-        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        h.on_input(InputEvent::PointerMoved(pointer));
+        h.press_at(press);
+        h.move_to(pointer);
         h.frame(build);
 
         let response = h.ui.response_for(id);
@@ -297,7 +294,7 @@ fn pointer_local_uses_unclipped_widget_origin() {
     );
 
     let pointer = visible.min + Vec2::new(10.0, 10.0);
-    h.on_input(InputEvent::PointerMoved(pointer));
+    h.move_to(pointer);
     h.frame(build);
     let response = h.ui.response_for(id);
     assert_eq!(

@@ -442,11 +442,10 @@ fn drag_select_extends_selection() {
 
     h.frame(editor_at(&mut buf, None));
     // Mouse-down at offset 1 (x = 16).
-    h.on_input(InputEvent::PointerMoved(Vec2::new(16.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(16.0, 20.0));
     h.frame(editor_at(&mut buf, None));
     // Drag to offset 4 (x = 40) — still pressed.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 20.0)));
+    h.drag_to(Vec2::new(40.0, 20.0));
     h.frame(editor_at(&mut buf, None));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
 

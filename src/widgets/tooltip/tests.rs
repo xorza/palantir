@@ -3,7 +3,6 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
-use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
@@ -289,9 +288,9 @@ fn delay_gates_visibility() {
     let trigger_pos =
         trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
 
-    h.on_input(InputEvent::PointerMoved(trigger_pos));
+    h.move_to(trigger_pos);
     frame_at(&mut h, 0.05, &mut captured);
-    h.on_input(InputEvent::PointerMoved(trigger_pos));
+    h.move_to(trigger_pos);
     frame_at(&mut h, 0.1, &mut captured);
     let early =
         h.ui.try_state::<TooltipState>(trigger_id)
@@ -309,7 +308,7 @@ fn delay_gates_visibility() {
     let mut t = 0.1_f32;
     for _ in 0..20 {
         t += 0.1;
-        h.on_input(InputEvent::PointerMoved(trigger_pos));
+        h.move_to(trigger_pos);
         frame_at(&mut h, t, &mut captured);
     }
 
@@ -330,12 +329,12 @@ fn delay_gates_visibility() {
 
     h.ui.theme.tooltip.warmup = Duration::ZERO;
     t += 0.1;
-    h.on_input(InputEvent::PointerMoved(Vec2::new(350.0, 250.0)));
+    h.move_to(Vec2::new(350.0, 250.0));
     frame_at(&mut h, t, &mut captured);
     assert!(!h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
 
     t += 0.1;
-    h.on_input(InputEvent::PointerMoved(trigger_pos));
+    h.move_to(trigger_pos);
     frame_at(&mut h, t, &mut captured);
     assert!(
         !h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible,
@@ -380,7 +379,7 @@ fn hover_clears_after_tooltip_visible() {
     let mut t = 0.0_f32;
     for _ in 0..10 {
         t += 0.1;
-        h.on_input(InputEvent::PointerMoved(trigger_pos));
+        h.move_to(trigger_pos);
         frame_at(&mut h, t, &mut captured);
     }
     let state =
@@ -394,7 +393,7 @@ fn hover_clears_after_tooltip_visible() {
 
     // Move the pointer far away from both trigger and bubble.
     let away = Vec2::new(350.0, 250.0);
-    h.on_input(InputEvent::PointerMoved(away));
+    h.move_to(away);
     t += 0.1;
     frame_at(&mut h, t, &mut captured);
 
@@ -460,7 +459,7 @@ fn tooltip_inside_popup_records_without_panic() {
     let mut t = 0.01_f32;
     for _ in 0..20 {
         t += 0.1;
-        h.on_input(InputEvent::PointerMoved(trigger_pos));
+        h.move_to(trigger_pos);
         frame_at(&mut h, t, &mut captured);
     }
 

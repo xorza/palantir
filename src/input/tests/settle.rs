@@ -120,7 +120,7 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
         "the probe must leave the button without latching a drag: {rect:?} → {off:?}",
     );
     h.press_at(edge);
-    h.on_input(InputEvent::PointerMoved(off));
+    h.move_to(off);
     h.release();
     assert_eq!(
         passes(&mut h, button),
@@ -143,16 +143,12 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     );
 
     h.press_at(origin);
-    h.on_input(InputEvent::PointerMoved(
-        origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0),
-    ));
+    h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     let _ = passes(&mut h, button);
 
     // Eight more frames of holding and moving — the whole gesture body.
     for step in 2..10 {
-        h.on_input(InputEvent::PointerMoved(
-            origin + Vec2::new(DRAG_THRESHOLD + step as f32, 0.0),
-        ));
+        h.move_to(origin + Vec2::new(DRAG_THRESHOLD + step as f32, 0.0));
         let _ = passes(&mut h, button);
     }
 
@@ -176,9 +172,7 @@ fn a_drag_settles_on_its_latch_and_again_on_its_stop() {
     // Frame 1 of the gesture: crossing the threshold latches the drag,
     // which is its own settle arm (`PointerMoved`, not the press).
     h.press_at(origin);
-    h.on_input(InputEvent::PointerMoved(
-        origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0),
-    ));
+    h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     assert_eq!(passes(&mut h, button), 2, "the latch settles");
 
     // Frame 2: the release is `DragStopped` on its own, with no latch in

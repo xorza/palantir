@@ -130,7 +130,7 @@ fn warmed_ui() -> UiHarness {
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.
     h.frame(build_ui);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
+    h.move_to(Vec2::new(320.0, 200.0));
     h.frame(build_ui);
     h
 }
@@ -166,8 +166,7 @@ pub fn bench(c: &mut Criterion) {
                 // Move first so the press hits a fresh cell — without
                 // this every press lands on the same active widget and
                 // the focus hit-test gets memoized into the warm path.
-                ui.on_input(InputEvent::PointerMoved(pointer_at(i)));
-                ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+                ui.press_at(pointer_at(i));
                 let d = ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
                 i = i.wrapping_add(1);
                 black_box(d);
@@ -198,9 +197,9 @@ pub fn bench(c: &mut Criterion) {
             b.iter(|| {
                 // ~realistic burst between two redraws: several moves,
                 // a scroll, occasional click.
-                ui.on_input(InputEvent::PointerMoved(pointer_at(i)));
-                ui.on_input(InputEvent::PointerMoved(pointer_at(i.wrapping_add(1))));
-                ui.on_input(InputEvent::PointerMoved(pointer_at(i.wrapping_add(2))));
+                ui.move_to(pointer_at(i));
+                ui.move_to(pointer_at(i.wrapping_add(1)));
+                ui.move_to(pointer_at(i.wrapping_add(2)));
                 ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)));
                 if i.is_multiple_of(16) {
                     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
