@@ -2,11 +2,13 @@ use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
+use glam::Vec2;
 
 /// Visuals for [`crate::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
@@ -65,8 +67,20 @@ impl MenuItemTheme {
 
 impl ContextMenuTheme {
     pub fn from_palette(p: &Palette) -> Self {
-        let panel = Background::rounded(p.elem, Corners::all(6.0))
-            .with_stroke(Stroke::solid(p.border_mid(), 1.0));
+        // Radius sits on the small-floating-overlay step shared with
+        // `TooltipTheme`, not the modal's 12 — the same corner that reads
+        // as "soft" on a dialog reads as a bubble on a stack of 26 px
+        // rows. The shadow is what separates the panel from what it
+        // opened over: the fill is `elem`, the same surface tier as the
+        // panels and cards underneath, so a hairline alone leaves the
+        // menu looking glued down.
+        let panel = Background::rounded(p.elem, Corners::all(4.0))
+            .with_stroke(Stroke::solid(p.border_mid(), 1.0))
+            .with_shadow(Shadow::drop(
+                Color::linear_rgba(0.0, 0.0, 0.0, 0.5),
+                Vec2::new(0.0, 3.0),
+                6.0,
+            ));
         Self {
             panel,
             padding: Spacing::all(4.0),
@@ -91,8 +105,14 @@ impl MenuItemTheme {
         // drops out of it feel like one continuous surface. `active`
         // (pressed) keeps the hover look: the click auto-closes the
         // menu, so a louder pressed state buys nothing by default.
+        //
+        // The chip radius stays under the panel's so it nests inside the
+        // corner rather than out-rounding it: at panel radius 4 with 4 px
+        // of container padding, the region a row can occupy has square
+        // corners, and anything rounder than the panel itself reads as a
+        // pill floating in a box.
         let hovered = WidgetLook {
-            background: Some(Background::rounded(p.elem_hover, Corners::all(4.0))),
+            background: Some(Background::rounded(p.elem_hover, Corners::all(3.0))),
             text: None,
         };
         Self {
@@ -106,7 +126,10 @@ impl MenuItemTheme {
                 },
             },
             shortcut: p.text_muted,
-            padding: Spacing::xy(10.0, 6.0),
+            // Reads against the container's 4 px: an 8 px row inset puts the
+            // label 12 px off the panel edge to 9 px off its top, the
+            // slightly-wider-than-tall gutter a column of labels wants.
+            padding: Spacing::xy(8.0, 5.0),
         }
     }
 }

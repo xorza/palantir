@@ -23,20 +23,30 @@ fn context_menu_cut_copy_paste_clear() {
         ContextMenu::open(&mut h.ui, editor_id(), Vec2::new(20.0, 10.0));
         h.frame(|ui| body(ui, buf));
     }
-    /// Click into the body node of the open menu at row-offset
-    /// `(rel_x, rel_y)` from the body's top-left, then run a frame
-    /// so the click is observed by `MenuItem::show`.
+    /// Click the center of the open menu's `row_idx`-th row (record
+    /// order, separators included), then run a frame so the click is
+    /// observed by `MenuItem::show`. Rows are the menu body's direct
+    /// children, so their arranged rects are read straight off the tree
+    /// — a fixed row pitch would silently start clicking the neighbour
+    /// the moment the theme's row padding moved.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
         let body_id = editor_id().with("ctx_menu_body");
-        let body_rect =
-            h.ui.cascades
-                .entry_idx_of(body_id)
-                .map(|i| h.ui.cascades.entries.rect()[i as usize])
-                .expect("context menu body recorded");
-        // Theme padding ~4 px + row height ~31 px including row
-        // padding. Click well inside the chosen row.
-        let row_y = body_rect.min.y + 8.0 + (row_idx as f32) * 32.0;
-        h.click_at(Vec2::new(body_rect.min.x + 20.0, row_y));
+        let tree = &h.ui.forest.trees[Layer::Popup];
+        let body_idx = tree
+            .records
+            .widget_id()
+            .iter()
+            .position(|id| *id == body_id)
+            .expect("context menu body recorded");
+        let ends = tree.records.subtree_end();
+        let body_end = ends[body_idx].end() as usize;
+        let rects = &h.ui.layout[Layer::Popup].rect;
+        let mut row = body_idx + 1;
+        for _ in 0..row_idx {
+            row = ends[row].end() as usize;
+            assert!(row < body_end, "menu has no row {row_idx}");
+        }
+        h.click_at(rects[row].center());
         h.frame(|ui| body(ui, buf));
     }
 
