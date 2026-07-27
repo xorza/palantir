@@ -15,7 +15,7 @@ API can still change and break between releases.
 
 Worst-case frame timing captured while resizing the window on a **MacBook Air M5**.
 
-![Frame 146 profile](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame-146-profile.png)
+![tracy frame](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/tracy-frame.png)
 
 The `frame` bench drives one synthetic app screen — every layout driver,
 every widget, every `Shape` family — at 2560×1440, and runs each arm
@@ -39,7 +39,6 @@ and the **L1-d cache miss rate is 2.6%** of ~800 K loads (~9 per 1K
 instructions), with only 3.8% of cycles lost to a frontend stall.
 Measured via `perf stat -d`, pinned to one core.
 
-
 ---
 
 A short screen recording of the
@@ -62,7 +61,7 @@ https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
 - **Layered recording** — `Main` / `Popup` / `Modal` / `Tooltip` / `Debug`
   arenas painted bottom-up, hit-tested top-down.
 - **Cross-frame work-skip cache** keyed on `(WidgetId, subtree_hash,
-  available_q)`; subtree hits blit last frame's measure result and skip
+available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
