@@ -68,6 +68,10 @@ impl HostCore {
     /// scoped to it. Backend eviction is owner-scoped, so a closed window's
     /// targets have no submit left to be absent from and would otherwise be
     /// held until host shutdown.
+    // Multi-window lifecycle plumbing: every caller is under
+    // `src/host/winit/`, so a `--no-default-features` build (no
+    // `winit-host`) compiles this with nothing to call it.
+    #[allow(dead_code)]
     pub(super) fn retire(&mut self, driver: &WindowDriver) {
         self.backend.retire_render_owner(driver.render_owner);
         self.shared.resources.windows.set_live(driver.token, false);

@@ -339,6 +339,10 @@ impl WindowDriver {
     ///
     /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
     /// buffers' capacity across frames.
+    // Multi-window lifecycle plumbing: every caller is under
+    // `src/host/winit/`, so a `--no-default-features` build (no
+    // `winit-host`) compiles this with nothing to call it.
+    #[allow(dead_code)]
     pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> CursorIcon {
         let requests = &mut self.ui.window_requests;
         if self.ui.window_frame.close_requested && !requests.close_vetoed {
