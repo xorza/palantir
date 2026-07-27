@@ -386,18 +386,21 @@ impl UiHarness {
         self.frame(record);
     }
 
-    /// The raw input door, for events with no typed helper above —
-    /// `Zoom`, a `KeyDown` with a specific `physical`, an
-    /// `InputEvent::Text` you built yourself — and for the tests that
-    /// assert on the returned [`InputDelta`]. Everything the typed
-    /// helpers cover should go through them: they are what enforce the
-    /// press-origin, modifier, and threshold rules.
+    /// The raw input door, for events with no typed helper above — a
+    /// `KeyDown` with a specific `physical`, an `InputEvent::Text` you
+    /// built yourself. Everything the typed helpers cover should go
+    /// through them: they are what enforce the press-origin, modifier,
+    /// and threshold rules, and a helper that emits exactly one event
+    /// hands back that event's [`InputDelta`] so nothing is given up by
+    /// using it.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
         self.ui.on_input(event)
     }
 
-    pub fn move_to(&mut self, pos: Vec2) {
-        self.ui.on_input(InputEvent::PointerMoved(pos));
+    /// Returns the move's [`InputDelta`] — `on_input`'s value, so a
+    /// repaint-hint assertion has no reason to build the event by hand.
+    pub fn move_to(&mut self, pos: Vec2) -> InputDelta {
+        self.ui.on_input(InputEvent::PointerMoved(pos))
     }
 
     pub fn pointer_left(&mut self) {
@@ -440,10 +443,12 @@ impl UiHarness {
         self.click_at(pos);
     }
 
-    /// Move while pressed. Panics if travel since the press has not
+    /// Move while pressed, returning the move's [`InputDelta`] like
+    /// [`Self::move_to`]. Panics if travel since the press has not
     /// crossed `DRAG_THRESHOLD` — the capture would not latch and the
-    /// test would pass or fail for the wrong reason.
-    pub fn drag_to(&mut self, pos: Vec2) {
+    /// test would pass or fail for the wrong reason. A deliberate
+    /// sub-threshold move is [`Self::move_to`].
+    pub fn drag_to(&mut self, pos: Vec2) -> InputDelta {
         let origin = self
             .pressed_at
             .expect("drag_to needs a press first — no button is down");
@@ -453,7 +458,7 @@ impl UiHarness {
             "drag_to({pos:?}) travels {travel} px from the press at {origin:?}, under \
              the {DRAG_THRESHOLD} px DRAG_THRESHOLD — no drag would latch",
         );
-        self.move_to(pos);
+        self.move_to(pos)
     }
 
     /// Scroll and pinch carry no position of their own: the target is

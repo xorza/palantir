@@ -269,8 +269,7 @@ fn click_compensates_for_right_align() {
     // the click hit-test runs against the right-aligned layout.
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
-    h.on_input(InputEvent::PointerMoved(glam::Vec2::new(254.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(glam::Vec2::new(254.0, 20.0));
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let id = WidgetId::from_hash("align-ed");

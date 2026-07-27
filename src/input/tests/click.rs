@@ -153,7 +153,7 @@ fn input_state_release_outside_does_not_click() {
         });
     });
     h.press_at(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 20.0)));
+    h.drag_to(Vec2::new(300.0, 20.0));
     h.release();
 
     let mut got_click = false;
@@ -507,8 +507,7 @@ fn press_started_counts_multi_press_runs() {
     let mut h = UiHarness::new(SURFACE);
     probe(&mut h); // settle layout
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(50.0, 20.0));
     assert_eq!(probe(&mut h), (true, 1), "first press starts a run");
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     assert_eq!(
@@ -528,8 +527,7 @@ fn press_started_counts_multi_press_runs() {
     probe(&mut h);
 
     // Past DOUBLE_CLICK_RADIUS (5 px): the run restarts.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(80.0, 20.0));
     assert_eq!(probe(&mut h), (true, 1), "far press restarts the run");
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
 }

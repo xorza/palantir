@@ -246,7 +246,6 @@ mod tests {
     /// streams in one test because their lifecycles are now one thing.
     #[test]
     fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
-        use crate::input::pointer::PointerButton;
         use crate::input::watch::{KeyboardWake, PointerWake};
         const SURFACE: UVec2 = UVec2::new(400, 300);
 
@@ -278,8 +277,7 @@ mod tests {
 
         // The frame after. A `Main`-layer widget presses and types; both
         // must reach it during the record, which is when widgets read.
-        h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-        h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        h.press_at(Vec2::new(20.0, 20.0));
         h.on_input(InputEvent::KeyDown {
             key: Key::Char('a'),
             repeat: false,

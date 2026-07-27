@@ -37,7 +37,7 @@ fn drag_delta_none_before_press() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.move_to(Vec2::new(50.0, 50.0));
     assert_eq!(
         h.response_in(id(), build_clickable).left.drag.delta(),
         None,
@@ -50,9 +50,8 @@ fn drag_delta_tracks_pointer_minus_press() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
+    h.press_at(Vec2::new(20.0, 30.0));
+    h.drag_to(Vec2::new(80.0, 70.0));
 
     assert_eq!(
         h.response_in(id(), build_clickable).left.drag.delta(),
@@ -66,9 +65,8 @@ fn drag_delta_persists_when_pointer_leaves_widget_rect() {
     let s = UVec2::new(400, 400);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 200.0)));
+    h.press_at(Vec2::new(50.0, 50.0));
+    h.drag_to(Vec2::new(300.0, 200.0));
 
     assert_eq!(
         h.response_in(id(), build_clickable).left.drag.delta(),
@@ -87,7 +85,7 @@ fn held_is_rect_independent_unlike_pressed() {
     h.frame(build_clickable);
 
     // Idle over the widget: neither pressed nor held.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.move_to(Vec2::new(50.0, 50.0));
     let r = h.response_in(id(), build_clickable);
     assert!(
         !r.left.held() && !r.pressed(),
@@ -104,7 +102,7 @@ fn held_is_rect_independent_unlike_pressed() {
 
     // Drag well outside the 100×100 rect: `pressed` drops (no longer
     // hovered), `held` stays — the capture is still latched.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
+    h.move_to(Vec2::new(300.0, 300.0));
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.held(), "held survives the pointer leaving the rect");
     assert!(
@@ -123,9 +121,8 @@ fn drag_delta_clears_on_release() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 70.0)));
+    h.press_at(Vec2::new(30.0, 30.0));
+    h.drag_to(Vec2::new(70.0, 70.0));
     assert!(
         h.response_in(id(), build_clickable)
             .left
@@ -147,9 +144,8 @@ fn drag_delta_none_when_pointer_left_surface() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(90.0, 40.0)));
+    h.press_at(Vec2::new(40.0, 40.0));
+    h.drag_to(Vec2::new(90.0, 40.0));
     h.on_input(InputEvent::PointerLeft);
 
     // Off-surface, the drag is unobservable — but it has NOT stopped:
@@ -165,7 +161,7 @@ fn drag_delta_none_when_pointer_left_surface() {
 
     // Re-enter with the button still held: the same drag resumes
     // (no new start edge), and the real release fires the stop edge.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 40.0)));
+    h.move_to(Vec2::new(100.0, 40.0));
     let r = h.response_in(id(), build_clickable);
     assert_eq!(r.left.drag.delta(), Some(Vec2::new(60.0, 0.0)));
     assert!(!r.left.drag.started(), "re-entry resumes, not re-latches");
@@ -180,9 +176,8 @@ fn drag_stopped_edge_fires_once_on_release() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 30.0)));
+    h.press_button_at(PointerButton::Middle, Vec2::new(30.0, 30.0));
+    h.drag_to(Vec2::new(70.0, 30.0));
 
     // Mid-drag: no stop edge, drag observable.
     let r = h.response_in(id(), build_draggable);
@@ -208,9 +203,8 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(51.0, 50.0)));
+    h.press_at(Vec2::new(50.0, 50.0));
+    h.move_to(Vec2::new(51.0, 50.0));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     let r = h.response_in(id(), build_clickable);
@@ -223,9 +217,8 @@ fn drag_delta_only_for_active_widget() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
+    h.press_at(Vec2::new(20.0, 20.0));
+    h.drag_to(Vec2::new(60.0, 50.0));
 
     let other = WidgetId::from_hash("other");
     assert_eq!(
@@ -243,9 +236,8 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
+    h.press_button_at(PointerButton::Middle, Vec2::new(20.0, 30.0));
+    h.drag_to(Vec2::new(80.0, 70.0));
 
     let r = h.response_in(id(), build_draggable);
     assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
@@ -265,9 +257,8 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(52.0, 51.0)));
+    h.press_button_at(PointerButton::Middle, Vec2::new(50.0, 50.0));
+    h.move_to(Vec2::new(52.0, 51.0));
 
     let r = h.response_in(id(), build_draggable);
     assert_eq!(r.middle.drag.delta(), None);
@@ -285,12 +276,11 @@ fn drag_started_is_one_frame_edge_then_clears_on_post_record() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 50.0))); // latches
+    h.press_button_at(PointerButton::Middle, Vec2::new(50.0, 50.0));
+    h.drag_to(Vec2::new(80.0, 50.0)); // latches
     assert!(h.response_in(id(), build_draggable).middle.drag.started());
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 50.0)));
+    h.drag_to(Vec2::new(100.0, 50.0));
     let r = h.response_in(id(), build_draggable);
     assert!(
         !r.middle.drag.started(),
@@ -310,9 +300,8 @@ fn right_button_drag_also_latches() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Right));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 40.0)));
+    h.press_button_at(PointerButton::Right, Vec2::new(40.0, 40.0));
+    h.drag_to(Vec2::new(70.0, 40.0));
 
     let r = h.response_in(id(), build_draggable);
     assert_eq!(r.right.drag.delta(), Some(Vec2::new(30.0, 0.0)));
@@ -328,11 +317,10 @@ fn left_wins_over_simultaneously_latched_middle() {
     let s = UVec2::new(300, 300);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 20.0))); // latches left
+    h.press_at(Vec2::new(20.0, 20.0));
+    h.drag_to(Vec2::new(40.0, 20.0)); // latches left
     h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 60.0))); // latches middle
+    h.move_to(Vec2::new(100.0, 60.0)); // latches middle
 
     let r = h.response_in(id(), build_draggable);
     let d = r.left.drag.delta().expect("a drag must be active");
@@ -357,10 +345,9 @@ fn releasing_priority_button_promotes_lower_priority() {
     let s = UVec2::new(300, 300);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(20.0, 20.0));
     h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 60.0))); // both latch
+    h.move_to(Vec2::new(80.0, 60.0)); // both latch
 
     assert!(h.response_in(id(), build_draggable).left.drag.dragging());
 
@@ -383,9 +370,8 @@ fn drag_zero_state_for_uncaptured_widget() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
+    h.press_button_at(PointerButton::Middle, Vec2::new(50.0, 50.0));
+    h.drag_to(Vec2::new(80.0, 70.0));
 
     let other = WidgetId::from_hash("other");
     let r = h.response_in(other, build_draggable);
@@ -410,9 +396,8 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     };
     let mut h = UiHarness::new(surface);
     h.frame(build);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
+    h.press_at(Vec2::new(200.0, 200.0));
+    h.drag_to(Vec2::new(250.0, 220.0));
     assert_eq!(h.response_in(id(), build).left.drag.delta(), None,);
 }
 
@@ -490,7 +475,7 @@ fn sub_threshold_keeps_position_and_emits_click() {
 
     let press = Vec2::new(80.0, 80.0);
     h.press_at(press);
-    h.on_input(InputEvent::PointerMoved(press + Vec2::new(2.0, 2.0)));
+    h.move_to(press + Vec2::new(2.0, 2.0));
     h.release();
 
     frame_with(&mut h, |ui| a.record(ui));
@@ -511,7 +496,7 @@ fn supra_threshold_moves_widget_and_suppresses_click() {
     let press = Vec2::new(80.0, 80.0);
     let drop = press + Vec2::new(40.0, 0.0);
     h.press_at(press);
-    h.on_input(InputEvent::PointerMoved(drop));
+    h.move_to(drop);
 
     frame_with(&mut h, |ui| a.record(ui));
     assert_eq!(
@@ -534,14 +519,14 @@ fn drag_then_release_then_drag_restarts_from_new_anchor() {
     frame_with(&mut h, |ui| a.record(ui));
 
     h.press_at(Vec2::new(80.0, 80.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(110.0, 80.0)));
+    h.drag_to(Vec2::new(110.0, 80.0));
     frame_with(&mut h, |ui| a.record(ui));
     h.release();
     frame_with(&mut h, |ui| a.record(ui));
     assert_eq!(a.pos, Vec2::new(80.0, 50.0));
 
     h.press_at(Vec2::new(100.0, 70.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(120.0, 80.0)));
+    h.drag_to(Vec2::new(120.0, 80.0));
     frame_with(&mut h, |ui| a.record(ui));
     assert_eq!(a.pos, Vec2::new(100.0, 60.0), "second drag composes");
 }
@@ -558,7 +543,7 @@ fn only_pressed_card_moves_in_two_card_scene() {
     });
 
     h.press_at(Vec2::new(220.0, 40.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(260.0, 40.0)));
+    h.drag_to(Vec2::new(260.0, 40.0));
 
     frame_with(&mut h, |ui| {
         a.record(ui);
@@ -594,12 +579,12 @@ fn drag_started_fires_only_on_latch_frame() {
     step(&mut h, &mut a);
     h.press_at(Vec2::new(80.0, 80.0));
     step(&mut h, &mut a);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(82.0, 81.0)));
+    h.move_to(Vec2::new(82.0, 81.0));
     step(&mut h, &mut a);
     let supra = Vec2::new(80.0 + DRAG_THRESHOLD + 1.0, 80.0);
-    h.on_input(InputEvent::PointerMoved(supra));
+    h.move_to(supra);
     step(&mut h, &mut a);
-    h.on_input(InputEvent::PointerMoved(supra + Vec2::new(10.0, 0.0)));
+    h.move_to(supra + Vec2::new(10.0, 0.0));
     step(&mut h, &mut a);
 
     assert_eq!(
@@ -618,7 +603,7 @@ fn canvas_rearranges_with_dragged_child_position() {
     frame_with(&mut h, |ui| a.record(ui));
 
     h.press_at(Vec2::new(60.0, 60.0));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 60.0)));
+    h.drag_to(Vec2::new(150.0, 60.0));
 
     let mut card_node = None;
     h.frame(|ui| {

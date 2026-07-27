@@ -126,8 +126,7 @@ fn click_hit_test_compensates_for_scroll() {
     // inner rect). With scroll compensation, mono hit-test sees x =
     // scroll_x (≈ 537.5), which lands on byte ≈ 67 (scroll_x / 8).
     // Without compensation it'd land on byte 0.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(8.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(8.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     h.frame(|ui| body(ui, &mut buf));

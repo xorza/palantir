@@ -385,7 +385,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     );
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
-        h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        h.move_to(Vec2::new(50.0, 50.0));
         h.frame(scene);
         assert_eq!(
             body_rect(&h.ui),
@@ -428,7 +428,7 @@ fn popup_placement_is_stable_across_frames() {
     h.frame(scene);
     let first = body_rect_of(&h.ui);
     // Pretend an input arrived (cursor move over the popup).
-    h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
+    h.move_to(Vec2::new(50.0, 100.0));
     h.frame(scene);
     let second = body_rect_of(&h.ui);
     assert_eq!(
@@ -562,12 +562,12 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     // Move pointer well outside the popup body, then send a scroll
     // + zoom + middle-drag burst.
     let outside = Vec2::new(300.0, 300.0);
-    h.on_input(InputEvent::PointerMoved(outside));
+    h.move_to(outside);
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
     h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
     h.on_input(InputEvent::Zoom(1.4));
     h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
+    h.move_to(outside + Vec2::new(40.0, 0.0));
     h.on_input(InputEvent::PointerReleased(PointerButton::Middle));
 
     h.frame(scene);

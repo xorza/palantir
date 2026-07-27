@@ -43,8 +43,8 @@ fn move_over_inert_surface_does_not_request_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Both positions are outside the hover target → hovered stays None.
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
-    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
+    h.move_to(Vec2::new(200.0, 200.0));
+    let delta = h.move_to(Vec2::new(250.0, 220.0));
     assert!(
         !delta.requests_repaint,
         "move over empty surface: no repaint"
@@ -56,10 +56,10 @@ fn move_within_same_hovered_widget_does_not_request_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // First move: empty → over target. Repaint expected.
-    let enter = h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+    let enter = h.move_to(Vec2::new(20.0, 20.0));
     assert!(enter.requests_repaint, "enter hover target → repaint");
     // Second move: still over target. No hover change.
-    let inside = h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let inside = h.move_to(Vec2::new(50.0, 50.0));
     assert!(
         !inside.requests_repaint,
         "move inside same hover target: no repaint",
@@ -70,8 +70,8 @@ fn move_within_same_hovered_widget_does_not_request_repaint() {
 fn move_from_inert_into_hover_target_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
-    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
+    h.move_to(Vec2::new(300.0, 300.0));
+    let delta = h.move_to(Vec2::new(20.0, 20.0));
     assert!(delta.requests_repaint);
 }
 
@@ -79,8 +79,8 @@ fn move_from_inert_into_hover_target_requests_repaint() {
 fn move_between_two_hover_targets_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
     h.frame(build_two_hover_targets);
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
-    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 20.0)));
+    h.move_to(Vec2::new(20.0, 20.0));
+    let delta = h.move_to(Vec2::new(150.0, 20.0));
     assert!(delta.requests_repaint, "hovered widget changed → repaint");
 }
 
@@ -95,11 +95,10 @@ fn move_during_active_capture_requests_repaint() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    let _ = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(50.0, 50.0));
     // Tiny move (under drag threshold), still inside the same widget.
     // No hover change — but `active.is_some()` so widget reads drag_delta.
-    let delta = h.on_input(InputEvent::PointerMoved(Vec2::new(51.0, 51.0)));
+    let delta = h.move_to(Vec2::new(51.0, 51.0));
     assert!(
         delta.requests_repaint,
         "move while capture is active → repaint (drag widgets consume delta)",
@@ -110,7 +109,7 @@ fn move_during_active_capture_requests_repaint() {
 fn pointer_left_after_hover_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    h.move_to(Vec2::new(50.0, 50.0));
     let delta = h.on_input(InputEvent::PointerLeft);
     assert!(delta.requests_repaint, "leave while hovered → repaint");
 }
@@ -231,7 +230,7 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Pointer at (200, 200): well outside the 100×100 hover target.
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
+    h.move_to(Vec2::new(200.0, 200.0));
     assert!(
         !h.on_input(InputEvent::PointerPressed(PointerButton::Left))
             .requests_repaint,
@@ -260,7 +259,7 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
     h.frame(build_hover_target);
     // Forge a focused widget — emulating a prior TextEdit interaction.
     h.ui.input.focused = Some(WidgetId::from_hash("editor"));
-    let _ = h.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
+    h.move_to(Vec2::new(200.0, 200.0));
     let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert!(
         delta.requests_repaint,

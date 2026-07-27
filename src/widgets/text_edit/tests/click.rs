@@ -222,7 +222,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     });
     h.frame(editor_only(&mut buf));
 
-    h.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 20.0)));
+    h.move_to(Vec2::new(10.0, 20.0));
     h.on_input(InputEvent::KeyDown {
         key: Key::Char('!'),
         repeat: false,
@@ -241,8 +241,7 @@ fn click_lands_caret_at_pressed_position() {
     let mut buf = String::from("hello world");
 
     h.frame(editor_at(&mut buf, None));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(32.0, 20.0));
 
     h.frame(editor_at(&mut buf, None));
     h.on_input(InputEvent::KeyDown {
@@ -265,8 +264,7 @@ fn click_uses_overridden_padding() {
     let mut buf = String::from("hello world");
 
     h.frame(editor_at(&mut buf, pad));
-    h.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(32.0, 20.0));
 
     h.frame(editor_at(&mut buf, pad));
     h.on_input(InputEvent::KeyDown {
@@ -325,7 +323,7 @@ fn drag_select_continues_past_editor_bounds() {
 
     // Drag far RIGHT, way past the editor's right edge. Selection extends
     // to end-of-text; the anchor is preserved.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(4000.0, 20.0)));
+    h.drag_to(Vec2::new(4000.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     {
         let st = h.ui.state_mut::<TextEditState>(ed_id);
@@ -348,7 +346,7 @@ fn drag_select_continues_past_editor_bounds() {
 
     // Drag far LEFT, past the left edge. Caret clamps to 0; the anchor is
     // still latched so the selection just flips direction.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(-2000.0, 20.0)));
+    h.drag_to(Vec2::new(-2000.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     {
         let st = h.ui.state_mut::<TextEditState>(ed_id);

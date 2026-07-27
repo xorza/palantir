@@ -1015,8 +1015,7 @@ fn action_effect_runs_once_across_record_replay() {
     h.frame(|ui| {
         let _ = build(ui);
     });
-    h.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(10.0, 10.0));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     let mut passes = 0;
@@ -1788,7 +1787,7 @@ fn input_policy_routes_paint_only_gate() {
         let r0 = h.frame(|ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
-        h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+        h.move_to(Vec2::new(40.0, 40.0));
         assert!(
             h.ui.input.had_input_since_last_frame,
             "had_input set after any event (precondition)",
@@ -1815,7 +1814,7 @@ fn input_policy_routes_paint_only_gate() {
         h.ui.input_policy = InputPolicy::Always;
         let _ = h.frame(|ui| body(ui, half));
 
-        h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+        h.move_to(Vec2::new(40.0, 40.0));
         let r1 = h.at(half).frame(|ui| body(ui, half));
         assert_eq!(
             r1.processing,
@@ -1895,7 +1894,7 @@ fn cold_start_runs_record_closure_twice_on_first_frame() {
 #[test]
 fn cold_start_blacks_out_input_during_warmup_pass() {
     let mut h = cold_ui();
-    h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+    h.move_to(Vec2::new(40.0, 40.0));
 
     let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
     cold_frame(&mut h, |ui| {
@@ -1925,7 +1924,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     // Cursor lands inside the future button rect (button is anchored at
     // (0,0) with 60×30 size below). Delivered before any frame ran;
     // cascades is empty so on_input can't resolve a target.
-    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 10.0)));
+    h.move_to(Vec2::new(20.0, 10.0));
     assert_eq!(h.ui.input.hovered, None, "pre-frame: no cascade, no hit");
 
     let button_id = WidgetId::from_hash("btn");
@@ -2342,7 +2341,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         resp.unwrap()
     };
     run(&mut h, false);
-    h.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+    h.move_to(Vec2::new(10.0, 10.0));
     let enabled = run(&mut h, false);
     assert!(enabled.hovered, "sanity: pointer hovers the button");
     assert!(!enabled.disabled);

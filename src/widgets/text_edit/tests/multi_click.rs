@@ -31,8 +31,7 @@ fn double_and_triple_click_select_word_and_all() {
     frame_at(&mut h, 0.0, |ui| body(ui, &mut buf));
 
     // Click 1 at x=32 (mono byte 3, inside "hello").
-    h.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press_at(Vec2::new(32.0, 20.0));
     frame_at(&mut h, 0.0, |ui| body(ui, &mut buf));
     h.on_input(InputEvent::PointerReleased(PointerButton::Left));
     frame_at(&mut h, 0.0, |ui| body(ui, &mut buf));
