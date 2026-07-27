@@ -106,9 +106,12 @@ pub(crate) mod window;
 /// privates they expose, and this is only the door out of the crate for
 /// integration tests. Benchmark entry points have their own gated facade in
 /// [`mod@bench`].
-#[cfg(feature = "internals")]
+#[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
+    /// Needs a real GPU device, so unlike its neighbours this one exists
+    /// only under the feature — never in a plain `cargo test` build.
+    #[cfg(feature = "internals")]
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
     pub use crate::ui::harness::UiHarness;
 }

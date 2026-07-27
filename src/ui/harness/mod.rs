@@ -142,18 +142,14 @@
 //!
 //! Tier 3's extra gate is not about encapsulation — `pub(crate)` already
 //! stops all of this leaving the crate. It is the only way to say "the
-//! benches don't use this", and it is what lets the module carry no
-//! `dead_code` allow: under `--features internals` alone, tier 3 simply
-//! isn't compiled, so nothing is spuriously unused and a genuinely dead
-//! method still gets reported.
+//! benches don't use this": under `--features internals` alone, tier 3
+//! simply isn't compiled, so nothing is spuriously unused and a
+//! genuinely dead method still gets reported.
 //!
-//! Tier 1 carries the only lint allows, and they are about build shape
-//! rather than design: `palantir::internals` is itself
-//! `#[cfg(feature = "internals")]`, so a default-feature build does not
-//! compile the door tier 1 leaves by, and every method on it reads as
-//! both unreachable and dead. Scoping the allows to that block keeps
-//! tiers 2 and 3 honest — a genuinely unused method there still fails
-//! the build.
+//! No block here carries a lint allow. `palantir::internals` is gated on
+//! `any(test, feature = "internals")` — the same condition as this
+//! module — so tier 1 is reachable in every build that compiles it, and
+//! `unreachable_pub` / `dead_code` stay live on all three tiers.
 
 use crate::app::internals::RecordApp;
 use crate::common::time::MAX_ANIM_DT;
@@ -181,10 +177,6 @@ use std::time::Duration;
 /// to be non-degenerate.
 const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
-// Same reachability story as tier 1 below: the type is `pub` because it
-// is re-exported from `palantir::internals`, which a default-feature
-// build does not compile.
-#[allow(unreachable_pub)]
 #[derive(Debug)]
 pub struct UiHarness {
     /// `pub(crate)` rather than behind an accessor so in-crate tests
@@ -206,7 +198,6 @@ pub struct UiHarness {
 /// Tier 1 — the surface that leaves the crate. See the module doc for
 /// why this block, and only this block, silences the two reachability
 /// lints.
-#[allow(dead_code, unreachable_pub)]
 impl UiHarness {
     /// `UiResources::isolated_mono` — mono-fallback text: fast,
     /// deterministic, and wrong for width-follows-label assertions.
