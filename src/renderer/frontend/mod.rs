@@ -110,7 +110,6 @@ impl Frontend {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    #![allow(dead_code)]
     use crate::renderer::frontend::Frontend;
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench

@@ -205,7 +205,6 @@ impl WindowCommands {
     // Multi-window lifecycle plumbing: every caller is under
     // `src/host/winit/`, so a `--no-default-features` build (no
     // `winit-host`) compiles this with nothing to call it.
-    #[allow(dead_code)]
     pub(crate) fn append(&mut self, source: &mut Self) {
         self.opens.append(&mut source.opens);
         self.closes.append(&mut source.closes);
