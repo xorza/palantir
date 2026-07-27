@@ -188,12 +188,9 @@ impl Popup {
             node,
             chrome,
         } = self;
-        // Popup body resolves at the root of `Layer::Popup` (no
-        // open frames in that layer), so `Ui::widget`'s
-        // parent-scoping is a no-op — the body id equals the bare
-        // salt hash. That keeps the eater id (and any persistent
-        // popup-side state) stable regardless of where in `Main`
-        // the trigger lives.
+        // Resolved before the layer switch below, so the body id — and the
+        // eater derived from it — is parent-scoped to the trigger's site the
+        // way any other widget is, not to `Layer::Popup`'s empty root.
         let mut widget = ui.widget(node);
         let keyboard_owner = widget.id();
         let eater_id = widget.id().with("eater");
