@@ -68,7 +68,7 @@ fn click_inside_popup_does_not_dismiss() {
     h.click_at(inside);
 
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(!dismissed, "click inside body must not signal dismissal");
@@ -88,7 +88,7 @@ fn click_outside_popup_dismisses_and_blocks_main() {
     h.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(
@@ -117,7 +117,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     });
     h.on_input(esc());
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(dismissed, "Esc dismisses a `Dismiss` popup");
@@ -131,7 +131,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     });
     h.on_input(esc());
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "Esc does not dismiss a `Block` popup");
@@ -169,7 +169,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     };
     h.frame(|ui| scene(ui, &mut open));
     h.click_at(Vec2::new(300.0, 300.0));
-    h.frame_without_baseline(|ui| scene(ui, &mut open));
+    h.frame(|ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
         h.ui.forest.trees[Layer::Popup].records.len(),
@@ -207,7 +207,7 @@ fn popup_body_sizing_matches_sizing_mode() {
     ];
     for &(sw, sh, expected_size, expected_min) in cases {
         let mut h = UiHarness::new(SURFACE);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
@@ -265,7 +265,7 @@ fn popup_near_bottom_flips_upward() {
                     });
             });
     };
-    h.frame_without_baseline(scene);
+    h.frame(scene);
 
     let popup_tree = &h.ui.forest.trees[Layer::Popup];
     let body_root = popup_tree.roots[1].first_node.idx();
@@ -570,7 +570,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     h.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
     h.on_input(InputEvent::PointerReleased(PointerButton::Middle));
 
-    h.frame_without_baseline(scene);
+    h.frame(scene);
     let bg = h.ui.response_for(bg_id);
     assert_eq!(
         bg.scroll.pixels,
@@ -602,7 +602,7 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
     h.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "`Block` mode must not signal dismissal");
@@ -643,10 +643,10 @@ fn text_edit_inside_a_popup_receives_typing() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| scene(ui, &mut buf));
     h.request_focus(Some(field));
-    h.frame_without_baseline(|ui| scene(ui, &mut buf));
+    h.frame(|ui| scene(ui, &mut buf));
 
     h.on_input(InputEvent::Text(TextChunk::new("x").unwrap()));
-    h.frame_without_baseline(|ui| scene(ui, &mut buf));
+    h.frame(|ui| scene(ui, &mut buf));
 
     assert_eq!(
         buf, "x",

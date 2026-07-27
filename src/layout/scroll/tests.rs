@@ -51,7 +51,7 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
 #[test]
 fn vertical_scroll_records_content_extent() {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Scroll::vertical()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
@@ -71,7 +71,7 @@ fn vertical_scroll_records_content_extent() {
 #[test]
 fn horizontal_scroll_records_content_extent() {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -101,7 +101,7 @@ fn horizontal_scroll_records_content_extent() {
 #[test]
 fn both_axis_scroll_records_content_extent() {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -136,9 +136,9 @@ fn layout_output_survives_across_frames() {
                     });
             });
     };
-    h.frame_without_baseline(build);
+    h.frame(build);
     let f1 = layout_for(&h.ui, "scroll");
-    h.frame_without_baseline(build);
+    h.frame(build);
     let f2 = layout_for(&h.ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
@@ -152,7 +152,7 @@ fn layout_output_survives_across_frames() {
 #[test]
 fn content_margin_leaves_content_size_unchanged() {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -181,7 +181,7 @@ fn scroll_height(h: &UiHarness, id_salt: &'static str) -> f32 {
 /// assertion from how the root itself is arranged.
 fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -232,7 +232,7 @@ fn hug_scroll_clamps_viewport_to_content() {
 #[test]
 fn hug_scroll_caps_at_max_and_scrolls() {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -260,7 +260,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
     );
 
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
@@ -295,7 +295,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
 #[test]
 fn fill_scroll_does_not_grow_hug_parent() {
     let mut h = UiHarness::new(SURFACE);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::HUG, Sizing::HUG))
@@ -344,9 +344,9 @@ fn toggling_scroll_sizing_busts_measure_cache() {
                     });
             });
     };
-    h.frame_without_baseline(|ui| build(ui, Sizing::HUG));
+    h.frame(|ui| build(ui, Sizing::HUG));
     assert_eq!(scroll_height(&h, "scroll"), 150.0, "Hug fits its content");
-    h.frame_without_baseline(|ui| build(ui, Sizing::fill(1.0)));
+    h.frame(|ui| build(ui, Sizing::fill(1.0)));
     assert_eq!(
         scroll_height(&h, "scroll"),
         0.0,

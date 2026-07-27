@@ -78,7 +78,7 @@ fn explicit_no_clip_overrides_scroll_default() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
     let unclipped_id = WidgetId::from_hash("unclipped-scroll");
     let clipped_id = WidgetId::from_hash("default-scroll");
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Scroll::vertical()
             .id(unclipped_id)
             .clip(ClipMode::None)
@@ -752,7 +752,6 @@ fn pointer_zoom_pivot_is_scale_invariant() {
 
 mod bars {
     use crate::Ui;
-    use crate::display::Display;
     use crate::input::InputEvent;
     use crate::layout::scrollbars::bar_geometry;
     use crate::layout::types::sizing::Sizing;
@@ -960,7 +959,6 @@ mod bars {
     #[test]
     fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
         let surface = UVec2::new(400, 400);
-        let display = Display::from_physical(surface, 1.0);
         let outer_id = WidgetId::from_hash("hidden-scroll");
         let scroll_id = outer_id.with("__viewport");
         let build = |ui: &mut Ui| {
@@ -979,7 +977,7 @@ mod bars {
 
         let mut h = UiHarness::new(surface);
         let mut records = 0;
-        let report = h.frame_at(display, Duration::ZERO, |ui| {
+        let report = h.frame(|ui| {
             records += 1;
             build(ui);
         });
@@ -1081,7 +1079,7 @@ mod bars {
             "900px of content in a 300px viewport must show a thumb",
         );
 
-        h.frame_without_baseline(build(false));
+        h.frame(build(false));
         for (tag, rect) in raw_bar_rects(&h.ui, "scroll") {
             assert_eq!(
                 rect.size,
@@ -1091,7 +1089,7 @@ mod bars {
         }
 
         // ...and come back, so the collapse isn't a one-way latch.
-        h.frame_without_baseline(build(true));
+        h.frame(build(true));
         assert_eq!(
             thumb_rects(&h.ui, "scroll").len(),
             1,
@@ -1249,17 +1247,12 @@ mod bars {
                         });
                 });
         };
-        let surface = UVec2::new(400, 600);
         let mut h = UiHarness::new(UVec2::new(400, 600));
         let mut passes = 0;
-        let report = h.frame_at_without_baseline(
-            Display::from_physical(surface, 1.0),
-            Duration::from_millis(16),
-            |ui| {
-                passes += 1;
-                build(ui);
-            },
-        );
+        let report = h.at(Duration::from_millis(16)).frame(|ui| {
+            passes += 1;
+            build(ui);
+        });
         assert_eq!(passes, 1, "a cold-mounted scroll must not re-record");
         assert_eq!(report.processing, FrameProcessing::SingleLayout);
 

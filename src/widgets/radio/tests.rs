@@ -19,7 +19,7 @@ enum Pick {
 fn frame_with_rects(h: &mut UiHarness, sel: &mut Pick) -> [Option<Rect>; 3] {
     let mut local = *sel;
     let mut rects = [None; 3];
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
                 let r = RadioButton::new(&mut local, value)
@@ -80,7 +80,7 @@ fn disabled_radio_does_not_select() {
     sel = local;
     h.click_at(Vec2::new(8.0, 8.0));
     let mut local = sel;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             RadioButton::new(&mut local, Pick::B)
                 .id(WidgetId::from_hash(("rb", "B")))

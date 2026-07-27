@@ -6,7 +6,7 @@ use super::*;
 use crate::input::keyboard::KeyboardEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::node::Configure;
-use crate::ui::frame_report::FrameProcessing;
+use crate::ui::frame_report::{FramePaint, FrameProcessing};
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 
@@ -206,6 +206,21 @@ fn the_clock_only_reaches_input_through_a_frame() {
         fourth.left.double_clicked(),
         "advance without a frame does not reach the input clock",
     );
+
+    // `at` is the same clock, parked absolutely instead of stepped. The
+    // last `advance` left it at 3× the window plus the two 1 ms nudges
+    // from `advance_past_double_click`; parking well past that and
+    // framing separates the runs exactly as `advance` did.
+    let parked = harness.time + DOUBLE_CLICK_WINDOW * 2;
+    harness.at(parked).frame(button);
+    assert_eq!(harness.time, parked, "at parks the clock absolutely");
+    harness.click_at(INSIDE);
+    let fifth = harness.response_in(target(), button);
+    assert!(fifth.left.clicked());
+    assert!(
+        !fifth.left.double_clicked(),
+        "at + frame separates press runs the same way advance does",
+    );
 }
 
 #[test]
@@ -357,17 +372,42 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
 }
 
 #[test]
-fn resize_changes_the_surface_without_rebuilding_the_harness() {
+fn resize_and_set_display_move_the_surface_between_frames() {
+    // The harness owns the `Display`, so a frame never takes one — these
+    // two are the whole surface-mutation surface. Both must land on the
+    // `Ui` and must read as a display change, which is what forces the
+    // full repaint asserted below.
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
-    assert_eq!(harness.display().physical, SURFACE);
+    assert_eq!(harness.display.physical, SURFACE);
+    assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
 
     let bigger = UVec2::new(400, 300);
-    harness.resize(bigger);
-    harness.frame(button);
-
-    assert_eq!(harness.display().physical, bigger);
+    assert_eq!(
+        harness.resize(bigger).frame(button).paint(),
+        FramePaint::Full
+    );
+    assert_eq!(harness.display.physical, bigger);
     assert_eq!(harness.ui.display.physical, bigger);
+
+    // A DPI move changes `physical` and `scale_factor` together, leaving
+    // `logical_rect` identical — `resize` alone cannot express it.
+    let dpi_move = Display {
+        physical: bigger * 2,
+        scale_factor: 2.0,
+        ..harness.display
+    };
+    assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
+    assert_eq!(
+        harness.set_display(dpi_move).frame(button).paint(),
+        FramePaint::Full,
+    );
+    assert_eq!(harness.ui.display, dpi_move);
+    assert_eq!(
+        harness.ui.display.logical_size().w,
+        bigger.x as f32,
+        "the logical surface is unchanged — only the raster is",
+    );
 }
 
 #[test]
@@ -375,7 +415,7 @@ fn scale_makes_the_surface_physical_and_positions_logical() {
     // Rule 10. At dpr 2 a 200×120 physical surface is 100×60 logical,
     // and pointer positions are in the latter.
     let harness = UiHarness::new(SURFACE).scale(2.0);
-    let display = harness.display();
+    let display = harness.display;
 
     assert_eq!(display.physical, SURFACE);
     assert_eq!(display.scale_factor, 2.0);
@@ -474,8 +514,6 @@ fn advance_frames_rejects_a_step_that_would_be_clamped() {
 
 #[test]
 fn frame_without_baseline_forces_a_full_repaint() {
-    use crate::ui::frame_report::FramePaint;
-
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
 
@@ -484,6 +522,6 @@ fn frame_without_baseline_forces_a_full_repaint() {
     // Dropping the baseline forces the whole surface.
     assert_eq!(
         harness.frame_without_baseline(button).paint(),
-        FramePaint::Full,
+        FramePaint::Full
     );
 }

@@ -143,7 +143,7 @@ mod tests {
     fn explicit_zero_padding_and_minimum_override_card_theme() {
         let mut h = UiHarness::new(UVec2::new(400, 300));
         let root_id = WidgetId::from_hash("modal-explicit-zero");
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Modal::new()
                 .id(root_id)
                 .background(Background::NONE)
@@ -209,7 +209,7 @@ mod tests {
                 physical: Key::Escape,
             });
             let mut dismissed = false;
-            h.frame_without_baseline(|ui| scene(ui, &mut dismissed));
+            h.frame(|ui| scene(ui, &mut dismissed));
             dismissed
         }
 
@@ -273,7 +273,7 @@ mod tests {
             repeat: false,
             physical: Key::Escape,
         });
-        h.frame_without_baseline(|ui| scene(ui, &mut open));
+        h.frame(|ui| scene(ui, &mut open));
         assert!(!open, "Escape must dismiss the modal");
 
         // The frame after. A `Main`-layer widget presses and types; both
@@ -291,7 +291,7 @@ mod tests {
         // `|=` in `modal_hears_escape_…` guards against.
         let mut pointer = 0;
         let mut keyboard = 0;
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             scene(ui, &mut open);
             pointer = pointer.max(ui.pointer_events().len());
             keyboard = keyboard.max(ui.keyboard_events().len());
@@ -329,7 +329,7 @@ mod tests {
             physical: Key::Escape,
         });
         let (mut modal_closed, mut popup_closed) = (false, false);
-        h.frame_without_baseline(|ui| scene(ui, &mut modal_closed, &mut popup_closed));
+        h.frame(|ui| scene(ui, &mut modal_closed, &mut popup_closed));
 
         assert!(modal_closed, "the topmost overlay must take the Escape");
         assert!(

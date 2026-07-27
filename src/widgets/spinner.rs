@@ -189,7 +189,7 @@ mod tests {
     fn explicit_layout_size_is_independent_from_diameter() {
         let mut h = UiHarness::new(UVec2::new(200, 120));
         let (mut sized, mut hug, mut default) = (None, None, None);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 sized = Some(
                     Spinner::new()

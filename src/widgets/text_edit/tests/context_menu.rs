@@ -21,7 +21,7 @@ fn context_menu_cut_copy_paste_clear() {
     }
     fn open_menu_and_record(h: &mut UiHarness, buf: &mut String) {
         ContextMenu::open(&mut h.ui, editor_id(), Vec2::new(20.0, 10.0));
-        h.frame_without_baseline(|ui| body(ui, buf));
+        h.frame(|ui| body(ui, buf));
     }
     /// Click into the body node of the open menu at row-offset
     /// `(rel_x, rel_y)` from the body's top-left, then run a frame
@@ -37,7 +37,7 @@ fn context_menu_cut_copy_paste_clear() {
         // padding. Click well inside the chosen row.
         let row_y = body_rect.min.y + 8.0 + (row_idx as f32) * 32.0;
         h.click_at(Vec2::new(body_rect.min.x + 20.0, row_y));
-        h.frame_without_baseline(|ui| body(ui, buf));
+        h.frame(|ui| body(ui, buf));
     }
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
@@ -115,7 +115,7 @@ fn context_menu_cut_copy_paste_clear() {
         repeat: false,
         physical: Key::Other,
     });
-    h.frame_without_baseline(|ui| body(ui, &mut buf));
+    h.frame(|ui| body(ui, &mut buf));
     let state = h.ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(state.edit.sel_range(), Some(0..buf.len()));
     assert!(
@@ -310,7 +310,7 @@ fn secondary_click_opens_text_edit_menu() {
     assert!(!ContextMenu::is_open(&h.ui, editor_id));
 
     h.right_click_at(Vec2::new(40.0, 20.0));
-    h.frame_without_baseline(|ui| body(ui, &mut buf));
+    h.frame(|ui| body(ui, &mut buf));
     assert!(
         ContextMenu::is_open(&h.ui, editor_id),
         "secondary click on TextEdit opens its default menu",
@@ -346,7 +346,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         state.edit.selection = Some(0);
     }
     ContextMenu::open(&mut h.ui, b_id, Vec2::new(200.0, 20.0));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });
 
@@ -361,7 +361,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
             physical: Key::Other,
         });
     }
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });
 

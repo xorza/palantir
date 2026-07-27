@@ -988,7 +988,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     for cull in [Cull::Viewport, Cull::Damage] {
         let display = Display::from_physical(UVec2::new(100, 100), 1.0);
         let mut h = UiHarness::new(display.physical);
-        h.frame_at_without_baseline(display, HALF, |ui| {
+        h.at(HALF).frame(|ui| {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -1214,7 +1214,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     let mut h = UiHarness::new(display.physical);
     // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0, so the encoder
     // takes the spin branch.
-    h.frame_at_without_baseline(display, Duration::from_secs(1), |ui| {
+    h.at(Duration::from_secs(1)).frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("spin_owner"))
@@ -1279,7 +1279,7 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
     let mut h = UiHarness::new(display.physical);
     // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0.
-    h.frame_at_without_baseline(display, Duration::from_secs(1), |ui| {
+    h.at(Duration::from_secs(1)).frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("arc_spin_owner"))

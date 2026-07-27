@@ -14,7 +14,6 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 
 use crate::Ui;
-use crate::display::Display;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::DRAG_THRESHOLD;
@@ -61,14 +60,10 @@ fn warm(record: fn(&mut Ui)) -> (UiHarness, Rect) {
 /// Record passes the next frame runs — 1 for no settle, 2 for a settle.
 fn passes(h: &mut UiHarness, record: fn(&mut Ui)) -> usize {
     let mut n = 0;
-    let _ = h.frame_at_without_baseline(
-        Display::from_physical(SURFACE, 1.0),
-        Duration::from_millis(16),
-        |ui| {
-            n += 1;
-            record(ui);
-        },
-    );
+    let _ = h.at(Duration::from_millis(16)).frame(|ui| {
+        n += 1;
+        record(ui);
+    });
     n
 }
 

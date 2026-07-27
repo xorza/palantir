@@ -23,7 +23,7 @@ use glam::{UVec2, Vec2};
 fn surface_apply_to_sets_clip_bit_and_chrome() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let mut cases: Vec<(&str, NodeId, ClipMode, bool)> = Vec::new();
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("none"))
@@ -117,7 +117,7 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     h.ui.theme.panel_background = Some(Background::fill(Color::WHITE));
     h.ui.theme.panel_clip = ClipMode::Rect;
     let (mut explicit, mut inherited) = (None, None);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         explicit = Some(
             Panel::vstack()
                 .background(Background::NONE)
@@ -147,7 +147,7 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
 #[test]
 fn panel_hugs_largest_child_and_layers_them() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
-    let [panel_node, a_node, b_node] = h.frame_value_without_baseline(|ui| {
+    let [panel_node, a_node, b_node] = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -205,7 +205,7 @@ fn panel_hugs_largest_child_and_layers_them() {
 #[test]
 fn panel_with_fill_child_grows_to_panel_inner() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let child_node = h.frame_value_without_baseline(|ui| {
+    let child_node = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -248,7 +248,7 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     use crate::primitives::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let child_id = WidgetId::from_hash("child");
-    let observed = h.frame_value_without_baseline(|ui| {
+    let observed = h.frame_value(|ui| {
         Panel::vstack()
             .auto_id()
             .disabled(true)
@@ -297,14 +297,14 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     h.click_at(Vec2::new(40.0, 40.0));
 
     let mut clicked = false;
-    h.frame_without_baseline(|ui| body(ui, Some(&mut clicked)));
+    h.frame(|ui| body(ui, Some(&mut clicked)));
     assert!(!clicked, "button inside disabled panel should not click");
 }
 
 #[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let [canvas_node, a_node, b_node] = h.frame_value_without_baseline(|ui| {
+    let [canvas_node, a_node, b_node] = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -346,7 +346,7 @@ fn zstack_layers_children_without_painting_background() {
     // Wrapped in HStack so the ZStack's Hug-to-children size is honored
     // (root would otherwise expand to surface).
     let mut h = UiHarness::new(UVec2::new(400, 200));
-    let [z, bg_node, fg_node] = h.frame_value_without_baseline(|ui| {
+    let [z, bg_node, fg_node] = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -403,7 +403,7 @@ fn zstack_aligns_child_per_axis() {
     ];
     for (label, align, expected) in cases {
         let mut h = UiHarness::new(UVec2::new(400, 400));
-        let child_node = h.frame_value_without_baseline(|ui| {
+        let child_node = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {

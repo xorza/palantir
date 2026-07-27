@@ -1,4 +1,3 @@
-use crate::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
@@ -7,26 +6,19 @@ use crate::widgets::text_edit::{TextEdit, TextEditState};
 use criterion::Criterion;
 use glam::UVec2;
 use std::hint::black_box;
-use std::time::Duration;
-
-fn display() -> Display {
-    Display::from_physical(UVec2::new(800, 300), 1.0)
-}
 
 fn editor_id() -> WidgetId {
     WidgetId::from_hash("text-edit-bench")
 }
 
 fn run_frame(h: &mut UiHarness, text: &mut String, multiline: bool) {
-    black_box(
-        h.frame_at_without_baseline(display(), Duration::ZERO, |ui| {
-            TextEdit::new(text)
-                .id(editor_id())
-                .multiline(multiline)
-                .size((Sizing::fixed(480.0), Sizing::fixed(160.0)))
-                .show(ui);
-        }),
-    );
+    black_box(h.frame(|ui| {
+        TextEdit::new(text)
+            .id(editor_id())
+            .multiline(multiline)
+            .size((Sizing::fixed(480.0), Sizing::fixed(160.0)))
+            .show(ui);
+    }));
 }
 
 fn bench_stable(c: &mut Criterion, name: &str, text: String, multiline: bool, selected: bool) {

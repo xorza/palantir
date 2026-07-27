@@ -107,7 +107,7 @@ mod tests {
     fn explicit_size_overrides_fill_default() {
         let mut h = UiHarness::new(UVec2::new(400, 300));
         let (mut sized, mut hug, mut default) = (None, None, None);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
             col.show(ui, |ui| {
                 sized = Some(
@@ -162,7 +162,7 @@ mod tests {
     fn endpoint_segments_collapse_without_invalid_fill_weights() {
         for (fraction, expected) in [(0.0, [0.0, 100.0]), (1.0, [100.0, 0.0])] {
             let mut h = UiHarness::new(UVec2::new(100, 20));
-            let root = h.frame_value_without_baseline(|ui| {
+            let root = h.frame_value(|ui| {
                 ProgressBar::new(fraction)
                     .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))
                     .show(ui)

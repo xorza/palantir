@@ -9,7 +9,6 @@ use crate::widgets::text_edit::tests::*;
 /// gestures).
 #[test]
 fn double_and_triple_click_select_word_and_all() {
-    use crate::display::Display;
     use std::time::Duration;
 
     let ed_id = WidgetId::from_hash("multi-ed");
@@ -22,8 +21,7 @@ fn double_and_triple_click_select_word_and_all() {
         });
     }
     fn frame_at(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
-        let display = Display::from_physical(NARROW, 1.0);
-        h.frame_at(display, Duration::from_secs_f32(now_secs), |ui| f(ui));
+        h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui));
     }
 
     let mut h = ui_at_no_cosmic(NARROW);

@@ -23,7 +23,7 @@ use glam::UVec2;
 fn intrinsic_cache_populated_after_run() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
     let mut root = NodeId(0);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -58,7 +58,7 @@ fn intrinsic_cache_populated_after_run() {
 fn intrinsic_query_short_circuits_on_cache_hit() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
     let mut root = NodeId(0);
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
@@ -141,7 +141,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
     // Then clear *just the queried slot* on every node so we can
     // observe which nodes the parent query repopulates.
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         root = Panel::hstack()
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
@@ -194,7 +194,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     }
 
     let mut h = UiHarness::new(UVec2::new(1200, 900));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::vstack().id_salt("range-root").show(ui, |ui| {
             Text::new("leaf alpha-beta")
                 .id_salt("range-leaf")

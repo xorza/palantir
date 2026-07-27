@@ -72,7 +72,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
     let parent_size = case.axis.compose_size(case.slot, 100.0);
     let surface = UVec2::new(parent_size.w as u32, parent_size.h as u32);
     let mut h = UiHarness::new(surface);
-    h.frame_without_baseline(|ui| match driver {
+    h.frame(|ui| match driver {
         Driver::Root => add_child(ui, child, case),
         Driver::Canvas => {
             Panel::canvas()

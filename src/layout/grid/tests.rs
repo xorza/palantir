@@ -16,7 +16,7 @@ use glam::UVec2;
 
 fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
     let mut h = UiHarness::new(UVec2::new(surface_width, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([first, Track::fill()])
@@ -48,7 +48,7 @@ fn grid_depth_stack_rejects_exit_without_enter() {
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fixed(120.0), Track::fill()])
@@ -81,7 +81,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
     // Hug col 0: max(button widths). Buttons measure label at 8px/char +
     // default padding 24 + 2*1 chrome stroke → label_w + 26.
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::hug(), Track::fill()])
@@ -140,7 +140,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
 #[test]
 fn hug_column_stretches_fill_cells_to_widest_content() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::hug()])
@@ -189,7 +189,7 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     use crate::text::wrap::TextWrap;
 
     let mut h = UiHarness::new(UVec2::new(600, 200));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::hug().max(150.0)])
@@ -260,7 +260,7 @@ fn grid_fill_weights_and_clamps() {
     ];
     for (label, c0, c1, want0, want1) in cases {
         let mut h = UiHarness::new(UVec2::new(400, 100));
-        let root = h.frame_value_without_baseline(|ui| {
+        let root = h.frame_value(|ui| {
             Grid::new()
                 .auto_id()
                 .cols([*c0, *c1])
@@ -301,7 +301,7 @@ fn grid_fill_col_floors_at_descendant_min_content() {
     // col 0 clamps to 200 and col 1 takes the 100 remainder — matches
     // Stack's freeze-loop floor.
     let mut h = UiHarness::new(UVec2::new(300, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill(), Track::fill()])
@@ -337,7 +337,7 @@ fn grid_fill_row_floors_at_descendant_min_content() {
     // overflows. With floor (Phase 2 records `d.h` into hug_min for
     // Fill rows): row 0 clamps to 60, row 1 takes 40.
     let mut h = UiHarness::new(UVec2::new(100, 100));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill()])
@@ -377,7 +377,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             UVec2::new(400, 200)
         };
         let mut h = UiHarness::new(surface);
-        let root = h.frame_value_without_baseline(|ui| {
+        let root = h.frame_value(|ui| {
             let primary = [
                 Track::fixed(100.0),
                 Track::fixed(100.0),
@@ -474,7 +474,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
         let mut h = UiHarness::new(UVec2::new(400, 200));
         let mut grid_node = None;
         let mut text_node = None;
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             grid_node = Some(
                 Grid::new()
                     .auto_id()
@@ -532,7 +532,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
             let mut h = UiHarness::new(UVec2::new(400, 400));
             let mut panel_node = None;
             let mut second_node = None;
-            h.frame_without_baseline(|ui| {
+            h.frame(|ui| {
                 let primary = fixed_tracks(case);
                 let secondary = [Track::hug()];
                 let (rows, cols): (&[Track], &[Track]) = if axis == Axis::X {
@@ -621,7 +621,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
 fn grid_hug_grid_collapses_empty_fill_tracks() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
     let mut grid_node = None;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -656,7 +656,7 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
 fn hug_grid_fill_track_contributes_nested_rigid_floor() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut rigid_node = None;
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill()])
@@ -693,7 +693,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
 fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     let mut h = UiHarness::new(UVec2::new(300, 40));
     let mut rigid_node = None;
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -740,7 +740,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fixed(100.0)])
@@ -795,7 +795,7 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     // 3×3 of fixed-50 cells with gap=10. 2×2 cell at (0,0): w/h = 110.
-    let root = h.frame_value_without_baseline(|ui| {
+    let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
@@ -833,7 +833,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let mut grid_node = None;
     let mut ghost_node = None;
     let empty: [Track; 0] = [];
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -874,7 +874,7 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     let mut h = UiHarness::new(UVec2::new(3_000, 100));
     let mut grid_node = None;
     let mut last_node = None;
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         grid_node = Some(
             Grid::new()
                 .id(WidgetId::from_hash("large-grid"))
@@ -912,7 +912,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut grid_node = None;
     let mut kids = Vec::new();
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))

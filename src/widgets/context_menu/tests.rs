@@ -73,7 +73,7 @@ fn secondary_click_opens_menu_at_pointer() {
     h.right_click_at(Vec2::new(60.0, 20.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&h.ui), "secondary click on trigger opens menu");
 }
 
@@ -86,14 +86,14 @@ fn outside_click_dismisses_menu() {
     h.right_click_at(Vec2::new(60.0, 20.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&h.ui));
 
     // Click far from both trigger and any plausible menu body location.
     h.click_at(Vec2::new(380.0, 380.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(!menu_open(&h.ui), "outside click closes the menu");
 }
 
@@ -107,7 +107,7 @@ fn item_click_dismisses_and_reports_clicked() {
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&h.ui));
 
     // The menu's container starts at anchor (60, 60). With theme
@@ -117,7 +117,7 @@ fn item_click_dismisses_and_reports_clicked() {
     h.click_at(Vec2::new(90.0, 80.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(copied, "clicking the Copy row reports clicked()");
     assert!(!menu_open(&h.ui), "item click auto-closes the menu");
 }
@@ -134,7 +134,7 @@ fn shortcut_press_fires_item_and_dismisses() {
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&h.ui));
 
     // Inject the primary command modifier + 'C' — matches
@@ -152,7 +152,7 @@ fn shortcut_press_fires_item_and_dismisses() {
     });
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(copied, "shortcut press synthesizes a click on the Copy row");
     assert!(!menu_open(&h.ui), "shortcut press auto-closes the menu");
 }
@@ -166,7 +166,7 @@ fn escape_dismisses_menu() {
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&h.ui));
 
     // Inject an Escape press.
@@ -177,7 +177,7 @@ fn escape_dismisses_menu() {
     });
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
     assert!(!menu_open(&h.ui), "Esc closes the menu");
 }
 
@@ -194,7 +194,7 @@ fn menu_body_width_does_not_span_surface() {
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
     let mut copied = false;
     let mut dismissed = false;
-    h.frame_without_baseline(|ui| build(ui, &mut copied, &mut dismissed));
+    h.frame(|ui| build(ui, &mut copied, &mut dismissed));
 
     let body_id = trigger_id().with("ctx_menu_body");
     let rect =
@@ -217,7 +217,7 @@ fn menu_body_width_does_not_span_surface() {
 fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let mut h = UiHarness::new(SURFACE);
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
-    h.frame_without_baseline(|ui| {
+    h.frame(|ui| {
         ContextMenu::for_id(trigger_id())
             .background(Background::NONE)
             .padding(Spacing::ZERO)

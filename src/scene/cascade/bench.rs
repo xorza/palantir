@@ -89,7 +89,7 @@ struct CascadeRunFixture {
 impl CascadeRunFixture {
     fn new(mutation: RunMutation) -> Self {
         let display = Display::from_physical(FRAME_SIZE, DISPLAY_SCALE);
-        let first = record_fixture(FrameFixture::default(), display);
+        let first = record_fixture(FrameFixture::default());
         let mut second_state = FrameFixture::default();
         match mutation {
             RunMutation::PaintOnly => second_state.tick = 1,
@@ -97,7 +97,7 @@ impl CascadeRunFixture {
                 second_state.scroll_offset = Vec2::new(1.5, 0.7);
             }
         }
-        let second = record_fixture(second_state, display);
+        let second = record_fixture(second_state);
         let mut engine = CascadesEngine::default();
         let mut cascades = Cascades::default();
         engine.run(&first.ui.forest, &first.ui.layout, display, &mut cascades);
@@ -142,9 +142,9 @@ impl CascadeRunFixture {
     }
 }
 
-fn record_fixture(mut state: FrameFixture, display: Display) -> UiHarness {
-    let mut h = UiHarness::with_text(FRAME_SIZE);
-    let _ = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
+fn record_fixture(mut state: FrameFixture) -> UiHarness {
+    let mut h = UiHarness::with_text(FRAME_SIZE).scale(DISPLAY_SCALE);
+    let _ = h.frame(|ui| {
         build_ui(&mut state, BENCH_SCALE, ui);
     });
     h

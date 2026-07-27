@@ -46,7 +46,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         let mut left_node = None;
         let mut right_node = None;
         let mut row_node = NodeId(0);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             row_node = Panel::hstack()
                 .auto_id()
                 .gap(12.0)
@@ -161,7 +161,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     let mut h = UiHarness::new(UVec2::new(480, 600));
     for w in (480u32..=900).step_by(1) {
         h.resize(UVec2::new(w, 600));
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             Panel::vstack()
                 .auto_id()
                 .padding(12.0)

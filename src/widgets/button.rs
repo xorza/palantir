@@ -139,7 +139,7 @@ mod tests {
 
         let mut h = UiHarness::new(UVec2::new(200, 120));
         let (mut explicit, mut inherited) = (None, None);
-        h.frame_without_baseline(|ui| {
+        h.frame(|ui| {
             explicit = Some(
                 Button::new()
                     .style(&theme)
