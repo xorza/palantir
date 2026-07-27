@@ -77,32 +77,29 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
-    let mut zstack_node = None;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            zstack_node = Some(
-                Panel::zstack()
-                    .id(WidgetId::from_hash("hug-z"))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id(WidgetId::from_hash("fill-child"))
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
-                                fill: Color::rgb(0.5, 0.5, 0.5).into(),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                        Frame::new()
-                            .id(WidgetId::from_hash("fixed-child"))
-                            .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
-                            .show(ui);
-                    })
-                    .response
-                    .node(),
-            );
+            Panel::zstack()
+                .id(WidgetId::from_hash("hug-z"))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("fill-child"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("fixed-child"))
+                        .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
+                        .show(ui);
+                });
         });
     });
-    let r = h.ui.layout[Layer::Main].rect[zstack_node.unwrap().idx()];
+    let r = h
+        .layout_rect(WidgetId::from_hash("hug-z"))
+        .expect("arranged");
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -259,7 +256,9 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                 );
             });
     });
-    let h = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()]
+    let h = h
+        .layout_rect(WidgetId::from_hash("pg"))
+        .expect("arranged")
         .size
         .h;
     assert!(
@@ -312,7 +311,9 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     });
             });
     });
-    let h = h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()]
+    let h = h
+        .layout_rect(WidgetId::from_hash("nested-grid"))
+        .expect("arranged")
         .size
         .h;
     assert!(

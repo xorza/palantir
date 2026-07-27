@@ -66,8 +66,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         (ratio - 0.75).abs() < 1e-6,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
-    let first = h.node_for_widget_id(split_id().with("first"));
-    let rect = h.ui.layout[Layer::Main].rect[first.idx()];
+    let rect = h.layout_rect(split_id().with("first")).expect("arranged");
     assert!(
         (rect.size.w - 350.0).abs() < 0.5,
         "min_pane(50) stops the current layout at 350 px, got {}",
@@ -138,9 +137,11 @@ fn divider_drag_is_scale_invariant() {
             .apply_point(layout.min + Vec2::new(380.0, 50.0));
         h.move_to(beyond_limit);
         frame(&mut h, &mut ratio);
-        let first = h.node_for_widget_id(split_id().with("first"));
         assert_eq!(
-            h.ui.layout[Layer::Main].rect[first.idx()].size.w,
+            h.layout_rect(split_id().with("first"))
+                .expect("arranged")
+                .size
+                .w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
@@ -249,8 +250,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "{rigid_half:?} pane stops at its rigid content floor"
         );
-        let rigid = h.node_for_widget_id(split_id().with("rigid"));
-        let rigid_rect = h.ui.layout[Layer::Main].rect[rigid.idx()];
+        let rigid_rect = h.layout_rect(split_id().with("rigid")).expect("arranged");
         assert_eq!(
             if horizontal {
                 rigid_rect.size.w
@@ -260,8 +260,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             180.0,
             "rigid content remains laid out"
         );
-        let first = h.node_for_widget_id(split_id().with("first"));
-        let first_rect = h.ui.layout[Layer::Main].rect[first.idx()];
+        let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
         let divider_rect =
             h.ui.response_for(split_id().with("divider"))
                 .rect
@@ -386,8 +385,7 @@ fn divider_requests_the_resize_cursor() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        let first = h.node_for_widget_id(split_id().with("first"));
-        let first_rect = h.ui.layout[Layer::Main].rect[first.idx()];
+        let first_rect = h.layout_rect(split_id().with("first")).expect("arranged");
         let divider_rect =
             h.ui.response_for(split_id().with("divider"))
                 .rect

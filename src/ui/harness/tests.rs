@@ -5,6 +5,7 @@
 use super::*;
 use crate::input::keyboard::KeyboardEvent;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
@@ -217,6 +218,60 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
         covered.is_err(),
         "a covered widget must refuse, not silently click the cover",
     );
+}
+
+#[test]
+fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
+    // The two accessors agree until an ancestor transforms or clips, and
+    // disagree only there — so a test that reaches for the wrong one
+    // passes everywhere except the scroll and canvas cases. Pinning both
+    // sides here is what keeps that from being discovered the hard way.
+    use crate::primitives::transform::TranslateScale;
+
+    let inner = WidgetId::from_hash("scaled-inner");
+    let scaled = |ui: &mut Ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("scaled-outer"))
+            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+            .transform(TranslateScale::from_scale(2.0))
+            .show(ui, |ui| {
+                Button::new()
+                    .id(inner)
+                    .label("x")
+                    .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
+                    .show(ui);
+            });
+    };
+    let mut harness = UiHarness::new(SURFACE);
+    harness.prime(2, scaled);
+
+    let arranged = harness.layout_rect(inner).expect("the button arranged");
+    let visible = harness.rect(inner).expect("the button is on screen");
+    assert_eq!(
+        arranged.size,
+        Size::new(40.0, 20.0),
+        "layout_rect is the size the layout pass assigned",
+    );
+    assert_eq!(
+        visible.size,
+        Size::new(80.0, 40.0),
+        "rect carries the ancestor's 2x scale",
+    );
+
+    // And it is exactly the layout pass output — the same value a test
+    // gets by carrying a `NodeId` and indexing by hand.
+    let node = harness.node_for_widget_id(inner);
+    assert_eq!(
+        arranged,
+        harness.ui.layout[Layer::Main].rect[node.idx()],
+        "layout_rect == the arrange output for that widget's node",
+    );
+
+    // Untransformed, the distinction vanishes — which is why picking the
+    // wrong one is invisible in most of the suite.
+    let mut plain = UiHarness::new(SURFACE);
+    plain.prime(2, button);
+    assert_eq!(plain.layout_rect(target()), plain.rect(target()));
 }
 
 #[test]

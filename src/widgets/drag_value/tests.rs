@@ -581,7 +581,6 @@ fn editing_a_long_value_holds_the_field_width() {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
@@ -618,12 +617,12 @@ fn editing_a_long_value_holds_the_field_width() {
     let mut h = UiHarness::new(surface);
     let mut node = None;
     h.frame(|ui| node = Some(render(ui, &mut v)));
-    let display_w = h.ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
+    let display_w = h.layout_rect(id).expect("arranged").size.w;
 
     // Enter edit mode; entry seeds the full-precision text.
     h.request_focus(Some(id));
     h.frame(|ui| node = Some(render(ui, &mut v)));
-    let edit_w = h.ui.layout[Layer::Main].rect[node.unwrap().idx()].size.w;
+    let edit_w = h.layout_rect(id).expect("arranged").size.w;
 
     assert!(display_w >= 40.0, "min_size floor honored ({display_w})");
     assert_eq!(

@@ -5,7 +5,6 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
@@ -170,8 +169,10 @@ fn content_margin_leaves_content_size_unchanged() {
 /// Arranged height of the scroll widget's outer wrapper (the node that
 /// carries the user's `id`).
 fn scroll_height(h: &UiHarness, id_salt: &'static str) -> f32 {
-    let node = h.node_for_widget_id(WidgetId::from_hash(id_salt));
-    h.ui.layout[Layer::Main].rect[node.idx()].size.h
+    h.layout_rect(WidgetId::from_hash(id_salt))
+        .expect("arranged")
+        .size
+        .h
 }
 
 /// Build a `count`-row vertical **Hug** scroll (each row 50px tall)

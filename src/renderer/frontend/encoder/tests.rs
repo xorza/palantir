@@ -472,29 +472,24 @@ fn clip_emits_balanced_push_pop() {
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    let mut panel_node = None;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            panel_node = Some(
-                Panel::zstack()
-                    .id(WidgetId::from_hash("rounded"))
-                    .size(80.0)
-                    .background(Background {
-                        fill: Color::rgb(0.2, 0.2, 0.2).into(),
-                        stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
-                        corners: Corners::all(8.0),
-                        shadow: Shadow::NONE,
-                    })
-                    .clip_rounded()
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id(WidgetId::from_hash("c"))
-                            .size(40.0)
-                            .show(ui);
-                    })
-                    .response
-                    .node(),
-            );
+            Panel::zstack()
+                .id(WidgetId::from_hash("rounded"))
+                .size(80.0)
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
+                    stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
+                    corners: Corners::all(8.0),
+                    shadow: Shadow::NONE,
+                })
+                .clip_rounded()
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size(40.0)
+                        .show(ui);
+                });
         });
     });
     let cmds = h.encode_paint();
@@ -510,7 +505,9 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     assert_eq!(rounded_clips.len(), 1);
     let payload = rounded_clips[0];
 
-    let panel_rect = h.ui.layout[Layer::Main].rect[panel_node.unwrap().idx()];
+    let panel_rect = h
+        .layout_rect(WidgetId::from_hash("rounded"))
+        .expect("arranged");
     // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
     // encoder's `rect.deflated_by(padding)` insets the mask by 2 on
     // every side. Radius reduces by 2 to stay concentric with the
