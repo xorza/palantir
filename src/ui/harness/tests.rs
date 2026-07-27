@@ -437,6 +437,46 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
         missed.scroll.lines.y, 0.0,
         "a scroll over bare surface reaches nobody",
     );
+
+    // `scroll_lines_at` is `move_to` + `scroll_lines`, so the bare form
+    // aims at wherever the pointer was left — here still OUTSIDE, which
+    // is why a separate `move_to` is what re-aims it.
+    harness.scroll_lines(Vec2::new(0.0, 3.0));
+    assert_eq!(
+        harness.response_in(scroller, build).scroll.lines.y,
+        0.0,
+        "a bare scroll inherits the last position, it does not re-aim",
+    );
+
+    harness.move_to(INSIDE);
+    harness.scroll_lines(Vec2::new(0.0, 3.0));
+    assert_eq!(
+        harness.response_in(scroller, build).scroll.lines.y,
+        3.0,
+        "…and lands once the pointer is moved onto the target",
+    );
+
+    // Pinch routes by the same last-position rule; `pinch_at` returns
+    // the zoom's own delta, not the positioning move's.
+    let zoomer = WidgetId::from_hash("zoomer");
+    let zoom_build = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(zoomer)
+            .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+            .sense(Sense::PINCH)
+            .show(ui, |_| {});
+    };
+    let mut pinched = UiHarness::new(SURFACE);
+    pinched.prime(2, zoom_build);
+    assert!(
+        pinched.pinch_at(INSIDE, 1.5).requests_repaint,
+        "a pinch that lands on a zoom target wakes the next frame",
+    );
+    assert_eq!(
+        pinched.response_in(zoomer, zoom_build).scroll.zoom,
+        1.5,
+        "the zoom factor reaches the widget under the pointer",
+    );
 }
 
 #[test]

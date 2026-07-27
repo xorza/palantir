@@ -1,7 +1,6 @@
 mod zoom_config;
 
 use crate::Ui;
-use crate::input::InputEvent;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -132,7 +131,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     h.move_to(Vec2::new(50.0, 50.0));
     assert_eq!(h.ui.input.scroll_target, Some(inner_id));
     assert_eq!(h.ui.input.pinch_target, Some(outer_id));
-    assert!(h.on_input(InputEvent::Zoom(1.5)).requests_repaint);
+    assert!(h.pinch(1.5).requests_repaint);
     h.frame(build);
 
     let outer_zoom = h.ui.state_mut::<ScrollState>(outer_id).zoom;
@@ -202,7 +201,7 @@ fn wheel_delta_advances_offset_with_clamp() {
         h.frame(|ui| build(ui, *viewport_h, *content_h));
         h.move_to(Vec2::new(50.0, 50.0));
         for wheel_y in *pushes {
-            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
+            h.scroll_pixels(Vec2::new(0.0, *wheel_y));
             h.frame(|ui| build(ui, *viewport_h, *content_h));
         }
 
@@ -236,12 +235,12 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
     h.move_to(Vec2::new(50.0, 50.0));
     // Pan left/up: large negative wheel delta should clamp at `-m` on
     // both axes (margin is symmetric and zoom is 1.0).
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
+    h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
     h.frame(build_m);
     assert_eq!(read_state(&mut h).offset, Vec2::new(-m, -m));
     // Pan back the other way: clamp at `raw_slack + m`. Raw slack =
     // 400 - 200 = 200; total max = 200 + 100 = 300.
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
+    h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
     h.frame(build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
@@ -269,8 +268,7 @@ fn horizontal_scroll_pans_only_x() {
             });
     };
     h.frame(build_h);
-    h.move_to(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(75.0, 200.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 20.0), Vec2::new(75.0, 200.0));
 
     h.frame(build_h);
     let id = WidgetId::from_hash("hscroll");
@@ -297,8 +295,7 @@ fn both_axis_scroll_pans_both_axes() {
             });
     };
     h.frame(build_xy);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(40.0, 60.0));
 
     h.frame(build_xy);
     let id = WidgetId::from_hash("xy");
@@ -552,7 +549,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 
         h.move_to(Vec2::new(pointer.0, pointer.1));
         for &(px, py) in pans {
-            h.on_input(InputEvent::ScrollPixels(Vec2::new(px, py)));
+            h.scroll_pixels(Vec2::new(px, py));
             h.frame(build);
         }
 
@@ -565,7 +562,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         );
 
         for &pinch in pinches {
-            h.on_input(InputEvent::Zoom(pinch));
+            h.pinch(pinch);
             h.frame(build);
         }
 
@@ -651,8 +648,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
         row.offset = Vec2::new(0.0, -50.0);
     }
 
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     h.frame(build);
 
     let after = *h.ui.state_mut::<ScrollState>(id);
@@ -662,7 +658,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
         after.offset.y,
     );
 
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
+    h.scroll_pixels(Vec2::new(0.0, -5.0));
     h.frame(build);
     let after2 = *h.ui.state_mut::<ScrollState>(id);
     assert!(
@@ -689,8 +685,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
             });
     };
     h.frame(build);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::Zoom(0.5));
+    h.pinch_at(Vec2::new(50.0, 50.0), 0.5);
     h.frame(build);
 
     let id = WidgetId::from_hash("scroll");
@@ -699,7 +694,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     assert_eq!(zoomed.zoom, 0.5);
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
+    h.scroll_pixels(Vec2::new(0.0, -10.0));
     h.frame(build);
     let panned = *h.ui.state_mut::<ScrollState>(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
@@ -736,8 +731,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         let response = h.ui.response_for(id);
         let layout = response.layout_rect.expect("scroll arranged");
         let pointer = response.transform.apply_point(layout.min + logical_pointer);
-        h.move_to(pointer);
-        h.on_input(InputEvent::Zoom(1.5));
+        h.pinch_at(pointer, 1.5);
         h.frame(build);
 
         let state = *h.ui.state_mut::<ScrollState>(id);
@@ -752,7 +746,6 @@ fn pointer_zoom_pivot_is_scale_invariant() {
 
 mod bars {
     use crate::Ui;
-    use crate::input::InputEvent;
     use crate::layout::scrollbars::bar_geometry;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
@@ -999,9 +992,8 @@ mod bars {
             );
         }
 
-        h.move_to(Vec2::new(50.0, 50.0));
-        h.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
-        h.on_input(InputEvent::Zoom(1.5));
+        h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(40.0, 60.0));
+        h.pinch(1.5);
         h.frame(build);
         let state = *h.ui.state_mut::<ScrollState>(outer_id);
         assert_eq!(scroll_viewport(&h.ui, outer_id), Size::new(200.0, 200.0));
@@ -1154,8 +1146,7 @@ mod bars {
 
         let mut travelled = Vec::new();
         for _ in 0..8 {
-            h.move_to(Vec2::new(100.0, 100.0));
-            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 37.0)));
+            h.scroll_pixels_at(Vec2::new(100.0, 100.0), Vec2::new(0.0, 37.0));
             h.frame(build);
             let r = thumb_rects(&h.ui, "scroll")[0];
             travelled.push(r.min.y);
@@ -1203,8 +1194,7 @@ mod bars {
         let mut seen = Vec::new();
         for _ in 0..4 {
             // Wheel input routes to whatever the pointer is over.
-            h.move_to(Vec2::new(100.0, 100.0));
-            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+            h.scroll_pixels_at(Vec2::new(100.0, 100.0), Vec2::new(0.0, 50.0));
             h.frame(build);
             let now = thumb_rects(&h.ui, "scroll");
             assert_eq!(now.len(), 1, "thumb must not vanish mid-scroll");
@@ -1987,7 +1977,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
         ctrl: true,
         ..Modifiers::NONE
     });
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
+    h.scroll_pixels(Vec2::new(0.0, 38.4));
     h.frame(build_zoom);
 
     let after_zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
@@ -2032,7 +2022,7 @@ fn wheel_zoom_step_is_font_independent() {
             ctrl: true,
             ..Modifiers::NONE
         });
-        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        h.scroll_lines(Vec2::new(0.0, 1.0));
         h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
@@ -2065,8 +2055,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
                 .with_line_height_mult(*line_height_mult);
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
         h.frame(build_v);
-        h.move_to(Vec2::new(50.0, 50.0));
-        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        h.scroll_lines_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 1.0));
         h.frame(build_v);
 
         let scroll_id = WidgetId::from_hash("scroll");
@@ -2090,8 +2079,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     let mut h = UiHarness::new(SURFACE);
     // Scroll an 800px content to the bottom of a 200px viewport.
     h.frame(|ui| build(ui, 200.0, 800.0));
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10_000.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 10_000.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(
         read_state(&mut h).offset.y,
@@ -2131,8 +2119,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
 
     // Scroll the viewport: the offset shifts, so the content re-arranges
     // and the cascade must re-run.
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 50.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
     assert!(

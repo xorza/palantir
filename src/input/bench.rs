@@ -179,10 +179,7 @@ pub fn bench(c: &mut Criterion) {
         c.bench_function("input/scroll_stream", |b| {
             b.iter(|| {
                 let t = i as f32 * 0.05;
-                let d = ui.on_input(InputEvent::ScrollPixels(Vec2::new(
-                    t.cos() * 5.0,
-                    (t * 0.7).cos() * 5.0,
-                )));
+                let d = ui.scroll_pixels(Vec2::new(t.cos() * 5.0, (t * 0.7).cos() * 5.0));
                 i = i.wrapping_add(1);
                 black_box(d);
             });
@@ -198,8 +195,7 @@ pub fn bench(c: &mut Criterion) {
                 // a scroll, occasional click.
                 ui.move_to(pointer_at(i));
                 ui.move_to(pointer_at(i.wrapping_add(1)));
-                ui.move_to(pointer_at(i.wrapping_add(2)));
-                ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)));
+                ui.scroll_pixels_at(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
                 if i.is_multiple_of(16) {
                     ui.press();
                     ui.release();

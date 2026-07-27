@@ -140,8 +140,7 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(empty_watch_scroll);
-    h.move_to(Vec2::new(50.0, 50.0));
-    let delta = h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
+    let delta = h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
 
     assert!(delta.requests_repaint);
     assert!(h.ui.input.frame_target_deltas.is_empty());
@@ -182,9 +181,8 @@ fn scroll_and_pinch_wake_categories_are_independent() {
             empty(ui);
             ui.watch_pointer(*watched);
         });
-        h.move_to(Vec2::new(50.0, 50.0));
-        let scroll = h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 7.0)));
-        let zoom = h.on_input(InputEvent::Zoom(1.25));
+        let scroll = h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
+        let zoom = h.pinch(1.25);
 
         assert_eq!(
             scroll.requests_repaint, *wants_scroll,
