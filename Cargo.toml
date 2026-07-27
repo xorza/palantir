@@ -2,7 +2,6 @@
 name = "palantir"
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.89"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
 repository = "https://github.com/xorza/palantir"
