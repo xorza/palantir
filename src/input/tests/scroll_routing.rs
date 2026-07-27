@@ -28,11 +28,10 @@ fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
     let mut h = UiHarness::new(surface);
     h.frame(build_two_gesture_targets);
 
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(2.0, 3.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(2.0, 3.0));
     h.move_to(Vec2::new(150.0, 50.0));
     if second_delta {
-        h.on_input(InputEvent::ScrollLines(Vec2::new(4.0, 5.0)));
+        h.scroll_lines(Vec2::new(4.0, 5.0));
     }
 
     let mut observed = None;
@@ -85,8 +84,7 @@ fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
     let surface = UVec2::new(200, 100);
     let mut h = UiHarness::new(surface);
     h.frame(build_two_gesture_targets);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(7.0, 11.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(7.0, 11.0));
     h.on_input(InputEvent::PointerLeft);
 
     let mut observed = None;
@@ -110,11 +108,9 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
     let surface = UVec2::new(200, 100);
     let mut h = UiHarness::new(surface);
     h.frame(build_two_gesture_targets);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::Zoom(1.1));
-    h.on_input(InputEvent::Zoom(1.05));
-    h.move_to(Vec2::new(150.0, 50.0));
-    h.on_input(InputEvent::Zoom(0.5));
+    h.pinch_at(Vec2::new(50.0, 50.0), 1.1);
+    h.pinch(1.05);
+    h.pinch_at(Vec2::new(150.0, 50.0), 0.5);
 
     let mut observed = None;
     h.frame(|ui| {
@@ -149,8 +145,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
             });
     };
     h.frame(build);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     let inner_id = WidgetId::from_hash("inner");
     let outer_id = WidgetId::from_hash("outer");
     let mut inner_d = Vec2::ZERO;
@@ -178,8 +173,7 @@ fn scroll_delta_zero_for_non_target() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
     let unrelated = WidgetId::from_hash("nope");
     let mut d = Vec2::new(1.0, 1.0);
     h.frame(|ui| {
@@ -204,7 +198,7 @@ fn pointer_left_clears_scroll_target() {
     h.frame(build);
     h.move_to(Vec2::new(50.0, 50.0));
     h.on_input(InputEvent::PointerLeft);
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
+    h.scroll_pixels(Vec2::new(0.0, 5.0));
     let id = WidgetId::from_hash("scroller");
     let mut d = Vec2::new(1.0, 1.0);
     h.frame(|ui| {
@@ -232,8 +226,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     };
     h.frame(build);
 
-    h.move_to(Vec2::new(150.0, 150.0));
-    let scroll = h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 12.0)));
+    let scroll = h.scroll_pixels_at(Vec2::new(150.0, 150.0), Vec2::new(0.0, 12.0));
     assert!(
         !scroll.requests_repaint,
         "scroll with no current target must be discarded",
@@ -271,9 +264,8 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
-    h.on_input(InputEvent::Zoom(1.5));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
+    h.pinch(1.5);
     let mut scroll_pixels = Vec2::ZERO;
     let mut zoom_factor = f32::NAN;
     h.frame(|ui| {
@@ -310,9 +302,8 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
-    h.on_input(InputEvent::Zoom(1.5));
+    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
+    h.pinch(1.5);
     let mut scroll_pixels = Vec2::new(1.0, 1.0);
     let mut zoom_factor = f32::NAN;
     h.frame(|ui| {

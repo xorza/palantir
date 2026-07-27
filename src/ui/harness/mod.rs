@@ -472,22 +472,38 @@ impl UiHarness {
         self.move_to(pos)
     }
 
-    /// Scroll and pinch carry no position of their own: the target is
-    /// whatever the pointer was last over, so these move it first.
-    /// Positive `y` means the content scrolls down.
-    pub fn scroll_lines_at(&mut self, pos: Vec2, delta: Vec2) {
-        self.move_to(pos);
-        self.ui.on_input(InputEvent::ScrollLines(delta));
+    /// Scroll and pinch carry no position of their own: `InputState`
+    /// routes them to whatever the pointer was last over. These bare
+    /// forms are for a gesture deliberately separated from the move that
+    /// aimed it — the `_at` peers below are the same events with the aim
+    /// inlined. Positive `y` means the content scrolls down.
+    pub fn scroll_lines(&mut self, delta: Vec2) -> InputDelta {
+        self.ui.on_input(InputEvent::ScrollLines(delta))
     }
 
-    pub fn scroll_pixels_at(&mut self, pos: Vec2, delta: Vec2) {
-        self.move_to(pos);
-        self.ui.on_input(InputEvent::ScrollPixels(delta));
+    pub fn scroll_pixels(&mut self, delta: Vec2) -> InputDelta {
+        self.ui.on_input(InputEvent::ScrollPixels(delta))
     }
 
-    pub fn pinch_at(&mut self, pos: Vec2, factor: f32) {
+    pub fn pinch(&mut self, factor: f32) -> InputDelta {
+        self.ui.on_input(InputEvent::Zoom(factor))
+    }
+
+    /// Aim, then scroll — the delta returned is the scroll's, not the
+    /// positioning move's.
+    pub fn scroll_lines_at(&mut self, pos: Vec2, delta: Vec2) -> InputDelta {
         self.move_to(pos);
-        self.ui.on_input(InputEvent::Zoom(factor));
+        self.scroll_lines(delta)
+    }
+
+    pub fn scroll_pixels_at(&mut self, pos: Vec2, delta: Vec2) -> InputDelta {
+        self.move_to(pos);
+        self.scroll_pixels(delta)
+    }
+
+    pub fn pinch_at(&mut self, pos: Vec2, factor: f32) -> InputDelta {
+        self.move_to(pos);
+        self.pinch(factor)
     }
 
     /// A non-repeat press whose `physical` is [`Key::Other`]. That is

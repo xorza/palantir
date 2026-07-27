@@ -556,10 +556,9 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     // Move pointer well outside the popup body, then send a scroll
     // + zoom + middle-drag burst.
     let outside = Vec2::new(300.0, 300.0);
-    h.move_to(outside);
-    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
-    h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
-    h.on_input(InputEvent::Zoom(1.4));
+    h.scroll_pixels_at(outside, Vec2::new(0.0, 25.0));
+    h.scroll_lines(Vec2::new(0.0, 3.0));
+    h.pinch(1.4);
     h.press_button(PointerButton::Middle);
     h.move_to(outside + Vec2::new(40.0, 0.0));
     h.release_button(PointerButton::Middle);
