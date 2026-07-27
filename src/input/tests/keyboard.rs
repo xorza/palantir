@@ -162,11 +162,7 @@ fn a_modal_layer_claim_retains_or_releases_both_streams() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 80));
     h.ui.input.focused = Some(WidgetId::from_hash("editor"));
     h.ui.watch_pointer(crate::input::watch::PointerWake::BUTTONS);
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Escape,
-    });
+    h.key(Key::Escape);
     h.press_button_at(
         crate::input::pointer::PointerButton::Left,
         glam::Vec2::new(5.0, 5.0),

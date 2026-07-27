@@ -13,22 +13,14 @@ fn multiline_enter_inserts_newline() {
         st.edit.caret = 3;
     }
     h.frame(multiline_editor(&mut buf));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Enter,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Enter);
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('d'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('d'));
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "abc\nd");
 }
@@ -71,15 +63,11 @@ fn multiline_paste_keeps_newlines() {
     let ed_id = WidgetId::from_hash("ml-ed");
     h.request_focus(Some(ed_id));
     h.frame(multiline_editor(&mut buf));
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         ctrl: true,
         ..Modifiers::NONE
-    }));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('v'),
-        repeat: false,
-        physical: Key::Other,
     });
+    h.key(Key::Char('v'));
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
@@ -101,15 +89,11 @@ fn multiline_selection_crosses_newline() {
         st.edit.caret = 3;
     }
     h.frame(multiline_editor(&mut buf));
-    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+    h.set_modifiers(Modifiers {
         shift: true,
         ..Modifiers::NONE
-    }));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::ArrowDown,
-        repeat: false,
-        physical: Key::Other,
     });
+    h.key(Key::ArrowDown);
     h.frame(multiline_editor(&mut buf));
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(

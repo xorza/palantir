@@ -105,11 +105,7 @@ fn caret_blinks_on_and_off_while_focused() {
         !caret_painted(&h.ui, leaf.unwrap()),
         "precondition: hidden phase before keystroke",
     );
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('a'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('a'));
     frame_at(&mut h, 1.75, |ui| body(ui, &mut buf, &mut leaf));
     assert!(
         caret_painted(&h.ui, leaf.unwrap()),

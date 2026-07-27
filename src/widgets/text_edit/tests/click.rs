@@ -11,16 +11,7 @@ fn typing_inserts_text_when_focused() {
     h.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('h'),
-        repeat: false,
-        physical: Key::Other,
-    });
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('i'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.type_text("hi");
 
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "hi");
@@ -31,11 +22,7 @@ fn keystrokes_ignored_when_not_focused() {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('x'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('x'));
 
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
@@ -52,14 +39,7 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
 
     h.frame(editor_only(&mut buf));
     assert!(h.focused_id().is_none());
-    assert!(
-        !h.on_input(InputEvent::KeyDown {
-            key: Key::Escape,
-            repeat: false,
-            physical: Key::Other,
-        })
-        .requests_repaint,
-    );
+    assert!(!h.key(Key::Escape).requests_repaint,);
     assert!(
         !h.on_input(InputEvent::Text(TextChunk::new("stale").unwrap()))
             .requests_repaint,
@@ -87,11 +67,7 @@ fn escape_blurs_focus() {
     h.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Escape);
     h.frame(editor_only(&mut buf));
     assert_eq!(h.focused_id(), None);
 }
@@ -105,19 +81,11 @@ fn caret_clamps_after_external_buffer_shrink() {
 
     h.frame(editor_only(&mut buf));
     h.click_at(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::End,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::End);
     h.frame(editor_only(&mut buf));
 
     buf = String::from("hi");
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('!'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('!'));
     h.frame(editor_only(&mut buf));
     assert_eq!(
         buf, "hi!",
@@ -150,11 +118,7 @@ fn pointer_state_respects_pointer_left() {
     h.frame(editor_only(&mut buf));
     h.click_at(Vec2::new(50.0, 20.0));
     h.on_input(InputEvent::PointerLeft);
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('z'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('z'));
 
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "z");
@@ -178,11 +142,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
         "default ClearOnMiss drops focus when clicking a non-focusable Button",
     );
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('x'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('x'));
     h.frame(editor_and_button(&mut buf));
     assert_eq!(buf, "");
 }
@@ -198,11 +158,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     h.frame(editor_and_button(&mut buf));
     h.click_at(Vec2::new(200.0, 20.0));
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('x'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('x'));
     h.frame(editor_and_button(&mut buf));
     assert_eq!(buf, "x");
 }
@@ -215,19 +171,11 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
 
     h.frame(editor_only(&mut buf));
     h.click_at(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::End,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::End);
     h.frame(editor_only(&mut buf));
 
     h.move_to(Vec2::new(10.0, 20.0));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('!'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('!'));
 
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "ab!");
@@ -244,11 +192,7 @@ fn click_lands_caret_at_pressed_position() {
     h.press_at(Vec2::new(32.0, 20.0));
 
     h.frame(editor_at(&mut buf, None));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('X'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('X'));
     h.frame(editor_at(&mut buf, None));
     h.release();
 
@@ -267,11 +211,7 @@ fn click_uses_overridden_padding() {
     h.press_at(Vec2::new(32.0, 20.0));
 
     h.frame(editor_at(&mut buf, pad));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('X'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('X'));
     h.frame(editor_at(&mut buf, pad));
     h.release();
 
@@ -418,11 +358,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     h.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id_a));
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('1'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('1'));
     h.frame(|ui| body(ui, &mut a, &mut b));
     assert_eq!(a, "1");
     assert_eq!(b, "");
@@ -430,11 +366,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     h.click_at(Vec2::new(250.0, 20.0));
     assert_eq!(h.focused_id(), Some(id_b));
 
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('2'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Char('2'));
     h.frame(|ui| body(ui, &mut a, &mut b));
     assert_eq!(a, "1", "A's buffer untouched once focus moved to B");
     assert_eq!(b, "2");

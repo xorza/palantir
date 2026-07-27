@@ -1,6 +1,5 @@
 //! End-to-end tests for `ContextMenu` + `MenuItem`.
 
-use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
@@ -144,12 +143,8 @@ fn shortcut_press_fires_item_and_dismisses() {
         ctrl: true,
         ..Modifiers::NONE
     };
-    h.on_input(InputEvent::ModifiersChanged(primary_mods));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Char('C'),
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.set_modifiers(primary_mods);
+    h.key(Key::Char('C'));
     let mut copied = false;
     let mut dismissed = false;
     h.frame(|ui| build(ui, &mut copied, &mut dismissed));
@@ -170,11 +165,7 @@ fn escape_dismisses_menu() {
     assert!(menu_open(&h.ui));
 
     // Inject an Escape press.
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Escape,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Escape);
     let mut copied = false;
     let mut dismissed = false;
     h.frame(|ui| build(ui, &mut copied, &mut dismissed));

@@ -190,11 +190,7 @@ fn caret_tracks_aligned_text() {
     // resolved align offset.
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click_at(glam::Vec2::new(260.0, 20.0));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::End,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::End);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     let (text_origin, caret_origin) = shape_origins(&h.ui, node);
@@ -312,11 +308,7 @@ fn selection_rects_offset_matches_text() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click_at(glam::Vec2::new(260.0, 20.0));
-    h.on_input(InputEvent::KeyDown {
-        key: Key::Home,
-        repeat: false,
-        physical: Key::Other,
-    });
+    h.key(Key::Home);
     shift_arrow_right(&mut h.ui);
     shift_arrow_right(&mut h.ui);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
