@@ -403,27 +403,41 @@ impl UiHarness {
         self.ui.on_input(InputEvent::PointerMoved(pos))
     }
 
-    pub fn pointer_left(&mut self) {
-        self.ui.on_input(InputEvent::PointerLeft);
+    pub fn pointer_left(&mut self) -> InputDelta {
+        self.ui.on_input(InputEvent::PointerLeft)
     }
 
-    pub fn press_at(&mut self, pos: Vec2) {
-        self.press_button_at(PointerButton::Left, pos);
+    /// Press wherever the pointer already is — the peer of
+    /// [`Self::release`], for a press deliberately separated from the
+    /// move that positioned it. The press origin is read back from
+    /// `InputState` rather than a second copy on this type, so a press
+    /// that follows a raw `PointerMoved` still latches
+    /// [`Self::drag_to`]'s threshold check.
+    pub fn press(&mut self) -> InputDelta {
+        self.press_button(PointerButton::Left)
     }
 
-    pub fn press_button_at(&mut self, button: PointerButton, pos: Vec2) {
+    pub fn press_button(&mut self, button: PointerButton) -> InputDelta {
+        self.pressed_at = self.ui.input.pointer_pos;
+        self.ui.on_input(InputEvent::PointerPressed(button))
+    }
+
+    pub fn press_at(&mut self, pos: Vec2) -> InputDelta {
+        self.press_button_at(PointerButton::Left, pos)
+    }
+
+    pub fn press_button_at(&mut self, button: PointerButton, pos: Vec2) -> InputDelta {
         self.move_to(pos);
-        self.pressed_at = Some(pos);
-        self.ui.on_input(InputEvent::PointerPressed(button));
+        self.press_button(button)
     }
 
-    pub fn release(&mut self) {
-        self.release_button(PointerButton::Left);
+    pub fn release(&mut self) -> InputDelta {
+        self.release_button(PointerButton::Left)
     }
 
-    pub fn release_button(&mut self, button: PointerButton) {
+    pub fn release_button(&mut self, button: PointerButton) -> InputDelta {
         self.pressed_at = None;
-        self.ui.on_input(InputEvent::PointerReleased(button));
+        self.ui.on_input(InputEvent::PointerReleased(button))
     }
 
     pub fn click_at(&mut self, pos: Vec2) {

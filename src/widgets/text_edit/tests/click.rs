@@ -250,7 +250,7 @@ fn click_lands_caret_at_pressed_position() {
         physical: Key::Other,
     });
     h.frame(editor_at(&mut buf, None));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
 
     assert_eq!(buf, "helXlo world");
 }
@@ -273,7 +273,7 @@ fn click_uses_overridden_padding() {
         physical: Key::Other,
     });
     h.frame(editor_at(&mut buf, pad));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
 
     assert_eq!(buf, "hXello world");
 }

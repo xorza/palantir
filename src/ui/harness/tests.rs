@@ -278,6 +278,35 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
         UiHarness::new(SURFACE).drag_to(INSIDE);
     }));
     assert!(unpressed.is_err(), "drag_to needs a press first");
+
+    // `press` latches the same origin as `press_at` — it reads the
+    // pointer back out of `InputState` instead of being handed one, so a
+    // press separated from its move still arms the threshold check.
+    let mut split = UiHarness::new(SURFACE);
+    split.prime(2, button);
+    split.move_to(INSIDE);
+    assert!(
+        split.press().requests_repaint,
+        "a press latching on the button is a repaint",
+    );
+    split.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
+    assert!(
+        split.response_in(target(), button).left.drag.started(),
+        "move-then-press arms drag_to exactly as press_at does",
+    );
+
+    // Without a pointer position there is no origin to measure from, so
+    // the threshold check must refuse rather than invent one.
+    let never_moved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut harness = UiHarness::new(SURFACE);
+        harness.prime(2, button);
+        harness.press();
+        harness.drag_to(INSIDE);
+    }));
+    assert!(
+        never_moved.is_err(),
+        "a press with the pointer nowhere cannot arm a drag",
+    );
 }
 
 #[test]

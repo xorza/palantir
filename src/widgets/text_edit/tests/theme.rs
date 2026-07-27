@@ -447,7 +447,7 @@ fn drag_select_extends_selection() {
     // Drag to offset 4 (x = 40) — still pressed.
     h.drag_to(Vec2::new(40.0, 20.0));
     h.frame(editor_at(&mut buf, None));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
 
     // Type 'X' — replaces the selected range.
     h.on_input(InputEvent::KeyDown {

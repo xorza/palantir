@@ -93,7 +93,7 @@ fn held_is_rect_independent_unlike_pressed() {
     );
 
     // Press inside: both live, pointer is over the widget.
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press();
     let r = h.response_in(id(), build_clickable);
     assert!(
         r.left.held() && r.pressed(),
@@ -102,7 +102,7 @@ fn held_is_rect_independent_unlike_pressed() {
 
     // Drag well outside the 100×100 rect: `pressed` drops (no longer
     // hovered), `held` stays — the capture is still latched.
-    h.move_to(Vec2::new(300.0, 300.0));
+    h.drag_to(Vec2::new(300.0, 300.0));
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.held(), "held survives the pointer leaving the rect");
     assert!(
@@ -111,7 +111,7 @@ fn held_is_rect_independent_unlike_pressed() {
     );
 
     // Release ends the capture: held clears.
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let r = h.response_in(id(), build_clickable);
     assert!(!r.left.held() && !r.pressed(), "release clears the capture");
 }
@@ -131,7 +131,7 @@ fn drag_delta_clears_on_release() {
             .is_some()
     );
 
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     assert_eq!(
         h.response_in(id(), build_clickable).left.drag.delta(),
         None,
@@ -166,7 +166,7 @@ fn drag_delta_none_when_pointer_left_surface() {
     assert_eq!(r.left.drag.delta(), Some(Vec2::new(60.0, 0.0)));
     assert!(!r.left.drag.started(), "re-entry resumes, not re-latches");
 
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.drag.stopped());
 }
@@ -185,7 +185,7 @@ fn drag_stopped_edge_fires_once_on_release() {
 
     // Release frame: the drag itself is gone, only the edge remains,
     // and it carries the button.
-    h.on_input(InputEvent::PointerReleased(PointerButton::Middle));
+    h.release_button(PointerButton::Middle);
     let r = h.response_in(id(), build_draggable);
     assert!(!r.middle.drag.dragging(), "release destroys the drag state");
     assert!(r.middle.drag.stopped());
@@ -205,7 +205,7 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
     h.frame(build_clickable);
     h.press_at(Vec2::new(50.0, 50.0));
     h.move_to(Vec2::new(51.0, 50.0));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
 
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.clicked(), "sub-threshold press+release is a click");
@@ -319,8 +319,8 @@ fn left_wins_over_simultaneously_latched_middle() {
     h.frame(build_draggable);
     h.press_at(Vec2::new(20.0, 20.0));
     h.drag_to(Vec2::new(40.0, 20.0)); // latches left
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.move_to(Vec2::new(100.0, 60.0)); // latches middle
+    h.press_button(PointerButton::Middle);
+    h.drag_to(Vec2::new(100.0, 60.0)); // latches middle
 
     let r = h.response_in(id(), build_draggable);
     let d = r.left.drag.delta().expect("a drag must be active");
@@ -346,12 +346,12 @@ fn releasing_priority_button_promotes_lower_priority() {
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
     h.press_at(Vec2::new(20.0, 20.0));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
-    h.move_to(Vec2::new(80.0, 60.0)); // both latch
+    h.press_button(PointerButton::Middle);
+    h.drag_to(Vec2::new(80.0, 60.0)); // both latch
 
     assert!(h.response_in(id(), build_draggable).left.drag.dragging());
 
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let r = h.response_in(id(), build_draggable);
     assert!(
         r.middle.drag.dragging(),

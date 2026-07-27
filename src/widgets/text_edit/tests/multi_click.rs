@@ -33,7 +33,7 @@ fn double_and_triple_click_select_word_and_all() {
     // Click 1 at x=32 (mono byte 3, inside "hello").
     h.press_at(Vec2::new(32.0, 20.0));
     frame_at(&mut h, 0.0, |ui| body(ui, &mut buf));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     frame_at(&mut h, 0.0, |ui| body(ui, &mut buf));
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 3, "single click places the caret");
@@ -41,15 +41,15 @@ fn double_and_triple_click_select_word_and_all() {
 
     // Click 2 at same pos, well inside the window → double press,
     // selects word at byte 3 → "hello".
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press();
     frame_at(&mut h, 0.1, |ui| body(ui, &mut buf));
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.sel_range(), Some(0..5), "double click selects word");
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     frame_at(&mut h, 0.1, |ui| body(ui, &mut buf));
 
     // Click 3 still inside the window → triple press → select all.
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press();
     frame_at(&mut h, 0.2, |ui| body(ui, &mut buf));
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(
@@ -57,14 +57,14 @@ fn double_and_triple_click_select_word_and_all() {
         Some(0..buf.len()),
         "triple click selects all"
     );
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     frame_at(&mut h, 0.2, |ui| body(ui, &mut buf));
 
     // Long pause (an idle frame advances the event clock, as a real
     // host's frames would), then another click restarts the run:
     // plain caret placement, no selection.
     frame_at(&mut h, 5.0, |ui| body(ui, &mut buf));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press();
     frame_at(&mut h, 5.0, |ui| body(ui, &mut buf));
     let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 3, "pause resets the run to a single click");

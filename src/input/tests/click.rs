@@ -1,6 +1,4 @@
 use crate::Ui;
-use crate::input::InputEvent;
-use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -450,9 +448,9 @@ fn left_and_right_click_are_independent() {
     // Left-press, then a right press+release while left is still held —
     // both should latch separately.
     h.press_at(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Right));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Right));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.press_button(PointerButton::Right);
+    h.release_button(PointerButton::Right);
+    h.release();
 
     let mut lc = false;
     let mut rc = false;
@@ -509,25 +507,25 @@ fn press_started_counts_multi_press_runs() {
 
     h.press_at(Vec2::new(50.0, 20.0));
     assert_eq!(probe(&mut h), (true, 1), "first press starts a run");
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     assert_eq!(
         probe(&mut h),
         (false, 0),
         "edge + count clear off the press frame"
     );
 
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press();
     assert_eq!(probe(&mut h), (true, 2), "same-spot follow-up chains");
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     probe(&mut h);
 
-    h.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    h.press();
     assert_eq!(probe(&mut h), (true, 3), "third press keeps counting");
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     probe(&mut h);
 
     // Past DOUBLE_CLICK_RADIUS (5 px): the run restarts.
     h.press_at(Vec2::new(80.0, 20.0));
     assert_eq!(probe(&mut h), (true, 1), "far press restarts the run");
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
 }

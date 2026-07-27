@@ -1,5 +1,4 @@
 use crate::Ui;
-use crate::input::InputEvent;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
@@ -782,7 +781,6 @@ fn popup_eater_does_not_force_full_repaint() {
 /// `Full` through the dropped-frame recovery path.
 #[test]
 fn click_on_empty_bg_does_not_force_full() {
-    use crate::input::pointer::PointerButton;
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::vstack()
@@ -806,7 +804,7 @@ fn click_on_empty_bg_does_not_force_full() {
 
     // Click on empty background (far from the 50×50 frame at origin).
     h.press_at(Vec2::new(180.0, 180.0));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let click_plan = h.frame(build).plan;
     assert!(
         !matches!(

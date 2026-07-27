@@ -566,9 +566,9 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
     h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
     h.on_input(InputEvent::Zoom(1.4));
-    h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
+    h.press_button(PointerButton::Middle);
     h.move_to(outside + Vec2::new(40.0, 0.0));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Middle));
+    h.release_button(PointerButton::Middle);
 
     h.frame(scene);
     let bg = h.ui.response_for(bg_id);

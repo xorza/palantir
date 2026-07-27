@@ -101,7 +101,7 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
 
     // Release: exactly one commit (in exactly one record pass), carrying
     // the final scrubbed value into the stale-seeded draft.
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.committed, "release commits the scrub");
     assert_eq!(s.commits, 1, "one commit, one record pass");
@@ -178,7 +178,7 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed && !s.committed, "resumed drag keeps writing");
 
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.committed && s.commits == 1);
     assert_eq!(canonical, 35.0, "one gesture, one commit, full travel");
@@ -206,7 +206,7 @@ fn transient_disable_does_not_swallow_the_gesture() {
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.changed, "scrub resumes after the disable blip");
 
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.committed && s.commits == 1, "release still commits");
     assert_eq!(canonical, 35.0);
@@ -225,7 +225,7 @@ fn release_while_disabled_drops_the_gesture() {
 
     // Released on a disabled frame: a locked control emits no edit, and
     // the gesture is over — a later enabled frame must not revive it.
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, true);
     assert!(!s.committed, "disabled release drops the gesture");
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
@@ -247,7 +247,7 @@ fn non_left_drags_do_not_scrub() {
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.changed && !s.committed, "right drag must not scrub");
 
-    h.on_input(InputEvent::PointerReleased(PointerButton::Right));
+    h.release_button(PointerButton::Right);
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "right release must not commit");
     assert_eq!(canonical, 10.0);
@@ -263,7 +263,7 @@ fn click_to_edit_types_and_commits_on_enter() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     h.press_at(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed, "the click itself commits nothing");
 
@@ -371,7 +371,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
 
     // The release lands on an editor frame, so no scrub commit may surface
     // now or later.
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.committed, "disarmed scrub must not commit into the edit");
 

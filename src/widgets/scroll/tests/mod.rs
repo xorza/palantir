@@ -1872,7 +1872,6 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
     // Both axes follow the same code path; pin both so the symmetric
     // helper can't drift. For each axis: click far end of track →
     // page forward by one viewport; click near end → page back to 0.
-    use crate::input::pointer::PointerButton;
     enum AxisCase {
         V,
         H,
@@ -1923,7 +1922,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             let back_press = track.transform.apply_point(layout.min + back_local);
 
             h.press_at(forward_press);
-            h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            h.release();
             h.frame(build_axis);
             let offset = h.ui.state_mut::<ScrollState>(outer_id).offset;
             let forward = match axis {
@@ -1936,7 +1935,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             );
 
             h.press_at(back_press);
-            h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            h.release();
             h.frame(build_axis);
             let offset = h.ui.state_mut::<ScrollState>(outer_id).offset;
             let back = match axis {

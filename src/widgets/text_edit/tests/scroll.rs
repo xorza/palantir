@@ -128,7 +128,7 @@ fn click_hit_test_compensates_for_scroll() {
     // Without compensation it'd land on byte 0.
     h.press_at(Vec2::new(8.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
-    h.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    h.release();
     h.frame(|ui| body(ui, &mut buf));
 
     let caret = h.ui.state_mut::<TextEditState>(ed_id).edit.caret;
