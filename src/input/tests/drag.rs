@@ -1,5 +1,4 @@
 use crate::Ui;
-use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;
@@ -146,7 +145,7 @@ fn drag_delta_none_when_pointer_left_surface() {
     h.frame(build_clickable);
     h.press_at(Vec2::new(40.0, 40.0));
     h.drag_to(Vec2::new(90.0, 40.0));
-    h.on_input(InputEvent::PointerLeft);
+    h.pointer_left();
 
     // Off-surface, the drag is unobservable — but it has NOT stopped:
     // the capture stays latched, so no stop edge may fire here. A

@@ -5,6 +5,7 @@
 use super::*;
 use crate::input::keyboard::KeyboardEvent;
 use crate::layout::types::sizing::Sizing;
+use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
 use crate::widgets::button::Button;
@@ -224,14 +225,6 @@ fn the_clock_only_reaches_input_through_a_frame() {
 }
 
 #[test]
-fn double_click_at_is_two_clicks_inside_the_window() {
-    let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
-    harness.double_click_at(INSIDE);
-    assert!(harness.response_in(target(), button).left.double_clicked());
-}
-
-#[test]
 fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
@@ -310,9 +303,9 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
 }
 
 #[test]
-fn modifiers_are_sticky_and_key_mods_restores_them() {
-    // Rule 13. `ModifiersChanged` carries a snapshot that persists, so a
-    // helper that sets them for one key must put them back.
+fn modifiers_are_sticky_until_set_back() {
+    // Rule 13. `ModifiersChanged` carries a snapshot that persists, so
+    // every later key inherits it until something sets it back.
     let ctrl = Modifiers {
         ctrl: true,
         ..Modifiers::NONE
@@ -322,24 +315,19 @@ fn modifiers_are_sticky_and_key_mods_restores_them() {
     // The set under test is `InputState`'s, not a copy on the harness —
     // a copy desyncs the moment one modifier goes through `on_input`,
     // and `set_modifiers` would then suppress the emit that clears it.
-    harness.key_mods(Key::Char('a'), ctrl);
-    assert_eq!(
-        harness.ui.input.modifiers,
-        Modifiers::NONE,
-        "key_mods restores the previous set",
-    );
-
     harness.set_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
         harness.ui.input.modifiers, ctrl,
-        "set_modifiers is the sticky path"
+        "the key does not consume the chord",
     );
 
-    harness.key_mods(Key::Char('c'), Modifiers::NONE);
+    harness.set_modifiers(Modifiers::NONE);
+    harness.key(Key::Char('c'));
     assert_eq!(
-        harness.ui.input.modifiers, ctrl,
-        "…and key_mods restores back onto it"
+        harness.ui.input.modifiers,
+        Modifiers::NONE,
+        "…and it stays cleared once set back",
     );
 
     // Mixing the raw door with the helper must stay coherent: the raw
@@ -532,30 +520,6 @@ fn scale_makes_the_surface_physical_and_positions_logical() {
 }
 
 #[test]
-fn prime_stable_stops_when_rects_stop_moving() {
-    let mut harness = UiHarness::new(SURFACE);
-    harness.prime_stable(8, button);
-
-    let rect = harness.rect(target()).expect("converged with a rect");
-    assert_eq!(rect.size.w, 100.0);
-
-    // A layout that never settles must say so rather than silently
-    // returning a mid-animation frame.
-    let never = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut harness = UiHarness::new(SURFACE);
-        let mut width = 0.0f32;
-        harness.prime_stable(4, |ui| {
-            width += 10.0;
-            Panel::hstack()
-                .id(target())
-                .size((Sizing::fixed(width), Sizing::fixed(40.0)))
-                .show(ui, |_| {});
-        });
-    }));
-    assert!(never.is_err(), "non-convergence must panic");
-}
-
-#[test]
 fn collisions_surface_duplicate_explicit_ids() {
     // Two siblings under one explicit id — invisible at runtime except
     // as a magenta overlay, and invisible to a test without this.
@@ -574,7 +538,7 @@ fn collisions_surface_duplicate_explicit_ids() {
 
     let mut clean = UiHarness::new(SURFACE);
     clean.frame(button);
-    clean.assert_no_collisions();
+    assert!(clean.collisions().is_empty(), "distinct ids do not collide");
 }
 
 #[test]

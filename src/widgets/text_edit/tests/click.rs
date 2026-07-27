@@ -95,15 +95,13 @@ fn caret_clamps_after_external_buffer_shrink() {
 
 #[test]
 fn text_event_inserts_at_caret_when_focused() {
-    use crate::input::keyboard::TextChunk;
-
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
 
     h.frame(editor_only(&mut buf));
     h.click_at(Vec2::new(50.0, 20.0));
 
-    h.on_input(InputEvent::Text(TextChunk::new("héllo").unwrap()));
+    h.ime_commit("héllo");
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "héllo");
 }
@@ -117,7 +115,7 @@ fn pointer_state_respects_pointer_left() {
 
     h.frame(editor_only(&mut buf));
     h.click_at(Vec2::new(50.0, 20.0));
-    h.on_input(InputEvent::PointerLeft);
+    h.pointer_left();
     h.key(Key::Char('z'));
 
     h.frame(editor_only(&mut buf));
@@ -300,7 +298,7 @@ fn drag_select_continues_past_editor_bounds() {
 
     // Pointer leaves the surface entirely mid-drag: no position this frame,
     // but the gesture is still live — anchor and selection must persist.
-    h.on_input(InputEvent::PointerLeft);
+    h.pointer_left();
     h.frame(|ui| body(ui, &mut buf));
     {
         let st = h.ui.state_mut::<TextEditState>(ed_id);

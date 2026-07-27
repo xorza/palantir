@@ -1,5 +1,4 @@
 use crate::Ui;
-use crate::input::InputEvent;
 use crate::input::response::ScrollDelta;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
@@ -85,7 +84,7 @@ fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
     let mut h = UiHarness::new(surface);
     h.frame(build_two_gesture_targets);
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(7.0, 11.0));
-    h.on_input(InputEvent::PointerLeft);
+    h.pointer_left();
 
     let mut observed = None;
     h.frame(|ui| {
@@ -197,7 +196,7 @@ fn pointer_left_clears_scroll_target() {
     };
     h.frame(build);
     h.move_to(Vec2::new(50.0, 50.0));
-    h.on_input(InputEvent::PointerLeft);
+    h.pointer_left();
     h.scroll_pixels(Vec2::new(0.0, 5.0));
     let id = WidgetId::from_hash("scroller");
     let mut d = Vec2::new(1.0, 1.0);

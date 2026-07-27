@@ -40,9 +40,9 @@
 //! 2. **Prime before reading.** `response_for`'s `rect` / `layout_rect`
 //!    / `hovered` / `disabled` come from *last* frame's cascade. Any
 //!    input assertion needs a prior frame; a stable arranged rect needs
-//!    two ([`UiHarness::prime`]); content sized after arrange (scroll
-//!    thumbs, container text) can need more
-//!    ([`UiHarness::prime_stable`]).
+//!    two ([`UiHarness::prime`]). Content sized only after arrange
+//!    (scroll thumbs, container text) can need a third — pass the count
+//!    you need rather than guessing two.
 //! 3. **Read the response inside the record.** Between frames you get
 //!    the prior frame's input — the `frame_quiescent` snapshot is taken
 //!    at record-pass start. That is what [`UiHarness::response_in`] is.
@@ -102,8 +102,9 @@
 //!     [`scroll_lines_at`](UiHarness::scroll_lines_at) and friends take
 //!     one. Signs follow winit: positive `y` scrolls content down.
 //! 13. **Modifiers are sticky state, not per-event.**
-//!     `ModifiersChanged` carries a snapshot that persists, so
-//!     [`key_mods`](UiHarness::key_mods) restores what it set.
+//!     `ModifiersChanged` carries a snapshot that persists, so a chord
+//!     set through [`set_modifiers`](UiHarness::set_modifiers) is still
+//!     held by the *next* key until it is set back.
 //!     `Modifiers.ctrl` is platform-normalized — Cmd on macOS.
 //! 14. **Typed text arrives as `KeyDown { key: Key::Char(c) }`.** The
 //!     winit host emits `InputEvent::Text` only from `Ime::Commit` and
@@ -160,7 +161,6 @@ use crate::input::sense::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::layer::Layer;
 use crate::scene::seen_ids::Endpoint;
 use crate::text::TextShaper;
 use crate::ui::Ui;
@@ -315,29 +315,6 @@ impl UiHarness {
         }
     }
 
-    /// Frames until every arranged rect matches the previous frame's, up
-    /// to `max`. For content whose size is only known after arrange
-    /// (scroll thumbs, container text), where a fixed `2` is a guess.
-    /// Panics if it never converges — so an animated UI, which never
-    /// will, must use [`Self::prime`].
-    pub fn prime_stable(&mut self, max: u32, mut record: impl FnMut(&mut Ui)) {
-        assert!(max > 0, "prime_stable needs at least one frame");
-        let mut prev: Vec<Rect> = Vec::new();
-        for i in 0..max {
-            self.frame(&mut record);
-            let now = &self.ui.layout[Layer::Main].rect;
-            if i > 0 && prev.as_slice() == now.as_slice() {
-                return;
-            }
-            prev.clear();
-            prev.extend_from_slice(now);
-        }
-        panic!(
-            "layout did not converge within {max} frames — the arranged rects still \
-             changed on the last one. An animated subtree never converges; use `prime`."
-        );
-    }
-
     /// Move the absolute clock. Takes effect on the **next** frame, and
     /// only then do subsequent input events carry it: `Ui::frame` is what
     /// publishes the clock to the input machine, so the order is
@@ -362,6 +339,11 @@ impl UiHarness {
 
     /// `n` frames stepping `dt` each — the correct way to move an
     /// animation, since a single large jump is clamped to `MAX_ANIM_DT`.
+    ///
+    /// No caller yet: the animation suite drives absolute stamps through
+    /// [`Self::at`]. Kept because the assert below is the crate's only
+    /// guard on rule 8, and a test that trips it fails silently — it
+    /// under-integrates rather than panicking.
     pub fn advance_frames(&mut self, n: u32, dt: Duration, mut record: impl FnMut(&mut Ui)) {
         assert!(
             dt.as_secs_f32() <= MAX_ANIM_DT,
@@ -378,6 +360,10 @@ impl UiHarness {
     /// fresh press run. Without this the clock never moves, every click
     /// is simultaneous, and a second `click_at` on the same spot always
     /// reports `double_clicked`.
+    ///
+    /// No caller outside this module's own tests — the multi-click suite
+    /// uses absolute stamps. Kept as rule 7's remedy: it is where the
+    /// window constant and the mandatory intervening frame live.
     pub fn advance_past_double_click(&mut self, record: impl FnMut(&mut Ui)) {
         self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1));
         self.frame(record);
@@ -447,13 +433,6 @@ impl UiHarness {
         self.release_button(PointerButton::Right);
     }
 
-    /// Two clicks at one point with the clock still — which is what puts
-    /// them inside `DOUBLE_CLICK_WINDOW` and `DOUBLE_CLICK_RADIUS`.
-    pub fn double_click_at(&mut self, pos: Vec2) {
-        self.click_at(pos);
-        self.click_at(pos);
-    }
-
     /// Move while pressed, returning the move's [`InputDelta`] like
     /// [`Self::move_to`]. Panics if travel since the press has not
     /// crossed `DRAG_THRESHOLD` — the capture would not latch and the
@@ -517,16 +496,6 @@ impl UiHarness {
             repeat: false,
             physical: Key::Other,
         })
-    }
-
-    /// Set modifiers, emit the key, restore. Modifiers are sticky state,
-    /// so without the restore every later key inherits them.
-    pub fn key_mods(&mut self, key: Key, mods: Modifiers) -> InputDelta {
-        let saved = self.ui.input.modifiers;
-        self.set_modifiers(mods);
-        let delta = self.key(key);
-        self.set_modifiers(saved);
-        delta
     }
 
     /// Emits `ModifiersChanged` only when the set actually changes —
@@ -643,15 +612,6 @@ impl UiHarness {
                 (id_of(record.first), id_of(record.second))
             })
             .collect()
-    }
-
-    pub fn assert_no_collisions(&self) {
-        let collisions = self.collisions();
-        assert!(
-            collisions.is_empty(),
-            "{} explicit widget-id collision(s) last frame: {collisions:?}",
-            collisions.len(),
-        );
     }
 
     pub fn clipboard_text(&self) -> String {

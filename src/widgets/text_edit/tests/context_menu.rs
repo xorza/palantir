@@ -42,7 +42,7 @@ fn context_menu_cut_copy_paste_clear() {
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
     let mut h = ui_at_no_cosmic(SMALL);
-    h.ui.resources.clipboard.set("").unwrap();
+    h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
     {
@@ -56,7 +56,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 1); // row 1 == Copy
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
-    assert_eq!(h.ui.resources.clipboard.get(), "ell");
+    assert_eq!(h.clipboard_text(), "ell");
     assert!(
         !ContextMenu::is_open(&h.ui, editor_id()),
         "item click auto-closes menu",
@@ -71,7 +71,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
-    assert_eq!(h.ui.resources.clipboard.get(), "ell");
+    assert_eq!(h.clipboard_text(), "ell");
     let st = h.ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 1);
     assert_eq!(st.edit.selection, None);
@@ -95,7 +95,7 @@ fn context_menu_cut_copy_paste_clear() {
     // sanitize the same way the Cmd+V keypress does — otherwise the
     // single-line buffer ends up with literal line breaks it can't
     // render or hit-test. Earlier menu code lacked the sanitize call.
-    h.ui.resources.clipboard.set("foo\nbar").unwrap();
+    h.set_clipboard_text("foo\nbar");
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 2); // Paste
     assert_eq!(
@@ -362,6 +362,6 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         "the focused editor must not see menu commands"
     );
     assert_eq!(b, "", "Select All then Cut must execute in arrival order");
-    assert_eq!(h.ui.resources.clipboard.get(), "menu");
+    assert_eq!(h.clipboard_text(), "menu");
     assert!(!ContextMenu::is_open(&h.ui, b_id));
 }
