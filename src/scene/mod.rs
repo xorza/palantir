@@ -340,3 +340,26 @@ impl Forest {
             .map(|f| tree.records.widget_id()[f.node.idx()])
     }
 }
+
+#[cfg(test)]
+mod internals {
+    use crate::primitives::widget_id::WidgetId;
+    use crate::scene::Forest;
+    use crate::scene::layer::Layer;
+    use crate::scene::tree::node::NodeId;
+
+    impl Forest {
+        /// The node carrying `id` on `layer`. A linear scan — fine for
+        /// tests, which is the only caller; the production path reaches
+        /// nodes by `NodeId` already.
+        pub(crate) fn node_for_widget_id(&self, layer: Layer, id: WidgetId) -> NodeId {
+            let idx = self.trees[layer]
+                .records
+                .widget_id()
+                .iter()
+                .position(|widget_id| *widget_id == id)
+                .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
+            NodeId(idx as u32)
+        }
+    }
+}

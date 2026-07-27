@@ -600,7 +600,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
             });
         });
     });
-    ui.node_for_widget_id(leaf_id)
+    ui.forest.node_for_widget_id(Layer::Main, leaf_id)
 }
 
 #[derive(Debug)]

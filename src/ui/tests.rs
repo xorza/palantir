@@ -16,7 +16,6 @@ use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::frame::FrameRuntime;
 use crate::ui::harness::UiHarness;
-use crate::ui::resources::UiResources;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
 use glam::{IVec2, UVec2, Vec2};
@@ -417,7 +416,7 @@ fn empty_then_populated_frame() {
 #[should_panic(expected = "Display::scale_factor must be finite and ≥ EPSILON")]
 fn frame_rejects_zero_scale_factor() {
     let mut h = UiHarness::new(SURFACE);
-    let _ = h.ui.record_test_frame_without_baseline(
+    let _ = h.frame_at_without_baseline(
         Display::from_physical(UVec2::new(800, 600), 0.0),
         Duration::ZERO,
         |_| {},
@@ -1137,7 +1136,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    h.ui.record_test_frame(display, Duration::ZERO, |ui| {
+    h.frame_at(display, Duration::ZERO, |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
@@ -1153,13 +1152,12 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report =
-        h.ui.record_test_frame(display, Duration::from_millis(16), |ui| {
-            Frame::new()
-                .id(WidgetId::from_hash("body"))
-                .size(50.0)
-                .show(ui);
-        });
+    let report = h.frame_at(display, Duration::from_millis(16), |ui| {
+        Frame::new()
+            .id(WidgetId::from_hash("body"))
+            .size(50.0)
+            .show(ui);
+    });
     assert!(
         matches!(
             report.plan,
@@ -1180,7 +1178,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
     h.ui.debug_overlay_mut().frame_stats = false;
-    h.ui.record_test_frame_without_baseline(display, Duration::from_millis(32), |ui| {
+    h.frame_at_without_baseline(display, Duration::from_millis(32), |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
@@ -1199,11 +1197,10 @@ fn frame_stats_overlay_records_partial_damage() {
 fn request_repaint_after_queues_distinct_deadlines() {
     let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
-    let report =
-        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
-            ui.request_repaint_after(Duration::from_secs_f32(0.5));
-            ui.request_repaint_after(Duration::from_secs_f32(1.5));
-        });
+    let report = h.frame_at_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+        ui.request_repaint_after(Duration::from_secs_f32(0.5));
+        ui.request_repaint_after(Duration::from_secs_f32(1.5));
+    });
     // Earliest deadline wins the report slot.
     assert_eq!(
         report.repaint_after,
@@ -1219,8 +1216,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
 
     // Run a frame at the first deadline. The earliest entry drains;
     // the second survives.
-    let report =
-        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.5), |_| {});
+    let report = h.frame_at_without_baseline(display, Duration::from_secs_f32(0.5), |_| {});
     assert_eq!(
         report.repaint_after,
         Some(Duration::from_secs_f32(1.5)),
@@ -1229,8 +1225,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
     assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
 
     // Run a frame at the second deadline. Queue empties.
-    let report =
-        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(1.5), |_| {});
+    let report = h.frame_at_without_baseline(display, Duration::from_secs_f32(1.5), |_| {});
     assert_eq!(report.repaint_after, None);
     assert!(h.ui.frame_runtime.repaint_wakes.is_empty());
 }
@@ -1244,7 +1239,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
 fn request_repaint_after_dedups_within_frame() {
     let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
-    h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+    h.frame_at_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
         for _ in 0..10 {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
         }
@@ -1260,7 +1255,7 @@ fn request_repaint_after_dedups_within_frame() {
     // later deadline (prefer the longer wait); deadlines spaced
     // beyond the window stay distinct.
     let mut h = UiHarness::new(SURFACE);
-    h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+    h.frame_at_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
         // Earlier request first; second request lands ~4 ms later
         // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
         // to win.
@@ -1296,8 +1291,8 @@ fn request_repaint_after_dedups_within_frame() {
 /// proving the floor is derived from the display in `schedule_wake`.
 #[test]
 fn coalesce_floor_follows_refresh_rate() {
-    let schedule_pair = |ui: &mut Ui, display: Display| {
-        ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+    let schedule_pair = |h: &mut UiHarness, display: Display| {
+        h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
             ui.request_repaint_after(Duration::from_millis(500));
             ui.request_repaint_after(Duration::from_millis(512));
         });
@@ -1305,7 +1300,7 @@ fn coalesce_floor_follows_refresh_rate() {
 
     // Unknown refresh → 120 Hz fallback: 12 ms > 8.33 ms → distinct.
     let mut h = UiHarness::new(SURFACE);
-    schedule_pair(&mut h.ui, Display::from_physical(SURFACE, 1.0));
+    schedule_pair(&mut h, Display::from_physical(SURFACE, 1.0));
     assert_eq!(
         h.ui.frame_runtime.repaint_wakes.len(),
         2,
@@ -1318,7 +1313,7 @@ fn coalesce_floor_follows_refresh_rate() {
         refresh_millihertz: Some(60_000),
         ..Display::from_physical(SURFACE, 1.0)
     };
-    schedule_pair(&mut h.ui, display_60);
+    schedule_pair(&mut h, display_60);
     assert_eq!(
         h.ui.frame_runtime.repaint_wakes.len(),
         1,
@@ -1337,7 +1332,7 @@ fn coalesce_floor_follows_refresh_rate() {
 fn request_repaint_after_drains_fired_entries() {
     let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
-    h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
+    h.frame_at_without_baseline(display, Duration::from_secs_f32(0.0), |ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.0));
         ui.request_repaint_after(Duration::from_secs_f32(2.0));
@@ -1345,8 +1340,7 @@ fn request_repaint_after_drains_fired_entries() {
     assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 3);
 
     // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
-    let report =
-        h.ui.record_test_frame_without_baseline(display, Duration::from_secs_f32(1.0), |_| {});
+    let report = h.frame_at_without_baseline(display, Duration::from_secs_f32(1.0), |_| {});
     assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
@@ -1380,13 +1374,12 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record. Full path; schedules anim wake at `half`.
-    let r0 =
-        h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+    let r0 = h.frame_at(display, Duration::ZERO, |ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
-    let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
+    let r1 = h.frame_at(display, half, |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // PaintOnly must emit a Partial damage plan covering the anim's
@@ -1412,8 +1405,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // is queued. Without this fold the caret stops blinking until
     // input forces a FullRecord (mouse-move regression).
     assert_eq!(r1.repaint_after, Some(half + half));
-    let r2 =
-        h.ui.record_test_frame(display, half + half, |ui| body(ui, half));
+    let r2 = h.frame_at(display, half + half, |ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending OS close request vetoes the fast path: the app can only
@@ -1421,12 +1413,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // so an anim-wake frame escalates to Full while `wants_close` is
     // set — and drops back to PaintOnly once it clears.
     h.ui.window_frame.close_requested = true;
-    let r3 =
-        h.ui.record_test_frame(display, half * 3, |ui| body(ui, half));
+    let r3 = h.frame_at(display, half * 3, |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
     h.ui.window_frame.close_requested = false;
-    let r4 =
-        h.ui.record_test_frame(display, half * 4, |ui| body(ui, half));
+    let r4 = h.frame_at(display, half * 4, |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
 
@@ -1617,8 +1607,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     // Frame 0: full record. Populates the gradient payloads and stamps
     // `ShapeBrush::Gradient(GradientId(0))` into the chrome row for the frame.
-    let r0 =
-        h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+    let r0 = h.frame_at(display, Duration::ZERO, |ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let payloads = h.ui.forest.record_store.payloads.borrow();
@@ -1628,7 +1617,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, the gradient payloads
     // would be empty here and the encoder below would panic.
-    let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
+    let r1 = h.frame_at(display, half, |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // Direct pin: the gradient interned during frame 0's record must
@@ -1766,14 +1755,13 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record + `request_repaint`. Next frame must be Full.
-    let r0 = h.ui.record_test_frame(display, Duration::ZERO, |ui| {
+    let r0 = h.frame_at(display, Duration::ZERO, |ui| {
         body(ui, half);
         ui.request_repaint();
     });
     assert!(r0.repaint_requested);
 
-    let r1 =
-        h.ui.record_test_frame_without_baseline(display, half, |ui| body(ui, half));
+    let r1 = h.frame_at_without_baseline(display, half, |ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::SingleLayout);
 }
 
@@ -1816,8 +1804,7 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut h = UiHarness::new(SURFACE);
         h.ui.input_policy = InputPolicy::OnDelta;
-        let r0 =
-            h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+        let r0 = h.frame_at(display, Duration::ZERO, |ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
@@ -1830,7 +1817,7 @@ fn input_policy_routes_paint_only_gate() {
             "inert pointer move must not flip repaint_requested",
         );
 
-        let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
+        let r1 = h.frame_at(display, half, |ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -1845,11 +1832,10 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut h = UiHarness::new(SURFACE);
         h.ui.input_policy = InputPolicy::Always;
-        let _ =
-            h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+        let _ = h.frame_at(display, Duration::ZERO, |ui| body(ui, half));
 
         h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-        let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
+        let r1 = h.frame_at(display, half, |ui| body(ui, half));
         assert_eq!(
             r1.processing,
             FrameProcessing::SingleLayout,
@@ -1862,8 +1848,7 @@ fn input_policy_routes_paint_only_gate() {
         use crate::primitives::widget_id::WidgetId;
         let mut h = UiHarness::new(SURFACE);
         h.ui.input_policy = InputPolicy::OnDelta;
-        let _ =
-            h.ui.record_test_frame(display, Duration::ZERO, |ui| body(ui, half));
+        let _ = h.frame_at(display, Duration::ZERO, |ui| body(ui, half));
         h.ui.input.focused = Some(WidgetId::from_hash("editor"));
 
         h.on_input(InputEvent::KeyDown {
@@ -1875,7 +1860,7 @@ fn input_policy_routes_paint_only_gate() {
             h.ui.input.repaint_requested_since_last_frame,
             "KeyDown with focus held must flip repaint_requested",
         );
-        let r1 = h.ui.record_test_frame(display, half, |ui| body(ui, half));
+        let r1 = h.frame_at(display, half, |ui| body(ui, half));
         assert_ne!(
             r1.processing,
             FrameProcessing::PaintOnly,
@@ -1895,13 +1880,13 @@ fn input_policy_routes_paint_only_gate() {
 
 const COLD: UVec2 = UVec2::new(200, 200);
 
-fn cold_ui() -> Ui {
-    Ui::new(UiResources::isolated_mono())
+fn cold_ui() -> UiHarness {
+    UiHarness::cold(COLD)
 }
 
-fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
+fn cold_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(COLD, 1.0);
-    let _ = ui.record_test_frame(display, Duration::ZERO, record);
+    let _ = h.frame_at(display, Duration::ZERO, record);
 }
 
 /// On a true first frame the user closure runs **twice** — once for the
@@ -1910,13 +1895,13 @@ fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
 /// or a `request_relayout` lands; warmup is the only third trigger.
 #[test]
 fn cold_start_runs_record_closure_twice_on_first_frame() {
-    let mut ui = cold_ui();
+    let mut h = cold_ui();
     let mut calls = 0_u32;
-    cold_frame(&mut ui, |_| calls += 1);
+    cold_frame(&mut h, |_| calls += 1);
     assert_eq!(calls, 2, "first frame: warmup pass + real pass");
 
     let snapshot = calls;
-    cold_frame(&mut ui, |_| calls += 1);
+    cold_frame(&mut h, |_| calls += 1);
     assert_eq!(
         calls - snapshot,
         1,
@@ -1929,11 +1914,11 @@ fn cold_start_runs_record_closure_twice_on_first_frame() {
 /// during warmup, then visible during the real pass.
 #[test]
 fn cold_start_blacks_out_input_during_warmup_pass() {
-    let mut ui = cold_ui();
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+    let mut h = cold_ui();
+    h.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
 
     let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
-    cold_frame(&mut ui, |ui| {
+    cold_frame(&mut h, |ui| {
         observed.borrow_mut().push(ui.input.pointer_pos);
     });
     let observed = observed.into_inner();
@@ -1956,15 +1941,15 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
 /// `refresh_pointer_targets` routes the held pointer against it.
 #[test]
 fn cold_start_routes_held_pointer_against_warmup_cascade() {
-    let mut ui = cold_ui();
+    let mut h = cold_ui();
     // Cursor lands inside the future button rect (button is anchored at
     // (0,0) with 60×30 size below). Delivered before any frame ran;
     // cascades is empty so on_input can't resolve a target.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 10.0)));
-    assert_eq!(ui.input.hovered, None, "pre-frame: no cascade, no hit");
+    h.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 10.0)));
+    assert_eq!(h.ui.input.hovered, None, "pre-frame: no cascade, no hit");
 
     let button_id = WidgetId::from_hash("btn");
-    cold_frame(&mut ui, |ui| {
+    cold_frame(&mut h, |ui| {
         Button::new()
             .id(button_id)
             .label("hi")
@@ -1973,7 +1958,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     });
 
     assert_eq!(
-        ui.input.hovered,
+        h.ui.input.hovered,
         Some(button_id),
         "warmup builds cascade; refresh_pointer_targets routes held \
          pointer onto the button before the real record pass",
@@ -1984,9 +1969,9 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
 /// `assert!(!first_frame || matches!(damage, Damage::Full))`.
 #[test]
 fn cold_start_first_frame_damage_is_full() {
-    let mut ui = cold_ui();
+    let mut h = cold_ui();
     let display = Display::from_physical(COLD, 1.0);
-    let report = ui.record_test_frame_without_baseline(display, Duration::ZERO, |ui| {
+    let report = h.frame_at_without_baseline(display, Duration::ZERO, |ui| {
         Frame::new()
             .auto_id()
             .size(50.0)
@@ -2014,9 +1999,9 @@ fn cold_start_first_frame_damage_is_full() {
 /// third record pass on frame 1 (warmup + pass-A + pass-B).
 #[test]
 fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
-    let mut ui = cold_ui();
+    let mut h = cold_ui();
     let mut calls = 0_u32;
-    cold_frame(&mut ui, |ui| {
+    cold_frame(&mut h, |ui| {
         calls += 1;
         if calls == 1 {
             // Simulate a widget whose first-frame measure depends on
@@ -2436,14 +2421,14 @@ fn fps_ema_reads_unclamped_frame_delta() {
     let mut h = UiHarness::new(SURFACE);
     let display = Display::from_physical(SURFACE, 1.0);
     let mut noop = |_: &mut Ui| {};
-    h.ui.record_test_frame(display, Duration::ZERO, &mut noop);
-    h.ui.record_test_frame(display, Duration::from_secs(1), &mut noop);
+    h.frame_at(display, Duration::ZERO, &mut noop);
+    h.frame_at(display, Duration::from_secs(1), &mut noop);
     assert!(
         (h.ui.frame_runtime.fps_ema - 1.0).abs() < 1e-6,
         "got {}",
         h.ui.frame_runtime.fps_ema
     );
-    h.ui.record_test_frame_without_baseline(display, Duration::from_secs(3), &mut noop);
+    h.frame_at_without_baseline(display, Duration::from_secs(3), &mut noop);
     assert!(
         (h.ui.frame_runtime.fps_ema - 0.95).abs() < 1e-6,
         "got {}",
