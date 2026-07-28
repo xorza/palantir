@@ -883,6 +883,7 @@ impl InputState {
     /// passed here).
     pub(crate) fn end_frame(&mut self, cascades: &Cascades) {
         self.drain_per_frame_queues();
+        self.scopes.end_frame();
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must
         // stay `true`.

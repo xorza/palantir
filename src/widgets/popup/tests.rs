@@ -652,3 +652,67 @@ fn text_edit_inside_a_popup_receives_typing() {
          field inside its own body",
     );
 }
+
+/// A dismissed popup hands input back on the very next frame.
+///
+/// The case `PopupHandle`'s close has always been *for* and, until the
+/// frame stamp on `Scopes::closed`, never actually did: a dismissal is
+/// action input, so its frame records twice, and pass B used to wipe
+/// pass A's close without being able to re-issue it — the dismissing
+/// edge is drained between the passes. `Main` then stayed cut off for a
+/// frame, long enough to swallow the keystroke or scroll that lands
+/// where the popup used to be.
+#[test]
+fn a_dismissed_popup_stops_owning_input_the_next_frame() {
+    use crate::scene::layer::Layer;
+
+    let content = WidgetId::from_hash("popup-content");
+    let mut h = UiHarness::new(SURFACE);
+    let mut dismissed = false;
+    let build = |ui: &mut Ui, open: bool, dismissed: &mut bool| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-bg"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .sense(Sense::CLICK)
+            .show(ui, |ui| {
+                if !open {
+                    return;
+                }
+                let r = Popup::anchored_to(ANCHOR)
+                    .id(WidgetId::from_hash("test-popup"))
+                    .click_outside(ClickOutside::Dismiss)
+                    .show(ui, |ui, _popup| {
+                        Panel::vstack()
+                            .id(content)
+                            .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
+                            .show(ui, |_| {});
+                    });
+                *dismissed |= r.dismissed;
+            });
+    };
+
+    h.frame(|ui| build(ui, true, &mut dismissed));
+    h.frame(|ui| build(ui, true, &mut dismissed));
+
+    // Escape dismisses it. Focus makes the wake-gate deliver the chord.
+    h.ui.input.focused = Some(content);
+    h.key(Key::Escape);
+    h.frame(|ui| build(ui, true, &mut dismissed));
+    assert!(
+        dismissed,
+        "escape must dismiss a ClickOutside::Dismiss popup"
+    );
+
+    // Host stops showing it. `Main` must read again immediately — the
+    // popup is still in last frame's cascade, so only the close makes
+    // this true. Counted inside the record, the only place the queue is
+    // live, and maxed across the double-layout passes.
+    h.ui.input.focused = Some(WidgetId::from_hash("main-bg"));
+    h.key(Key::Escape);
+    let mut seen = 0usize;
+    h.frame(|ui| {
+        build(ui, false, &mut dismissed);
+        seen = seen.max(ui.input.keyboard_events(Layer::Main).len());
+    });
+    assert_eq!(seen, 1, "the frame after dismissal must reach Main");
+}
