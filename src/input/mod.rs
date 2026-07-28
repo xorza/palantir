@@ -5,6 +5,7 @@ pub(crate) mod keyboard;
 pub(crate) mod pointer;
 pub(crate) mod policy;
 pub(crate) mod response;
+pub(crate) mod scope;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
 pub(crate) mod watch;
@@ -17,12 +18,13 @@ use crate::input::policy::FocusPolicy;
 use crate::input::response::{
     ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta,
 };
+use crate::input::scope::Scopes;
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::{Cascades, ScopeRow};
+use crate::scene::cascade::Cascades;
 use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::time::Duration;
@@ -281,27 +283,10 @@ pub(crate) struct InputState {
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
     pub(crate) focused: Option<WidgetId>,
-    /// The scopes enclosing [`Self::focused`], deepest-first, within
-    /// [`Self::active_layer`]. Rebuilt at record-pass start from the
-    /// cascade; capacity retained, so a stable tree stays
-    /// allocation-free. Empty when nothing is focused inside the active
-    /// layer, which is the case the "outermost scope owns it" fallback
-    /// in [`Self::reader_scope`] covers.
-    scope_path: Vec<ScopeRow>,
-    /// Topmost layer declaring any input scope. This is what replaced
-    /// the old keyboard/pointer claim pair: an overlay declaring a scope
-    /// raises the active layer, which cuts every layer beneath it off
-    /// both streams — the same gate, derived from one fact instead of
-    /// maintained as two.
-    active_layer: Option<Layer>,
-    /// Scopes withdrawn by [`Self::close_scope`] during the pass being
-    /// recorded, honoured by the *next* resolution and then dropped.
-    ///
-    /// The cascade is one frame stale, so an overlay that decides it is
-    /// closing has already recorded its scope and would go on owning
-    /// input for the frame after it is gone. This is how it says
-    /// otherwise.
-    closed_scopes: Vec<WidgetId>,
+    /// This pass's scope routing — who owns which key class, and which
+    /// layers are cut off. Resolved once per record pass; see
+    /// [`Scopes`].
+    scopes: Scopes,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when an event could drive a state mutation that
@@ -390,9 +375,7 @@ impl Default for InputState {
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
-            scope_path: Vec::new(),
-            active_layer: None,
-            closed_scopes: Vec::new(),
+            scopes: Scopes::default(),
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
@@ -415,107 +398,8 @@ impl InputState {
     /// it replaced made for deferring to end-of-pass.
     pub(crate) fn begin_record(&mut self, cascades: &Cascades) {
         self.subs.clear();
-        self.resolve_scopes(cascades);
+        self.scopes.resolve(self.focused, cascades);
         self.snapshot_frame_quiescent();
-    }
-
-    fn resolve_scopes(&mut self, cascades: &Cascades) {
-        self.scope_path.clear();
-        let live = |row: &&ScopeRow| !self.closed_scopes.contains(&row.id);
-        self.active_layer = cascades
-            .scopes
-            .iter()
-            .filter(live)
-            .map(|row| row.layer)
-            .max();
-        if let Some(active) = self.active_layer
-            && let Some(anchor) = self.focused
-        {
-            self.scope_path.extend(
-                cascades
-                    .scopes
-                    .iter()
-                    .filter(live)
-                    .filter(|row| row.layer == active && cascades.is_within(anchor, row.id))
-                    .copied(),
-            );
-        }
-        self.closed_scopes.clear();
-    }
-
-    /// The scope a press of `class` is granted to: the deepest scope on
-    /// the path whose filter takes it. `None` when no scope wants it,
-    /// which is the "nothing is focused" case the fallback in
-    /// [`Self::reader_scope`] then answers.
-    fn grant(&self, class: KeyClass, cascades: &Cascades) -> Option<WidgetId> {
-        let taking = self.scope_path.iter().filter(|row| row.filter.takes(class));
-        self.deepest_of(taking, cascades)
-    }
-
-    /// The innermost of `candidates`, or — when there are none — the
-    /// active layer's outermost scope.
-    ///
-    /// They nest, so "innermost" is a fold rather than a sort: every
-    /// candidate contains the same anchor, which puts them on one chain.
-    /// Shared by [`Self::grant`] and [`Self::reader_scope`] because the
-    /// two ask the same question of different candidate sets — who owns
-    /// a class, and who a read speaks for.
-    fn deepest_of<'a>(
-        &self,
-        candidates: impl Iterator<Item = &'a ScopeRow>,
-        cascades: &Cascades,
-    ) -> Option<WidgetId> {
-        candidates
-            .reduce(|deepest, row| {
-                if cascades.is_within(row.id, deepest.id) {
-                    row
-                } else {
-                    deepest
-                }
-            })
-            .map(|row| row.id)
-            .or_else(|| self.outermost_scope(cascades))
-    }
-
-    /// The active layer's outermost scope — who a press belongs to when
-    /// nothing focused claims it, and who a reader sitting outside every
-    /// scope reads as.
-    ///
-    /// **Outermost, not last-recorded.** Scopes record in pre-order, so
-    /// the last one is the innermost — taking it would make an app root's
-    /// accelerators resolve as the focused text field nested inside it,
-    /// and every one of them would die mid-edit. Contained scopes are
-    /// dropped first; record order then breaks the tie between what is
-    /// left, which is two *sibling* overlays on one layer, exactly as the
-    /// old topmost-claim did.
-    fn outermost_scope(&self, cascades: &Cascades) -> Option<WidgetId> {
-        let active = self.active_layer?;
-        let in_layer = || cascades.scopes.iter().filter(|row| row.layer == active);
-        in_layer()
-            .rev()
-            .find(|row| {
-                !in_layer().any(|other| other.id != row.id && cascades.is_within(row.id, other.id))
-            })
-            .map(|row| row.id)
-    }
-
-    /// Which scope a read taken at `parent` on `reader` speaks for.
-    /// `None` silences the read outright — a layer strictly below the
-    /// active one, which is the old capture gate restated.
-    fn reader_scope(
-        &self,
-        reader: Layer,
-        parent: Option<WidgetId>,
-        cascades: &Cascades,
-    ) -> Option<WidgetId> {
-        let active = self.active_layer?;
-        if reader.idx() < active.idx() {
-            return None;
-        }
-        let enclosing = cascades.scopes.iter().filter(|row| {
-            row.layer == active && parent.is_some_and(|parent| cascades.is_within(parent, row.id))
-        });
-        self.deepest_of(enclosing, cascades)
     }
 
     pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
@@ -550,8 +434,7 @@ impl InputState {
     /// a `TextEdit` inside a `Popup` drains this stream and would
     /// otherwise get nothing.
     fn silenced(&self, reader: Layer) -> bool {
-        self.active_layer
-            .is_some_and(|active| active.idx() > reader.idx())
+        self.scopes.silences(reader)
     }
 
     /// The pointer watch stream as seen from `reader`'s layer, gated the
@@ -586,20 +469,26 @@ impl InputState {
         shortcut: Shortcut,
     ) -> bool {
         self.subs.watch_key(shortcut);
-        let Some(scope) = self.reader_scope(reader, parent, cascades) else {
+        // Before resolving anything: on a frame with no keys — nearly
+        // every frame — an app polling its whole chord table pays one
+        // subscription push and this check, and never touches the
+        // cascade.
+        if self.frame_keyboard_events.is_empty() {
+            return false;
+        }
+        let Some(scope) = self.scopes.reader(reader, parent, cascades) else {
             return false;
         };
         self.frame_keyboard_events.iter().any(|event| {
             matches!(event, KeyboardEvent::Down(press)
-                if shortcut.matches(*press)
-                    && self.grant(KeyClass::of(*press), cascades) == Some(scope))
+                if shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == Some(scope))
         })
     }
 
     /// Withdraw `owner`'s scope from the next resolution — see
     /// [`Self::closed_scopes`].
     pub(crate) fn close_scope(&mut self, owner: WidgetId) {
-        self.closed_scopes.push(owner);
+        self.scopes.close(owner);
     }
 
     /// Close out the pass. Ownership resolution moved to
