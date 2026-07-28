@@ -2,6 +2,7 @@
 
 use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
+use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::primitives::widget_id::WidgetId;
 use crate::text::TextShaper;
@@ -40,15 +41,35 @@ pub(super) struct InputResult {
 /// edge signals. Splitting this out of `show()` keeps the borrow
 /// choreography contained: we touch `ui.state`, `ui.input`, and
 /// `ui.resources.text` here, but never the shape/tree storage.
+/// What the builder configured about *accepting* input, as opposed to
+/// rendering it. The three travel together because they are set on the
+/// same builder and read at the same call, and bundling them is what
+/// keeps [`handle_input`]'s parameter list inside its own means.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct InputPolicy {
+    /// Cap on buffer length; `None` is unbounded.
+    pub(super) max_chars: Option<usize>,
+    /// Select everything when focus lands without a same-frame press.
+    pub(super) select_all_on_focus: bool,
+    /// The key classes this field consumes — the same value its scope
+    /// declares, so what it tells other readers it takes and what it
+    /// acts on cannot drift apart.
+    pub(super) filter: KeyFilter,
+}
+
 pub(super) fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,
     ctx: &ShapeCtx,
-    max_chars: Option<usize>,
-    select_all_on_focus: bool,
+    policy: InputPolicy,
 ) -> InputResult {
+    let InputPolicy {
+        max_chars,
+        select_all_on_focus,
+        filter,
+    } = policy;
     let mut blur = false;
     let mut submitted = false;
     let resp_state = ui.response_for(id);
@@ -187,11 +208,20 @@ pub(super) fn handle_input(
     // because they need the shaper + layout. Indexing keeps the borrow
     // on the input queue short-lived so we can dispatch to
     // `ui.resources.text` inside the same loop without a scratch Vec.
+    //
+    // **`filter` gates the drain as well as the scope.** The stream is
+    // the whole layer's, so a field that told everyone else it does not
+    // take a class (`TextEdit::escape_falls_through`) would otherwise go
+    // on acting on it here — and the container the class was yielded to
+    // acts on it too. One press, handled twice, which is the exact
+    // double-dispatch scopes exist to prevent.
     let layer = ui.forest.current_layer();
     let n = ui.input.keyboard_events(layer).len();
     for i in 0..n {
         let event = ui.input.keyboard_events(layer)[i];
         match event {
+            KeyboardEvent::Down(kp) if !filter.takes(KeyClass::of(kp)) => continue,
+            KeyboardEvent::Text(_) if !filter.contains(KeyFilter::TEXT) => continue,
             KeyboardEvent::Text(chunk) => {
                 let to_insert = ed.sanitized(chunk.as_str());
                 if !to_insert.is_empty() {

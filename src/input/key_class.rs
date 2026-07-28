@@ -28,7 +28,11 @@ pub enum KeyClass {
     /// Caret movement, or canvas nudge: arrows, Home/End, PgUp/PgDn, Tab.
     Motion,
     /// Escape alone. Its own class because cancel is hierarchical — the
-    /// innermost thing that can be cancelled should be.
+    /// innermost thing *that can be cancelled* should be. Which is not
+    /// always the innermost scope: a field that filters its container
+    /// rather than editing a value has nothing of its own to cancel, and
+    /// drops the class so the container gets it
+    /// ([`crate::TextEdit::escape_falls_through`]).
     Escape,
     /// Everything else: command chords outside the edit family, and the
     /// function keys. Ctrl+S, Ctrl+R, F12. Commands, never editing.

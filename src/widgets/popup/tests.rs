@@ -716,3 +716,87 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     });
     assert_eq!(seen, 1, "the frame after dismissal must reach Main");
 }
+
+/// Escape resolves to the innermost scope that claims it — so a focused
+/// field inside a popup decides, per field, whether one press closes the
+/// popup or just blurs the field.
+///
+/// Both directions are pinned together because the failure mode is a
+/// swap: a filter field that keeps `ESCAPE` leaves the popup open around
+/// a search box the user can no longer type into, and an inline editor
+/// that gives it up loses its cancel *and* tears down the surface behind
+/// it. Neither is visible from the widget alone — it takes a popup, a
+/// focused field, and one keypress.
+#[test]
+fn a_field_decides_whether_escape_closes_the_popup_around_it() {
+    use crate::input::keyboard::Key;
+    use crate::widgets::text_edit::TextEdit;
+
+    let field = WidgetId::from_hash("filter-field");
+
+    /// One popup holding one focused field, returning whether the popup
+    /// dismissed this frame. `falls_through` picks the archetype.
+    fn open(falls_through: bool) -> (bool, Option<WidgetId>) {
+        let field = WidgetId::from_hash("filter-field");
+        let mut buf = String::new();
+        let scene = |ui: &mut Ui, buf: &mut String| {
+            let mut dismissed = false;
+            Panel::vstack()
+                .id(WidgetId::from_hash("main-bg"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let r = Popup::anchored_to(ANCHOR)
+                        .id(WidgetId::from_hash("filter-popup"))
+                        .click_outside(ClickOutside::Dismiss)
+                        .show(ui, |ui, _handle| {
+                            let edit = TextEdit::new(buf).id(field);
+                            let edit = if falls_through {
+                                edit.escape_falls_through()
+                            } else {
+                                edit
+                            };
+                            edit.show(ui);
+                        });
+                    dismissed |= r.dismissed;
+                });
+            dismissed
+        };
+
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| {
+            scene(ui, &mut buf);
+        });
+        h.request_focus(Some(field));
+        // Two settling frames: the scope path resolves against the
+        // previous frame's cascade, so the filter this field declares has
+        // to have been recorded once before the press reads it.
+        h.frame(|ui| {
+            scene(ui, &mut buf);
+        });
+        h.frame(|ui| {
+            scene(ui, &mut buf);
+        });
+        assert_eq!(h.focused_id(), Some(field), "the field holds focus");
+
+        h.key(Key::Escape);
+        let dismissed = h.frame_value(|ui| scene(ui, &mut buf));
+        (dismissed, h.focused_id())
+    }
+
+    // Default: the field owns Escape. It blurs, and the popup stays open.
+    let (dismissed, focused) = open(false);
+    assert!(
+        !dismissed,
+        "an editing field's Esc must not close the popup"
+    );
+    assert_eq!(focused, None, "…it blurs the field instead");
+
+    // Opted out: Escape walks past the field to the popup's own scope.
+    let (dismissed, focused) = open(true);
+    assert!(dismissed, "a filter field's Esc closes the popup");
+    assert_eq!(
+        focused,
+        Some(field),
+        "…and the field never saw it, so focus is untouched",
+    );
+}
