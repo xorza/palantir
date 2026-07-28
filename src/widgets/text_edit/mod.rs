@@ -6,6 +6,7 @@ mod menu;
 mod model;
 mod view;
 
+use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
@@ -176,6 +177,15 @@ impl<'a> TextEdit<'a> {
             ui.request_focus(None);
             is_focused = false;
         }
+        // A focused editor takes the classes it edits with, so an
+        // app-level Ctrl+Z undoes *this buffer* rather than the document
+        // behind it, and Delete removes a character rather than the
+        // selected node. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`)
+        // — Ctrl+S still saves mid-edit, which is exactly what an
+        // exclusive capture would break.
+        if is_focused {
+            self.node.flags.set_key_filter(KeyFilter::TEXT_FIELD);
+        }
         // `resolve_look` also substitutes theme padding/margin where
         // the builder left those fields unconfigured. The renderer
         // reads `node.padding` to deflate the buffer layout, and
@@ -206,6 +216,7 @@ impl<'a> TextEdit<'a> {
                 response: Response::eager(id, ui, state),
                 changed: false,
                 submitted: false,
+                cancelled: false,
                 gained_focus: is_focused && !was_focused,
                 lost_focus: was_focused && !is_focused,
             };
@@ -354,6 +365,7 @@ impl<'a> TextEdit<'a> {
             response: Response::eager(id, ui, state),
             changed,
             submitted,
+            cancelled: blur_after,
             gained_focus,
             lost_focus,
         }
@@ -380,6 +392,13 @@ pub struct TextEditResponse<'a> {
     /// The user pressed Enter in a single-line editor — the conventional
     /// "accept" signal. Always `false` in multi-line mode (Enter inserts `\n`).
     pub submitted: bool,
+    /// The user pressed Escape with no selection left to collapse — the
+    /// conventional "cancel" signal.
+    ///
+    /// Escape also blurs, so [`Self::lost_focus`] fires alongside it. A
+    /// commit-on-blur caller has to test this **first**, or a cancel is
+    /// indistinguishable from clicking away.
+    pub cancelled: bool,
     /// The editor took focus this frame.
     pub gained_focus: bool,
     /// The editor lost focus this frame (clicked away, another widget focused,

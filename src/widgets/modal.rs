@@ -1,3 +1,4 @@
+use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
@@ -84,32 +85,28 @@ impl Modal {
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
         // A modal *owns* input, it does not merely outrank the popups
-        // below it. Claiming on `Layer::Modal` makes that explicit: the
-        // topmost claimant wins, so a popup underneath stops seeing
-        // Escape entirely instead of dismissing alongside the modal, and
-        // the modal's own body still reads both streams because a claim
-        // never silences its own layer.
-        let claim = ui.modal_layer(
-            Layer::Modal,
-            Vec2::ZERO,
-            Some(surface.size),
-            root_id,
-            |ui, claim| {
-                widget.record(ui, Some(&dim), |ui| {
-                    ui.widget(card).record(ui, Some(&card_bg), body);
-                });
-                claim
-            },
-        );
-        // Escape reads through the claim, so it is layer-independent and
-        // can be asked after the scope closes — the same shape `Popup`
-        // uses to fold dismissal together.
-        let dismissed = ui.response_for(root_id).left.clicked() || claim.escape_pressed(ui);
-        // Claims resolve at the end of the pass and are read by the next
-        // one, so a dismissing modal that kept its claim would swallow
-        // one more frame of input from where it used to be.
+        // below it. Its root declares an `ALL` scope on `Layer::Modal`,
+        // which raises the active layer: a popup underneath stops seeing
+        // Escape entirely instead of dismissing alongside the modal,
+        // while the modal's own body keeps reading because a scope
+        // silences only layers strictly *below* its own.
+        widget.node.flags.set_key_filter(KeyFilter::ALL);
+        // Escape is read *inside* the modal's layer — outside it the
+        // ambient layer is below the scope and the read is silenced,
+        // which is what the old owner-scoped claim handle existed to
+        // work around.
+        let escape = ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
+            widget.record(ui, Some(&dim), |ui| {
+                ui.widget(card).record(ui, Some(&card_bg), body);
+            });
+            ui.escape_pressed()
+        });
+        let dismissed = ui.response_for(root_id).left.clicked() || escape;
+        // A scope path is resolved from a cascade one frame old, so a
+        // dismissing modal that kept its scope would swallow one more
+        // frame of input from where it used to be.
         if dismissed {
-            claim.release(ui);
+            ui.close_scope(root_id);
         }
 
         ModalResponse { dismissed }
@@ -226,7 +223,7 @@ mod tests {
     /// overlay by a frame — long enough to swallow the click that lands
     /// where the modal used to be.
     ///
-    /// **This does not pin `InputClaim::release`**, and the difference is
+    /// **This does not pin `Ui::close_scope`**, and the difference is
     /// worth recording: dismissal is action input, action input forces a
     /// second record pass, and that pass re-records without the modal —
     /// so the claim is already gone by `finish_record` whether or not
