@@ -613,17 +613,19 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
 
 /// A text field inside a popup must be typeable.
 ///
-/// It was not: `Popup::show` holds keyboard capture for its whole body, and
-/// `TextEdit` drains the *uncaptured* stream, so before capture became
-/// layer-ordered every keystroke into a popup-hosted field was discarded.
-/// Nothing in the tree exercised the combination, so it went unnoticed.
+/// It was not, and the way it failed is worth keeping: `Popup::show`
+/// claims the keyboard for its whole body, and `TextEdit` drains the
+/// stream that claim gates, so a popup that silenced its own body threw
+/// away every keystroke aimed at the field inside it. Nothing in the tree
+/// exercised the combination, so it went unnoticed.
 ///
-/// This works because `Popup::show` calls `with_keyboard_claim` *outside*
-/// `ui.layer(Layer::Popup, ..)`, registering the capture at `Layer::Main` —
-/// so the body, one layer up, is not silenced by it. That is load-bearing:
-/// moving the capture call inside the layer scope would put owner and body
-/// on the same layer and silently break typing again, which is what this
-/// test is here to catch.
+/// It works because the popup's `KeyFilter::ALL` scope is recorded on
+/// `Layer::Popup` — the same layer as its body — and `Scopes::silences`
+/// cuts off layers *strictly* below the active one. Same layer, so the
+/// body reads on. Both halves are load-bearing: widening that comparison
+/// to `>=`, or hoisting the scope onto a layer above the body it wraps,
+/// silently breaks typing again, which is what this test is here to
+/// catch.
 #[test]
 fn text_edit_inside_a_popup_receives_typing() {
     use crate::widgets::text_edit::TextEdit;
