@@ -139,23 +139,19 @@ impl Scopes {
             .or(self.outermost)
     }
 
-    /// Which scope a read taken at `parent` on `reader` speaks for.
+    /// Which scope a read taken at `parent` speaks for.
     ///
-    /// `None` silences the read outright — a layer strictly below the
-    /// active one, which is the old capture gate restated. Outside every
-    /// scope it is the layer's outermost, which is how a chord handler
-    /// that records nothing (darkroom's navigation phase) still reads as
-    /// the application root.
-    pub(super) fn reader(
-        &self,
-        reader: Layer,
-        parent: Option<WidgetId>,
-        cascades: &Cascades,
-    ) -> Option<WidgetId> {
+    /// Outside every scope it is the layer's outermost, which is how a
+    /// chord handler that records nothing (darkroom's navigation phase)
+    /// still reads as the application root.
+    ///
+    /// `None` means **no scope exists at all**, not "silenced" — an app
+    /// that declares none must keep every chord working, so this and
+    /// [`Self::grant`] both answer `None` there and compare equal.
+    /// Silencing is [`Self::silences`]'s job, and the caller checks it
+    /// first.
+    pub(super) fn reader(&self, parent: Option<WidgetId>, cascades: &Cascades) -> Option<WidgetId> {
         let active = self.active_layer?;
-        if reader.idx() < active.idx() {
-            return None;
-        }
         let Some(parent) = parent else {
             return self.outermost;
         };

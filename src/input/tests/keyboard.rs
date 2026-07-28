@@ -103,6 +103,33 @@ fn text_events_arrive_in_order_in_keyboard_buffer() {
     assert_eq!(texts, vec!["hé".to_string(), "llo".to_string()]);
 }
 
+/// An app that declares **no scope at all** reads every chord.
+///
+/// The regression scopes invite: routing a chord to "the scope the reader
+/// speaks for" silences the reader outright when there is no scope to
+/// speak for, which would leave `key_pressed` dead for every consumer
+/// that never calls `input_scope` — the showcase, the examples, any host
+/// that only wants accelerators. Both sides of the grant answer `None`
+/// there, and `None == None` is what keeps it working.
+#[test]
+fn a_tree_with_no_scopes_still_reads_every_chord() {
+    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let bare = |ui: &mut Ui| {
+        Frame::new()
+            .id(WidgetId::from_hash("plain"))
+            .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+            .show(ui);
+    };
+    h.frame(bare);
+    press_escape(&mut h);
+    let mut pressed = false;
+    h.frame(|ui| {
+        bare(ui);
+        pressed |= ui.escape_pressed();
+    });
+    assert!(pressed, "no scopes declared must not gate the chord out");
+}
+
 /// A scope silences the layers **strictly below** it, and only those.
 ///
 /// The property the old whole-stream claim carried, now a consequence of

@@ -473,15 +473,15 @@ impl InputState {
         // every frame — an app polling its whole chord table pays one
         // subscription push and this check, and never touches the
         // cascade.
-        if self.frame_keyboard_events.is_empty() {
+        if self.frame_keyboard_events.is_empty() || self.silenced(reader) {
             return false;
         }
-        let Some(scope) = self.scopes.reader(reader, parent, cascades) else {
-            return false;
-        };
+        // `None` on both sides is the no-scopes-anywhere case: an app that
+        // declares none reads every chord, exactly as before scopes existed.
+        let scope = self.scopes.reader(parent, cascades);
         self.frame_keyboard_events.iter().any(|event| {
             matches!(event, KeyboardEvent::Down(press)
-                if shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == Some(scope))
+                if shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope)
         })
     }
 
