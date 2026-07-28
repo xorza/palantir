@@ -160,9 +160,9 @@ fn run_input(
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
-        let hit = ui.probe_text(ctx.run(ed.text), |probe| {
-            probe.byte_at(local_x, if ctx.multiline { local_y } else { 0.0 })
-        });
+        let hit = ui
+            .probe_text(ctx.run(ed.text))
+            .byte_at(local_x, if ctx.multiline { local_y } else { 0.0 });
         if resp_state.left.press_count() > 0 {
             // Press rising edge — the input layer counts the
             // multi-press run (`press_count`: 1 = single, 2 = double,
@@ -318,22 +318,24 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
     KeyOutcome::None
 }
 
-fn resolve_vertical(editor: &mut Editor<'_>, ui: &Ui, ctx: &ShapeCtx, up: bool, extend: bool) {
+fn resolve_vertical(editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx, up: bool, extend: bool) {
     // Both queries sit in one `probe_text` closure: the caret position
     // and the adjacent-line hit resolve under a single shaper borrow and
     // one cache dispatch, which is exactly what the scoped probe is for.
-    let target = ui.probe_text(ctx.run(editor.text), |probe| {
+    let target = {
+        let probe = ui.probe_text(ctx.run(editor.text));
         let pos = probe.caret_at(editor.state.caret);
         if up && pos.y_top <= 0.5 {
-            return 0;
-        }
-        let probe_y = if up {
-            pos.y_top - 1.0
+            0
         } else {
-            pos.y_top + pos.line_height + 1.0
-        };
-        probe.byte_at(pos.x, probe_y)
-    });
+            let probe_y = if up {
+                pos.y_top - 1.0
+            } else {
+                pos.y_top + pos.line_height + 1.0
+            };
+            probe.byte_at(pos.x, probe_y)
+        }
+    };
     editor.move_caret(target, extend);
 }
 

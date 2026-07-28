@@ -250,20 +250,21 @@ pub(super) struct FinalGeometry {
 }
 
 pub(super) fn resolve_geometry(
-    ui: &Ui,
+    ui: &mut Ui,
     input: GeometryInput<'_>,
     selection_rects: &mut SelectionRects,
 ) -> FinalGeometry {
     let mut layout = input.layout;
-    // Each probe is its own closure, which is what keeps the two off
-    // each other: a live probe holds the shaper's exclusive borrow, so
-    // the placeholder measurement below cannot be taken while the
-    // content's is still open.
+    // The block is load-bearing: the content probe holds the shaper's
+    // exclusive borrow, so the placeholder measurement below cannot be
+    // taken until this one has dropped. Overlapping them is E0499, not a
+    // runtime surprise.
     let Probed {
         measured,
         caret_pos,
         text_hash,
-    } = ui.probe_text(layout.ctx.run(input.text), |probe| {
+    } = {
+        let probe = ui.probe_text(layout.ctx.run(input.text));
         selection_rects.clear();
         if let Some(selection) = input.selection {
             probe.selection_rects(selection, |rect| selection_rects.push(rect));
@@ -273,9 +274,9 @@ pub(super) fn resolve_geometry(
             caret_pos: probe.caret_at(input.caret),
             text_hash: probe.text_hash(),
         }
-    });
+    };
     let placeholder_measured = if input.text.is_empty() && !input.placeholder.is_empty() {
-        ui.probe_text(layout.ctx.run(input.placeholder), |probe| probe.size())
+        ui.probe_text(layout.ctx.run(input.placeholder)).size()
     } else {
         measured
     };
