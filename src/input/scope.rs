@@ -43,13 +43,26 @@ pub(super) struct Scopes {
     /// otherwise recompute it — the one genuinely quadratic step in this
     /// file, paid per pass instead of per chord.
     outermost: Option<WidgetId>,
-    /// Scopes withdrawn by [`Self::close`] during the pass being
-    /// recorded, honoured by the *next* resolution and then dropped.
+    /// Scopes withdrawn by [`Self::close`] during the frame being
+    /// recorded.
     ///
     /// The cascade is one frame stale, so an overlay that decides it is
     /// closing has already recorded its scope and would go on owning
     /// input for the frame after it is gone. This is how it says
     /// otherwise.
+    closing: Vec<WidgetId>,
+    /// …and the frame before, still honoured because the cascade this
+    /// pass resolves against is the one that frame left behind.
+    ///
+    /// **A close has to outlive its own pass, and exactly one frame
+    /// boundary.** A dismissal is action input, so its frame always
+    /// records twice; clearing per resolve let pass B wipe pass A's
+    /// close, and pass B cannot re-issue it because the dismissing edge
+    /// was drained between them. Holding it a frame longer would instead
+    /// suppress a popup the host reopens under the same id on the very
+    /// next frame — what right-clicking through an open context menu
+    /// does. [`Self::end_frame`] swaps, which makes that lifetime
+    /// structural rather than arithmetic.
     closed: Vec<WidgetId>,
 }
 
@@ -62,7 +75,8 @@ impl Scopes {
     /// recorded, nothing else.
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascades: &Cascades) {
         self.path.clear();
-        let live = |row: &&ScopeRow| !self.closed.contains(&row.id);
+        let live =
+            |row: &&ScopeRow| !self.closing.contains(&row.id) && !self.closed.contains(&row.id);
         self.active_layer = cascades
             .scopes
             .iter()
@@ -90,12 +104,21 @@ impl Scopes {
                 .all(|pair| cascades.is_within(pair[1].id, pair[0].id)),
             "scope path must be outermost-first — `grant` reads it as pre-order",
         );
-        self.closed.clear();
     }
 
-    /// Withdraw `owner` from the next resolution.
+    /// Withdraw `owner` for the rest of this frame and all of the next —
+    /// see [`Self::closed`] for why that span.
     pub(super) fn close(&mut self, owner: WidgetId) {
-        self.closed.push(owner);
+        if !self.closing.contains(&owner) {
+            self.closing.push(owner);
+        }
+    }
+
+    /// Age this frame's withdrawals into the next one. Called once per
+    /// frame, after the last record pass.
+    pub(super) fn end_frame(&mut self) {
+        self.closed.clear();
+        std::mem::swap(&mut self.closed, &mut self.closing);
     }
 
     /// Whether an overlay's scope cuts `reader`'s layer off both streams.
