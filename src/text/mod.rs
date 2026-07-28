@@ -48,6 +48,7 @@ pub(crate) mod key;
 mod mono;
 pub(crate) mod probe;
 pub(crate) mod render;
+pub(crate) mod run;
 pub(crate) mod system;
 pub(crate) mod wrap;
 
@@ -353,7 +354,7 @@ impl TextRoot {
 pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::text::key::TextShapeKey;
-    use crate::text::probe::{CursorPos, TextLayoutProbe};
+    use crate::text::probe::{Caret, TextLayoutProbe};
     use crate::text::wrap::LineFit;
     use crate::text::*;
 
@@ -473,12 +474,7 @@ pub(crate) mod internals {
             body(self.layout(shape.request(text, LineFit::Wrap)))
         }
 
-        pub(crate) fn cursor_xy(
-            &self,
-            text: &str,
-            byte_offset: usize,
-            shape: TestShape,
-        ) -> CursorPos {
+        pub(crate) fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> Caret {
             self.probe_layout(text, shape, |probe| probe.cursor_xy(byte_offset))
         }
 

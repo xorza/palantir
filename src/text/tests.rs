@@ -6,7 +6,7 @@ use crate::text::cosmic::{self, ClusterGlyph, CosmicMeasure};
 use crate::text::internals::{TestMeasure, TestShape};
 use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
-use crate::text::probe::{self, SelectionRects};
+use crate::text::probe;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
@@ -769,11 +769,18 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
     assert_eq!(past, s.len(), "x past end must clamp to text.len()");
 }
 
+/// An empty range emits nothing — and, being a sink rather than a
+/// container, leaves whatever the caller already had alone. Clearing
+/// belongs to the caller now (`resolve_geometry` does it unconditionally
+/// before probing), because the only caller that retains rects owns a
+/// reused buffer and a sink that cleared it would be reaching past its
+/// job.
 #[test]
-fn selection_rects_empty_range_is_noop() {
+fn selection_rects_empty_range_emits_nothing_and_touches_no_buffer() {
     let m = TextShaper::new();
-    let mut out: SelectionRects = SelectionRects::new();
-    out.push(Rect::new(1.0, 2.0, 3.0, 4.0)); // pre-populate
+    let mut out: Vec<Rect> = Vec::new();
+    let pre = Rect::new(1.0, 2.0, 3.0, 4.0);
+    out.push(pre); // pre-populate
     m.probe_layout(
         "hello",
         TestShape {
@@ -786,19 +793,20 @@ fn selection_rects_empty_range_is_noop() {
         },
         |layout| {
             assert_eq!(layout.request.key.text_hash, hash_str("hello"));
-            layout.selection_rects(5..5, &mut out);
+            layout.selection_rects(5..5, &mut |rect| out.push(rect));
         },
     );
-    assert!(
-        out.is_empty(),
-        "empty range must clear out and emit nothing"
+    assert_eq!(
+        out.as_slice(),
+        [pre],
+        "empty range emits nothing and leaves the caller's buffer untouched",
     );
 }
 
 #[test]
 fn selection_rects_single_line_emits_one_rect() {
     let m = TextShaper::new();
-    let mut out: SelectionRects = SelectionRects::new();
+    let mut out: Vec<Rect> = Vec::new();
     m.probe_layout(
         "hello",
         TestShape {
@@ -809,7 +817,7 @@ fn selection_rects_single_line_emits_one_rect() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        |layout| layout.selection_rects(1..4, &mut out),
+        |layout| layout.selection_rects(1..4, &mut |rect| out.push(rect)),
     );
     assert_eq!(out.len(), 1, "single-line range → one rect");
     let r = out[0];
@@ -896,9 +904,9 @@ fn selection_rects_match_cosmic_highlight_spans() {
             }
         });
 
-        let mut actual = SelectionRects::new();
+        let mut actual: Vec<Rect> = Vec::new();
         m.probe_layout(case.text, params, |layout| {
-            layout.selection_rects(case.range, &mut actual);
+            layout.selection_rects(case.range, &mut |rect| actual.push(rect));
         });
         assert_eq!(
             actual.as_slice(),
