@@ -122,13 +122,36 @@ impl Color {
         }
     }
 
-    /// Per-channel midpoint of two colors.
+    /// Per-channel midpoint of two colors. The symmetric form of
+    /// [`Self::lerp`] at `t = 0.5`.
     pub const fn midpoint(self, other: Self) -> Self {
         Self {
             r: (self.r + other.r) * 0.5,
             g: (self.g + other.g) * 0.5,
             b: (self.b + other.b) * 0.5,
             a: (self.a + other.a) * 0.5,
+        }
+    }
+
+    /// Per-channel linear interpolation toward `other`: `t = 0` is `self`,
+    /// `t = 1` is `other`. Storage is linear / straight-alpha (see the
+    /// [`Color`] docs), so a straight component blend is the correct one —
+    /// no gamma round-trip, no de-premultiply.
+    ///
+    /// **Alpha travels with the color.** A caller that wants to shift only the
+    /// hue and keep its own opacity — a resting tint pulled toward the
+    /// background, say, where a separate rule already owns alpha — follows up
+    /// with [`Self::with_alpha`].
+    ///
+    /// `t` is not clamped, so overshooting past either end is available on
+    /// purpose. Blending in a perceptual space instead is what
+    /// [`Interp::Oklab`](crate::Interp) does for gradients.
+    pub const fn lerp(self, other: Self, t: f32) -> Self {
+        Self {
+            r: self.r + (other.r - self.r) * t,
+            g: self.g + (other.g - self.g) * t,
+            b: self.b + (other.b - self.b) * t,
+            a: self.a + (other.a - self.a) * t,
         }
     }
 
@@ -632,6 +655,42 @@ mod tests {
 
         assert_eq!(positive, negative);
         assert_eq!(hash_value(positive), hash_value(negative));
+    }
+
+    #[test]
+    fn lerp_spans_both_endpoints_and_agrees_with_midpoint() {
+        // Every channel here is an exact binary fraction, so the arithmetic
+        // below is checkable by eye and by `==`.
+        let a = Color::linear_rgba(1.0, 0.0, 0.5, 0.5);
+        let b = Color::linear_rgba(0.0, 1.0, 0.5, 0.0);
+
+        // The endpoints come back exactly, alpha included.
+        assert_eq!(a.lerp(b, 0.0), a);
+        assert_eq!(a.lerp(b, 1.0), b);
+
+        // Hand-computed quarter step: r 1.0→0.75, g 0.0→0.25, b flat at 0.5,
+        // a 0.5→0.375. Alpha travels with the color, unlike `with_alpha`.
+        let quarter = a.lerp(b, 0.25);
+        assert_eq!(
+            (quarter.r, quarter.g, quarter.b, quarter.a),
+            (0.75, 0.25, 0.5, 0.375)
+        );
+
+        // `midpoint` is the symmetric spelling of the same blend.
+        let mid = a.lerp(b, 0.5);
+        let sym = a.midpoint(b);
+        for (l, r) in [
+            (mid.r, sym.r),
+            (mid.g, sym.g),
+            (mid.b, sym.b),
+            (mid.a, sym.a),
+        ] {
+            assert!((l - r).abs() < 1e-6, "lerp(0.5) = {l}, midpoint = {r}");
+        }
+
+        // `t` is deliberately unclamped, so a caller can overshoot: t = 2
+        // continues past `b` by the same delta again (r 1.0 → -1.0).
+        assert_eq!(a.lerp(b, 2.0).r, -1.0);
     }
 
     /// The direct `ColorF16 → ColorU8` quantize must stay byte-identical
