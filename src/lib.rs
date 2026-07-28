@@ -204,6 +204,8 @@ pub use shape::rect::RectShape;
 pub use shape::shadow::ShadowShape;
 pub use shape::style::{LineCap, LineJoin};
 pub use shape::triangle::TriangleShape;
+pub use text::probe::Caret;
+pub use text::run::{TextProbe, TextRun};
 pub use text::wrap::TextWrap;
 pub use text::{FontFamily, FontWeight, TextShaper};
 pub use ui::Ui;

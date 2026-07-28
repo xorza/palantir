@@ -9,15 +9,27 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
-use crate::text::probe::{CursorPos, SelectionRects};
-use crate::text::wrap::{LineFit, TextWrap};
-use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
+use crate::text::probe::Caret;
+use crate::text::run::TextRun;
+use crate::text::wrap::TextWrap;
+use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
 use crate::widgets::Widget;
 use crate::widgets::text_edit::model::EditState;
 use glam::Vec2;
 use std::ops::Range;
 use std::time::Duration;
+
+/// Retained buffer for the caret selection wash. Holds a selection up to
+/// 16 visual lines inline; a longer one keeps its spill allocation, which
+/// is what makes a held drag across a big multi-line selection
+/// allocation-free after the first frame (`long_multiline_selection_alloc_free`).
+///
+/// Lives here rather than beside the probe that fills it: the probe
+/// streams rects to a sink and retains nothing, so this is purely
+/// `ViewState`'s storage choice.
+pub(super) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
+pub(super) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_CAPACITY]>;
 
 const BLINK_HALF: f32 = 0.5;
 const BLINK_STOP_AFTER_IDLE: f32 = 30.0;
@@ -116,17 +128,29 @@ pub(super) struct ShapeCtx {
 }
 
 impl ShapeCtx {
-    pub(super) fn request<'a>(&self, text: &'a str) -> TextShapeRequest<'a> {
-        let request = TextShapeRequest::unbounded(
+    /// This editor's shaping parameters as the public run description.
+    ///
+    /// `TextEdit` probes through [`Ui::probe_text`](crate::Ui::probe_text)
+    /// like any caller-authored widget would — which is what keeps that
+    /// API honest about being enough to build a text widget with.
+    ///
+    /// A non-multiline editor carries no wrap target, so its `Wrap` /
+    /// `SingleLine` choice and its `max_width_px` agree either way: both
+    /// resolve to an unbounded shape.
+    pub(super) fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
+        TextRun {
             text,
-            self.font_size,
-            self.line_height_px,
-            self.family,
-            self.weight,
-        );
-        match self.wrap_target {
-            Some(width) => request.bounded(width, self.halign, LineFit::Wrap),
-            None => request,
+            font_size_px: self.font_size,
+            line_height_px: self.line_height_px,
+            wrap: if self.multiline {
+                TextWrap::Wrap
+            } else {
+                TextWrap::SingleLine
+            },
+            align: Align::h(self.halign),
+            family: self.family,
+            weight: self.weight,
+            max_width_px: self.wrap_target,
         }
     }
 }
@@ -199,6 +223,16 @@ pub(super) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
     }
 }
 
+/// What one probe of the content run yields. A named struct because the
+/// closure has to hand all three back at once — the probe's borrow ends
+/// with it, so nothing can be re-read afterwards.
+#[derive(Clone, Copy, Debug)]
+struct Probed {
+    measured: Size,
+    caret_pos: Caret,
+    text_hash: u64,
+}
+
 #[derive(Debug)]
 pub(super) struct GeometryInput<'a> {
     pub(super) layout: ResolvedLayout,
@@ -211,30 +245,37 @@ pub(super) struct GeometryInput<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FinalGeometry {
     pub(super) layout: ResolvedLayout,
-    pub(super) caret_pos: CursorPos,
+    pub(super) caret_pos: Caret,
     pub(super) text_hash: u64,
 }
 
 pub(super) fn resolve_geometry(
-    shaper: &TextShaper,
+    ui: &Ui,
     input: GeometryInput<'_>,
     selection_rects: &mut SelectionRects,
 ) -> FinalGeometry {
     let mut layout = input.layout;
-    let probe = shaper.layout(layout.ctx.request(input.text));
-    if let Some(selection) = input.selection {
-        probe.selection_rects(selection, selection_rects);
-    } else {
+    // Each probe is its own closure, which is what keeps the two off
+    // each other: a live probe holds the shaper's exclusive borrow, so
+    // the placeholder measurement below cannot be taken while the
+    // content's is still open.
+    let Probed {
+        measured,
+        caret_pos,
+        text_hash,
+    } = ui.probe_text(layout.ctx.run(input.text), |probe| {
         selection_rects.clear();
-    }
-    let measured = probe.size;
-    let caret_pos = probe.cursor_xy(input.caret);
-    let text_hash = probe.request.key.text_hash;
-    // The probe holds the shaper borrow; release it before the
-    // placeholder lease below.
-    drop(probe);
+        if let Some(selection) = input.selection {
+            probe.selection_rects(selection, |rect| selection_rects.push(rect));
+        }
+        Probed {
+            measured: probe.size(),
+            caret_pos: probe.caret_at(input.caret),
+            text_hash: probe.text_hash(),
+        }
+    });
     let placeholder_measured = if input.text.is_empty() && !input.placeholder.is_empty() {
-        shaper.layout(layout.ctx.request(input.placeholder)).size
+        ui.probe_text(layout.ctx.run(input.placeholder), |probe| probe.size())
     } else {
         measured
     };
@@ -278,7 +319,7 @@ pub(super) fn resolve_geometry(
 pub(super) struct ViewUpdateInput {
     pub(super) response_rect: Option<Rect>,
     pub(super) ctx: ShapeCtx,
-    pub(super) caret_pos: CursorPos,
+    pub(super) caret_pos: Caret,
     pub(super) caret_width: f32,
     pub(super) content_width: f32,
     pub(super) focused: bool,
@@ -297,7 +338,7 @@ pub(super) struct ViewUpdate {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CaretPaint {
-    pub(super) pos: CursorPos,
+    pub(super) pos: Caret,
     pub(super) width: f32,
     pub(super) color: Color,
     pub(super) anim: Option<PaintAnim>,
