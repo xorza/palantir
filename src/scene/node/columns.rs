@@ -1,3 +1,4 @@
+use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
@@ -209,6 +210,8 @@ impl NodeFlags {
     const CLIP_SHIFT: u16 = 6;
     const CLIP_MASK: u16 = 0b11 << Self::CLIP_SHIFT;
     const FOCUSABLE: u16 = 1 << 8;
+    const SCOPE_SHIFT: u16 = 9;
+    const SCOPE_MASK: u16 = 0b1_1111 << Self::SCOPE_SHIFT;
 
     #[inline]
     pub(crate) fn sense(self) -> Sense {
@@ -235,6 +238,15 @@ impl NodeFlags {
         self.bits & Self::FOCUSABLE != 0
     }
 
+    /// The key classes this node's input scope takes, or
+    /// [`KeyFilter::empty`] when it declares no scope — the empty filter
+    /// doubles as "not a scope", which is what lets this ride spare bits
+    /// instead of costing a presence flag of its own.
+    #[inline]
+    pub(crate) fn key_filter(self) -> KeyFilter {
+        KeyFilter::from_bits_truncate(((self.bits & Self::SCOPE_MASK) >> Self::SCOPE_SHIFT) as u8)
+    }
+
     #[inline]
     pub(crate) fn set_sense(&mut self, s: Sense) {
         self.bits = (self.bits & !Self::SENSE_MASK) | ((s.bits() as u16) & Self::SENSE_MASK);
@@ -254,6 +266,12 @@ impl NodeFlags {
     pub(crate) fn set_focusable(&mut self, v: bool) {
         self.bits = (self.bits & !Self::FOCUSABLE) | (if v { Self::FOCUSABLE } else { 0 });
     }
+
+    #[inline]
+    pub(crate) fn set_key_filter(&mut self, f: KeyFilter) {
+        self.bits = (self.bits & !Self::SCOPE_MASK)
+            | (((f.bits() as u16) << Self::SCOPE_SHIFT) & Self::SCOPE_MASK);
+    }
 }
 
 const _: () = assert!(
@@ -263,6 +281,10 @@ const _: () = assert!(
 const _: () = assert!(
     Sense::all().bits() as u16 <= NodeFlags::SENSE_MASK,
     "Sense uses more than 5 bits",
+);
+const _: () = assert!(
+    ((KeyFilter::all().bits() as u16) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
+    "KeyFilter uses more than 5 bits",
 );
 
 #[derive(Debug)]

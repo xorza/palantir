@@ -2,6 +2,7 @@
 
 pub(crate) mod columns;
 
+use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
@@ -485,6 +486,31 @@ pub trait Configure: Sized {
     /// flag — same cascade rule as `Sense`.
     fn focusable(mut self, f: bool) -> Self {
         self.node_mut().node.flags.set_focusable(f);
+        self
+    }
+    /// Make this node an **input scope** taking `takes` while it is
+    /// active.
+    ///
+    /// Scopes nest. A key press walks the active path deepest-first and
+    /// is granted to the first scope whose filter contains its
+    /// [`KeyClass`](crate::KeyClass); scopes further out never see it.
+    /// That is what lets a focused text field own `Ctrl+Z` while
+    /// `Ctrl+S` walks past it to the application —
+    /// [`KeyFilter::TEXT_FIELD`] deliberately omits `ACCEL`.
+    ///
+    /// The active path is rooted at the topmost *layer* declaring any
+    /// scope, so an overlay declaring [`KeyFilter::ALL`] cuts the layers
+    /// below it off entirely. A reader outside every scope resolves as
+    /// the active layer's outermost one.
+    ///
+    /// Deliberately **not** focus: a scope is where input *belongs*,
+    /// focus is where typing *goes*. Conflating them is what forces an
+    /// app to reconstruct one from the other.
+    ///
+    /// [`KeyFilter::empty`] clears it — an empty filter is how "not a
+    /// scope" is stored.
+    fn input_scope(mut self, takes: KeyFilter) -> Self {
+        self.node_mut().node.flags.set_key_filter(takes);
         self
     }
     /// Three-state visibility. See [`Visibility`].

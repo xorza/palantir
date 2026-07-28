@@ -5,7 +5,6 @@ pub(crate) mod bench_fixture;
 pub(crate) mod frame;
 pub(crate) mod frame_report;
 mod frame_stats;
-pub(crate) mod input_claim;
 pub(crate) mod resources;
 pub(crate) mod state;
 
@@ -47,7 +46,6 @@ use crate::scene::damage::{Damage, DamageEngine, DamageInput};
 use crate::shape::Shape;
 use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
-use crate::ui::input_claim::InputClaim;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
 use crate::widgets::Widget;
@@ -344,7 +342,7 @@ impl Ui {
             self.forest.pre_record();
             // Rebuild record-scoped input ownership and wake watches;
             // PaintOnly frames skip this so their last wake set persists.
-            self.input.begin_record();
+            self.input.begin_record(&self.cascades);
             // Like the watch set, the cursor request is
             // re-asserted by whoever still wants it this pass; reset
             // here (not per frame) so PaintOnly frames keep the last
@@ -470,7 +468,7 @@ impl Ui {
     //   default because forgetting it is a silent visual bug: paint
     //   derived from the pointer freezes on screen until some unrelated
     //   event forces a frame. Forgetting a peek only costs frames.
-    // - `claim_*`, and `modal_layer`, take authority over a stream for
+    // - `input_scope`, and `close_scope`, take authority over a stream for
     //   the ambient layer, silencing readers strictly below it.
     //
     // A plain read auto-watches exactly what its own result depends on:
@@ -504,7 +502,7 @@ impl Ui {
     /// no [`PointerWake`] watcher is active. Watchers `match`
     /// and filter by rect / button.
     ///
-    /// Layer-gated like [`Self::keyboard_events`]: a [`Self::modal_layer`]
+    /// Layer-gated like [`Self::keyboard_events`]: an overlay's scope
     /// empties the stream for every layer strictly below it, and for no
     /// other. Watches deliberately bypass hit-testing, so without this
     /// the scrim that blocks routed input would let a `Main`-layer
@@ -519,11 +517,11 @@ impl Ui {
     /// arrival order.
     ///
     /// Layer-gated exactly like [`Self::pointer_events`]: a
-    /// [`Self::modal_layer`] empties the stream for every layer strictly
+    /// An overlay's scope empties the stream for every layer strictly
     /// below, and for no other — so the claiming overlay's own body keeps
     /// reading, which is what lets a `TextEdit` inside a popup be typed
     /// into. The claim owner reads its scoped stream through
-    /// [`InputClaim::keyboard_events`].
+    /// its own layer.
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
         self.input.keyboard_events(self.forest.current_layer())
     }
@@ -539,7 +537,8 @@ impl Ui {
     /// watch system already requires.
     pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
         let layer = self.forest.current_layer();
-        self.input.key_pressed(layer, sc)
+        let parent = self.forest.current_parent_id();
+        self.input.key_pressed(layer, parent, &self.cascades, sc)
     }
 
     /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
@@ -916,7 +915,7 @@ impl Ui {
     /// Both halves ride this call rather than being claimed inside the
     /// body, so the layer they record against is the layer they were
     /// opened on and the two can never disagree. Re-open every frame the
-    /// overlay is up, and [`InputClaim::release`] on the frame it
+    /// overlay is up, and [`Self::close_scope`] on the frame it
     /// decides to close — claims resolve at the end of a pass and are
     /// read by the next one, so without the release a dismissing overlay
     /// owns input for one frame after it is gone.
@@ -924,17 +923,19 @@ impl Ui {
     /// Only the topmost claim matters, so an overlay that enters its
     /// layer more than once (as `Popup` does — a full-surface eater plus
     /// a positioned body) needs this on just one of them.
-    pub fn modal_layer<R>(
-        &mut self,
-        layer: Layer,
-        anchor: glam::Vec2,
-        size: Option<Size>,
-        owner: WidgetId,
-        body: impl FnOnce(&mut Ui, InputClaim) -> R,
-    ) -> R {
-        self.input.claim_input(owner, layer);
-        let claim = InputClaim::new(owner, layer);
-        self.placed_layer(layer, Placement::fixed(anchor, size), |ui| body(ui, claim))
+    /// Withdraw an [`input_scope`](crate::Configure::input_scope) this
+    /// pass recorded, so the next resolution does not see it.
+    ///
+    /// **The pass you call it in is unaffected.** A scope path is
+    /// resolved once at pass start against a cascade that is one frame
+    /// old, so an overlay that decides it is closing has already
+    /// recorded its scope and would go on owning input for the frame
+    /// after it is gone — long enough to swallow the click that lands
+    /// where it used to be. Call it on the frame the overlay resolves
+    /// that it closed; a scope that simply stops recording needs
+    /// nothing.
+    pub fn close_scope(&mut self, id: WidgetId) {
+        self.input.close_scope(id);
     }
 
     pub(crate) fn overlay_layer<R>(
@@ -947,7 +948,7 @@ impl Ui {
     }
 
     /// Forwards `body`'s value so a layer scope can hand something back —
-    /// notably a [`InputClaim`] claimed inside it, which is how an
+    /// notably an `input_scope` declared inside it, which is how an
     /// overlay records its capture against the layer it actually lives on.
     fn placed_layer<R>(
         &mut self,
