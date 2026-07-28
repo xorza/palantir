@@ -84,7 +84,12 @@ pub struct Ui {
     /// hit index. Written by `CascadesEngine::run` in the paint phase
     /// and read by the encoder, input dispatch, and damage compute.
     pub(crate) cascades: Cascades,
-    pub(crate) input: InputState,
+    /// Private, deliberately: everything outside this module reaches
+    /// input through `Ui`'s public API, so the surface a caller's own
+    /// widget has is the surface every widget in this crate is built
+    /// on. Tests reach the machine itself through
+    /// [`internals`](crate::ui::internals).
+    input: InputState,
     /// Selects which "did input arrive?" signal `take_frame_plan`
     /// consults to gate the full record path. Default
     /// [`InputPolicy::OnDelta`] skips record on inert pointer moves
