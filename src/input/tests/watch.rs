@@ -7,6 +7,7 @@
 //!  * pre-record clear drops stale watches.
 use crate::primitives::widget_id::WidgetId;
 
+use crate::KeyFilter;
 use crate::Ui;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
@@ -25,6 +26,7 @@ use crate::widgets::frame::Frame;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
+use strum::EnumCount as _;
 
 fn empty(ui: &mut Ui) {
     Panel::vstack()
@@ -383,86 +385,109 @@ fn pointer_events_drain_between_frames() {
 }
 
 /// The pointer watch stream is layer-gated exactly like the keyboard's:
-/// a claiming overlay silences readers *strictly below* it and nobody
-/// else. Same predicate, so the two policies are asserted the same way
-/// as `keyboard_views_and_shortcuts_follow_capture_owner`.
+/// an overlay's scope silences watchers *strictly below* it and nobody
+/// else. Same predicate, same shape as
+/// `a_scope_silences_the_layers_strictly_below_it`.
 #[test]
-fn a_modal_layer_silences_pointer_watchers_strictly_below_it() {
+fn a_scope_silences_pointer_watchers_strictly_below_it() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
+    let scoped = |ui: &mut Ui| {
+        empty_watch_buttons(ui);
+        ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
+            Frame::new()
+                .id(WidgetId::from_hash("overlay"))
+                .input_scope(KeyFilter::ALL)
+                .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                .show(ui);
+        });
+    };
+    // Two frames: the scope records in the first, resolves in the next.
+    // Counts are read *inside* the record, the only place the queue is
+    // live, and maxed across the double-layout passes.
+    h.frame(scoped);
+    h.press_at(Vec2::new(50.0, 50.0));
+    let seen = sample_pointer_layers(&mut h, scoped);
+
+    // Strictly below — cut off, which is the whole point.
+    assert_eq!(seen[Layer::Main.idx()], 0);
+    // Same layer — the overlay's own body keeps watching, so a popup can
+    // still drive a drag inside itself.
+    assert_eq!(seen[Layer::Popup.idx()], 1);
+    // Above — a modal over a popup is not silenced by it.
+    assert_eq!(seen[Layer::Modal.idx()], 1);
+    assert_eq!(seen[Layer::Tooltip.idx()], 1);
+
+    // Nothing re-declares it, so the next resolution reopens the stream.
     h.frame(empty_watch_buttons);
     h.press_at(Vec2::new(50.0, 50.0));
-    let event = h.ui.pointer_events()[0];
-
-    h.ui.modal_layer(
-        Layer::Popup,
-        Vec2::ZERO,
-        None,
-        WidgetId::from_hash("overlay"),
-        |_, _| {},
-    );
     assert_eq!(
-        h.ui.input.pointer_events(Layer::Main),
-        &[event],
-        "the claim resolves at finish_record, so the pass it was made in still reads",
+        sample_pointer_layers(&mut h, empty_watch_buttons)[Layer::Main.idx()],
+        1,
     );
-    h.ui.input.finish_record();
-
-    // Strictly below — cut off, which is the whole point of the claim.
-    assert!(h.ui.input.pointer_events(Layer::Main).is_empty());
-    // Same layer — the claiming overlay's own body keeps watching, so a
-    // popup can still drive a drag inside itself.
-    assert_eq!(h.ui.input.pointer_events(Layer::Popup), &[event]);
-    // Above — a modal over a popup is not silenced by it.
-    assert_eq!(h.ui.input.pointer_events(Layer::Modal), &[event]);
-    assert_eq!(h.ui.input.pointer_events(Layer::Tooltip), &[event]);
-
-    // Nothing re-claimed it, so the next resolution reopens the stream.
-    h.ui.input.begin_record();
-    h.ui.input.finish_record();
-    assert_eq!(h.ui.input.pointer_events(Layer::Main), &[event]);
 }
 
-/// End-to-end, and the distinction `modal_layer` exists to draw: a
+/// Per-layer pointer-watch counts, the sibling of `sample_layers` in
+/// `input::tests::keyboard` — same reason for reading inside the record.
+fn sample_pointer_layers(
+    h: &mut UiHarness,
+    mut record: impl FnMut(&mut Ui),
+) -> [usize; Layer::COUNT] {
+    let mut seen = [0usize; Layer::COUNT];
+    h.frame(|ui| {
+        record(ui);
+        for layer in Layer::PAINT_ORDER {
+            let n = ui.input.pointer_events(layer).len();
+            seen[layer.idx()] = seen[layer.idx()].max(n);
+        }
+    });
+    seen
+}
+
+/// End-to-end, and the distinction an overlay's scope exists to draw: a
 /// `Modal` takes the stream from `Main`, a plain `Ui::layer` on the very
 /// same layer does not. Not recording the modal is the whole release.
 #[test]
-fn only_a_modal_layer_gates_the_stream_and_only_while_recorded() {
+fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     let surface = UVec2::new(200, 200);
-    // Takes a bare `Ui`, not the harness — this presses from *inside* a
-    // record pass, which is the point of the case.
     let press = |ui: &mut Ui| {
         let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     };
-
-    let mut h = UiHarness::new(surface);
-    h.frame(|ui| {
+    let with_modal = |ui: &mut Ui| {
         empty_watch_buttons(ui);
         Modal::new().show(ui, |_| {});
-    });
+    };
+    let plain_layer = |ui: &mut Ui| {
+        empty_watch_buttons(ui);
+        ui.layer(Layer::Modal, Vec2::ZERO, None, empty);
+    };
+
+    // A scope takes effect on the frame *after* the one that declared
+    // it — the path resolves at record-pass start from the cascade the
+    // previous frame left — so each leg records twice.
+    let mut h = UiHarness::new(surface);
+    h.frame(with_modal);
     press(&mut h.ui);
-    assert!(
-        h.ui.pointer_events().is_empty(),
-        "a Modal opens its layer with modal_layer, so Main is cut off",
+    assert_eq!(
+        sample_pointer_layers(&mut h, with_modal)[Layer::Main.idx()],
+        0,
+        "a Modal declares an ALL scope on its layer, so Main is cut off",
     );
 
     // A paint-only overlay on the same layer — a tooltip, a debug HUD —
     // must leave the canvas underneath able to pan and zoom.
-    h.frame(|ui| {
-        empty_watch_buttons(ui);
-        ui.layer(Layer::Modal, Vec2::ZERO, None, empty);
-    });
+    h.frame(plain_layer);
     press(&mut h.ui);
     assert_eq!(
-        h.ui.pointer_events().len(),
+        sample_pointer_layers(&mut h, plain_layer)[Layer::Main.idx()],
         1,
-        "a plain layer on the same Layer::Modal blocks nothing",
+        "a plain layer on the same Layer::Modal declares nothing and blocks nothing",
     );
 
     h.frame(empty_watch_buttons);
     press(&mut h.ui);
     assert_eq!(
-        h.ui.pointer_events().len(),
+        sample_pointer_layers(&mut h, empty_watch_buttons)[Layer::Main.idx()],
         1,
         "a modal that stops recording stops blocking",
     );

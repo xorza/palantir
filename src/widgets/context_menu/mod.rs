@@ -339,7 +339,7 @@ impl<'a> MenuItem<'a> {
                 Some(shortcut)
             }
             MenuShortcut::Activate(shortcut) => {
-                shortcut_fired = !disabled && popup.key_pressed(ui, shortcut);
+                shortcut_fired = !disabled && ui.key_pressed(shortcut);
                 Some(shortcut)
             }
         };
