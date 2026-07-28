@@ -36,11 +36,6 @@ pub(super) struct InputResult {
     pub(super) edited: bool,
 }
 
-/// Process this frame's pointer + keyboard input for one TextEdit
-/// widget and return the caret + selection to render plus the frame's
-/// edge signals. Splitting this out of `show()` keeps the borrow
-/// choreography contained: we touch `ui.state`, `ui.input`, and
-/// `ui.resources.text` here, but never the shape/tree storage.
 /// What the builder configured about *accepting* input, as opposed to
 /// rendering it. The three travel together because they are set on the
 /// same builder and read at the same call, and bundling them is what
@@ -57,6 +52,25 @@ pub(super) struct InputPolicy {
     pub(super) filter: KeyFilter,
 }
 
+/// Process this frame's pointer + keyboard input for one TextEdit
+/// widget and return the caret + selection to render plus the frame's
+/// edge signals. Splitting this out of `show()` keeps the borrow
+/// choreography contained: we touch `ui.state`, the input streams, and
+/// `ui.resources.text` here, but never the shape/tree storage.
+///
+/// **The state row is moved out for the duration and moved back after.**
+/// `Editor` holds it mutably across the keyboard drain, and the drain
+/// reads [`Ui::keyboard_events`] — a `&self` method, so it borrows all of
+/// `Ui` and the two cannot coexist. Owning the row for the pass costs two
+/// moves of a small struct (no allocation: the undo buffers move with it)
+/// and is what lets this widget take its input through the same public
+/// API a caller's own widget would, rather than a disjoint-field reach
+/// into `ui.input`.
+///
+/// The split into [`run_input`] is what makes the write-back
+/// unconditional — the inner half early-returns for an unfocused field,
+/// and a `mem::take` with a write-back on only *some* paths silently
+/// resets the caret.
 pub(super) fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
@@ -64,6 +78,23 @@ pub(super) fn handle_input(
     text: &mut String,
     ctx: &ShapeCtx,
     policy: InputPolicy,
+) -> InputResult {
+    let mut state = std::mem::take(ui.state_mut::<TextEditState>(id));
+    let result = run_input(ui, id, is_focused, text, ctx, policy, &mut state);
+    *ui.state_mut::<TextEditState>(id) = state;
+    result
+}
+
+/// [`handle_input`]'s body, over a state row it does not have to borrow
+/// from `ui` — see there for why that matters.
+fn run_input(
+    ui: &mut Ui,
+    id: WidgetId,
+    is_focused: bool,
+    text: &mut String,
+    ctx: &ShapeCtx,
+    policy: InputPolicy,
+    state: &mut TextEditState,
 ) -> InputResult {
     let InputPolicy {
         max_chars,
@@ -75,14 +106,6 @@ pub(super) fn handle_input(
     let resp_state = ui.response_for(id);
     let clipboard = ui.resources.clipboard.clone();
 
-    // Hold the state row once for the whole function (inside the
-    // `Editor`). `ui.state`, `ui.input`, and `ui.resources.text` are
-    // disjoint fields of `Ui`, so the `&mut state` can stay alive
-    // while also reading the input queues and dispatching to the text
-    // measurer.
-    let state = ui
-        .state
-        .get_or_insert_with::<TextEditState, _>(id, Default::default);
     let TextEditState {
         edit,
         interaction,
@@ -215,10 +238,9 @@ pub(super) fn handle_input(
     // on acting on it here — and the container the class was yielded to
     // acts on it too. One press, handled twice, which is the exact
     // double-dispatch scopes exist to prevent.
-    let layer = ui.forest.current_layer();
-    let n = ui.input.keyboard_events(layer).len();
+    let n = ui.keyboard_events().len();
     for i in 0..n {
-        let event = ui.input.keyboard_events(layer)[i];
+        let event = ui.keyboard_events()[i];
         match event {
             KeyboardEvent::Down(kp) if !filter.takes(KeyClass::of(kp)) => continue,
             KeyboardEvent::Text(_) if !filter.contains(KeyFilter::TEXT) => continue,

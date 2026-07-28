@@ -180,7 +180,7 @@ impl<'a> TextEdit<'a> {
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let mut widget = ui.widget(self.node);
         let id = widget.id();
-        let mut is_focused = ui.input.focused == Some(id);
+        let mut is_focused = ui.focused_id() == Some(id);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
         // happens to hold focus paints with its disabled visuals
