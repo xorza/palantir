@@ -15,7 +15,7 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::text::probe::{SELECTION_RECTS_INLINE_CAPACITY, SelectionRects};
 use crate::ui::Ui;
-use crate::widgets::text_edit::input::{InputResult, handle_input};
+use crate::widgets::text_edit::input::{InputPolicy, InputResult, handle_input};
 use crate::widgets::text_edit::menu::MenuResult;
 use crate::widgets::text_edit::model::EditState;
 use crate::widgets::text_edit::view::{
@@ -73,6 +73,9 @@ pub struct TextEdit<'a> {
     /// [`crate::DragValue`] does on click-to-edit) so the first keystroke
     /// replaces it. A press that focuses the field still places the caret.
     select_all_on_focus: bool,
+    /// Whether Escape belongs to the container rather than to this field —
+    /// see [`TextEdit::escape_falls_through`].
+    escape_falls_through: bool,
 }
 
 impl<'a> TextEdit<'a> {
@@ -99,6 +102,7 @@ impl<'a> TextEdit<'a> {
             text_align: None,
             max_chars: None,
             select_all_on_focus: false,
+            escape_falls_through: false,
         }
     }
 
@@ -108,6 +112,23 @@ impl<'a> TextEdit<'a> {
     /// places the caret at the hit. Default off.
     pub fn select_all_on_focus(mut self) -> Self {
         self.select_all_on_focus = true;
+        self
+    }
+
+    /// Drop `ESCAPE` from the focused field's scope, so Escape resolves to
+    /// whatever encloses it instead.
+    ///
+    /// For a field that *filters* its container rather than editing a value
+    /// of its own — a palette's search box, a picker's type-ahead. There,
+    /// one Escape is expected to close the whole overlay; a field that
+    /// takes it first blurs itself and leaves the overlay open around a
+    /// search box the user can no longer type in.
+    ///
+    /// Off by default, because the other archetype is the common one: an
+    /// inline rename or a value editor, where Escape *is* the cancel and
+    /// must not reach past the field to close the surface behind it.
+    pub fn escape_falls_through(mut self) -> Self {
+        self.escape_falls_through = true;
         self
     }
 
@@ -183,8 +204,14 @@ impl<'a> TextEdit<'a> {
         // selected node. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`)
         // — Ctrl+S still saves mid-edit, which is exactly what an
         // exclusive capture would break.
+        //
+        // The same value gates the drain in `handle_input`, so what this
+        // field tells other readers it takes and what it acts on are one
+        // fact rather than two that can disagree.
+        let mut filter = KeyFilter::TEXT_FIELD;
+        filter.set(KeyFilter::ESCAPE, !self.escape_falls_through);
         if is_focused {
-            self.node.flags.set_key_filter(KeyFilter::TEXT_FIELD);
+            self.node.flags.set_key_filter(filter);
         }
         // `resolve_look` also substitutes theme padding/margin where
         // the builder left those fields unconfigured. The renderer
@@ -266,8 +293,11 @@ impl<'a> TextEdit<'a> {
             is_focused,
             self.text,
             &ctx,
-            self.max_chars,
-            self.select_all_on_focus,
+            InputPolicy {
+                max_chars: self.max_chars,
+                select_all_on_focus: self.select_all_on_focus,
+                filter,
+            },
         );
         if blur_after {
             ui.request_focus(None);
