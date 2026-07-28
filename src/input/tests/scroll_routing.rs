@@ -152,8 +152,8 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     h.frame(|ui| {
         build(ui);
         if inner_d == Vec2::ZERO {
-            inner_d = ui.input.scroll_delta_for(inner_id).pixels;
-            outer_d = ui.input.scroll_delta_for(outer_id).pixels;
+            inner_d = ui.input().scroll_delta_for(inner_id).pixels;
+            outer_d = ui.input().scroll_delta_for(outer_id).pixels;
         }
     });
     assert_eq!(inner_d, Vec2::new(0.0, 5.0));
@@ -177,7 +177,7 @@ fn scroll_delta_zero_for_non_target() {
     let mut d = Vec2::new(1.0, 1.0);
     h.frame(|ui| {
         build(ui);
-        d = ui.input.scroll_delta_for(unrelated).pixels;
+        d = ui.input().scroll_delta_for(unrelated).pixels;
     });
     // Both passes return zero — the widget id never matches.
     assert_eq!(d, Vec2::ZERO);
@@ -202,7 +202,7 @@ fn pointer_left_clears_scroll_target() {
     let mut d = Vec2::new(1.0, 1.0);
     h.frame(|ui| {
         build(ui);
-        d = ui.input.scroll_delta_for(id).pixels;
+        d = ui.input().scroll_delta_for(id).pixels;
     });
     assert_eq!(
         d,
@@ -235,7 +235,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     let mut delivered = Vec2::new(f32::NAN, f32::NAN);
     h.frame(|ui| {
         build(ui);
-        delivered = ui.input.scroll_delta_for(id).pixels;
+        delivered = ui.input().scroll_delta_for(id).pixels;
     });
     assert_eq!(
         delivered,

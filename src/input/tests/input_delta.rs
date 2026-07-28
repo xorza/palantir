@@ -139,7 +139,7 @@ fn non_pointer_events_wake_on_focus_or_watch() {
             .requests_repaint,
     );
     assert!(
-        !h.ui.input.take_action_flag(),
+        !h.ui.input_mut().take_action_flag(),
         "unrouted text must not schedule a settling pass",
     );
     assert!(
@@ -148,12 +148,12 @@ fn non_pointer_events_wake_on_focus_or_watch() {
     );
 
     // Focus held → Text wakes.
-    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
     assert!(
         h.on_input(InputEvent::Text(TextChunk::new("b").unwrap()))
             .requests_repaint,
     );
-    h.ui.input.focused = None;
+    h.ui.input_mut().focused = None;
 
     // KeyboardWake watchers → Text + ModifiersChanged wake.
     h.frame(|ui| {
@@ -186,18 +186,18 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     let delta = h.key(Key::Enter);
     assert!(!delta.requests_repaint, "idle key must skip the frame");
     assert!(
-        !h.ui.input.take_action_flag(),
+        !h.ui.input_mut().take_action_flag(),
         "unrouted key must not schedule a settling pass",
     );
 
     // With focus held → wake.
-    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
     let delta = h.key(Key::Enter);
     assert!(delta.requests_repaint);
 
     // No focus, but chord watcher → wake. Watches are
     // cleared pre-record, so re-record with the sub re-asserted.
-    h.ui.input.focused = None;
+    h.ui.input_mut().focused = None;
     h.frame(|ui| {
         build_hover_target(ui);
         ui.watch_key(Shortcut::key(Key::Escape));
@@ -227,7 +227,7 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
         "stray release (no capture) → no repaint",
     );
     assert!(
-        !h.ui.input.take_action_flag(),
+        !h.ui.input_mut().take_action_flag(),
         "unrouted button events must not schedule a settling pass",
     );
 }
@@ -243,12 +243,12 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
     // Forge a focused widget — emulating a prior TextEdit interaction.
-    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
     h.move_to(Vec2::new(200.0, 200.0));
     let delta = h.press();
     assert!(
         delta.requests_repaint,
         "press on inert with prior focus → focus clear → repaint",
     );
-    assert!(h.ui.input.focused.is_none(), "focus must be cleared");
+    assert!(h.ui.input().focused.is_none(), "focus must be cleared");
 }

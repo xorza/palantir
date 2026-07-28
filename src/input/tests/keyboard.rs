@@ -206,7 +206,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
 /// `end_frame` evicts focus whose widget was not recorded — so this has
 /// to be set immediately before the press, not once up front.
 fn press_escape(h: &mut UiHarness) {
-    h.ui.input.focused = Some(WidgetId::from_hash("editor"));
+    h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
     h.key(Key::Escape);
 }
 
@@ -219,7 +219,7 @@ fn sample_layers(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) -> [usize; 
     h.frame(|ui| {
         record(ui);
         for layer in Layer::PAINT_ORDER {
-            let n = ui.input.keyboard_events(layer).len();
+            let n = ui.input().keyboard_events(layer).len();
             seen[layer.idx()] = seen[layer.idx()].max(n);
         }
     });

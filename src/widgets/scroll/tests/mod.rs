@@ -129,8 +129,8 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     h.frame(build);
 
     h.move_to(Vec2::new(50.0, 50.0));
-    assert_eq!(h.ui.input.scroll_target, Some(inner_id));
-    assert_eq!(h.ui.input.pinch_target, Some(outer_id));
+    assert_eq!(h.ui.input().scroll_target, Some(inner_id));
+    assert_eq!(h.ui.input().pinch_target, Some(outer_id));
     assert!(h.pinch(1.5).requests_repaint);
     h.frame(build);
 
