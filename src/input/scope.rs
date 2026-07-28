@@ -75,23 +75,17 @@ impl Scopes {
     /// recorded, nothing else.
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascades: &Cascades) {
         self.path.clear();
+        // `copied` before `filter`, so the predicate takes `&ScopeRow`
+        // rather than the `&&ScopeRow` a borrowing iterator would hand it.
         let live =
-            |row: &&ScopeRow| !self.closing.contains(&row.id) && !self.closed.contains(&row.id);
-        self.active_layer = cascades
-            .scopes
-            .iter()
-            .filter(live)
-            .map(|row| row.layer)
-            .max();
+            |row: &ScopeRow| !self.closing.contains(&row.id) && !self.closed.contains(&row.id);
+        let declared = || cascades.scopes.iter().copied().filter(live);
+        self.active_layer = declared().map(|row| row.layer).max();
         if let Some(active) = self.active_layer {
             if let Some(anchor) = focused {
                 self.path.extend(
-                    cascades
-                        .scopes
-                        .iter()
-                        .filter(live)
-                        .filter(|row| row.layer == active && cascades.is_within(anchor, row.id))
-                        .copied(),
+                    declared()
+                        .filter(|row| row.layer == active && cascades.is_within(anchor, row.id)),
                 );
             }
             self.outermost = outermost_of(active, cascades);
