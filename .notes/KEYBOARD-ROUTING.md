@@ -1,8 +1,12 @@
 # Keyboard routing: who gets this key?
 
 Working note. Investigation started from one hack in darkroom; the
-conclusion is a palantir-side design proposal. Not accepted, not
-scheduled.
+conclusion is a palantir-side design that **replaces the existing capture
+system** rather than sitting beside it. Resolved, not scheduled.
+
+Supersedes the earlier revision of this file, which proposed scopes as an
+addition layered on top of `modal_layer`. Two mechanisms doing one job is
+the thing this is trying to stop.
 
 ## 1. The trigger
 
@@ -32,21 +36,40 @@ focusable. Mark any other widget `.focusable(true)` (a list, a scroll region —
 `widgets/scroll/mod.rs:327` already propagates the flag) and undo/Delete
 silently go dead while it holds focus. No compile error, no test failure.
 
+It also **over-fires today**. `shortcuts.rs:86` gates the whole body of
+`apply_canvas_shortcuts`, so Ctrl+D (duplicate) and Ctrl+0 (reset zoom) are
+dead whenever any field is focused — even though `TextEdit` binds neither.
+A live bug, found while sanity-checking the design below.
+
 ## 2. It is a class, not an instance
 
-Three darkroom workarounds share one root cause:
+Two darkroom workarounds share one root cause — plus a third that looks
+like one and isn't:
 
 | Site | Question it needs answered | What it does instead |
 |---|---|---|
 | `dock/mod.rs:302` `typing_focus_held` | does the focused widget consume typed keys? | subtract pane ids from `focused_id()` |
-| `dock/mod.rs:315` `drop_target` | which pane is the pointer inside? | hand-rolled `rect.contains(p)` — its doc says "deliberately *not* `hover_within`", because hover resolves only to *sensing* widgets and pane content is inert |
+| ~~`dock/mod.rs:315` `drop_target`~~ | which pane is the pointer inside? | **not actually broken** — see below |
 | `widgets/inline_rename.rs:206` | is this Escape/Enter mine? | read them globally, rely on an unenforced "only one rename is active" invariant |
+
+`drop_target` was in this table for a revision and does not belong. It
+hand-rolls `rect.contains(p)` and its doc says "deliberately *not*
+`hover_within`", which reads like the same workaround — but the argument it
+gives is sound: *panes tile the dock area without overlapping, so plain
+containment against last-frame rects is exact*. It also needs the pane rect
+anyway, to classify the drop zone. A pointer-geometry question answered with
+pointer geometry. (It could be `hover_within` if panes took `Sense::HOVER` —
+that hit-test is **not** capture-suppressed, `refresh_pointer_targets:945`
+sets `input.hovered` from the raw hit regardless of a live drag, unlike
+`ResponseState::hovered`. It just buys nothing over exact containment.)
+
+The other two are one problem.
 
 ### Root cause
 
 Palantir's keyboard input is a **broadcast stream with exactly one arbiter,
 and that arbiter is whole-stream and layer-granular.**
-`InputState::keyboard_events_for` (`src/input/mod.rs:510`) gates a reader only
+`InputState::keyboard_events_for` (`input/mod.rs:510`) gates a reader only
 on layer order:
 
 ```rust
@@ -55,7 +78,7 @@ on layer order:
 
 Every reader on the top layer sees every key, so per-chord arbitration must be
 hand-written by the app. Focus is a single `Option<WidgetId>` behind a single
-`focusable` bit (`src/scene/node/columns.rs:210`), so it serves two unrelated
+`focusable` bit (`scene/node/columns.rs:211`), so it serves two unrelated
 jobs — *where typed keys go* and *which region the user last reached into*.
 Darkroom needs the second, palantir offers it only via the first, and darkroom
 subtracts the first back out.
@@ -71,7 +94,7 @@ Two mechanisms that are 80% of a routing system:
 - `claims: Vec<InputOwner { layer, id }>` resolved once in `finish_record`
   (`input/mod.rs:569`) — a route table with one route ("all keys") and one
   scoring dimension (layer).
-- `Watches.keys: Vec<Shortcut>` (`input/watch.rs:104`) — a per-chord,
+- `Watches.keys: Vec<Shortcut>` (`input/watch.rs:97`) — a per-chord,
   per-pass, deduped subscription list, used only for the wake-gate. Carries no
   owner.
 
@@ -82,7 +105,8 @@ makes for its routing system.
 
 **The capture system already _is_ a routing system.** It has exactly one scope
 tree, hard-coded: `Layer`. Five nodes, totally ordered, gate is arithmetic on
-that order.
+that order. The design in §5 makes that tree real and demotes `Layer` to its
+outermost tier — it does not add a second tree next to it.
 
 ## 3. Prior art
 
@@ -95,25 +119,25 @@ Solves it twice, in both directions.
 - **The focused widget declares what it takes.** `EventFilter`
   (`crates/egui/src/data/input/event_filter.rs`) rides on
   `FocusWidget { id, filter }`; `InputState::filtered_events(&filter)`
-  (`input_state/mod.rs:907`) hands the widget only matching events. The
-  default is the interesting part (`event_filter.rs:50`): every key returns
-  `true` — exclusive to the focused widget — **except** Tab/arrows/Escape,
-  which fall through unless opted into. `TextEdit` opts into both arrow axes;
-  `Slider` into horizontal only.
+  hands the widget only matching events. The default is the interesting
+  part: every key returns `true` — exclusive to the focused widget —
+  **except** Tab/arrows/Escape, which fall through unless opted into.
+  `TextEdit` opts into both arrow axes; `Slider` into horizontal only.
 
   Consequence worth knowing: egui ships "focused widget eats everything but
   navigation keys", and egui apps live with Ctrl+S not reaching the app
-  mid-edit. Coarse absorb is survivable in practice.
+  mid-edit. Coarse absorb is survivable in practice. §5.1 declines that
+  particular trade — `ACCEL` stays out of the text filter.
 
 - **Structurally, egui never creates the problem.** Containers are never
   focusable, and "which region was pressed" is a *separate axis* — area/layer
   ordering, `memory.areas().layer_id_at(pos)`. Two questions, two answers.
 
 - **Where it does need darkroom's predicate, it uses a type probe, not id
-  subtraction.** `Context::text_edit_focused()` (`context.rs:2889`) loads
-  `TextEditState` for the focused id and checks presence. Note
-  `egui_wants_keyboard_input()` right above it (`context.rs:2884`) is just
-  `focused().is_some()` — the naive version darkroom cannot use.
+  subtraction.** `Context::text_edit_focused()` loads `TextEditState` for the
+  focused id and checks presence. Note `egui_wants_keyboard_input()` right
+  above it is just `focused().is_some()` — the naive version darkroom cannot
+  use.
 
 ### Dear ImGui
 
@@ -122,18 +146,13 @@ ad-hoc `WantCaptureKeyboard`. Two layers.
 
 - **Key ownership** (`imgui_internal.h:3594`): *"instead of 'eating' a given
   input, we can link to an owner id."* `SetKeyOwner` / `TestKeyOwner`; a query
-  passes if the key is unowned **or** owned by you. Auto-released the frame
-  after key release. Mouse buttons are keys, so pointer rides the same
-  machinery.
+  passes if the key is unowned **or** owned by you. Mouse buttons are keys, so
+  pointer rides the same machinery.
 
-- **Shortcut routing** (`imgui.h:1073`, `imgui_internal.h:3627`):
-  `Shortcut(Ctrl+S)` *registers a route request*; all requests resolve in
-  `NewFrame()`; exactly one owner is granted and the grant calls
-  `SetKeyOwner`. Scoring (`imgui.cpp:9766 CalcRoutingScore`) is **depth in the
-  focus path** (`NavFocusRoute`): active item = 300, else
-  `199 - index_in_focus_path` — deepest focused scope wins, ancestors are the
-  fallback. Policies `RouteFocused` (default) / `RouteActive` / `RouteGlobal` /
-  `RouteAlways`, plus `RouteOverFocused` / `RouteOverActive`.
+- **Shortcut routing** (`imgui.h:1073`): `Shortcut(Ctrl+S)` *registers a route
+  request*; all requests resolve in `NewFrame()`; exactly one owner is granted.
+  Scoring (`CalcRoutingScore`) is **depth in the focus path** — deepest focused
+  scope wins, ancestors are the fallback.
 
 The canonical example (`imgui.h:1082`) is darkroom's case verbatim:
 
@@ -144,14 +163,13 @@ Parent   -> call Shortcut(Ctrl+S)    // When Parent is focused, Parent gets the 
 ```
 
 And the property called out as load-bearing: *"The whole system is order
-independent, so if Child1 makes its calls before Parent, results will be
-identical. This is an important property as it facilitates working with
+independent… This is an important property as it facilitates working with
 foreign code or larger codebase."* That falls out of register-then-resolve
 rather than first-come-reads.
 
 Also relevant: **focus scope** (`imgui_internal.h:3646`) — "used to identify a
 unique input location", one per window automatically, *and the default route
-owner when none is given*. One concept serving both jobs.
+owner when none is given*. One concept serving both jobs. §5 takes that shape.
 
 ### Browsers (retained contrast)
 
@@ -172,255 +190,331 @@ navigation phase, *before* the dock records, so the app would always win over
 any `TextEdit` — the exact bug inverted. Also the order-dependence imgui
 explicitly designed away from.
 
-### B. Per-chord route table (imgui-shaped) — viable, not chosen
+### B. Per-chord route table (imgui-shaped) — rejected
 
-Promote `Watches.keys` to carry `(chord, owner, Route)`. Resolve at record-pass
-start against the current focus path into a small grants vec;
-`ui.shortcut(owner, sc, route)` registers for next pass and returns this pass's
-grant.
+Promote `Watches.keys` to carry `(chord, owner, Route)`; resolve at pass start
+into a grants vec. The most precise option, and the wrong shape here:
+`key_pressed` grows an owner and a policy argument (34 call sites), newly
+appearing widgets get a frame of registration lag, `modal_layer`'s claim has
+to be taught about the table separately, and menu accelerators need a
+dedicated tier to beat a focused editor.
 
-```rust
-pub enum Route { Focused, Global, GlobalOverTyping, Always }
-```
+### C. Scope-gated stream — chosen
 
-Scoring: `GlobalOverTyping` 400, `claim_typing` wildcard 300, `Focused` at
-depth *d* on the focus path `200 - d`, `Global` 1, off-path 0.
+Extend the existing capture gate: let the app add nodes to the scope tree that
+`Layer` currently hard-codes.
 
-Works, and is the most precise option. Costs: `key_pressed` grows an owner and
-a policy argument (34 call sites across palantir + darkroom); one frame of
-registration lag for newly-appearing widgets; `modal_layer`'s claim has to be
-taught about the table separately; needs a dedicated tier so menu accelerators
-beat a focused editor.
+The wall a naive version hits — `if focused { ui.capture() }` — is that stream
+gating is **all-or-nothing per scope**. Focus in a node-title field, user
+presses Ctrl+R: the field holds the keyboard, the pane is cut off, and Run is
+silently swallowed. It also doesn't work as written, because the gate is `<=`:
+a same-layer claim silences nothing on its own layer, and tightening it to `<`
+re-breaks `TextEdit`-inside-`Popup`, the regression the `<=` comment at
+`input/mod.rs:501` documents.
 
-### C. Scope-gated stream (chosen)
+Both are fixed by giving each scope a **filter** (egui's `EventFilter`, moved
+off the focused widget onto the scope) and walking outward until one matches.
 
-Extend the existing capture gate instead of adding a table: let the app add
-nodes to the scope tree that `Layer` currently hard-codes.
+#### C1: filter the claim, keep `modal_layer` — rejected
 
-The wall a naive version hits: stream gating is **all-or-nothing per scope**.
-Focus in a node-title field, user presses Ctrl+R — the field's scope holds the
-keyboard, the pane is cut off, and Run is silently swallowed. Fixed by giving
-each scope a *filter* (egui's `EventFilter`, moved from the focused widget onto
-the scope) and walking the focus path outward until one matches.
+A cheaper variant: leave `claims` alone, add a second single-slot
+`typing: Option<TypingOwner { layer, id, filter }>` written only by focused
+text fields, and filter `key_pressed_for` against it. ~60 lines, no
+`NodeFlags` bit, no path walk.
 
-## 5. Proposal
+It works, and it fixes `typing_focus_held`. It was rejected for being a
+**third parallel mechanism** — overlay claims arbitrate by layer, text fields
+by class, and neither knows about the other. Adding a third axis to arbitrate
+input is worse than making the one that already exists real, whatever it
+costs in diff.
+
+#### C2: scopes replace the capture system — **chosen**
+
+`modal_layer`'s claim *is* a scope with `KeyFilter::ALL`; a focused field is a
+scope with `TEXT_FIELD`. One list, one resolution, one gate — and `InputClaim`
+with its release protocol disappears. The scope tree earns itself inside
+palantir, replacing the overlay machinery; darkroom only names a root.
+
+## 5. The design
 
 ### 5.1 `KeyClass` / `KeyFilter`
 
-Every chord classifies into exactly one class. The classifier is an exhaustive
-`match`, not a catch-all, so adding a class fails to compile until every chord
-is re-homed.
+Every press classifies into exactly one class. The classifier is an exhaustive
+`match` over `Key`, not a catch-all, so a new key variant fails to compile
+until it is re-homed.
 
 ```rust
-/// What kind of thing a chord *is*. Exactly one per `Shortcut`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What kind of thing a key press *is*. Exactly one class per press.
 pub enum KeyClass {
-    /// Printable characters, IME commits, Enter. Only a text field wants these.
+    /// Printable characters and bare Enter. Only a text field wants these.
     Text,
-    /// The clipboard/undo family: Ctrl+Z/X/C/V/A, Delete, Backspace.
-    /// The contested class — a text field and a canvas both want it, and
-    /// which one gets it is the whole problem this system solves.
+    /// The clipboard/undo family plus the destructive edit keys:
+    /// Ctrl+Z/X/C/V/A, Delete, Backspace. The contested class — a text
+    /// field and a canvas both want it, and deciding between them is the
+    /// whole problem this solves.
     Edit,
-    /// Arrows, Home/End, PgUp/PgDn, Tab. Caret movement, or canvas nudge.
+    /// Caret movement, or canvas nudge: arrows, Home/End, PgUp/PgDn, Tab.
     Motion,
-    /// Escape alone. Its own class because cancel is hierarchical: the
+    /// Escape alone. Its own class because cancel is hierarchical — the
     /// innermost thing that can be cancelled should be.
     Escape,
-    /// Everything else — modified chords and function keys. Ctrl+S, Ctrl+R,
-    /// F12. Application commands, not editing.
+    /// Everything else: command chords outside the edit family, and the
+    /// function keys. Ctrl+S, Ctrl+R, F12. Commands, never editing.
     Accel,
 }
+```
 
+Command chords match on the **physical** key — the same fallback
+`Shortcut::matches` uses — so Ctrl+Z is `Edit` on a layout whose logical Z is
+Cyrillic. The edit-chord set (`z x c v a`) is the one hand-maintained list;
+`widgets/text_edit/tests.rs` pins it by asserting every `EditAction::shortcut()`
+classifies as `Edit`, so a seventh edit action that forgets to extend it fails
+a test instead of silently becoming an accelerator.
+
+```rust
 bitflags! {
-    /// Which classes a scope takes while it is the active one.
+    /// The classes a scope takes while it is on the active path.
     pub struct KeyFilter: u8 { /* one bit per KeyClass */ }
 }
 
 impl KeyFilter {
     /// A focused text field. `ACCEL` is **absent**: Ctrl+S and Ctrl+R fall
-    /// through to the app while the user is typing, which is the behavior
-    /// that otherwise needs a special global tier.
+    /// through to the app while the user is typing. That omission is the
+    /// entire reason this is a filter and not a capture, and it is what
+    /// the route table's dedicated global tier (§4 B) bought at more cost.
     pub const TEXT_FIELD: Self = Self::TEXT.union(Self::EDIT)
-                                          .union(Self::MOTION)
-                                          .union(Self::ESCAPE);
+                                           .union(Self::MOTION)
+                                           .union(Self::ESCAPE);
 }
 ```
 
+`bitflags` is already a dependency (`Sense` uses it).
+
 ### 5.2 Declaring a scope
 
-A builder, not a block — so no extra nodes and no recorder stack. The scope
-*path* is the ancestor chain the cascade already computes.
+A builder, not a block — no extra nodes, no recorder stack. The scope *path*
+is the ancestor chain the cascade already computes.
 
 ```rust
 impl Configure {
-    /// Make this node a keyboard scope taking `takes` while it is active.
+    /// Make this node an input scope taking `takes` while it is active.
     ///
-    /// Scopes nest. The **active scope** is the innermost scope containing
-    /// the focused widget, or — when nothing is focused — the innermost
-    /// scope the last left-press landed in. A pressed chord walks the
-    /// active scope's ancestor chain deepest-first and is granted to the
-    /// first scope whose filter contains its class; scopes below that point
-    /// never see it.
+    /// Scopes nest. A press walks the active path deepest-first and is
+    /// granted to the first scope whose filter contains its `KeyClass`;
+    /// scopes further out never see it.
     ///
-    /// Deliberately **not** focus: a scope is where input *belongs*, focus
-    /// is where typing *goes*. Conflating them is what forces an app to
-    /// reconstruct one from the other.
+    /// Deliberately **not** focus: a scope is where input *belongs*,
+    /// focus is where typing *goes*. Conflating them is what forces an
+    /// app to reconstruct one from the other.
     fn input_scope(self, takes: KeyFilter) -> Self;
 }
 ```
 
-Cost: one new `NodeFlags` bit (bit 9; `focusable` at bit 8 unchanged) plus a
-`KeyFilter` byte in the cascade entry. Bits 10-15 stay free.
+Cost: one `NodeFlags` bit (bit 9; `FOCUSABLE` at bit 8 unchanged, 10–15 stay
+free) plus a `KeyFilter` byte in the cascade entry beside `sense` / `focusable`.
 
-The two-clause definition of "active scope" is deliberate. Making a press set
-*focus* to the enclosing scope would collapse it to one clause and reintroduce
-the original hack.
+### 5.3 Resolution
 
-### 5.3 Reading
+At record-pass start — focus is already committed by then
+(`input/mod.rs:759`):
+
+```
+active_layer = topmost layer declaring any scope
+anchor       = focused widget, else last-press widget, if either is in active_layer
+path         = scopes in active_layer containing anchor, deepest-first
+               (just the layer's outermost scope when there is no anchor)
+```
+
+`active_layer` is what replaces `keyboard_claim.layer` and `pointer_claim`.
+Layers are separate trees (`Cascades::is_within`: *"a popup is never within
+its anchor"*), so a path never spans them — which is not a limitation to work
+around, it *is* today's layer gate restated. A popup declaring a scope makes
+`Popup` the active layer and the `Main` tree stops seeing keys, exactly as
+`modal_layer` does now. The no-anchor clause is what keeps a popup owning
+input when nothing inside it is focused.
+
+**No parent pointers needed.** Per layer, keep the scope entries' pre-order
+node indices; "scopes containing N" are those whose `[node, subtree_end)`
+interval covers N — the same interval test `is_within` already runs. Deepest
+is the largest index. Scope count is single digits, one pass, retained `Vec`,
+no per-frame allocation.
+
+- **No registration lag** — the path derives from focus and the cascade, not
+  from last frame's calls.
+- **Order-independent** — it does not depend on where in the pass anything
+  recorded.
+
+### 5.4 Reading
 
 ```rust
 impl Ui {
-    /// Unchanged signature. Now returns `true` only if the chord was granted
-    /// to the scope currently being recorded.
+    /// Unchanged signature. Now true only when the chord was granted to
+    /// the scope enclosing this record position — or, outside every
+    /// scope, to the active layer's outermost one.
     pub fn key_pressed(&mut self, sc: Shortcut) -> bool;
+    pub fn escape_pressed(&mut self) -> bool;
 
-    /// Unchanged signature. Now yields only events granted to the current
-    /// scope — so a focused `TextEdit` draining this wholesale no longer
-    /// silently eats the app's accelerators.
-    pub fn keyboard_events(&self) -> &[KeyboardEvent];
-
-    /// Read as `id`'s scope without recording inside it. For a reader that
-    /// acts on a region it does not draw — an app's per-frame chord handling
-    /// that runs before the tree records.
-    ///
-    /// Enters an existing scope; it does not declare one. Reading as an id
-    /// that was not recorded with `input_scope` grants nothing.
-    pub fn in_scope<R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Ui) -> R) -> R;
-
-    pub fn active_scope(&self) -> Option<WidgetId>;
-
-    /// Innermost scope containing `pos`, topmost-first — through the same hit
-    /// index as every other hit-test, so occlusion, clipping and layers come
-    /// along. Answers for a scope whose content senses nothing, which
-    /// `hover_within` cannot.
-    pub fn scope_at(&self, pos: Vec2) -> Option<WidgetId>;
-
-    /// The scope the last left-press landed in. Preserved on a press that
-    /// hits no scope, so chrome clicks leave the current region alone.
-    pub fn pressed_scope(&self) -> Option<WidgetId>;
+    /// Withdraw a scope recorded this pass, so the resolution at its end
+    /// does not see it. The pass you call it in is unaffected —
+    /// resolution is deferred for order-independence, so an overlay that
+    /// decides it is closing must say so or it owns input for one frame
+    /// after it is gone. The only survivor of `InputClaim`'s lifecycle.
+    pub fn close_scope(&mut self, id: WidgetId);
 }
 ```
 
-`wants_text_input()` (host-side IME / on-screen keyboard) becomes "the active
-scope's filter contains `TEXT`" — no separate node flag needed.
+**"Outside every scope reads as the outermost scope" is what removes the
+`in_scope` hatch** the earlier revision needed. Darkroom's chord handling runs
+in the navigation phase and records nothing; it resolves as the app root,
+which is exactly where those chords belong.
 
-### 5.4 Resolution
+`keyboard_events` keeps today's layer gating and is **not** class-filtered.
+It returns `&[KeyboardEvent]`, a borrowed slice of the frame buffer;
+partitioning by class would break the arrival order `TextEdit`'s drain depends
+on. The only wholesale drainer is `TextEdit`, reading inside its own scope, so
+nothing needs the filtered form.
 
-At record-pass start — focus is already committed by then
-(`input/mod.rs:759`) — walk from the active scope to the root into a retained
-`path: Vec<(WidgetId, KeyFilter)>`, cleared with capacity kept.
-`key_pressed` classifies the chord, scans `path` deepest-first for the first
-matching filter, grants iff that is the recording scope. Depth is single
-digits; a handful of bit tests per call, no per-frame allocation.
+`wants_text_input()` (host-side IME / on-screen keyboard), if it ever lands,
+becomes "the deepest scope's filter contains `TEXT`" — no separate node flag.
 
-- **No registration lag** — the path derives from focus, not from last frame's
-  calls.
-- **Order-independent** — the path does not depend on where in the pass
-  anything recorded.
-- **Composes with `modal_layer` unchanged** — the layer gate runs first, the
-  scope walk runs within the surviving layer.
+### 5.5 What gets deleted
 
-### 5.5 What darkroom becomes
+| today | after |
+|---|---|
+| `Ui::modal_layer(layer, anchor, size, owner, body)` | `.input_scope(KeyFilter::ALL)` + `Ui::overlay_layer` |
+| **`InputClaim`** — `keyboard_events` / `key_pressed` / `escape_pressed` / `pointer_events` / `release` | **gone.** An overlay reads `ui.escape_pressed()`; outside its body that resolves to its own scope |
+| `PopupHandle::{keyboard_events, key_pressed, escape_pressed}` | forward to plain `Ui` methods |
+| `claims` / `InputOwner` / `keyboard_claim` / `pointer_claim` | one scope list + the resolved path |
+| `Reader::{Owner, Unclaimed}` | gone — every read resolves by scope |
+| `dock::typing_focus_held` | gone |
+
+Five public methods and a public type collapse to one lifecycle call. That is
+the argument for replacing rather than extending: it removes a lifecycle
+problem class — `InputClaim::release`'s twelve-line doc about owning input for
+one frame after the overlay is gone — instead of adding a second one beside it.
+
+### 5.6 What darkroom becomes
+
+Two declarations, total:
 
 ```rust
-// pane
-Panel::vstack()
-    .id(pane_wid(group.id))
-    .input_scope(KeyFilter::EDIT | KeyFilter::ESCAPE | KeyFilter::MOTION)
-
-// app root, once, in MainWindow
-Panel::vstack().id(APP_ROOT).input_scope(KeyFilter::ACCEL)
+// MainWindow root, once. Everything except TEXT — a canvas has no typing.
+Panel::vstack().id(APP_ROOT).input_scope(KeyFilter::all() - KeyFilter::TEXT)
 
 // TextEdit, in palantir
 .input_scope(KeyFilter::TEXT_FIELD)
 ```
 
-```rust
-// Editor::frame navigation phase — records nothing, so it enters the scope
-ui.in_scope(pane_wid(open.document.layout.focused), |ui| {
-    self.apply_undo_redo(ui, open);
-    self.apply_canvas_shortcuts(ui, open);
-});
-```
+**Panes are not scopes**, and that is what removes every remaining call-site
+change. Darkroom's chord reads are all app-level; *which graph* an edit
+targets already comes from `focused_target()`, never from key routing. So the
+path is two entries deep and `apply_undo_redo` / `apply_canvas_shortcuts` /
+`menu_shortcut` keep their bodies **unchanged**, minus the two
+`typing_focus_held` early-returns. `typing_focus_held` is deleted.
 
-`apply_undo_redo` and `apply_canvas_shortcuts` are **unchanged inside** — same
-`ui.key_pressed(UNDO_SHORTCUT)` calls, minus the two `typing_focus_held`
-early-returns. `typing_focus_held` is deleted.
-
-```rust
-// inline_rename: read Enter/Escape as the field, not as the pane —
-// otherwise the TextEdit's scope has already taken them
-let (enter, escape) = ui.in_scope(id, |ui| {
-    (ui.key_pressed(Shortcut::key(Key::Enter)), ui.escape_pressed())
-});
-```
+`scan_focus` and `drop_target` are **untouched**. Panes stay
+`.focusable(true)`: the side effect §1 complains about — `focused_id()` reading
+`Some` essentially always — stops mattering the moment nothing consults focus
+to answer "is the user typing". Focus still serves two jobs; it just no longer
+has to be un-served by hand.
 
 ```rust
-// scan_focus / drop_target — exact id match, no ancestry scan, no rect test
-let scope = ui.pressed_scope()?;              // or ui.scope_at(p)? for the drop
-let group = doc.layout.groups().find(|g| pane_wid(g.id) == scope)?;
+// inline_rename: read the editor's own signals, not `ui` — a focused field
+// has claimed Enter (Text) and Escape (Escape), so polling here sees nothing
+let (submitted, cancelled) = {
+    let edit = TextEdit::new(&mut draft).id(id)/* … */.show(ui);
+    (edit.submitted, edit.cancelled)
+};
 ```
 
-Trace, focus in a node-title field inside pane A — path
-`[app_root(ACCEL), pane_a(EDIT|ESCAPE|MOTION), field(TEXT_FIELD)]`:
+`TextEditResponse::submitted` **already exists** (`text_edit/input.rs:206`,
+`mod.rs:382`). `cancelled` is new but its value is already computed —
+`InputResult.blur` is set only by `KeyOutcome::Blur`, which only Escape
+produces (`input.rs:265`); today it folds into `lost_focus` via
+`request_focus(None)` and is indistinguishable from clicking away.
+
+Trace, focus in a node-title field — path
+`[field(TEXT_FIELD), app_root(ALL−TEXT)]`:
 
 | chord | class | granted to |
 |---|---|---|
-| `Ctrl+Z` | Edit | field — text undo |
+| `Ctrl+Z` | Edit | field — text undo, not document undo |
 | `Delete` | Edit | field — deletes a char, not the node |
-| `Escape` | Escape | field — cancels the rename, canvas keeps its selection |
-| `Ctrl+R` | Accel | app_root — Run fires mid-edit |
-| `Ctrl+S` | Accel | app_root — Save fires mid-edit |
+| `Escape` | Escape | field — cancels the rename; canvas keeps its selection, breaker keeps its scribble |
+| `Ctrl+R`, `Ctrl+S` | Accel | app_root — Run and Save fire mid-edit |
+| `Ctrl+D`, `Ctrl+0` | Accel | app_root — **currently dead** while typing (§1) |
 
-With nothing focused, path is `[app_root, pane_a]` and `Ctrl+Z` / `Delete` /
-`Escape` all land on the pane. No predicate anywhere.
+With nothing focused the path is `[app_root]` and everything lands on the app.
+No predicate anywhere.
 
-Grounding for "coarse classes are precise enough here": darkroom binds **13
-chords total**, all static consts in one file (`shortcuts.rs:22-35`, plus
-Enter/Escape/Delete).
+## 6. Grounding: the actual chord set
 
-## 6. B vs C
+Darkroom binds 13 chords, all static consts in one file
+(`shortcuts.rs:22-35`, plus Enter/Escape/Delete/Backspace). Cross-referenced
+against `EditAction::shortcut` (`text_edit/action.rs:68`) and `apply_key`
+(`text_edit/input.rs:246`):
 
-| | B: route table | C: scopes |
+| chord | class | `TextEdit` binds it |
 |---|---|---|
-| `key_pressed` signature | changes; 34 sites migrate | **unchanged** |
-| new palantir state | route vec + prev vec + grants vec + resolve | one path vec |
-| new `NodeFlags` bits | 2 | 1 |
-| registration lag | one frame for new widgets | none |
-| `modal_layer` | taught separately | same mechanism |
-| global accelerators | dedicated `GlobalOverTyping` tier | falls out of the outermost scope |
-| precision | per chord, per reader | per class, per scope |
-| new failure mode | forgetting a frame's subscription | wrapping the wrong block |
+| Ctrl+Z, Ctrl+Shift+Z | Edit | **yes** — `EditAction::Undo`/`Redo` are character-identical to darkroom's consts |
+| Delete, Backspace | Edit | **yes** |
+| Escape | Escape | **yes** |
+| Enter (`inline_rename`) | Text | **yes** — single-line submit |
+| Ctrl+N/O/S/Shift+S/R/Q/0/D | Accel | no |
 
-The decisive points: `key_pressed` keeps its signature, and leaving `ACCEL` out
-of `TEXT_FIELD` gets accelerator-beats-typing for free — which was the main
-thing the route table bought, and it bought it with a special rung.
+Contested set: **five chords plus Enter** — exactly what `typing_focus_held`
+gates. `TextEdit` also binds Ctrl+A/X/C/V, which darkroom does not bind at
+all. Nothing straddles two classes. Coarse classes are precise enough here
+because the whole set is small, static, and read from one place.
 
-## 7. Open questions
+## 7. Migration
+
+1. `KeyClass` / `KeyFilter` + classification tests. Inert.
+2. `SCOPE` bit, cascade column, path resolution. Inert — nothing declares a
+   scope yet.
+3. `key_pressed` switches to the path; `modal_layer` becomes an internal
+   `input_scope(ALL)`; `InputClaim` deleted; `Popup` / `Modal` / `ComboBox` /
+   `ContextMenu` / `Tooltip` migrated. **Behaviour-neutral by construction** —
+   one scope per overlay reproduces the layer gate exactly.
+4. `TextEdit` declares `TEXT_FIELD`; add `TextEditResponse::cancelled`. First
+   behaviour change.
+5. Darkroom: one app-root scope, delete `typing_focus_held`, rewrite
+   `inline_rename` onto `submitted` / `cancelled`.
+
+Steps 1–3 land and verify alone.
+
+## 8. Costs
+
+- Largest diff of the four directions, though it is concentrated: every
+  overlay widget in palantir, and in darkroom only the app root, `shortcuts.rs`
+  and `inline_rename`. The dock is untouched.
+- One-frame staleness does not disappear, it gets one honest name:
+  `close_scope`. Deferred resolution is what buys order-independence
+  (`input/mod.rs:558-568`); staleness is its price either way. A scope that
+  simply stops recording releases automatically — `close_scope` is only for
+  "I decided I am closing *after* I already recorded", which is precisely
+  `Popup`'s and `Modal`'s shape.
+- The scope tree is not uniform: scopes nest within a layer, layers order
+  between them. Worth stating rather than discovering.
+
+## 9. Open questions
 
 - **`Motion` may want splitting.** Tab-as-focus-traversal and arrows-as-caret
   are one class today only because palantir has no focus traversal. When it
-  gains one, Tab needs to sit above the focus path entirely. Too early to
-  build; this is the seam.
-- **`Enter` is in `Text`.** Right for a multiline editor, workable for
-  commit-on-Enter via `in_scope` — but that means a single-line field's submit
-  is read through an escape hatch. Cleaner fix is `TextEdit` surfacing a
-  `submitted` flag on its response; separate change, and it would delete the
-  `in_scope` call in `inline_rename`.
-- **`in_scope` on an id that isn't a scope** grants nothing, silently.
-  `debug_assert!` against last frame's cascade — a typo'd id is otherwise a
-  chord that just stops working.
+  gains one, Tab needs to sit above the path entirely. Too early to build;
+  this is the seam.
+- **`close_scope` on an id that isn't a scope** does nothing, silently.
+  `debug_assert!` against last frame's cascade — a typo'd id is otherwise an
+  overlay that quietly keeps input for a frame.
 - **Two scopes on one node** — allow, one filter. No case yet for more.
-- **Pointer routing.** ImGui unifies this (mouse buttons *are* keys, one
-  ownership table). Palantir's pointer path has `captures` + `pointer_claim`
-  and was not audited here. Out of scope until a real case pushes on it.
+- **Pointer `captures`** (per-button press/release/drag) stay untouched and
+  orthogonal to scopes. ImGui unifies them — mouse buttons *are* keys, one
+  ownership table — and nothing here pushes on it yet.
+
+### Resolved since the last revision
+
+- ~~`Enter` is in `Text`, so a single-line field's submit needs an escape
+  hatch~~ — `TextEditResponse::submitted` already ships; `cancelled` is the
+  symmetric half. No hatch.
+- ~~`in_scope` on an id that isn't a scope grants nothing, silently~~ —
+  `in_scope` no longer exists (§5.4).
