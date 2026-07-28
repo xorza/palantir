@@ -1265,4 +1265,33 @@ impl Ui {
 pub(crate) mod harness;
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::input::InputState;
+    use crate::ui::Ui;
+
+    impl Ui {
+        /// The input machine itself, for tests that assert on routing
+        /// state the public surface deliberately does not expose —
+        /// capture targets, the raw per-layer streams, the action flag.
+        ///
+        /// Gated so that **production widget code cannot reach past
+        /// `Ui`'s public input API**. That is the whole point: every
+        /// widget this crate ships authors itself through the same
+        /// surface a caller's own widget has, so the surface cannot
+        /// quietly become insufficient without a widget in here
+        /// noticing first.
+        pub(crate) fn input(&self) -> &InputState {
+            &self.input
+        }
+
+        /// [`Self::input`], mutably — for tests that *drive* routing
+        /// state rather than assert on it (planting focus, taking the
+        /// action flag).
+        pub(crate) fn input_mut(&mut self) -> &mut InputState {
+            &mut self.input
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

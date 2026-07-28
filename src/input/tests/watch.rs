@@ -145,7 +145,7 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     let delta = h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
 
     assert!(delta.requests_repaint);
-    assert!(h.ui.input.frame_target_deltas.is_empty());
+    assert!(h.ui.input().frame_target_deltas.is_empty());
     assert!(matches!(
         h.ui.pointer_events(),
         [PointerEvent::Scroll {
@@ -350,7 +350,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 fn key_chord_watcher_wakes_only_exact_chord() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(empty_watch_escape);
-    assert!(h.ui.input.focused.is_none());
+    assert!(h.ui.input().focused.is_none());
 
     let delta = h.key(Key::Enter);
     assert!(!delta.requests_repaint);
@@ -436,7 +436,7 @@ fn sample_pointer_layers(
     h.frame(|ui| {
         record(ui);
         for layer in Layer::PAINT_ORDER {
-            let n = ui.input.pointer_events(layer).len();
+            let n = ui.input().pointer_events(layer).len();
             seen[layer.idx()] = seen[layer.idx()].max(n);
         }
     });

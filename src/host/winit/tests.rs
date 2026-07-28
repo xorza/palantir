@@ -26,7 +26,7 @@ impl App for CountingApp {
     fn update(&mut self, win: WindowToken, ui: &Ui) {
         assert_eq!(win, WindowToken(7));
         assert_eq!(ui.display.physical, SURFACE);
-        assert_eq!(ui.input.pointer_pos, self.expected_pointer);
+        assert_eq!(ui.input().pointer_pos, self.expected_pointer);
         self.updates += 1;
     }
 
