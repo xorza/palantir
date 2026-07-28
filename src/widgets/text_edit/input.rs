@@ -5,7 +5,6 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::primitives::widget_id::WidgetId;
-use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
@@ -56,7 +55,7 @@ pub(super) struct InputPolicy {
 /// widget and return the caret + selection to render plus the frame's
 /// edge signals. Splitting this out of `show()` keeps the borrow
 /// choreography contained: we touch `ui.state`, the input streams, and
-/// `ui.resources.text` here, but never the shape/tree storage.
+/// text probes here, but never the shape/tree storage.
 ///
 /// **The state row is moved out for the duration and moved back after.**
 /// `Editor` holds it mutably across the keyboard drain, and the drain
@@ -161,11 +160,9 @@ fn run_input(
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
-        let hit = ui
-            .resources
-            .text
-            .layout(ctx.request(ed.text))
-            .byte_at_xy(local_x, if ctx.multiline { local_y } else { 0.0 });
+        let hit = ui.probe_text(ctx.run(ed.text), |probe| {
+            probe.byte_at(local_x, if ctx.multiline { local_y } else { 0.0 })
+        });
         if resp_state.left.press_count() > 0 {
             // Press rising edge — the input layer counts the
             // multi-press run (`press_count`: 1 = single, 2 = double,
@@ -228,9 +225,9 @@ fn run_input(
     // Text chunks splice into the buffer (sanitized for single-line);
     // Down events route through shared edit actions (clipboard / undo)
     // then `apply_key` (edit / nav). Vertical-nav probes happen inline
-    // because they need the shaper + layout. Indexing keeps the borrow
-    // on the input queue short-lived so we can dispatch to
-    // `ui.resources.text` inside the same loop without a scratch Vec.
+    // because they need a text probe. Indexing keeps the borrow on the
+    // input queue short-lived, so the probe inside the loop can take its
+    // own without a scratch Vec standing between them.
     //
     // **`filter` gates the drain as well as the scope.** The stream is
     // the whole layer's, so a field that told everyone else it does not
@@ -264,7 +261,7 @@ fn run_input(
                 match apply_key(&mut ed, kp) {
                     KeyOutcome::Blur => blur = true,
                     KeyOutcome::Vertical { up, extend } => {
-                        resolve_vertical(&mut ed, &ui.resources.text, ctx, up, extend);
+                        resolve_vertical(&mut ed, ui, ctx, up, extend);
                     }
                     KeyOutcome::None => {}
                 }
@@ -321,29 +318,22 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
     KeyOutcome::None
 }
 
-fn resolve_vertical(
-    editor: &mut Editor<'_>,
-    shaper: &TextShaper,
-    ctx: &ShapeCtx,
-    up: bool,
-    extend: bool,
-) {
-    // One probe lease resolves both the caret position and the
-    // adjacent-line hit under a single shaper borrow and cache dispatch.
-    let target = {
-        let probe = shaper.layout(ctx.request(editor.text));
-        let pos = probe.cursor_xy(editor.state.caret);
+fn resolve_vertical(editor: &mut Editor<'_>, ui: &Ui, ctx: &ShapeCtx, up: bool, extend: bool) {
+    // Both queries sit in one `probe_text` closure: the caret position
+    // and the adjacent-line hit resolve under a single shaper borrow and
+    // one cache dispatch, which is exactly what the scoped probe is for.
+    let target = ui.probe_text(ctx.run(editor.text), |probe| {
+        let pos = probe.caret_at(editor.state.caret);
         if up && pos.y_top <= 0.5 {
-            0
-        } else {
-            let probe_y = if up {
-                pos.y_top - 1.0
-            } else {
-                pos.y_top + pos.line_height + 1.0
-            };
-            probe.byte_at_xy(pos.x, probe_y)
+            return 0;
         }
-    };
+        let probe_y = if up {
+            pos.y_top - 1.0
+        } else {
+            pos.y_top + pos.line_height + 1.0
+        };
+        probe.byte_at(pos.x, probe_y)
+    });
     editor.move_caret(target, extend);
 }
 
