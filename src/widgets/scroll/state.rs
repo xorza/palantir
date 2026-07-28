@@ -155,6 +155,13 @@ impl ScrollState {
             return;
         };
         let Some((factor, max_offset)) = geometry else {
+            // The bar lost its geometry mid-drag — content started
+            // fitting, or the track collapsed. `drag_delta` stays
+            // cumulative from the press, so a resumed anchor would apply
+            // the whole accumulated travel at once if geometry came
+            // back under the same capture. Drop it; the next press
+            // re-anchors.
+            self.drag_anchor = None;
             return;
         };
         let target = axis.main_v(anchor) + axis.main_v(delta) * factor;

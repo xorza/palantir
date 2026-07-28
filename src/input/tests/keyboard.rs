@@ -10,6 +10,7 @@ use crate::scene::node::Configure;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
+use crate::widgets::panel::Panel;
 use strum::EnumCount as _;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
@@ -176,29 +177,99 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
     assert_eq!(sample_layers(&mut h, |_| {})[Layer::Main.idx()], 1);
 }
 
-/// One overlay closing must not unblock a layer another still holds.
+/// A layer's fallback grant is its **outermost** scope, not its
+/// last-recorded one.
+///
+/// Scopes record in pre-order, so a scope nested inside another comes
+/// last. Resolving the fallback to it would hand an app root's
+/// accelerators to whatever text field happens to sit inside it, and
+/// every one of them would die mid-edit — so the root reads the chord
+/// and the nested scope, which the grant passed over, does not.
+#[test]
+fn the_layer_fallback_grant_is_the_outermost_scope() {
+    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let (mut at_root, mut at_inner) = (false, false);
+    let nested = |ui: &mut Ui, at_root: &mut bool, at_inner: &mut bool| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .input_scope(KeyFilter::ALL)
+            .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
+            .show(ui, |ui| {
+                *at_root |= ui.escape_pressed();
+                Panel::vstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .input_scope(KeyFilter::ALL)
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui, |ui| *at_inner |= ui.escape_pressed());
+            });
+    };
+    h.frame(|ui| nested(ui, &mut at_root, &mut at_inner));
+    press_escape(&mut h);
+    // Focus sits on an unrecorded id, so no scope path anchors and the
+    // grant falls through to the layer's outermost scope — the case this
+    // is about.
+    h.frame(|ui| nested(ui, &mut at_root, &mut at_inner));
+
+    assert!(
+        at_root,
+        "the outermost scope owns the layer's fallback grant"
+    );
+    assert!(!at_inner, "the nested scope must not shadow its container");
+}
+
+/// One overlay closing must not unblock a layer another still holds,
+/// and the survivor has to keep *reading* — either half alone is a
+/// silent failure, so both are asserted per closed sibling.
+///
 /// Per-scope, not per-layer — the property `release` used to carry.
+///
+/// Both orders run, because only one of them catches a scan that reads
+/// the stale cascade raw. Sibling scopes contain nobody, so the
+/// outermost-of fold falls through to "last recorded": closing `first`
+/// leaves the grant on `second`, which is also the survivor and passes
+/// by luck. Closing `second` is the case that bites — the grant stays
+/// assigned to the scope that is gone, `first` reads nothing, and no
+/// layer count moves to show it.
 #[test]
 fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-    let two = |ui: &mut Ui| {
-        scope_leaf(ui, Layer::Popup, "first");
-        scope_leaf(ui, Layer::Popup, "second");
-    };
-    h.frame(two);
-    press_escape(&mut h);
-    h.frame(|ui| {
-        two(ui);
-        ui.close_scope(WidgetId::from_hash("first"));
-    });
+    for closed in ["first", "second"] {
+        let survivor = if closed == "first" { "second" } else { "first" };
+        let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+        let mut read_by_survivor = false;
+        // Read from inside the survivor, which is where a scoped chord
+        // has to land now that its sibling is gone. `&mut` through the
+        // closure, so `two` takes it as an argument rather than
+        // capturing.
+        let two = |ui: &mut Ui, read: &mut bool| {
+            for id in ["first", "second"] {
+                scope_leaf(ui, Layer::Popup, id, |ui| {
+                    if id == survivor {
+                        *read |= ui.escape_pressed();
+                    }
+                });
+            }
+        };
+        h.frame(|ui| two(ui, &mut read_by_survivor));
+        press_escape(&mut h);
+        h.frame(|ui| {
+            two(ui, &mut read_by_survivor);
+            ui.close_scope(WidgetId::from_hash(closed));
+        });
 
-    // The next resolution honours the close, and `second` still holds.
-    press_escape(&mut h);
-    assert_eq!(
-        sample_layers(&mut h, two)[Layer::Main.idx()],
-        0,
-        "the surviving scope keeps the layer blocked",
-    );
+        // The next resolution honours the close, and the sibling holds.
+        press_escape(&mut h);
+        read_by_survivor = false;
+        let seen = sample_layers(&mut h, |ui| two(ui, &mut read_by_survivor));
+        assert_eq!(
+            seen[Layer::Main.idx()],
+            0,
+            "closing {closed}: the surviving scope keeps the layer blocked",
+        );
+        assert!(
+            read_by_survivor,
+            "closing {closed}: {survivor} must own the chord its closed sibling held",
+        );
+    }
 }
 
 /// Feed an Escape that the keyboard wake-gate will actually deliver.
@@ -226,20 +297,22 @@ fn sample_layers(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) -> [usize; 
     seen
 }
 
-/// A leaf on `layer` declaring an all-taking scope — the shape every
-/// overlay reduces to once `modal_layer` became `input_scope`.
-fn scope_leaf(ui: &mut Ui, layer: Layer, id: &'static str) {
+/// A node on `layer` declaring an all-taking scope — the shape every
+/// overlay reduces to once `modal_layer` became `input_scope`. `body`
+/// records inside it, which is what puts a read's `parent` within the
+/// scope.
+fn scope_leaf(ui: &mut Ui, layer: Layer, id: &'static str, body: impl FnOnce(&mut Ui)) {
     ui.layer(layer, glam::Vec2::ZERO, None, |ui| {
-        Frame::new()
+        Panel::vstack()
             .id(WidgetId::from_hash(id))
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-            .show(ui);
+            .show(ui, body);
     });
 }
 
 fn popup_with_scope(ui: &mut Ui) {
-    scope_leaf(ui, Layer::Popup, "overlay");
+    scope_leaf(ui, Layer::Popup, "overlay", |_| {});
 }
 
 #[test]

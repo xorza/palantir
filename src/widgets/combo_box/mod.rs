@@ -33,6 +33,13 @@ struct ComboState {
 /// lives in the state map keyed off the trigger id, so the caller only
 /// threads the selected index.
 ///
+/// **`*selected` must index `options`.** Showing the current choice is
+/// the trigger's whole contract and there is no placeholder state, so an
+/// out-of-range index — including any index into an empty list — is a
+/// caller bug and panics. A caller whose option list can shrink or be
+/// replaced between frames owns re-deriving the index alongside it;
+/// swallowing it here would render as an ordinary blank control.
+///
 /// The trigger chrome reuses [`crate::Theme::button`]; the list reuses
 /// the context-menu panel + [`MenuItem`] rows
 /// ([`crate::Theme::context_menu`]).
@@ -85,9 +92,20 @@ impl<'a> ComboBox<'a> {
 
         let arrow_color = look.text.color;
         let text_style = look.text;
+        let chosen = self
+            .options
+            .get(*self.selected)
+            .copied()
+            .unwrap_or_else(|| {
+                panic!(
+                    "ComboBox selection {} is out of range for {} option(s)",
+                    self.selected,
+                    self.options.len(),
+                )
+            });
         // Intern the selected label into the frame buffer — `&'a str`
         // options aren't `'static`, so they route through `Ui::intern`.
-        let label = ui.intern(self.options.get(*self.selected).copied().unwrap_or(""));
+        let label = ui.intern(chosen);
 
         entry.widget.record(ui, Some(&look.background), |ui| {
             Text::new(label)

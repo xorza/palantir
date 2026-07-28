@@ -13,9 +13,11 @@
 //!   shaper's render-session lease, touches/inserts atlas slots, emits
 //!   to `out`, and populates the cache entry with the origin-relative
 //!   templates so the next frame at the same `(key, scale, bins,
-//!   color)` lands on the fast path. Runs whose lines were y-culled
-//!   against their bounds are *not* cached — the key omits bounds, so
-//!   a truncated template would replay wrong after a scroll.
+//!   color)` lands on the fast path. Runs that came out short — lines
+//!   y-culled against their bounds, or a glyph the full atlas had no
+//!   room for — are *not* cached: the key records neither bounds nor
+//!   atlas occupancy, so a template with a hole would replay it on
+//!   every hit and never retry.
 //!
 //! Atlas eviction reuses slot rectangles for new glyphs; any cached
 //! entry holding the old uv would point at the wrong image. Each
@@ -157,6 +159,32 @@ impl EncodedCache {
         }
         std::mem::swap(&mut self.arena, &mut self.scratch);
     }
+
+    /// Settle the glyphs [`TextEncoder::encode_run`] appended since
+    /// `pending_start`: publish them as `key`'s template when the encode
+    /// was `complete`, else roll them back off the arena.
+    ///
+    /// **Only complete encodes may become templates.** `EncodedKey`
+    /// carries neither the run's bounds nor the atlas's occupancy, so a
+    /// template with a hole replays that hole on every later hit and
+    /// never retries — the missing glyph or line would outlive whatever
+    /// caused it. Both incomplete cases are transient: a y-culled line
+    /// comes back into view on the next scroll, and a glyph the atlas
+    /// had no room for fits once the competing pressure clears.
+    fn settle(&mut self, key: EncodedKey, pending_start: u32, frame: u64, complete: bool) {
+        if !complete {
+            self.arena.truncate(pending_start as usize);
+            return;
+        }
+        let span = Span::new(pending_start, self.arena.len() as u32 - pending_start);
+        self.map.insert(
+            key,
+            EncodedEntry {
+                span,
+                last_use: frame,
+            },
+        );
+    }
 }
 
 /// Build the cache key for a `TextRun` placed at `frame_scale * r.scale`,
@@ -284,12 +312,11 @@ impl TextEncoder {
         // into the cache identity, reused as the emit colour.
         let color = run_key.key.area_color;
 
-        // `culled` records whether the extraction dropped any line: a
-        // truncated encode must not become a cache template
-        // (`EncodedKey` carries no bounds, so integer-pixel scrolling
-        // replays the same key with lines newly in view — they'd stay
-        // blank forever).
+        // `culled` records whether the extraction dropped any line — see
+        // `EncodedCache::settle` for why that bars caching.
         let culled = session.extract_glyphs(request, placement, &mut self.placed);
+        // …and `starved` the same for a glyph the atlas had no room for.
+        let mut starved = false;
 
         // Build a fresh cache entry as a side effect of the slow walk.
         // Slots used earlier this frame cannot be eviction candidates,
@@ -302,8 +329,12 @@ impl TextEncoder {
                 Some(i) => i,
                 None => {
                     match rasterize_and_insert(device, session, &mut self.atlas, g.raster_key) {
-                        Some(i) => i,
-                        None => continue,
+                        Rasterized::Slot(i) => i,
+                        Rasterized::NoImage => continue,
+                        Rasterized::AtlasFull => {
+                            starved = true;
+                            continue;
+                        }
                     }
                 }
             };
@@ -336,24 +367,14 @@ impl TextEncoder {
             });
         }
 
-        // Only cache full encodes. The caller already filtered invalid
-        // keys; valid-key here is a precondition. Partially visible
-        // runs re-encode each frame; the reverse (a cached full
-        // template replayed under narrower bounds) is safe — the batch
-        // scissor is the real clip.
-        if !culled {
-            let span = Span::new(pending_start, self.cache.arena.len() as u32 - pending_start);
-            self.cache.map.insert(
-                run_key.key,
-                EncodedEntry {
-                    span,
-                    last_use: current_frame,
-                },
-            );
-        } else {
-            // Roll back the partial entry truncated by the cull.
-            self.cache.arena.truncate(pending_start as usize);
-        }
+        // The caller already filtered invalid keys; valid-key here is a
+        // precondition. Partially visible or atlas-starved runs
+        // re-encode each frame; the reverse (a cached full template
+        // replayed under narrower bounds) is safe — the batch scissor is
+        // the real clip.
+        let complete = !culled && !starved;
+        self.cache
+            .settle(run_key.key, pending_start, current_frame, complete);
     }
 }
 
@@ -365,17 +386,36 @@ fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
     (u as u32) | ((kind as u32) << 15) | ((v as u32) << 16)
 }
 
+/// What [`rasterize_and_insert`] managed to do with one glyph. The two
+/// failures are kept apart because only one of them is transient, and
+/// [`EncodedCache::settle`] has to know which it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Rasterized {
+    /// Slab index of the glyph's atlas slot.
+    Slot(u32),
+    /// The font produced no image for this key. Permanent — the same
+    /// key rasterizes to nothing next frame too, so a run that skips
+    /// this glyph is still a complete encode.
+    NoImage,
+    /// The atlas is at the device maximum with no evictable rectangle.
+    /// The glyph is missing *this frame only*, so the run must not be
+    /// cached as a template.
+    AtlasFull,
+}
+
 /// Cache miss path: ask the shaper session for the bitmap, push into
-/// the atlas. Returns the new slot's slab index. A free fn, not a
-/// `TextEncoder` method: it's called while `self.placed` is being
-/// iterated, so it may borrow only the disjoint atlas field.
+/// the atlas. A free fn, not a `TextEncoder` method: it's called while
+/// `self.placed` is being iterated, so it may borrow only the disjoint
+/// atlas field.
 fn rasterize_and_insert(
     device: &wgpu::Device,
     session: &mut TextRenderSession<'_>,
     atlas: &mut GlyphAtlas,
     key: GlyphRasterKey,
-) -> Option<u32> {
-    let image = session.rasterize(key)?;
+) -> Rasterized {
+    let Some(image) = session.rasterize(key) else {
+        return Rasterized::NoImage;
+    };
     let content = match image.kind {
         GlyphImageKind::Color => ContentType::Color,
         GlyphImageKind::Mask => ContentType::Mask,
@@ -389,13 +429,20 @@ fn rasterize_and_insert(
             top = image.placement.top,
             "skipping glyph raster outside packed atlas metadata range",
         );
-        return Some(atlas.insert_unallocated(key, content, PackedGlyphMetadata::EMPTY));
+        return Rasterized::Slot(atlas.insert_unallocated(
+            key,
+            content,
+            PackedGlyphMetadata::EMPTY,
+        ));
     };
 
     if metadata.is_empty() {
-        return Some(atlas.insert_unallocated(key, content, metadata));
+        return Rasterized::Slot(atlas.insert_unallocated(key, content, metadata));
     }
-    atlas.insert(device, key, content, metadata, &image.data)
+    match atlas.insert(device, key, content, metadata, &image.data) {
+        Some(idx) => Rasterized::Slot(idx),
+        None => Rasterized::AtlasFull,
+    }
 }
 
 // `internals` only, not `any(test, …)`: the sole consumer is the
@@ -579,6 +626,51 @@ mod tests {
         for (span, tags) in [(untouched, 1000..1010), (churned, 50..54)] {
             for (got, want) in cache.arena[span.range()].iter().zip(tags.map(glyph)) {
                 assert!(same(got, &want), "compaction altered a glyph: {got:?}");
+            }
+        }
+    }
+
+    /// An incomplete encode leaves nothing behind: no map row for the
+    /// key, and no dead glyphs on the arena. Both incomplete cases (a
+    /// y-culled line, an atlas with no room) reach `settle` as the same
+    /// `complete: false`, so one table covers them.
+    ///
+    /// The negative half is the one that matters: caching a short run
+    /// would replay its hole forever, since the key records neither the
+    /// bounds nor the atlas occupancy that produced it.
+    #[test]
+    fn only_complete_encodes_become_templates() {
+        for (complete, expect_rows) in [(true, 1), (false, 0)] {
+            let mut cache = EncodedCache::default();
+            // A prior run's template — must survive either outcome.
+            insert(&mut cache, key(1), 100..103, 7);
+            let pending_start = cache.arena.len() as u32;
+            cache.arena.extend((200..202).map(glyph));
+
+            cache.settle(key(2), pending_start, 9, complete);
+
+            assert_eq!(
+                cache.map.contains_key(&key(2)),
+                complete,
+                "complete = {complete}",
+            );
+            assert_eq!(cache.map.len(), 1 + expect_rows, "complete = {complete}");
+            assert_eq!(
+                cache.arena.len(),
+                if complete { 5 } else { 3 },
+                "rolled-back glyphs must not linger on the arena",
+            );
+            let survivor = cache.map[&key(1)].span;
+            for (got, want) in cache.arena[survivor.range()]
+                .iter()
+                .zip((100..103).map(glyph))
+            {
+                assert!(same(got, &want), "settle disturbed a live row: {got:?}");
+            }
+            if complete {
+                let span = cache.map[&key(2)].span;
+                assert_eq!((span.start, span.len), (pending_start, 2));
+                assert_eq!(cache.map[&key(2)].last_use, 9);
             }
         }
     }

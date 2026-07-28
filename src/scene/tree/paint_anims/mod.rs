@@ -241,6 +241,8 @@ impl PaintAnims {
                 .shape_indices
                 .first()
                 .map_or(CURSOR_END, |&shape_idx| shape_idx as u64),
+            #[cfg(debug_assertions)]
+            last_sampled: None,
         }
     }
 }
@@ -252,6 +254,16 @@ pub(crate) struct PaintAnimCursor<'a> {
     entries: &'a [PaintAnimEntry],
     next: usize,
     next_shape: u64,
+    /// Previous [`Self::sample`] argument, so the monotonicity
+    /// precondition is checked in debug rather than trusted.
+    ///
+    /// A backwards walk has no failure signal of its own: the cursor
+    /// answers `IDENTITY`, which is also what an unanimated shape gets,
+    /// and the registration it already stepped past stays consumed. The
+    /// recording half asserts the same ordering in
+    /// [`PaintAnims::push_entry`]; this is the reading half of it.
+    #[cfg(debug_assertions)]
+    last_sampled: Option<u32>,
 }
 
 impl PaintAnimCursor<'_> {
@@ -259,14 +271,29 @@ impl PaintAnimCursor<'_> {
     /// viewport and damage culling can skip whole shape ranges.
     #[inline]
     pub(crate) fn sample(&mut self, shape_idx: u32, now: Duration) -> PaintMod {
-        let shape_idx = shape_idx as u64;
-        if shape_idx < self.next_shape {
-            return PaintMod::IDENTITY;
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(
+                self.last_sampled.is_none_or(|last| shape_idx > last),
+                "paint-anim sampling must be monotonic — sampled {shape_idx} after \
+                 {last:?}. Going backwards reads as an unanimated shape and leaves \
+                 the registrations already stepped past consumed.",
+                last = self.last_sampled,
+            );
+            self.last_sampled = Some(shape_idx);
         }
+        let shape_idx = shape_idx as u64;
         while shape_idx > self.next_shape {
             self.advance();
         }
-        if self.next_shape == CURSOR_END {
+        // The loop lands on the first registration at or past `shape_idx`;
+        // only an exact hit is this shape's. A jump that skips over one
+        // registration and stops short of the next must not hand out the
+        // next one's sample — and must not consume it either, or the
+        // shape that owns it would then paint unanimated. `CURSOR_END`
+        // is `u64::MAX`, which no `u32` index can equal, so an exhausted
+        // cursor falls out here too.
+        if shape_idx != self.next_shape {
             return PaintMod::IDENTITY;
         }
         let entry = self.entries[self.next];
@@ -329,6 +356,23 @@ mod tests {
             "jumping over culled shape 10 must not strand the cursor",
         );
 
+        // A jump that lands *between* two registrations: culling skipped
+        // shape 5, and shape 6 sits below the next registered index. It
+        // owns no animation, and taking 10's would both misparent it and
+        // leave shape 10 unanimated.
+        let mut cursor = anims.cursor();
+        assert_eq!(cursor.sample(0, now).rotation, 1.0);
+        assert_eq!(
+            cursor.sample(6, now),
+            PaintMod::IDENTITY,
+            "a shape between registrations owns no animation",
+        );
+        assert_eq!(
+            cursor.sample(10, now).rotation,
+            3.0,
+            "the overshot registration must still be there for its own shape",
+        );
+
         let shape_capacity = anims.shape_indices.capacity();
         let entry_capacity = anims.entries.capacity();
         anims.clear();
@@ -336,6 +380,21 @@ mod tests {
         assert!(anims.entries.is_empty());
         assert_eq!(anims.shape_indices.capacity(), shape_capacity);
         assert_eq!(anims.entries.capacity(), entry_capacity);
+    }
+
+    /// The reading half of the ordering contract `push_entry` asserts on
+    /// the recording half. Debug-only, because the check needs a field
+    /// the release cursor doesn't carry.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "must be monotonic")]
+    fn sampling_backwards_is_a_caller_bug() {
+        let mut anims = PaintAnims::default();
+        anims.push_entry(2, spinning(1.0));
+        let now = START + Duration::from_secs(1);
+        let mut cursor = anims.cursor();
+        cursor.sample(4, now);
+        cursor.sample(3, now);
     }
 
     #[test]

@@ -9,6 +9,37 @@ use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
+/// A selection the option list doesn't contain has no rendering: the
+/// trigger shows the current choice and there is no placeholder. Falling
+/// back to a blank label made a broken caller model look like an
+/// ordinary empty control, so it panics instead.
+///
+/// An empty list is the same failure — every index is out of range —
+/// which is why it is the second case rather than a carve-out.
+#[test]
+#[should_panic(expected = "out of range for 1 option(s)")]
+fn an_out_of_range_selection_panics() {
+    let mut h = UiHarness::new(SURFACE);
+    let mut selected = 3;
+    h.frame(|ui| {
+        ComboBox::new(&mut selected, &["One"])
+            .id(WidgetId::from_hash("combo"))
+            .show(ui);
+    });
+}
+
+#[test]
+#[should_panic(expected = "out of range for 0 option(s)")]
+fn an_empty_option_list_panics() {
+    let mut h = UiHarness::new(SURFACE);
+    let mut selected = 0;
+    h.frame(|ui| {
+        ComboBox::new(&mut selected, &[])
+            .id(WidgetId::from_hash("combo"))
+            .show(ui);
+    });
+}
+
 #[test]
 fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     let mut h = UiHarness::new(SURFACE);
