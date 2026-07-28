@@ -168,3 +168,54 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     assert!(sig.lost, "disable frame reports lost_focus");
     assert!(h.focused_id().is_none(), "focus was kicked out");
 }
+
+/// Every chord `TextEdit` binds as an editing action must classify as
+/// [`KeyClass::Edit`], or a focused editor stops taking it and the app
+/// steals it mid-edit.
+///
+/// The pin behind `key_class::EDIT_CHORDS`, which is a hand-kept list
+/// living one crate-module away from this one. A seventh `EditAction`
+/// that forgets to extend it fails here rather than silently becoming an
+/// accelerator.
+#[test]
+fn every_edit_action_chord_is_edit_class() {
+    use crate::KeyClass;
+    use crate::input::keyboard::{KeyPress, Modifiers};
+    use crate::widgets::text_edit::action::EditAction;
+
+    let actions = [
+        EditAction::Undo,
+        EditAction::Redo,
+        EditAction::SelectAll,
+        EditAction::Cut,
+        EditAction::Copy,
+        EditAction::Paste,
+        EditAction::Clear,
+    ];
+    let mut checked = 0;
+    for action in actions {
+        let Some(shortcut) = action.shortcut() else {
+            continue;
+        };
+        // `Shortcut` matches on the physical key, so classify the press
+        // the same way the router will see it.
+        let press = KeyPress {
+            key: shortcut.key,
+            mods: Modifiers {
+                ctrl: shortcut.mods.ctrl,
+                shift: shortcut.mods.shift,
+                alt: shortcut.mods.alt,
+                mac_ctrl: false,
+            },
+            repeat: false,
+            physical: shortcut.key,
+        };
+        assert_eq!(
+            KeyClass::of(press),
+            KeyClass::Edit,
+            "{action:?} binds {shortcut:?}, which a focused field must take",
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 6, "six of the seven actions carry a chord");
+}

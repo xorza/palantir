@@ -33,9 +33,9 @@ pub(super) fn show(
     let mut result = MenuResult::default();
     let mut clicked_action = None;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
-        let keyboard_event_count = popup.keyboard_events(ui).len();
+        let keyboard_event_count = ui.keyboard_events().len();
         for index in 0..keyboard_event_count {
-            let event = popup.keyboard_events(ui)[index];
+            let event = ui.keyboard_events()[index];
             let KeyboardEvent::Down(keypress) = event else {
                 continue;
             };
