@@ -40,8 +40,8 @@ pub(super) struct Scopes {
     active_layer: Option<Layer>,
     /// [`Self::active_layer`]'s outermost scope, resolved once here
     /// because it is a pure function of the cascade and every read would
-    /// otherwise recompute it — the one genuinely quadratic step in this
-    /// file, paid per pass instead of per chord.
+    /// otherwise recompute it — one scan of the layer's scopes per pass
+    /// instead of per chord.
     outermost: Option<WidgetId>,
     /// Scopes withdrawn by [`Self::close`] during the frame being
     /// recorded.
@@ -75,20 +75,29 @@ impl Scopes {
     /// recorded, nothing else.
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascades: &Cascades) {
         self.path.clear();
-        // `copied` before `filter`, so the predicate takes `&ScopeRow`
-        // rather than the `&&ScopeRow` a borrowing iterator would hand it.
-        let live =
-            |row: &ScopeRow| !self.closing.contains(&row.id) && !self.closed.contains(&row.id);
-        let declared = || cascades.scopes.iter().copied().filter(live);
-        self.active_layer = declared().map(|row| row.layer).max();
+        let live = || live_scopes(cascades, &self.closing, &self.closed);
+        self.active_layer = live().map(|row| row.layer).max();
         if let Some(active) = self.active_layer {
             if let Some(anchor) = focused {
                 self.path.extend(
-                    declared()
-                        .filter(|row| row.layer == active && cascades.is_within(anchor, row.id)),
+                    live().filter(|row| row.layer == active && cascades.is_within(anchor, row.id)),
                 );
             }
-            self.outermost = outermost_of(active, cascades);
+            // **Outermost, not last-recorded.** Taking the last row would
+            // make an app root's accelerators resolve as the focused text
+            // field nested inside it, and every one of them would die
+            // mid-edit. Scopes record in pre-order, so each one's subtree
+            // is a contiguous run: a row inside the standing root is a
+            // descendant and skipped, and the first row outside it opens
+            // the next root. The fold therefore ends on the last root,
+            // which is what breaks the tie between two *sibling* overlays
+            // on one layer — exactly as the old topmost-claim did.
+            self.outermost = live()
+                .filter(|row| row.layer == active)
+                .fold(None, |root, row| match root {
+                    Some(id) if cascades.is_within(row.id, id) => Some(id),
+                    _ => Some(row.id),
+                });
         } else {
             self.outermost = None;
         }
@@ -155,33 +164,36 @@ impl Scopes {
         let Some(parent) = parent else {
             return self.outermost;
         };
-        cascades
-            .scopes
-            .iter()
+        live_scopes(cascades, &self.closing, &self.closed)
             .rfind(|row| row.layer == active && cascades.is_within(parent, row.id))
             .map(|row| row.id)
             .or(self.outermost)
     }
 }
 
-/// `active`'s outermost scope: drop every scope contained in another,
-/// then take the last of what is left.
+/// The scope rows still owning input: `cascades`'s, minus everything
+/// [`Scopes::close`] withdrew.
 ///
-/// **Outermost, not last-recorded.** Scopes record in pre-order, so the
-/// last one is the innermost — taking it would make an app root's
-/// accelerators resolve as the focused text field nested inside it, and
-/// every one of them would die mid-edit. Record order then breaks the tie
-/// between what survives, which is two *sibling* overlays on one layer,
-/// exactly as the old topmost-claim did.
+/// **Every scan over `cascades.scopes` goes through here.** The cascade
+/// is a frame stale, so it still lists closed overlays; a scan that reads
+/// it raw resolves grants onto a scope that is gone and strands the
+/// surviving one — silently, since the raw stream and the layer gate both
+/// keep working.
 ///
-/// Quadratic in the layer's scope count, which is why [`Scopes::resolve`]
-/// calls it once and caches the answer.
-fn outermost_of(active: Layer, cascades: &Cascades) -> Option<WidgetId> {
-    let in_layer = || cascades.scopes.iter().filter(|row| row.layer == active);
-    in_layer()
-        .rev()
-        .find(|row| {
-            !in_layer().any(|other| other.id != row.id && cascades.is_within(row.id, other.id))
-        })
-        .map(|row| row.id)
+/// Takes the two withdrawal columns rather than `&Scopes`, because
+/// [`Scopes::resolve`] scans while filling `path` and only a field-level
+/// borrow leaves that field free.
+///
+/// `copied` before `filter`, so the predicate takes `&ScopeRow` rather
+/// than the `&&ScopeRow` a borrowing iterator would hand it.
+fn live_scopes<'a>(
+    cascades: &'a Cascades,
+    closing: &'a [WidgetId],
+    closed: &'a [WidgetId],
+) -> impl DoubleEndedIterator<Item = ScopeRow> + 'a {
+    cascades
+        .scopes
+        .iter()
+        .copied()
+        .filter(move |row| !closing.contains(&row.id) && !closed.contains(&row.id))
 }

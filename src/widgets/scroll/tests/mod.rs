@@ -1,6 +1,7 @@
 mod zoom_config;
 
 use crate::Ui;
+use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -165,6 +166,45 @@ fn state_is_swept_when_scroll_disappears() {
     assert_eq!(state.offset, Vec2::ZERO);
     assert_eq!(state.zoom, 1.0);
     assert!(state.drag_anchor_is_none());
+}
+
+/// A thumb drag composes each frame's *cumulative* delta against the
+/// offset the press captured, so the anchor cannot outlive the geometry
+/// that maps delta → offset. `bar_geometry` answers `None` the moment
+/// content fits or the track collapses, which a drag can reach mid-press
+/// (the content shrinks under it) while the pointer capture still names
+/// the zero-extent thumb.
+#[test]
+fn thumb_drag_anchor_dies_with_its_geometry() {
+    // (offset per px of thumb travel, max offset).
+    let geom = Some((2.0, 100.0));
+    let mut state = ScrollState::default();
+    state.offset = Vec2::new(0.0, 10.0);
+
+    // Press, then one tracked step: 10 + 5 * 2 = 20.
+    state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
+    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 5.0)), geom);
+    assert_eq!(state.offset.y, 20.0);
+    assert!(!state.drag_anchor_is_none(), "the press is still held");
+
+    // Geometry vanishes while that same press is held.
+    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 40.0)), None);
+    assert_eq!(state.offset.y, 20.0, "no geometry, no movement");
+    assert!(
+        state.drag_anchor_is_none(),
+        "the anchor must not outlive the geometry it composes against",
+    );
+
+    // Geometry returns under the same held press. The delta is still
+    // cumulative from the press, so a surviving anchor would land
+    // 10 + 60 * 2 = 130, clamped to the 100 max — a full-track jump.
+    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 60.0)), geom);
+    assert_eq!(state.offset.y, 20.0, "a dead anchor must not resume");
+
+    // A fresh press re-anchors against the current offset: 20 + 3 * 2 = 26.
+    state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
+    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 3.0)), geom);
+    assert_eq!(state.offset.y, 26.0);
 }
 
 /// Wheel delta accumulates across frames into offset, clamped to
