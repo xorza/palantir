@@ -59,8 +59,8 @@ impl Sense {
     /// Blocks only *routed* input, which is all a sense can reach: it is
     /// the union of four ordinary bits, so any widget wanting all four
     /// — a graph canvas — holds it without being a scrim. The watch
-    /// streams, which bypass the hit index entirely, are cut off by
-    /// [`Ui::modal_layer`](crate::Ui::modal_layer) instead.
+    /// streams, which bypass the hit index entirely, are cut off by an
+    /// overlay's [`input_scope`](crate::Configure::input_scope) instead.
     pub const ABSORB_POINTER: Self = Self::CLICK
         .union(Self::DRAG)
         .union(Self::SCROLL)

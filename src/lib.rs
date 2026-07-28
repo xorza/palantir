@@ -146,6 +146,7 @@ pub use host::winit::{
     handle::{HostHandle, UserEvent},
 };
 pub use input::InputEvent;
+pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};
@@ -207,7 +208,6 @@ pub use text::wrap::TextWrap;
 pub use text::{FontFamily, FontWeight, TextShaper};
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
-pub use ui::input_claim::InputClaim;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
