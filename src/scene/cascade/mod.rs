@@ -14,6 +14,7 @@ use crate::display::Display;
 use crate::scene::Forest;
 
 use crate::common::content_hash::ContentHash;
+use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx;
@@ -23,6 +24,7 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
+use crate::scene::layer::Layer;
 use crate::scene::layer::PerLayer;
 use crate::scene::seen_ids::Endpoint;
 use crate::scene::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
@@ -166,6 +168,33 @@ pub(crate) struct EntryRow {
 pub(crate) struct HitRow {
     pub(crate) entry_idx: u32,
     pub(crate) widget_id: WidgetId,
+}
+
+/// One declared input scope, in record order across every layer — the
+/// table [`crate::input::InputState`] resolves a key press against.
+///
+/// Deliberately *not* a column on [`EntryRow`]: scopes are a handful per
+/// frame while entries are one per node, and containment is answered by
+/// [`Cascades::is_within`] rather than by anything stored here. Same
+/// lifecycle as [`HitRow`] — cleared on a full rebuild, repopulated by
+/// the non-incremental walk, retained across incremental runs whose
+/// subtree hashes matched.
+/// The three tables one tree's walk appends to, plus the layer it is
+/// walking — bundled because they are pushed to together and travel as
+/// one, and because threading four more parameters through
+/// `run_tree` is what the argument count is for.
+struct TreeSink<'a> {
+    entries: &'a mut Soa<EntryRow>,
+    hits: &'a mut Soa<HitRow>,
+    scopes: &'a mut Vec<ScopeRow>,
+    layer: Layer,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScopeRow {
+    pub(crate) layer: Layer,
+    pub(crate) id: WidgetId,
+    pub(crate) filter: KeyFilter,
 }
 
 struct Frame {
@@ -317,6 +346,8 @@ pub(crate) struct Cascades {
     /// keeps the two columns at 12 bytes per hit while one row push
     /// updates both; `Vec<HitRow>` would pad each row to 16 bytes.
     pub(crate) hits: Soa<HitRow>,
+    /// Declared input scopes in record order — see [`ScopeRow`].
+    pub(crate) scopes: Vec<ScopeRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
     /// ([`crate::input::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
@@ -476,8 +507,12 @@ impl CascadesEngine {
                 tree,
                 &layout.layers[layer],
                 &mut cascades.layers[layer],
-                &mut cascades.entries,
-                &mut cascades.hits,
+                &mut TreeSink {
+                    entries: &mut cascades.entries,
+                    hits: &mut cascades.hits,
+                    scopes: &mut cascades.scopes,
+                    layer,
+                },
                 display.scale_factor,
             );
             if !incremental_complete {
@@ -541,6 +576,7 @@ impl CascadesEngine {
         cascades.entries.clear();
         cascades.entries.reserve(total);
         cascades.hits.clear();
+        cascades.scopes.clear();
 
         for (layer, tree) in forest.trees.iter_paint_order() {
             let n = tree.records.len();
@@ -551,8 +587,12 @@ impl CascadesEngine {
                 tree,
                 &layout.layers[layer],
                 &mut cascades.layers[layer],
-                &mut cascades.entries,
-                &mut cascades.hits,
+                &mut TreeSink {
+                    entries: &mut cascades.entries,
+                    hits: &mut cascades.hits,
+                    scopes: &mut cascades.scopes,
+                    layer,
+                },
                 display.scale_factor,
             );
             assert!(full_complete);
@@ -657,10 +697,16 @@ impl CascadesEngine {
         tree: &Tree,
         layout: &LayerLayout,
         lc: &mut LayerCascades,
-        entries: &mut Soa<EntryRow>,
-        hits: &mut Soa<HitRow>,
+        sink: &mut TreeSink<'_>,
         display_scale: f32,
     ) -> bool {
+        let TreeSink {
+            entries,
+            hits,
+            scopes,
+            layer,
+        } = sink;
+        let layer = *layer;
         let n = tree.records.len() as u32;
         let layout_col = tree.records.layout();
         let attrs_col = tree.records.attrs();
@@ -813,6 +859,20 @@ impl CascadesEngine {
                     hits.push(HitRow {
                         entry_idx: entries.len() as u32,
                         widget_id: widget_ids[iu],
+                    });
+                }
+                // A scope in a disabled or invisible subtree owns
+                // nothing, the same rule that nulls `sense` above.
+                let filter = if cascaded_off {
+                    KeyFilter::empty()
+                } else {
+                    attrs.key_filter()
+                };
+                if filter.is_scope() {
+                    scopes.push(ScopeRow {
+                        layer,
+                        id: widget_ids[iu],
+                        filter,
                     });
                 }
                 entries.push(EntryRow {

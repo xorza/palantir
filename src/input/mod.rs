@@ -1,5 +1,6 @@
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+pub(crate) mod key_class;
 pub(crate) mod keyboard;
 pub(crate) mod pointer;
 pub(crate) mod policy;
@@ -9,6 +10,7 @@ pub(crate) mod shortcut;
 pub(crate) mod watch;
 pub(crate) mod zoom;
 
+use crate::input::key_class::KeyClass;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::FocusPolicy;
@@ -20,7 +22,7 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascades;
+use crate::scene::cascade::{Cascades, ScopeRow};
 use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::time::Duration;
@@ -229,39 +231,6 @@ impl TargetScrollDelta {
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
-/// One overlay's claim on **both** input streams, and the layer its
-/// overlay *lives on*. `Ui::modal_layer` is the only producer, so the
-/// two streams cannot be claimed apart and cannot be released apart.
-///
-/// The layer does two jobs and both matter:
-///
-/// - **Ordering.** [`InputState::finish_record`] commits the topmost
-///   claim, so a `Modal` beats a `Popup` no matter which recorded
-///   first. Record order only breaks ties within one layer.
-/// - **Blocking.** A reader is silenced only by a claim *strictly
-///   above* it, so the claiming overlay's own body — a `TextEdit`
-///   inside a popup, say — still reads the raw stream, while everything
-///   beneath the overlay is cut off.
-///
-/// Layer discriminants are the z-order (`Layer::PAINT_ORDER` is
-/// const-asserted to match them), so `idx()` comparison is the ordering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct InputOwner {
-    layer: Layer,
-    id: WidgetId,
-}
-
-/// Who is asking for keyboard events.
-///
-/// `Owner` is a capture holder reading its own stream; `Unclaimed` is
-/// anything else, and carries the layer it is reading from so a capture
-/// below it cannot silence it.
-#[derive(Clone, Copy, Debug)]
-enum Reader {
-    Owner(WidgetId),
-    Unclaimed(Layer),
-}
-
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
@@ -312,26 +281,27 @@ pub(crate) struct InputState {
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
     pub(crate) focused: Option<WidgetId>,
-    /// Claims made during the pass being recorded, in record order.
-    /// Rebuilt every pass; capacity is retained so stable overlays stay
-    /// allocation-free after their first frame. The two committed
-    /// values below are both derived from this list by
-    /// [`Self::finish_record`] and never written anywhere else, so the
-    /// keyboard and pointer halves of one claim can never fall out of
-    /// step.
-    claims: Vec<InputOwner>,
-    /// Overlay that owns this pass's keyboard stream — the topmost
-    /// entry of the previous pass's `claims`. Kept separate from focus
-    /// because opening a context menu must not move the caret focus it
-    /// acts on, yet its shortcuts must not also reach that focused
-    /// widget.
-    keyboard_claim: Option<InputOwner>,
-    /// Topmost claimed layer, the pointer half of the same resolution.
-    /// The watch stream's counterpart to the blocking a scrim already
-    /// does in the hit index — see [`Self::pointer_events`]. A layer,
-    /// not an owner: the pointer gate gives the whole layer away, so two
-    /// overlays sharing one layer are indistinguishable to it.
-    pointer_claim: Option<Layer>,
+    /// The scopes enclosing [`Self::focused`], deepest-first, within
+    /// [`Self::active_layer`]. Rebuilt at record-pass start from the
+    /// cascade; capacity retained, so a stable tree stays
+    /// allocation-free. Empty when nothing is focused inside the active
+    /// layer, which is the case the "outermost scope owns it" fallback
+    /// in [`Self::reader_scope`] covers.
+    scope_path: Vec<ScopeRow>,
+    /// Topmost layer declaring any input scope. This is what replaced
+    /// the old keyboard/pointer claim pair: an overlay declaring a scope
+    /// raises the active layer, which cuts every layer beneath it off
+    /// both streams — the same gate, derived from one fact instead of
+    /// maintained as two.
+    active_layer: Option<Layer>,
+    /// Scopes withdrawn by [`Self::close_scope`] during the pass being
+    /// recorded, honoured by the *next* resolution and then dropped.
+    ///
+    /// The cascade is one frame stale, so an overlay that decides it is
+    /// closing has already recorded its scope and would go on owning
+    /// input for the frame after it is gone. This is how it says
+    /// otherwise.
+    closed_scopes: Vec<WidgetId>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when an event could drive a state mutation that
@@ -395,7 +365,7 @@ pub(crate) struct InputState {
     /// pointer flag for `Leave`) — idle frames pay nothing. Cleared
     /// in [`Self::drain_per_frame_queues`]. Read through
     /// [`Self::pointer_events`], which layer-gates it against
-    /// [`Self::pointer_claim`].
+    /// [`Self::pointer_events`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
     /// Frame-runtime clock as of the last `Ui::frame`, refreshed
     /// once per frame so input handlers running *between* frames stamp
@@ -420,9 +390,9 @@ impl Default for InputState {
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
-            claims: Vec::new(),
-            keyboard_claim: None,
-            pointer_claim: None,
+            scope_path: Vec::new(),
+            active_layer: None,
+            closed_scopes: Vec::new(),
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
@@ -435,10 +405,117 @@ impl Default for InputState {
 }
 
 impl InputState {
-    pub(crate) fn begin_record(&mut self) {
+    /// Start a record pass: drop last pass's watches and resolve this
+    /// pass's scope path.
+    ///
+    /// Resolution happens **here**, once, rather than live per read.
+    /// Focus is already committed by this point, and a path fixed for
+    /// the whole pass is what keeps grants independent of where in the
+    /// pass anything recorded — the same argument the claim resolution
+    /// it replaced made for deferring to end-of-pass.
+    pub(crate) fn begin_record(&mut self, cascades: &Cascades) {
         self.subs.clear();
-        self.claims.clear();
+        self.resolve_scopes(cascades);
         self.snapshot_frame_quiescent();
+    }
+
+    fn resolve_scopes(&mut self, cascades: &Cascades) {
+        self.scope_path.clear();
+        let live = |row: &&ScopeRow| !self.closed_scopes.contains(&row.id);
+        self.active_layer = cascades
+            .scopes
+            .iter()
+            .filter(live)
+            .map(|row| row.layer)
+            .max();
+        if let Some(active) = self.active_layer
+            && let Some(anchor) = self.focused
+        {
+            self.scope_path.extend(
+                cascades
+                    .scopes
+                    .iter()
+                    .filter(live)
+                    .filter(|row| row.layer == active && cascades.is_within(anchor, row.id))
+                    .copied(),
+            );
+        }
+        self.closed_scopes.clear();
+    }
+
+    /// The scope a press of `class` is granted to: the deepest scope on
+    /// the path whose filter takes it. `None` when no scope wants it,
+    /// which is the "nothing is focused" case the fallback in
+    /// [`Self::reader_scope`] then answers.
+    fn grant(&self, class: KeyClass, cascades: &Cascades) -> Option<WidgetId> {
+        let taking = self.scope_path.iter().filter(|row| row.filter.takes(class));
+        self.deepest_of(taking, cascades)
+    }
+
+    /// The innermost of `candidates`, or — when there are none — the
+    /// active layer's outermost scope.
+    ///
+    /// They nest, so "innermost" is a fold rather than a sort: every
+    /// candidate contains the same anchor, which puts them on one chain.
+    /// Shared by [`Self::grant`] and [`Self::reader_scope`] because the
+    /// two ask the same question of different candidate sets — who owns
+    /// a class, and who a read speaks for.
+    fn deepest_of<'a>(
+        &self,
+        candidates: impl Iterator<Item = &'a ScopeRow>,
+        cascades: &Cascades,
+    ) -> Option<WidgetId> {
+        candidates
+            .reduce(|deepest, row| {
+                if cascades.is_within(row.id, deepest.id) {
+                    row
+                } else {
+                    deepest
+                }
+            })
+            .map(|row| row.id)
+            .or_else(|| self.outermost_scope(cascades))
+    }
+
+    /// The active layer's outermost scope — who a press belongs to when
+    /// nothing focused claims it, and who a reader sitting outside every
+    /// scope reads as.
+    ///
+    /// **Outermost, not last-recorded.** Scopes record in pre-order, so
+    /// the last one is the innermost — taking it would make an app root's
+    /// accelerators resolve as the focused text field nested inside it,
+    /// and every one of them would die mid-edit. Contained scopes are
+    /// dropped first; record order then breaks the tie between what is
+    /// left, which is two *sibling* overlays on one layer, exactly as the
+    /// old topmost-claim did.
+    fn outermost_scope(&self, cascades: &Cascades) -> Option<WidgetId> {
+        let active = self.active_layer?;
+        let in_layer = || cascades.scopes.iter().filter(|row| row.layer == active);
+        in_layer()
+            .rev()
+            .find(|row| {
+                !in_layer().any(|other| other.id != row.id && cascades.is_within(row.id, other.id))
+            })
+            .map(|row| row.id)
+    }
+
+    /// Which scope a read taken at `parent` on `reader` speaks for.
+    /// `None` silences the read outright — a layer strictly below the
+    /// active one, which is the old capture gate restated.
+    fn reader_scope(
+        &self,
+        reader: Layer,
+        parent: Option<WidgetId>,
+        cascades: &Cascades,
+    ) -> Option<WidgetId> {
+        let active = self.active_layer?;
+        if reader.idx() < active.idx() {
+            return None;
+        }
+        let enclosing = cascades.scopes.iter().filter(|row| {
+            row.layer == active && parent.is_some_and(|parent| cascades.is_within(parent, row.id))
+        });
+        self.deepest_of(enclosing, cascades)
     }
 
     pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
@@ -453,15 +530,35 @@ impl InputState {
         self.subs.watch_key(shortcut);
     }
 
+    /// The raw keyboard stream as seen from `reader`'s layer.
+    ///
+    /// **Layer-gated only, never class-filtered.** A scope's filter
+    /// decides who a *chord* is granted to ([`Self::key_pressed`]); this
+    /// is the wholesale drain a focused editor reads, and it returns a
+    /// borrowed slice of the frame buffer — partitioning it by class
+    /// would break the arrival order that drain depends on. The only
+    /// wholesale drainer is the scope holder itself.
     pub(crate) fn keyboard_events(&self, reader: Layer) -> &[KeyboardEvent] {
-        self.keyboard_events_for(Reader::Unclaimed(reader))
+        if self.silenced(reader) {
+            return &[];
+        }
+        &self.frame_keyboard_events
+    }
+
+    /// Whether an overlay's scope cuts `reader`'s layer off both
+    /// streams. Strictly-below, so the scope's own body keeps reading —
+    /// a `TextEdit` inside a `Popup` drains this stream and would
+    /// otherwise get nothing.
+    fn silenced(&self, reader: Layer) -> bool {
+        self.active_layer
+            .is_some_and(|active| active.idx() > reader.idx())
     }
 
     /// The pointer watch stream as seen from `reader`'s layer, gated the
-    /// same way [`Self::keyboard_events_for`] gates keys: a claiming
-    /// overlay silences only readers *strictly below* its own layer, so
-    /// the overlay's own body keeps watching while everything beneath it
-    /// is cut off.
+    /// same way [`Self::keyboard_events`] gates keys: an overlay's scope
+    /// silences only readers *strictly below* its own layer, so the
+    /// scope's own body keeps watching while everything beneath it is
+    /// cut off.
     ///
     /// Watches bypass hit-testing by design — that is what makes them
     /// useful for gestures with no widget under the pointer — so the
@@ -471,110 +568,45 @@ impl InputState {
     /// canvas that pans and zooms that `Sense::ABSORB_POINTER` is named
     /// for.
     pub(crate) fn pointer_events(&self, reader: Layer) -> &[PointerEvent] {
-        let visible = match self.pointer_claim {
-            Some(claim) => claim.idx() <= reader.idx(),
-            None => true,
-        };
-        if visible {
-            &self.frame_pointer_events
-        } else {
-            &[]
+        if self.silenced(reader) {
+            return &[];
         }
+        &self.frame_pointer_events
     }
 
-    pub(crate) fn claimed_keyboard_events(&self, owner: WidgetId) -> &[KeyboardEvent] {
-        // The owner reads its own stream, so its layer is the capture's
-        // layer by construction — nothing to compare.
-        self.keyboard_events_for(Reader::Owner(owner))
-    }
-
-    pub(crate) fn key_pressed(&mut self, reader: Layer, shortcut: Shortcut) -> bool {
-        self.key_pressed_for(Reader::Unclaimed(reader), shortcut)
-    }
-
-    pub(crate) fn claimed_key_pressed(&mut self, owner: WidgetId, shortcut: Shortcut) -> bool {
-        self.key_pressed_for(Reader::Owner(owner), shortcut)
-    }
-
-    /// Keyboard capture is **layer-ordered**, not exclusive: the topmost
-    /// capturing overlay owns the keys, and a reader is silenced only by a
-    /// capture *strictly above* its own layer.
-    ///
-    /// Two things fall out of "strictly above". A `Popup` capture no
-    /// longer empties the stream for the `Modal` layer painted over it —
-    /// which is what left a modal unable to see its own Escape. And the
-    /// capturing overlay's own body keeps reading: `Popup` holds capture
-    /// across its whole body, so a `TextEdit` in there, which drains the
-    /// uncaptured stream, would otherwise receive nothing — and did,
-    /// before capture became layer-ordered.
-    fn keyboard_events_for(&self, reader: Reader) -> &[KeyboardEvent] {
-        let visible = match (self.keyboard_claim, reader) {
-            (Some(capture), Reader::Owner(id)) => capture.id == id,
-            (Some(capture), Reader::Unclaimed(layer)) => capture.layer.idx() <= layer.idx(),
-            (None, Reader::Owner(_)) => false,
-            (None, Reader::Unclaimed(_)) => true,
-        };
-        if visible {
-            &self.frame_keyboard_events
-        } else {
-            &[]
-        }
-    }
-
-    fn key_pressed_for(&mut self, reader: Reader, shortcut: Shortcut) -> bool {
+    /// Whether `shortcut` was pressed **and granted to the scope**
+    /// `parent` sits in. `parent` is the record position asking — the
+    /// most recently opened node — so a read inside a focused editor and
+    /// a read at the app root get different answers for the same chord.
+    pub(crate) fn key_pressed(
+        &mut self,
+        reader: Layer,
+        parent: Option<WidgetId>,
+        cascades: &Cascades,
+        shortcut: Shortcut,
+    ) -> bool {
         self.subs.watch_key(shortcut);
-        self.keyboard_events_for(reader).iter().any(
-            |event| matches!(event, KeyboardEvent::Down(keypress) if shortcut.matches(*keypress)),
-        )
+        let Some(scope) = self.reader_scope(reader, parent, cascades) else {
+            return false;
+        };
+        self.frame_keyboard_events.iter().any(|event| {
+            matches!(event, KeyboardEvent::Down(press)
+                if shortcut.matches(*press)
+                    && self.grant(KeyClass::of(*press), cascades) == Some(scope))
+        })
     }
 
-    /// Record that `owner` claimed both streams on `layer` this pass.
-    pub(crate) fn claim_input(&mut self, owner: WidgetId, layer: Layer) {
-        self.claims.push(InputOwner { layer, id: owner });
+    /// Withdraw `owner`'s scope from the next resolution — see
+    /// [`Self::closed_scopes`].
+    pub(crate) fn close_scope(&mut self, owner: WidgetId) {
+        self.closed_scopes.push(owner);
     }
 
-    /// Withdraw `owner`'s claim from the pass being recorded, so the
-    /// resolution at the end of it doesn't see them. The pass's
-    /// *committed* ownership is deliberately untouched — see
-    /// [`Self::finish_record`].
-    pub(crate) fn release_input(&mut self, owner: WidgetId) {
-        if let Some(index) = self.claims.iter().rposition(|claim| claim.id == owner) {
-            self.claims.remove(index);
-        }
-    }
-
-    /// Commit both halves of input ownership from this pass's
-    /// [`Self::claims`]: the **topmost** claim, with record order
-    /// breaking ties inside one layer.
-    ///
-    /// Was `candidates.last()`, which ignored layer entirely — so a
-    /// `Popup` recorded after a `Modal` took the keyboard from it, and a
-    /// modal and a popup could both act on the same Escape.
-    ///
-    /// **This is the only writer of either committed value**, which is
-    /// what keeps the two halves of a claim in step: they are two
-    /// projections of one list, resolved in one place, at one time.
-    ///
-    /// Resolving here rather than live is deliberate, and applies to
-    /// claims *and* releases. Recomputing a topmost-so-far on every claim
-    /// looks like the fix and is worse: with two same-layer popups
-    /// recording in sequence, the first reads while it is topmost and the
-    /// second reads after displacing it, so *both* receive the key. For
-    /// the pointer gate the same live update would split the pass in two
-    /// — watchers recorded before the overlay would read the stream and
-    /// watchers recorded after would not, making the gate depend on
-    /// authoring order rather than on layer. Ownership is therefore
-    /// stable for a whole pass, at the cost of one frame of lag when an
-    /// overlay opens on top or releases.
+    /// Close out the pass. Ownership resolution moved to
+    /// [`Self::begin_record`] when claims became scopes — a scope path
+    /// derives from focus and the cascade, so there is nothing left to
+    /// commit here.
     pub(crate) fn finish_record(&mut self) -> bool {
-        self.keyboard_claim = self
-            .claims
-            .iter()
-            .copied()
-            .enumerate()
-            .max_by_key(|(index, claim)| (claim.layer.idx(), *index))
-            .map(|(_, claim)| claim);
-        self.pointer_claim = self.claims.iter().map(|claim| claim.layer).max();
         self.take_action_flag()
     }
 
