@@ -12,12 +12,6 @@ use crate::text::{ShaperInner, TextShapeRequest};
 use std::cell::RefMut;
 use unicode_segmentation::UnicodeSegmentation;
 
-/// Output buffer for [`TextLayoutProbe::selection_rects`]. Stores selections
-/// up to 16 visual lines inline; larger selections retain their spill
-/// allocation when the caller reuses the buffer.
-pub(crate) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
-pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_CAPACITY]>;
-
 /// One shaped text layout leased for read-only geometry queries,
 /// minted by `TextShaper::layout`. Holds the shaper's exclusive
 /// `RefCell` borrow until dropped — re-entering the shaper while a
@@ -60,13 +54,13 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     /// glyph-start scan cannot: an RTL glyph carries the caret at its
     /// right edge, and an offset interior to a ligature or Indic cluster
     /// interpolates across the cluster instead of jumping to its far end.
-    pub(crate) fn cursor_xy(&self, byte_offset: usize) -> CursorPos {
+    pub(crate) fn cursor_xy(&self, byte_offset: usize) -> Caret {
         let line_height_px = self.request.key.line_height_px();
         let max_width_px = self.request.key.max_width_px();
         let halign = self.request.key.halign();
         let target = cursor_from_byte(self.request.text, byte_offset);
         let Some(buffer) = self.buffer() else {
-            return CursorPos {
+            return Caret {
                 x: mono::caret_x(
                     self.request.text,
                     byte_offset,
@@ -78,7 +72,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             };
         };
 
-        let mut last_in_line: Option<CursorPos> = None;
+        let mut last_in_line: Option<Caret> = None;
         for run in buffer.layout_runs() {
             if run.line_i != target.line {
                 continue;
@@ -92,7 +86,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
                 run.cursor_position(&target)
             };
             let x = placed.unwrap_or_else(|| run.glyphs.last().map_or(0.0, |g| g.x + g.w));
-            let pos = CursorPos {
+            let pos = Caret {
                 x,
                 y_top: run.line_top,
                 line_height: run.line_height,
@@ -104,7 +98,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             // just means the offset belongs to a later run.
             last_in_line = Some(pos);
         }
-        last_in_line.unwrap_or(CursorPos {
+        last_in_line.unwrap_or(Caret {
             x: 0.0,
             y_top: 0.0,
             line_height: line_height_px,
@@ -125,8 +119,18 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         }
     }
 
-    pub(crate) fn selection_rects(&self, range: std::ops::Range<usize>, out: &mut SelectionRects) {
-        out.clear();
+    /// Stream the rects covering `range`, one per visual line, into
+    /// `out`.
+    ///
+    /// A sink rather than a container: the only caller that retains them
+    /// owns a reused buffer, and materializing one here would allocate
+    /// per frame for any selection past the inline capacity — which the
+    /// `long_multiline_selection_alloc_free` audit fails on.
+    pub(crate) fn selection_rects(
+        &self,
+        range: std::ops::Range<usize>,
+        out: &mut impl FnMut(Rect),
+    ) {
         if range.is_empty() {
             return;
         }
@@ -136,7 +140,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             let font_size_px = self.request.key.font_size_px();
             let x0 = mono::caret_x(self.request.text, range.start, font_size_px, 0.0);
             let x1 = mono::caret_x(self.request.text, range.end, font_size_px, 0.0);
-            out.push(Rect::new(
+            out(Rect::new(
                 x0,
                 0.0,
                 x1 - x0,
@@ -152,16 +156,18 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     }
 }
 
-/// Caret position returned by [`TextLayoutProbe::cursor_xy`].
-/// Top-left in text-local pixels plus the visual line's height (so the
-/// renderer can size the caret rect to match the line cosmic-text laid
-/// out, not the requested `line_height_px` — they differ when font
-/// fallback shifts ascent/descent).
+/// Where a caret sits inside a run: top-left in run-local pixels, plus
+/// the height of the visual line it landed on.
+///
+/// That height is what the line was actually laid out at, which is not
+/// always the requested `line_height_px` — font fallback shifts ascent
+/// and descent — so a caret sized from this matches the glyphs beside it
+/// rather than the metric that was asked for.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct CursorPos {
-    pub(crate) x: f32,
-    pub(crate) y_top: f32,
-    pub(crate) line_height: f32,
+pub struct Caret {
+    pub x: f32,
+    pub y_top: f32,
+    pub line_height: f32,
 }
 
 /// Where the caret on a zero-glyph line ends up after cosmic's
@@ -184,7 +190,7 @@ fn push_run_selection_rects(
     run: &cosmic_text::LayoutRun<'_>,
     cursor_start: cosmic_text::Cursor,
     cursor_end: cosmic_text::Cursor,
-    out: &mut SelectionRects,
+    out: &mut impl FnMut(Rect),
 ) {
     // The per-grapheme test below (ported from `LayoutRun::highlight`) treats a
     // run whose line differs from both cursors as fully selected, so runs on
@@ -198,7 +204,7 @@ fn push_run_selection_rects(
         if let Some((min_x, max_x)) = selected.take() {
             let width = max_x - min_x;
             if width > 0.0 {
-                out.push(Rect::new(min_x, run.line_top, width, run.line_height));
+                out(Rect::new(min_x, run.line_top, width, run.line_height));
             }
         }
     };
