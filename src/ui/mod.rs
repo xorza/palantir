@@ -38,6 +38,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::scene::tree::recording::Placement;
+use crate::text::run::{TextProbe, TextRun};
 use crate::{InternedStr, TextInput};
 
 use crate::primitives::widget_id::WidgetId;
@@ -1170,6 +1171,37 @@ impl Ui {
     /// coordinates without threading window dimensions through itself.
     pub fn display(&self) -> Display {
         self.display
+    }
+
+    /// Shape `run` and return its geometry — caret positions,
+    /// click-to-offset, selection rects.
+    ///
+    /// Only for the byte↔position mapping. **Measuring and painting text
+    /// need nothing from here**: record a `Shape::Text` and layout shapes
+    /// it, contributing its size like any other content.
+    ///
+    /// **`&mut self` is a choice, not a requirement.** The shaper carries
+    /// its own interior mutability, so `&self` compiles perfectly well —
+    /// it just moves where this fails.
+    ///
+    /// Probing is not read-only: a cache miss shapes the run, and an
+    /// evicted buffer is rebuilt on the spot. So the returned probe holds
+    /// the shaper's *exclusive* lease until it drops, and borrowing `Ui`
+    /// mutably is what makes the compiler's idea of exclusivity agree
+    /// with the `RefCell`'s — a second overlapping probe becomes E0499 at
+    /// build time instead of a panic in a running app. The cost is that
+    /// the borrow is coarse: it locks all of `Ui`, not just the shaper,
+    /// because a method signature cannot say "exclusive on this field".
+    ///
+    /// Sequential probes are fine — end one with a block, or let a
+    /// temporary drop at the end of its statement, before taking the
+    /// next.
+    ///
+    /// Cheap to call repeatedly on a stable run: shaped buffers are
+    /// cached by the run's own parameters, so a per-frame probe of
+    /// unchanged text is a lookup, not a reshape.
+    pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a> {
+        TextProbe::new(self.resources.text.layout(run.request()))
     }
 
     /// Programmatically set or clear focus. Bypasses [`FocusPolicy`].
