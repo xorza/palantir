@@ -350,7 +350,7 @@ pub(crate) struct InputState {
     /// pointer flag for `Leave`) — idle frames pay nothing. Cleared
     /// in [`Self::drain_per_frame_queues`]. Read through
     /// [`Self::pointer_events`], which layer-gates it against
-    /// [`Self::pointer_events`].
+    /// [`Self::silenced`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
     /// Frame-runtime clock as of the last `Ui::frame`, refreshed
     /// once per frame so input handlers running *between* frames stamp

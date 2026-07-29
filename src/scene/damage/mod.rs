@@ -261,9 +261,7 @@ impl DamageEngine {
     /// Diff against the just-finished frame and return a
     /// [`Damage`] ready for the renderer:
     ///
-    /// - [`Damage::Skip`] — empty region, nothing changed (also the
-    ///   outcome for a degenerate zero-area surface, since every rect
-    ///   surface-clips away).
+    /// - [`Damage::Skip`] — empty region, nothing changed.
     /// - [`Damage::Partial`] — coverage below
     ///   [`FULL_REPAINT_THRESHOLD`].
     /// - [`Damage::Full`] — coverage above the threshold, or the
