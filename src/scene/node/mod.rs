@@ -40,7 +40,7 @@ impl NodeMode {
     }
 }
 
-/// Recipe for a [`ode`'s `WidgetId`. Mirrors egui's
+/// Recipe for a [`Node`]'s `WidgetId`. Mirrors egui's
 /// `Option<Id>` "raw `id_salt`, resolve at `Ui::widget`"
 /// pattern: the builder stores the user's intent, resolution happens
 /// at record time when the parent context is known. Three sources:
