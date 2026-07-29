@@ -88,8 +88,8 @@ pub struct Ui {
     /// Private, deliberately: everything outside this module reaches
     /// input through `Ui`'s public API, so the surface a caller's own
     /// widget has is the surface every widget in this crate is built
-    /// on. Tests reach the machine itself through
-    /// [`internals`](crate::ui::internals).
+    /// on. Tests reach the machine itself through this module's
+    /// test-gated `internals`.
     input: InputState,
     /// Selects which "did input arrive?" signal `take_frame_plan`
     /// consults to gate the full record path. Default
@@ -565,7 +565,7 @@ impl Ui {
     /// this crate ships calls it any more. `Scroll` was the last, and it
     /// now resolves its bar geometry in the `layout::scrollbars` driver
     /// after measure instead. Prefer that shape — or handling the edge in
-    /// [`App::update`](crate::App::update), which runs before any
+    /// [`App::update`], which runs before any
     /// recording — and reach for this only when neither fits.
     pub fn request_relayout(&mut self) {
         self.frame_runtime.relayout_requested = true;
@@ -648,8 +648,8 @@ impl Ui {
     }
 
     /// Open a new top-level OS window addressed by `token`. The window
-    /// gets its own independent UI tree; [`App::update`](crate::App::update)
-    /// and [`App::record`](crate::App::record) receive its `token`, and you can later poke it via
+    /// gets its own independent UI tree; [`App::update`] and
+    /// [`App::record`] receive its `token`, and you can later poke it via
     /// [`HostHandle::request_repaint`](crate::HostHandle::request_repaint)
     /// or close it with [`Self::close_window`].
     ///
@@ -807,7 +807,8 @@ impl Ui {
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
     /// — minting the stable backend `TextureId` once (on first sight) and
     /// refreshing the app `paint` callback each frame — then append a
-    /// [`ShapeRecord::GpuView`] carrying the view's `epoch` to the active node
+    /// [`ShapeRecord::GpuView`](crate::scene::shapes::record::ShapeRecord::GpuView)
+    /// carrying the view's `epoch` to the active node
     /// (the encoder recovers id + paint from the map by `id`).
     ///
     /// `repaint` is the widget's per-frame dirty flag. When set, the epoch

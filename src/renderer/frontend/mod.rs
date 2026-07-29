@@ -7,15 +7,13 @@
 //!    groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
 //!    persistent per-frame allocation. A host shares one frontend serially
-//!    across its windows: [`WindowDriver`] calls [`Frontend::build`] once per
+//!    across its windows: `WindowDriver` calls [`Frontend::build`] once per
 //!    painted frame and hands the composed buffer to the backend. The frontend
 //!    and backend hold capability-specific clones of the shared gradient atlas
 //!    and image registry.
 //!
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
-//!
-//! [`WindowDriver`]: crate::host::window_driver::WindowDriver
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -93,7 +91,8 @@ impl Frontend {
 
     /// Encode straight into the composer, filling the staged output
     /// buffer. One pass: the encoder's paint calls land in a live
-    /// [`ComposeSession`] rather than an intermediate command stream, so
+    /// [`ComposeSession`](composer::ComposeSession) rather than an
+    /// intermediate command stream, so
     /// nothing is serialized only to be read back a line later.
     #[profiling::function]
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {

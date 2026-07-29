@@ -32,10 +32,10 @@ use crate::scene::tree::node::NodeId;
 /// producing `Damage::Full` flicker (the darkroom graph-view bug).
 /// Negative positions render outside the canvas's `inner` either way
 /// (the loop's running max starts at 0); if you need scrollable
-/// negative-origin canvases, see
-/// [`crate::widgets::scroll::Scroll::anchor_canvas_origin`] for the
-/// userspace pattern (shift positions into positive space and
-/// auto-compensate the scroll's offset so visible state stays stable).
+/// negative-origin canvases, build the userspace pattern on top of
+/// [`crate::widgets::scroll::Scroll`] (shift positions into positive
+/// space and auto-compensate the scroll's offset so visible state stays
+/// stable).
 #[profiling::function]
 pub(super) fn measure(
     layout: &mut LayoutEngine,

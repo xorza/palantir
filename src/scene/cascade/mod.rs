@@ -237,7 +237,7 @@ impl std::fmt::Debug for Frame {
 
 /// All per-layer cascade state grouped on one struct. The
 /// `cascade_inputs`, `subtree_paint_rects`, and `paint_arena` columns
-/// are produced together by [`run_tree`], retained together between
+/// are produced together by [`CascadesEngine::run_tree`], retained together between
 /// frames, and read together by the damage diff and encoder.
 ///
 /// ## Columnar split
@@ -274,7 +274,7 @@ pub(crate) struct LayerCascades {
     pub(crate) cascade_inputs: Vec<CascadeInputHash>,
     /// Per-node subtree paint rect — the node's own paint extent rolled
     /// up with every descendant's `subtree_paint_rects[i]`. Computed
-    /// inline in [`run_tree`] via a stack-frame accumulator. Read by
+    /// inline in [`CascadesEngine::run_tree`] via a stack-frame accumulator. Read by
     /// the encoder for the viewport + damage subtree culls where
     /// "may I skip the whole subtree?" must consider overhanging
     /// descendants — Canvas-positioned children outside the parent's

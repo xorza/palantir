@@ -8,7 +8,8 @@ use glam::UVec2;
 use soa_rs::Soars;
 
 /// One `GpuView` off-screen target to paint this frame (see
-/// [`RenderBuffer::frame_targets`]): the view's stable texture `id`, its used
+/// [`RenderBuffer::frame_targets`](crate::renderer::render_buffer::RenderBuffer::frame_targets)):
+/// the view's stable texture `id`, its used
 /// physical size (`used`), the display and effective raster scales, and the app
 /// `paint` callback (threaded from `Ui::gpu_views` through the typed image
 /// command, so the backend reaches the renderer without a `Ui`-side registry).

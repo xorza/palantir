@@ -29,7 +29,8 @@ const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
 pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 
 /// Per-widget snapshot held in [`crate::scene::damage::DamageEngine::prev`], keyed by stable
-/// [`WidgetId`]. Only widgets with paint rows last frame have an entry
+/// [`WidgetId`](crate::primitives::widget_id::WidgetId). Only widgets with
+/// paint rows last frame have an entry
 /// — rowless nodes (e.g. a popup's childless invisible click-eater)
 /// are skipped on insert, so their full-surface rect can't trip the
 /// full-repaint coverage threshold on add or remove.

@@ -658,7 +658,7 @@ fn bench_gpu(c: &mut Criterion) {
     gpu_scrolling(c);
 }
 
-/// Results finalizer — runs last in [`bench`]. Reads the
+/// Results finalizer — runs last in [`bench()`]. Reads the
 /// criterion `time:` estimates the two benches just wrote and prepends a
 /// per-machine results row. Separated from the benches so it observes
 /// every arm regardless of mode, and so neither bench has to know it's

@@ -55,7 +55,7 @@ impl ImagePipeline {
     /// layout / sampler / texture cache inside [`ImageTextures`]. The
     /// pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variant`].
+    /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.image.shader"),
@@ -164,7 +164,7 @@ impl ImagePipeline {
     }
 
     /// Bind once per pass. Viewport rides immediates; per-image
-    /// group 0 is set in [`Self::draw`] from the cached bind group.
+    /// group 0 is set in [`Self::draw_batch`] from the cached bind group.
     pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,

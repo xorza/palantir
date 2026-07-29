@@ -3,7 +3,8 @@
 //! slice), [`ButtonPhase`] / [`Drag`] (its press + drag lifecycles), [`ScrollDelta`]
 //! (routed wheel/touchpad/pinch deltas), and [`InputDelta`] (the
 //! repaint hint `Ui::on_input` returns). These are pure outputs — they
-//! never reference the [`InputState`] machine (`super`) that produces
+//! never reference the [`crate::input::InputState`] machine (`super`) that
+//! produces
 //! them.
 
 use glam::Vec2;

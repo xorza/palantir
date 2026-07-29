@@ -61,7 +61,7 @@ pub(super) struct EncodedKey {
     scale_q: u32,
     area_color: u32,
     /// Packed subpixel bins of the run origin, exactly as produced by
-    /// [`cosmic::SubpixelOrigin::bins`].
+    /// [`crate::text::render::SubpixelOrigin::bins`].
     bins: u8,
 }
 

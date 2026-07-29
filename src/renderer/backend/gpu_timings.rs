@@ -41,7 +41,7 @@ const BYTES_PER_U64: u64 = 8;
 /// writes when `TIMESTAMP_QUERY_INSIDE_PASSES` is on. Sized to comfortably
 /// hold a worst-case frame: ~6 distinct categories * a few transition
 /// rounds. Excess transitions silently fold into the surrounding
-/// category (see [`Inner::mark`]).
+/// category (see [`GpuTimings::mark`]).
 const MAX_TIMESTAMPS: u32 = 32;
 const TIMESTAMP_BUFFER_BYTES: u64 = MAX_TIMESTAMPS as u64 * BYTES_PER_U64;
 

@@ -13,7 +13,7 @@
 //! first drain after registration — and are dropped immediately after
 //! upload; only the GPU texture persists. The pure data types live
 //! elsewhere — [`Image`] / [`ImageFit`](crate::primitives::image::ImageFit)
-//! in `primitives`, [`TextureId`](crate::renderer::texture_id::TextureId) +
+//! in `primitives`, [`TextureId`] +
 //! its source in `renderer::texture_id` — so this module owns only the
 //! stateful lifecycle.
 //!

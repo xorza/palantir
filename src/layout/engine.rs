@@ -63,7 +63,7 @@ use glam::Vec2;
 ///    likewise node-indexed and restored into the current layout
 ///    result for the next record pass. `grid.hugs` is
 ///    indexed per-grid (not per-node) so the cache hit path has to
-///    explicitly call [`Self::restore_after_cache_hit`] to splat
+///    explicitly call [`restore_after_cache_hit`] to splat
 ///    [`CachedSubtree::hugs`] back into the live pool — without
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
 ///
@@ -141,7 +141,8 @@ impl LayoutScratch {
 /// Size offered to one layer root.
 ///
 /// `Layer::Main` fills the surface; every overlay layer derives its own from
-/// its [`Placement`]. Shared by [`LayoutEngine::run`], which measures against
+/// its [`Placement`](crate::scene::tree::recording::Placement). Shared by
+/// [`LayoutEngine::run`], which measures against
 /// it, and [`LayoutEngine::cache_snapshot_matches_forest`], which quantizes it
 /// into the snapshot's root key — those two **must** agree, or the key
 /// describes an offer measure never saw and every root misses.
@@ -190,7 +191,7 @@ pub(crate) struct PhaseTimings {
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
 /// - `text` — per-window text shaping and reuse slots.
-/// - `cache` — cross-frame measure cache. See [`cache`].
+/// - `cache` — cross-frame measure cache. See [`crate::layout::cache`].
 ///
 /// Per-frame *output* is **not** held here: `run` threads it through an
 /// `out: &mut Layout`, so the finalized layout is owned by the caller

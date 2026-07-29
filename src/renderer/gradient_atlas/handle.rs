@@ -26,7 +26,9 @@ impl SharedGradientAtlas {
     }
 
     /// Rows the atlas currently holds — the height the backend's LUT
-    /// texture must match. Starts at [`INITIAL_ATLAS_ROWS`] and only
+    /// texture must match. Starts at
+    /// [`INITIAL_ATLAS_ROWS`](crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS)
+    /// and only
     /// ever grows.
     pub(crate) fn rows(&self) -> u32 {
         self.cpu.borrow().capacity()

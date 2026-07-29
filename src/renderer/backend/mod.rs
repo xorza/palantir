@@ -75,9 +75,8 @@ const IMMEDIATES_BYTES: u32 = 16;
 /// backbuffer entirely and renders straight into the surface.
 ///
 /// Sized to match the surface texture; recreated on resize or format change.
-/// Owned per-window by
-/// [`WindowDriver`](crate::host::window_driver::WindowDriver); the backend is
-/// otherwise window-agnostic.
+/// Owned per-window by `WindowDriver`; the backend is otherwise
+/// window-agnostic.
 #[derive(Debug)]
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
@@ -94,7 +93,7 @@ pub(crate) struct Backbuffer {
 /// separate from [`Backbuffer`] so the direct-present path can have a stencil
 /// without paying for a backbuffer color texture it never uses. Transient:
 /// cleared at pass open, never read across frames. Owned per-window by
-/// [`WindowDriver`](crate::host::window_driver::WindowDriver).
+/// `WindowDriver`.
 #[derive(Debug)]
 pub(crate) struct Stencil {
     pub(crate) view: wgpu::TextureView,
@@ -389,6 +388,9 @@ impl WgpuBackend {
     /// escalation (promote / resync) was sealed in `present_mode` *before* the
     /// draw list was built, so `plan` and `buffer` always agree; the caller
     /// (`WindowDriver`) has also ensured the stencil + backbuffer.
+    ///
+    /// [`Damage::Full`]: crate::scene::damage::Damage::Full
+    /// [Damage::Partial]: crate::scene::damage::Damage::Partial
     #[profiling::function]
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
         let Submission {

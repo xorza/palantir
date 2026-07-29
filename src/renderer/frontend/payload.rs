@@ -250,7 +250,8 @@ impl DrawMeshPayload {
 /// size). `uv_min` / `uv_size` are the texture crop — `(0,0)`+`(1,1)`
 /// for the common Fill/Contain/None modes; non-trivial only for Cover.
 /// `tint` multiplies the sampled texel. `handle` is the user-supplied
-/// [`ImageHandle`] — the backend looks it up against its GPU texture
+/// [`ImageHandle`](crate::renderer::image_registry::ImageHandle) — the
+/// backend looks it up against its GPU texture
 /// cache.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawImagePayload {

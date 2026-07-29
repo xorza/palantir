@@ -556,7 +556,7 @@ impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
     }
 }
 
-/// Central animation table on [`Ui`]. Typed maps allocated on demand
+/// Central animation table on [`crate::Ui`]. Typed maps allocated on demand
 /// keyed by `TypeId`. Adding a new [`Animatable`] type costs no
 /// central edits — first `Ui::animate::<T>` call boxes a fresh
 /// `AnimMapTyped<T>`.

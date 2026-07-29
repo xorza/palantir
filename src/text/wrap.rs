@@ -73,7 +73,7 @@ pub enum TextWrap {
 }
 
 /// Every layout consequence of a wrap policy is a pure function of the
-/// unbounded root measurement (and, for [`TextWrap::content_size`], the
+/// unbounded root measurement (and, for `TextWrap::content_size`, the
 /// resolved one) — no cache or shaping access. `TextSystem::measure`
 /// returns measurements; these methods derive the sizes layout consumes.
 impl TextWrap {
