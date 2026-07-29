@@ -467,7 +467,7 @@ impl UiHarness {
         center
     }
 
-    /// Click `id` at its center. See [`Self::hit_center_of`] for what is
+    /// Click `id` at its center. See `Self::hit_center_of` for what is
     /// checked and why.
     pub fn click_on(&mut self, id: WidgetId) {
         self.click_at(self.hit_center_of(id));
