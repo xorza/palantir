@@ -1,4 +1,4 @@
-//! Per-frame allocation audit suite. See `alloc-testing.md`.
+//! Per-frame allocation audit suite.
 
 use crate::allocator::CountingAllocator;
 
