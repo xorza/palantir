@@ -906,30 +906,6 @@ impl Ui {
         self.placed_layer(layer, Placement::fixed(anchor, size), body)
     }
 
-    /// [`Self::layer`], for an overlay that **owns input** while it is
-    /// up. `owner` takes the keyboard, and the layer takes the pointer:
-    /// [`Self::keyboard_events`] and [`Self::pointer_events`] both go
-    /// empty for every layer strictly below, and are unchanged for this
-    /// one and above — so the overlay's own body keeps reading, which is
-    /// what lets a `TextEdit` inside a popup be typed into.
-    ///
-    /// That distinction is the reason this is a separate entry point
-    /// rather than a flag on [`Self::layer`]. A `Popup` or `Modal` owns
-    /// input; a `Tooltip` or a debug HUD only paints over things, and
-    /// must keep letting the canvas underneath pan and zoom. Both used
-    /// to be spelled identically.
-    ///
-    /// Both halves ride this call rather than being claimed inside the
-    /// body, so the layer they record against is the layer they were
-    /// opened on and the two can never disagree. Re-open every frame the
-    /// overlay is up, and [`Self::close_scope`] on the frame it
-    /// decides to close — claims resolve at the end of a pass and are
-    /// read by the next one, so without the release a dismissing overlay
-    /// owns input for one frame after it is gone.
-    ///
-    /// Only the topmost claim matters, so an overlay that enters its
-    /// layer more than once (as `Popup` does — a full-surface eater plus
-    /// a positioned body) needs this on just one of them.
     /// Withdraw an [`input_scope`](crate::Configure::input_scope) this
     /// pass recorded, so the next resolution does not see it.
     ///

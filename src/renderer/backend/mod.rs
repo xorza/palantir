@@ -81,10 +81,9 @@ const IMMEDIATES_BYTES: u32 = 16;
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
-    /// Cached at creation: lets `ensure_backbuffer` skip the
-    /// `wgpu::Texture::size()` round-trip on every frame. The Arc
-    /// traversal that call walks is ~15 µs/frame at this bench
-    /// shape — small but visible in Tracy at 14% of trace time.
+    /// The extent `tex` was created at, mirrored here so
+    /// `ensure_backbuffer`'s recreate test reads size and format off
+    /// the same struct it already holds.
     size: wgpu::Extent3d,
 }
 
@@ -724,11 +723,11 @@ impl WgpuBackend {
                 view,
                 depth_ops: None,
                 stencil_ops: Some(wgpu::Operations {
-                    // One stencil clear per *pass*, not per rect — the
-                    // rect-disjointness invariant means rect B's
-                    // scissor reads a region that rect A's masks never
-                    // touched, so the cleared-once-per-pass stencil is
-                    // sufficient.
+                    // One stencil clear per *pass*, not per rect. What
+                    // makes that sufficient is the schedule's tail
+                    // clear (see the method doc), not rect
+                    // disjointness: `DAMAGE_AA_PADDING` can make
+                    // nominally-disjoint rects' scissors overlap.
                     load: wgpu::LoadOp::Clear(0),
                     store: wgpu::StoreOp::Discard,
                 }),
