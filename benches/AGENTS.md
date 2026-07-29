@@ -1,189 +1,7 @@
 # Benches
 
-Criterion benches for the layout/measure/frame/cascade/damage pipeline.
-
-Each `*.rs` file is a criterion target; cases inside are named like
-`<group>/<case>` (e.g. `frame/cached_cpu`, `frame/partial_gpu`,
-`damage/full`, `caches/measure/cached`). Filter at run-time with a
-criterion regex.
-
-## Running
-
-```sh
-PALANTIR_BENCH_MODE=both PALANTIR_BENCH_NOTE='baseline' cargo bench --bench frame  # all arms
-PALANTIR_BENCH_MODE=cpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
-PALANTIR_BENCH_MODE=gpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
-cargo bench --bench caches --features internals        # gated benches
-cargo bench --bench animation --features internals     # retained duration/spring rows
-cargo bench --bench curve_pipeline --features internals # curve GPU evidence + frame wall time
-```
-
-`frame` refuses to run without both:
-- `PALANTIR_BENCH_NOTE` — non-empty context string. Inlined into the
-  per-run header in `benches/results/<machine>.txt`
-  (`=== <utc> — [<mode>] <note> ===`) so each appended row carries
-  context for why it was measured.
-- `PALANTIR_BENCH_MODE` — one of `cpu`, `gpu`, `both`. Selects which of
-  the two benches run; `both` is the full ~90 s matrix, `cpu`/`gpu`
-  alone is ~45 s. Forces every invocation to be an explicit decision
-  rather than defaulting to the full matrix.
-
-Two optional knobs move the surface every arm renders into, so the same
-fixture can be measured at a real display size without editing the
-source: `PALANTIR_BENCH_SIZE=<w>x<h>` (physical pixels, default
-`3840x6000`) and `PALANTIR_BENCH_SCALE=<dpr>` (default `2.0`); the
-resize pool rescales with the former. Below the default the fixture's
-page no longer fits — the CPU arms still record / measure / arrange the
-whole tree, but only the visible part is painted, so numbers from
-different sizes are not comparable. The README's published numbers use
-`PALANTIR_BENCH_SIZE=2560x1440 PALANTIR_BENCH_SCALE=1`.
-
-### `frame` has two benchmark modes
-
-`src/ui/bench.rs` owns both modes and runs the results
-finalizer last; `benches/frame.rs` contains only Criterion wiring.
-`PALANTIR_BENCH_MODE` gates each mode wholesale, so **`MODE=cpu` runs zero
-GPU code** — no adapter / device request, no `write_stats` — which is the
-point: a `perf` / `samply` capture of the CPU bench is uncontaminated by
-driver activity.
-
-- **`frame/*_cpu`** — palantir's CPU pipeline measured on a **bare `Ui`
-  + its private `Frontend`, with no `wgpu::Device` at all** (`CpuHarness`,
-  same deviceless path as `alloc_free`). Each iter runs record →
-  measure → arrange → cascade → damage and then, when the frame
-  produces a render plan, encode + compose — then acks the present
-  (`Ui::mark_frame_submitted`) so `classify_frame` matches a real
-  host. **Driving the CPU arms through the full offscreen host frame + a poll
-  was the old shape and was wrong**: a non-blocking `device.poll`
-  charges each iter a driver ioctl, and on `RenderPlan::Skip` the host
-  does a GPU backbuffer copy — together ~20 % NVIDIA/kernel self-time on
-  `cached_cpu` and ~50 % on `resizing_cpu` (multi-MB backbuffer
-  realloc per size, `ensure_backbuffer → create_texture`), swamping the
-  palantir cost. Time is advanced from a real `Instant` like
-  `WindowDriver::cpu_frame` so wake cadence matches production.
-- **`frame/*_gpu`** — the full public path: `OffscreenHost::frame_offscreen`
-  against an offscreen `wgpu::Texture` + `PollType::Wait`. Wall time
-  covers the whole CPU + GPU pipeline. The per-frame `write_stats` dump
-  (upload counts, GPU pass timings) lives here since it's inherently GPU.
-
-Arms (both benches): `cached` (steady state, MeasureCache hits, damage
-`Skip`), `partial` (mutates one footer counter → small `Partial` rect),
-`resizing` (rotates four surface sizes to bust `available_q`),
-`scrolling` (shifts a `Panel::transform` so only the cascade walk
-changes). **Every CPU arm runs the full pipeline including encode +
-compose** so the numbers are apples-to-apples: a `Skip` frame produces
-no render plan, so `CpuHarness::frame` substitutes a `Full` plan for the
-encoder (the `cached_cpu` arm thus measures a whole-tree repaint cost,
-not a no-op). `partial` keeps its small `Partial` region — the
-partial-encode path is its real workload. `cpu_partial` asserts the
-`Partial` invariant (deviceless) before timing so a fixture change that
-collapses damage to `Full` fails loudly instead of measuring the wrong
-thing.
-
-Feature gating (see `[[bench]]` entries in `Cargo.toml`): every benchmark
-requires `--features internals` because its implementation or shared fixture
-lives behind the single source-level `bench` facade. `alloc_free_gpu` still
-drives only the public `OffscreenHost` rendering path; the feature supplies
-its source-level workload, not renderer reach-ins.
-
-`curve_pipeline` renders fixed cubic-strip and polyline-join workloads through
-the public offscreen host. Its Criterion cases measure complete frame wall time;
-the pre-case report isolates median curve-batch GPU time and vertex invocation
-counts for the static-index keep-or-revert decision.
-
-`caches` includes representative and text-heavy trees plus adversarial
-`deep/measure/{cached,forced_miss,resizing}` and
-`broad/measure/{cached,forced_miss,resizing,localized}` cases. The deep chain
-exposes overlapping-snapshot O(N²) writes; the broad localized arm changes one
-paint-only leaf to measure reuse of unchanged sibling subtrees.
-`grid/intrinsic/{cached,forced_miss,resizing}` isolates paired min/max-content
-recursion in a 128-row real-text property grid.
-
-`cascade/run` isolates cascade production on the full frame fixture.
-`paint_only` alternates paint authoring with stable layout and inherited state;
-`transform` alternates a subtree transform and must route to the full path;
-`full_rebuild` is the same workload forced through that path as a control.
-`cascade/hit_test` retains the separate sparse/dense hit-query cases.
-
-`animation/{duration,spring}/animated_look` alternates targets across 4,096
-retained `AnimRow<AnimatedLook>` entries. It exposes row-footprint and
-mode-dispatch changes while exercising the real duration and spring math.
-
-## Allocation invariants (three benches)
-
-Three benches share the `support/frame_fixture.rs` workload (see
-below). Two pin a floor and fail; one only measures.
-
-- **`alloc_free`** — palantir CPU pipeline only (record → measure →
-  arrange → cascade → encode), no GPU. **Strict zero** — any non-zero
-  block delta over 256 steady-state frames fails. This pins the
-  load-bearing AGENTS.md invariant.
-- **`alloc_free_gpu`** — same fixture, plus the wgpu submission path
-  via `OffscreenHost::frame_offscreen` against an offscreen target with a GPU
-  poll between frames. Baselined: every wgpu submission fundamentally
-  allocates (`CommandEncoder` Arc, `CommandBuffer` Arc, queue Vec push,
-  hal scratch). Current floor ~27 blocks/frame, all attributed to
-  `wgpu_core` / `wgpu_hal` (verified via `DHAT_DUMP=1` + dh_view).
-  Gate trips above `RENDER_BLOCKS_PER_FRAME_MAX` (35) — a regression
-  is either an palantir bug or a wgpu/cosmic-text version drift.
-- **`alloc_resize`** — same CPU pipeline as `alloc_free`, but rotates
-  the `Display` size each frame to bust the measure / text-shaping
-  caches the way `frame/resizing_cpu` does. **Not
-  strict-zero — measures, doesn't assert.** Two arms: `pool-rotation`
-  (cycles four sizes, matching `frame/resizing_cpu`) and
-  `continuous-drag` (a unique width every frame, modelling a
-  window-edge drag with no cache hits possible). Prints blocks/frame +
-  bytes/frame per arm; use it to find which call sites still allocate
-  on the resize path. **Builds `Ui::for_test_text()` (real cosmic-text),
-  hence `required-features = ["internals"]`** — with the `Ui::default()`
-  mono fallback the paint count is constant across sizes, so the damage
-  `PaintSnapArena` reuses arena slots in place and the bench
-  reports a false 0. This was a real blind spot: until 2026-05 the bench
-  used the fallback and reported 0 blocks/frame while the live arm
-  reallocated ~1.3 MB/frame.
-
-```sh
-cargo bench --bench alloc_free --features internals         # strict CPU invariant
-cargo bench --bench alloc_free_gpu --features internals     # GPU baseline gate
-cargo bench --bench alloc_resize --features internals       # resize-path measurement
-DHAT_DUMP=1 cargo bench --bench alloc_free --features internals      # emits dhat-heap.json on drop
-DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features internals  # same, for the GPU path
-DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals    # same, for the resize path
-```
-
-If either fails, load `dhat-heap.json` at
-<https://nnethercote.github.io/dh_view/> for per-call-site bytes and
-blocks. Don't use these benches for timing — dhat adds 10-30×
-allocator overhead.
-
-When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
-intentional palantir change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
-`src/host/bench.rs` and note the new floor in the PR.
-
-All three allocation drivers and the frame driver use the opaque
-`FrameFixture` from `src/ui/bench_fixture.rs` — one synthetic app
-screen that at `NODE_SCALE = 32` carries a 160-row grouped sidebar, a
-36-row property table, a 96-chip label wrap, a 64-cell filmstrip and a
-64-message activity list. It exercises every layout driver (both
-`Scroll` axes, both `WrapStack` orientations), every non-animated
-widget, every `Shape` family and `Brush` variant, chrome shadows, grid
-cell spans, `disabled`/`hidden` cascade flattening, and the
-popup/tooltip layers. Nothing animated belongs in it — a `Spinner` or
-`PaintAnim` wakes the host every frame, which would stop `cached_*`
-settling to `Skip` and widen `partial_*` past the footer counter; the
-module doc lists the exclusions and why.
-
-The card column sits in a page scroll, so anything taller than the
-view is clipped **and culled**: `CACHED_SIZE` / `RESIZE_POOL` in
-`src/ui/bench.rs` are sized to fit the whole `BENCH_SCALE` tree, and
-shrinking them quietly shrinks the painted tree being measured. Render
-the fixture and look before assuming it all fits.
-
-The `frame_visual` example drives the same fixture at a smaller scale
-so a human can eyeball the workload the benches measure — `.zed/tasks.json`
-has a task for it. Grow the fixture and every allocation bench tracks the
-new surface area automatically — there is no longer a per-bench mirror
-to keep in sync.
+Criterion benches over the frame pipeline, plus allocation benches that pin the
+alloc-free-per-frame posture. The rest of this file is the profiling manual.
 
 ## Profiling on macOS
 
@@ -452,7 +270,10 @@ is the only way to tell.
 **Page-faults during steady-state** are the cheap "did we allocate?"
 proxy without `dhat` — non-zero after warmup means new pages got
 mapped, typically a `Vec::reserve` crossing a page boundary. For exact
-allocation attribution use the `alloc_free*` benches with `DHAT_DUMP=1`.
+allocation attribution use the allocation benches with `DHAT_DUMP=1`,
+then load `dhat-heap.json` at <https://nnethercote.github.io/dh_view/>
+for per-call-site bytes and blocks. Don't use those benches for timing —
+dhat adds 10-30× allocator overhead.
 
 ### Hybrid-CPU pitfalls (Raptor Lake)
 
@@ -538,7 +359,7 @@ perf report -i tmp/perf-stfwd.data --stdio --no-children -g none \
     --percent-limit 1.0 | head -40
 
 # Drill to the exact instruction in the worst symbol:
-perf annotate -i tmp/perf-stfwd.data -M intel palantir::scene::Forest::open_node
+perf annotate -i tmp/perf-stfwd.data -M intel <hot_sym>
 ```
 
 **Reading the L1-bound sub-leaves** (Raptor Cove):
@@ -666,7 +487,7 @@ sibling re-walk, not microarchitecture tuning.)
   events per run, no multiplexing. Useful for validating SoA/cache
   hypotheses; not scripted.
 - **Allocations** (catch steady-state allocs that violate
-  alloc-free-per-frame): the `alloc_free` bench (assertion mode) or
+  alloc-free-per-frame): the allocation benches in assertion mode, or
   `DHAT_DUMP=1` for per-call-site attribution. Samply/perf only show
   CPU time inside the allocator, not allocation counts.
 - **GPU work** (wgpu encoder/queue timings): `scripts/profile-metal.sh`
@@ -684,18 +505,3 @@ sudo powermetrics --samplers thermal -i 100 -n 200 > tmp/thermal.log &
 
 If `thermal_pressure` shifts off `Nominal` mid-run, your variance is
 thermal — re-run on power, lid open, with other apps closed.
-
-## Adding a new bench
-
-1. Drop a file under `benches/`, register it in `Cargo.toml`'s
-   `[[bench]]` table.
-2. Put the benchmark driver in a `bench.rs` beside the code it measures
-   and expose only its entry function through the root `bench`
-   facade (`src/bench.rs`) behind `internals`.
-   Add `required-features = ["internals"]` to the `[[bench]]` entry and profile
-   with `FEATURES=internals scripts/profile-bench.sh`; external benchmark
-   targets never reach through private module paths.
-3. Name cases `<group>/<case>` so criterion filters work consistently
-   with the profile-bench script.
-4. After landing, profile once and paste the text report into the PR
-   description as the steady-state baseline.
