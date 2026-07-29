@@ -44,8 +44,9 @@ pub(crate) struct LayerLayout {
 
 /// Per-frame layout output across all layers. Callers index by
 /// `Layer` directly (`result[Layer::Main]`) — see [`PerLayer`].
-/// Returned by `LayoutEngine::run`; the encoder, cascade, hit-index,
-/// and tests all read it. (The cascade pass's own output lives on
+/// Filled in place by `LayoutEngine::run`, which takes it as `&mut` so the
+/// buffers survive across frames; the encoder, cascade, hit-index,
+/// and tests all read it afterwards. (The cascade pass's own output lives on
 /// `Ui::cascades` — this struct is purely the layout pass's product.)
 #[derive(Default)]
 pub(crate) struct Layout {
