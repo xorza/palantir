@@ -441,8 +441,8 @@ impl Composer {
 
     /// Open a compose session over `out`: stamp the frame's display,
     /// reset scratch + walk state, and hand back the sink paint streams
-    /// into. [`ComposeSession::finish`] closes the trailing batch and
-    /// group.
+    /// into. Dropping the [`ComposeSession`] closes the trailing batch
+    /// and group.
     pub(crate) fn begin<'a>(
         &'a mut self,
         display: Display,

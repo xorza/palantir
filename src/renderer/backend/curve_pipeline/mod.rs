@@ -2,7 +2,7 @@
 //! arcs — see `CurveInstance::kind`). One `draw_indexed` per scissor
 //! group covers every `CurveInstance` in the group's `GroupBatch` —
 //! an immutable index buffer subdivides each instance into
-//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE)
+//! [`SEGMENTS_PER_INSTANCE`]
 //! chords while reusing 34 cross-section vertices across 96 indices;
 //! the vertex shader offsets the strip perpendicular to the tangent
 //! for stroking + AA.
@@ -69,7 +69,7 @@ pub(super) struct CurvePipeline {
 impl CurvePipeline {
     /// Format-independent curve resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variant`].
+    /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
         let wgsl = specialize(
             include_str!("curve.wgsl"),

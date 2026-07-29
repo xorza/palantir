@@ -5,7 +5,8 @@
 //! per-draw state lives in a parallel instance buffer.
 //!
 //! **No `mesh_mask.wgsl`.** Rounded-clip masks are quad-shaped and
-//! always stamped by [`QuadPipeline`]'s mask stamp/clear variants
+//! always stamped by [`QuadPipeline`](crate::renderer::backend::quad_pipeline::QuadPipeline)'s
+//! mask stamp/clear variants
 //! (`quad.wgsl::fs_mask`). Mesh only builds a stencil-*test* variant —
 //! it reads the mask but never writes one. Same shape for
 //! [`crate::renderer::backend::image_pipeline::ImagePipeline`].
@@ -30,7 +31,7 @@ pub(super) struct MeshPipeline {
 impl MeshPipeline {
     /// Format-independent mesh resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variant`].
+    /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),

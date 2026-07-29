@@ -271,7 +271,7 @@ fn build_surface_config(
 /// The present mode a [`Vsync`] setting asks for. Both map to *automatic*
 /// policies, which every surface accepts — wgpu resolves each against what
 /// the surface actually supports — so unlike an explicit mode from
-/// [`WinitHostConfig`](crate::WinitHostConfig) this needs no negotiation
+/// [`WinitHostConfig`] this needs no negotiation
 /// and can be applied to a live swapchain directly.
 pub(super) fn present_mode(vsync: Vsync) -> wgpu::PresentMode {
     match vsync {

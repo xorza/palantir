@@ -96,7 +96,8 @@ pub(super) mod internals {
     /// shaping landed, which is what existing layout tests pin.
     ///
     /// Mints no shaped buffer, so `TextSystem` reports
-    /// [`TextShapeKey::INVALID`] for every run measured this way and the
+    /// [`TextShapeKey::INVALID`](crate::text::key::TextShapeKey::INVALID) for
+    /// every run measured this way and the
     /// renderer drops them cleanly.
     pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
         let text = request.text;

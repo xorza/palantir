@@ -12,8 +12,7 @@
 //! the same frame result so they composite through the image path.
 //!
 //! Both halves are owned once by each host and driven with the active private
-//! [`WindowDriver`](crate::host::window_driver::WindowDriver) behind the public
-//! host facades.
+//! `WindowDriver` behind the public host facades.
 pub(crate) mod backend;
 pub(crate) mod frontend;
 pub(crate) mod gpu_view;

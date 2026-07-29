@@ -1,5 +1,5 @@
-//! User-driven GPU rendering: the frontend half of the [`GpuView`]
-//! widget. App code implements [`GpuPaint`] on its own renderer (owning
+//! User-driven GPU rendering: the frontend half of the
+//! [`GpuView`](crate::widgets::gpu_view::GpuView) widget. App code implements [`GpuPaint`] on its own renderer (owning
 //! whatever pipelines / buffers / depth+MSAA textures it needs), wraps it
 //! in `Rc<RefCell<…>>`, and hands it to the widget each frame. The
 //! framework owns an off-screen render target sized to the widget's composed
@@ -10,7 +10,7 @@
 //!
 //! The `Ui` keeps one small per-`WidgetId` map of live views (`Ui::gpu_views`,
 //! values are [`GpuViewEntry`]): the app hands its renderer to the widget every
-//! frame, so [`Ui::gpu_view`] upserts the entry — minting the stable backend
+//! frame, so [`Ui::gpu_view`](crate::Ui::gpu_view) upserts the entry — minting the stable backend
 //! [`TextureId`] once from `UiResources`' shared authority, so it cannot
 //! collide with registered images or other
 //! windows, and refreshing the [`GpuPaintRef`]. The shape records only the

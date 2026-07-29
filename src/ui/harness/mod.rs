@@ -37,7 +37,8 @@
 //!
 //! 1. **Warm the recorder.** A bare `Ui` is cold, so frame 1 runs the
 //!    warmup pass; seeding `prev_stamp` skips it. That is the split
-//!    between [`UiHarness::cold`] and every other constructor. On a cold
+//!    between the test-gated `UiHarness::cold` and every other
+//!    constructor. On a cold
 //!    recorder "the first pass" means the input-blind one, so rules 3–4
 //!    resolve to the wrong pass.
 //! 2. **Prime before reading.** `response_for`'s `rect` / `layout_rect`

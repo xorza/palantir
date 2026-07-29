@@ -24,7 +24,7 @@ pub(crate) struct CurveBounds {
 /// Promote a quadratic Bezier `(p0, c, p2)` to a cubic with the same
 /// curve trace. Standard reparameterization: lift the inner two control
 /// points to `p0 + 2/3·(c - p0)` and `p2 + 2/3·(c - p2)`. Exact, not an
-/// approximation — every t in [0,1] evaluates to the same point on both
+/// approximation — every t in `[0, 1]` evaluates to the same point on both
 /// forms.
 #[inline]
 pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {

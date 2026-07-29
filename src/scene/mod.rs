@@ -28,7 +28,7 @@ pub(crate) mod visibility;
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
 /// `add_shape`, `close_node` to `trees[current_layer.idx()]`.
-/// Pipeline passes iterate trees via [`Forest::iter_paint_order`];
+/// Pipeline passes iterate trees via [`PerLayer::iter_paint_order`];
 /// known-layer access indexes `trees[layer]` directly.
 #[derive(Debug, Default)]
 pub(crate) struct Forest {
@@ -223,7 +223,9 @@ impl Forest {
         }
     }
 
-    /// Append a `GpuView` shape (a [`ShapeRecord::GpuView`]) to the active
+    /// Append a `GpuView` shape (a
+    /// [`ShapeRecord::GpuView`](crate::scene::shapes::record::ShapeRecord::GpuView))
+    /// to the active
     /// node. Only the redraw `epoch` rides the shape — the view's `id` + app
     /// `paint` live in `Ui::gpu_views` keyed by the owner's `WidgetId`; this is
     /// assembled by `Ui::gpu_view`, not lowered from a user-facing [`Shape`],

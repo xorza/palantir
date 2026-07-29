@@ -1,4 +1,4 @@
-//! Per-frame damage detection. Computed in [`Ui::frame`] after
+//! Per-frame damage detection. Computed in [`Ui::frame`](crate::Ui::frame) after
 //! `compute_rollups`; rebuilds the prev-frame snapshot in the same
 //! pass via the `entry()` API — vacant slots get inserted, occupied
 //! slots get diffed and either updated or evicted.
@@ -793,7 +793,7 @@ const MOVED_SUBTREE: usize = usize::MAX;
 
 /// Screen-space extent per row of `node`'s paint span, in row order:
 /// chrome and direct shapes keep their own `Paint.screen`; a child
-/// marker's zero rect is swapped for [`child_paint_extent`] — the
+/// marker's zero rect is swapped for [`subtree_paint_extent`] — the
 /// pixels that actually move when the child's paint order flips. Only
 /// built on the inversion path — child extents walk the whole child
 /// subtree's rows.

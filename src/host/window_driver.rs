@@ -72,9 +72,9 @@ pub(super) struct WindowDriver {
     /// How this window's frames reach the target — see [`PresentStrategy`].
     strategy: PresentStrategy,
     /// Per-frame time source — `clock.now()` feeds `Ui::frame` each call.
-    /// Injected at construction ([`RealtimeClock`](crate::host::clock::RealtimeClock)
-    /// for on-screen windows, [`FixedClock`](crate::host::clock::FixedClock) for a
-    /// reproducible offscreen render) so the pipeline doesn't branch on it.
+    /// Injected at construction ([`RealtimeClock`] for on-screen windows,
+    /// [`FixedClock`](crate::host::clock::FixedClock) for a reproducible
+    /// offscreen render) so the pipeline doesn't branch on it.
     pub(super) clock: Box<dyn Clock>,
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub(super) pixel_snap: bool,

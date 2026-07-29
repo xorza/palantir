@@ -19,7 +19,7 @@ use crate::renderer::backend::quad_pipeline::QuadPipeline;
 use crate::renderer::backend::text::TextBackend;
 
 /// All render pipelines built against one swapchain color format. Keyed
-/// by [`Self::color_format`] in the backend so windows on different-format
+/// by [`wgpu::TextureFormat`] in the backend so windows on different-format
 /// outputs each bind the right set while sharing every other resource.
 #[derive(Debug)]
 pub(super) struct FormatPipelines {

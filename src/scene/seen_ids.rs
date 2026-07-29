@@ -1,7 +1,7 @@
 //! Per-frame `WidgetId` tracker. Owns three things that all key off
 //! "which widgets were recorded this frame":
 //!
-//! 1. **Eager disambiguation.** [`Self::resolve`] runs at
+//! 1. **Eager disambiguation.** [`SeenIds::resolve`] runs at
 //!    `Ui::widget` time — *before* the matching `Widget::record`
 //!    opens the actual record. It rewrites the resolved id by mixing
 //!    in an occurrence counter when the raw id has already been
@@ -11,14 +11,14 @@
 //!    colliding call site. Explicit-key collisions (`.id(X)`,
 //!    `.id_salt(X)`) are caller bugs: `resolve` queues a
 //!    [`PendingExplicitCollision`] for the second occurrence and
-//!    [`Self::record_endpoint`] finalizes the [`CollisionRecord`]
+//!    [`SeenIds::record_endpoint`] finalizes the [`CollisionRecord`]
 //!    once both opens have provided their `Endpoint`s.
-//! 2. **Endpoint tracking.** [`Self::record_endpoint`] runs at
+//! 2. **Endpoint tracking.** [`SeenIds::record_endpoint`] runs at
 //!    `Forest::open_node` time, after the final id has been carried
 //!    there by the `Widget`. Stores `final_id → Endpoint` so
 //!    the magenta debug overlay has both halves of a collision pair
 //!    on hand.
-//! 3. **Removed-widget diff + rollover.** [`Self::rollover`] computes
+//! 3. **Removed-widget diff + rollover.** [`SeenIds::rollover`] computes
 //!    which ids were present last painted frame but absent this pass
 //!    (populating `removed` for [`crate::scene::damage::DamageEngine`] /
 //!    [`crate::text::TextShaper`] / measure cache / state /

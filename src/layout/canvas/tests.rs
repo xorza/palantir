@@ -109,7 +109,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     // Canvas measures `max(pos + desired)` starting at zero, so children
     // placed at negative coords don't grow the panel — they just bleed past
     // the inner top-left. Scrollable negative-origin canvases are a
-    // userspace concern via `Scroll::anchor_canvas_origin`.
+    // userspace concern layered on `Scroll`.
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let panel = h.under_outer(|ui| {
         Panel::canvas()

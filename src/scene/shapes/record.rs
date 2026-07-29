@@ -112,7 +112,8 @@ pub(crate) enum ShapeRecord {
         /// shaper would re-resolve — means the shaper doesn't have to
         /// know about widget conventions, and two `ShapeRecord::Text` runs at
         /// the same font-size but different leading correctly produce
-        /// distinct cached shaped buffers (via [`TextShapeKey::lh_q`]).
+        /// distinct cached shaped buffers (via
+        /// [`TextShapeKey::lh_q`](crate::text::key::TextShapeKey::lh_q)).
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,
@@ -195,7 +196,7 @@ pub(crate) enum ShapeRecord {
         fill: ShapeBrush,
         /// Pre-computed content hash of `fill` when it's a gradient,
         /// `0` for solid — same context-free-hash trick as
-        /// [`ShapeRecord::Rect.fill_grad_hash`].
+        /// [`ShapeRecord::Rect`]'s own `fill_grad_hash`.
         fill_grad_hash: u64,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by

@@ -53,7 +53,7 @@ pub(crate) mod system;
 pub(crate) mod wrap;
 
 /// Leading the shaper hands to cosmic-text's `Metrics::new`, also used
-/// as the default for [`crate::TextEditTheme::line_height_mult`] so
+/// as the default for [`crate::TextStyle::line_height_mult`] so
 /// the caret rect spans the same y-range as the rendered text.
 /// Single source — cosmic and the theme default move together.
 pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
@@ -138,7 +138,8 @@ pub(crate) struct TextShapeRequest<'a> {
 }
 
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
-/// Both [`crate::Ui`] (layout-time measurement) and [`crate::WgpuBackend`]
+/// Both [`crate::Ui`] (layout-time measurement) and
+/// [`crate::renderer::backend::WgpuBackend`]
 /// (shaping during render) borrow this; backend only touches `cosmic` via
 /// [`TextShaper::render_session`].
 #[derive(Debug)]
@@ -152,7 +153,7 @@ pub(crate) struct ShaperInner {
     /// which may still hit the cosmic buffer cache, so this counts
     /// dispatches, not reshapes. Reuse-slot hits don't increment.
     /// Read by tests pinning reshape-skip behaviour via
-    /// [`internals::measure_calls`]; production builds carry neither
+    /// [`TextShaper::measure_calls`]; production builds carry neither
     /// the field nor the write.
     #[cfg(any(test, feature = "internals"))]
     measure_calls: u64,
