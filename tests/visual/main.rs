@@ -2,7 +2,7 @@
 //! the rendered texture into an `RgbaImage`, and compares against
 //! committed golden PNGs in `tests/visual/golden/`. Missing goldens
 //! are auto-created on first run; failures dump artifacts under
-//! `tests/visual/output/<name>/`. See `visual-testing.md` next door.
+//! `tests/visual/output/<name>/`.
 //!
 //! Layout: harness/diff/golden are the infrastructure; `fixtures/`
 //! holds the actual UI scenes grouped by topic. Add new fixtures
