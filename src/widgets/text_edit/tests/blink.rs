@@ -1,4 +1,5 @@
 use crate::scene::tree::node::NodeId;
+use crate::ui::frame_report::FrameReport;
 use crate::widgets::text_edit::tests::*;
 use std::time::Duration;
 
@@ -35,11 +36,7 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         })
 }
 
-fn record_at_secs(
-    h: &mut UiHarness,
-    now_secs: f32,
-    mut f: impl FnMut(&mut Ui),
-) -> crate::ui::frame_report::FrameReport {
+fn record_at_secs(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) -> FrameReport {
     h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui))
 }
 
@@ -199,8 +196,6 @@ fn caret_motion_alone_resets_blink() {
 /// `entry.anim.next_wake(prev_now) <= now`.
 #[test]
 fn caret_anim_does_not_damage_between_quantum_boundaries() {
-    use crate::ui::frame_report::FrameReport;
-
     let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::new();
 
@@ -216,26 +211,21 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
                 .show(ui);
         });
     }
-    let frame = |h: &mut UiHarness, buf: &mut String, t_secs: f32| -> FrameReport {
-        h.at(Duration::from_secs_f32(t_secs)).frame(|ui| {
-            record(ui, buf);
-        })
-    };
 
     // Frame 1: warm up so the editor's WidgetId is recorded.
-    frame(&mut h, &mut buf, 0.0);
+    record_at_secs(&mut h, 0.0, |ui| record(ui, &mut buf));
 
     // Frame 2 (focus): click lands; caret anim registers with
     // started_at=0. First post-focus frame is structurally dirty
     // (chrome/state change) — we don't assert on it.
     h.click_at(Vec2::new(20.0, 20.0));
-    frame(&mut h, &mut buf, 0.0);
+    record_at_secs(&mut h, 0.0, |ui| record(ui, &mut buf));
 
     // Frame 3 mid-half-period (t=0.2 of a 0.5s half-period). Caret
     // quantum unchanged since prev frame (t=0); `next_wake(0) = 0.5`
     // which isn't `<= 0.2` → anim contributes no damage. No other
     // source of damage either → report damage is `None`.
-    let report = frame(&mut h, &mut buf, 0.2);
+    let report = record_at_secs(&mut h, 0.2, |ui| record(ui, &mut buf));
     assert!(
         report.plan.is_none(),
         "mid-phase frame should not damage the caret rect (got {:?})",
@@ -245,7 +235,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // Frame 4 across the half-period boundary (t=0.6). prev_now=0.2;
     // `next_wake(0.2) = 0.5` which IS `<= 0.6` → quantum flipped
     // → caret rect joins damage.
-    let report = frame(&mut h, &mut buf, 0.6);
+    let report = record_at_secs(&mut h, 0.6, |ui| record(ui, &mut buf));
     assert!(
         report.plan.is_some(),
         "crossing a phase boundary must damage the caret rect",
@@ -254,10 +244,10 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
 
 /// Focusing a TextEdit at any wall-clock time must restart the blink,
 /// even when the caret/selection/text didn't change. Otherwise a fresh
-/// focus past `BLINK_STOP_AFTER_IDLE` lands with `elapsed > 30` and
-/// registers no anim — caret stays solid until the user types or moves
-/// the caret. Regression for the "caret doesn't blink unless I move
-/// the mouse" bug.
+/// focus past `BLINK_STOP_AFTER_IDLE` registers an anim that is
+/// already past its own stop, so it settles solid immediately — caret
+/// stays solid until the user types or moves the caret. Regression for
+/// the "caret doesn't blink unless I move the mouse" bug.
 #[test]
 fn focus_gain_resets_blink_even_without_caret_change() {
     let mut h = ui_at_no_cosmic(NARROW);
@@ -271,19 +261,15 @@ fn focus_gain_resets_blink_even_without_caret_change() {
                 .show(ui);
         });
     }
-    let frame = |h: &mut UiHarness, buf: &mut String, t: f32| {
-        h.at(Duration::from_secs_f32(t)).frame(|ui| body(ui, buf))
-    };
-
     // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any
-    // stale `last_caret_change=0` would put `elapsed` over the cliff.
-    frame(&mut h, &mut buf, 100.0);
+    // stale `last_caret_change=0` would put the blink past its cliff.
+    record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf));
 
     // Click to focus on the empty buffer at t=100s. Caret lands at
     // byte 0 (unchanged from default), selection unchanged, text
     // unchanged — only the focus edge fires.
     h.click_at(Vec2::new(20.0, 20.0));
-    let r = frame(&mut h, &mut buf, 100.0);
+    let r = record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf));
 
     // Focus rising edge must reset blink: anim registered → wake
     // scheduled at the next half-period boundary.

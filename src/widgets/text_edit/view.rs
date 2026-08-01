@@ -31,8 +31,8 @@ use std::time::Duration;
 pub(super) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
 pub(super) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_CAPACITY]>;
 
-const BLINK_HALF: f32 = 0.5;
-const BLINK_STOP_AFTER_IDLE: f32 = 30.0;
+const BLINK_HALF: Duration = Duration::from_millis(500);
+const BLINK_STOP_AFTER_IDLE: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Default, Debug)]
 pub(super) struct ViewState {
@@ -100,9 +100,9 @@ impl ViewState {
         // recording, so this line would stop running long before the
         // cutoff arrived.
         let caret_anim = input.focused.then_some(PaintAnim::BlinkOpacity {
-            half_period: Duration::from_secs_f32(BLINK_HALF),
+            half_period: BLINK_HALF,
             started_at: self.last_caret_change,
-            stop_after: Duration::from_secs_f32(BLINK_STOP_AFTER_IDLE),
+            stop_after: BLINK_STOP_AFTER_IDLE,
         });
         ViewUpdate {
             scroll: self.scroll,
