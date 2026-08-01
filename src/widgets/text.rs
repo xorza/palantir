@@ -77,6 +77,7 @@ impl<'a> Text<'a> {
 
     /// Shape this run bold, overriding just the weight of the resolved
     /// style (whether that came from `.style(...)` or the theme default).
+    /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
     pub fn bold(mut self) -> Self {
         self.weight = Some(FontWeight::Bold);
         self

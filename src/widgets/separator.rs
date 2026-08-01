@@ -60,14 +60,15 @@ impl<'a> Separator<'a> {
         self
     }
 
-    /// Line thickness in logical px. `None` (default) inherits
-    /// [`crate::Theme::separator`].
+    /// Line thickness in logical px, defaulting to
+    /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
     pub fn thickness(mut self, px: f32) -> Self {
         self.thickness = Some(px);
         self
     }
 
-    /// Line color. `None` (default) inherits [`crate::Theme::separator`].
+    /// Line color, defaulting to [`crate::Theme::separator`]'s.
+    /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
     pub fn color(mut self, c: Color) -> Self {
         self.color = Some(c);
         self

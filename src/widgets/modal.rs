@@ -65,8 +65,8 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// Override the backdrop scrim color. `None` (default) inherits
-    /// [`crate::Theme::modal`]'s backdrop.
+    /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
+    /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
     pub fn backdrop(mut self, c: Color) -> Self {
         self.backdrop = Some(c);
         self

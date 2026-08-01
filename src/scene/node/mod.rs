@@ -274,7 +274,7 @@ impl Node {
             padding: None,
             margin: None,
             clip: None,
-            gaps: Gaps::ZERO,
+            gaps: Gaps::UNSET_PAIR,
             justify: Justify::Start,
             align: Align::new(HAlign::Auto, VAlign::Auto),
             child_align: Align::new(HAlign::Auto, VAlign::Auto),
@@ -597,6 +597,15 @@ pub(crate) trait ThemeDefaults: Configure {
         let node = self.node_mut().node;
         if node.margin.is_none() {
             node.margin = Some(m.into());
+        }
+        self
+    }
+
+    /// Sibling spacing to fall back on when the caller set none.
+    fn default_gap(mut self, g: f32) -> Self {
+        let node = self.node_mut().node;
+        if !node.gaps.gap_is_set() {
+            node.gaps.set_gap(g);
         }
         self
     }
