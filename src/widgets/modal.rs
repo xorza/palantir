@@ -8,6 +8,7 @@ use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
+use crate::widgets::theme::modal::ModalTheme;
 use glam::Vec2;
 
 /// A centered dialog over a dimming, input-blocking backdrop, recorded
@@ -20,10 +21,11 @@ use glam::Vec2;
 /// own open flag. Clicks on the card itself are absorbed, so interacting
 /// with dialog content never closes it.
 #[derive(Debug)]
-pub struct Modal {
+pub struct Modal<'a> {
     node: Node,
     chrome: Option<Background>,
     backdrop: Option<Color>,
+    style: Option<&'a ModalTheme>,
 }
 
 /// Outcome of [`Modal::show`].
@@ -33,7 +35,7 @@ pub struct ModalResponse {
     pub dismissed: bool,
 }
 
-impl Modal {
+impl<'a> Modal<'a> {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
@@ -43,7 +45,16 @@ impl Modal {
             node,
             chrome: None,
             backdrop: None,
+            style: None,
         }
+    }
+
+    /// Borrow a theme override for this modal. The default inherits
+    /// [`crate::Theme::modal`]. Per-field [`Self::background`] /
+    /// [`Self::backdrop`] still win over it.
+    pub fn style(mut self, s: &'a ModalTheme) -> Self {
+        self.style = Some(s);
+        self
     }
 
     /// Override the card chrome (fill / stroke / corners / shadow). Pass
@@ -68,7 +79,7 @@ impl Modal {
         // node that never records.
         let root_id = ui.widget_id(self.node.salt);
 
-        let mt = &ui.theme.modal;
+        let mt = self.style.unwrap_or(&ui.theme.modal);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
         let card_bg = self.chrome.unwrap_or_else(|| mt.card.clone());
         let theme_padding = mt.padding;
@@ -119,7 +130,7 @@ impl Modal {
     }
 }
 
-impl_configure!(Modal);
+impl_configure!(Modal<'_>);
 
 #[cfg(test)]
 mod tests {

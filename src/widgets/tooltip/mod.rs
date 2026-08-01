@@ -9,6 +9,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::text::Text;
+use crate::widgets::theme::tooltip::TooltipTheme;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -66,6 +67,10 @@ pub struct Tooltip<'r, 'a> {
     show_when_disabled: bool,
     node: Node,
     chrome: Option<Background>,
+    /// Keyed to `'r` (the snapshot's lifetime), not `'a`: [`Self::text`]
+    /// rebinds `'a` to whatever the new text borrows from, and the theme
+    /// has to survive that swap.
+    style: Option<&'r TooltipTheme>,
 }
 
 impl<'r> Tooltip<'r, 'static> {
@@ -86,6 +91,7 @@ impl<'r> Tooltip<'r, 'static> {
             show_when_disabled: false,
             node,
             chrome: None,
+            style: None,
         }
     }
 }
@@ -100,6 +106,14 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         self
     }
 
+    /// Borrow a theme override for this bubble. The default inherits
+    /// [`crate::Theme::tooltip`]. Per-field [`Self::background`] /
+    /// [`Self::delay`] still win over it.
+    pub fn style(mut self, s: &'r TooltipTheme) -> Self {
+        self.style = Some(s);
+        self
+    }
+
     pub fn text<'text>(self, text: impl Into<TextInput<'text>>) -> Tooltip<'r, 'text> {
         Tooltip {
             snapshot: self.snapshot,
@@ -108,6 +122,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             show_when_disabled: self.show_when_disabled,
             node: self.node,
             chrome: self.chrome,
+            style: self.style,
         }
     }
 
@@ -129,9 +144,12 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
     pub fn show(self, ui: &mut Ui) {
-        let delay = self.delay.unwrap_or(ui.theme.tooltip.delay);
-        let warmup = ui.theme.tooltip.warmup;
-        let gap = ui.theme.tooltip.gap;
+        // Copied out once: the bundle may point into `ui.theme`, and the
+        // record below reborrows `ui` mutably.
+        let theme = self.style.unwrap_or(&ui.theme.tooltip).clone();
+        let delay = self.delay.unwrap_or(theme.delay);
+        let warmup = theme.warmup;
+        let gap = theme.gap;
 
         let trigger_id = self.snapshot.id;
         let bubble_id = trigger_id.with("tooltip.bubble");
@@ -178,10 +196,8 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             global.last_visible_at = Some(now);
             let position = OverlayPosition::below(trigger_rect, gap);
             let text = self.text;
-            let text_style = ui.theme.tooltip.text.clone();
-            let chrome = self
-                .chrome
-                .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
+            let text_style = theme.text.clone();
+            let chrome = self.chrome.unwrap_or_else(|| theme.panel.clone());
             // Theme fills in whatever the caller left alone. Identity
             // derives from the trigger, because that is the only thing a
             // tooltip *has* — but a caller-set id wins like any other
@@ -189,8 +205,8 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             let node = self
                 .node
                 .default_id(bubble_id)
-                .default_padding(ui.theme.tooltip.padding)
-                .default_max_size(ui.theme.tooltip.max_size);
+                .default_padding(theme.padding)
+                .default_max_size(theme.max_size);
             ui.overlay_layer(Layer::Tooltip, position, |ui| {
                 ui.widget(node).record(ui, Some(&chrome), |ui| {
                     Text::new(text)
