@@ -130,8 +130,12 @@ impl ButtonTheme {
 }
 
 impl WidgetTheme for ButtonTheme {
+    /// Pressed is read straight off the response, so the pick needs
+    /// nothing else.
+    type Mode = ();
+
     #[inline(always)]
-    fn pick(&self, state: &ResponseState) -> &WidgetLook {
+    fn pick(&self, state: &ResponseState, _: ()) -> &WidgetLook {
         self.pick(state)
     }
     #[inline(always)]

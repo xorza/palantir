@@ -433,6 +433,12 @@ fn with_radius_rerounds_panel_and_nests_the_row_chip() {
 /// nothing back to it. The panel takes the whole bundle; the rows and
 /// the rule — recorded by the caller's closure, not by `ContextMenu` —
 /// take their own halves.
+///
+/// Rows resolve their box through the shared `resolve_look`, so both
+/// halves of that contract hold: the theme's `padding` / `margin` fill
+/// in where the builder was silent, and an explicit value wins. The
+/// second was not true while `MenuItem` stamped `node.padding`
+/// unconditionally — a caller's `.padding(...)` vanished.
 #[test]
 fn per_instance_style_overrides_global_menu_theme() {
     let custom = ContextMenuTheme {
@@ -440,6 +446,9 @@ fn per_instance_style_overrides_global_menu_theme() {
         min_width: 220.0,
         item: MenuItemTheme {
             padding: Spacing::all(9.0),
+            // Asymmetric, and distinct from the padding, so a
+            // padding/margin mix-up can't read as a pass.
+            margin: Spacing::xy(2.0, 6.0),
             ..MenuItemTheme::default()
         },
         separator: MenuSeparatorTheme {
@@ -457,6 +466,11 @@ fn per_instance_style_overrides_global_menu_theme() {
             .show(ui, |ui, popup| {
                 MenuItem::new("Copy").style(&custom.item).show(ui, popup);
                 MenuItem::separator().style(&custom.separator).show(ui);
+                MenuItem::new("Bare")
+                    .style(&custom.item)
+                    .padding(Spacing::ZERO)
+                    .margin(Spacing::ZERO)
+                    .show(ui, popup);
             });
     });
 
@@ -481,7 +495,23 @@ fn per_instance_style_overrides_global_menu_theme() {
         Spacing::all(9.0),
         "row padding"
     );
+    assert_eq!(
+        layout[rows[0].node.idx()].margin,
+        Spacing::xy(2.0, 6.0),
+        "row margin"
+    );
     assert_close(rows[1].rect.size.h, 5.0, "rule thickness");
+    // Same styled bundle, but this row set both itself.
+    assert_eq!(
+        layout[rows[2].node.idx()].padding,
+        Spacing::ZERO,
+        "explicit row padding wins over the theme's 9"
+    );
+    assert_eq!(
+        layout[rows[2].node.idx()].margin,
+        Spacing::ZERO,
+        "explicit row margin wins over the theme's 2/6"
+    );
 
     // Nothing about `.style` writes back to the global slot.
     let default = ContextMenuTheme::default();

@@ -1,4 +1,5 @@
 use crate::input::sense::Sense;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::TextInput;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
@@ -63,12 +64,23 @@ impl<'a> Checkbox<'a> {
         }
         let checked = *self.value;
 
+        // Geometry off the theme before `toggle_row`'s `&mut Ui`
+        // reborrow; the look itself is picked and animated in there,
+        // through the same `resolve_look` every other widget uses.
         let theme = self.style.unwrap_or(&ui.theme.checkbox);
-        let chrome = ToggleChrome::new(theme, state, checked, false);
+        let box_size = theme.box_size;
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;
 
-        toggle_row(ui, entry, chrome, self.label, |ui, box_size| {
+        let chrome = ToggleChrome {
+            style: self.style,
+            slot: |t| &t.checkbox,
+            on: checked,
+            boxed: Node::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
+            // Square box: the theme's own corner radius stands.
+            pill: None,
+        };
+        toggle_row(ui, entry, chrome, self.label, |ui, _| {
             if checked {
                 let pts = check_pts(box_size);
                 ui.add_shape(

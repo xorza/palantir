@@ -1,4 +1,5 @@
 use crate::input::sense::Sense;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
 use crate::scene::node::{Configure, ConfigureNode, Node};
@@ -69,15 +70,25 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
+        // Geometry off the theme before `toggle_row`'s `&mut Ui`
+        // reborrow; the look itself is picked and animated in there,
+        // through the same `resolve_look` every other widget uses.
         let theme = self.style.unwrap_or(&ui.theme.radio);
-        // `pill: true` forces the box chrome to a circle regardless of
-        // any re-themed `radio.checked.normal.background.radius` — the
-        // pip must never square-corner. Applied in `toggle_row`.
-        let chrome = ToggleChrome::new(theme, state, selected, true);
+        let pip_size = theme.box_size;
         let indicator = theme.indicator;
         let dot_inset = theme.indicator_inset;
 
-        toggle_row(ui, entry, chrome, self.label, |ui, pip_size| {
+        let chrome = ToggleChrome {
+            style: self.style,
+            slot: |t| &t.radio,
+            on: selected,
+            boxed: Node::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
+            // Forces the pip chrome to a circle regardless of any
+            // re-themed `radio.checked.normal.background.radius` — a
+            // radio pip must never square-corner.
+            pill: Some(pip_size * 0.5),
+        };
+        toggle_row(ui, entry, chrome, self.label, |ui, _| {
             if selected {
                 let dot_size = pip_size - 2.0 * dot_inset;
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);

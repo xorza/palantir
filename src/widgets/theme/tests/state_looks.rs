@@ -2,9 +2,12 @@ use crate::input::response::{ButtonPhase, ButtonState, ResponseState};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::text::{FontFamily, FontWeight};
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
 
 #[test]
@@ -85,6 +88,85 @@ fn text_edit_theme_pick_precedence() {
             "{label}: pick should return the matching slot",
         );
     }
+}
+
+/// [`ToggleTheme`] is the one `WidgetTheme` whose pick needs an input
+/// the response can't supply: `Mode = bool` chooses the look *pack*, and
+/// the usual four-state precedence then runs inside it. Both halves are
+/// asserted — the pack switching on `checked`, and the state precedence
+/// still applying within each — plus that the two packs never resolve to
+/// the same slot, which is what makes the `Mode` parameter load-bearing
+/// rather than decorative.
+#[test]
+fn toggle_theme_pick_selects_pack_then_state() {
+    let theme = ToggleTheme::checkbox(&Palette::DEFAULT);
+    let state = |hovered, pressed: bool, disabled| ResponseState {
+        hovered,
+        left: ButtonState {
+            phase: if pressed {
+                ButtonPhase::Held
+            } else {
+                ButtonPhase::Idle
+            },
+            ..Default::default()
+        },
+        disabled,
+        ..ResponseState::default()
+    };
+    let cases: &[(ResponseState, bool, &WidgetLook, &str)] = &[
+        (
+            state(false, false, false),
+            false,
+            &theme.unchecked.normal,
+            "unchecked normal",
+        ),
+        (
+            state(true, false, false),
+            false,
+            &theme.unchecked.hovered,
+            "unchecked hovered",
+        ),
+        (
+            state(false, false, false),
+            true,
+            &theme.checked.normal,
+            "checked normal",
+        ),
+        (
+            state(true, false, false),
+            true,
+            &theme.checked.hovered,
+            "checked hovered",
+        ),
+        (
+            state(true, true, false),
+            true,
+            &theme.checked.active,
+            "checked: pressed > hovered",
+        ),
+        (
+            state(true, true, true),
+            true,
+            &theme.checked.disabled,
+            "checked: disabled wins all",
+        ),
+    ];
+    for (state, checked, expected, label) in cases {
+        assert!(
+            std::ptr::eq(WidgetTheme::pick(&theme, state, *checked), *expected),
+            "{label}: pick should return the matching slot",
+        );
+    }
+
+    // The `Mode` decides the answer on its own: one state, two packs.
+    let idle = state(false, false, false);
+    assert!(
+        !std::ptr::eq(
+            WidgetTheme::pick(&theme, &idle, false),
+            WidgetTheme::pick(&theme, &idle, true),
+        ),
+        "checked and unchecked must not resolve to the same look",
+    );
 }
 
 #[test]

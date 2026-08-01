@@ -1,5 +1,4 @@
 use crate::input::sense::Sense;
-use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
@@ -7,8 +6,8 @@ use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
-use crate::widgets::text::Text;
 use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::toggle::{ToggleChrome, toggle_row};
 use crate::widgets::{Response, enter_widget};
 use glam::Vec2;
 
@@ -59,68 +58,58 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.node);
+        let entry = enter_widget(ui, self.node);
         let id = entry.widget.id();
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {
             *self.value = !*self.value;
         }
         let on = *self.value;
-        let label = self.label;
 
-        // Resolve everything off the theme before the `&mut ui` animate
-        // reborrow (the borrow may point into `ui.theme`).
+        // Geometry off the theme before `toggle_row`'s `&mut Ui`
+        // reborrow; the look itself is picked and animated in there,
+        // through the same `resolve_look` every other widget uses.
         let theme = self.style.unwrap_or(&ui.theme.switch);
-        let look_target = theme.pick(state, on).clone();
-        let anim = theme.anim;
         let track_h = theme.box_size;
         let inset = theme.indicator_inset;
         let knob_color = theme.indicator;
-        let row_gap = theme.row_gap;
-
-        let fallback_text = ui.theme.text.clone();
-        let mut look = look_target.animate(ui, id, &fallback_text, anim);
-        look.background.corners = Corners::all(track_h * 0.5); // pill track
-
-        // The track's stroke auto-insets the Canvas content box by its
-        // width on every side (`Tree::open_node`), so the knob's declared
-        // position is content-box-relative. Feed the stroke into
-        // `switch_geom` so it subtracts it back out and the knob's margins
-        // stay measured from the pill's outer edge — otherwise the knob
-        // arranges a stroke-width low and to the right of centre.
-        let stroke = look.background.stroke.width;
-        let stroke_inset = if noop_f32(stroke) { 0.0 } else { stroke };
-        let geom = switch_geom(track_h, inset, stroke_inset);
+        let anim = theme.anim;
 
         let knob_id = id.with("knob");
-        let target_x = if on { geom.on_x } else { geom.off_x };
-        let knob_x = ui.animate(knob_id, "x", target_x, anim);
-        let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
+        let chrome = ToggleChrome {
+            style: self.style,
+            slot: |t| &t.switch,
+            on,
+            // A `Canvas` so the knob can be absolutely positioned inside
+            // the track. Width is stroke-independent, so it resolves
+            // here even though the stroke isn't known until the body.
+            boxed: Node::canvas()
+                .size((Sizing::fixed(track_width(track_h)), Sizing::fixed(track_h))),
+            pill: Some(track_h * 0.5),
+        };
+        toggle_row(ui, entry, chrome, self.label, |ui, track| {
+            // The track's stroke auto-insets the Canvas content box by
+            // its width on every side (`Tree::open_node`), so the knob's
+            // declared position is content-box-relative. Feed the stroke
+            // into `switch_geom` so it subtracts it back out and the
+            // knob's margins stay measured from the pill's outer edge —
+            // otherwise the knob arranges a stroke-width low and to the
+            // right of centre. Read off the *resolved* chrome, not the
+            // theme: the stroke animates between the on and off looks,
+            // and a mid-transition knob has to track it.
+            let stroke = track.stroke.width;
+            let stroke_inset = if noop_f32(stroke) { 0.0 } else { stroke };
+            let geom = switch_geom(track_h, inset, stroke_inset);
 
-        entry.widget.node.gaps.set_gap(row_gap);
-        entry.widget.node.child_align = Align::v(VAlign::Center);
-        entry.widget.record(ui, None, |ui| {
-            let track = Node::canvas()
-                .id(id.with("track"))
-                .size((Sizing::fixed(geom.track_w), Sizing::fixed(track_h)));
-            ui.widget(track).record(ui, Some(&look.background), |ui| {
-                let knob = Node::leaf()
-                    .id(knob_id)
-                    .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
-                    .position(Vec2::new(knob_x, geom.knob_y));
-                ui.widget(knob).record(ui, Some(&knob_bg), |_| {});
-            });
-
-            if !label.is_empty() {
-                Text::new(label)
-                    .id(id.with("label"))
-                    .style(&look.text)
-                    .text_align(Align::v(VAlign::Center))
-                    .show(ui);
-            }
-        });
-
-        entry.into_response(ui)
+            let target_x = if on { geom.on_x } else { geom.off_x };
+            let knob_x = ui.animate(knob_id, "x", target_x, anim);
+            let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
+            let knob = Node::leaf()
+                .id(knob_id)
+                .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
+                .position(Vec2::new(knob_x, geom.knob_y));
+            ui.widget(knob).record(ui, Some(&knob_bg), |_| {});
+        })
     }
 }
 
@@ -130,13 +119,24 @@ impl Configure for Switch<'_> {
     }
 }
 
+/// Knob placement inside the track. The track's own extent is
+/// [`track_width`] × `track_h` and is not repeated here — `Switch::show`
+/// needs it one step earlier, before the chrome (and so the stroke)
+/// resolves.
 #[derive(Debug)]
 struct SwitchGeom {
-    track_w: f32,
     knob: f32,
     off_x: f32,
     on_x: f32,
     knob_y: f32,
+}
+
+/// Track width for a `track_h`-tall switch. Split out because it does
+/// not depend on the stroke: `Switch::show` sizes the track node from it
+/// before the chrome resolves, while [`switch_geom`] needs the stroke to
+/// place the knob.
+fn track_width(track_h: f32) -> f32 {
+    track_h * TRACK_ASPECT
 }
 
 /// Derive the track/knob geometry from the track height, knob inset, and
@@ -151,10 +151,9 @@ struct SwitchGeom {
 /// the knob back at its intended rect-relative margin. Pass `stroke = 0`
 /// for a borderless track and the coordinates are the plain rect insets.
 fn switch_geom(track_h: f32, inset: f32, stroke: f32) -> SwitchGeom {
-    let track_w = track_h * TRACK_ASPECT;
+    let track_w = track_width(track_h);
     let knob = (track_h - 2.0 * inset).max(2.0);
     SwitchGeom {
-        track_w,
         knob,
         off_x: inset - stroke,
         on_x: track_w - knob - inset - stroke,
@@ -167,7 +166,7 @@ mod tests {
     use crate::ui::harness::UiHarness;
 
     use crate::scene::layer::Layer;
-    use crate::widgets::switch::{Switch, switch_geom};
+    use crate::widgets::switch::{Switch, switch_geom, track_width};
     use glam::UVec2;
 
     /// Geometry math for the 20 px default with a 1 px track stroke:
@@ -180,8 +179,9 @@ mod tests {
     #[test]
     fn switch_geom_default_dimensions() {
         let (track_h, inset, stroke) = (20.0_f32, 3.0_f32, 1.0_f32);
+        let track_w = track_width(track_h);
         let g = switch_geom(track_h, inset, stroke);
-        assert!((g.track_w - 35.0).abs() < 1e-6);
+        assert!((track_w - 35.0).abs() < 1e-6);
         assert!((g.knob - 14.0).abs() < 1e-6);
         assert!((g.off_x - 2.0).abs() < 1e-6);
         assert!((g.on_x - 17.0).abs() < 1e-6);
@@ -191,7 +191,7 @@ mod tests {
         // every one equals `inset`.
         let margins = [
             ("off left", stroke + g.off_x),
-            ("on right", g.track_w - (stroke + g.on_x + g.knob)),
+            ("on right", track_w - (stroke + g.on_x + g.knob)),
             ("top", stroke + g.knob_y),
             ("bottom", track_h - (stroke + g.knob_y + g.knob)),
         ];

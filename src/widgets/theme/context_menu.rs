@@ -1,3 +1,4 @@
+use crate::animation::AnimSpec;
 use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -5,6 +6,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
@@ -77,11 +79,20 @@ pub struct MenuItemTheme {
     pub shortcut: Color,
     /// Padding inside one row.
     pub padding: Spacing,
+    /// Default margin around one row. `ZERO` by default: rows stack
+    /// flush inside the menu's own padding and
+    /// [`ContextMenuTheme::gap`] is what opens a gutter between them.
+    pub margin: Spacing,
     /// Minimum gutter between the label and its right-aligned shortcut
     /// hint. The row is `SpaceBetween`, so this is the floor the two
     /// texts are held apart by while the menu hugs its widest row —
     /// it is what stops "Copy ⌘C" from reading as one word.
     pub gap: f32,
+    /// Spec applied to fill/stroke/text transitions between row states.
+    /// Default `None` — animation is opt-in (matches `ButtonTheme`).
+    /// Round-trips through serde so theme files can configure motion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anim: Option<AnimSpec>,
 }
 
 impl MenuItemTheme {
@@ -105,6 +116,67 @@ impl MenuItemTheme {
             }
         }
         self
+    }
+
+    pub fn from_palette(p: &Palette) -> Self {
+        // Rows are transparent at rest; hover paints one surface-step
+        // brighter (`ELEM_HOVER`) — same delta a menu-bar trigger uses
+        // (`ButtonTheme::menu_button`), so the bar and the popup that
+        // drops out of it feel like one continuous surface. `active`
+        // (pressed) keeps the hover look: the click auto-closes the
+        // menu, so a louder pressed state buys nothing by default.
+        //
+        // The chip radius stays under the panel's so it nests inside the
+        // corner rather than out-rounding it: at panel radius 4 with 4 px
+        // of container padding, the region a row can occupy has square
+        // corners, and anything rounder than the panel itself reads as a
+        // pill floating in a box.
+        let hovered = WidgetLook {
+            background: Some(Background::rounded(p.elem_hover, Corners::all(3.0))),
+            text: None,
+        };
+        Self {
+            looks: StatefulLook {
+                normal: WidgetLook::default(),
+                active: hovered.clone(),
+                hovered,
+                disabled: WidgetLook {
+                    background: None,
+                    text: Some(TextStyle::default().with_color(p.text_disabled)),
+                },
+            },
+            shortcut: p.text_muted,
+            // Reads against the container's 4 px: an 8 px row inset puts the
+            // label 12 px off the panel edge to 9 px off its top, the
+            // slightly-wider-than-tall gutter a column of labels wants.
+            padding: Spacing::xy(8.0, 5.0),
+            margin: Spacing::ZERO,
+            gap: 16.0,
+            anim: None,
+        }
+    }
+}
+
+impl WidgetTheme for MenuItemTheme {
+    /// Pressed is read straight off the response, so the pick needs
+    /// nothing else.
+    type Mode = ();
+
+    #[inline(always)]
+    fn pick(&self, state: &ResponseState, _: ()) -> &WidgetLook {
+        self.pick(state)
+    }
+    #[inline(always)]
+    fn padding(&self) -> Spacing {
+        self.padding
+    }
+    #[inline(always)]
+    fn margin(&self) -> Spacing {
+        self.margin
+    }
+    #[inline(always)]
+    fn anim(&self) -> Option<AnimSpec> {
+        self.anim
     }
 }
 
@@ -138,44 +210,6 @@ impl ContextMenuTheme {
 impl Default for ContextMenuTheme {
     fn default() -> Self {
         Self::from_palette(&Palette::DEFAULT)
-    }
-}
-
-impl MenuItemTheme {
-    pub fn from_palette(p: &Palette) -> Self {
-        // Rows are transparent at rest; hover paints one surface-step
-        // brighter (`ELEM_HOVER`) — same delta a menu-bar trigger uses
-        // (`ButtonTheme::menu_button`), so the bar and the popup that
-        // drops out of it feel like one continuous surface. `active`
-        // (pressed) keeps the hover look: the click auto-closes the
-        // menu, so a louder pressed state buys nothing by default.
-        //
-        // The chip radius stays under the panel's so it nests inside the
-        // corner rather than out-rounding it: at panel radius 4 with 4 px
-        // of container padding, the region a row can occupy has square
-        // corners, and anything rounder than the panel itself reads as a
-        // pill floating in a box.
-        let hovered = WidgetLook {
-            background: Some(Background::rounded(p.elem_hover, Corners::all(3.0))),
-            text: None,
-        };
-        Self {
-            looks: StatefulLook {
-                normal: WidgetLook::default(),
-                active: hovered.clone(),
-                hovered,
-                disabled: WidgetLook {
-                    background: None,
-                    text: Some(TextStyle::default().with_color(p.text_disabled)),
-                },
-            },
-            shortcut: p.text_muted,
-            // Reads against the container's 4 px: an 8 px row inset puts the
-            // label 12 px off the panel edge to 9 px off its top, the
-            // slightly-wider-than-tall gutter a column of labels wants.
-            padding: Spacing::xy(8.0, 5.0),
-            gap: 16.0,
-        }
     }
 }
 
