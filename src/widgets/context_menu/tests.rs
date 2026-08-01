@@ -309,6 +309,57 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     );
 }
 
+/// An explicit `.gap(0.0)` is not the same as never setting one — the
+/// theme fills in only the untouched case.
+///
+/// This is what `Gaps`'s unset state buys. `Configure::gap` writes into
+/// a packed f16 pair, and while its zero was indistinguishable from
+/// "untouched" the theme fallback had nothing to key on, so `ContextMenu`
+/// carried its own `Option<f32>` shadowing the setter. Rows sit flush at
+/// `0.0` and a theme gap apart when unset.
+#[test]
+fn an_explicit_zero_gap_beats_the_theme_default() {
+    fn rows(h: &mut UiHarness, gap: Option<f32>) -> Vec<MenuRow> {
+        h.frame(|ui| {
+            let mut menu = ContextMenu::for_id(trigger_id());
+            if let Some(g) = gap {
+                menu = menu.gap(g);
+            }
+            menu.show(ui, |ui, popup| {
+                MenuItem::new("Copy").show(ui, popup);
+                MenuItem::new("Paste").show(ui, popup);
+            });
+        });
+        menu_rows(h, trigger_id())
+    }
+
+    let mut h = UiHarness::new(SURFACE);
+    h.ui.theme.context_menu.gap = 7.0;
+    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+
+    // Untouched: the theme's 7 px lands between the rows.
+    let unset = rows(&mut h, None);
+    assert_eq!(unset.len(), 2);
+    let unset_pitch = unset[1].rect.min.y - unset[0].rect.min.y;
+    assert_close(unset_pitch, unset[0].rect.size.h + 7.0, "themed pitch");
+
+    // Explicit zero: rows sit flush, theme gap ignored.
+    let zeroed = rows(&mut h, Some(0.0));
+    let zero_pitch = zeroed[1].rect.min.y - zeroed[0].rect.min.y;
+    assert_close(zero_pitch, zeroed[0].rect.size.h, "explicit 0.0 pitch");
+    assert_ne!(unset_pitch, zero_pitch);
+
+    // And a non-zero explicit value still wins over the theme, so the
+    // fallback keys on "set at all", not on "non-zero".
+    let wide = rows(&mut h, Some(20.0));
+    let wide_pitch = wide[1].rect.min.y - wide[0].rect.min.y;
+    assert_close(
+        wide_pitch,
+        wide[0].rect.size.h + 20.0,
+        "explicit 20.0 pitch",
+    );
+}
+
 /// `MenuSeparator` wears `context_menu.separator`, never the app-wide
 /// `theme.separator`: thickness is the rule's arranged height, margin
 /// the space it holds off the rows on either side, and color reaches

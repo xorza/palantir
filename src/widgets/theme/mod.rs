@@ -132,6 +132,34 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
+/// # Overriding a widget's look
+///
+/// Every themed widget takes `.style(&XTheme)`, which replaces its whole
+/// bundle for that call. It is all-or-nothing by design — to move one
+/// axis, build the bundle from the theme:
+/// `SpinnerTheme { color: red, ..ui.theme.spinner.clone() }`.
+///
+/// Some widgets additionally expose **one-axis hatches** —
+/// [`Separator::color`](crate::Separator::color) /
+/// [`thickness`](crate::Separator::thickness),
+/// [`Spinner::color`](crate::Spinner::color) /
+/// [`diameter`](crate::Spinner::diameter) /
+/// [`thickness`](crate::Spinner::thickness),
+/// [`Modal::backdrop`](crate::Modal::backdrop), and
+/// [`Text::bold`](crate::Text::bold). They are not a second styling
+/// system: each is an `Option<T>` merged over the *resolved* bundle at
+/// `show()`, so it composes with `.style(...)` rather than competing
+/// with it, and leaving it unset changes nothing.
+///
+/// The rule for adding one: the axis is a per-call property of *this*
+/// occurrence rather than of the app's look — one rule in a stack drawn
+/// heavier, one word in a paragraph bolded, one modal's scrim darkened.
+/// An axis a caller would set the same way everywhere belongs in the
+/// bundle, where it can be set once. A widget with no hatches simply has
+/// no axis that passes the test.
+///
+/// # Disabled state
+///
 /// The framework does not auto-dim disabled subtrees — that's an
 /// app/theme concern. Widgets that want disabled-state visuals read the
 /// disabled flag themselves and pick their own colors at recording

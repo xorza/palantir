@@ -76,7 +76,6 @@ pub struct ContextMenu<'a> {
     /// before recording, so the placeholder never places anything.
     popup: Popup,
     chrome: Option<Background>,
-    gap: Option<f32>,
     style: Option<&'a ContextMenuTheme>,
 }
 
@@ -86,7 +85,6 @@ impl<'a> ContextMenu<'a> {
             for_id,
             popup: Popup::anchored_to(Vec2::ZERO).click_outside(ClickOutside::Dismiss),
             chrome: None,
-            gap: None,
             style: None,
         }
     }
@@ -104,19 +102,6 @@ impl<'a> ContextMenu<'a> {
     /// [`Background::NONE`] to suppress the themed menu chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
-        self
-    }
-
-    /// Vertical gutter between rows. Unset inherits the resolved
-    /// theme's `gap`.
-    ///
-    /// Deliberately shadows [`Configure::gap`], which writes straight
-    /// into `node.gaps` — a packed pair with no "unset" state, so it
-    /// cannot tell a caller's `0.0` from an untouched default and the
-    /// theme fallback would have nothing to key on. The `Option` here
-    /// is that missing bit.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = Some(gap);
         self
     }
 
@@ -163,7 +148,6 @@ impl<'a> ContextMenu<'a> {
         let ctx = self.style.unwrap_or(&ui.theme.context_menu);
         let theme_padding = ctx.padding;
         let theme_min_width = ctx.min_width;
-        let gap = self.gap.unwrap_or(ctx.gap);
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
         // The menu is the popup, configured: the caller's `Configure`
@@ -178,7 +162,7 @@ impl<'a> ContextMenu<'a> {
             .default_id(body_id)
             .default_padding(theme_padding)
             .default_min_size(Size::new(theme_min_width, 0.0))
-            .gap(gap)
+            .default_gap(ctx.gap)
             .show(ui, body);
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);
