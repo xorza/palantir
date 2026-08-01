@@ -51,7 +51,7 @@ use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
 /// A single layer's arena. Per-layer trees live on
-/// [`crate::scene::Forest`] and share no record/shape storage —
+/// [`crate::scene::forest::Forest`] and share no record/shape storage —
 /// mid-recording `Ui::layer` calls dispatch into the destination tree
 /// without interleaving, eliminating the prior reorder pass.
 ///
@@ -143,7 +143,7 @@ impl Tree {
 
     /// Finalize this tree: populate the hash columns and derived owner sets.
     /// Capacity retained across frames. The paint-anim wake fold lives
-    /// on [`crate::scene::Forest::min_paint_anim_wake`] — `Ui::frame`
+    /// on [`crate::scene::forest::Forest::min_paint_anim_wake`] — `Ui::frame`
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {

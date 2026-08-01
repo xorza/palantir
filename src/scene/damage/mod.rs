@@ -53,12 +53,12 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
-use crate::scene::Forest;
 use crate::scene::cascade::{Cascades, Paint, PaintArena};
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::snapshot::{
     NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion, push_screen,
 };
+use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node::NodeId;

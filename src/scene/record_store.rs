@@ -13,7 +13,7 @@
 //! `ChromeRow` lowering that appends here lives in
 //! [`crate::scene::shapes::lower`].
 //!
-//! [`Forest`]: crate::scene::Forest
+//! [`Forest`]: crate::scene::forest::Forest
 
 use crate::common::hash::hash_str;
 use crate::primitives::brush::gradient::FillAxis;

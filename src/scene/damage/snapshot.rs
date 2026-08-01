@@ -4,8 +4,8 @@ use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetIdMap;
-use crate::scene::Forest;
 use crate::scene::cascade::{CascadeInputHash, Paint};
+use crate::scene::forest::Forest;
 use std::cmp::Ordering;
 
 /// Minimum [`PaintSnapArena::snaps`] length before [`PaintSnapArena::maybe_compact`]

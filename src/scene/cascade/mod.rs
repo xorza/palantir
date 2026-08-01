@@ -11,7 +11,7 @@ pub(crate) mod bench;
 
 use crate::common::hash::Hasher;
 use crate::display::Display;
-use crate::scene::Forest;
+use crate::scene::forest::Forest;
 
 use crate::common::content_hash::ContentHash;
 use crate::input::key_class::KeyFilter;

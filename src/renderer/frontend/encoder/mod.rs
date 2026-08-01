@@ -21,9 +21,9 @@ use crate::renderer::plan::{RenderKind, RenderPlan, damage_cull_margin};
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
 };
-use crate::scene::Forest;
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
+use crate::scene::forest::Forest;
 use crate::scene::record_store::RecordedGradient;
 use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush};
 use crate::scene::shapes::record::{ShapeRecord, shadow_paint_rect_local};

@@ -36,8 +36,8 @@ use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::Forest;
 use crate::scene::cascade::Cascades;
+use crate::scene::forest::Forest;
 use crate::scene::record_store::RecordPayloads;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
