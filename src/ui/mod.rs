@@ -1150,6 +1150,19 @@ impl Ui {
         self.display
     }
 
+    /// This frame's monotonic index, bumped once per [`Self::frame`] before
+    /// either record pass — so both passes of one frame observe the same
+    /// value.
+    ///
+    /// For retained state that wants to know it was *skipped*: authoring code
+    /// that runs only while its surface is on screen can stamp this and
+    /// compare on the next run, and a gap tells it the surface was away
+    /// without anything having to run while it was. Consecutive values, and
+    /// repeats within one frame, both mean "still here".
+    pub fn frame_id(&self) -> u64 {
+        self.frame_runtime.frame_id
+    }
+
     /// Shape `run` and return its geometry — caret positions,
     /// click-to-offset, selection rects.
     ///
