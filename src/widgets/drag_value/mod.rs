@@ -364,9 +364,15 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = resolve_look(ui, id, &mut entry.widget.node, &entry.state, chip, |t| {
-            &t.drag_value.chip
-        });
+        let look = resolve_look(
+            ui,
+            id,
+            &mut entry.widget.node,
+            &entry.state,
+            (),
+            chip,
+            |t| &t.drag_value.chip,
+        );
 
         entry.widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {

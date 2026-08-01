@@ -3,7 +3,9 @@ use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
@@ -35,6 +37,12 @@ pub struct ToggleTheme {
     pub indicator_inset: f32,
     /// Gap between the box/pip and the label.
     pub row_gap: f32,
+    /// Default padding inside the row, around the box + label pair.
+    /// Applied at `show()` time when the builder hasn't set padding —
+    /// same contract as [`crate::ButtonTheme`].
+    pub padding: Spacing,
+    /// Default margin around the row.
+    pub margin: Spacing,
     /// Spec applied to fill/stroke transitions between states and
     /// across checked toggles. Default `None` — animation is opt-in
     /// (matches `ButtonTheme`). Round-trips through serde.
@@ -139,7 +147,36 @@ impl ToggleTheme {
             indicator_stroke: 2.0,
             indicator_inset,
             row_gap: 8.0,
+            padding: Spacing::ZERO,
+            margin: Spacing::ZERO,
             anim: None,
         }
+    }
+}
+
+impl WidgetTheme for ToggleTheme {
+    /// The checked flag, which selects the look *pack* before the
+    /// four-state pick runs inside it — the one thing a toggle's
+    /// [`ResponseState`] can't answer on its own.
+    type Mode = bool;
+
+    #[inline(always)]
+    fn pick(&self, state: &ResponseState, checked: bool) -> &WidgetLook {
+        // Path form, not `self.pick(...)`: the inherent method and this
+        // one have the same arity here, so the receiver form would read
+        // as though it might recurse.
+        ToggleTheme::pick(self, state, checked)
+    }
+    #[inline(always)]
+    fn padding(&self) -> Spacing {
+        self.padding
+    }
+    #[inline(always)]
+    fn margin(&self) -> Spacing {
+        self.margin
+    }
+    #[inline(always)]
+    fn anim(&self) -> Option<AnimSpec> {
+        self.anim
     }
 }

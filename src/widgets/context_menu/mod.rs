@@ -14,6 +14,7 @@ use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme, MenuSeparatorTheme};
+use crate::widgets::theme::resolve_look;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, enter_widget};
 
@@ -302,20 +303,30 @@ impl<'a> MenuItem<'a> {
         let id = entry.widget.id();
         let disabled = entry.state.disabled;
 
-        // Borrow the per-item theme and copy out only what the row paints
-        // — avoids cloning the whole `MenuItemTheme` (three looks) per
-        // row, per frame. `pick` returns a borrow, so read everything off
-        // it before the borrow ends.
+        // Row-only scalars first, off a borrow that ends before
+        // `resolve_look` reborrows `ui` mutably. Everything state-varying
+        // — the four-state pick, the padding/margin defaults, the
+        // transition — comes back from the shared resolver instead, so a
+        // menu row picks and animates exactly like a Button.
         let item = self.style.unwrap_or(&ui.theme.context_menu.item);
-        let look = item.pick(&entry.state);
-        let look_bg = look.background.clone();
-        let text_style = look.text.as_ref().unwrap_or(&ui.theme.text).clone();
-        let padding = item.padding;
+        let shortcut_color = item.shortcut;
         let gap = item.gap;
+
+        let look = resolve_look(
+            ui,
+            id,
+            &mut entry.widget.node,
+            &entry.state,
+            (),
+            self.style,
+            |t| &t.context_menu.item,
+        );
+        // Already fallen back to `theme.text` by `WidgetLook::animate`.
+        let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the
         // theme's `shortcut` color.
         let shortcut_style = TextStyle {
-            color: item.shortcut,
+            color: shortcut_color,
             ..text_style.clone()
         };
 
@@ -326,7 +337,6 @@ impl<'a> MenuItem<'a> {
         // edges. Fill would leak INF.
         node.align = Align::h(HAlign::Stretch);
         node.justify = Justify::SpaceBetween;
-        node.padding = Some(padding);
         node.gaps.set_gap(gap);
 
         let label = ui.intern(self.label);
@@ -361,7 +371,7 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        entry.widget.record(ui, look_bg.as_ref(), body);
+        entry.widget.record(ui, Some(&look.background), body);
 
         if shortcut_fired {
             entry.state.left.phase = ButtonPhase::Up { click: Some(1) };

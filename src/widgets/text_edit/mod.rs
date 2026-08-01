@@ -217,7 +217,7 @@ impl<'a> TextEdit<'a> {
         // reads `node.padding` to deflate the buffer layout, and
         // the caret hit-test reads it back below — both see the
         // resolved value.
-        let look = resolve_look(ui, id, &mut self.node, &response, self.style, |t| {
+        let look = resolve_look(ui, id, &mut self.node, &response, (), self.style, |t| {
             &t.text_edit
         });
         // State-independent scalars off the same style source, copied
