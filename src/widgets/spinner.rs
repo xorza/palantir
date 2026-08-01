@@ -9,14 +9,7 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::Vec2;
-use std::f32::consts::PI;
 use std::time::Duration;
-
-/// Arc length in radians — a 3/4 sweep leaves a visible gap so the
-/// rotation is legible.
-const SWEEP: f32 = 1.5 * PI;
-/// Angular velocity (radians / second).
-const SPEED: f32 = 4.5;
 
 /// Indeterminate activity spinner: a rounded arc that rotates with the
 /// frame clock, its tail fading to transparent (a "comet" trail). The
@@ -76,7 +69,8 @@ impl<'a> Spinner<'a> {
         self
     }
 
-    /// Stroke width in logical px. Default `diameter * 0.12` (min `1.5`).
+    /// Stroke width in logical px. Defaults to the theme's
+    /// diameter-derived width.
     pub fn thickness(mut self, px: f32) -> Self {
         self.thickness = Some(px);
         self
@@ -85,8 +79,12 @@ impl<'a> Spinner<'a> {
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme.spinner);
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
-        let width = self.thickness.unwrap_or((diameter * 0.12).max(1.5));
+        let width = self
+            .thickness
+            .unwrap_or((diameter * theme.thickness_ratio).max(theme.min_thickness));
         let color = self.color.unwrap_or(theme.color);
+        let sweep = theme.sweep;
+        let speed = theme.speed;
         self.node
             .size
             .get_or_insert((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
@@ -98,11 +96,11 @@ impl<'a> Spinner<'a> {
             // stays cache-stable and only the composer re-spins it.
             let ArcGeometry { center, radius } = arc_geometry(diameter, width);
             ui.add_shape_animated(
-                Shape::arc(center, radius, 0.0, SWEEP, width)
+                Shape::arc(center, radius, 0.0, sweep, width)
                     .brush(comet_brush(color))
                     .cap(LineCap::Round),
                 PaintAnim::Spin {
-                    speed: SPEED,
+                    speed,
                     started_at: Duration::ZERO,
                 },
             );
@@ -146,11 +144,13 @@ mod tests {
 
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::color::{Color, ColorU8};
+    use crate::primitives::widget_id::WidgetId;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::spinner::Spinner;
-    use crate::widgets::spinner::{ArcGeometry, SWEEP, arc_geometry, comet_brush};
+    use crate::widgets::spinner::{ArcGeometry, arc_geometry, comet_brush};
+    use crate::widgets::theme::spinner::SpinnerTheme;
     use glam::UVec2;
     use glam::Vec2;
 
@@ -168,8 +168,95 @@ mod tests {
         );
         // width ≥ size: radius clamps to 0 instead of going negative.
         assert_eq!(arc_geometry(4.0, 8.0).radius, 0.0);
-        // The recorded sweep leaves a visible gap (not a full circle).
-        const { assert!(SWEEP < TAU) };
+        // The default sweep leaves a visible gap — a full turn would
+        // paint as a static ring, with nothing to read the spin off.
+        assert!(SpinnerTheme::default().sweep < TAU);
+    }
+
+    /// Sweep, spin rate, and the diameter-derived stroke all come off
+    /// `Theme::spinner` rather than constants. Stroke is
+    /// `diameter * thickness_ratio` floored at `min_thickness`, so the
+    /// arc keeps its proportions when the spinner is resized — and the
+    /// floor is what a tiny one lands on.
+    #[test]
+    fn arc_and_spin_follow_the_spinner_theme() {
+        use crate::scene::shapes::record::ShapeRecord;
+        use crate::scene::tree::paint_anims::PaintAnim;
+
+        fn recorded(theme: SpinnerTheme, diameter: f32) -> (f32, f32, f32) {
+            let mut h = UiHarness::new(UVec2::new(200, 200));
+            h.ui.theme.spinner = theme;
+            h.frame(|ui| {
+                Panel::hstack().auto_id().show(ui, |ui| {
+                    Spinner::new()
+                        .id(WidgetId::from_hash("spin"))
+                        .diameter(diameter)
+                        .show(ui);
+                });
+            });
+            let tree = &h.ui.forest.trees[Layer::Main];
+            let arc = tree
+                .shapes
+                .records
+                .iter()
+                .find_map(|s| match s {
+                    ShapeRecord::Arc { a1, width, .. } => Some((*a1, *width)),
+                    _ => None,
+                })
+                .expect("spinner records one arc");
+            let speed = tree
+                .paint_anims
+                .entries
+                .iter()
+                .find_map(|e| match e.anim {
+                    PaintAnim::Spin { speed, .. } => Some(speed),
+                    _ => None,
+                })
+                .expect("spinner registers a spin anim");
+            (arc.0, arc.1, speed)
+        }
+
+        // Stock theme: stroke is the ratio applied to the diameter,
+        // clear of the floor at 50 px.
+        let stock = SpinnerTheme::default();
+        let (sweep, width, speed) = recorded(stock.clone(), 50.0);
+        assert!((sweep - stock.sweep).abs() < 1e-4, "sweep is themed");
+        assert!((speed - stock.speed).abs() < 1e-4, "spin rate is themed");
+        let expected = 50.0 * stock.thickness_ratio;
+        assert!(
+            (width - expected).abs() < 1e-4,
+            "want {expected}, got {width}"
+        );
+
+        // Quarter the diameter and the stroke follows it down, rather
+        // than staying put.
+        let (_, small, _) = recorded(stock.clone(), 12.5);
+        let expected_small = 12.5 * stock.thickness_ratio;
+        assert!((small - expected_small).abs() < 1e-4);
+        assert_ne!(width, small);
+
+        // Below the floor the derived value loses.
+        let tiny = stock.min_thickness / stock.thickness_ratio * 0.5;
+        let (_, floored, _) = recorded(stock.clone(), tiny);
+        assert!(
+            (floored - stock.min_thickness).abs() < 1e-4,
+            "tiny spinner floors at min_thickness, got {floored}",
+        );
+
+        // Retheme: every one of the three moves.
+        let loud = SpinnerTheme {
+            sweep: 1.0,
+            speed: 9.0,
+            thickness_ratio: 0.5,
+            ..SpinnerTheme::default()
+        };
+        let (sweep_b, width_b, speed_b) = recorded(loud, 50.0);
+        assert!((sweep_b - 1.0).abs() < 1e-4);
+        assert!((speed_b - 9.0).abs() < 1e-4);
+        assert!((width_b - 25.0).abs() < 1e-4);
+        assert_ne!(sweep, sweep_b);
+        assert_ne!(speed, speed_b);
+        assert_ne!(width, width_b);
     }
 
     /// Comet trail: tail transparent, head the full color, rgb equal on

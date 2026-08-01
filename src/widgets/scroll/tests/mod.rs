@@ -41,7 +41,7 @@ fn read_state(h: &mut UiHarness) -> ScrollState {
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {
     ui.cascades
-        .endpoint(outer_id.with("__viewport"))
+        .endpoint(outer_id.with("viewport"))
         .expect("scroll viewport endpoint")
 }
 
@@ -91,7 +91,7 @@ fn explicit_no_clip_overrides_scroll_default() {
 
     let tree = &h.ui.forest.trees[Layer::Main];
     let clip_for = |id: WidgetId| {
-        let viewport_id = id.with("__viewport");
+        let viewport_id = id.with("viewport");
         let index = tree
             .records
             .widget_id()
@@ -961,7 +961,7 @@ mod bars {
         let tree = &ui.forest.trees[Layer::Main];
         let layout = &ui.layout[Layer::Main];
         let outer_id = WidgetId::from_hash(scroll_key);
-        let scroll_id = outer_id.with("__viewport");
+        let scroll_id = outer_id.with("viewport");
         let widget_ids = tree.records.widget_id();
         let outer_idx = widget_ids
             .iter()
@@ -969,7 +969,7 @@ mod bars {
             .expect("scroll outer recorded");
         let outer_origin = layout.rect[outer_idx].min;
         let mut out = Vec::new();
-        for tag in ["__vthumb", "__hthumb"] {
+        for tag in ["vthumb", "hthumb"] {
             let id = scroll_id.with(tag);
             if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
                 let r = layout.rect[idx];
@@ -994,7 +994,7 @@ mod bars {
     fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
         let surface = UVec2::new(400, 400);
         let outer_id = WidgetId::from_hash("hidden-scroll");
-        let scroll_id = outer_id.with("__viewport");
+        let scroll_id = outer_id.with("viewport");
         let build = |ui: &mut Ui| {
             Scroll::both()
                 .id(outer_id)
@@ -1022,7 +1022,7 @@ mod bars {
         );
 
         let tree = &h.ui.forest.trees[Layer::Main];
-        for tag in ["__bars", "__vtrack", "__htrack", "__vthumb", "__hthumb"] {
+        for tag in ["bars", "vtrack", "htrack", "vthumb", "hthumb"] {
             assert!(
                 !tree
                     .records
@@ -1134,10 +1134,10 @@ mod bars {
     fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
         let tree = &ui.forest.trees[Layer::Main];
         let layout = &ui.layout[Layer::Main];
-        let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
+        let scroll_id = WidgetId::from_hash(scroll_key).with("viewport");
         let widget_ids = tree.records.widget_id();
         let mut out = Vec::new();
-        for tag in ["__vtrack", "__vthumb", "__htrack", "__hthumb"] {
+        for tag in ["vtrack", "vthumb", "htrack", "hthumb"] {
             let id = scroll_id.with(tag);
             if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
                 out.push((tag, layout.rect[idx]));
@@ -1870,8 +1870,8 @@ fn drag_thumb_pans_proportionally() {
         h.frame(build);
 
         let outer_id = WidgetId::from_hash("scroll");
-        let scroll_id = outer_id.with("__viewport");
-        let thumb_id = scroll_id.with("__vthumb");
+        let scroll_id = outer_id.with("viewport");
+        let thumb_id = scroll_id.with("vthumb");
         let press = h.center_of(thumb_id);
         h.press_on(thumb_id);
         h.move_to(press + Vec2::new(0.0, 30.0 * scale));
@@ -1906,8 +1906,8 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
         H,
     }
     let cases: &[(&str, AxisCase, &str, &str, f32)] = &[
-        ("vertical", AxisCase::V, "scroll", "__vtrack", 200.0),
-        ("horizontal", AxisCase::H, "hscroll", "__htrack", 200.0),
+        ("vertical", AxisCase::V, "scroll", "vtrack", 200.0),
+        ("horizontal", AxisCase::H, "hscroll", "htrack", 200.0),
     ];
     for scale in [0.5, 1.0, 2.0] {
         for (label, axis, scroll_key, track_suffix, page_step) in cases {
@@ -1939,7 +1939,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             h.frame(build_axis);
 
             let outer_id = WidgetId::from_hash(*scroll_key);
-            let scroll_id = outer_id.with("__viewport");
+            let scroll_id = outer_id.with("viewport");
             let track_id = scroll_id.with(*track_suffix);
             let track = h.ui.response_for(track_id);
             let layout = track.layout_rect.expect("track arranged");

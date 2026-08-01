@@ -236,6 +236,7 @@ pub use widgets::text::Text;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::theme::Theme;
 pub use widgets::theme::button::ButtonTheme;
+pub use widgets::theme::combo_box::ComboBoxTheme;
 pub use widgets::theme::context_menu::ContextMenuTheme;
 pub use widgets::theme::context_menu::menu_item::MenuItemTheme;
 pub use widgets::theme::drag_value::DragValueTheme;

@@ -23,7 +23,7 @@ struct ScrollLayoutSnapshot {
 
 fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
     let outer_id = WidgetId::from_hash(id_salt);
-    let viewport_id = outer_id.with("__viewport");
+    let viewport_id = outer_id.with("viewport");
     let outer = ui
         .cascades
         .by_id

@@ -12,10 +12,6 @@ use crate::widgets::toggle::{ToggleChrome, toggle_row};
 use crate::widgets::widget::WidgetEntry;
 use glam::Vec2;
 
-/// Track width as a multiple of its height. A switch reads as a switch
-/// (not a checkbox) at roughly 7:4.
-const TRACK_ASPECT: f32 = 1.75;
-
 /// Two-state boolean toggle drawn as a pill track with a knob that
 /// slides between the ends — the iOS/Material "switch". Takes a
 /// `&mut bool` whose owner controls the value; clicking the row flips
@@ -73,6 +69,7 @@ impl<'a> Switch<'a> {
         let theme = self.style.unwrap_or(&ui.theme.switch);
         let track_h = theme.box_size;
         let inset = theme.indicator_inset;
+        let aspect = theme.track_aspect;
         let knob_color = theme.indicator;
         let anim = theme.anim;
 
@@ -84,8 +81,10 @@ impl<'a> Switch<'a> {
             // A `Canvas` so the knob can be absolutely positioned inside
             // the track. Width is stroke-independent, so it resolves
             // here even though the stroke isn't known until the body.
-            boxed: Node::canvas()
-                .size((Sizing::fixed(track_width(track_h)), Sizing::fixed(track_h))),
+            boxed: Node::canvas().size((
+                Sizing::fixed(track_width(track_h, aspect)),
+                Sizing::fixed(track_h),
+            )),
             pill: Some(track_h * 0.5),
         };
         toggle_row(ui, entry, chrome, self.label, |ui, track| {
@@ -100,7 +99,7 @@ impl<'a> Switch<'a> {
             // and a mid-transition knob has to track it.
             let stroke = track.stroke.width;
             let stroke_inset = if noop_f32(stroke) { 0.0 } else { stroke };
-            let geom = switch_geom(track_h, inset, stroke_inset);
+            let geom = switch_geom(track_h, inset, stroke_inset, aspect);
 
             let target_x = if on { geom.on_x } else { geom.off_x };
             let knob_x = ui.animate(knob_id, "x", target_x, anim);
@@ -132,8 +131,8 @@ struct SwitchGeom {
 /// not depend on the stroke: `Switch::show` sizes the track node from it
 /// before the chrome resolves, while [`switch_geom`] needs the stroke to
 /// place the knob.
-fn track_width(track_h: f32) -> f32 {
-    track_h * TRACK_ASPECT
+fn track_width(track_h: f32, aspect: f32) -> f32 {
+    track_h * aspect
 }
 
 /// Derive the track/knob geometry from the track height, knob inset, and
@@ -147,8 +146,8 @@ fn track_width(track_h: f32) -> f32 {
 /// (`Tree::open_node`), so each coordinate has `stroke` subtracted to land
 /// the knob back at its intended rect-relative margin. Pass `stroke = 0`
 /// for a borderless track and the coordinates are the plain rect insets.
-fn switch_geom(track_h: f32, inset: f32, stroke: f32) -> SwitchGeom {
-    let track_w = track_width(track_h);
+fn switch_geom(track_h: f32, inset: f32, stroke: f32, aspect: f32) -> SwitchGeom {
+    let track_w = track_width(track_h, aspect);
     let knob = (track_h - 2.0 * inset).max(2.0);
     SwitchGeom {
         knob,
@@ -164,6 +163,10 @@ mod tests {
 
     use crate::scene::layer::Layer;
     use crate::widgets::switch::{Switch, switch_geom, track_width};
+
+    /// The aspect `ToggleTheme::switch` ships; the expected numbers
+    /// below are computed from it.
+    const ASPECT: f32 = 1.75;
     use glam::UVec2;
 
     /// Geometry math for the 20 px default with a 1 px track stroke:
@@ -176,8 +179,8 @@ mod tests {
     #[test]
     fn switch_geom_default_dimensions() {
         let (track_h, inset, stroke) = (20.0_f32, 3.0_f32, 1.0_f32);
-        let track_w = track_width(track_h);
-        let g = switch_geom(track_h, inset, stroke);
+        let track_w = track_width(track_h, ASPECT);
+        let g = switch_geom(track_h, inset, stroke, ASPECT);
         assert!((track_w - 35.0).abs() < 1e-6);
         assert!((g.knob - 14.0).abs() < 1e-6);
         assert!((g.off_x - 2.0).abs() < 1e-6);
@@ -207,17 +210,32 @@ mod tests {
     /// argument actually moves the coordinates (off_x: 3 → 2).
     #[test]
     fn switch_geom_no_stroke_is_rect_relative() {
-        let g = switch_geom(20.0, 3.0, 0.0);
+        let g = switch_geom(20.0, 3.0, 0.0, ASPECT);
         assert!((g.off_x - 3.0).abs() < 1e-6);
         assert!((g.on_x - 18.0).abs() < 1e-6);
         assert!((g.knob_y - 3.0).abs() < 1e-6);
+    }
+
+    /// A wider aspect stretches the track and pushes the on-state
+    /// knob further right, while leaving the knob itself (a function of
+    /// height alone) untouched. 20 px tall at 3:1 is a 60 px track, so
+    /// the knob rests at `60 - 14 - 3 = 43` instead of `35 - 14 - 3 = 18`.
+    #[test]
+    fn track_aspect_stretches_the_track_not_the_knob() {
+        let wide = switch_geom(20.0, 3.0, 0.0, 3.0);
+        let stock = switch_geom(20.0, 3.0, 0.0, ASPECT);
+        assert!((track_width(20.0, 3.0) - 60.0).abs() < 1e-6);
+        assert!((wide.on_x - 43.0).abs() < 1e-6);
+        assert!((stock.on_x - 18.0).abs() < 1e-6);
+        assert_ne!(wide.on_x, stock.on_x);
+        assert!((wide.knob - stock.knob).abs() < 1e-6);
     }
 
     /// A degenerate height can't drive the knob negative — it floors at
     /// 2 px.
     #[test]
     fn switch_geom_knob_floors_at_two() {
-        let g = switch_geom(4.0, 3.0, 0.0); // 4 - 6 = -2 → floored
+        let g = switch_geom(4.0, 3.0, 0.0, ASPECT); // 4 - 6 = -2 → floored
         assert!((g.knob - 2.0).abs() < 1e-6);
     }
 

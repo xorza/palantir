@@ -155,7 +155,7 @@ impl<'a> ContextMenu<'a> {
             return ContextMenuResponse::default();
         };
 
-        let body_id = self.for_id.with("ctx_menu_body");
+        let body_id = self.for_id.with("body");
 
         // Borrow the sub-theme to copy out the three scalars and the single
         // `Background` we keep — avoids cloning the whole `ContextMenuTheme`

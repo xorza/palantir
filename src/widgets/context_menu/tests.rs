@@ -42,7 +42,7 @@ fn assert_close(actual: f32, expected: f32, what: &str) {
 }
 
 fn menu_body(h: &UiHarness, for_id: WidgetId) -> NodeId {
-    let body_id = for_id.with("ctx_menu_body");
+    let body_id = for_id.with("body");
     let index = h.ui.forest.trees[Layer::Popup]
         .records
         .widget_id()
@@ -243,7 +243,7 @@ fn menu_body_width_does_not_span_surface() {
     let mut dismissed = false;
     h.frame(|ui| build(ui, &mut copied, &mut dismissed));
 
-    let body_id = trigger_id().with("ctx_menu_body");
+    let body_id = trigger_id().with("body");
     let rect =
         h.ui.cascades
             .entry_idx_of(body_id)
@@ -554,7 +554,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
             .show(ui, |_, _| {});
     });
 
-    let derived = trigger_id().with("ctx_menu_body");
+    let derived = trigger_id().with("body");
     let index = popup_node(&h, derived).expect("context menu body node");
     let tree = &h.ui.forest.trees[Layer::Popup];
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
