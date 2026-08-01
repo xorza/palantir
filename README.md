@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/xorza/palantir/master/assets/logo/palantir-mark.svg" width="116" alt="Palantir logo" />
+  <img src="https://raw.githubusercontent.com/xorza/palantir/master/assets/logo/palantir-mark.svg" width="256" alt="Palantir logo" />
 </p>
 
 <h1 align="center">Palantir</h1>
