@@ -1011,6 +1011,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                                     PaintAnim::BlinkOpacity {
                                         half_period: HALF,
                                         started_at,
+                                        stop_after: Duration::MAX,
                                     },
                                 );
                             });

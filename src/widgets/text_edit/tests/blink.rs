@@ -35,8 +35,12 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         })
 }
 
-fn record_at_secs(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
-    h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui));
+fn record_at_secs(
+    h: &mut UiHarness,
+    now_secs: f32,
+    mut f: impl FnMut(&mut Ui),
+) -> crate::ui::frame_report::FrameReport {
+    h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui))
 }
 
 /// Caret blink: visible for the first half-period, hidden for the
@@ -114,11 +118,17 @@ fn caret_blinks_on_and_off_while_focused() {
 
     // Long idle: blink stops scheduling and caret stays visible so
     // an unattended focused editor doesn't keep the host repainting
-    // at 2 Hz forever.
-    record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf, &mut leaf));
+    // at 2 Hz forever. 98.25s past the last change is far beyond
+    // `BLINK_STOP_AFTER_IDLE`, and lands on an *odd* half-period —
+    // parity says hidden, the settle overrides it.
+    let report = record_at_secs(&mut h, 100.0, |ui| body(ui, &mut buf, &mut leaf));
     assert!(
         caret_painted(&h.ui, leaf.unwrap()),
         "long-idle blink stops on the visible phase",
+    );
+    assert_eq!(
+        report.repaint_after, None,
+        "a settled caret must stop asking the host for frames",
     );
 }
 

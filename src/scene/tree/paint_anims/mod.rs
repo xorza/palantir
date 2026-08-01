@@ -42,10 +42,24 @@ const CURSOR_END: u64 = u64::MAX;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PaintAnim {
     /// Solid for `half_period`, hidden for the next `half_period`,
-    /// repeating from `started_at`. The caret-blink shape.
+    /// repeating from `started_at` until `stop_after` has elapsed, then
+    /// solid forever. The caret-blink shape.
+    ///
+    /// The stop lives here rather than in the widget that registers the
+    /// anim because it has to hold on frames the widget never sees. A
+    /// blinking caret is enough on its own to wake the host, and such a
+    /// wake produces a paint-only frame — no record pass, so no widget
+    /// code runs to re-decide anything. An idle cutoff evaluated at
+    /// record time is therefore evaluated exactly once and never again,
+    /// and the blink runs forever. Sampled here, it settles on the
+    /// paint pass that crosses it and [`Self::next_wake`] stops asking
+    /// for frames.
     BlinkOpacity {
         half_period: Duration,
         started_at: Duration,
+        /// Idle span from `started_at` after which the blink settles
+        /// solid. [`Duration::MAX`] blinks indefinitely.
+        stop_after: Duration,
     },
     /// Continuous rotation at `speed` radians/second, measured from
     /// `started_at`. The sampled angle is `(now - started_at) * speed`
@@ -92,8 +106,9 @@ impl PaintAnim {
             PaintAnim::BlinkOpacity {
                 half_period,
                 started_at,
+                stop_after,
             } => {
-                let alpha = if blink_visible_at(half_period, started_at, now) {
+                let alpha = if blink_visible_at(half_period, started_at, stop_after, now) {
                     1.0
                 } else {
                     0.0
@@ -118,36 +133,47 @@ impl PaintAnim {
 
     /// Earliest `Duration` (absolute time, same epoch as
     /// frame-runtime time / `started_at`) at which `quantum` will next
-    /// change. `post_record` folds the min of every live entry's
+    /// change, or `None` when the anim has settled and will never
+    /// change again. `post_record` folds the min of every live entry's
     /// `next_wake` into the frame runtime's wake queue so widgets don't have to.
     ///
     /// For `BlinkOpacity` this is the next half-period boundary
-    /// strictly after `now`.
+    /// strictly after `now`, until `stop_after` elapses.
     #[inline]
-    pub(crate) fn next_wake(self, now: Duration) -> Duration {
+    pub(crate) fn next_wake(self, now: Duration) -> Option<Duration> {
         match self {
             PaintAnim::BlinkOpacity {
                 half_period,
                 started_at,
-            } => next_blink_boundary(half_period, started_at, now),
+                stop_after,
+            } => next_blink_boundary(half_period, started_at, stop_after, now),
             // Continuous: the angle changes every frame, so the soonest
             // it "next changes" is now. `extend_predamaged` compares
             // `next_wake(prev) <= now` (always true, since `prev <= now`)
             // and so re-damages the spun shape's rect every frame.
-            PaintAnim::Spin { .. } => now,
+            PaintAnim::Spin { .. } => Some(now),
         }
     }
 }
 
 /// True when a blink with `half_period` starting at `started_at` is
 /// in its solid phase at `now`. Pre-start (now < started_at) returns
-/// `true` so a freshly-focused caret is immediately visible.
+/// `true` so a freshly-focused caret is immediately visible, and so
+/// does everything from `started_at + stop_after` onwards.
 #[inline]
-fn blink_visible_at(half_period: Duration, started_at: Duration, now: Duration) -> bool {
+fn blink_visible_at(
+    half_period: Duration,
+    started_at: Duration,
+    stop_after: Duration,
+    now: Duration,
+) -> bool {
     if now <= started_at {
         return true;
     }
     let dt = now - started_at;
+    if dt >= stop_after {
+        return true;
+    }
     // (dt / half_period) parity: even = solid, odd = hidden.
     let n = duration_div_floor(dt, half_period);
     n & 1 == 0
@@ -155,18 +181,35 @@ fn blink_visible_at(half_period: Duration, started_at: Duration, now: Duration) 
 
 /// Absolute time of the next strictly-future boundary at which the
 /// blink flips. Aligns to `started_at + k * half_period` for the
-/// smallest `k` with that time `> now`.
+/// smallest `k` with that time `> now`. `None` once the blink has
+/// settled solid — a degenerate zero period, or a boundary that would
+/// land at or past `started_at + stop_after`.
 #[inline]
-fn next_blink_boundary(half_period: Duration, started_at: Duration, now: Duration) -> Duration {
+fn next_blink_boundary(
+    half_period: Duration,
+    started_at: Duration,
+    stop_after: Duration,
+    now: Duration,
+) -> Option<Duration> {
     if half_period.is_zero() {
-        return Duration::MAX;
+        return None;
     }
     if now < started_at {
-        return started_at;
+        return Some(started_at);
+    }
+    let settles_at = started_at.saturating_add(stop_after);
+    if now >= settles_at {
+        return None;
     }
     let dt = now - started_at;
     let n = duration_div_floor(dt, half_period);
-    started_at + half_period.saturating_mul((n + 1) as u32)
+    let boundary = started_at + half_period.saturating_mul((n + 1) as u32);
+    // The settle is itself a flip the encoder has to paint, so it caps
+    // the wake rather than merely bounding it: a `stop_after` that isn't
+    // a whole number of half-periods lands between two boundaries, and
+    // waking only on boundaries would leave the caret stuck on whatever
+    // phase it was in until some unrelated wake arrived.
+    Some(boundary.min(settles_at))
 }
 
 /// `floor(a / b)` for `Duration`. Returns 0 if `b` is zero.
@@ -317,6 +360,18 @@ mod tests {
 
     const HP: Duration = Duration::from_millis(500);
     const START: Duration = Duration::from_secs(1);
+    /// Long enough that the tests below never reach it, so each one
+    /// isolates phase behaviour from the settle.
+    const NO_STOP: Duration = Duration::MAX;
+
+    /// A blink that runs forever, for the cases about phase alone.
+    fn blink() -> PaintAnim {
+        PaintAnim::BlinkOpacity {
+            half_period: HP,
+            started_at: START,
+            stop_after: NO_STOP,
+        }
+    }
 
     fn spinning(speed: f32) -> PaintAnimEntry {
         PaintAnimEntry {
@@ -399,19 +454,13 @@ mod tests {
 
     #[test]
     fn blink_solid_at_start() {
-        let a = PaintAnim::BlinkOpacity {
-            half_period: HP,
-            started_at: START,
-        };
+        let a = blink();
         assert_eq!(a.sample(START).alpha, 1.0);
     }
 
     #[test]
     fn blink_flips_at_first_boundary() {
-        let a = PaintAnim::BlinkOpacity {
-            half_period: HP,
-            started_at: START,
-        };
+        let a = blink();
         // Just before the boundary: still solid.
         let before = START + HP - Duration::from_micros(1);
         assert_eq!(a.sample(before).alpha, 1.0);
@@ -425,31 +474,28 @@ mod tests {
 
     #[test]
     fn next_wake_aligns_with_next_boundary() {
-        let a = PaintAnim::BlinkOpacity {
-            half_period: HP,
-            started_at: START,
-        };
+        let a = blink();
         // Mid-phase: wake at the next half-period boundary.
-        assert_eq!(a.next_wake(START + Duration::from_millis(100)), START + HP,);
+        assert_eq!(
+            a.next_wake(START + Duration::from_millis(100)),
+            Some(START + HP),
+        );
         // On the boundary: still wake at the *next* one (strictly
         // future).
-        assert_eq!(a.next_wake(START + HP), START + HP + HP);
+        assert_eq!(a.next_wake(START + HP), Some(START + HP + HP));
         // Several periods in.
         assert_eq!(
             a.next_wake(START + HP + HP + Duration::from_millis(50)),
-            START + HP + HP + HP,
+            Some(START + HP + HP + HP),
         );
     }
 
     #[test]
     fn pre_start_phase_is_solid_and_wakes_at_start() {
-        let a = PaintAnim::BlinkOpacity {
-            half_period: HP,
-            started_at: START,
-        };
+        let a = blink();
         let before = START - Duration::from_millis(200);
         assert_eq!(a.sample(before).alpha, 1.0);
-        assert_eq!(a.next_wake(before), START);
+        assert_eq!(a.next_wake(before), Some(START));
     }
 
     #[test]
@@ -457,10 +503,11 @@ mod tests {
         let a = PaintAnim::BlinkOpacity {
             half_period: Duration::ZERO,
             started_at: START,
+            stop_after: NO_STOP,
         };
-        // Degenerate, but must not panic. `next_wake` returns MAX so
-        // the wake folder treats it as "idle".
-        assert_eq!(a.next_wake(START + Duration::from_secs(1)), Duration::MAX);
+        // Degenerate, but must not panic. `next_wake` returns `None` so
+        // the wake folder drops it.
+        assert_eq!(a.next_wake(START + Duration::from_secs(1)), None);
     }
 
     #[test]
@@ -493,6 +540,56 @@ mod tests {
         };
         let prev = START + Duration::from_secs(3);
         let now = prev + Duration::from_millis(16);
-        assert!(a.next_wake(prev) <= now);
+        assert!(a.next_wake(prev).is_some_and(|wake| wake <= now));
+    }
+
+    /// The idle stop has to hold at *sample* time, because the frames
+    /// that carry a settled blink past its cutoff are paint-only — no
+    /// record pass runs on them to re-decide anything.
+    #[test]
+    fn blink_settles_solid_after_stop_and_stops_waking() {
+        // Stop at 4 half-periods: boundaries at +1..+4 HP, then solid.
+        let stop = HP * 4;
+        let a = PaintAnim::BlinkOpacity {
+            half_period: HP,
+            started_at: START,
+            stop_after: stop,
+        };
+
+        // Before the stop the phase still alternates: odd multiples of
+        // HP are the hidden ones.
+        assert_eq!(a.sample(START + HP).alpha, 0.0);
+        assert_eq!(a.sample(START + HP * 2).alpha, 1.0);
+        assert_eq!(a.sample(START + HP * 3).alpha, 0.0);
+
+        // At the stop and ever after: solid, whatever the parity says.
+        // `START + HP*5` is an odd multiple — it would be hidden if the
+        // stop weren't applied.
+        assert_eq!(a.sample(START + stop).alpha, 1.0);
+        assert_eq!(a.sample(START + HP * 5).alpha, 1.0);
+        assert_eq!(a.sample(START + Duration::from_secs(600)).alpha, 1.0);
+
+        // Wakes run up to and including the boundary that reaches the
+        // stop — that transition still has to be painted — and cease
+        // afterwards, so an idle editor stops asking for frames.
+        assert_eq!(a.next_wake(START + HP * 2), Some(START + HP * 3));
+        assert_eq!(a.next_wake(START + HP * 3), Some(START + stop));
+        assert_eq!(a.next_wake(START + stop), None);
+        assert_eq!(a.next_wake(START + Duration::from_secs(600)), None);
+
+        // A stop that lands *between* boundaries still gets its own
+        // wake, since the settle is the flip that has to be painted.
+        // 3.5 half-periods in, the phase is the hidden one (n = 3), so
+        // waking only on boundaries would strand the caret invisible.
+        let ragged = HP * 3 + HP / 2;
+        let b = PaintAnim::BlinkOpacity {
+            half_period: HP,
+            started_at: START,
+            stop_after: ragged,
+        };
+        assert_eq!(b.sample(START + HP * 3).alpha, 0.0);
+        assert_eq!(b.sample(START + ragged).alpha, 1.0);
+        assert_eq!(b.next_wake(START + HP * 3), Some(START + ragged));
+        assert_eq!(b.next_wake(START + ragged), None);
     }
 }

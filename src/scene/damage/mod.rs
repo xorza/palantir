@@ -890,7 +890,7 @@ fn extend_predamaged(
         let paints = &arena.rows;
         let node_spans = &arena.node_spans;
         for e in &tree.paint_anims.entries {
-            if e.anim.next_wake(prev) > now {
+            if e.anim.next_wake(prev).is_none_or(|wake| wake > now) {
                 continue;
             }
             let node_span = node_spans[e.node_idx as usize];
