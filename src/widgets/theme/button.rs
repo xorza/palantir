@@ -6,10 +6,10 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
+use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live
@@ -36,12 +36,6 @@ pub struct ButtonTheme {
     /// can configure motion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anim: Option<AnimSpec>,
-}
-
-impl Default for ButtonTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
 }
 
 impl ButtonTheme {
@@ -129,25 +123,6 @@ impl ButtonTheme {
     }
 }
 
-impl WidgetTheme for ButtonTheme {
-    /// Pressed is read straight off the response, so the pick needs
-    /// nothing else.
-    type Mode = ();
+impl_widget_theme!(ButtonTheme);
 
-    #[inline(always)]
-    fn pick(&self, state: &ResponseState, _: ()) -> &WidgetLook {
-        self.pick(state)
-    }
-    #[inline(always)]
-    fn padding(&self) -> Spacing {
-        self.padding
-    }
-    #[inline(always)]
-    fn margin(&self) -> Spacing {
-        self.margin
-    }
-    #[inline(always)]
-    fn anim(&self) -> Option<AnimSpec> {
-        self.anim
-    }
-}
+palette_default!(ButtonTheme);

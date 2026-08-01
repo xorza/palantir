@@ -45,9 +45,7 @@ impl TooltipTheme {
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         f(&mut self.text);
     }
-}
 
-impl TooltipTheme {
     pub fn from_palette(p: &Palette) -> Self {
         let panel = Background::rounded(p.elem, Corners::all(4.0))
             .with_stroke(Stroke::solid(p.border_mid(), 1.0))
@@ -68,8 +66,4 @@ impl TooltipTheme {
     }
 }
 
-impl Default for TooltipTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
-}
+palette_default!(TooltipTheme);

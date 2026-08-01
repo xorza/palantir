@@ -284,7 +284,8 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
+    use crate::widgets::theme::widget_look::WidgetLook;
+    use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
     for (label, mult, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
@@ -524,7 +525,8 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
+    use crate::widgets::theme::widget_look::WidgetLook;
+    use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
         let mut h = ui_at_no_cosmic(NARROW);

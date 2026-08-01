@@ -2,7 +2,7 @@ use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::StatefulLook;
+use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Theme for [`crate::DragValue`]: the scrub `chip` (a [`ButtonTheme`]) and the
 /// inline `editor` (a [`TextEditTheme`]) it swaps to under
@@ -50,9 +50,7 @@ impl DragValueTheme {
         self.chip.for_each_text(f);
         self.editor.for_each_text(f);
     }
-}
 
-impl DragValueTheme {
     /// One palette drives both halves — the chip from the standard
     /// button recipe, the editor derived from it via [`Self::from_chip`].
     pub fn from_palette(p: &Palette) -> Self {
@@ -63,8 +61,4 @@ impl DragValueTheme {
     }
 }
 
-impl Default for DragValueTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
-}
+palette_default!(DragValueTheme);

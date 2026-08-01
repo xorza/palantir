@@ -32,8 +32,4 @@ impl SplitterTheme {
     }
 }
 
-impl Default for SplitterTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
-}
+palette_default!(SplitterTheme);

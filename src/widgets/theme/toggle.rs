@@ -5,10 +5,10 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
+use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Visuals for two-state toggles ([`crate::Checkbox`],
 /// [`crate::RadioButton`], future toggle/segmented controls). Holds a
@@ -154,29 +154,4 @@ impl ToggleTheme {
     }
 }
 
-impl WidgetTheme for ToggleTheme {
-    /// The checked flag, which selects the look *pack* before the
-    /// four-state pick runs inside it — the one thing a toggle's
-    /// [`ResponseState`] can't answer on its own.
-    type Mode = bool;
-
-    #[inline(always)]
-    fn pick(&self, state: &ResponseState, checked: bool) -> &WidgetLook {
-        // Path form, not `self.pick(...)`: the inherent method and this
-        // one have the same arity here, so the receiver form would read
-        // as though it might recurse.
-        ToggleTheme::pick(self, state, checked)
-    }
-    #[inline(always)]
-    fn padding(&self) -> Spacing {
-        self.padding
-    }
-    #[inline(always)]
-    fn margin(&self) -> Spacing {
-        self.margin
-    }
-    #[inline(always)]
-    fn anim(&self) -> Option<AnimSpec> {
-        self.anim
-    }
-}
+impl_widget_theme!(ToggleTheme, mode: bool);

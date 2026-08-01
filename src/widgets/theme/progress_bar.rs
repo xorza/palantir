@@ -24,8 +24,4 @@ impl ProgressBarTheme {
     }
 }
 
-impl Default for ProgressBarTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
-}
+palette_default!(ProgressBarTheme);

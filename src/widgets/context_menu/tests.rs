@@ -18,7 +18,9 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
 use crate::widgets::panel::Panel;
-use crate::widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme, MenuSeparatorTheme};
+use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
+use crate::widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
 use crate::{Sense, Ui};
 use glam::{UVec2, Vec2};
 

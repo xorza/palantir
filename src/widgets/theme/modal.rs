@@ -39,8 +39,4 @@ impl ModalTheme {
     }
 }
 
-impl Default for ModalTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
-}
+palette_default!(ModalTheme);

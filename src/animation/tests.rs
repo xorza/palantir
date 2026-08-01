@@ -1035,7 +1035,8 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
     use crate::widgets::theme::text_style::TextStyle;
-    use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
+    use crate::widgets::theme::widget_look::WidgetLook;
+    use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
     use std::cell::Cell;
 
     let AnimUi { mut h, id } = setup_anim_ui("look-test");
@@ -1220,7 +1221,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     use crate::primitives::brush::Brush;
     use crate::primitives::brush::gradient::radial::RadialGradient;
     use crate::widgets::theme::text_style::TextStyle;
-    use crate::widgets::theme::widget_look::AnimatedLook;
+    use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
     let AnimUi { mut h, id } = setup_anim_ui("gradient-look-settle");
     let start = AnimatedLook {

@@ -9,8 +9,8 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEdit;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
-use crate::widgets::theme::resolve_look;
 use crate::widgets::{Response, enter_widget};
 use std::ops::RangeInclusive;
 
@@ -364,7 +364,7 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = resolve_look(
+        let look = WidgetTheme::resolve(
             ui,
             id,
             &mut entry.widget.node,
