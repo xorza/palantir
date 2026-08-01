@@ -33,7 +33,7 @@ use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::renderer::plan::RenderPlan;
-use crate::scene::Forest;
+use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Node, Salt};
 use crate::scene::tree::paint_anims::PaintAnim;

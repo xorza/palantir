@@ -22,7 +22,7 @@ use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
 #[cfg(test)]
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::Forest;
+use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
