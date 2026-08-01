@@ -14,12 +14,6 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::widget::WidgetEntry;
-use glam::Vec2;
-
-/// Down-chevron arrow box (logical px). Drawn as a polyline so it's
-/// font-independent.
-const ARROW_W: f32 = 10.0;
-const ARROW_H: f32 = 6.0;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.
 #[derive(Default, Clone, Copy, Debug)]
@@ -87,10 +81,11 @@ impl<'a> ComboBox<'a> {
             |t| &t.button,
         );
 
+        let geom = ui.theme.combo_box.clone();
         let node = &mut entry.widget.node;
         node.justify = Justify::SpaceBetween;
         node.child_align = Align::v(VAlign::Center);
-        node.gaps.set_gap(12.0);
+        node.gaps.set_gap(geom.row_gap);
 
         let arrow_color = look.text.color;
         let text_style = look.text;
@@ -115,13 +110,14 @@ impl<'a> ComboBox<'a> {
                 .style(&text_style)
                 .show(ui);
 
-            let arrow = Node::leaf()
-                .id(id.with("arrow"))
-                .size((Sizing::fixed(ARROW_W), Sizing::fixed(ARROW_H)));
+            let arrow = Node::leaf().id(id.with("arrow")).size((
+                Sizing::fixed(geom.arrow_size.x),
+                Sizing::fixed(geom.arrow_size.y),
+            ));
             ui.widget(arrow).record(ui, None, |ui| {
-                let pts = chevron_pts();
+                let pts = geom.chevron_pts();
                 ui.add_shape(
-                    Shape::polyline(&pts, PolylineColors::Single(arrow_color), 1.5)
+                    Shape::polyline(&pts, PolylineColors::Single(arrow_color), geom.arrow_stroke)
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
@@ -164,16 +160,6 @@ impl<'a> ComboBox<'a> {
 }
 
 impl_configure!(ComboBox<'_>);
-
-/// Down-pointing chevron (`v`) in the `ARROW_W × ARROW_H` box, in
-/// node-local coords.
-fn chevron_pts() -> [Vec2; 3] {
-    [
-        Vec2::new(0.0, 0.0),
-        Vec2::new(ARROW_W * 0.5, ARROW_H),
-        Vec2::new(ARROW_W, 0.0),
-    ]
-}
 
 #[cfg(test)]
 mod tests;

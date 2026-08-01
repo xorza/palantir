@@ -157,7 +157,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         let gap = theme.gap;
 
         let trigger_id = self.snapshot.id;
-        let bubble_id = trigger_id.with("tooltip.bubble");
+        let bubble_id = trigger_id.with("bubble");
         let g_id = global_state_id();
 
         let trigger_hovered = self.snapshot.state.hovered;

@@ -80,6 +80,7 @@ macro_rules! impl_widget_theme {
 }
 
 pub(crate) mod button;
+pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod drag_value;
 pub(crate) mod modal;
@@ -111,6 +112,7 @@ use crate::scene::node::Node;
 use crate::text::key;
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::theme::combo_box::ComboBoxTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::modal::ModalTheme;
@@ -160,6 +162,9 @@ pub struct Theme {
     /// want DragValue to match should rebuild this bundle the same way.
     pub drag_value: DragValueTheme,
     pub context_menu: ContextMenuTheme,
+    /// Geometry for [`crate::ComboBox`]; its colours come from
+    /// [`Self::button`] and [`Self::context_menu`].
+    pub combo_box: ComboBoxTheme,
     pub modal: ModalTheme,
     pub tooltip: TooltipTheme,
     pub progress_bar: ProgressBarTheme,
@@ -278,6 +283,7 @@ impl Theme {
             text_edit: TextEditTheme::from_palette(p),
             drag_value: DragValueTheme::from_palette(p),
             context_menu: ContextMenuTheme::from_palette(p),
+            combo_box: ComboBoxTheme::from_palette(p),
             modal: ModalTheme::from_palette(p),
             tooltip: TooltipTheme::from_palette(p),
             progress_bar: ProgressBarTheme::from_palette(p),

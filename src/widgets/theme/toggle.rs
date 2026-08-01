@@ -37,6 +37,11 @@ pub struct ToggleTheme {
     pub indicator_inset: f32,
     /// Gap between the box/pip and the label.
     pub row_gap: f32,
+    /// Track width as a multiple of its height — [`crate::Switch`]
+    /// only, where `box_size` is the track height. A switch reads as a
+    /// switch (rather than a checkbox) at roughly 7:4. `1.0` on the
+    /// checkbox and radio bundles, whose box is square.
+    pub track_aspect: f32,
     /// Default padding inside the row, around the box + label pair.
     /// Applied at `show()` time when the builder hasn't set padding —
     /// same contract as [`crate::ButtonTheme`].
@@ -85,6 +90,7 @@ impl ToggleTheme {
     /// track cross-fade — the motion is the point of the control.
     pub fn switch(p: &Palette) -> Self {
         let mut t = Self::built(10.0, 20.0, 3.0, p.text, p);
+        t.track_aspect = 1.75;
         t.anim = Some(AnimSpec::SPRING);
         t
     }
@@ -147,6 +153,7 @@ impl ToggleTheme {
             indicator_stroke: 2.0,
             indicator_inset,
             row_gap: 8.0,
+            track_aspect: 1.0,
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
             anim: None,

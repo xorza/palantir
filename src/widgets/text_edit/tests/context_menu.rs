@@ -30,7 +30,7 @@ fn context_menu_cut_copy_paste_clear() {
     /// — a fixed row pitch would silently start clicking the neighbour
     /// the moment the theme's row padding moved.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
-        let body_id = editor_id().with("ctx_menu_body");
+        let body_id = editor_id().with("body");
         let tree = &h.ui.forest.trees[Layer::Popup];
         let body_idx = tree
             .records

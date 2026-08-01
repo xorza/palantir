@@ -171,8 +171,8 @@ impl Bars {
         };
         Self {
             theme: theme.clone(),
-            v: axis("__vtrack", "__vthumb"),
-            h: axis("__htrack", "__hthumb"),
+            v: axis("vtrack", "vthumb"),
+            h: axis("htrack", "hthumb"),
         }
     }
 
@@ -275,7 +275,7 @@ impl Bars {
             min_thumb: self.theme.min_thumb_px,
         });
         let overlay = Node::scroll_bars(def_id)
-            .id(scroll_id.with("__bars"))
+            .id(scroll_id.with("bars"))
             .size((Sizing::FILL, Sizing::FILL));
         ui.widget(overlay).record(ui, None, |ui| {
             for (_, bar) in self.axes() {

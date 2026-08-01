@@ -372,7 +372,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     };
     h.frame(scene);
     let first = body_rect(&h.ui);
-    let viewport_id = WidgetId::from_hash("popup-scroll").with("__viewport");
+    let viewport_id = WidgetId::from_hash("popup-scroll").with("viewport");
     let viewport =
         h.ui.cascades
             .endpoint(viewport_id)

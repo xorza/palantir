@@ -469,7 +469,7 @@ impl<'a> Scroll<'a> {
         // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack, so wheel events over the bar gutter still pan the
         // viewport.
-        let scroll_id = id.with("__viewport");
+        let scroll_id = id.with("viewport");
 
         // Everything read off `ui` immutably, before the state borrow.
         let response = ui.response_for(id);
