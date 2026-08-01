@@ -18,11 +18,6 @@ use crate::widgets::text_edit::view::{ShapeCtx, TextLayout};
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// Caret or selection differ from their pre-input values (compared
-    /// against the pre-clamp snapshot, so an external buffer shrink
-    /// that displaces the caret also reads as motion) — drives the
-    /// blink-phase reset.
-    pub(super) caret_moved: bool,
     /// The view state's focus bit before this pass. `show()` derives
     /// gained/lost edges before the view update stores the new value.
     pub(super) was_focused: bool,
@@ -91,11 +86,6 @@ pub(super) fn run_input(
         interaction,
         view,
     } = state;
-    // Pre-input snapshot for the `caret_moved` / focus edges — taken
-    // before the clamp so an external buffer shrink that displaces the
-    // caret still reads as caret motion (blink reset).
-    let caret_before = edit.caret;
-    let sel_before = edit.selection;
     let was_focused = view.prev_focused;
     // Repair persisted byte offsets before any range/slice operation.
     // Application code may have replaced `*text` with a same-length or
@@ -195,7 +185,6 @@ pub(super) fn run_input(
         ed.state.normalize(ed.text);
         interaction.normalize(ed.text);
         return InputResult {
-            caret_moved: caret_before != ed.state.caret || sel_before != ed.state.selection,
             was_focused,
             blur,
             submitted,
@@ -254,7 +243,6 @@ pub(super) fn run_input(
     ed.state.normalize(ed.text);
     interaction.normalize(ed.text);
     InputResult {
-        caret_moved: caret_before != ed.state.caret || sel_before != ed.state.selection,
         was_focused,
         blur,
         submitted,
