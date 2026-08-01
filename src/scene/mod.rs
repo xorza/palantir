@@ -9,7 +9,7 @@ use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::{Layer, PerLayer};
-use crate::scene::node::Node;
+use crate::scene::node::{Node, Salt};
 use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
 use crate::scene::shapes::lower::ChromeInput;
@@ -103,6 +103,22 @@ impl Forest {
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollBarsDef) -> ScrollBarsDefId {
         let layer = self.current_layer();
         self.trees[layer].push_scrollbars_def(def)
+    }
+
+    /// Resolve `salt` against the currently-open parent into the id this
+    /// frame will record under, reserving its occurrence slot.
+    ///
+    /// Both halves are the tracker's: `Salt::resolve` mixes in the
+    /// parent so identity follows tree position rather than record
+    /// order, and [`SeenIds::resolve`] eagerly disambiguates a salt that
+    /// already appeared this frame. Neither is meaningful without the
+    /// other — a raw id that skipped disambiguation would collide, and a
+    /// disambiguated id that skipped the parent would move with record
+    /// order — so they resolve together here rather than being paired up
+    /// again by every caller.
+    pub(crate) fn widget_id(&mut self, salt: Salt) -> WidgetId {
+        let raw_id = salt.resolve(self.current_parent_id());
+        self.ids.resolve(raw_id, salt.is_explicit())
     }
 
     /// The node `id` was opened under in **this** record pass.

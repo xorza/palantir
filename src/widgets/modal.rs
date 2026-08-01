@@ -62,8 +62,11 @@ impl Modal {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ModalResponse {
         let surface = ui.display().logical_rect();
-        let mut widget = ui.widget(self.node);
-        let root_id = widget.id();
+        // The caller's salt names the *backdrop root*, but the node it
+        // arrived on is the card — the root is framework-built below, so
+        // the identity is resolved on its own rather than staged onto a
+        // node that never records.
+        let root_id = ui.widget_id(self.node.salt);
 
         let mt = &ui.theme.modal;
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
@@ -71,11 +74,9 @@ impl Modal {
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
-        // The user-configured node becomes the card; the widget's
-        // resolved id stays on the backdrop root it records below. The
-        // card's own id is always derived — the caller's went to the
+        // The card's own id is always derived — the caller's went to the
         // root — so this is `id`, not `default_id`.
-        let card = widget
+        let card = self
             .node
             .id(root_id.with("card"))
             .default_padding(theme_padding)
@@ -84,23 +85,24 @@ impl Modal {
         // Root fills the surface, dims it, eats stray pointer events,
         // and centers the card. The card re-senses `Sense::ABSORB_POINTER` so clicks
         // on it never fall through to this dismiss-backdrop.
-        widget.node = Node::zstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .child_align(Align::CENTER)
-            .sense(Sense::ABSORB_POINTER);
+        //
         // A modal *owns* input, it does not merely outrank the popups
         // below it. Its root declares an `ALL` scope on `Layer::Modal`,
         // which raises the active layer: a popup underneath stops seeing
         // Escape entirely instead of dismissing alongside the modal,
         // while the modal's own body keeps reading because a scope
         // silences only layers strictly *below* its own.
-        widget.node.flags.set_key_filter(KeyFilter::ALL);
+        let mut root = Node::zstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .child_align(Align::CENTER)
+            .sense(Sense::ABSORB_POINTER);
+        root.flags.set_key_filter(KeyFilter::ALL);
         // Escape is read *inside* the modal's layer — outside it the
         // ambient layer is below the scope and the read is silenced,
         // which is what the old owner-scoped claim handle existed to
         // work around.
         let escape = ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
-            widget.record(ui, Some(&dim), |ui| {
+            ui.node(root_id, root, Some(&dim), |ui| {
                 ui.widget(card).record(ui, Some(&card_bg), body);
             });
             ui.escape_pressed()
