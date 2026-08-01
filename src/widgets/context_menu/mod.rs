@@ -10,6 +10,7 @@ use crate::scene::node::ThemeDefaults;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
+use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::WidgetTheme;
@@ -17,7 +18,7 @@ use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::{Response, ResponseSnapshot, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 
 use crate::primitives::interned_str::TextInput;
 use glam::Vec2;
@@ -302,7 +303,7 @@ impl<'a> MenuItem<'a> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the state
         // is identical before and after the node records.
-        let mut entry = enter_widget(ui, self.node);
+        let mut entry = WidgetEntry::enter(ui, self.node);
         let id = entry.widget.id();
         let disabled = entry.state.disabled;
 

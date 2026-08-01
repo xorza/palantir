@@ -1,12 +1,14 @@
 use crate::common::hash;
 use crate::widgets::text_edit::TextEditState;
+use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::input::{
     KeyOutcome, apply_key as apply_editor_key, dispatch_action,
 };
-use crate::widgets::text_edit::model::internals::{
+use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
+    word_range_at,
 };
-use crate::widgets::text_edit::model::{EditState, Editor, word_range_at};
 use crate::widgets::text_edit::view::InteractionState;
 
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {

@@ -2,7 +2,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::response::Response;
+use crate::widgets::widget::WidgetEntry;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -100,7 +101,7 @@ impl GpuView {
             paint,
             repaint,
         } = self;
-        let entry = enter_widget(ui, node);
+        let entry = WidgetEntry::enter(ui, node);
         let id = entry.widget.id();
         entry.widget.record(ui, None, |ui| {
             ui.gpu_view(id, paint, repaint);

@@ -5,7 +5,7 @@ use crate::primitives::color::Color;
 use crate::scene::node::Node;
 use crate::scene::node::ThemeDefaults;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::response::Response;
 use crate::widgets::theme::separator::SeparatorTheme;
 
 /// A thin divider rule between content. [`Separator::horizontal`]

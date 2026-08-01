@@ -5,7 +5,7 @@ use crate::shape::Shape;
 use crate::text::FontWeight;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::response::Response;
 use crate::widgets::theme::text_style::TextStyle;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —

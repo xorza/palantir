@@ -1,5 +1,5 @@
 use crate::common::hash;
-use crate::widgets::text_edit::model::EditKind;
+use crate::widgets::text_edit::edit_state::EditKind;
 use crate::widgets::text_edit::tests::*;
 
 #[test]

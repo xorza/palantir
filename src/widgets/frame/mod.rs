@@ -1,7 +1,7 @@
 use crate::primitives::background::Background;
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::response::Response;
 
 /// A simple decorated rectangle: optional background / size / margin
 /// plus an optional `Sense`. Used directly for dividers / hit-areas /

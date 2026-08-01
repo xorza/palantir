@@ -1,9 +1,11 @@
 mod action;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+mod edit_state;
+mod editor;
 mod input;
 mod menu;
-mod model;
+mod unicode;
 mod view;
 
 use crate::input::key_class::KeyFilter;
@@ -15,16 +17,16 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::widgets::response::{Response, ResponseSnapshot};
+use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::input::{InputPolicy, InputResult, run_input};
 use crate::widgets::text_edit::menu::MenuResult;
-use crate::widgets::text_edit::model::EditState;
 use crate::widgets::text_edit::view::{
     CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput,
     SELECTION_RECTS_INLINE_CAPACITY, SelectionRects, ViewState, ViewUpdateInput,
 };
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::{Response, ResponseSnapshot};
 use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]

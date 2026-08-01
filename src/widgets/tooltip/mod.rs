@@ -8,7 +8,7 @@ use crate::scene::node::Node;
 use crate::scene::node::ThemeDefaults;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
-use crate::widgets::ResponseSnapshot;
+use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
 use std::sync::LazyLock;

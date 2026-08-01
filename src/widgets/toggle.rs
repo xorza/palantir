@@ -4,11 +4,12 @@ use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
+use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::{Response, WidgetEntry};
+use crate::widgets::widget::WidgetEntry;
 
 /// What [`toggle_row`] needs from its caller beyond the entry, the
 /// label, and the indicator body.

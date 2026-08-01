@@ -5,9 +5,10 @@ use crate::primitives::rect::Rect;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected
@@ -57,7 +58,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, self.node);
+        let entry = WidgetEntry::enter(ui, self.node);
         let state = &entry.state;
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,

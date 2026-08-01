@@ -3,7 +3,7 @@
 use crate::common::clipboard::Clipboard;
 use crate::input::keyboard::KeyPress;
 use crate::input::shortcut::Shortcut;
-use crate::widgets::text_edit::model::Editor;
+use crate::widgets::text_edit::editor::Editor;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum EditAction {
