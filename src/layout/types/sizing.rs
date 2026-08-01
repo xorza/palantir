@@ -77,6 +77,21 @@ impl Sizing {
         }
     }
 
+    /// Split the parent's space into `[fraction, 1 - fraction]` shares.
+    ///
+    /// The two-leaf trick a `ProgressBar` (fill / remainder) and a
+    /// `Slider` (rail / knob / rail) both lay out with: neither knows the
+    /// resolved extent at record time, so the split rides on `Fill`
+    /// weights and arrange resolves it against whatever width lands.
+    ///
+    /// `fraction` clamps into `0..=1`, so an endpoint collapses one share
+    /// to a zero-extent `Fixed` rather than tripping [`Self::share`]'s
+    /// non-negative assert.
+    pub fn split(fraction: f32) -> [Self; 2] {
+        let f = fraction.clamp(0.0, 1.0);
+        [Self::share(f), Self::share(1.0 - f)]
+    }
+
     /// The pixel extent if this is a [`Self::fixed`], else `None`.
     #[inline]
     pub const fn fixed_value(self) -> Option<f32> {
@@ -279,6 +294,36 @@ mod tests {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish()
+    }
+
+    /// The two shares always partition 1.0, so the first lands at exactly
+    /// `fraction` of the parent — and an out-of-range input clamps rather
+    /// than reaching `share`'s non-negative assert.
+    ///
+    /// Both endpoints matter: `share(0.0)` collapses to a zero-extent
+    /// `Fixed`, not a zero-weight `Fill`, which is what keeps a full or
+    /// empty `ProgressBar` / `Slider` from handing arrange a degenerate
+    /// weight.
+    #[test]
+    fn split_partitions_one_and_clamps_out_of_range() {
+        let cases = [
+            (0.0, 0.0, 1.0),
+            (0.25, 0.25, 0.75),
+            (0.5, 0.5, 0.5),
+            (1.0, 1.0, 0.0),
+            (-0.3, 0.0, 1.0), // below range clamps to empty
+            (1.7, 1.0, 0.0),  // above range clamps to full
+        ];
+        for (input, want_a, want_b) in cases {
+            let got = Sizing::split(input);
+            let want = [Sizing::share(want_a), Sizing::share(want_b)];
+            assert_eq!(got, want, "fraction {input}");
+        }
+        assert_eq!(
+            Sizing::split(0.0)[0],
+            Sizing::fixed(0.0),
+            "a zero share is a zero-extent Fixed, not a zero-weight Fill",
+        );
     }
 
     #[test]

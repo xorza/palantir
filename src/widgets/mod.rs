@@ -50,7 +50,8 @@ pub(crate) mod theme;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
-use crate::scene::node::Node;
+use crate::layout::types::sizing::Sizes;
+use crate::scene::node::{Configure, Node};
 
 use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
@@ -76,6 +77,21 @@ fn resolve_container_chrome(
     let chrome = explicit.or_else(|| theme_bg.cloned());
     node.clip.get_or_insert(theme_clip);
     chrome
+}
+
+/// Record a chrome-only leaf: a sized child that paints `bg` and holds
+/// nothing.
+///
+/// The shape every rail / fill / knob segment takes — a `Slider`'s three
+/// and a `ProgressBar`'s two. Widgets whose leaf carries more than a size
+/// and a background build the node themselves: a `Switch` knob adds a
+/// `position`, a `Scroll` track/thumb a `Sense` (and no size at all — its
+/// driver assigns the rects), a `Splitter` bar a margin and a grid cell,
+/// a `ComboBox` arrow a shape body. Threading those through here would
+/// cost more parameters than the sharing saves.
+fn chrome_leaf(ui: &mut Ui, id: WidgetId, size: impl Into<Sizes>, bg: Option<&Background>) {
+    let leaf = Node::leaf().id(id).size(size);
+    ui.widget(leaf).record(ui, bg, |_| {});
 }
 
 /// A widget whose [`WidgetId`] has been resolved for this frame, paired
