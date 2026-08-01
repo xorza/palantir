@@ -8,7 +8,9 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
-use crate::widgets::text_edit::model::{EditKind, Editor, word_range_at};
+use crate::widgets::text_edit::edit_state::EditKind;
+use crate::widgets::text_edit::editor::Editor;
+use crate::widgets::text_edit::unicode::word_range_at;
 use crate::widgets::text_edit::view::{ShapeCtx, TextLayout};
 
 /// Result of one frame's input pass over a TextEdit: the caret byte,

@@ -15,7 +15,7 @@ use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
-use crate::widgets::text_edit::model::EditState;
+use crate::widgets::text_edit::edit_state::EditState;
 use glam::Vec2;
 use std::ops::Range;
 use std::time::Duration;

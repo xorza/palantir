@@ -6,9 +6,10 @@ use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
+use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 use glam::Vec2;
 
 /// Two-state boolean toggle. Takes a `&mut bool` whose owner controls
@@ -57,7 +58,7 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, self.node);
+        let entry = WidgetEntry::enter(ui, self.node);
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {
             *self.value = !*self.value;

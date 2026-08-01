@@ -4,7 +4,8 @@ use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
-use crate::widgets::{InnerResponse, resolve_container_chrome};
+use crate::widgets::chrome;
+use crate::widgets::response::InnerResponse;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
@@ -123,7 +124,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         node.set_grid_def(id);
 
         // Theme fallback for chrome / clip — see `Panel::show`.
-        let chrome = resolve_container_chrome(
+        let chrome = chrome::resolve_container(
             &mut node,
             self.chrome,
             ui.theme.panel_background.as_ref(),

@@ -6,7 +6,7 @@ use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::response::Response;
 use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::Vec2;
 use std::f32::consts::PI;

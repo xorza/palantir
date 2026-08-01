@@ -2,7 +2,8 @@ use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::{InnerResponse, resolve_container_chrome};
+use crate::widgets::chrome;
+use crate::widgets::response::InnerResponse;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
@@ -70,7 +71,7 @@ impl Panel {
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
         let mut node = self.node;
-        let chrome = resolve_container_chrome(
+        let chrome = chrome::resolve_container(
             &mut node,
             self.chrome,
             ui.theme.panel_background.as_ref(),

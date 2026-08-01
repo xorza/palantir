@@ -5,9 +5,10 @@ use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::response::Response;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 
 #[derive(Debug)]
 pub struct Button<'a> {
@@ -71,7 +72,7 @@ impl<'a> Button<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.node);
+        let mut entry = WidgetEntry::enter(ui, self.node);
         let id = entry.widget.id();
         let look = WidgetTheme::resolve(
             ui,

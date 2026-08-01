@@ -49,8 +49,8 @@ use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, 
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
-use crate::widgets::Widget;
 use crate::widgets::theme::Theme;
+use crate::widgets::widget::Widget;
 use crate::window::{
     CursorIcon, PendingWindow, Vsync, WindowConfig, WindowFrameState, WindowGeometry,
     WindowRequests, WindowToken,

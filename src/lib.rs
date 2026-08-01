@@ -223,7 +223,10 @@ pub use widgets::panel::Panel;
 pub use widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 pub use widgets::progress_bar::ProgressBar;
 pub use widgets::radio::RadioButton;
-pub use widgets::scroll::{BarMode, Scroll, ZoomConfig, ZoomModifier, ZoomPivot};
+pub use widgets::response::{InnerResponse, Response, ResponseSnapshot};
+pub use widgets::scroll::Scroll;
+pub use widgets::scroll::bars::BarMode;
+pub use widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 pub use widgets::separator::Separator;
 pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
@@ -252,7 +255,7 @@ pub use widgets::theme::widget_look::WidgetLook;
 pub use widgets::theme::widget_look::animated_look::AnimatedLook;
 pub use widgets::theme::widget_look::stateful_look::StatefulLook;
 pub use widgets::tooltip::Tooltip;
-pub use widgets::{InnerResponse, Response, ResponseSnapshot, Widget};
+pub use widgets::widget::Widget;
 pub use window::{CursorIcon, Vsync, WindowConfig, WindowGeometry, WindowToken};
 
 #[cfg(test)]
@@ -301,7 +304,7 @@ mod hot_struct_sizes {
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
     use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
-    use crate::widgets::{Widget, WidgetEntry};
+    use crate::widgets::widget::{Widget, WidgetEntry};
 
     /// Single source of truth for the per-frame hot-struct inventory.
     /// Each entry is `Type => "name": expected_size / expected_align`.

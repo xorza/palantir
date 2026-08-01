@@ -8,10 +8,11 @@ use crate::scene::node::{Configure, Node};
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 use std::ops::RangeInclusive;
 
 /// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
@@ -260,7 +261,7 @@ impl<'a> DragValue<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
-        let mut entry = enter_widget(ui, self.node);
+        let mut entry = WidgetEntry::enter(ui, self.node);
         let id = entry.widget.id();
 
         // Focused + editable + enabled: the inline text editor owns the

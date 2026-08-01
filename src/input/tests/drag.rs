@@ -6,7 +6,8 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
-use crate::widgets::{Response, frame::Frame, panel::Panel};
+use crate::widgets::response::Response;
+use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
 fn build_clickable(ui: &mut Ui) {

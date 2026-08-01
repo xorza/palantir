@@ -6,9 +6,10 @@ use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
+use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 use glam::Vec2;
 
 /// Track width as a multiple of its height. A switch reads as a switch
@@ -58,7 +59,7 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = enter_widget(ui, self.node);
+        let entry = WidgetEntry::enter(ui, self.node);
         let id = entry.widget.id();
         let state = &entry.state;
         if state.left.clicked() && !state.disabled {

@@ -8,8 +8,8 @@ use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
+use crate::widgets::chrome;
 use crate::widgets::frame::Frame;
-use crate::widgets::resolve_container_chrome;
 use glam::Vec2;
 use std::cell::Cell;
 
@@ -215,7 +215,7 @@ impl Popup {
         });
 
         {
-            let chrome = resolve_container_chrome(
+            let chrome = chrome::resolve_container(
                 &mut widget.node,
                 chrome,
                 ui.theme.panel_background.as_ref(),

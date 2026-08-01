@@ -3,6 +3,7 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
+use crate::input::response::ResponseState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
@@ -15,8 +16,8 @@ use crate::scene::tree::node::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
+use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::tooltip::{GLOBAL_STATE_ID, Tooltip, TooltipGlobal, TooltipState};
-use crate::widgets::{ResponseSnapshot, ResponseState};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 

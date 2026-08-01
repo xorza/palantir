@@ -15,7 +15,7 @@ use crate::scene::tree::node::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::frame::FrameRuntime;
 use crate::ui::harness::UiHarness;
-use crate::widgets::ResponseSnapshot;
+use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, text::Text};
 use glam::{IVec2, UVec2, Vec2};
 use std::cell::{Cell, RefCell};

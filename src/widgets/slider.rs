@@ -5,8 +5,10 @@ use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::widgets::chrome;
+use crate::widgets::response::Response;
 use crate::widgets::theme::slider::SliderTheme;
-use crate::widgets::{Response, chrome_leaf, enter_widget};
+use crate::widgets::widget::WidgetEntry;
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a `f32` range. Takes a `&mut f32`;
@@ -58,7 +60,7 @@ impl<'a> Slider<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = enter_widget(ui, self.node);
+        let mut entry = WidgetEntry::enter(ui, self.node);
         let id = entry.widget.id();
         let state = &entry.state;
 
@@ -101,10 +103,10 @@ impl<'a> Slider<'a> {
         let [filled, remainder] = Sizing::split(fraction);
         entry.widget.record(ui, None, |ui| {
             let rail = Sizing::fixed(rail_h);
-            chrome_leaf(ui, id.with("fill"), (filled, rail), Some(&fill_bg));
+            chrome::leaf(ui, id.with("fill"), (filled, rail), Some(&fill_bg));
             let knob = Sizing::fixed(knob);
-            chrome_leaf(ui, id.with("knob"), (knob, knob), Some(&knob_bg));
-            chrome_leaf(ui, id.with("rail"), (remainder, rail), Some(&rail_bg));
+            chrome::leaf(ui, id.with("knob"), (knob, knob), Some(&knob_bg));
+            chrome::leaf(ui, id.with("rail"), (remainder, rail), Some(&rail_bg));
         });
         entry.into_response(ui)
     }

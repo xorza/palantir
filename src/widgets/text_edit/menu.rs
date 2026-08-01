@@ -2,10 +2,11 @@
 
 use crate::input::keyboard::KeyboardEvent;
 use crate::ui::Ui;
-use crate::widgets::ResponseSnapshot;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
+use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
-use crate::widgets::text_edit::model::{EditState, Editor};
+use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::editor::Editor;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct MenuResult {
