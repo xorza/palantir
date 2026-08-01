@@ -16,10 +16,10 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
-use crate::widgets::scroll::state::{ScrollBounds, ScrollState, TrackPage};
+use crate::widgets::scroll::state::{ScrollBounds, ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::{InnerResponse, Response};
-use glam::Vec2;
+use glam::{BVec2, Vec2};
 use std::ops::RangeInclusive;
 
 /// What kind of input triggers a zoom step. See [`ZoomConfig::modifier`].
@@ -100,8 +100,8 @@ fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
     if panned { theme.width + theme.gap } else { 0.0 }
 }
 
-/// Offset-independent bar layout: cross-axis gutter reservations,
-/// post-zoom content extent, and bar main-axis length.
+/// Cross-axis space the bars take out of the widget's box: the gutter
+/// reserved on each panned axis, and the viewport left over for content.
 #[derive(Copy, Clone, Debug)]
 struct BarSpace {
     bar_viewport: Size,
@@ -111,7 +111,7 @@ struct BarSpace {
 
 fn bar_space(
     outer: Size,
-    pan: glam::BVec2,
+    pan: BVec2,
     user_padding: Spacing,
     theme: &ScrollbarTheme,
     bar_mode: BarMode,
@@ -134,64 +134,13 @@ fn bar_space(
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-struct BarLayout {
-    scaled_content: Size,
-    space: BarSpace,
-}
-
-fn bar_layout(content: Size, zoom: f32, space: BarSpace) -> BarLayout {
-    BarLayout {
-        scaled_content: Size::new(content.w * zoom, content.h * zoom),
-        space,
-    }
-}
-
-#[derive(Debug)]
-struct BarResponses {
-    theme: ScrollbarTheme,
-    thumb_id_v: WidgetId,
-    thumb_id_h: WidgetId,
-    track_id_v: WidgetId,
-    track_id_h: WidgetId,
-    resp_v: ResponseState,
-    resp_h: ResponseState,
-    resp_track_v: ResponseState,
-    resp_track_h: ResponseState,
-}
-
-impl BarResponses {
-    fn read(ui: &Ui, scroll_id: WidgetId) -> Self {
-        let thumb_id_v = scroll_id.with("__vthumb");
-        let thumb_id_h = scroll_id.with("__hthumb");
-        let track_id_v = scroll_id.with("__vtrack");
-        let track_id_h = scroll_id.with("__htrack");
-        Self {
-            theme: ui.theme.scrollbar.clone(),
-            thumb_id_v,
-            thumb_id_h,
-            track_id_v,
-            track_id_h,
-            resp_v: ui.response_for(thumb_id_v),
-            resp_h: ui.response_for(thumb_id_h),
-            resp_track_v: ui.response_for(track_id_v),
-            resp_track_h: ui.response_for(track_id_h),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct BarFrame {
-    responses: BarResponses,
-    layout: BarLayout,
-}
-
-#[derive(Debug)]
-struct ScrollFrame {
-    state: ScrollState,
-    bars: Option<BarFrame>,
-}
-
+/// Last frame's measured content extent for this scroll, keyed by the
+/// **inner viewport** node because that is the `LayoutMode::Scroll` one.
+/// `Size::ZERO` until the node has been through one layout pass.
+///
+/// Resolves through the cascade, so like `Ui::response_for` it answers
+/// for the previous frame — which is the lag `Scroll` wants: the bars
+/// describe the content the user is looking at.
 fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
     let Some(endpoint) = ui.cascades.by_id.get(&scroll_id) else {
         return Size::ZERO;
@@ -199,47 +148,263 @@ fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
     ui.layout[endpoint.layer].scroll_content[endpoint.node.idx()]
 }
 
-/// Emit one bar's worth of nodes onto the overlay: a track leaf with
-/// `Sense::CLICK` (paging on press) and a thumb leaf with `Sense::DRAG`
-/// painted on top. Neither carries a size or a position — the overlay is
-/// a [`crate::layout::scrollbars`] container, and its arrange assigns
-/// both rects once measure has produced the content extent they are a
-/// ratio of.
-///
-/// Both are recorded unconditionally, even on an axis showing no bar:
-/// arrange collapses those to zero extent. Recording them either way is
-/// what keeps the child list the same shape across an overflow toggle,
-/// which is what lets the driver address children positionally.
-///
-/// Track stays a leaf even when `theme.track` alpha is 0 so the
-/// click-to-page surface remains — the gutter is reserved either way,
-/// matching OS scrollbar conventions.
-fn push_bar_nodes(
-    ui: &mut Ui,
+/// What one scroll frame resolves against, all read from *last* frame's
+/// layout before any of this frame's input applies. Taken once at the
+/// top of [`Scroll::show`] so the pan, the zoom, and both bars agree on
+/// the box they are working in.
+#[derive(Copy, Clone, Debug)]
+struct ScrollGeometry {
+    /// Content extent the bars are a ratio of, before zoom.
+    content: Size,
+    /// The user's own padding — reserved out of the viewport here, and
+    /// handed to the bar overlay's driver so it deflates by the same.
+    padding: Spacing,
+    space: BarSpace,
+    bounds: ScrollBounds,
+}
+
+impl ScrollGeometry {
+    /// Content extent at the current zoom. The bars measure against
+    /// this rather than the raw extent so dragging a thumb inside a
+    /// zoomed viewport tracks the cursor 1:1 with what's on screen.
+    fn scaled_content(&self, zoom: f32) -> Size {
+        Size::new(self.content.w * zoom, self.content.h * zoom)
+    }
+}
+
+/// This frame's wheel / trackpad / pinch input after routing.
+#[derive(Copy, Clone, Debug)]
+struct ScrollInput {
+    pan_delta: Vec2,
+    zoom_delta: f32,
+    /// Widget-local point that stays fixed across the zoom step.
+    /// `Some` exactly when a step lands and an anchor could be resolved.
+    pivot: Option<Vec2>,
+}
+
+/// One scrollbar axis: the two leaves the overlay records for it, and
+/// last frame's interaction on each.
+#[derive(Copy, Clone, Debug)]
+struct BarAxis {
     track_id: WidgetId,
     thumb_id: WidgetId,
-    resp: ResponseState,
-    theme: &ScrollbarTheme,
-) {
-    let radius = Corners::all(theme.radius);
-    let track = Node::leaf().id(track_id).sense(Sense::CLICK);
-    if !theme.track.is_noop() {
-        let chrome = Background::rounded(theme.track, radius);
-        ui.widget(track).record(ui, Some(&chrome), |_| {});
-    } else {
-        ui.widget(track).record(ui, None, |_| {});
+    track: ResponseState,
+    thumb: ResponseState,
+}
+
+impl BarAxis {
+    /// Emit this axis's two nodes onto the overlay: a track leaf with
+    /// `Sense::CLICK` (paging on press) and a thumb leaf with
+    /// `Sense::DRAG` painted on top. Neither carries a size or a
+    /// position — the overlay is a [`crate::layout::scrollbars`]
+    /// container, and its arrange assigns both rects once measure has
+    /// produced the content extent they are a ratio of.
+    ///
+    /// Both are recorded unconditionally, even on an axis showing no
+    /// bar: arrange collapses those to zero extent. Recording them
+    /// either way is what keeps the child list the same shape across an
+    /// overflow toggle, which is what lets the driver address children
+    /// positionally.
+    ///
+    /// Track stays a leaf even when `theme.track` alpha is 0 so the
+    /// click-to-page surface remains — the gutter is reserved either
+    /// way, matching OS scrollbar conventions.
+    fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
+        let radius = Corners::all(theme.radius);
+        let track = Node::leaf().id(self.track_id).sense(Sense::CLICK);
+        if !theme.track.is_noop() {
+            let chrome = Background::rounded(theme.track, radius);
+            ui.widget(track).record(ui, Some(&chrome), |_| {});
+        } else {
+            ui.widget(track).record(ui, None, |_| {});
+        }
+
+        let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
+            theme.thumb_active
+        } else if self.thumb.hovered {
+            theme.thumb_hover
+        } else {
+            theme.thumb
+        };
+        let thumb = Node::leaf().id(self.thumb_id).sense(Sense::DRAG);
+        let chrome = Background::rounded(fill, radius);
+        ui.widget(thumb).record(ui, Some(&chrome), |_| {});
+    }
+}
+
+/// One axis's bar resolved against the offset at the moment it was
+/// taken. Absent (`Bars::resolve` returning `None`) means the content
+/// fits that axis and no thumb shows.
+#[derive(Copy, Clone, Debug)]
+struct ResolvedBar {
+    /// Main-axis length of the track — also the page step, since a
+    /// click past the thumb pages by one viewport.
+    track_main: f32,
+    /// Post-zoom content extent on the main axis.
+    content_main: f32,
+    thumb_offset: f32,
+    thumb_size: f32,
+}
+
+impl ResolvedBar {
+    /// Offset at which the content's trailing edge meets the track's.
+    fn max_off(&self) -> f32 {
+        (self.content_main - self.track_main).max(0.0)
     }
 
-    let fill = if resp.left.drag.delta().is_some() || resp.pressed() {
-        theme.thumb_active
-    } else if resp.hovered {
-        theme.thumb_hover
-    } else {
-        theme.thumb
-    };
-    let thumb = Node::leaf().id(thumb_id).sense(Sense::DRAG);
-    let chrome = Background::rounded(fill, radius);
-    ui.widget(thumb).record(ui, Some(&chrome), |_| {});
+    fn travel(&self) -> ThumbTravel {
+        ThumbTravel {
+            factor: self.max_off() / (self.track_main - self.thumb_size).max(f32::EPSILON),
+            max_off: self.max_off(),
+        }
+    }
+
+    fn page_at(&self, click_main: f32) -> TrackPage {
+        TrackPage {
+            click_main,
+            thumb_offset: self.thumb_offset,
+            thumb_size: self.thumb_size,
+            page_step: self.track_main,
+            max_off: self.max_off(),
+        }
+    }
+}
+
+/// Both scrollbars: their ids, last frame's interaction on each, and the
+/// theme they paint with. Read in full *before* the `&mut` state borrow
+/// that acts on them, because reading a response borrows all of `Ui`.
+#[derive(Debug)]
+struct Bars {
+    theme: ScrollbarTheme,
+    v: BarAxis,
+    h: BarAxis,
+}
+
+impl Bars {
+    fn read(ui: &Ui, scroll_id: WidgetId) -> Self {
+        let axis = |track: &str, thumb: &str| {
+            let (track_id, thumb_id) = (scroll_id.with(track), scroll_id.with(thumb));
+            BarAxis {
+                track_id,
+                thumb_id,
+                track: ui.response_for(track_id),
+                thumb: ui.response_for(thumb_id),
+            }
+        };
+        Self {
+            theme: ui.theme.scrollbar.clone(),
+            v: axis("__vtrack", "__vthumb"),
+            h: axis("__htrack", "__hthumb"),
+        }
+    }
+
+    /// The axes in the order the layout driver addresses their nodes:
+    /// vertical track + thumb, then horizontal.
+    fn axes(&self) -> [(Axis, &BarAxis); 2] {
+        [(Axis::Y, &self.v), (Axis::X, &self.h)]
+    }
+
+    /// This axis's thumb against `offset`, or `None` when the content
+    /// fits and no thumb shows.
+    fn resolve(
+        &self,
+        axis: Axis,
+        geom: ScrollGeometry,
+        scaled: Size,
+        offset: f32,
+    ) -> Option<ResolvedBar> {
+        let track_main = axis.main(geom.space.bar_viewport);
+        let content_main = axis.main(scaled);
+        let g = scrollbars::bar_geometry(
+            track_main,
+            content_main,
+            offset,
+            track_main,
+            self.theme.min_thumb_px,
+        )?;
+        Some(ResolvedBar {
+            track_main,
+            content_main,
+            thumb_offset: g.thumb_offset,
+            thumb_size: g.thumb_size,
+        })
+    }
+
+    /// Fold this frame's bar interaction into the offset: thumb drags
+    /// first, then track pages.
+    ///
+    /// Two passes, not one per axis: a page click reads the offset a
+    /// same-frame drag on the *other* axis already moved, and the drag
+    /// anchor is a single slot shared by both axes. Resolving each bar
+    /// immediately before it is applied is what keeps the thumb tracking
+    /// the cursor within the frame.
+    fn drive(&self, state: &mut ScrollState, geom: ScrollGeometry, pan: BVec2) {
+        let scaled = geom.scaled_content(state.zoom);
+        for (axis, bar) in self.axes() {
+            if !axis.main_b(pan) {
+                continue;
+            }
+            let travel = self
+                .resolve(axis, geom, scaled, axis.main_v(state.offset))
+                .map(|resolved| resolved.travel());
+            state.apply_thumb_drag(
+                axis,
+                bar.thumb.left.drag.started(),
+                bar.thumb.left.drag.delta(),
+                travel,
+            );
+        }
+        for (axis, bar) in self.axes() {
+            if !axis.main_b(pan) || !bar.track.left.clicked() {
+                continue;
+            }
+            let Some(pointer_local) = bar.track.pointer_local else {
+                continue;
+            };
+            let page = self
+                .resolve(axis, geom, scaled, axis.main_v(state.offset))
+                .map(|resolved| resolved.page_at(axis.main_v(pointer_local)));
+            state.apply_track_page(axis, page);
+        }
+    }
+
+    /// Record the bar overlay as a sibling of the viewport: a
+    /// `scrollbars` container filling the outer rect, holding the four
+    /// leaves in the fixed order its driver addresses them by. Painted
+    /// after the viewport via record order, hit-tested above it via
+    /// cascade order.
+    fn record(
+        &self,
+        ui: &mut Ui,
+        scroll_id: WidgetId,
+        state: ScrollState,
+        geom: ScrollGeometry,
+        pan: BVec2,
+    ) {
+        // The viewport was opened on the line above, so this pass's id
+        // map already holds its node — the handle the driver needs to
+        // reach `scroll_content`.
+        let content = ui.forest.current_node(scroll_id);
+        let def_id = ui.forest.push_scrollbars_def(ScrollBarsDef {
+            content,
+            offset: state.offset,
+            zoom: state.zoom,
+            pan,
+            reserve_y: geom.space.reserve_y,
+            reserve_x: geom.space.reserve_x,
+            padding: geom.padding,
+            bar_width: self.theme.width,
+            min_thumb: self.theme.min_thumb_px,
+        });
+        let overlay = Node::scroll_bars(def_id)
+            .id(scroll_id.with("__bars"))
+            .size((Sizing::FILL, Sizing::FILL));
+        ui.widget(overlay).record(ui, None, |ui| {
+            for (_, bar) in self.axes() {
+                bar.record(ui, &self.theme);
+            }
+        });
+    }
 }
 
 /// How the scrollbars relate to the content area on the pan axes.
@@ -461,6 +626,180 @@ impl Scroll {
         self.sense(sense)
     }
 
+    /// Route this frame's wheel / trackpad / pinch input over the
+    /// viewport into a pan delta and a zoom step.
+    ///
+    /// The wheel does one or the other, never both: when the configured
+    /// modifier matches, its notches become a multiplicative zoom factor
+    /// and the pan is suppressed for that frame. The notch count already
+    /// folds classic-wheel lines and touchpad pixels together (via the
+    /// theme's line height), so ctrl held over a touchpad
+    /// pinch-via-scroll zooms at the rate it would have panned. Positive
+    /// `notches.y` is scroll-down, which by convention zooms *out*
+    /// (factor < 1).
+    ///
+    /// `pivot` — the point that stays fixed across the step, in
+    /// widget-local coords — resolves only when a step actually lands.
+    /// It falls back to the viewport centre when the pointer is off the
+    /// widget, and on the first frame where there is no rect yet, so the
+    /// zoom still *feels* anchored before pointer tracking kicks in.
+    fn read_input(&self, ui: &Ui, response: &ResponseState) -> ScrollInput {
+        // Font-derived line step for wheel→pixel conversion. Pulls
+        // `theme.text` (the default font config) rather than scanning
+        // children for a dominant font — that's a future polish; for
+        // now the active theme's text size is a good proxy and stays
+        // consistent with what the user is reading.
+        let line_px = ui.theme.text.line_height_for(ui.theme.text.font_size_px);
+        let scroll = response.scroll;
+        let pan_raw = scroll.pixels + scroll.lines * line_px;
+        let notches = scroll.lines + scroll.pixels / line_px.max(f32::EPSILON);
+        // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
+        // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
+        // zoom.
+        let mods = ui.peek_modifiers();
+        let wheel_zooms = self.zoom.as_ref().is_some_and(|cfg| match cfg.modifier {
+            ZoomModifier::Ctrl => mods.ctrl,
+            ZoomModifier::Always => true,
+            ZoomModifier::PinchOnly => false,
+        });
+        let (pan_delta, wheel_factor) = match self.zoom.as_ref().filter(|_| wheel_zooms) {
+            Some(cfg) => (Vec2::ZERO, zoom::from_wheel(cfg.step, notches.y)),
+            None => (pan_raw, 1.0_f32),
+        };
+        let zoom_delta = zoom::combine(scroll.zoom, wheel_factor);
+
+        let centre = response
+            .layout_rect
+            .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
+        let pivot = ((zoom_delta - 1.0).abs() > f32::EPSILON)
+            .then(
+                || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
+                    ZoomPivot::Pointer => response.pointer_local.or(centre),
+                    ZoomPivot::Center => centre,
+                },
+            )
+            .flatten();
+
+        ScrollInput {
+            pan_delta,
+            zoom_delta,
+            pivot,
+        }
+    }
+
+    /// Last frame's measurements, in the shape every later step reads
+    /// them: the content extent, the gutter the bars reserve, and the
+    /// offset bounds that follow from both.
+    fn measure(
+        &self,
+        ui: &Ui,
+        scroll_id: WidgetId,
+        pan: BVec2,
+        response: &ResponseState,
+    ) -> ScrollGeometry {
+        let outer = response.layout_rect.map_or(Size::ZERO, |r| r.size);
+        let content = previous_scroll_content(ui, scroll_id);
+        let padding = self.node.padding.unwrap_or(Spacing::ZERO);
+        let space = bar_space(outer, pan, padding, &ui.theme.scrollbar, self.bar_mode);
+        ScrollGeometry {
+            content,
+            padding,
+            space,
+            bounds: ScrollBounds {
+                content,
+                viewport: space.bar_viewport,
+                content_margin: self.content_margin,
+            },
+        }
+    }
+
+    /// Fold one frame of routed input into the retained offset and zoom.
+    ///
+    /// Order is load-bearing: the pivot-anchored zoom step moves the
+    /// offset, so it runs before the pan. The settled clamp then applies
+    /// only to a non-zoomable scroll — a zoomable one keeps the
+    /// out-of-range drift the pivot path composes against.
+    fn apply_input(
+        &self,
+        state: &mut ScrollState,
+        input: ScrollInput,
+        geom: ScrollGeometry,
+        pan: BVec2,
+    ) {
+        if let (Some(cfg), Some(pivot)) = (self.zoom.as_ref(), input.pivot) {
+            state.apply_zoom(
+                *cfg.range.start(),
+                *cfg.range.end(),
+                pivot,
+                input.zoom_delta,
+            );
+        }
+        let preserve_zoom_underflow = self.zoom.is_some();
+        state.apply_wheel_pan(
+            geom.bounds,
+            pan.x,
+            pan.y,
+            input.pan_delta,
+            preserve_zoom_underflow,
+        );
+        if !preserve_zoom_underflow {
+            state.clamp_to_natural(geom.bounds);
+        }
+    }
+
+    /// The outer/inner pair actually recorded.
+    ///
+    /// Outer is a bare ZStack holding the inner viewport plus the bar
+    /// overlay. The reservation gutter lives on `inner.margin` — not on
+    /// outer's padding — so the overlay, a sibling of inner under the
+    /// same ZStack, can reach into the gutter strip with absolute
+    /// positions.
+    ///
+    /// `scroll_wrappers` routes the *static* half: which user field
+    /// lands on which wrapper. Everything patched here is per-frame —
+    /// the fit bits the user's `Sizing` implies, the viewport id, the
+    /// reservation margin, the clip read back off the user node, and the
+    /// pan/zoom transform.
+    fn wrappers(
+        &self,
+        scroll_id: WidgetId,
+        pan: BVec2,
+        space: BarSpace,
+        state: ScrollState,
+    ) -> ScrollWrappers {
+        let ScrollWrappers { outer, inner } = scroll_wrappers(self.node);
+
+        // Inner viewport owns the clip, the pan transform, the user-set
+        // padding (encoder deflates the clip mask by it), and the
+        // `Scroll` layout mode that runs children with INF on panned
+        // axes. ZStack arrange deflates `Sizing::fill` by margin, so
+        // inner's rendered rect = outer.rect minus the reserved strip on
+        // the cross axes.
+        //
+        // Encode the user's per-axis `Sizing` into the viewport's fit
+        // bits: a `Hug` panned axis makes the driver report its content
+        // extent, so the scroll sizes to content like any other `Hug`
+        // widget (bounded by `max_size`/available, scrolling past the
+        // cap); `Fill`/`Fixed` keep the content-independent viewport.
+        let user = self.node.size.unwrap_or_default();
+        let fit = BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
+        let mut inner = inner.id(scroll_id);
+        inner.set_scroll_spec(self.node.scroll_spec().with_fit(fit));
+        inner.margin = Some(Spacing::new(0.0, 0.0, space.reserve_y, space.reserve_x));
+        // `with_axes` set `ClipMode::Rect` by default; caller configuration
+        // can replace it with rounded clipping or no clipping.
+        inner.clip = self.node.clip;
+        // Raw pan/zoom — cascade anchors the scale at the inner's own
+        // `layout_rect.min` (`TranslateScale::anchored_at`), so we
+        // don't pre-bake the origin compensation. Translation is just
+        // the user's scroll offset, negated (scroll right shifts
+        // content left).
+        if state.offset != Vec2::ZERO || (state.zoom - 1.0).abs() > f32::EPSILON {
+            inner.transform = TranslateScale::new(-state.offset, state.zoom);
+        }
+        ScrollWrappers { outer, inner }
+    }
+
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let mut widget = ui.widget(self.node);
         let id = widget.id();
@@ -471,262 +810,33 @@ impl Scroll {
                 "Scroll::with_zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
             );
         }
-
         // Input routes by `Sense::SCROLL`, which sits on the outer
-        // ZStack (so wheel events over the bar gutter still pan the
-        // viewport). Measured content is keyed by the inner viewport
-        // node because that is the `LayoutMode::Scroll` node.
+        // ZStack, so wheel events over the bar gutter still pan the
+        // viewport.
         let scroll_id = id.with("__viewport");
-        // Font-derived line step for wheel→pixel conversion. Pulls
-        // `theme.text` (the default font config) rather than scanning
-        // children for a dominant font — that's a future polish; for
-        // now the active theme's text size is a good proxy and stays
-        // consistent with what the user is reading.
-        let line_px = ui.theme.text.line_height_for(ui.theme.text.font_size_px);
-        let scroll_delta = ui.response_for(id).scroll;
-        let pan_delta_raw = scroll_delta.pixels + scroll_delta.lines * line_px;
-        let wheel_notches = scroll_delta.lines + scroll_delta.pixels / line_px.max(f32::EPSILON);
-        let pinch_delta = scroll_delta.zoom;
-        let mods = ui.peek_modifiers();
-        // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
-        // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
-        // zoom.
-        let wheel_zoom_gate = self.zoom.as_ref().is_some_and(|cfg| match cfg.modifier {
-            ZoomModifier::Ctrl => mods.ctrl,
-            ZoomModifier::Always => true,
-            ZoomModifier::PinchOnly => false,
-        });
-        // Route the wheel: when the gate matches, the notches become
-        // a multiplicative zoom factor; pan is suppressed for the same
-        // frame. `wheel_notches` already combines classic-wheel lines
-        // and touchpad-pixel→virtual-notch (via `line_px`) so ctrl
-        // held over a touchpad pinch-via-scroll zooms at the same rate
-        // it would have panned. Positive notches.y means scroll-down
-        // which by convention zooms *out* (factor < 1).
-        let (pan_delta, wheel_zoom_factor) = if wheel_zoom_gate {
-            let cfg = self.zoom.as_ref().unwrap();
-            (Vec2::ZERO, zoom::from_wheel(cfg.step, wheel_notches.y))
-        } else {
-            (pan_delta_raw, 1.0_f32)
-        };
-        let zoom_delta = zoom::combine(pinch_delta, wheel_zoom_factor);
-        // Pivot in widget-local coords (outer rect origin). On the
-        // first frame the response rect is None — fall back to viewport
-        // center, which makes the zoom *feel* anchored even before
-        // pointer-tracked anchoring kicks in.
-        let outer_response = ui.response_for(id);
-        let widget_size = outer_response.layout_rect.map(|r| r.size);
-        let outer = widget_size.unwrap_or(Size::ZERO);
-        let content = previous_scroll_content(ui, scroll_id);
-        let user_padding = self.node.padding.unwrap_or(Spacing::ZERO);
-        let bar_space = bar_space(outer, pan, user_padding, &ui.theme.scrollbar, self.bar_mode);
-        let bounds = ScrollBounds {
-            content,
-            viewport: bar_space.bar_viewport,
-            content_margin: self.content_margin,
-        };
-        let pivot_local = if (zoom_delta - 1.0).abs() > f32::EPSILON {
-            let cfg_pivot = self
-                .zoom
-                .as_ref()
-                .map(|c| c.pivot)
-                .unwrap_or(ZoomPivot::Pointer);
-            match (cfg_pivot, outer_response.pointer_local, widget_size) {
-                (ZoomPivot::Pointer, Some(p), _) => Some(p),
-                (_, _, Some(sz)) => Some(Vec2::new(sz.w * 0.5, sz.h * 0.5)),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        let bar_responses = if self.bar_mode == BarMode::Hidden {
-            None
-        } else {
-            Some(BarResponses::read(ui, scroll_id))
-        };
 
-        let frame = {
+        // Everything read off `ui` immutably, before the state borrow.
+        let response = ui.response_for(id);
+        let geom = self.measure(ui, scroll_id, pan, &response);
+        let input = self.read_input(ui, &response);
+        let bars = (self.bar_mode != BarMode::Hidden).then(|| Bars::read(ui, scroll_id));
+
+        let state = {
             let state = ui.state_mut::<ScrollState>(id);
-            // 1) Pivot-anchored zoom step.
-            if let (Some(cfg), Some(p)) = (self.zoom.as_ref(), pivot_local) {
-                state.apply_zoom(*cfg.range.start(), *cfg.range.end(), p, zoom_delta);
+            self.apply_input(state, input, geom, pan);
+            if let Some(bars) = &bars {
+                bars.drive(state, geom, pan);
             }
-            // 2) Wheel pan, then 2b) the settled clamp for non-zoomable
-            //    scrolls (zoomable ones keep the out-of-range drift the
-            //    pivot path depends on).
-            let preserve_zoom_underflow = self.zoom.is_some();
-            state.apply_wheel_pan(bounds, pan.x, pan.y, pan_delta, preserve_zoom_underflow);
-            if !preserve_zoom_underflow {
-                state.clamp_to_natural(bounds);
-            }
-            let bars = bar_responses.map(|responses| {
-                // Bars use the *scaled* content extent so dragging inside a
-                // zoomed viewport tracks the cursor 1:1 with the visible thumb.
-                let bl = bar_layout(content, state.zoom, bar_space);
-                for (axis, resp) in [(Axis::Y, responses.resp_v), (Axis::X, responses.resp_h)] {
-                    let panned = match axis {
-                        Axis::Y => pan.y,
-                        Axis::X => pan.x,
-                    };
-                    if !panned {
-                        continue;
-                    }
-                    let track_main = axis.main(bl.space.bar_viewport);
-                    let main_content = axis.main(bl.scaled_content);
-                    let geom = scrollbars::bar_geometry(
-                        track_main,
-                        main_content,
-                        axis.main_v(state.offset),
-                        track_main,
-                        responses.theme.min_thumb_px,
-                    )
-                    .map(|g| {
-                        let travel = (track_main - g.thumb_size).max(f32::EPSILON);
-                        let max_off = (main_content - track_main).max(0.0);
-                        (max_off / travel, max_off)
-                    });
-                    state.apply_thumb_drag(
-                        axis,
-                        resp.left.drag.started(),
-                        resp.left.drag.delta(),
-                        geom,
-                    );
-                }
-                for (axis, resp_track, panned) in [
-                    (Axis::Y, responses.resp_track_v, pan.y),
-                    (Axis::X, responses.resp_track_h, pan.x),
-                ] {
-                    if !panned || !resp_track.left.clicked() {
-                        continue;
-                    }
-                    let Some(pointer_local) = resp_track.pointer_local else {
-                        continue;
-                    };
-                    let page_step = axis.main(bl.space.bar_viewport);
-                    let main_content = axis.main(bl.scaled_content);
-                    let page = scrollbars::bar_geometry(
-                        page_step,
-                        main_content,
-                        axis.main_v(state.offset),
-                        page_step,
-                        responses.theme.min_thumb_px,
-                    )
-                    .map(|g| TrackPage {
-                        click_main: axis.main_v(pointer_local),
-                        thumb_offset: g.thumb_offset,
-                        thumb_size: g.thumb_size,
-                        page_step,
-                        max_off: (main_content - page_step).max(0.0),
-                    });
-                    state.apply_track_page(axis, page);
-                }
-                BarFrame {
-                    responses,
-                    layout: bl,
-                }
-            });
-            ScrollFrame {
-                state: *state,
-                bars,
-            }
+            *state
         };
 
-        let zoom = frame.state.zoom;
-        let offset = frame.state.offset;
-        let (reserve_y, reserve_x) = frame
-            .bars
-            .as_ref()
-            .map(|bars| (bars.layout.space.reserve_y, bars.layout.space.reserve_x))
-            .unwrap_or_default();
-
-        // Outer: bare ZStack that holds the inner viewport + a bar
-        // overlay. The reservation gutter lives on `inner.margin` —
-        // not on outer's padding — so the bar overlay (sibling of
-        // inner under the same ZStack) can reach into the gutter
-        // strip with absolute positions. The field routing
-        // (outer = sizing/placement, inner = layout/panel knobs) lives
-        // in `scroll_wrappers`; the per-frame computed fields below
-        // patch `inner`.
-        let ScrollWrappers { outer, mut inner } = scroll_wrappers(self.node);
-
-        // Inner viewport owns the clip, the pan transform, the user-set
-        // padding (encoder deflates the clip mask by it), and the
-        // `Scroll` layout mode that runs children with INF on panned
-        // axes. The reservation gutter is its margin — ZStack arrange
-        // deflates `Sizing::fill` by margin, so inner's rendered rect =
-        // outer.rect minus the reserved strip on the cross axes.
-        //
-        // Encode the user's per-axis `Sizing` into the viewport's fit
-        // bits: a `Hug` panned axis makes the driver report its content
-        // extent, so the scroll sizes to content like any other `Hug`
-        // widget (bounded by `max_size`/available, scrolling past the
-        // cap); `Fill`/`Fixed` keep the content-independent viewport.
-        let user = self.node.size.unwrap_or_default();
-        let fit = glam::BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
-        inner.set_scroll_spec(self.node.scroll_spec().with_fit(fit));
-        let mut inner = inner.id(scroll_id);
-        inner.margin = Some(Spacing::new(0.0, 0.0, reserve_y, reserve_x));
+        let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, pan, geom.space, state);
         let inner_chrome = self.chrome;
-        // `with_axes` set `ClipMode::Rect` by default; caller configuration
-        // can replace it with rounded clipping or no clipping.
-        inner.clip = self.node.clip;
-        // Raw pan/zoom — cascade anchors the scale at the inner's own
-        // `layout_rect.min` (`TranslateScale::anchored_at`), so we
-        // don't pre-bake the origin compensation. Translation is just
-        // the user's scroll offset, negated (scroll right shifts
-        // content left).
-        if offset != Vec2::ZERO || (zoom - 1.0).abs() > f32::EPSILON {
-            inner.transform = TranslateScale::new(-offset, zoom);
-        }
-
         widget.node = outer;
         let inner_value = widget.record(ui, None, |ui| {
             let inner_value = ui.widget(inner).record(ui, inner_chrome.as_ref(), body);
-            // Bar overlay: a `scrollbars` sibling of inner, Fill on both
-            // axes → covers outer's full rect. Its four leaves are
-            // recorded bare and sized by that driver's arrange, which is
-            // the only place the content extent they are a ratio of
-            // exists. Painted after inner via record order, hit-tested
-            // above inner via cascade order.
-            if let Some(bars) = frame.bars {
-                // The viewport was opened on the line above, so the
-                // current pass's id map already holds its node — the
-                // handle the driver needs to reach `scroll_content`.
-                let content = ui.forest.ids.curr[&scroll_id].node;
-                let layer = ui.forest.current_layer();
-                let def_id = ui.forest.trees[layer].push_scrollbars_def(ScrollBarsDef {
-                    content,
-                    offset: frame.state.offset,
-                    zoom: frame.state.zoom,
-                    pan,
-                    reserve_y,
-                    reserve_x,
-                    padding: user_padding,
-                    bar_width: bars.responses.theme.width,
-                    min_thumb: bars.responses.theme.min_thumb_px,
-                });
-                let overlay = Node::scroll_bars(def_id)
-                    .id(scroll_id.with("__bars"))
-                    .size((Sizing::FILL, Sizing::FILL));
-                ui.widget(overlay).record(ui, None, |ui| {
-                    // Fixed order — the driver addresses these
-                    // positionally: vertical track, vertical thumb,
-                    // horizontal track, horizontal thumb.
-                    push_bar_nodes(
-                        ui,
-                        bars.responses.track_id_v,
-                        bars.responses.thumb_id_v,
-                        bars.responses.resp_v,
-                        &bars.responses.theme,
-                    );
-                    push_bar_nodes(
-                        ui,
-                        bars.responses.track_id_h,
-                        bars.responses.thumb_id_h,
-                        bars.responses.resp_h,
-                        &bars.responses.theme,
-                    );
-                });
+            if let Some(bars) = &bars {
+                bars.record(ui, scroll_id, state, geom, pan);
             }
             inner_value
         });

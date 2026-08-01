@@ -3,6 +3,9 @@
 //! per-frame data consumed by input and rendering. [`record_store`]
 //! retains the variable-sized payloads referenced by recorded shapes.
 
+use crate::layout::scrollbars::ScrollBarsDef;
+use crate::layout::types::layout_mode::{GridDefId, ScrollBarsDefId};
+use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::{Layer, PerLayer};
@@ -11,6 +14,7 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
 use crate::scene::shapes::lower::ChromeInput;
 use crate::scene::tree::Tree;
+use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::scene::tree::recording::{Placement, RecordingScratch};
 use crate::shape::Shape;
@@ -76,6 +80,40 @@ impl Forest {
     #[inline]
     pub(crate) fn current_layer(&self) -> Layer {
         self.layer_stack.last().copied().unwrap_or(Layer::Main)
+    }
+
+    /// Intern a grid's track definition into the current layer's tree.
+    /// The returned handle is what a `Node::grid` packs, and `open_node`
+    /// debug-asserts that a grid node's handle resolves — pushing
+    /// through the active layer here is what makes that hold by
+    /// construction rather than by every caller remembering.
+    pub(crate) fn push_grid_def(
+        &mut self,
+        rows: &[Track],
+        cols: &[Track],
+        row_gap: f32,
+        col_gap: f32,
+    ) -> GridDefId {
+        let layer = self.current_layer();
+        self.trees[layer].push_grid_def(rows, cols, row_gap, col_gap)
+    }
+
+    /// Intern a bar overlay's definition into the current layer's tree.
+    /// Companion to [`Self::push_grid_def`]; same layer contract.
+    pub(crate) fn push_scrollbars_def(&mut self, def: ScrollBarsDef) -> ScrollBarsDefId {
+        let layer = self.current_layer();
+        self.trees[layer].push_scrollbars_def(def)
+    }
+
+    /// The node `id` was opened under in **this** record pass.
+    ///
+    /// A direct probe of the id map the pass is filling, so it answers
+    /// only after the matching [`Self::open_node`] and panics otherwise
+    /// — unlike the cascade lookups on `Ui`, which answer for last
+    /// frame. `Scroll` uses it to hand its bar overlay a live handle to
+    /// the viewport recorded one line earlier.
+    pub(crate) fn current_node(&self, id: WidgetId) -> NodeId {
+        self.ids.curr[&id].node
     }
 
     pub(crate) fn pre_record(&mut self) {

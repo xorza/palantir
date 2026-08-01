@@ -14,7 +14,7 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::state::{ScrollState, ThumbTravel};
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 600);
@@ -176,8 +176,10 @@ fn state_is_swept_when_scroll_disappears() {
 /// the zero-extent thumb.
 #[test]
 fn thumb_drag_anchor_dies_with_its_geometry() {
-    // (offset per px of thumb travel, max offset).
-    let geom = Some((2.0, 100.0));
+    let geom = Some(ThumbTravel {
+        factor: 2.0,
+        max_off: 100.0,
+    });
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, 10.0);
 

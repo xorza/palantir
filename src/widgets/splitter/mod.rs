@@ -183,10 +183,13 @@ impl<'a> Splitter<'a> {
             Track::new(Sizing::share(1.0 - layout_ratio)),
         ];
         let cross_tracks = [Track::fill()];
-        let layer = ui.forest.current_layer();
         let grid_def_id = match axis {
-            Axis::X => ui.forest.trees[layer].push_grid_def(&cross_tracks, &main_tracks, 0.0, 0.0),
-            Axis::Y => ui.forest.trees[layer].push_grid_def(&main_tracks, &cross_tracks, 0.0, 0.0),
+            Axis::X => ui
+                .forest
+                .push_grid_def(&cross_tracks, &main_tracks, 0.0, 0.0),
+            Axis::Y => ui
+                .forest
+                .push_grid_def(&main_tracks, &cross_tracks, 0.0, 0.0),
         };
         entry.widget.node.set_grid_def(grid_def_id);
         entry.widget.record(ui, None, |ui| {
