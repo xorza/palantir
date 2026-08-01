@@ -233,7 +233,9 @@ pub use widgets::text::Text;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::theme::Theme;
 pub use widgets::theme::button::ButtonTheme;
-pub use widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme, MenuSeparatorTheme};
+pub use widgets::theme::context_menu::ContextMenuTheme;
+pub use widgets::theme::context_menu::menu_item::MenuItemTheme;
+pub use widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
 pub use widgets::theme::drag_value::DragValueTheme;
 pub use widgets::theme::modal::ModalTheme;
 pub use widgets::theme::palette::Palette;
@@ -247,7 +249,9 @@ pub use widgets::theme::text_edit::TextEditTheme;
 pub use widgets::theme::text_style::TextStyle;
 pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
-pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
+pub use widgets::theme::widget_look::WidgetLook;
+pub use widgets::theme::widget_look::animated_look::AnimatedLook;
+pub use widgets::theme::widget_look::stateful_look::StatefulLook;
 pub use widgets::tooltip::Tooltip;
 pub use widgets::{InnerResponse, Response, ResponseSnapshot, Widget};
 pub use window::{CursorIcon, Vsync, WindowConfig, WindowGeometry, WindowToken};
@@ -297,7 +301,7 @@ mod hot_struct_sizes {
     use crate::widgets::switch::Switch;
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
-    use crate::widgets::theme::widget_look::AnimatedLook;
+    use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
     use crate::widgets::{Widget, WidgetEntry};
 
     /// Single source of truth for the per-frame hot-struct inventory.

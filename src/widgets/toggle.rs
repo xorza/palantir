@@ -6,7 +6,7 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::text::Text;
 use crate::widgets::theme::Theme;
-use crate::widgets::theme::resolve_look;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::{Response, WidgetEntry};
 
@@ -69,7 +69,7 @@ pub(crate) fn toggle_row<'ui, 'text>(
         .style
         .unwrap_or_else(|| (chrome.slot)(&ui.theme))
         .row_gap;
-    let mut look = resolve_look(
+    let mut look = WidgetTheme::resolve(
         ui,
         id,
         &mut entry.widget.node,

@@ -10,8 +10,8 @@ use crate::ui::Ui;
 use crate::widgets::context_menu::MenuItem;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::text::Text;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::resolve_look;
 use crate::widgets::{Response, enter_widget};
 use glam::Vec2;
 
@@ -76,7 +76,7 @@ impl<'a> ComboBox<'a> {
         let id = entry.widget.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = resolve_look(
+        let look = WidgetTheme::resolve(
             ui,
             id,
             &mut entry.widget.node,

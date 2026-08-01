@@ -11,8 +11,10 @@ use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
-use crate::widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme, MenuSeparatorTheme};
-use crate::widgets::theme::resolve_look;
+use crate::widgets::theme::WidgetTheme;
+use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
+use crate::widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, enter_widget};
 
@@ -312,7 +314,7 @@ impl<'a> MenuItem<'a> {
         let shortcut_color = item.shortcut;
         let gap = item.gap;
 
-        let look = resolve_look(
+        let look = WidgetTheme::resolve(
             ui,
             id,
             &mut entry.widget.node,

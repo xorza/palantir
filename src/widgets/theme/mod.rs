@@ -1,3 +1,83 @@
+/// `Default` for a theme bundle whose default *is* the default palette.
+///
+/// Every bundle in here builds from a [`palette::Palette`], and the
+/// stock look is that recipe over [`palette::Palette::DEFAULT`] — so the
+/// impl is the same line each time and only the type varies. Invoke it
+/// **in the bundle's own file**, next to `from_palette`.
+macro_rules! palette_default {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl Default for $ty {
+                fn default() -> Self {
+                    Self::from_palette(&$crate::widgets::theme::palette::Palette::DEFAULT)
+                }
+            }
+        )+
+    };
+}
+
+/// Implement [`WidgetTheme`] for a bundle that stores its box defaults
+/// in fields called `padding` / `margin` / `anim` and its per-state pick
+/// in an inherent `pick`.
+///
+/// The three accessors forward to identically-named fields on every
+/// implementor, so only `Mode` and the shape of `pick` actually vary:
+///
+/// - `impl_widget_theme!(ButtonTheme)` — `Mode = ()`, the engaged state
+///   falls out of the response, so `pick` takes only the state.
+/// - `impl_widget_theme!(ToggleTheme, mode: bool)` — the mode reaches
+///   `pick` as a second argument, because a toggle's look pack is chosen
+///   by a flag the response can't answer.
+///
+/// Invoke it **in the bundle's own file**, next to its inherent `pick`.
+macro_rules! impl_widget_theme {
+    ($ty:ty) => {
+        impl $crate::widgets::theme::WidgetTheme for $ty {
+            type Mode = ();
+            #[inline(always)]
+            fn pick(
+                &self,
+                state: &$crate::input::response::ResponseState,
+                (): (),
+            ) -> &$crate::widgets::theme::widget_look::WidgetLook {
+                <$ty>::pick(self, state)
+            }
+            impl_widget_theme!(@box_defaults);
+        }
+    };
+    ($ty:ty, mode: $mode:ty) => {
+        impl $crate::widgets::theme::WidgetTheme for $ty {
+            type Mode = $mode;
+            #[inline(always)]
+            fn pick(
+                &self,
+                state: &$crate::input::response::ResponseState,
+                mode: $mode,
+            ) -> &$crate::widgets::theme::widget_look::WidgetLook {
+                // Path form, not `self.pick(…)`: the inherent method and
+                // this one have the same arity here, so the receiver form
+                // would read as though it might recurse.
+                <$ty>::pick(self, state, mode)
+            }
+            impl_widget_theme!(@box_defaults);
+        }
+    };
+    (@box_defaults) => {
+        #[inline(always)]
+        fn padding(&self) -> $crate::primitives::spacing::Spacing {
+            self.padding
+        }
+        #[inline(always)]
+        fn margin(&self) -> $crate::primitives::spacing::Spacing {
+            self.margin
+        }
+        #[inline(always)]
+        fn anim(&self) -> Option<$crate::animation::AnimSpec> {
+            self.anim
+        }
+    };
+}
+
 pub(crate) mod button;
 pub(crate) mod context_menu;
 pub(crate) mod drag_value;
@@ -44,7 +124,8 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
-use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
+use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
@@ -179,77 +260,7 @@ impl Theme {
         self.context_menu.for_each_text(f);
         self.tooltip.for_each_text(f);
     }
-}
 
-/// The shape a per-widget theme bundle needs for [`resolve_look`]:
-/// a per-state [`WidgetLook`] pick plus the box defaults
-/// (padding / margin / motion) that fill in fields the builder did not
-/// configure.
-///
-/// Every widget that paints state-dependent chrome implements it —
-/// [`ButtonTheme`], [`TextEditTheme`], `MenuItemTheme`, [`ToggleTheme`]
-/// — so `resolve_look` is the one path from a theme bundle to a
-/// rendered look, and a widget cannot quietly grow a fifth. Each impl
-/// defines its own `active` semantics by delegating to its inherent
-/// `pick`.
-pub(super) trait WidgetTheme {
-    /// Pick input the [`ResponseState`] can't supply.
-    ///
-    /// `()` wherever the engaged state falls out of the response alone
-    /// (pressed for `Button` / `MenuItem`, focused for `TextEdit`);
-    /// `bool` for [`ToggleTheme`], whose checked flag chooses *which of
-    /// its two look packs* the four-state pick then runs inside.
-    type Mode: Copy;
-
-    fn pick(&self, state: &ResponseState, mode: Self::Mode) -> &WidgetLook;
-    fn padding(&self) -> Spacing;
-    fn margin(&self) -> Spacing;
-    fn anim(&self) -> Option<AnimSpec>;
-}
-
-/// Resolve a widget's animated look from its theme: pick the per-state
-/// [`WidgetLook`], fill in padding/margin the caller did not configure,
-/// and animate. **The only route from a theme bundle to a painted
-/// look** — `Button`, `ComboBox`, `DragValue`'s chip, `TextEdit`,
-/// `MenuItem`, and the three toggles (through `toggle::toggle_row`)
-/// all arrive here, so per-state precedence, spacing defaults, and
-/// transitions are one behaviour rather than one per widget.
-///
-/// The scalars are copied out so the borrow on `ui.theme` (borrowed,
-/// not cloned) ends before `animate` reborrows `ui` mutably. `style` of
-/// `None` inherits `fallback(&ui.theme)` — the widget's own global
-/// theme slot (`theme.button` for Button/ComboBox,
-/// `theme.drag_value.chip` for the DragValue chip, `theme.text_edit`
-/// for TextEdit, `theme.context_menu.item` for MenuItem, and one of
-/// `theme.checkbox` / `theme.radio` / `theme.switch` for the toggles,
-/// which share a theme *type* but not a *slot*).
-// This generic crosses the theme/widget codegen-unit boundary. Leaving it to
-// the default inliner kept the resolver plus its tiny trait accessors outlined
-// in release builds; the frame bench measured that path at 3.9% precise
-// self-time. Force the whole lookup chain into each widget so state picking,
-// default resolution and target construction optimize as one block.
-#[inline(always)]
-pub(super) fn resolve_look<T: WidgetTheme>(
-    ui: &mut Ui,
-    id: WidgetId,
-    node: &mut Node,
-    state: &ResponseState,
-    mode: T::Mode,
-    style: Option<&T>,
-    fallback: impl FnOnce(&Theme) -> &T,
-) -> AnimatedLook {
-    let fallback_text = ui.theme.text.clone();
-    let style = style.unwrap_or_else(|| fallback(&ui.theme));
-    let padding = style.padding();
-    let margin = style.margin();
-    let anim = style.anim();
-    let look_target = style.pick(state, mode).clone();
-    node.padding.get_or_insert(padding);
-    node.margin.get_or_insert(margin);
-    look_target.animate(ui, id, &fallback_text, anim)
-}
-
-impl Theme {
     /// Assemble a full theme from a [`Palette`] — every widget recipe
     /// recolored from one roster. This is the single source of the
     /// recipes: `Theme::default()` is `from_palette(&Palette::DEFAULT)`,
@@ -282,8 +293,78 @@ impl Theme {
     }
 }
 
-impl Default for Theme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+/// A per-widget theme bundle that can resolve into a painted look: a
+/// per-state [`WidgetLook`] pick plus the box defaults (padding /
+/// margin / motion) that fill in fields the builder did not configure.
+///
+/// Every widget that paints state-dependent chrome implements it —
+/// [`ButtonTheme`], [`TextEditTheme`], `MenuItemTheme`, [`ToggleTheme`]
+/// — so [`Self::resolve`] is the one path from a theme bundle to a
+/// rendered look, and a widget cannot quietly grow a fifth. Each impl
+/// defines its own `active` semantics by delegating to its inherent
+/// `pick`; `impl_widget_theme!` writes the forwarding for all four.
+pub(super) trait WidgetTheme: Sized {
+    /// Pick input the [`ResponseState`] can't supply.
+    ///
+    /// `()` wherever the engaged state falls out of the response alone
+    /// (pressed for `Button` / `MenuItem`, focused for `TextEdit`);
+    /// `bool` for [`ToggleTheme`], whose checked flag chooses *which of
+    /// its two look packs* the four-state pick then runs inside.
+    type Mode: Copy;
+
+    fn pick(&self, state: &ResponseState, mode: Self::Mode) -> &WidgetLook;
+    fn padding(&self) -> Spacing;
+    fn margin(&self) -> Spacing;
+    fn anim(&self) -> Option<AnimSpec>;
+
+    /// Resolve a widget's animated look: pick the per-state
+    /// [`WidgetLook`], fill in padding/margin the caller did not
+    /// configure, and animate. **The only route from a theme bundle to
+    /// a painted look** — `Button`, `ComboBox`, `DragValue`'s chip,
+    /// `TextEdit`, `MenuItem`, and the three toggles (through
+    /// `toggle::toggle_row`) all arrive here, so per-state precedence,
+    /// spacing defaults, and transitions are one behaviour rather than
+    /// one per widget.
+    ///
+    /// An associated function rather than a method: `style` is an
+    /// `Option`, and the `None` case is the whole point — it inherits
+    /// `fallback(&ui.theme)`, the widget's own global slot
+    /// (`theme.button` for Button/ComboBox, `theme.drag_value.chip` for
+    /// the DragValue chip, `theme.text_edit` for TextEdit,
+    /// `theme.context_menu.item` for MenuItem, and one of
+    /// `theme.checkbox` / `theme.radio` / `theme.switch` for the
+    /// toggles, which share a theme *type* but not a *slot*). `Self` is
+    /// inferred from `style`, so call sites read
+    /// `WidgetTheme::resolve(ui, …)` with no turbofish.
+    ///
+    /// The scalars are copied out so the borrow on `ui.theme`
+    /// (borrowed, not cloned) ends before `animate` reborrows `ui`
+    /// mutably.
+    // This generic crosses the theme/widget codegen-unit boundary. Leaving it
+    // to the default inliner kept the resolver plus its tiny trait accessors
+    // outlined in release builds; the frame bench measured that path at 3.9%
+    // precise self-time. Force the whole lookup chain into each widget so state
+    // picking, default resolution and target construction optimize as one block.
+    #[inline(always)]
+    fn resolve(
+        ui: &mut Ui,
+        id: WidgetId,
+        node: &mut Node,
+        state: &ResponseState,
+        mode: Self::Mode,
+        style: Option<&Self>,
+        fallback: impl FnOnce(&Theme) -> &Self,
+    ) -> AnimatedLook {
+        let fallback_text = ui.theme.text.clone();
+        let style = style.unwrap_or_else(|| fallback(&ui.theme));
+        let padding = style.padding();
+        let margin = style.margin();
+        let anim = style.anim();
+        let look_target = style.pick(state, mode).clone();
+        node.padding.get_or_insert(padding);
+        node.margin.get_or_insert(margin);
+        look_target.animate(ui, id, &fallback_text, anim)
     }
 }
+
+palette_default!(Theme);

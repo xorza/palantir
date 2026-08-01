@@ -5,7 +5,8 @@ mod tooltip;
 
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme};
+use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::palette::Palette;
@@ -19,7 +20,9 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
-use crate::widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
+use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 use static_assertions::assert_not_impl_any;
 
 assert_not_impl_any!(Theme: Copy);

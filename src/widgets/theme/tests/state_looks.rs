@@ -8,7 +8,8 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
+use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
 #[test]
 fn button_theme_pick_precedence() {

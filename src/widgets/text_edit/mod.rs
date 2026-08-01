@@ -22,7 +22,7 @@ use crate::widgets::text_edit::view::{
     CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput,
     SELECTION_RECTS_INLINE_CAPACITY, SelectionRects, ViewState, ViewUpdateInput,
 };
-use crate::widgets::theme::resolve_look;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::{Response, ResponseSnapshot};
 use std::borrow::Cow;
@@ -324,7 +324,7 @@ impl<'a> TextEdit<'a> {
         // reads `node.padding` to deflate the buffer layout, and
         // the caret hit-test reads it back below — both see the
         // resolved value.
-        let look = resolve_look(ui, id, &mut self.node, &response, (), self.style, |t| {
+        let look = WidgetTheme::resolve(ui, id, &mut self.node, &response, (), self.style, |t| {
             &t.text_edit
         });
         // State-independent scalars off the same style source, copied

@@ -4,7 +4,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::AnimatedLook;
+use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use std::time::Duration;

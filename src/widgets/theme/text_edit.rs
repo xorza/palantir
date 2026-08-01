@@ -5,10 +5,10 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
+use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` =
 /// **focused** (the editor's engaged state), picked with the uniform
@@ -64,38 +64,7 @@ impl TextEditTheme {
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.focused)
     }
-}
 
-impl WidgetTheme for TextEditTheme {
-    /// Focused is read straight off the response, so the pick needs
-    /// nothing else.
-    type Mode = ();
-
-    #[inline(always)]
-    fn pick(&self, state: &ResponseState, _: ()) -> &WidgetLook {
-        self.pick(state)
-    }
-    #[inline(always)]
-    fn padding(&self) -> Spacing {
-        self.padding
-    }
-    #[inline(always)]
-    fn margin(&self) -> Spacing {
-        self.margin
-    }
-    #[inline(always)]
-    fn anim(&self) -> Option<AnimSpec> {
-        self.anim
-    }
-}
-
-impl Default for TextEditTheme {
-    fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
-    }
-}
-
-impl TextEditTheme {
     pub fn from_palette(p: &Palette) -> Self {
         let radius = Corners::all(4.0);
         // Stroke width stays constant across states — color is the
@@ -145,3 +114,7 @@ impl TextEditTheme {
         }
     }
 }
+
+impl_widget_theme!(TextEditTheme);
+
+palette_default!(TextEditTheme);
