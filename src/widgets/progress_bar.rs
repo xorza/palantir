@@ -1,10 +1,10 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
+use crate::widgets::{Response, chrome_leaf};
 
 /// Determinate progress bar: a rounded `track` with an accent fill
 /// spanning `fraction` (clamped to `0..=1`) of its width.
@@ -39,7 +39,7 @@ impl<'a> ProgressBar<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme.progress_bar);
-        let WeightSplit { fill, spacer } = fill_weights(self.fraction);
+        let [fill, spacer] = Sizing::split(self.fraction);
         let height = theme.height.max(0.0);
         let radius = Corners::all(height * 0.5);
 
@@ -52,38 +52,16 @@ impl<'a> ProgressBar<'a> {
         let widget = ui.widget(node);
         let id = widget.id();
         widget.record(ui, Some(&track), |ui| {
-            let fill_el = Node::leaf()
-                .id(id.with("fill"))
-                .size((Sizing::share(fill), Sizing::FILL));
-            ui.widget(fill_el).record(ui, Some(&fill_bg), |_| {});
-
+            chrome_leaf(ui, id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));
             // Remainder spacer — its `Fill` weight pushes the fill to the
             // correct fraction of the track width.
-            let rest = Node::leaf()
-                .id(id.with("rest"))
-                .size((Sizing::share(spacer), Sizing::FILL));
-            ui.widget(rest).record(ui, None, |_| {});
+            chrome_leaf(ui, id.with("rest"), (spacer, Sizing::FILL), None);
         });
         widget.response(ui)
     }
 }
 
 impl_configure!(ProgressBar<'_>);
-
-struct WeightSplit {
-    fill: f32,
-    spacer: f32,
-}
-
-/// Clamp `fraction` to `0..=1` and split it into the fill / remainder
-/// weights. `0 → (0, 1)`, `1 → (1, 0)`, out-of-range clamps.
-fn fill_weights(fraction: f32) -> WeightSplit {
-    let f = fraction.clamp(0.0, 1.0);
-    WeightSplit {
-        fill: f,
-        spacer: 1.0 - f,
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -93,7 +71,7 @@ mod tests {
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
-    use crate::widgets::progress_bar::{ProgressBar, fill_weights};
+    use crate::widgets::progress_bar::ProgressBar;
     use glam::UVec2;
 
     /// Explicit `.size(...)` wins over the widget's `Fill × theme.height`
@@ -128,30 +106,6 @@ mod tests {
         assert_eq!((h.size.w, h.size.h), (0.0, 0.0), "explicit hug");
         let d = rects[default.unwrap().idx()];
         assert_eq!((d.size.w, d.size.h), (400.0, 6.0), "untouched default");
-    }
-
-    #[test]
-    fn fill_weights_clamp_and_split() {
-        let cases = [
-            (0.0, 0.0, 1.0),
-            (0.25, 0.25, 0.75),
-            (0.5, 0.5, 0.5),
-            (1.0, 1.0, 0.0),
-            (-0.3, 0.0, 1.0), // below range clamps to empty
-            (1.7, 1.0, 0.0),  // above range clamps to full
-        ];
-        for (input, want_fill, want_spacer) in cases {
-            let w = fill_weights(input);
-            assert!(
-                (w.fill - want_fill).abs() < 1e-6 && (w.spacer - want_spacer).abs() < 1e-6,
-                "fraction {input}: got ({}, {}), want ({want_fill}, {want_spacer})",
-                w.fill,
-                w.spacer,
-            );
-            // The two weights always partition 1.0 so the fill lands at
-            // exactly `fraction` of the track.
-            assert!((w.fill + w.spacer - 1.0).abs() < 1e-6);
-        }
     }
 
     #[test]

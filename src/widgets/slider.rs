@@ -3,11 +3,10 @@ use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
-use crate::widgets::{Response, enter_widget};
+use crate::widgets::{Response, chrome_leaf, enter_widget};
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a `f32` range. Takes a `&mut f32`;
@@ -96,40 +95,22 @@ impl<'a> Slider<'a> {
             .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
         node.child_align = Align::v(VAlign::Center);
 
+        // The knob sits between two rails whose weights partition the
+        // track, so its position tracks the resolved width without this
+        // widget knowing that width at record time.
+        let [filled, remainder] = Sizing::split(fraction);
         entry.widget.record(ui, None, |ui| {
-            rail_leaf(
-                ui,
-                id.with("fill"),
-                Sizing::share(fraction),
-                rail_h,
-                &fill_bg,
-            );
-            knob_leaf(ui, id.with("knob"), knob, &knob_bg);
-            rail_leaf(
-                ui,
-                id.with("rail"),
-                Sizing::share(1.0 - fraction),
-                rail_h,
-                &rail_bg,
-            );
+            let rail = Sizing::fixed(rail_h);
+            chrome_leaf(ui, id.with("fill"), (filled, rail), Some(&fill_bg));
+            let knob = Sizing::fixed(knob);
+            chrome_leaf(ui, id.with("knob"), (knob, knob), Some(&knob_bg));
+            chrome_leaf(ui, id.with("rail"), (remainder, rail), Some(&rail_bg));
         });
         entry.into_response(ui)
     }
 }
 
 impl_configure!(Slider<'_>);
-
-fn rail_leaf(ui: &mut Ui, id: WidgetId, w: Sizing, h: f32, bg: &Background) {
-    let el = Node::leaf().id(id).size((w, Sizing::fixed(h)));
-    ui.widget(el).record(ui, Some(bg), |_| {});
-}
-
-fn knob_leaf(ui: &mut Ui, id: WidgetId, size: f32, bg: &Background) {
-    let el = Node::leaf()
-        .id(id)
-        .size((Sizing::fixed(size), Sizing::fixed(size)));
-    ui.widget(el).record(ui, Some(bg), |_| {});
-}
 
 /// Fraction (0..1) of the way from `min` to `max` that `value` sits.
 /// Degenerate (`min == max`) ranges map to 0.
