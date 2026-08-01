@@ -68,7 +68,7 @@ pub(crate) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
 /// text don't fragment. Codepoint-granular — fine for Latin / digit /
 /// mixed text; a Unicode word-break iterator would do better on CJK
 /// and friends but isn't wired yet.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CharKind {
     Whitespace,
     Word,
