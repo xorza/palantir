@@ -11,6 +11,7 @@ use std::rc::Rc;
 
 use glam::{IVec2, UVec2};
 
+use crate::layout::axis::Axis;
 use crate::primitives::image::Image;
 
 /// Caller-chosen opaque identity for a window. Supplied at
@@ -180,6 +181,20 @@ pub enum CursorIcon {
     /// Vertical resize (a horizontal divider).
     NsResize,
     NotAllowed,
+}
+
+impl CursorIcon {
+    /// The double-headed resize cursor for a divider the pointer drags
+    /// **along** `axis`. Note the quarter-turn: dragging along X moves a
+    /// *vertical* divider, which wants the east-west arrows. Getting that
+    /// backwards is easy enough by hand that the mapping is worth naming
+    /// once.
+    pub(crate) fn resize_along(axis: Axis) -> Self {
+        match axis {
+            Axis::X => Self::EwResize,
+            Axis::Y => Self::NsResize,
+        }
+    }
 }
 
 /// Whether a window's swapchain waits for the display's refresh before

@@ -368,6 +368,19 @@ pub(crate) struct Cascades {
 }
 
 impl Cascades {
+    /// Where `id` was recorded in the most recent cascade run — the
+    /// `(layer, node)` pair the per-node layout columns are indexed by —
+    /// or `None` if it isn't in that run.
+    ///
+    /// The handle half of a lookup whose other half lives on `Layout`
+    /// (see [`Layout::scroll_content`](crate::layout::Layout::scroll_content)):
+    /// neither table can answer alone, so a caller joins them, and this
+    /// is what keeps the map itself out of the join.
+    #[inline]
+    pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
+        self.by_id.get(&id).copied()
+    }
+
     /// Global entry index of the widget last recorded under `id`,
     /// or `None` if `id` isn't in the most recent cascade run.
     #[inline]

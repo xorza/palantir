@@ -34,6 +34,18 @@ impl GridCell {
             Axis::Y => Span::new(self.row as u32, self.row_span as u32),
         }
     }
+
+    /// Place this cell at track `main` along `axis`, leaving the cross
+    /// axis where it is. The write half of [`Self::track_span`]: an
+    /// axis-generic parent (a `Splitter`) lays its children out along
+    /// one axis and shouldn't have to know which field that is.
+    #[inline]
+    pub(crate) fn set_main(&mut self, axis: Axis, main: u16) {
+        match axis {
+            Axis::X => self.col = main,
+            Axis::Y => self.row = main,
+        }
+    }
 }
 
 impl Default for GridCell {

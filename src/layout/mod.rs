@@ -19,6 +19,7 @@ use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::layer::Layer;
 use crate::scene::layer::PerLayer;
+use crate::scene::seen_ids::Endpoint;
 use crate::scene::tree::Tree;
 use crate::text::key::TextShapeKey;
 use std::ops::{Index, IndexMut};
@@ -51,6 +52,22 @@ pub(crate) struct LayerLayout {
 #[derive(Default)]
 pub(crate) struct Layout {
     pub(crate) layers: PerLayer<LayerLayout>,
+}
+
+impl Layout {
+    /// Measured content extent of the scroll viewport at `endpoint` —
+    /// the size its bars express a ratio of, `ZERO` for any node that
+    /// isn't a `LayoutMode::Scroll`.
+    ///
+    /// Takes an [`Endpoint`] because that is what
+    /// [`Cascades::endpoint`](crate::scene::cascade::Cascades::endpoint)
+    /// hands back: the two tables are keyed differently (by widget id,
+    /// by node index) and only a caller holding both can bridge them.
+    /// Naming each half keeps the bridge from being four raw indexes.
+    #[inline]
+    pub(crate) fn scroll_content(&self, endpoint: Endpoint) -> Size {
+        self.layers[endpoint.layer].scroll_content[endpoint.node.idx()]
+    }
 }
 
 impl Index<Layer> for Layout {

@@ -169,10 +169,7 @@ impl<'a> Splitter<'a> {
         // (`hovered` is also capture-gated), and the cursor must hold
         // until release.
         if bar_fill.is_some() {
-            ui.set_cursor(match axis {
-                Axis::X => CursorIcon::EwResize,
-                Axis::Y => CursorIcon::NsResize,
-            });
+            ui.set_cursor(CursorIcon::resize_along(axis));
         }
         let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
         let rule_bg = Background::fill(rule_color);
@@ -183,14 +180,8 @@ impl<'a> Splitter<'a> {
             Track::new(Sizing::share(1.0 - layout_ratio)),
         ];
         let cross_tracks = [Track::fill()];
-        let grid_def_id = match axis {
-            Axis::X => ui
-                .forest
-                .push_grid_def(&cross_tracks, &main_tracks, 0.0, 0.0),
-            Axis::Y => ui
-                .forest
-                .push_grid_def(&main_tracks, &cross_tracks, 0.0, 0.0),
-        };
+        let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
+        let grid_def_id = ui.forest.push_grid_def(rows, cols, 0.0, 0.0);
         entry.widget.node.set_grid_def(grid_def_id);
         entry.widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
@@ -198,21 +189,20 @@ impl<'a> Splitter<'a> {
             let mut rule = Node::leaf()
                 .id(id.with("rule"))
                 .size((Sizing::FILL, Sizing::FILL));
-            set_main_cell(&mut rule, axis, 1);
+            rule.grid.set_main(axis, 1);
             ui.widget(rule).record(ui, Some(&rule_bg), |_| {});
 
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
+            // The grab bar overhangs the seam on the split axis only, so
+            // its inset is main-axis with nothing across.
             let inset = (rule_thickness - thickness) * 0.5;
             let mut bar = Node::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL));
-            bar.margin = Some(match axis {
-                Axis::X => (inset, 0.0, inset, 0.0).into(),
-                Axis::Y => (0.0, inset, 0.0, inset).into(),
-            });
-            set_main_cell(&mut bar, axis, 1);
+            bar.margin = Some(axis.compose_spacing(inset, 0.0));
+            bar.grid.set_main(axis, 1);
             ui.widget(bar).record(ui, Some(&bar_bg), |_| {});
         });
 
@@ -228,15 +218,8 @@ fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce
         .id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .clip_rect();
-    set_main_cell(&mut el, axis, main_cell);
+    el.grid.set_main(axis, main_cell);
     ui.widget(el).record(ui, None, body)
-}
-
-fn set_main_cell(node: &mut Node, axis: Axis, main_cell: u16) {
-    match axis {
-        Axis::X => node.grid.col = main_cell,
-        Axis::Y => node.grid.row = main_cell,
-    }
 }
 
 /// Recover the first pane's effective share after layout applied both
