@@ -9,7 +9,7 @@ use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::model::{EditKind, Editor, word_range_at};
-use crate::widgets::text_edit::view::ShapeCtx;
+use crate::widgets::text_edit::view::{ShapeCtx, TextLayout};
 
 /// Result of one frame's input pass over a TextEdit: the caret byte,
 /// the (sorted) selection range for the painter, and the edge signals
@@ -54,47 +54,26 @@ pub(super) struct InputPolicy {
 /// Process this frame's pointer + keyboard input for one TextEdit
 /// widget and return the caret + selection to render plus the frame's
 /// edge signals. Splitting this out of `show()` keeps the borrow
-/// choreography contained: we touch `ui.state`, the input streams, and
-/// text probes here, but never the shape/tree storage.
+/// choreography contained: we touch the input streams and text probes
+/// here, but never the shape/tree storage.
 ///
-/// **The state row is moved out for the duration and moved back after.**
-/// `Editor` holds it mutably across the keyboard drain, and the drain
-/// reads [`Ui::keyboard_events`] — a `&self` method, so it borrows all of
-/// `Ui` and the two cannot coexist. Owning the row for the pass costs two
-/// moves of a small struct (no allocation: the undo buffers move with it)
-/// and is what lets this widget take its input through the same public
-/// API a caller's own widget would, rather than a disjoint-field reach
-/// into `ui.input`.
-///
-/// The split into [`run_input`] is what makes the write-back
-/// unconditional — the inner half early-returns for an unfocused field,
-/// and a `mem::take` with a write-back on only *some* paths silently
-/// resets the caret.
-pub(super) fn handle_input(
+/// Takes the state row as a plain `&mut` rather than reaching for it
+/// through `ui`. `Editor` holds it mutably across the keyboard drain,
+/// and the drain reads [`Ui::keyboard_events`] — a `&self` method, so it
+/// borrows all of `Ui` and the two cannot coexist. `TextEdit::show`
+/// moves the row out once for the whole pass, which is what makes this
+/// possible *and* is why the caller's write-back has to be
+/// unconditional.
+pub(super) fn run_input(
     ui: &mut Ui,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,
-    ctx: &ShapeCtx,
-    policy: InputPolicy,
-) -> InputResult {
-    let mut state = std::mem::take(ui.state_mut::<TextEditState>(id));
-    let result = run_input(ui, id, is_focused, text, ctx, policy, &mut state);
-    *ui.state_mut::<TextEditState>(id) = state;
-    result
-}
-
-/// [`handle_input`]'s body, over a state row it does not have to borrow
-/// from `ui` — see there for why that matters.
-fn run_input(
-    ui: &mut Ui,
-    id: WidgetId,
-    is_focused: bool,
-    text: &mut String,
-    ctx: &ShapeCtx,
+    layout: &TextLayout,
     policy: InputPolicy,
     state: &mut TextEditState,
 ) -> InputResult {
+    let ctx = &layout.ctx;
     let InputPolicy {
         max_chars,
         select_all_on_focus,
@@ -149,14 +128,15 @@ fn run_input(
     if resp_state.left.held()
         && let Some(pointer_offset) = resp_state.pointer_local
     {
-        // Hit-test runs against the *unscrolled* shaped layout, so
-        // we add last frame's scroll back into the pointer's local
-        // coords. Updated scroll for this frame is computed after
-        // `handle_input` returns — the user clicked on what they
-        // saw, which is last frame's scroll.
+        // Hit-test runs against the *unscrolled* shaped layout, so we
+        // add last frame's scroll back into the pointer's local coords.
+        // Both offsets are last frame's for the same reason: the user
+        // clicked on what they saw, and this frame's block offset and
+        // scroll are computed after this pass returns.
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
-        let local_x = pointer_offset.x - pad_l - ctx.block_offset.x + view.scroll.x;
-        let local_y = pointer_offset.y - pad_t - ctx.block_offset.y + view.scroll.y;
+        let block = layout.prev_block_offset;
+        let local_x = pointer_offset.x - pad_l - block.x + view.scroll.x;
+        let local_y = pointer_offset.y - pad_t - block.y + view.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.

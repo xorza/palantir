@@ -1,13 +1,11 @@
 //! Default TextEdit context-menu policy.
 
 use crate::input::keyboard::KeyboardEvent;
-use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
-use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
-use crate::widgets::text_edit::model::Editor;
+use crate::widgets::text_edit::model::{EditState, Editor};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct MenuResult {
@@ -22,13 +20,17 @@ impl MenuResult {
     }
 }
 
+/// `edit` is the caller's already-owned state row, not a fresh lookup:
+/// `TextEdit::show` moves the row out for the whole pass, so the body
+/// closure below can hold it mutably alongside `&mut Ui` — which a row
+/// borrowed *from* `ui` could never do.
 pub(super) fn show(
     ui: &mut Ui,
-    id: WidgetId,
     snapshot: &ResponseSnapshot,
     text: &mut String,
     multiline: bool,
     max_chars: Option<usize>,
+    edit: &mut EditState,
 ) -> MenuResult {
     let mut result = MenuResult::default();
     let mut clicked_action = None;
@@ -40,16 +42,14 @@ pub(super) fn show(
                 continue;
             };
             if let Some(action) = EditAction::from_keypress(keypress) {
-                result.include(execute_action(ui, id, text, multiline, max_chars, action));
+                result.include(execute_action(ui, text, multiline, max_chars, action, edit));
                 if EditAction::MENU.iter().any(|item| item.action == action) {
                     popup.close();
                 }
             }
         }
 
-        let has_selection = ui
-            .try_state::<TextEditState>(id)
-            .is_some_and(|state| state.edit.sel_range().is_some());
+        let has_selection = edit.sel_range().is_some();
         let has_text = !text.is_empty();
         for item in EditAction::MENU {
             if item.separator_before {
@@ -70,21 +70,20 @@ pub(super) fn show(
         }
     });
     if let Some(action) = clicked_action {
-        result.include(execute_action(ui, id, text, multiline, max_chars, action));
+        result.include(execute_action(ui, text, multiline, max_chars, action, edit));
     }
     result
 }
 
 fn execute_action(
     ui: &mut Ui,
-    id: WidgetId,
     text: &mut String,
     multiline: bool,
     max_chars: Option<usize>,
     action: EditAction,
+    edit: &mut EditState,
 ) -> MenuResult {
     let clipboard = ui.resources.clipboard.clone();
-    let edit = &mut ui.state_mut::<TextEditState>(id).edit;
     let caret_before = edit.caret;
     let selection_before = edit.selection;
     let mut editor = Editor::new(text, edit, multiline, max_chars);

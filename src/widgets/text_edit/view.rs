@@ -114,6 +114,14 @@ impl ViewState {
     }
 }
 
+/// Everything the shaper needs to lay this editor's text out, plus the
+/// padding that turns a shaped position into a widget-local one.
+///
+/// Deliberately carries no block offset: where the shaped block *sits*
+/// isn't a shaping input, and holding both here is what let one field
+/// mean last frame's offset before the probe and this frame's after it.
+/// The two now live apart — [`TextLayout::prev_block_offset`] and
+/// [`TextGeometry::block_offset`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapeCtx {
     pub(super) font_size: f32,
@@ -124,7 +132,6 @@ pub(super) struct ShapeCtx {
     pub(super) weight: FontWeight,
     pub(super) multiline: bool,
     halign: HAlign,
-    pub(super) block_offset: Vec2,
 }
 
 impl ShapeCtx {
@@ -169,18 +176,27 @@ pub(super) struct LayoutInput {
     pub(super) previous_block_offset: Vec2,
 }
 
+/// What is known **before** the shape probe runs: the box the text sits
+/// in and the parameters it will be shaped with.
+///
+/// The input pass reads this — it hit-tests a click against the layout
+/// the user was looking at, which is last frame's. Everything the probe
+/// itself produces lands in [`TextGeometry`] instead, so neither type
+/// ever holds a field that isn't answered yet.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct ResolvedLayout {
+pub(super) struct TextLayout {
     pub(super) ctx: ShapeCtx,
     pub(super) text_align: Align,
     pub(super) caret_room: f32,
-    pub(super) content_width: f32,
-    pub(super) display_width: f32,
-    pub(super) placeholder_offset: Vec2,
     pub(super) inner_size: Size,
+    /// Where the shaped block sat when it was last painted. The click
+    /// that arrives this frame was aimed at *that* layout, so the
+    /// hit-test in `input` offsets by this rather than by the offset
+    /// this frame's probe is about to produce.
+    pub(super) prev_block_offset: Vec2,
 }
 
-pub(super) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
+pub(super) fn resolve_layout(input: LayoutInput) -> TextLayout {
     let caret_room = input.caret_width.max(0.0);
     // Raw inner width; `TextShapeKey::bounded` owns the canonical rounding.
     let wrap_target = if input.multiline {
@@ -204,7 +220,6 @@ pub(super) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
         weight: input.weight,
         multiline: input.multiline,
         halign: text_align.halign(),
-        block_offset: input.previous_block_offset,
     };
     let inner_size = input.response_rect.map_or(Size::ZERO, |rect| {
         Size::new(
@@ -212,14 +227,12 @@ pub(super) fn resolve_layout(input: LayoutInput) -> ResolvedLayout {
             (rect.size.h - input.padding.vert()).max(0.0),
         )
     });
-    ResolvedLayout {
+    TextLayout {
         ctx,
         text_align,
         caret_room,
-        content_width: 0.0,
-        display_width: 0.0,
-        placeholder_offset: Vec2::ZERO,
         inner_size,
+        prev_block_offset: input.previous_block_offset,
     }
 }
 
@@ -235,16 +248,27 @@ struct Probed {
 
 #[derive(Debug)]
 pub(super) struct GeometryInput<'a> {
-    pub(super) layout: ResolvedLayout,
+    pub(super) layout: TextLayout,
     pub(super) text: &'a str,
     pub(super) placeholder: &'a str,
     pub(super) caret: usize,
     pub(super) selection: Option<Range<usize>>,
 }
 
+/// The layout plus everything only the shape probe could answer. Paint
+/// reads this; nothing here exists before [`resolve_geometry`] runs,
+/// which is why it is a separate type rather than zeroed fields on
+/// [`TextLayout`].
 #[derive(Clone, Copy, Debug)]
-pub(super) struct FinalGeometry {
-    pub(super) layout: ResolvedLayout,
+pub(super) struct TextGeometry {
+    pub(super) layout: TextLayout,
+    /// Where the shaped block sits inside the inner rect **this** frame.
+    /// Stored back into `ViewState` at the end of the pass, which is
+    /// what makes it next frame's [`TextLayout::prev_block_offset`].
+    pub(super) block_offset: Vec2,
+    pub(super) content_width: f32,
+    pub(super) display_width: f32,
+    pub(super) placeholder_offset: Vec2,
     pub(super) caret_pos: Caret,
     pub(super) text_hash: u64,
 }
@@ -253,8 +277,8 @@ pub(super) fn resolve_geometry(
     ui: &mut Ui,
     input: GeometryInput<'_>,
     selection_rects: &mut SelectionRects,
-) -> FinalGeometry {
-    let mut layout = input.layout;
+) -> TextGeometry {
+    let layout = input.layout;
     // The block is load-bearing: the content probe holds the shaper's
     // exclusive borrow, so the placeholder measurement below cannot be
     // taken until this one has dropped. Overlapping them is E0499, not a
@@ -305,12 +329,12 @@ pub(super) fn resolve_geometry(
         )
         .min
     };
-    layout.ctx.block_offset = aligned(measured);
-    layout.placeholder_offset = aligned(placeholder_measured);
-    layout.content_width = measured.w;
-    layout.display_width = placeholder_measured.w;
-    FinalGeometry {
+    TextGeometry {
         layout,
+        block_offset: aligned(measured),
+        content_width: measured.w,
+        display_width: placeholder_measured.w,
+        placeholder_offset: aligned(placeholder_measured),
         caret_pos,
         text_hash,
     }
@@ -351,7 +375,7 @@ pub(super) struct PaintInput<'a> {
     pub(super) chrome: Background,
     pub(super) text: &'a str,
     pub(super) placeholder: &'a str,
-    pub(super) layout: ResolvedLayout,
+    pub(super) geometry: TextGeometry,
     pub(super) selection_rects: &'a SelectionRects,
     pub(super) selection_color: Color,
     pub(super) text_color: Color,
@@ -362,13 +386,14 @@ pub(super) struct PaintInput<'a> {
 
 pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
     let mut node = input.node;
-    let ctx = input.layout.ctx;
+    let layout = input.geometry.layout;
+    let ctx = layout.ctx;
     if !ctx.multiline {
         let min_size = node.min_size.get_or_insert(Size::ZERO);
         min_size.h = min_size.h.max(ctx.line_height_px + ctx.padding.vert());
         if node.size.unwrap_or_default().w().is_hug() {
             let reserved =
-                input.layout.display_width + ctx.padding.horiz() + 2.0 * input.layout.caret_room;
+                input.geometry.display_width + ctx.padding.horiz() + 2.0 * layout.caret_room;
             let min_size = node.min_size.get_or_insert(Size::ZERO);
             min_size.w = min_size.w.max(reserved);
         }
@@ -376,9 +401,10 @@ pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
 
     ui.node(id, node, Some(&input.chrome), |ui| {
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
+        let block_offset = input.geometry.block_offset;
         let text_origin = Vec2::new(
-            pad_l + ctx.block_offset.x - input.scroll.x,
-            pad_t + ctx.block_offset.y - input.scroll.y,
+            pad_l + block_offset.x - input.scroll.x,
+            pad_t + block_offset.y - input.scroll.y,
         );
         for rect in input.selection_rects {
             ui.add_shape(
@@ -397,9 +423,9 @@ pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
         };
         if !display.is_empty() {
             let display_offset = if input.text.is_empty() {
-                input.layout.placeholder_offset
+                input.geometry.placeholder_offset
             } else {
-                ctx.block_offset
+                block_offset
             };
             let display_origin = Vec2::new(
                 pad_l + display_offset.x - input.scroll.x,
@@ -416,14 +442,14 @@ pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
                 } else {
                     TextWrap::Scroll
                 },
-                align: input.layout.text_align,
+                align: layout.text_align,
                 family: ctx.family,
                 weight: ctx.weight,
             });
         }
 
         if let Some(caret) = input.caret {
-            let max_x = (pad_l + input.layout.inner_size.w - caret.width).max(pad_l);
+            let max_x = (pad_l + layout.inner_size.w - caret.width).max(pad_l);
             let rect = Rect::new(
                 (text_origin.x + caret.pos.x).clamp(pad_l, max_x),
                 text_origin.y + caret.pos.y_top,
