@@ -9,6 +9,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+use glam::Vec2;
 
 /// Visuals for two-state toggles ([`crate::Checkbox`],
 /// [`crate::RadioButton`], future toggle/segmented controls). Holds a
@@ -32,6 +33,12 @@ pub struct ToggleTheme {
     pub box_size: f32,
     /// Stroke width of the check polyline (Checkbox).
     pub indicator_stroke: f32,
+    /// The check polyline's three points (Checkbox only), as fractions
+    /// of [`Self::box_size`] — origin top-left, `1.0` the far edge. Unit
+    /// space rather than pixels so the tick keeps its proportions at any
+    /// box size, and so the shape carries no reference size of its own
+    /// to fall out of step with `box_size`.
+    pub check_pts: [Vec2; 3],
     /// Inset of the filled dot inside the pip (RadioButton).
     /// Dot side = `box_size - 2 * indicator_inset`.
     pub indicator_inset: f32,
@@ -59,6 +66,12 @@ impl ToggleTheme {
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.unchecked.for_each_text(f);
         self.checked.for_each_text(f);
+    }
+
+    /// [`Self::check_pts`] scaled to [`Self::box_size`] — the polyline
+    /// [`crate::Checkbox`] draws, in box-local pixels.
+    pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
+        self.check_pts.map(|p| p * self.box_size)
     }
 
     /// Pick the chrome+label look for this `(state, checked)` pair
@@ -152,6 +165,11 @@ impl ToggleTheme {
             box_size,
             indicator_stroke: 2.0,
             indicator_inset,
+            check_pts: [
+                Vec2::new(3.5 / 16.0, 8.5 / 16.0),
+                Vec2::new(7.0 / 16.0, 12.0 / 16.0),
+                Vec2::new(12.5 / 16.0, 4.5 / 16.0),
+            ],
             row_gap: 8.0,
             track_aspect: 1.0,
             padding: Spacing::ZERO,
