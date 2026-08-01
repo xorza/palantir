@@ -235,7 +235,6 @@ pub use widgets::theme::Theme;
 pub use widgets::theme::button::ButtonTheme;
 pub use widgets::theme::context_menu::ContextMenuTheme;
 pub use widgets::theme::context_menu::menu_item::MenuItemTheme;
-pub use widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
 pub use widgets::theme::drag_value::DragValueTheme;
 pub use widgets::theme::modal::ModalTheme;
 pub use widgets::theme::palette::Palette;

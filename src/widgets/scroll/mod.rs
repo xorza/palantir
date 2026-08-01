@@ -280,7 +280,7 @@ struct Bars {
 }
 
 impl Bars {
-    fn read(ui: &Ui, scroll_id: WidgetId) -> Self {
+    fn read(ui: &Ui, scroll_id: WidgetId, theme: &ScrollbarTheme) -> Self {
         let axis = |track: &str, thumb: &str| {
             let (track_id, thumb_id) = (scroll_id.with(track), scroll_id.with(thumb));
             BarAxis {
@@ -291,7 +291,7 @@ impl Bars {
             }
         };
         Self {
-            theme: ui.theme.scrollbar.clone(),
+            theme: theme.clone(),
             v: axis("__vtrack", "__vthumb"),
             h: axis("__htrack", "__hthumb"),
         }
@@ -517,15 +517,16 @@ fn scroll_wrappers(node: Node) -> ScrollWrappers {
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
 #[derive(Debug)]
-pub struct Scroll {
+pub struct Scroll<'a> {
     node: Node,
+    style: Option<&'a ScrollbarTheme>,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
     bar_mode: BarMode,
     content_margin: Spacing,
 }
 
-impl Scroll {
+impl<'a> Scroll<'a> {
     #[track_caller]
     pub fn vertical() -> Self {
         Self::with_axes(ScrollSpec::VERTICAL)
@@ -563,11 +564,19 @@ impl Scroll {
         node.clip = Some(ClipMode::Rect);
         Self {
             node,
+            style: None,
             zoom: None,
             chrome: None,
             bar_mode: BarMode::Reserved,
             content_margin: Spacing::default(),
         }
+    }
+
+    /// Borrow a scrollbar theme override for this viewport. The
+    /// default inherits [`crate::Theme::scrollbar`].
+    pub fn style(mut self, s: &'a ScrollbarTheme) -> Self {
+        self.style = Some(s);
+        self
     }
 
     /// Set the scrollbar layout mode. See [`BarMode`].
@@ -686,6 +695,12 @@ impl Scroll {
         }
     }
 
+    /// This viewport's scrollbar bundle: the per-instance override if
+    /// the caller set one, else the global slot.
+    fn bars_theme<'u>(&'u self, ui: &'u Ui) -> &'u ScrollbarTheme {
+        self.style.unwrap_or(&ui.theme.scrollbar)
+    }
+
     /// Last frame's measurements, in the shape every later step reads
     /// them: the content extent, the gutter the bars reserve, and the
     /// offset bounds that follow from both.
@@ -699,7 +714,7 @@ impl Scroll {
         let outer = response.layout_rect.map_or(Size::ZERO, |r| r.size);
         let content = previous_scroll_content(ui, scroll_id);
         let padding = self.node.padding.unwrap_or(Spacing::ZERO);
-        let space = bar_space(outer, pan, padding, &ui.theme.scrollbar, self.bar_mode);
+        let space = bar_space(outer, pan, padding, self.bars_theme(ui), self.bar_mode);
         ScrollGeometry {
             content,
             padding,
@@ -821,7 +836,8 @@ impl Scroll {
         let response = ui.response_for(id);
         let geom = self.measure(ui, scroll_id, pan, &response);
         let input = self.read_input(ui, &response);
-        let bars = (self.bar_mode != BarMode::Hidden).then(|| Bars::read(ui, scroll_id));
+        let bars = (self.bar_mode != BarMode::Hidden)
+            .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
 
         let state = {
             let state = ui.state_mut::<ScrollState>(id);
@@ -854,7 +870,7 @@ impl Scroll {
     }
 }
 
-impl_configure!(Scroll);
+impl_configure!(Scroll<'_>);
 
 #[cfg(test)]
 mod tests;

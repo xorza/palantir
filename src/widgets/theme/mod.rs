@@ -1,5 +1,6 @@
 /// `Default` for a theme bundle whose default *is* the default palette.
 ///
+///
 /// Every bundle in here builds from a [`palette::Palette`], and the
 /// stock look is that recipe over [`palette::Palette::DEFAULT`] — so the
 /// impl is the same line each time and only the type varies. Invoke it

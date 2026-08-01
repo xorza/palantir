@@ -14,7 +14,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
-use crate::widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
+use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, enter_widget};
 
@@ -391,8 +391,12 @@ impl<'a> MenuItem<'a> {
 impl_configure!(MenuItem<'_>);
 
 /// The rule [`MenuItem::separator`] records between menu groups: a
-/// [`crate::Separator`] wearing [`MenuSeparatorTheme`] instead of the
-/// app-wide `theme.separator`.
+/// [`crate::Separator`] wearing [`crate::Theme::context_menu`]'s
+/// `separator` slot instead of the app-wide `theme.separator`.
+///
+/// A menu rule *is* a separator — the two differ only in which
+/// [`SeparatorTheme`] they read, so this hands the bundle straight down
+/// rather than unpacking it field by field.
 ///
 /// ```
 /// # use palantir::{MenuItem, Ui};
@@ -402,13 +406,13 @@ impl_configure!(MenuItem<'_>);
 /// ```
 #[derive(Debug)]
 pub struct MenuSeparator<'a> {
-    style: Option<&'a MenuSeparatorTheme>,
+    style: Option<&'a SeparatorTheme>,
 }
 
 impl<'a> MenuSeparator<'a> {
     /// Per-instance theme override. `None` (the default) reads
     /// [`crate::Theme::context_menu`]'s `separator`.
-    pub fn style(mut self, s: &'a MenuSeparatorTheme) -> Self {
+    pub fn style(mut self, s: &'a SeparatorTheme) -> Self {
         self.style = Some(s);
         self
     }
@@ -416,14 +420,11 @@ impl<'a> MenuSeparator<'a> {
     #[track_caller]
     pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
         let sep = self.style.unwrap_or(&ui.theme.context_menu.separator);
-        let color = sep.color;
-        let thickness = sep.thickness;
-        let margin = sep.margin;
-        Separator::horizontal()
-            .color(color)
-            .thickness(thickness)
-            .margin(margin)
-            .show(ui)
+        // Cloned, not borrowed: `Separator::style` holds the reference
+        // across `show`'s `&mut Ui`, and this one may point into
+        // `ui.theme`.
+        let sep = sep.clone();
+        Separator::horizontal().style(&sep).show(ui)
     }
 }
 

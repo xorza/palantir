@@ -20,7 +20,7 @@ use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
 use crate::widgets::panel::Panel;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
-use crate::widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
+use crate::widgets::theme::separator::SeparatorTheme;
 use crate::{Sense, Ui};
 use glam::{UVec2, Vec2};
 
@@ -325,7 +325,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
 
     let mut h = UiHarness::new(SURFACE);
     let rule = Color::hex(0xff00ff);
-    h.ui.theme.context_menu.separator = MenuSeparatorTheme {
+    h.ui.theme.context_menu.separator = SeparatorTheme {
         color: rule,
         thickness: 3.0,
         margin: Spacing::xy(0.0, 7.0),
@@ -453,9 +453,9 @@ fn per_instance_style_overrides_global_menu_theme() {
             margin: Spacing::xy(2.0, 6.0),
             ..MenuItemTheme::default()
         },
-        separator: MenuSeparatorTheme {
+        separator: SeparatorTheme {
             thickness: 5.0,
-            ..MenuSeparatorTheme::default()
+            ..SeparatorTheme::default()
         },
         ..ContextMenuTheme::default()
     };

@@ -1,9 +1,8 @@
-//! Menu theming, one bundle per menu part: the [`ContextMenuTheme`]
-//! panel here, its rows in [`menu_item`], its rules in
-//! [`menu_separator`].
+//! Menu theming: the [`ContextMenuTheme`] panel here and its rows in
+//! [`menu_item`]. Menu *rules* have no bundle of their own — they wear
+//! a [`crate::SeparatorTheme`] like any other divider.
 
 pub(crate) mod menu_item;
-pub(crate) mod menu_separator;
 
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -12,8 +11,8 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
-use crate::widgets::theme::context_menu::menu_separator::MenuSeparatorTheme;
 use crate::widgets::theme::palette::Palette;
+use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use glam::Vec2;
 
@@ -44,7 +43,7 @@ pub struct ContextMenuTheme {
     pub item: MenuItemTheme,
     /// Thin horizontal divider between groups (for
     /// [`crate::MenuItem::separator`]).
-    pub separator: MenuSeparatorTheme,
+    pub separator: SeparatorTheme,
 }
 
 impl ContextMenuTheme {
@@ -89,7 +88,7 @@ impl ContextMenuTheme {
             min_width: 160.0,
             gap: 0.0,
             item: MenuItemTheme::from_palette(p),
-            separator: MenuSeparatorTheme::from_palette(p),
+            separator: SeparatorTheme::menu_separator(p),
         }
     }
 }

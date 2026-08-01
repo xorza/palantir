@@ -7,6 +7,7 @@ use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
 use crate::widgets::Response;
+use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::Vec2;
 use std::f32::consts::PI;
 use std::time::Duration;
@@ -32,14 +33,15 @@ const SPEED: f32 = 4.5;
 /// circle, adaptive subdivision), so it stays smooth at any size and
 /// DPI; the comet fade is a linear gradient sampled along the sweep.
 #[derive(Debug)]
-pub struct Spinner {
+pub struct Spinner<'a> {
     node: Node,
     diameter: Option<f32>,
     color: Option<Color>,
     thickness: Option<f32>,
+    style: Option<&'a SpinnerTheme>,
 }
 
-impl Spinner {
+impl<'a> Spinner<'a> {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
@@ -48,7 +50,16 @@ impl Spinner {
             diameter: None,
             color: None,
             thickness: None,
+            style: None,
         }
+    }
+
+    /// Borrow a theme override for this spinner. The default inherits
+    /// [`crate::Theme::spinner`]. Per-field [`Self::color`] /
+    /// [`Self::diameter`] / [`Self::thickness`] still win over it.
+    pub fn style(mut self, s: &'a SpinnerTheme) -> Self {
+        self.style = Some(s);
+        self
     }
 
     /// Diameter in logical px. `None` (default) inherits
@@ -72,7 +83,7 @@ impl Spinner {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = &ui.theme.spinner;
+        let theme = self.style.unwrap_or(&ui.theme.spinner);
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
         let width = self.thickness.unwrap_or((diameter * 0.12).max(1.5));
         let color = self.color.unwrap_or(theme.color);
@@ -100,7 +111,7 @@ impl Spinner {
     }
 }
 
-impl_configure!(Spinner);
+impl_configure!(Spinner<'_>);
 
 /// Node-local circle the arc traces.
 #[derive(Debug, PartialEq)]

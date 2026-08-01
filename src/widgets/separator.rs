@@ -2,9 +2,10 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::node::Node;
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::Response;
+use crate::widgets::theme::separator::SeparatorTheme;
 
 /// A thin divider rule between content. [`Separator::horizontal`]
 /// stretches across the parent's width as a `thickness`-tall line;
@@ -16,14 +17,15 @@ use crate::widgets::Response;
 /// given size describes the rule's box and `thickness` is ignored.
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
 #[derive(Debug)]
-pub struct Separator {
+pub struct Separator<'a> {
     node: Node,
     horizontal: bool,
     thickness: Option<f32>,
     color: Option<Color>,
+    style: Option<&'a SeparatorTheme>,
 }
 
-impl Separator {
+impl<'a> Separator<'a> {
     /// A horizontal rule (stretches across the parent's width).
     #[track_caller]
     pub fn horizontal() -> Self {
@@ -43,7 +45,18 @@ impl Separator {
             horizontal,
             thickness: None,
             color: None,
+            style: None,
         }
+    }
+
+    /// Borrow a theme override for this rule. The default inherits
+    /// [`crate::Theme::separator`]; [`crate::MenuSeparator`] passes
+    /// `theme.context_menu.separator` instead. Per-field
+    /// [`Self::color`] / [`Self::thickness`] still win over whichever
+    /// bundle is in play.
+    pub fn style(mut self, s: &'a SeparatorTheme) -> Self {
+        self.style = Some(s);
+        self
     }
 
     /// Line thickness in logical px. `None` (default) inherits
@@ -60,8 +73,9 @@ impl Separator {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = &ui.theme.separator;
+        let theme = self.style.unwrap_or(&ui.theme.separator);
         let t = self.thickness.unwrap_or(theme.thickness).max(0.0);
+        let margin = theme.margin;
         let default_size = if self.horizontal {
             (Sizing::HUG, Sizing::fixed(t)).into()
         } else {
@@ -76,25 +90,92 @@ impl Separator {
             };
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
-        let widget = ui.widget(self.node);
+        // Theme margin fills in only where the caller stayed silent —
+        // the menu slot holds its rule off the rows above and below,
+        // the in-flow slot leaves it at zero.
+        let node = self.node.default_margin(margin);
+        let widget = ui.widget(node);
         widget.record(ui, Some(&chrome), |_| {});
         // Decorative: skip the eager `response_for` probe.
         widget.response(ui)
     }
 }
 
-impl_configure!(Separator);
+impl_configure!(Separator<'_>);
 
 #[cfg(test)]
 mod tests {
     use crate::ui::harness::UiHarness;
 
     use crate::layout::types::sizing::Sizing;
+    use crate::primitives::spacing::Spacing;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::separator::Separator;
+    use crate::widgets::theme::separator::SeparatorTheme;
     use glam::UVec2;
+
+    /// `Separator` gained the per-instance `.style(&SeparatorTheme)`
+    /// every other themed widget already had — which is what lets
+    /// `MenuSeparator` hand its slot down whole instead of unpacking it
+    /// field by field.
+    ///
+    /// `margin` came with it, so the bundle also has to fill in where
+    /// the builder stayed silent and lose where it didn't: the menu slot
+    /// holds its rule off the rows around it, the in-flow slot leaves it
+    /// at zero, and a caller who says `.margin(...)` beats both.
+    #[test]
+    fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
+        let styled = SeparatorTheme {
+            thickness: 3.0,
+            margin: Spacing::xy(0.0, 5.0),
+            ..SeparatorTheme::default()
+        };
+        let mut h = UiHarness::new(UVec2::new(400, 300));
+        // Loudly different global slot — a styled rule must not reach it.
+        h.ui.theme.separator.thickness = 11.0;
+        h.ui.theme.separator.margin = Spacing::all(9.0);
+
+        let (mut inherited, mut explicit, mut global) = (None, None, None);
+        h.frame(|ui| {
+            let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+            col.show(ui, |ui| {
+                inherited = Some(Separator::horizontal().style(&styled).show(ui).node());
+                explicit = Some(
+                    Separator::horizontal()
+                        .style(&styled)
+                        .margin(Spacing::ZERO)
+                        .show(ui)
+                        .node(),
+                );
+                global = Some(Separator::horizontal().show(ui).node());
+            });
+        });
+
+        let layouts = h.ui.forest.trees[Layer::Main].records.layout();
+        let rects = &h.ui.layout[Layer::Main].rect;
+        assert_eq!(
+            layouts[inherited.unwrap().idx()].margin,
+            Spacing::xy(0.0, 5.0),
+            "the styled bundle's margin fills in",
+        );
+        assert_eq!(
+            rects[inherited.unwrap().idx()].size.h,
+            3.0,
+            "the styled bundle's thickness wins over the global slot's 11",
+        );
+        assert_eq!(
+            layouts[explicit.unwrap().idx()].margin,
+            Spacing::ZERO,
+            "an explicit margin beats the styled bundle",
+        );
+        assert_eq!(
+            layouts[global.unwrap().idx()].margin,
+            Spacing::all(9.0),
+            "an unstyled rule still reads the global slot",
+        );
+    }
 
     /// Explicit `.size(...)` replaces the Hug+Stretch/thickness default
     /// entirely, and an untouched horizontal rule still stretches across

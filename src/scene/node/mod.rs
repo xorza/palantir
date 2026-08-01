@@ -448,6 +448,16 @@ pub trait Configure: Sized {
         self
     }
 
+    /// Margin to fall back on when the caller set none. See
+    /// [`Self::default_id`].
+    fn default_margin(mut self, m: impl Into<Spacing>) -> Self {
+        let node = self.node_mut().node;
+        if node.margin.is_none() {
+            node.margin = Some(m.into());
+        }
+        self
+    }
+
     /// Lower size bound to fall back on when the caller set none. See
     /// [`Self::default_id`].
     fn default_min_size(mut self, s: impl Into<Size>) -> Self {
