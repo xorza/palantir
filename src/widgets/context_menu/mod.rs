@@ -3,10 +3,8 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::Sizes;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
@@ -66,7 +64,13 @@ struct ContextMenuState {
 #[derive(Debug)]
 pub struct ContextMenu<'a> {
     for_id: WidgetId,
-    node: Node,
+    /// The popup this menu *is*. It owns the body node from the start,
+    /// so the caller's [`Configure`] calls land on the node that
+    /// actually records — there is no second node to keep in sync or
+    /// swap in at `show`. Its anchor is a placeholder until `show`
+    /// re-places it (see [`Popup::anchored_at`]); a closed menu returns
+    /// before recording, so the placeholder never places anything.
+    popup: Popup,
     chrome: Option<Background>,
     gap: Option<f32>,
     style: Option<&'a ContextMenuTheme>,
@@ -74,11 +78,9 @@ pub struct ContextMenu<'a> {
 
 impl<'a> ContextMenu<'a> {
     pub fn for_id(for_id: WidgetId) -> Self {
-        let mut node = Node::vstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
             for_id,
-            node,
+            popup: Popup::anchored_to(Vec2::ZERO).click_outside(ClickOutside::Dismiss),
             chrome: None,
             gap: None,
             style: None,
@@ -101,28 +103,14 @@ impl<'a> ContextMenu<'a> {
         self
     }
 
-    pub fn size(mut self, size: impl Into<Sizes>) -> Self {
-        self.node = self.node.size(size);
-        self
-    }
-
-    pub fn min_size(mut self, size: impl Into<Size>) -> Self {
-        self.node = self.node.min_size(size);
-        self
-    }
-
-    pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.node = self.node.max_size(size);
-        self
-    }
-
-    pub fn padding(mut self, padding: impl Into<Spacing>) -> Self {
-        self.node = self.node.padding(padding);
-        self
-    }
-
     /// Vertical gutter between rows. Unset inherits the resolved
     /// theme's `gap`.
+    ///
+    /// Deliberately shadows [`Configure::gap`], which writes straight
+    /// into `node.gaps` — a packed pair with no "unset" state, so it
+    /// cannot tell a caller's `0.0` from an untouched default and the
+    /// theme fallback would have nothing to key on. The `Option` here
+    /// is that missing bit.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = Some(gap);
         self
@@ -174,17 +162,20 @@ impl<'a> ContextMenu<'a> {
         let gap = self.gap.unwrap_or(ctx.gap);
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
-        let mut e = self.node.id(body_id);
-        e.padding.get_or_insert(theme_padding);
-        e.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
-        e.gaps.set_gap(gap);
-
-        // `Popup::show` resolves the current body against the surface.
-        let mut popup = Popup::anchored_to(raw_anchor)
-            .click_outside(ClickOutside::Dismiss)
-            .background(panel);
-        popup.node = e;
-        let resp = popup.show(ui, body);
+        // The menu is the popup, configured: the caller's `Configure`
+        // calls already landed on it, the menu theme fills in whatever
+        // they left alone, and `Popup::show` resolves the result against
+        // the surface. Identity falls back to the trigger's — a menu has
+        // no call site of its own worth keying on.
+        let resp = self
+            .popup
+            .anchored_at(raw_anchor)
+            .background(panel)
+            .default_id(body_id)
+            .default_padding(theme_padding)
+            .default_min_size(Size::new(theme_min_width, 0.0))
+            .gap(gap)
+            .show(ui, body);
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);
         }
@@ -214,6 +205,15 @@ impl<'a> ContextMenu<'a> {
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
         ui.try_state::<ContextMenuState>(for_id)
             .is_some_and(|st| st.anchor.is_some())
+    }
+}
+
+/// Forwards to the popup this menu wraps, so `.size(...)` /
+/// `.padding(...)` / `.id(...)` configure the node that actually
+/// records — the menu keeps no node of its own.
+impl Configure for ContextMenu<'_> {
+    fn node_mut(&mut self) -> ConfigureNode<'_> {
+        self.popup.node_mut()
     }
 }
 
@@ -386,11 +386,7 @@ impl<'a> MenuItem<'a> {
     }
 }
 
-impl Configure for MenuItem<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(MenuItem<'_>);
 
 /// The rule [`MenuItem::separator`] records between menu groups: a
 /// [`crate::Separator`] wearing [`MenuSeparatorTheme`] instead of the

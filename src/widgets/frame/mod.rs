@@ -1,5 +1,5 @@
 use crate::primitives::background::Background;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -38,11 +38,7 @@ impl Frame {
     }
 }
 
-impl Configure for Frame {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Frame);
 
 #[cfg(test)]
 mod tests;

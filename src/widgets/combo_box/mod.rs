@@ -2,7 +2,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
@@ -162,11 +162,7 @@ impl<'a> ComboBox<'a> {
     }
 }
 
-impl Configure for ComboBox<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(ComboBox<'_>);
 
 /// Down-pointing chevron (`v`) in the `ARROW_W × ARROW_H` box, in
 /// node-local coords.

@@ -4,7 +4,7 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};
@@ -113,11 +113,7 @@ impl<'a> Switch<'a> {
     }
 }
 
-impl Configure for Switch<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Switch<'_>);
 
 /// Knob placement inside the track. The track's own extent is
 /// [`track_width`] × `track_h` and is not repeated here — `Switch::show`

@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
@@ -93,11 +93,7 @@ impl<'a> Checkbox<'a> {
     }
 }
 
-impl Configure for Checkbox<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Checkbox<'_>);
 
 // Three-point checkmark normalized to the box square. Coords were
 // hand-tuned at 16 px and scale linearly with `box_size`.

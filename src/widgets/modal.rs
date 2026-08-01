@@ -6,7 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use glam::Vec2;
 
@@ -72,10 +72,14 @@ impl Modal {
         let theme_min_width = mt.min_width;
 
         // The user-configured node becomes the card; the widget's
-        // resolved id stays on the backdrop root it records below.
-        let mut card = widget.node.id(root_id.with("card"));
-        card.padding.get_or_insert(theme_padding);
-        card.min_size.get_or_insert(Size::new(theme_min_width, 0.0));
+        // resolved id stays on the backdrop root it records below. The
+        // card's own id is always derived — the caller's went to the
+        // root — so this is `id`, not `default_id`.
+        let card = widget
+            .node
+            .id(root_id.with("card"))
+            .default_padding(theme_padding)
+            .default_min_size(Size::new(theme_min_width, 0.0));
 
         // Root fills the surface, dims it, eats stray pointer events,
         // and centers the card. The card re-senses `Sense::ABSORB_POINTER` so clicks
@@ -113,11 +117,7 @@ impl Modal {
     }
 }
 
-impl Configure for Modal {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Modal);
 
 #[cfg(test)]
 mod tests {

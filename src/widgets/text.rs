@@ -1,6 +1,6 @@
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::TextInput;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::FontWeight;
 use crate::text::wrap::TextWrap;
@@ -136,8 +136,4 @@ impl<'a> Text<'a> {
     }
 }
 
-impl Configure for Text<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Text<'_>);

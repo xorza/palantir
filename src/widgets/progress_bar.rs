@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
@@ -68,11 +68,7 @@ impl<'a> ProgressBar<'a> {
     }
 }
 
-impl Configure for ProgressBar<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(ProgressBar<'_>);
 
 struct WeightSplit {
     fill: f32,

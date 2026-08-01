@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, enter_widget};
@@ -220,11 +220,7 @@ impl<'a> Splitter<'a> {
     }
 }
 
-impl Configure for Splitter<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Splitter<'_>);
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
