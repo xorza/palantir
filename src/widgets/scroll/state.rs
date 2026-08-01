@@ -44,6 +44,18 @@ struct OffsetBounds {
     hi: Vec2,
 }
 
+/// What a thumb drag needs from its bar's resolved geometry. Named for
+/// the same reason [`TrackPage`] is: the two are siblings applied one
+/// after the other, and an anonymous `(f32, f32)` here reads as nothing
+/// at all by the time it is destructured.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ThumbTravel {
+    /// Content pixels bought per pixel of thumb travel.
+    pub(super) factor: f32,
+    /// Offset at which the content's trailing edge meets the track's.
+    pub(super) max_off: f32,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TrackPage {
     pub(super) click_main: f32,
@@ -139,7 +151,7 @@ impl ScrollState {
         axis: Axis,
         drag_started: bool,
         drag_delta: Option<Vec2>,
-        geometry: Option<(f32, f32)>,
+        travel: Option<ThumbTravel>,
     ) {
         if drag_started {
             self.drag_anchor = Some((axis, self.offset));
@@ -154,7 +166,7 @@ impl ScrollState {
             self.drag_anchor = None;
             return;
         };
-        let Some((factor, max_offset)) = geometry else {
+        let Some(travel) = travel else {
             // The bar lost its geometry mid-drag — content started
             // fitting, or the track collapsed. `drag_delta` stays
             // cumulative from the press, so a resumed anchor would apply
@@ -164,8 +176,8 @@ impl ScrollState {
             self.drag_anchor = None;
             return;
         };
-        let target = axis.main_v(anchor) + axis.main_v(delta) * factor;
-        let clamped = target.clamp(0.0, max_offset);
+        let target = axis.main_v(anchor) + axis.main_v(delta) * travel.factor;
+        let clamped = target.clamp(0.0, travel.max_off);
         match axis {
             Axis::X => self.offset.x = clamped,
             Axis::Y => self.offset.y = clamped,
