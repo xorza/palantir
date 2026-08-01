@@ -767,3 +767,42 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
         "second frame must have recorded the inline editor",
     );
 }
+
+/// The frame a click opens the editor, the returned response already
+/// reports `focused`.
+///
+/// `DragValue` calls `Ui::request_focus` on itself mid-`show`, but its
+/// entry snapshot was taken before that — so without
+/// `WidgetEntry::mark_focused` the widget would hand back a response
+/// denying the focus it had just taken, and a caller keying off
+/// `response.focused` would lag a frame behind the editor appearing.
+#[test]
+fn click_to_edit_reports_focus_on_the_same_frame() {
+    let id = WidgetId::from_hash("dv-focus-sync");
+    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut value = 5.0_f64;
+
+    let focused_of = |h: &mut UiHarness, value: &mut f64| -> bool {
+        h.frame_value(|ui| {
+            let mut draft = *value;
+            DragValue::new(&mut draft)
+                .editable(true)
+                .speed(1.0)
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .id(id)
+                .show(ui)
+                .response
+                .focused
+        })
+    };
+
+    assert!(!focused_of(&mut h, &mut value), "at rest: not focused");
+
+    // The click lands and requests focus inside this very `show`.
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.release();
+    assert!(
+        focused_of(&mut h, &mut value),
+        "the response must report the focus the click just took",
+    );
+}

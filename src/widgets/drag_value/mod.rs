@@ -351,9 +351,7 @@ impl<'a> DragValue<'a> {
         // programmatic `request_focus` get the same fresh draft.
         if self.editable && !entry.state.disabled && entry.state.left.clicked() {
             ui.request_focus(Some(id));
-            // Keep the response's documented focused-synchronicity: the raw
-            // snapshot predates the request.
-            entry.state.focused = true;
+            entry.mark_focused();
         }
 
         let text = match &self.value {

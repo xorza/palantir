@@ -52,13 +52,14 @@ impl<'a> ProgressBar<'a> {
 
         let widget = ui.widget(node);
         let id = widget.id();
-        widget.record(ui, Some(&track), |ui| {
-            chrome::leaf(ui, id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));
-            // Remainder spacer — its `Fill` weight pushes the fill to the
-            // correct fraction of the track width.
-            chrome::leaf(ui, id.with("rest"), (spacer, Sizing::FILL), None);
-        });
-        widget.response(ui)
+        widget
+            .show(ui, Some(&track), |ui| {
+                chrome::leaf(ui, id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));
+                // Remainder spacer — its `Fill` weight pushes the fill to the
+                // correct fraction of the track width.
+                chrome::leaf(ui, id.with("rest"), (spacer, Sizing::FILL), None);
+            })
+            .response
     }
 }
 

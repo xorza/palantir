@@ -1,4 +1,3 @@
-use crate::input::response::ButtonPhase;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
@@ -362,7 +361,7 @@ impl<'a> MenuItem<'a> {
         entry.widget.record(ui, Some(&look.background), body);
 
         if shortcut_fired {
-            entry.state.left.phase = ButtonPhase::Up { click: Some(1) };
+            entry.mark_clicked();
         }
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.

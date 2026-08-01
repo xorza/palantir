@@ -114,26 +114,24 @@ impl<'a> Text<'a> {
         let metrics_valid = style.metrics_valid();
         let font_size_px = style.font_size_px;
         let line_height_px = style.line_height_for(font_size_px);
-        let widget = ui.widget(self.node);
-        widget.record(ui, None, |ui| {
-            if metrics_valid {
-                let text = ui.intern(self.text);
-                ui.add_shape(Shape::Text {
-                    local_origin: None,
-                    text,
-                    color,
-                    font_size_px,
-                    line_height_px,
-                    wrap: self.wrap,
-                    align: self.align,
-                    family,
-                    weight,
-                });
-            }
-        });
-        // Decorative: skip eager `response_for`. Discarded responses
-        // pay zero; a `.left.clicked()` call later does one lazy probe.
-        widget.response(ui)
+        ui.widget(self.node)
+            .show(ui, None, |ui| {
+                if metrics_valid {
+                    let text = ui.intern(self.text);
+                    ui.add_shape(Shape::Text {
+                        local_origin: None,
+                        text,
+                        color,
+                        font_size_px,
+                        line_height_px,
+                        wrap: self.wrap,
+                        align: self.align,
+                        family,
+                        weight,
+                    });
+                }
+            })
+            .response
     }
 }
 
