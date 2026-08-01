@@ -188,6 +188,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
     use crate::primitives::approx::EPS;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
+    use crate::widgets::text_edit::TextEditState;
 
     let cases = [
         ("zero font", 0.0, 1.2),
@@ -210,9 +211,27 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             line_height_mult,
             ..TextStyle::default()
         };
+        let editor_id = WidgetId::from_hash("invalid editor");
         let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
-        h.ui.theme.text_edit.looks.normal.text = Some(style.clone());
         let mut buf = String::from("editable");
+
+        // One renderable frame first, so the unrenderable one below has
+        // retained state it could lose.
+        h.frame(|ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                TextEdit::new(&mut buf)
+                    .id(editor_id)
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                    .show(ui);
+            });
+        });
+        {
+            let st = h.ui.state_mut::<TextEditState>(editor_id);
+            st.edit.caret = 4;
+            st.edit.selection = Some(1);
+        }
+
+        h.ui.theme.text_edit.looks.normal.text = Some(style.clone());
         let mut text_node = None;
         let mut editor_node = None;
         let calls = h.ui.resources.text.measure_calls();
@@ -222,7 +241,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
                 text_node = Some(Text::new("label").style(&style).show(ui).node());
                 editor_node = Some(
                     TextEdit::new(&mut buf)
-                        .id(WidgetId::from_hash("invalid editor"))
+                        .id(editor_id)
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .response
@@ -243,6 +262,19 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             h.ui.resources.text.measure_calls(),
             calls,
             "{label}: invalid text reached the shaper",
+        );
+        // `show` moves the state row out for the whole pass and back at
+        // the end. Bailing here is the pass's *only* early return, so it
+        // is the one place a write-back on some-but-not-all paths would
+        // hand the row back as `Default` — silently resetting the caret
+        // and dropping the undo stack the moment a theme made the text
+        // unrenderable.
+        let st = h.ui.state_mut::<TextEditState>(editor_id);
+        assert_eq!(st.edit.caret, 4, "{label}: caret lost on the early return");
+        assert_eq!(
+            st.edit.selection,
+            Some(1),
+            "{label}: selection lost on the early return",
         );
     }
 }

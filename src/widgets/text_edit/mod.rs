@@ -12,9 +12,10 @@ use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::text_edit::input::{InputPolicy, InputResult, handle_input};
+use crate::widgets::text_edit::input::{InputPolicy, InputResult, run_input};
 use crate::widgets::text_edit::menu::MenuResult;
 use crate::widgets::text_edit::model::EditState;
 use crate::widgets::text_edit::view::{
@@ -24,7 +25,6 @@ use crate::widgets::text_edit::view::{
 use crate::widgets::theme::resolve_look;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::{Response, ResponseSnapshot};
-use glam::Vec2;
 use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]
@@ -249,11 +249,43 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
         // Identity resolves on its own: `self.node` keeps being written
         // below (key filter, then `resolve_look`'s spacing defaults), so
         // a copy staged now would be stale by the time it records.
         let id = ui.widget_id(self.node.salt);
+        // **The state row is moved out for the whole pass and moved back
+        // after.** Every stage of the pass wants it, and the stages are
+        // separated by `&mut Ui` calls — the keyboard drain, the shape
+        // probe, the context menu, the record — so a borrow taken from
+        // `ui` cannot survive between them. Owning it costs two moves of
+        // a small struct (no allocation: the undo buffers move with it)
+        // and collapses what used to be seven lookups into one.
+        //
+        // [`Self::pass`] exists to make the write-back unconditional: it
+        // early-returns on an unstyled editor, and a `mem::take` whose
+        // write-back only runs on *some* paths silently resets the caret.
+        let mut state = std::mem::take(ui.state_mut::<TextEditState>(id));
+        let signals = self.pass(ui, id, &mut state);
+        *ui.state_mut::<TextEditState>(id) = state;
+
+        // Built after the write-back: the response borrows `ui`, so it
+        // cannot exist while the row still has to go home.
+        let response = ui.response_for(id);
+        TextEditResponse {
+            response: Response::eager(id, ui, response),
+            changed: signals.changed,
+            submitted: signals.submitted,
+            cancelled: signals.cancelled,
+            gained_focus: signals.gained_focus,
+            lost_focus: signals.lost_focus,
+        }
+    }
+
+    /// One record pass over a state row the caller owns — see
+    /// [`Self::show`] for why it is passed in rather than looked up.
+    /// Returns the borrow-free half of [`TextEditResponse`].
+    fn pass(mut self, ui: &mut Ui, id: WidgetId, state: &mut TextEditState) -> EditSignals {
         let mut is_focused = ui.focused_id() == Some(id);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
@@ -303,17 +335,11 @@ impl<'a> TextEdit<'a> {
         let selection_color = style.selection;
         let placeholder_color = style.placeholder;
         if !look.text.metrics_valid() {
-            let was_focused = {
-                let state = ui.state_mut::<TextEditState>(id);
-                let was_focused = state.view.prev_focused;
-                state.view.prev_focused = is_focused;
-                was_focused
-            };
+            let was_focused = state.view.prev_focused;
+            state.view.prev_focused = is_focused;
             let chrome = look.background;
             ui.node(id, self.node, Some(&chrome), |_| {});
-            let state = ui.response_for(id);
-            return TextEditResponse {
-                response: Response::eager(id, ui, state),
+            return EditSignals {
                 changed: false,
                 submitted: false,
                 cancelled: false,
@@ -338,9 +364,7 @@ impl<'a> TextEdit<'a> {
         };
         let padding =
             Spacing::from_array(self.node.padding.unwrap().as_array().map(|v| v + stroke_w));
-        let previous_block_offset = ui
-            .try_state::<TextEditState>(id)
-            .map_or(Vec2::ZERO, |state| state.view.block_offset);
+        let previous_block_offset = state.view.block_offset;
         let layout = view::resolve_layout(LayoutInput {
             response_rect: response.layout_rect,
             padding,
@@ -360,17 +384,18 @@ impl<'a> TextEdit<'a> {
             blur: blur_after,
             submitted,
             edited,
-        } = handle_input(
+        } = run_input(
             ui,
             id,
             is_focused,
             self.text,
-            &ctx,
+            &layout,
             InputPolicy {
                 max_chars: self.max_chars,
                 select_all_on_focus: self.select_all_on_focus,
                 filter,
             },
+            state,
         );
         if blur_after {
             ui.request_focus(None);
@@ -386,19 +411,20 @@ impl<'a> TextEdit<'a> {
         let MenuResult {
             edited: menu_edited,
             caret_moved: menu_caret_moved,
-        } = menu::show(ui, id, &snapshot, self.text, ctx.multiline, self.max_chars);
+        } = menu::show(
+            ui,
+            &snapshot,
+            self.text,
+            ctx.multiline,
+            self.max_chars,
+            &mut state.edit,
+        );
         let changed = edited || menu_edited;
         let caret_moved = caret_moved || menu_caret_moved;
-        let (caret_byte, selection) = {
-            let state = ui.state_mut::<TextEditState>(id);
-            (state.edit.caret, state.edit.sel_range())
-        };
+        let caret_byte = state.edit.caret;
+        let selection = state.edit.sel_range();
 
-        let mut retained = ui
-            .state_mut::<TextEditState>(id)
-            .view
-            .selection_rects
-            .take();
+        let mut retained = state.view.selection_rects.take();
         let mut inline = SelectionRects::new();
         let selection_rects = retained.as_deref_mut().unwrap_or(&mut inline);
         let geometry = view::resolve_geometry(
@@ -412,28 +438,22 @@ impl<'a> TextEdit<'a> {
             },
             selection_rects,
         );
-        let layout = geometry.layout;
         let caret_pos = geometry.caret_pos;
-        ui.state_mut::<TextEditState>(id)
-            .edit
-            .observe_text_hash(geometry.text_hash);
+        state.edit.observe_text_hash(geometry.text_hash);
         let now = ui.frame_runtime.time;
-        let view = ui
-            .state_mut::<TextEditState>(id)
-            .view
-            .update(ViewUpdateInput {
-                response_rect: response.layout_rect,
-                ctx,
-                caret_pos,
-                caret_width,
-                content_width: layout.content_width,
-                focused: is_focused,
-                caret_moved,
-                edited: changed,
-                gained_focus,
-                now,
-                block_offset: layout.ctx.block_offset,
-            });
+        let view = state.view.update(ViewUpdateInput {
+            response_rect: response.layout_rect,
+            ctx,
+            caret_pos,
+            caret_width,
+            content_width: geometry.content_width,
+            focused: is_focused,
+            caret_moved,
+            edited: changed,
+            gained_focus,
+            now,
+            block_offset: geometry.block_offset,
+        });
         let text_color = look.text.color;
         let placeholder = self.placeholder;
         view::record(
@@ -444,7 +464,7 @@ impl<'a> TextEdit<'a> {
                 chrome: look.background,
                 text: self.text,
                 placeholder: &placeholder,
-                layout,
+                geometry,
                 selection_rects,
                 selection_color,
                 text_color,
@@ -461,11 +481,9 @@ impl<'a> TextEdit<'a> {
         if retained.is_none() && inline.len() > SELECTION_RECTS_INLINE_CAPACITY {
             retained = Some(Box::new(inline));
         }
-        ui.state_mut::<TextEditState>(id).view.selection_rects = retained;
+        state.view.selection_rects = retained;
 
-        let state = ui.response_for(id);
-        TextEditResponse {
-            response: Response::eager(id, ui, state),
+        EditSignals {
             changed,
             submitted,
             cancelled: blur_after,
@@ -476,6 +494,18 @@ impl<'a> TextEdit<'a> {
 }
 
 impl_configure!(TextEdit<'_>);
+
+/// [`TextEditResponse`] minus its `Response` — what one pass can report
+/// while the state row is still out on loan. `show` reunites the two
+/// once the row is home and it can borrow `ui` again.
+#[derive(Clone, Copy, Debug)]
+struct EditSignals {
+    changed: bool,
+    submitted: bool,
+    cancelled: bool,
+    gained_focus: bool,
+    lost_focus: bool,
+}
 
 /// What [`TextEdit::show`] returns: the widget's [`Response`] plus the
 /// edit-specific signals computed *inside* `show()`. Callers read
