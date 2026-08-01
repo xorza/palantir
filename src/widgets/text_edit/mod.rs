@@ -325,7 +325,7 @@ impl<'a> TextEdit<'a> {
         let line_height_px = look.text.line_height_for(font_size);
         // `Tree::open_node` folds chrome stroke width into the stored
         // padding so children sit inside the painted stroke ring (see
-        // `forest/tree/mod.rs::open_node`). Encoder's clip mask is
+        // `scene/tree/mod.rs::open_node`). Encoder's clip mask is
         // `rect.deflated_by(post-inflate padding)`, so glyph + caret
         // coordinates must use the same effective value — otherwise
         // the top row of glyphs sits above the clip and gets scissored
