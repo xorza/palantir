@@ -96,10 +96,7 @@ impl<'a> Separator<'a> {
         // the menu slot holds its rule off the rows above and below,
         // the in-flow slot leaves it at zero.
         let node = self.node.default_margin(margin);
-        let widget = ui.widget(node);
-        widget.record(ui, Some(&chrome), |_| {});
-        // Decorative: skip the eager `response_for` probe.
-        widget.response(ui)
+        ui.widget(node).show(ui, Some(&chrome), |_| {}).response
     }
 }
 

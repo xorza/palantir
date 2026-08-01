@@ -130,13 +130,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
-        let widget = ui.widget(node);
-        let inner = widget.record(ui, chrome.as_ref(), body);
-        InnerResponse {
-            // Decorative: skip eager `response_for`.
-            response: widget.response(ui),
-            inner,
-        }
+        ui.widget(node).show(ui, chrome.as_ref(), body)
     }
 }
 

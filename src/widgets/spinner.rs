@@ -89,23 +89,23 @@ impl<'a> Spinner<'a> {
             .size
             .get_or_insert((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
 
-        let widget = ui.widget(self.node);
-        widget.record(ui, None, |ui| {
-            // Static arc (phase 0) + a paint-time spin: the recorded
-            // shape is identical every frame, so the spinner's subtree
-            // stays cache-stable and only the composer re-spins it.
-            let ArcGeometry { center, radius } = arc_geometry(diameter, width);
-            ui.add_shape_animated(
-                Shape::arc(center, radius, 0.0, sweep, width)
-                    .brush(comet_brush(color))
-                    .cap(LineCap::Round),
-                PaintAnim::Spin {
-                    speed,
-                    started_at: Duration::ZERO,
-                },
-            );
-        });
-        widget.response(ui)
+        ui.widget(self.node)
+            .show(ui, None, |ui| {
+                // Static arc (phase 0) + a paint-time spin: the recorded
+                // shape is identical every frame, so the spinner's subtree
+                // stays cache-stable and only the composer re-spins it.
+                let ArcGeometry { center, radius } = arc_geometry(diameter, width);
+                ui.add_shape_animated(
+                    Shape::arc(center, radius, 0.0, sweep, width)
+                        .brush(comet_brush(color))
+                        .cap(LineCap::Round),
+                    PaintAnim::Spin {
+                        speed,
+                        started_at: Duration::ZERO,
+                    },
+                );
+            })
+            .response
     }
 }
 

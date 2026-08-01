@@ -31,10 +31,10 @@ impl Frame {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let widget = ui.widget(self.node);
-        widget.record(ui, self.chrome.as_ref(), |_| {});
-        // Decorative: skip eager `response_for`.
-        widget.response(ui)
+        let chrome = self.chrome;
+        ui.widget(self.node)
+            .show(ui, chrome.as_ref(), |_| {})
+            .response
     }
 }
 
