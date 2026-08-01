@@ -160,14 +160,15 @@ impl Forest {
     }
 
     /// Minimum `next_wake` across every layer's paint anims, or `None`
-    /// when nothing wants a wake. Called from `Ui::frame` after both
+    /// when nothing wants a wake — no anims at all, or every one of
+    /// them settled. Called from `Ui::frame` after both
     /// record and paint-only paths so the next anim boundary is queued
     /// regardless of which path ran.
     pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Option<Duration> {
         (&self.trees)
             .into_iter()
             .flat_map(|tree| &tree.paint_anims.entries)
-            .map(|entry| entry.anim.next_wake(now))
+            .filter_map(|entry| entry.anim.next_wake(now))
             .min()
     }
 

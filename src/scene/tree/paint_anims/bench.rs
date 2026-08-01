@@ -14,6 +14,7 @@ fn last_shape_registry() -> PaintAnims {
             anim: PaintAnim::BlinkOpacity {
                 half_period: Duration::from_millis(500),
                 started_at: Duration::ZERO,
+                stop_after: Duration::MAX,
             },
             row: 0,
             node_idx: 0,

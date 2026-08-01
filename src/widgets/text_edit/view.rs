@@ -95,18 +95,15 @@ impl ViewState {
         }
         self.prev_focused = input.focused;
         self.block_offset = input.block_offset;
-        let caret_anim = if input.focused {
-            let elapsed = input
-                .now
-                .saturating_sub(self.last_caret_change)
-                .as_secs_f32();
-            (elapsed < BLINK_STOP_AFTER_IDLE).then_some(PaintAnim::BlinkOpacity {
-                half_period: Duration::from_secs_f32(BLINK_HALF),
-                started_at: self.last_caret_change,
-            })
-        } else {
-            None
-        };
+        // The idle cutoff is the anim's to apply, not ours: a blinking
+        // caret wakes the host on its own, and those wakes paint without
+        // recording, so this line would stop running long before the
+        // cutoff arrived.
+        let caret_anim = input.focused.then_some(PaintAnim::BlinkOpacity {
+            half_period: Duration::from_secs_f32(BLINK_HALF),
+            started_at: self.last_caret_change,
+            stop_after: Duration::from_secs_f32(BLINK_STOP_AFTER_IDLE),
+        });
         ViewUpdate {
             scroll: self.scroll,
             caret_anim,

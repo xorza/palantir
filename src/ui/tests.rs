@@ -52,6 +52,7 @@ fn add_blink_shape(ui: &mut Ui, half: Duration) {
         PaintAnim::BlinkOpacity {
             half_period: half,
             started_at: Duration::ZERO,
+            stop_after: Duration::MAX,
         },
     );
 }
@@ -748,6 +749,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
                 PaintAnim::BlinkOpacity {
                     half_period: HALF,
                     started_at: HALF,
+                    stop_after: Duration::MAX,
                 },
             );
         });
