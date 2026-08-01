@@ -375,14 +375,10 @@ fn popup_with_scroll_settles_in_one_frame() {
     let viewport_id = WidgetId::from_hash("popup-scroll").with("__viewport");
     let viewport =
         h.ui.cascades
-            .by_id
-            .get(&viewport_id)
+            .endpoint(viewport_id)
             .expect("popup scroll viewport endpoint");
     assert_eq!(viewport.layer, Layer::Popup);
-    assert_eq!(
-        h.ui.layout[Layer::Popup].scroll_content[viewport.node.idx()],
-        Size::new(80.0, 300.0)
-    );
+    assert_eq!(h.ui.layout.scroll_content(viewport), Size::new(80.0, 300.0));
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
         h.move_to(Vec2::new(50.0, 50.0));

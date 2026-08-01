@@ -142,10 +142,9 @@ fn bar_space(
 /// for the previous frame — which is the lag `Scroll` wants: the bars
 /// describe the content the user is looking at.
 fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
-    let Some(endpoint) = ui.cascades.by_id.get(&scroll_id) else {
-        return Size::ZERO;
-    };
-    ui.layout[endpoint.layer].scroll_content[endpoint.node.idx()]
+    ui.cascades
+        .endpoint(scroll_id)
+        .map_or(Size::ZERO, |endpoint| ui.layout.scroll_content(endpoint))
 }
 
 /// What one scroll frame resolves against, all read from *last* frame's

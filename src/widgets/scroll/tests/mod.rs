@@ -40,15 +40,14 @@ fn read_state(h: &mut UiHarness) -> ScrollState {
 }
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {
-    *ui.cascades
-        .by_id
-        .get(&outer_id.with("__viewport"))
+    ui.cascades
+        .endpoint(outer_id.with("__viewport"))
         .expect("scroll viewport endpoint")
 }
 
 fn scroll_content(ui: &Ui, outer_id: WidgetId) -> Size {
-    let endpoint = scroll_viewport_endpoint(ui, outer_id);
-    ui.layout[endpoint.layer].scroll_content[endpoint.node.idx()]
+    ui.layout
+        .scroll_content(scroll_viewport_endpoint(ui, outer_id))
 }
 
 fn scroll_viewport(ui: &Ui, outer_id: WidgetId) -> Size {

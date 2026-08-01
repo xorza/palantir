@@ -67,6 +67,25 @@ impl Axis {
             Axis::Y => Size::new(cross, main),
         }
     }
+    /// Build a `Spacing` whose main-axis sides carry `main` and whose
+    /// cross-axis sides carry `cross` — the inverse of [`Self::spacing`],
+    /// and the shape an axis-generic inset wants (a `Splitter`'s grab bar
+    /// overhangs its seam along the split axis only).
+    pub(crate) fn compose_spacing(self, main: f32, cross: f32) -> Spacing {
+        match self {
+            Axis::X => Spacing::new(main, cross, main, cross),
+            Axis::Y => Spacing::new(cross, main, cross, main),
+        }
+    }
+    /// Order a main/cross pair the way the grid APIs take them:
+    /// `[rows, cols]`. `Axis::X` distributes along columns, so its main
+    /// list *is* the column list; `Axis::Y` distributes along rows.
+    pub(crate) fn rows_cols<T>(self, main: T, cross: T) -> [T; 2] {
+        match self {
+            Axis::X => [cross, main],
+            Axis::Y => [main, cross],
+        }
+    }
     /// Build a `Vec2` from main- and cross-axis positions.
     pub(crate) fn compose_point(self, main: f32, cross: f32) -> Vec2 {
         match self {
