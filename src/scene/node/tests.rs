@@ -72,6 +72,54 @@ fn layout_mode_size() {
     assert_eq!(std::mem::size_of::<PackedLayoutMeta>(), 4);
 }
 
+/// The `default_*` family fills in only where the caller stayed silent —
+/// the trait's half of "explicit wins, the theme fills in the rest". The
+/// plain setters can't express it, which is why a widget wrapping
+/// another (`ContextMenu` over `Popup`) had no way to resolve its theme
+/// without reaching into the wrapped node.
+///
+/// A `#[track_caller]` auto id must **not** count as set: every widget
+/// has one, so counting it would make `default_id` unreachable.
+#[test]
+fn default_setters_fill_only_where_the_caller_stayed_silent() {
+    let fallback_id = WidgetId::from_hash("fallback");
+    let caller_id = WidgetId::from_hash("caller");
+    let fallback_padding = Spacing::all(4.0);
+    let caller_padding = Spacing::all(9.0);
+
+    // Untouched but for its auto id: every default lands.
+    let filled = Node::leaf()
+        .default_id(fallback_id)
+        .default_padding(fallback_padding)
+        .default_min_size(Size::new(10.0, 0.0))
+        .default_max_size(Size::new(200.0, 300.0));
+    assert!(matches!(filled.salt, Salt::Verbatim(v) if v == fallback_id));
+    assert_eq!(filled.padding, Some(fallback_padding));
+    assert_eq!(filled.min_size, Some(Size::new(10.0, 0.0)));
+    assert_eq!(filled.max_size, Some(Size::new(200.0, 300.0)));
+
+    // Caller spoke first: every default is a no-op — including the
+    // deliberate zero, which is exactly the value a "is it still the
+    // default?" check on the value itself would get wrong.
+    let kept = Node::leaf()
+        .id(caller_id)
+        .padding(caller_padding)
+        .min_size(Size::ZERO)
+        .max_size(Size::new(50.0, 60.0))
+        .default_id(fallback_id)
+        .default_padding(fallback_padding)
+        .default_min_size(Size::new(10.0, 0.0))
+        .default_max_size(Size::new(200.0, 300.0));
+    assert!(matches!(kept.salt, Salt::Verbatim(v) if v == caller_id));
+    assert_eq!(kept.padding, Some(caller_padding));
+    assert_eq!(kept.min_size, Some(Size::ZERO), "an explicit zero survives");
+    assert_eq!(kept.max_size, Some(Size::new(50.0, 60.0)));
+
+    // `id_salt` is explicit too, so it blocks the fallback the same way.
+    let salted = Node::leaf().id_salt("row").default_id(fallback_id);
+    assert!(matches!(salted.salt, Salt::Hash(_)));
+}
+
 #[test]
 fn builder_setters_cover_the_complete_external_node_surface() {
     use crate::layout::types::sizing::Sizing;

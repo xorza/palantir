@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::color::Color;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -100,11 +100,7 @@ impl Spinner {
     }
 }
 
-impl Configure for Spinner {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Spinner);
 
 /// Node-local circle the arc traces.
 #[derive(Debug, PartialEq)]

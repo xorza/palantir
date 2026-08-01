@@ -14,7 +14,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
@@ -853,11 +853,7 @@ impl Scroll {
     }
 }
 
-impl Configure for Scroll {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Scroll);
 
 #[cfg(test)]
 mod tests;

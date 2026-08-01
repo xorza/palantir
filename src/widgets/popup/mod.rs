@@ -6,7 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::resolve_container_chrome;
@@ -108,7 +108,7 @@ impl PopupResponse {
 pub struct Popup {
     position: OverlayPosition,
     click_outside: ClickOutside,
-    pub(crate) node: Node,
+    node: Node,
     chrome: Option<Background>,
 }
 
@@ -152,6 +152,18 @@ impl Popup {
 
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
+        self
+    }
+
+    /// Re-place an already-built popup at `anchor`.
+    ///
+    /// For a wrapper whose placement is late-bound: [`crate::ContextMenu`]
+    /// holds its popup from the moment the caller starts configuring it,
+    /// but doesn't learn where the menu was opened until `show` reads the
+    /// state map. The constructors stay the canonical way in; this is the
+    /// one case that can't use them.
+    pub(crate) fn anchored_at(mut self, anchor: Vec2) -> Self {
+        self.position = OverlayPosition::at_point(anchor);
         self
     }
 
@@ -245,11 +257,7 @@ impl Popup {
     }
 }
 
-impl Configure for Popup {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Popup);
 
 #[cfg(test)]
 mod tests;

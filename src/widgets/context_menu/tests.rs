@@ -522,6 +522,23 @@ fn per_instance_style_overrides_global_menu_theme() {
     assert_eq!(global.separator.thickness, default.separator.thickness);
 }
 
+/// Record index of the popup-layer node carrying `id`, if any.
+fn popup_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
+    h.ui.forest.trees[Layer::Popup]
+        .records
+        .widget_id()
+        .iter()
+        .position(|recorded| *recorded == id)
+}
+
+/// The menu body takes its box from [`Configure`] — `ContextMenu` used
+/// to hand-roll `size` / `min_size` / `max_size` / `padding` and offer
+/// nothing else, so `margin` here is a setter it simply did not have.
+///
+/// Identity is the other half: the body id derives from the trigger,
+/// because a menu has no call site of its own worth keying on — but an
+/// explicit `.id(...)` has to win, the same way explicit spacing wins
+/// over the theme.
 #[test]
 fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let mut h = UiHarness::new(SURFACE);
@@ -530,19 +547,33 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
         ContextMenu::for_id(trigger_id())
             .background(Background::NONE)
             .padding(Spacing::ZERO)
+            .margin(Spacing::all(5.0))
             .min_size(Size::ZERO)
             .show(ui, |_, _| {});
     });
 
-    let body_id = trigger_id().with("ctx_menu_body");
+    let derived = trigger_id().with("ctx_menu_body");
+    let index = popup_node(&h, derived).expect("context menu body node");
     let tree = &h.ui.forest.trees[Layer::Popup];
-    let index = tree
-        .records
-        .widget_id()
-        .iter()
-        .position(|id| *id == body_id)
-        .expect("context menu body node");
-    let node = NodeId(index as u32);
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
-    assert_eq!(tree.bounds(node).min_size, Size::ZERO);
+    assert_eq!(tree.records.layout()[index].margin, Spacing::all(5.0));
+    assert_eq!(tree.bounds(NodeId(index as u32)).min_size, Size::ZERO);
+
+    // Same trigger, caller-set id: the derived one must not appear.
+    let explicit = WidgetId::from_hash("my-own-menu-body");
+    let mut h = UiHarness::new(SURFACE);
+    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    h.frame(|ui| {
+        ContextMenu::for_id(trigger_id())
+            .id(explicit)
+            .show(ui, |_, _| {});
+    });
+    assert!(
+        popup_node(&h, explicit).is_some(),
+        "an explicit id must reach the recorded menu body",
+    );
+    assert!(
+        popup_node(&h, derived).is_none(),
+        "the trigger-derived id must not also be recorded",
+    );
 }

@@ -12,7 +12,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::text_edit::input::{InputPolicy, InputResult, handle_input};
 use crate::widgets::text_edit::menu::MenuResult;
@@ -45,10 +45,7 @@ struct TextEditState {
 /// are repaired before each input pass.
 #[derive(Debug)]
 pub struct TextEdit<'a> {
-    /// `pub(crate)` for `DragValue`, which swaps its chip for an inline
-    /// editor and has to carry the caller's node policy across the swap
-    /// (see `drag_value::inherit_chip_node`).
-    pub(crate) node: Node,
+    node: Node,
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
     placeholder: Cow<'static, str>,
@@ -173,6 +170,82 @@ impl<'a> TextEdit<'a> {
     /// like every other text-rendering widget.
     pub fn style(mut self, s: &'a TextEditTheme) -> Self {
         self.style = Some(s);
+        self
+    }
+
+    /// Take over the placement half of `from` — where the widget sits in
+    /// its parent, not what it looks like.
+    ///
+    /// For a widget that *becomes* a `TextEdit` partway through a
+    /// gesture: [`crate::DragValue`] swaps its scrub chip for an inline
+    /// editor on click, and without this the field visibly moved and
+    /// resized on the edit frame because padding, margin, alignment,
+    /// grid placement and canvas position all vanished with the chip.
+    ///
+    /// The destructure below is exhaustive on purpose. A new `Node`
+    /// field has to be given a policy here rather than silently
+    /// disappearing across the swap — that silent loss is the whole
+    /// defect this exists to prevent, and an elided `..` would let it
+    /// back in.
+    pub(crate) fn adopt_placement(mut self, from: Node) -> Self {
+        let Node {
+            // Identity and layout mode belong to the editor: it
+            // deliberately shares the chip's resolved `WidgetId` (same
+            // focus, same state row), and it is a scrolling text field
+            // whatever the chip was.
+            salt: _,
+            mode: _,
+            // Sizing is resolved by the caller, which pins the width to
+            // the chip's last rect so a long value scrolls instead of
+            // growing the row. Forwarding the raw values here would undo
+            // that.
+            size: _,
+            min_size: _,
+            max_size: _,
+            // `TextEdit::new` pins `ClipMode::Rect` so glyphs cannot
+            // spill past the field; a caller's clip choice must not
+            // relax that.
+            clip: _,
+            // Box parity across the swap is the *theme's* job —
+            // `DragValueTheme::from_chip` mirrors the chip's padding onto
+            // the editor for exactly that reason — and the chip itself
+            // resolves its padding from the theme rather than from this
+            // node. Forwarding it would make the editor honour a value
+            // the chip ignores, which is a new divergence rather than a
+            // fix, and it perturbs the editor's intrinsic height. Margin
+            // below is different: nothing else carries it, so without
+            // this the field visibly shifts.
+            padding: _,
+            // Interior child configuration — the editor owns its one
+            // child.
+            gaps: _,
+            justify: _,
+            child_align: _,
+            // The editor senses as a text field, not as a click/drag
+            // chip.
+            flags: _,
+            // `TextEdit` wraps a `Scroll`, which overwrites `transform`
+            // with its pan offset (see `scroll::scroll_wrappers`), so
+            // forwarding one would read as supported while doing nothing.
+            transform: _,
+            // Everything below places the widget inside its parent or
+            // sets its box metrics. These are what must survive.
+            margin,
+            align,
+            position,
+            grid,
+            visibility,
+        } = from;
+
+        // `None` means "no caller opinion" — leave this field's own theme
+        // default standing rather than overwriting it with zero.
+        if let Some(margin) = margin {
+            self.node.margin = Some(margin);
+        }
+        self.node.align = align;
+        self.node.position = position;
+        self.node.grid = grid;
+        self.node.visibility = visibility;
         self
     }
 
@@ -401,11 +474,7 @@ impl<'a> TextEdit<'a> {
     }
 }
 
-impl Configure for TextEdit<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(TextEdit<'_>);
 
 /// What [`TextEdit::show`] returns: the widget's [`Response`] plus the
 /// edit-specific signals computed *inside* `show()`. Callers read

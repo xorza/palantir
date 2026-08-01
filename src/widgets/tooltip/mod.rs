@@ -2,8 +2,6 @@ use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;
 use crate::primitives::interned_str::TextInput;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
@@ -54,6 +52,12 @@ static GLOBAL_STATE_ID: LazyLock<WidgetId> =
 /// Tooltips are pointer-driven only and skip recording on disabled
 /// triggers by default. Pass `.show_when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
+///
+/// Implements [`Configure`], so the bubble takes `.padding(...)`,
+/// `.max_size(...)`, `.size(...)`, `.margin(...)` and the rest like any
+/// other widget. Identity defaults to the trigger's id — a tooltip has
+/// no call site of its own worth keying on — but an explicit `.id(...)`
+/// / `.id_salt(...)` wins.
 #[derive(Debug)]
 pub struct Tooltip<'r, 'a> {
     snapshot: &'r ResponseSnapshot,
@@ -93,16 +97,6 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     /// to suppress the themed bubble chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
-        self
-    }
-
-    pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.node = self.node.max_size(size);
-        self
-    }
-
-    pub fn padding(mut self, padding: impl Into<Spacing>) -> Self {
-        self.node = self.node.padding(padding);
         self
     }
 
@@ -184,15 +178,19 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             global.last_visible_at = Some(now);
             let position = OverlayPosition::below(trigger_rect, gap);
             let text = self.text;
-            // Theme fallbacks: ZERO padding / INF max_size / None
-            // chrome mean "inherit from theme.tooltip".
-            let mut node = self.node.id(bubble_id);
             let text_style = ui.theme.tooltip.text.clone();
             let chrome = self
                 .chrome
                 .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
-            node.padding.get_or_insert(ui.theme.tooltip.padding);
-            node.max_size.get_or_insert(ui.theme.tooltip.max_size);
+            // Theme fills in whatever the caller left alone. Identity
+            // derives from the trigger, because that is the only thing a
+            // tooltip *has* — but a caller-set id wins like any other
+            // explicit value.
+            let node = self
+                .node
+                .default_id(bubble_id)
+                .default_padding(ui.theme.tooltip.padding)
+                .default_max_size(ui.theme.tooltip.max_size);
             ui.overlay_layer(Layer::Tooltip, position, |ui| {
                 ui.widget(node).record(ui, Some(&chrome), |ui| {
                     Text::new(text)
@@ -207,6 +205,8 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         *ui.state_mut::<TooltipGlobal>(g_id) = global;
     }
 }
+
+impl_configure!(Tooltip<'_, '_>);
 
 #[cfg(test)]
 mod tests;

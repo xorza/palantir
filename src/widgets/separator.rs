@@ -2,7 +2,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -83,11 +83,7 @@ impl Separator {
     }
 }
 
-impl Configure for Separator {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Separator);
 
 #[cfg(test)]
 mod tests {

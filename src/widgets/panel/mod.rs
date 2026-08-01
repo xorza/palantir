@@ -1,6 +1,6 @@
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::{InnerResponse, resolve_container_chrome};
 
@@ -132,11 +132,7 @@ impl Panel {
     }
 }
 
-impl Configure for Panel {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Panel);
 
 #[cfg(test)]
 mod tests;

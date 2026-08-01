@@ -4,7 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::{Response, enter_widget};
@@ -117,11 +117,7 @@ impl<'a> Slider<'a> {
     }
 }
 
-impl Configure for Slider<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(Slider<'_>);
 
 fn rail_leaf(ui: &mut Ui, id: WidgetId, w: Sizing, h: f32, bg: &Background) {
     let el = Node::leaf().id(id).size((w, Sizing::fixed(h)));

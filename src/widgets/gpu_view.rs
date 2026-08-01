@@ -1,6 +1,6 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::{Response, enter_widget};
 use std::cell::RefCell;
@@ -109,11 +109,7 @@ impl GpuView {
     }
 }
 
-impl Configure for GpuView {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(GpuView);
 
 #[cfg(test)]
 mod tests {

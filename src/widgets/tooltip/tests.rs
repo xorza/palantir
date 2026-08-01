@@ -113,9 +113,27 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     );
 }
 
+/// Record index of the bubble node carrying `id`, or `None` when no
+/// node in the tooltip layer has it.
+fn bubble_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
+    h.ui.forest.trees[Layer::Tooltip]
+        .records
+        .widget_id()
+        .iter()
+        .position(|recorded| *recorded == id)
+}
+
+/// The bubble takes its box from [`Configure`] like any other widget —
+/// `Tooltip` used to hand-roll `padding` / `max_size` and offer nothing
+/// else, so `margin` here is a setter it simply did not have.
+///
+/// Identity is the other half: a tooltip has no call site of its own
+/// worth keying on, so it derives the bubble id from its trigger — but
+/// an explicit `.id(...)` has to win, the same way explicit spacing wins
+/// over the theme. Both halves in one test because they are one
+/// contract: the builder's surface is `Configure`'s, defaults included.
 #[test]
-fn explicit_zero_padding_and_infinite_maximum_override_tooltip_theme() {
-    let mut h = UiHarness::new(SURFACE);
+fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let trigger_id = WidgetId::from_hash("unbounded-tooltip-trigger");
     let snapshot = ResponseSnapshot {
         id: trigger_id,
@@ -125,27 +143,44 @@ fn explicit_zero_padding_and_infinite_maximum_override_tooltip_theme() {
             ..ResponseState::default()
         },
     };
+
+    let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Tooltip::on(&snapshot)
             .text("tip")
             .background(Background::NONE)
             .padding(Spacing::ZERO)
+            .margin(Spacing::all(7.0))
             .max_size(Size::INF)
             .delay(Duration::ZERO)
             .show(ui);
     });
 
-    let bubble_id = trigger_id.with("tooltip.bubble");
+    let derived = trigger_id.with("tooltip.bubble");
+    let index = bubble_node(&h, derived).expect("tooltip bubble node");
     let tree = &h.ui.forest.trees[Layer::Tooltip];
-    let index = tree
-        .records
-        .widget_id()
-        .iter()
-        .position(|id| *id == bubble_id)
-        .expect("tooltip bubble node");
-    let node = NodeId(index as u32);
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
-    assert_eq!(tree.bounds(node).max_size, Size::INF);
+    assert_eq!(tree.records.layout()[index].margin, Spacing::all(7.0));
+    assert_eq!(tree.bounds(NodeId(index as u32)).max_size, Size::INF);
+
+    // Same trigger, caller-set id: the derived one must not appear.
+    let explicit = WidgetId::from_hash("my-own-bubble");
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        Tooltip::on(&snapshot)
+            .text("tip")
+            .id(explicit)
+            .delay(Duration::ZERO)
+            .show(ui);
+    });
+    assert!(
+        bubble_node(&h, explicit).is_some(),
+        "an explicit id must reach the recorded bubble",
+    );
+    assert!(
+        bubble_node(&h, derived).is_none(),
+        "the trigger-derived id must not also be recorded",
+    );
 }
 
 fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
