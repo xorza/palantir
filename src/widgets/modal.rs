@@ -6,6 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
+use crate::scene::node::ThemeDefaults;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::theme::modal::ModalTheme;
