@@ -10,7 +10,6 @@ use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{ToggleChrome, toggle_row};
 use crate::widgets::widget::WidgetEntry;
-use glam::Vec2;
 
 /// Two-state boolean toggle. Takes a `&mut bool` whose owner controls
 /// the value — same pattern as egui. Clicking the row flips it.
@@ -72,6 +71,7 @@ impl<'a> Checkbox<'a> {
         let box_size = theme.box_size;
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;
+        let check = theme.check_polyline();
 
         let chrome = ToggleChrome {
             style: self.style,
@@ -83,9 +83,8 @@ impl<'a> Checkbox<'a> {
         };
         toggle_row(ui, entry, chrome, self.label, |ui, _| {
             if checked {
-                let pts = check_pts(box_size);
                 ui.add_shape(
-                    Shape::polyline(&pts, PolylineColors::Single(indicator), indicator_stroke)
+                    Shape::polyline(&check, PolylineColors::Single(indicator), indicator_stroke)
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
@@ -95,17 +94,6 @@ impl<'a> Checkbox<'a> {
 }
 
 impl_configure!(Checkbox<'_>);
-
-// Three-point checkmark normalized to the box square. Coords were
-// hand-tuned at 16 px and scale linearly with `box_size`.
-fn check_pts(box_size: f32) -> [Vec2; 3] {
-    let s = box_size / 16.0;
-    [
-        Vec2::new(3.5 * s, 8.5 * s),
-        Vec2::new(7.0 * s, 12.0 * s),
-        Vec2::new(12.5 * s, 4.5 * s),
-    ]
-}
 
 #[cfg(test)]
 mod tests;
