@@ -250,8 +250,10 @@ impl<'a> TextEdit<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
-        let mut widget = ui.widget(self.node);
-        let id = widget.id();
+        // Identity resolves on its own: `self.node` keeps being written
+        // below (key filter, then `resolve_look`'s spacing defaults), so
+        // a copy staged now would be stale by the time it records.
+        let id = ui.widget_id(self.node.salt);
         let mut is_focused = ui.focused_id() == Some(id);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
@@ -308,8 +310,7 @@ impl<'a> TextEdit<'a> {
                 was_focused
             };
             let chrome = look.background;
-            widget.node = self.node;
-            widget.record(ui, Some(&chrome), |_| {});
+            ui.node(id, self.node, Some(&chrome), |_| {});
             let state = ui.response_for(id);
             return TextEditResponse {
                 response: Response::eager(id, ui, state),
@@ -437,7 +438,7 @@ impl<'a> TextEdit<'a> {
         let placeholder = self.placeholder;
         view::record(
             ui,
-            widget,
+            id,
             PaintInput {
                 node: self.node,
                 chrome: look.background,

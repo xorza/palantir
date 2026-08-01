@@ -6,6 +6,7 @@ use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
@@ -14,7 +15,6 @@ use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
-use crate::widgets::Widget;
 use crate::widgets::text_edit::model::EditState;
 use glam::Vec2;
 use std::ops::Range;
@@ -360,7 +360,7 @@ pub(super) struct PaintInput<'a> {
     pub(super) caret: Option<CaretPaint>,
 }
 
-pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
+pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
     let mut node = input.node;
     let ctx = input.layout.ctx;
     if !ctx.multiline {
@@ -374,8 +374,7 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
         }
     }
 
-    widget.node = node;
-    widget.record(ui, Some(&input.chrome), |ui| {
+    ui.node(id, node, Some(&input.chrome), |ui| {
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
         let text_origin = Vec2::new(
             pad_l + ctx.block_offset.x - input.scroll.x,

@@ -35,7 +35,7 @@ use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::renderer::plan::RenderPlan;
 use crate::scene::Forest;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
+use crate::scene::node::{Node, Salt};
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::scene::tree::recording::Placement;
 use crate::text::run::{TextProbe, TextRun};
@@ -976,16 +976,32 @@ impl Ui {
     /// reuse the id); recording twice panics.
     #[must_use = "record the widget with Widget::record"]
     pub fn widget(&mut self, node: Node) -> Widget {
-        let salt = node.salt;
-        let raw_id = salt.resolve(self.forest.current_parent_id());
-        let id = self.forest.ids.resolve(raw_id, salt.is_explicit());
-        Widget::new(id, node)
+        Widget::new(self.widget_id(node.salt), node)
     }
 
-    /// Open a node under the id [`Self::widget`] resolved, run its
-    /// body, and close it — the recording half of [`Widget::record`],
-    /// its only caller. The id is final; no further `SeenIds` work
-    /// here.
+    /// Resolve `salt` to this frame's disambiguated id **without**
+    /// staging a node.
+    ///
+    /// [`Self::widget`] is this plus somewhere to keep the node until
+    /// [`Widget::record`] consumes it, and is what a widget that records
+    /// the node it was given should use. This is for the ones whose
+    /// recorded root is framework-built instead: `Modal` records a
+    /// backdrop and demotes the caller's node to its card, `Scroll`
+    /// records an outer wrapper and demotes it to the viewport. Both
+    /// take their identity from the caller's salt but never record the
+    /// node it arrived on, and staging it only to overwrite the slot
+    /// read as though the two were connected.
+    ///
+    /// Reserves this frame's occurrence slot exactly as `widget` does,
+    /// so the matching [`Self::node`] call still has to happen once.
+    pub(crate) fn widget_id(&mut self, salt: Salt) -> WidgetId {
+        self.forest.widget_id(salt)
+    }
+
+    /// Open a node under an id [`Self::widget_id`] resolved (directly,
+    /// or through [`Self::widget`]), run its body, and close it — the
+    /// recording half of [`Widget::record`]. The id is final; no further
+    /// `SeenIds` work here.
     pub(crate) fn node<R>(
         &mut self,
         id: WidgetId,

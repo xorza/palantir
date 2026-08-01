@@ -801,8 +801,11 @@ impl Scroll {
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        let mut widget = ui.widget(self.node);
-        let id = widget.id();
+        // The caller's salt names the *outer wrapper*, but the node it
+        // arrived on describes the viewport — `scroll_wrappers` splits
+        // it into both, so neither is the node that came in and the
+        // identity is resolved on its own.
+        let id = ui.widget_id(self.node.salt);
         let pan = self.node.scroll_spec().pan_mask();
         if self.zoom.is_some() {
             debug_assert!(
@@ -832,8 +835,7 @@ impl Scroll {
 
         let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, pan, geom.space, state);
         let inner_chrome = self.chrome;
-        widget.node = outer;
-        let inner_value = widget.record(ui, None, |ui| {
+        let inner_value = ui.node(id, outer, None, |ui| {
             let inner_value = ui.widget(inner).record(ui, inner_chrome.as_ref(), body);
             if let Some(bars) = &bars {
                 bars.record(ui, scroll_id, state, geom, pan);
