@@ -20,7 +20,6 @@ use crate::ui::Ui;
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::input::{InputPolicy, InputResult, run_input};
-use crate::widgets::text_edit::menu::MenuResult;
 use crate::widgets::text_edit::view::{
     CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput,
     SELECTION_RECTS_INLINE_CAPACITY, SelectionRects, ViewState, ViewUpdateInput,
@@ -380,8 +379,15 @@ impl<'a> TextEdit<'a> {
             previous_block_offset,
         });
         let ctx = layout.ctx;
+        // Pre-input caret snapshot, taken before `run_input`'s clamp so
+        // an external buffer shrink that displaces the caret still reads
+        // as motion (blink reset). Compared once, after the menu pass:
+        // the keyboard drain and the menu drain are mutually exclusive
+        // — an open popup's scope silences the layer below it — but
+        // either can move the caret, and one bracket covers both.
+        let caret_before = state.edit.caret;
+        let sel_before = state.edit.selection;
         let InputResult {
-            caret_moved,
             was_focused,
             blur: blur_after,
             submitted,
@@ -410,10 +416,7 @@ impl<'a> TextEdit<'a> {
             id,
             state: ui.response_for(id),
         };
-        let MenuResult {
-            edited: menu_edited,
-            caret_moved: menu_caret_moved,
-        } = menu::show(
+        let menu_edited = menu::show(
             ui,
             &snapshot,
             self.text,
@@ -422,7 +425,7 @@ impl<'a> TextEdit<'a> {
             &mut state.edit,
         );
         let changed = edited || menu_edited;
-        let caret_moved = caret_moved || menu_caret_moved;
+        let caret_moved = caret_before != state.edit.caret || sel_before != state.edit.selection;
         let caret_byte = state.edit.caret;
         let selection = state.edit.sel_range();
 

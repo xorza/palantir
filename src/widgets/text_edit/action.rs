@@ -77,17 +77,23 @@ impl EditAction {
         }
     }
 
+    /// Every variant, so [`Self::from_keypress`] scans against the one
+    /// list. The bound-chord set is [`Self::shortcut`]'s business alone
+    /// — an unbound action returns `None` there and simply never
+    /// matches, which is what keeps a second hand-curated subset (and
+    /// its drift) out of this file.
+    const ALL: [Self; 7] = [
+        Self::Undo,
+        Self::Redo,
+        Self::SelectAll,
+        Self::Cut,
+        Self::Copy,
+        Self::Paste,
+        Self::Clear,
+    ];
+
     pub(super) fn from_keypress(keypress: KeyPress) -> Option<Self> {
-        [
-            Self::Undo,
-            Self::Redo,
-            Self::SelectAll,
-            Self::Cut,
-            Self::Copy,
-            Self::Paste,
-        ]
-        .into_iter()
-        .find(|action| {
+        Self::ALL.into_iter().find(|action| {
             action
                 .shortcut()
                 .is_some_and(|shortcut| shortcut.matches(keypress))
