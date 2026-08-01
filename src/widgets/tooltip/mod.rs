@@ -11,7 +11,6 @@ use crate::ui::Ui;
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
@@ -31,8 +30,13 @@ struct TooltipGlobal {
     last_visible_at: Option<Duration>,
 }
 
-static GLOBAL_STATE_ID: LazyLock<WidgetId> =
-    LazyLock::new(|| WidgetId::from_hash("palantir.tooltip.global"));
+/// Row key for the process-wide warmup state shared by every tooltip.
+/// Hashed on call rather than held in a `LazyLock`: it is read once per
+/// `Tooltip::show`, and hashing a short literal costs less than the
+/// lazy cell's init check.
+fn global_state_id() -> WidgetId {
+    WidgetId::from_hash("palantir.tooltip.global")
+}
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested
@@ -154,7 +158,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
 
         let trigger_id = self.snapshot.id;
         let bubble_id = trigger_id.with("tooltip.bubble");
-        let g_id = *GLOBAL_STATE_ID;
+        let g_id = global_state_id();
 
         let trigger_hovered = self.snapshot.state.hovered;
         let trigger_disabled = self.snapshot.state.disabled;

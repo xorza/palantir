@@ -17,7 +17,7 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::response::ResponseSnapshot;
-use crate::widgets::tooltip::{GLOBAL_STATE_ID, Tooltip, TooltipGlobal, TooltipState};
+use crate::widgets::tooltip::{Tooltip, TooltipGlobal, TooltipState, global_state_id};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -274,7 +274,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "per-trigger state must not use an unrecorded synthetic id",
     );
     assert!(
-        h.ui.try_state::<TooltipGlobal>(*GLOBAL_STATE_ID).is_some(),
+        h.ui.try_state::<TooltipGlobal>(global_state_id()).is_some(),
         "the intentional global singleton must exist",
     );
 
@@ -283,7 +283,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     });
 
     assert!(h.ui.try_state::<TooltipState>(trigger_id).is_none());
-    assert!(h.ui.try_state::<TooltipGlobal>(*GLOBAL_STATE_ID).is_some());
+    assert!(h.ui.try_state::<TooltipGlobal>(global_state_id()).is_some());
 }
 
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering
