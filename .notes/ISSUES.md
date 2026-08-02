@@ -1,13 +1,5 @@
 # Open issues
 
-- `CpuGradientAtlas::register_stops` scans the whole row table twice
-  (probe sweep + `lru_victim`) on every miss once the table is full, and
-  `grow()` ratchets capacity up to `max_texture_dimension_2d` (16384)
-  without ever shrinking, so one gradient-heavy frame permanently
-  multiplies every later miss.
-- `CpuGradientAtlas` has no load-factor bound; linear-probe clustering
-  degrades the hit path from ~1.1 probes to ~11.6 probes as the table
-  approaches full.
 - `GlyphAtlas::evict_one` scans the entire glyph cache per eviction and
   is called from a loop in `allocate`; `allocate` also prefers eviction
   over growth, so the mask atlas parks at 1024² and pays the scan for
