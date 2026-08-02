@@ -200,8 +200,7 @@ impl Ui {
             display: stamp.display,
             damage_baseline_valid,
             input_policy: self.input_policy,
-            had_input: self.input.had_input_since_last_frame,
-            input_requested_repaint: self.input.repaint_requested_since_last_frame,
+            input_signal: self.input.signal_since_last_frame,
             close_requested: self.window_frame.close_requested,
         });
 

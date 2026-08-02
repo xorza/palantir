@@ -1774,7 +1774,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 #[test]
 fn input_policy_routes_paint_only_gate() {
     use crate::input::keyboard::Key;
-    use crate::input::policy::InputPolicy;
+    use crate::input::policy::{InputPolicy, InputSignal};
     use crate::ui::frame_report::FrameProcessing;
     use glam::Vec2;
 
@@ -1802,13 +1802,12 @@ fn input_policy_routes_paint_only_gate() {
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         h.move_to(Vec2::new(40.0, 40.0));
-        assert!(
-            h.ui.input.had_input_since_last_frame,
-            "had_input set after any event (precondition)",
-        );
-        assert!(
-            !h.ui.input.repaint_requested_since_last_frame,
-            "inert pointer move must not flip repaint_requested",
+        // One assertion for what used to need two: the move arrived,
+        // and it was not repaint-worthy.
+        assert_eq!(
+            h.ui.input.signal_since_last_frame,
+            InputSignal::Inert,
+            "an inert pointer move registers as Inert",
         );
 
         let r1 = h.at(half).frame(|ui| body(ui, half));
@@ -1818,9 +1817,8 @@ fn input_policy_routes_paint_only_gate() {
             "OnDelta + inert pointer move + anim wake → PaintOnly",
         );
 
-        // PaintOnly path must have drained input sticky bits and queues.
-        assert!(!h.ui.input.had_input_since_last_frame);
-        assert!(!h.ui.input.repaint_requested_since_last_frame);
+        // PaintOnly path must have drained the input signal and queues.
+        assert_eq!(h.ui.input.signal_since_last_frame, InputSignal::None);
     }
 
     {
@@ -1846,9 +1844,10 @@ fn input_policy_routes_paint_only_gate() {
         h.ui.input.focused = Some(WidgetId::from_hash("editor"));
 
         h.key(Key::Enter);
-        assert!(
-            h.ui.input.repaint_requested_since_last_frame,
-            "KeyDown with focus held must flip repaint_requested",
+        assert_eq!(
+            h.ui.input.signal_since_last_frame,
+            InputSignal::Repaint,
+            "KeyDown with focus held must raise the signal to Repaint",
         );
         let r1 = h.at(half).frame(|ui| body(ui, half));
         assert_ne!(

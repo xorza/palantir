@@ -1,3 +1,4 @@
+use crate::input::policy::InputSignal;
 use crate::input::zoom;
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
@@ -28,8 +29,9 @@ fn native_zoom_ingress_rejects_every_invalid_factor_class() {
             "invalid factor {factor:?}"
         );
         assert!(state.frame_target_deltas.is_empty());
-        assert!(
-            !state.had_input_since_last_frame,
+        assert_eq!(
+            state.signal_since_last_frame,
+            InputSignal::None,
             "invalid factor {factor:?}"
         );
     }

@@ -15,6 +15,7 @@ use crate::input::key_class::KeyClass;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::FocusPolicy;
+use crate::input::policy::InputSignal;
 use crate::input::response::{
     ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta,
 };
@@ -216,6 +217,64 @@ pub enum InputEvent {
     ModifiersChanged(Modifiers),
 }
 
+/// What one event asks of the frame, as decided by the [`on_input`
+/// arm](InputState::on_input) that handled it. Both answers travel
+/// together because every arm has to give both, and a side-effect
+/// assignment for one of them made it easy to give only the other.
+#[derive(Clone, Copy, Debug, Default)]
+struct EventOutcome {
+    /// The event could change what is on screen, so the next frame
+    /// cannot stay on the paint-anim-only path. Surfaced to the host as
+    /// [`InputDelta::requests_repaint`].
+    repaint: bool,
+    /// The event wrote state that a widget recorded *earlier in the same
+    /// pass* may already have read, so the pass has to run again.
+    ///
+    /// Set by: a `Click` or `DragStopped` release, a `KeyDown` or `Text`
+    /// (both land in the keyboard queue), a drag latch crossing its
+    /// threshold during a move, and any event a `PointerWake::BUTTONS`
+    /// subscriber saw.
+    ///
+    /// Deliberately clear — though each still repaints: a **press**,
+    /// because a capture reaches only its own target and `focused` is
+    /// read live off `InputState`, committed before the frame, so pass A
+    /// already sees it; a **`ReleaseKind::Miss`**, which fires no click
+    /// and only tears down that same single-reader capture; and scroll,
+    /// pinch, `PointerLeft` or modifier changes, whose state reaches
+    /// exactly one routed target that applies it in the pass that
+    /// receives it. An unrouted event leaves this clear because no
+    /// widget or watcher can observe it.
+    ///
+    /// The press and `Miss` exclusions are what let a click-driven UI
+    /// settle once per gesture instead of three times. The cost is
+    /// narrow: an app that reacts to a press-driven focus change by
+    /// writing state a *prefix* widget shows gains a one-frame lag, and
+    /// should handle that edge in [`crate::App::update`] instead.
+    settles: bool,
+}
+
+impl EventOutcome {
+    /// Repaints, but does not force a second record pass — the common
+    /// case, and the one whose reasoning is on [`Self::settles`].
+    #[inline]
+    fn repaint(repaint: bool) -> Self {
+        Self {
+            repaint,
+            settles: false,
+        }
+    }
+
+    /// Repaints and settles together. Every arm that settles also
+    /// repaints, so no arm needs to state the two separately.
+    #[inline]
+    fn settle(both: bool) -> Self {
+        Self {
+            repaint: both,
+            settles: both,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TargetScrollDelta {
     target: WidgetId,
@@ -290,52 +349,16 @@ pub(crate) struct InputState {
     scopes: Scopes,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
-    /// Set in `on_input` when an event could drive a state mutation that
-    /// a *different* widget then reads. Read by `Ui::frame` to decide
-    /// whether to re-record the frame after pass 1's `end_frame` drains
-    /// the input queues.
-    ///
-    /// The rule, since the arms differ and the difference is not
-    /// obvious: an event flips this when the state it writes is read
-    /// through a channel that a widget recorded *earlier in the same
-    /// pass* may already have consulted — a `Click` or `DragStopped`
-    /// release, a `KeyDown` or `Text` (the keyboard queue), a drag latch
-    /// crossing its threshold inside `PointerMoved`, or any event a
-    /// `PointerWake::BUTTONS` subscriber saw.
-    ///
-    /// Deliberately *not* flipped, though each of these still records:
-    /// a **press**, because a capture reaches only its own target and
-    /// `focused` is read live off this struct (committed before the
-    /// frame, so pass A already sees it); a **`ReleaseKind::Miss`**,
-    /// because it fires no click and only tears down that same
-    /// single-reader capture; and scroll, pinch, `PointerLeft`, or
-    /// modifier changes, whose state reaches exactly one routed target
-    /// that applies it in the pass that receives it. Unrouted actions
-    /// leave it clear because no widget or watcher can observe them.
-    ///
-    /// The press and `Miss` exclusions are what let a click-driven UI
-    /// settle once per gesture instead of three times. The cost is real
-    /// but narrow: an app that reacts to a press-driven focus change by
-    /// writing state a *prefix* widget shows gains a one-frame lag, and
-    /// should handle that edge in [`crate::App::update`] instead.
+    /// Whether any event this record pass wrote state that an
+    /// earlier-recorded widget could already have read — see
+    /// [`EventOutcome::settles`], which is where each arm decides.
+    /// Folded from the arms once per `on_input`; taken by
+    /// [`Self::finish_record`] so `Ui::frame` can re-record the pass.
     frame_had_action: bool,
-    /// Sticky bit: set by every `on_input` call (any event, including
-    /// pointer moves and mod changes), cleared by `Ui::frame`
-    /// at the top of each frame after the paint-anim-only
-    /// short-circuit gate has read it. Distinct from `frame_had_action`
-    /// — that flag answers "did this *frame's* recording see a
-    /// state-mutating event"; this one answers "did the host push
-    /// *anything* between the previous `frame()` return and this
-    /// one." The short-circuit fails on any input arrival, since the
-    /// closure might react to even a pointer move.
-    pub(crate) had_input_since_last_frame: bool,
-    /// Sticky bit: set in [`Self::on_input`] whenever the returned
-    /// [`InputDelta::requests_repaint`] is `true` — i.e. an event that
-    /// could plausibly mutate visible state arrived (hover/scroll
-    /// target change, capture-active move, click, key, IME, modifier
-    /// change). Cleared alongside `had_input_since_last_frame`. Read
-    /// by `FrameRuntime::take_frame_plan` under [`InputPolicy::OnDelta`](policy::InputPolicy::OnDelta).
-    pub(crate) repaint_requested_since_last_frame: bool,
+    /// Strongest input seen since the last frame, thresholded by
+    /// [`InputPolicy`] in `FrameRuntime::take_frame_plan`. Cleared with
+    /// the per-frame event queues.
+    pub(crate) signal_since_last_frame: InputSignal,
     /// Wake-gate watches ([`PointerWake`] / [`KeyboardWake`]
     /// flag masks + specific-chord list). Cleared pre-record (in
     /// `Ui::record_pass`); widgets re-assert each active frame. The
@@ -379,8 +402,7 @@ impl Default for InputState {
             scopes: Scopes::default(),
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
-            had_input_since_last_frame: false,
-            repaint_requested_since_last_frame: false,
+            signal_since_last_frame: InputSignal::None,
             subs: Watches::default(),
             frame_pointer_events: Vec::new(),
             frame_time: Duration::ZERO,
@@ -583,8 +605,11 @@ impl InputState {
         // mutates nothing, so there is nothing for the closure to
         // observe. Cleared at the top of `frame` after the gate has read
         // it.
-        self.had_input_since_last_frame = true;
-        let requests_repaint = match event {
+        // Any host-pushed event that survived the guard is at least
+        // `Inert`; the arms below raise it to `Repaint` by returning
+        // `repaint: true`.
+        self.signal_since_last_frame.raise(InputSignal::Inert);
+        let outcome = match event {
             InputEvent::PointerMoved(p) => {
                 let prev_hover = self.hovered;
                 let prev_scroll = self.scroll_target;
@@ -606,15 +631,19 @@ impl InputState {
                         latched = true;
                     }
                 }
-                self.frame_had_action |= latched;
                 self.refresh_pointer_targets(cascade);
                 let move_subbed =
                     self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Move);
-                self.hovered != prev_hover
-                    || self.scroll_target != prev_scroll
-                    || self.pinch_target != prev_pinch
-                    || self.captures.iter().any(|c| c.press.is_some())
-                    || move_subbed
+                EventOutcome {
+                    repaint: self.hovered != prev_hover
+                        || self.scroll_target != prev_scroll
+                        || self.pinch_target != prev_pinch
+                        || self.captures.iter().any(|c| c.press.is_some())
+                        || move_subbed,
+                    // Only the threshold crossing settles: the latch is
+                    // what a widget reads, and it flips exactly once.
+                    settles: latched,
+                }
             }
             InputEvent::PointerLeft => {
                 let observable = self.hovered.is_some()
@@ -630,7 +659,7 @@ impl InputState {
                 if pointer_subbed {
                     self.frame_pointer_events.push(PointerEvent::Leave);
                 }
-                observable || pointer_subbed
+                EventOutcome::repaint(observable || pointer_subbed)
             }
             InputEvent::PointerPressed(btn) => {
                 // Hit-test for the press target (the topmost *clickable*
@@ -672,18 +701,14 @@ impl InputState {
                 // paint-anim path. Focus-clearing clicks (outside a
                 // focused TextEdit) and any sense hit still record;
                 // popup-dismiss watchers wake themselves.
-                let observable = hit.is_some() || self.focused != prev_focus || buttons_subbed;
-                // Narrower than `observable`: a press must *record*
-                // whenever it lands, but it only needs a settle when it
-                // writes state an earlier-recorded widget could have read.
-                // A capture reaches exactly its own target — the `Down`
-                // phase feeds only that widget's theme picking — and
-                // `focused` is read live off `InputState`, committed here
-                // before the frame starts, so every widget in pass A
-                // already sees the new focus. A `BUTTONS` subscriber is
-                // the one opaque channel left.
-                self.frame_had_action |= buttons_subbed;
-                observable
+                EventOutcome {
+                    repaint: hit.is_some() || self.focused != prev_focus || buttons_subbed,
+                    // Narrower than `repaint`: a press records whenever
+                    // it lands, but a `BUTTONS` subscriber is the only
+                    // channel it writes that an earlier widget could
+                    // have read.
+                    settles: buttons_subbed,
+                }
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
@@ -724,11 +749,12 @@ impl InputState {
                     self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Up { pos, button: btn }
                     });
-                // Capture was live ⇒ owning widget needs a record;
-                // otherwise only `BUTTONS` watchers wake.
-                let observable = released.is_some() || buttons_subbed;
-                self.frame_had_action |= settles || buttons_subbed;
-                observable
+                EventOutcome {
+                    // Capture was live ⇒ owning widget needs a record;
+                    // otherwise only `BUTTONS` watchers wake.
+                    repaint: released.is_some() || buttons_subbed,
+                    settles: settles || buttons_subbed,
+                }
             }
             InputEvent::ScrollPixels(d) => {
                 let target = self.scroll_target;
@@ -741,7 +767,7 @@ impl InputState {
                         pixels: d,
                         lines: Vec2::ZERO,
                     });
-                target.is_some() || subbed
+                EventOutcome::repaint(target.is_some() || subbed)
             }
             InputEvent::ScrollLines(d) => {
                 let target = self.scroll_target;
@@ -754,7 +780,7 @@ impl InputState {
                         pixels: Vec2::ZERO,
                         lines: d,
                     });
-                target.is_some() || subbed
+                EventOutcome::repaint(target.is_some() || subbed)
             }
             InputEvent::Zoom(f) => {
                 let target = self.pinch_target;
@@ -766,7 +792,7 @@ impl InputState {
                     pos,
                     factor: f,
                 });
-                target.is_some() || subbed
+                EventOutcome::repaint(target.is_some() || subbed)
             }
             InputEvent::KeyDown {
                 key,
@@ -792,9 +818,8 @@ impl InputState {
                     || self.subs.keyboard_mask.contains(KeyboardWake::KEY);
                 if observable {
                     self.frame_keyboard_events.push(KeyboardEvent::Down(kp));
-                    self.frame_had_action = true;
                 }
-                observable
+                EventOutcome::settle(observable)
             }
             InputEvent::Text(chunk) => {
                 // Text is rare (only fires on IME commit / dead-key
@@ -805,22 +830,24 @@ impl InputState {
                     self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardWake::TEXT);
                 if observable {
                     self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
-                    self.frame_had_action = true;
                 }
-                observable
+                EventOutcome::settle(observable)
             }
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
                 // Only wake if a watcher asked. Accel-underline
                 // UIs / modifier debug overlays must watch to
                 // `MODIFIER`; nothing else cares.
-                self.subs.keyboard_mask.contains(KeyboardWake::MODIFIER)
+                EventOutcome::repaint(self.subs.keyboard_mask.contains(KeyboardWake::MODIFIER))
             }
         };
-        if requests_repaint {
-            self.repaint_requested_since_last_frame = true;
+        if outcome.repaint {
+            self.signal_since_last_frame.raise(InputSignal::Repaint);
         }
-        InputDelta { requests_repaint }
+        self.frame_had_action |= outcome.settles;
+        InputDelta {
+            requests_repaint: outcome.repaint,
+        }
     }
 
     /// Read and reset [`Self::frame_had_action`]. Called by
@@ -846,8 +873,7 @@ impl InputState {
                 }
             }
         }
-        self.had_input_since_last_frame = false;
-        self.repaint_requested_since_last_frame = false;
+        self.signal_since_last_frame = InputSignal::None;
         self.frame_had_action = false;
         self.frame_pointer_events.clear();
         self.frame_target_deltas.clear();
