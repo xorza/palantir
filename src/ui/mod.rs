@@ -113,7 +113,7 @@ pub struct Ui {
 impl std::fmt::Debug for Ui {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ui")
-            .field("frame_id", &self.frame_runtime.frame_id)
+            .field("render_frame_id", &self.frame_runtime.render_frame_id)
             .field("time", &self.frame_runtime.time)
             .field("display", &self.display)
             .finish_non_exhaustive()
@@ -618,7 +618,7 @@ impl Ui {
     pub fn request_repaint(&mut self) {
         tracing::trace!(
             target: "palantir.repaint",
-            frame = self.frame_runtime.frame_id,
+            render_frame = self.frame_runtime.render_frame_id,
             "request_repaint",
         );
         self.frame_runtime.repaint_requested = true;
@@ -636,7 +636,7 @@ impl Ui {
         tracing::trace!(
             target: "palantir.repaint",
             ?after,
-            frame = self.frame_runtime.frame_id,
+            render_frame = self.frame_runtime.render_frame_id,
             "request_repaint_after",
         );
         let deadline = self.frame_runtime.time.saturating_add(after);
@@ -812,7 +812,7 @@ impl Ui {
     /// (the encoder recovers id + paint from the map by `id`).
     ///
     /// `repaint` is the widget's per-frame dirty flag. When set, the epoch
-    /// bumps to the current frame id, so the shape hash changes and the view
+    /// bumps to the current render frame id, so the shape hash changes and the view
     /// repaints; when clear, the epoch is held stable, so the damage diff
     /// treats the view as unchanged and the encoder culls it (skipping its GPU
     /// paint and reusing last frame's pixels). First sight always paints (the
@@ -824,7 +824,7 @@ impl Ui {
         paint: Rc<RefCell<dyn GpuPaint>>,
         repaint: bool,
     ) {
-        let frame_id = self.frame_runtime.frame_id;
+        let epoch = self.frame_runtime.render_frame_id;
         let entry = match self.gpu_views.entry(id) {
             Entry::Occupied(e) => {
                 let entry = e.into_mut();
@@ -832,7 +832,7 @@ impl Ui {
                 // Bump only on a repaint request; held stable otherwise so a
                 // static view stays undamaged (culled, its paint skipped).
                 if repaint {
-                    entry.epoch = frame_id;
+                    entry.epoch = epoch;
                 }
                 entry
             }
@@ -841,7 +841,7 @@ impl Ui {
             Entry::Vacant(e) => e.insert(GpuViewEntry {
                 texture_id: self.resources.texture_ids.reserve(),
                 paint: GpuPaintRef(paint),
-                epoch: frame_id,
+                epoch,
             }),
         };
         self.forest.add_gpu_view(entry.epoch);
@@ -1117,7 +1117,7 @@ impl Ui {
             target,
             spec,
             self.frame_runtime.dt,
-            self.frame_runtime.frame_id,
+            self.frame_runtime.render_frame_id,
         );
         if !r.settled {
             self.frame_runtime.repaint_requested = true;
@@ -1166,17 +1166,31 @@ impl Ui {
         self.display
     }
 
-    /// This frame's monotonic index, bumped once per [`Self::frame`] before
-    /// either record pass — so both passes of one frame observe the same
-    /// value.
+    /// This frame's monotonic index, counting the frames authoring code
+    /// actually ran on — the clock retained state stamps to notice it was
+    /// *skipped*.
     ///
-    /// For retained state that wants to know it was *skipped*: authoring code
-    /// that runs only while its surface is on screen can stamp this and
-    /// compare on the next run, and a gap tells it the surface was away
+    /// Code that runs only while its surface is on screen stamps this and
+    /// compares on the next run: a gap tells it the surface was away,
     /// without anything having to run while it was. Consecutive values, and
-    /// repeats within one frame, both mean "still here".
+    /// repeats within one frame, both mean "still here" — a settling second
+    /// pass observes the same value as the first, and a paint-only frame
+    /// (which records nothing, so no such code ran) advances nothing.
+    /// [`Self::render_frame_id`] is the peer that counts painted frames.
     pub fn frame_id(&self) -> u64 {
         self.frame_runtime.frame_id
+    }
+
+    /// This frame's monotonic index among the frames that reached the
+    /// screen, bumped once per [`Self::frame`] before either record pass —
+    /// so both passes of one frame observe the same value.
+    ///
+    /// For code measuring what the display saw. It counts paint-only frames
+    /// too, so a gap in it does *not* mean the reader was skipped: an idle
+    /// window painting a caret blink advances this while no record pass runs
+    /// at all. Anything asking "was I skipped" wants [`Self::frame_id`].
+    pub fn render_frame_id(&self) -> u64 {
+        self.frame_runtime.render_frame_id
     }
 
     /// Shape `run` and return its geometry — caret positions,

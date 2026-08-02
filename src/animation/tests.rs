@@ -37,7 +37,7 @@ fn anim_slot_hash_is_const_fnv1a_of_name() {
 /// that don't care about pass A/B semantics — every call gets a
 /// fresh id, so the multi-pass guard never short-circuits unless a
 /// test deliberately reuses an id. Tests that *do* exercise the
-/// multi-pass guard pass an explicit `frame_id` literal instead.
+/// multi-pass guard pass an explicit `render_frame_id` literal instead.
 fn next_frame() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -555,7 +555,7 @@ fn spring_step_at_max_dt_stays_bounded() {
 /// A frame may run `build` twice on input frames (pass A
 /// records, drains input, pass B re-records with the post-action
 /// state). Both passes call `Ui::animate`, which dispatches to
-/// `tick`. The multi-pass guard keys on `frame_id` so two ticks
+/// `tick`. The multi-pass guard keys on `render_frame_id` so two ticks
 /// sharing one — i.e. one wall-clock frame — only advance the
 /// integrator once. Retargets in pass B must still take effect (the
 /// next frame should ease toward the new target from pass A's
@@ -577,17 +577,17 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let pass_a_current = pass_a.current;
     let pass_a_elapsed = duration_motion(&map.rows[&(id, SLOT)]).elapsed;
 
-    // Pass B: same frame_id, same target. Must NOT advance further;
+    // Pass B: same render_frame_id, same target. Must NOT advance further;
     // current and elapsed must match pass A exactly.
     let pass_b = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.016, frame);
     assert_eq!(
         pass_b.current, pass_a_current,
-        "pass B with same frame_id must not advance current",
+        "pass B with same render_frame_id must not advance current",
     );
     assert_eq!(
         duration_motion(&map.rows[&(id, SLOT)]).elapsed,
         pass_a_elapsed,
-        "pass B with same frame_id must not advance elapsed",
+        "pass B with same render_frame_id must not advance elapsed",
     );
 
     // Pass B with a *different* target (post-action retarget): the

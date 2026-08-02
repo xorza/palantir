@@ -266,7 +266,7 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
     touched: bool,
-    /// `Ui` frame-runtime id at the last `tick` that ran the integrator
+    /// `Ui` render-frame id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:
     /// the frame driver re-runs `build` after an input action drains) sees
     /// this match and short-circuits the dt-driven advance, so the
@@ -335,7 +335,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         target: T,
         spec: AnimSpec,
         dt: f32,
-        frame_id: u64,
+        render_frame_id: u64,
     ) -> TickResult<T> {
         // `T: Animatable` is `Clone` (not `Copy`): each consume of a
         // T field through trait methods needs an explicit `.clone()`.
@@ -349,7 +349,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                     target: target.clone(),
                     motion: MotionRow::new(spec.motion, &target),
                     touched: true,
-                    advanced_at: frame_id,
+                    advanced_at: render_frame_id,
                     settled: true,
                 });
                 return TickResult {
@@ -360,8 +360,8 @@ impl<T: Animatable> AnimMapTyped<T> {
             Entry::Occupied(o) => o.into_mut(),
         };
         row.touched = true;
-        let already_advanced = row.advanced_at == frame_id;
-        row.advanced_at = frame_id;
+        let already_advanced = row.advanced_at == render_frame_id;
+        row.advanced_at = render_frame_id;
 
         let same_motion = matches!(
             (&row.motion, spec.motion),

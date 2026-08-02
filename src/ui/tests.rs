@@ -978,7 +978,7 @@ fn frame_pass_count_matches_action_trigger() {
         prime(&mut h.ui);
 
         let count = Cell::new(0u32);
-        let frame_id_before = h.ui.frame_runtime.frame_id;
+        let render_frame_before = h.ui.frame_runtime.render_frame_id;
         let _ = h.frame(|ui| {
             count.set(count.get() + 1);
             build_target(ui);
@@ -989,13 +989,13 @@ fn frame_pass_count_matches_action_trigger() {
             "{label}: expected {expected} build invocation(s), got {}",
             count.get(),
         );
-        // frame_id must bump exactly once per `frame` regardless of
-        // pass count — pass B's anim ticks must see the same id as
-        // pass A's so the integrator doesn't double-advance.
+        // The render frame id must bump exactly once per `frame`
+        // regardless of pass count — pass B's anim ticks must see the same
+        // id as pass A's so the integrator doesn't double-advance.
         assert_eq!(
-            h.ui.frame_runtime.frame_id,
-            frame_id_before + 1,
-            "{label}: frame_id must bump exactly once per frame (passes: {expected})",
+            h.ui.frame_runtime.render_frame_id,
+            render_frame_before + 1,
+            "{label}: render_frame_id must bump once per frame (passes: {expected})",
         );
     }
 }
@@ -1358,10 +1358,18 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
+    let (rendered, recorded) = (h.ui.render_frame_id(), h.ui.frame_id());
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
     let r1 = h.at(half).frame(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
+
+    // The two clocks part company exactly here. `render_frame_id` counts
+    // the painted frame; `frame_id` must not, or retained state that stamps
+    // it to notice it was skipped reads an idle blink as "my surface was
+    // away" and drops whatever it had in flight.
+    assert_eq!(h.ui.render_frame_id(), rendered + 1);
+    assert_eq!(h.ui.frame_id(), recorded);
 
     // PaintOnly must emit a Partial damage plan covering the anim's
     // tight rect — not Full (defeats the point) and not None (the
@@ -1399,6 +1407,13 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     h.ui.window_frame.close_requested = false;
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
+
+    // Four frames on from the stamp above, one of which recorded (`r3`,
+    // the close-request escalation). A reader that recorded on both `r0`
+    // and `r3` sees consecutive `frame_id`s across the paint-only frames
+    // between them — which is what "no gap" has to mean.
+    assert_eq!(h.ui.render_frame_id(), rendered + 4);
+    assert_eq!(h.ui.frame_id(), recorded + 1);
 }
 
 #[test]
