@@ -16,6 +16,7 @@ pub(crate) mod bench;
 pub(crate) mod engine;
 pub(crate) mod entry;
 pub(crate) mod paint;
+pub(crate) mod probe;
 
 use crate::common::content_hash::ContentHash;
 use crate::input::sense::Sense;

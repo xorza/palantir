@@ -16,6 +16,7 @@ use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
 use crate::scene::cascade::paint::{Paint, PaintArena};
+use crate::scene::cascade::probe::CascadeProbe;
 use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -83,20 +84,8 @@ pub(crate) struct CascadeEngine {
     stack: Vec<Frame>,
     paint_scratch: PaintArena,
     display_scale: Option<f32>,
-    /// Incremental walks that got partway and gave up, forcing the full
-    /// rebuild they had already started duplicating.
-    ///
-    /// Counted because the wasted half-walk is invisible from the
-    /// outside — both paths end in the same correct cascade, so a test
-    /// asserting only on output can't tell whether `can_update` caught a
-    /// row-count change up front or discovered it mid-tree.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) abandoned_incrementals: u32,
-    /// Full rebuilds performed. With `abandoned_incrementals` this
-    /// separates "`can_update` said no" from "the incremental walk gave
-    /// up", which are otherwise indistinguishable from the outside.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) full_rebuilds: u32,
+    /// Test/bench observability for this pass — see [`CascadeProbe`].
+    pub(crate) probe: CascadeProbe,
 }
 
 impl CascadeEngine {
@@ -133,28 +122,10 @@ impl CascadeEngine {
                 display.scale_factor,
             );
             if !incremental_complete {
-                self.note_abandoned_incremental();
+                self.probe.abandoned_incremental();
                 self.run_full(forest, layout, display, cascade);
                 return;
             }
-        }
-    }
-
-    /// Bump the abandoned-walk counter; gated in here so `run` carries
-    /// no `#[cfg]`.
-    #[inline]
-    fn note_abandoned_incremental(&mut self) {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.abandoned_incrementals = self.abandoned_incrementals.saturating_add(1);
-        }
-    }
-
-    #[inline]
-    fn note_full_rebuild(&mut self) {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.full_rebuilds = self.full_rebuilds.saturating_add(1);
         }
     }
 
@@ -208,7 +179,7 @@ impl CascadeEngine {
         display: Display,
         cascade: &mut Cascade,
     ) {
-        self.note_full_rebuild();
+        self.probe.full_rebuild();
         let total = forest.total_nodes();
         cascade.entries.clear();
         cascade.entries.reserve(total);
