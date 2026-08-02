@@ -150,10 +150,9 @@ impl GridDepthStack {
 /// `reset_for` zeroes every slot at the top of each pass — load-bearing
 /// for `max`/`min`/`sizes` because the Phase 1 column loop and the
 /// Phase 2 cell-height accumulator both merge via `slot[i] =
-/// slot[i].max(...)` and assume a 0.0 starting state. `totals` is also
-/// zeroed; arrange interprets `total == 0.0` (combined with non-zero
-/// arrange slot) as "measure didn't run this frame for this grid" and
-/// falls back to re-resolving (the cache-hit-ancestor path).
+/// slot[i].max(...)` and assume a 0.0 starting state. `totals` resets to
+/// `None`, which is how arrange recognises a grid measure never reached
+/// this frame (the cache-hit-ancestor path) and re-resolves it.
 ///
 /// Capacity retained across frames.
 #[derive(Debug, Default)]
@@ -166,9 +165,15 @@ pub(crate) struct GridHugStore {
     /// arrange-time slot matches the measure-time total.
     sizes_pool: Vec<f32>,
     /// `[col_total, row_total]` per grid slot — the `total` each axis
-    /// was last resolved against. Arrange compares against the
-    /// arrange-time slot extent and reuses persisted sizes on match.
-    totals_pool: Vec<[f32; 2]>,
+    /// was last resolved against, or `None` where measure hasn't run for
+    /// it this frame. Arrange compares against the arrange-time slot
+    /// extent and reuses persisted sizes on match.
+    ///
+    /// `Option` rather than a `0.0` sentinel: a grid arranged into a
+    /// zero-extent slot resolves against a legitimate `0.0`, so a
+    /// sentinel that spelled "unmeasured" the same way would drop that
+    /// grid off the reuse path every frame.
+    totals_pool: Vec<[Option<f32>; 2]>,
     slots: Vec<GridHugSlot>,
 }
 
@@ -189,7 +194,7 @@ impl GridHugStore {
             let rows = self.alloc(def.rows.len as usize);
             let cols = self.alloc(def.cols.len as usize);
             self.slots.push(GridHugSlot { rows, cols });
-            self.totals_pool.push([0.0, 0.0]);
+            self.totals_pool.push([None, None]);
         }
     }
 
@@ -249,11 +254,11 @@ impl GridHugStore {
         &self.sizes_pool[r]
     }
 
-    /// `total` (measure-time `resolve_axis` input) for `(idx, axis)`.
-    /// Returns `0.0` for grids that haven't been measured this frame
-    /// (e.g. cache-hit descendants); arrange treats that as "no
-    /// persisted state" and re-resolves.
-    fn total_used(&self, idx: GridDefId, axis: Axis) -> f32 {
+    /// `total` (measure-time `resolve_axis` input) for `(idx, axis)`, or
+    /// `None` for grids measure hasn't reached this frame (e.g. cache-hit
+    /// descendants); arrange treats that as "no persisted state" and
+    /// re-resolves.
+    fn total_used(&self, idx: GridDefId, axis: Axis) -> Option<f32> {
         self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)]
     }
 
@@ -265,7 +270,7 @@ impl GridHugStore {
     fn record_resolution(&mut self, idx: GridDefId, axis: Axis, total: f32, sizes: &[f32]) {
         let r = self.axis_slice(idx, axis);
         self.sizes_pool[r].copy_from_slice(sizes);
-        self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)] = total;
+        self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)] = Some(total);
     }
 
     /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
@@ -637,9 +642,9 @@ fn arrange_inner(
     // same `total` (recorded in `hugs.total_used`), copy the persisted
     // sizes instead of re-running the constraint solver. The path is
     // safe when:
-    //   - measure ran for this grid this frame (`total_used != 0` —
-    //     cache-hit-ancestor descendants have 0 since `reset_for`
-    //     zeros them and we never wrote);
+    //   - measure ran for this grid this frame (`total_used` is `Some` —
+    //     cache-hit-ancestor descendants keep the `None` that `reset_for`
+    //     left, since nothing ever wrote them);
     //   - arrange's `inner.size.X` matches measure's `inner_avail.X`
     //     (no WPF Stretch grow on this axis since measure committed).
     // The `track_offsets` cumulative-sum is cheap relative to
@@ -764,9 +769,12 @@ fn resolve_or_reuse(
     total: f32,
     gap: f32,
 ) {
-    let recorded_total = hugs.total_used(idx, axis);
-    let can_reuse = recorded_total != 0.0 && recorded_total == total;
-    if can_reuse {
+    // `Some(total)` covers both conditions at once: a `None` slot means
+    // measure never ran for this grid, and any other recorded extent
+    // means the slot moved since it did. An infinite measure-time total
+    // (a Hug grid) never equals arrange's finite slot, so it falls
+    // through to the re-resolve like any other mismatch.
+    if hugs.total_used(idx, axis) == Some(total) {
         a.sizes.copy_from_slice(hugs.sizes_slice(idx, axis));
         return;
     }

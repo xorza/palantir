@@ -460,6 +460,13 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     for frame in 0..8 {
         render(&mut h, frame % 2 == 0);
     }
+    // Only non-leaf nodes earn a descriptor, so adding and dropping a
+    // leaf leaves the id sequence — and its `descriptor_identity` — the
+    // same on every frame. Steady-state oscillation must therefore reuse
+    // the retained map rather than refilling it. Counted because the
+    // `debug_assert` inside the reuse branch is vacuous on a frame that
+    // rebuilt instead.
+    let rebuilds_after_warmup = h.ui.layout_engine.cache.snapshot_rebuilds;
     let mut node_capacities = [
         h.ui.layout_engine.cache.previous.nodes.desired.capacity(),
         h.ui.layout_engine.cache.current.nodes.desired.capacity(),
@@ -492,6 +499,38 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         );
         assert_eq!(descriptor_capacities, current_descriptor_capacities);
     }
+    assert_eq!(
+        h.ui.layout_engine.cache.snapshot_rebuilds, rebuilds_after_warmup,
+        "steady-state oscillation must reuse each buffer's descriptor map",
+    );
+
+    // The other leg: re-key the container so the descriptor *ids* change,
+    // and the gate has to bust — a retained map that still answered for
+    // the old id would hand `try_lookup` a stale index. Without this the
+    // assertion above would pass just as well on a cache that had stopped
+    // rebuilding altogether.
+    run_frame(&mut h, |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("re-keyed"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("lone"))
+                    .size(10.0)
+                    .show(ui);
+            });
+    });
+    assert!(
+        h.ui.layout_engine.cache.snapshot_rebuilds > rebuilds_after_warmup,
+        "an unseen descriptor sequence must rebuild the map",
+    );
+    assert!(
+        h.ui.layout_engine
+            .cache
+            .previous
+            .snapshots
+            .contains_key(&WidgetId::from_hash("re-keyed")),
+        "the rebuilt map must resolve the id that busted it",
+    );
 }
 
 #[test]
