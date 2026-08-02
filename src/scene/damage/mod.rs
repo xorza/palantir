@@ -61,8 +61,8 @@ use crate::scene::damage::snapshot::{
 use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
-use crate::scene::tree::node::NodeId;
-use crate::scene::tree::node::SubtreeEnd;
+use crate::scene::tree::record::NodeId;
+use crate::scene::tree::record::SubtreeEnd;
 use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
 use std::time::Duration;

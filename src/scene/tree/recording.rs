@@ -10,7 +10,7 @@ use glam::Vec2;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 
 /// One entry on the recording ancestor stack
 /// ([`RecordingScratch::open_frames`]). Carries the open node's

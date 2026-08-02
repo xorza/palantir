@@ -290,7 +290,7 @@ mod hot_struct_sizes {
     use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::extras::ExtrasIdx;
-    use crate::scene::tree::node::NodeRecord;
+    use crate::scene::tree::record::NodeRecord;
     use crate::text::key::{ShapedTextRef, TextShapeKey};
     use crate::text::render::PlacedGlyph;
     use crate::widgets::button::Button;

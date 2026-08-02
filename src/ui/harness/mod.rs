@@ -779,7 +779,7 @@ mod unit {
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
-    use crate::scene::tree::node::NodeId;
+    use crate::scene::tree::record::NodeId;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameReport;
     use crate::ui::harness::UiHarness;

@@ -8,7 +8,7 @@ use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::{Damage, DamageEngine, paints_on_surface};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;

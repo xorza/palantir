@@ -1,5 +1,5 @@
 use crate::layout::intrinsic::*;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 
 use crate::Ui;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};

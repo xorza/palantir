@@ -16,7 +16,7 @@ use crate::scene::node::columns::{BoundsExtras, LayoutCore};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::text::key::TextShapeKey;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight, TextShapeRequest};

@@ -26,7 +26,7 @@ use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::RootSlot;
 use crate::text::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};

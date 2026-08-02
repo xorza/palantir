@@ -9,7 +9,7 @@ use crate::layout::support::{
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 
 /// One Fill child as the freeze loop sees it. Pushed onto
 /// `LayoutScratch::stack_fill` during measure; popped at the end of

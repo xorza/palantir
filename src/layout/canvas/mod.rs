@@ -9,7 +9,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 
 /// Canvas: children placed at their declared `Layout.position` (parent-inner
 /// coords, defaulting to `(0, 0)`). Per-axis available width: pass `inner`

@@ -23,7 +23,7 @@ use crate::layout::support::{
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 
 /// One child's measured contribution to the current line.
 #[derive(Clone, Copy, Debug)]

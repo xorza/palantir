@@ -11,7 +11,7 @@ use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::frame::FrameRuntime;
 use crate::ui::harness::UiHarness;
