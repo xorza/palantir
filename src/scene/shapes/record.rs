@@ -26,13 +26,16 @@ pub(crate) enum ColorMode {
     PerSegment = 2,
 }
 
-/// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
-/// keys (which write the discriminant into the hash) stay stable
-/// across variant reordering. Reorder freely — the hash tag follows
-/// the `= N`, not the source order. Adding a variant forces the
-/// [`Self::tag`] and
+/// The stable tag cache keys are built from is [`Self::tag`], **not**
+/// this enum's `repr` discriminant — nothing reads the latter. Reorder
+/// variants freely; a hash can only move when `tag` does. Adding a
+/// variant forces the `tag` and
 /// [`compute_record_hash`](crate::scene::shapes::hash::compute_record_hash)
-/// matches to grow; pick the next free number.
+/// matches to grow, since both are exhaustive.
+///
+/// `#[repr(u8)]` stays for **layout**, not identity: it holds the
+/// discriminant to one byte, which the `ShapeRecord` entry in
+/// `hot_struct_sizes` pins.
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
@@ -58,7 +61,7 @@ pub(crate) enum ShapeRecord {
         /// every hash call (subtree rollups, measure cache). The hash
         /// is computed once at lowering time by `scene::record_store::grad_hash`.
         fill_grad_hash: u64,
-    } = 0,
+    },
     /// Stroked polyline. `points`/`colors` index into the
     /// `RecordPayloads`' `polyline_points` / `polyline_colors`. `colors`
     /// length depends on `color_mode`: 1 for `Single`,
@@ -78,7 +81,7 @@ pub(crate) enum ShapeRecord {
         colors: Span,
         bbox: Rect,
         content_hash: u64,
-    } = 1,
+    },
     /// Shaped text run — *authoring inputs only*. Measured size and
     /// shaped-buffer key are layout outputs and live on
     /// `Layout.text_shapes`, not here. `wrap` selects between "shape
@@ -119,7 +122,7 @@ pub(crate) enum ShapeRecord {
         align: Align,
         family: FontFamily,
         weight: FontWeight,
-    } = 2,
+    },
     /// User-supplied colored triangle mesh. Vertex/index data lives on
     /// the `RecordPayloads`' `meshes` pool; these spans index into its
     /// vertex/index vecs. `content_hash` summarizes
@@ -138,7 +141,7 @@ pub(crate) enum ShapeRecord {
         /// re-scan.
         bbox: Rect,
         content_hash: u64,
-    } = 3,
+    },
     /// Gaussian-blurred rounded rect — drop / inset shadow. All
     /// parameters are inline scalars; no retained payloads. With
     /// `local_rect = None` the shadow shadows the owner's full
@@ -150,7 +153,7 @@ pub(crate) enum ShapeRecord {
         local_rect: Option<Rect>,
         corners: Corners,
         shadow: LoweredShadow,
-    } = 4,
+    },
     /// Textured rectangle. `id` is the registration id behind an
     /// [`ImageHandle`](crate::ImageHandle) — extracted at lowering so the
     /// per-frame record carries no `Rc` (the user's held handle is what
@@ -169,7 +172,7 @@ pub(crate) enum ShapeRecord {
         fit: ImageFit,
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
-    } = 5,
+    },
     /// Native GPU bezier curve. Four control points (quadratics
     /// promote to cubic at lowering, lines degenerate to one — see
     /// `shapes::lower`). Stored owner-local; the
@@ -203,7 +206,7 @@ pub(crate) enum ShapeRecord {
         /// `width/2` past each endpoint along the local tangent.
         cap: LineCap,
         bbox: Rect,
-    } = 6,
+    },
     /// Filled/stroked rounded triangle, rendered as an analytic SDF on the
     /// shared quad pipeline (`FillKind::TRIANGLE`). `a`/`b`/`c` are owner-local
     /// corner points; the composer transforms them to physical px, packs them
@@ -221,7 +224,7 @@ pub(crate) enum ShapeRecord {
         fill: ColorF16,
         stroke: ShapeStroke,
         bbox: Rect,
-    } = 8,
+    },
     /// Native GPU circular arc — the exact-circle sibling of
     /// [`ShapeRecord::Curve`], sharing its pipeline, cap model, and
     /// gradient-along-t sampling. `center` is owner-local; `a0`/`a1`
@@ -241,7 +244,7 @@ pub(crate) enum ShapeRecord {
         fill_grad_hash: u64,
         cap: LineCap,
         bbox: Rect,
-    } = 10,
+    },
     /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
     /// stable render-target [`TextureId`] + the app `paint` callback live in
     /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
@@ -254,7 +257,7 @@ pub(crate) enum ShapeRecord {
     /// `Ui::gpu_view` bumps it to the frame id on `repaint(true)` — the rect
     /// repaints and the texture re-renders — and holds it stable on
     /// `.repaint(false)`, so a static view stays undamaged and is culled.
-    GpuView { epoch: u64 } = 7,
+    GpuView { epoch: u64 },
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — a drop shadow is
@@ -357,11 +360,18 @@ impl ShapeRecord {
         }
     }
 
-    /// Stable hash tag. Used as the discriminant byte in
-    /// [`crate::scene::shapes::hash::compute_record_hash`], which feeds
-    /// subtree hashes / cache keys. The
-    /// values match the `= N` annotations on the variants — never
-    /// edit one without the other.
+    /// Stable hash tag — the discriminant byte
+    /// [`crate::scene::shapes::hash::compute_record_hash`] writes ahead
+    /// of the per-variant fields, and so an input to every subtree hash
+    /// and measure-cache key.
+    ///
+    /// **This match is the sole source of those numbers**; the enum's
+    /// own `repr` discriminant is unread, so reordering variants cannot
+    /// move a hash. A number is frozen once it has shipped in a saved
+    /// document — give a new variant the next free one. 9 is retired: it
+    /// was `WindowedRect` before that folded into
+    /// [`ShapeRecord::Rect`]'s `kind`, and reissuing it would collide
+    /// with hashes still cached from before the merge.
     pub(crate) const fn tag(&self) -> u8 {
         match self {
             ShapeRecord::Rect { .. } => 0,
@@ -424,12 +434,167 @@ pub(crate) fn text_paint_bbox_local(
 mod tests {
     use crate::primitives::approx::EPS;
     use crate::primitives::color::Color;
+    use crate::primitives::interned_str::TextSource;
     use crate::primitives::rect::Rect;
+    use crate::primitives::shadow::Shadow;
     use crate::primitives::size::Size;
     use crate::primitives::stroke::Stroke;
     use crate::scene::shapes::hash::compute_record_hash;
     use crate::scene::shapes::record::*;
     use glam::Vec2;
+
+    /// [`ShapeRecord::tag`] is the only source of the hash's leading
+    /// discriminant byte, so its numbers have to be pairwise distinct
+    /// and frozen once shipped. Two variants sharing a tag would differ
+    /// only by whatever their field schedules don't have in common — and
+    /// `Curve` / `Arc` schedule nearly the same fields, so such a
+    /// collision would land somewhere it actually matters.
+    ///
+    /// The `repr` discriminants that used to sit on the variants looked
+    /// like they enforced this. They never did: they pin their *own*
+    /// uniqueness, which says nothing about the hand-written `tag`
+    /// match. This is where the property is actually checked.
+    ///
+    /// A brand-new variant still has to be added to the table below by
+    /// hand; what the exhaustive `tag` match guarantees is only that
+    /// someone had to pick a number for it.
+    #[test]
+    fn shape_record_tags_are_distinct_and_pinned() {
+        let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
+        let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 1.0));
+        // 9 is absent on purpose — retired with `WindowedRect`.
+        let table = [
+            (
+                0,
+                ShapeRecord::Rect {
+                    kind: RectKind::Rounded,
+                    local_rect: None,
+                    corners: Corners::ZERO,
+                    fill,
+                    stroke,
+                    fill_grad_hash: 0,
+                },
+            ),
+            (
+                1,
+                ShapeRecord::Polyline {
+                    width: 1.0,
+                    color_mode: ColorMode::Single,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
+                    points: Span::new(0, 2),
+                    colors: Span::new(0, 1),
+                    bbox: Rect::ZERO,
+                    content_hash: 0,
+                },
+            ),
+            (
+                2,
+                ShapeRecord::Text {
+                    local_origin: None,
+                    text: RecordedText {
+                        source: TextSource {
+                            span: Span::new(0, 1),
+                        },
+                        hash: 0,
+                    },
+                    color: ColorF16::from(Color::WHITE),
+                    font_size_px: 12.0,
+                    line_height_px: 14.0,
+                    wrap: TextWrap::SingleLine,
+                    align: Align::CENTER,
+                    family: FontFamily::Sans,
+                    weight: FontWeight::Regular,
+                },
+            ),
+            (
+                3,
+                ShapeRecord::Mesh {
+                    local_rect: None,
+                    tint: ColorF16::from(Color::WHITE),
+                    vertices: Span::new(0, 3),
+                    indices: Span::new(0, 3),
+                    bbox: Rect::ZERO,
+                    content_hash: 0,
+                },
+            ),
+            (
+                4,
+                ShapeRecord::Shadow {
+                    local_rect: None,
+                    corners: Corners::ZERO,
+                    shadow: LoweredShadow::from(Shadow::default()),
+                },
+            ),
+            (
+                5,
+                ShapeRecord::Image {
+                    local_rect: None,
+                    tint: ColorF16::from(Color::WHITE),
+                    id: TextureId(1),
+                    size: glam::UVec2::new(1, 1),
+                    fit: ImageFit::Fill,
+                    min_filter: ImageFilter::Linear,
+                    mag_filter: ImageFilter::Linear,
+                },
+            ),
+            (
+                6,
+                ShapeRecord::Curve {
+                    p0: Vec2::ZERO,
+                    p1: Vec2::ZERO,
+                    p2: Vec2::ZERO,
+                    p3: Vec2::ZERO,
+                    width: 1.0,
+                    fill,
+                    fill_grad_hash: 0,
+                    cap: LineCap::Butt,
+                    bbox: Rect::ZERO,
+                },
+            ),
+            (7, ShapeRecord::GpuView { epoch: 0 }),
+            (
+                8,
+                ShapeRecord::Triangle {
+                    a: Vec2::ZERO,
+                    b: Vec2::ZERO,
+                    c: Vec2::ZERO,
+                    radius: 0.0,
+                    fill: ColorF16::from(Color::WHITE),
+                    stroke,
+                    bbox: Rect::ZERO,
+                },
+            ),
+            (
+                10,
+                ShapeRecord::Arc {
+                    center: Vec2::ZERO,
+                    radius: 1.0,
+                    a0: 0.0,
+                    a1: 1.0,
+                    width: 1.0,
+                    fill,
+                    fill_grad_hash: 0,
+                    cap: LineCap::Butt,
+                    bbox: Rect::ZERO,
+                },
+            ),
+        ];
+
+        let mut seen = Vec::with_capacity(table.len());
+        for (expected, record) in &table {
+            assert_eq!(
+                record.tag(),
+                *expected,
+                "{record:?} moved off its shipped tag",
+            );
+            assert!(
+                !seen.contains(expected),
+                "tag {expected} is claimed by two variants",
+            );
+            seen.push(*expected);
+        }
+    }
 
     #[test]
     fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
