@@ -326,27 +326,68 @@ impl DrawImagePayload {
     }
 }
 
-/// Native GPU bezier-curve payload. Four cubic control points are
-/// stored owner-local; the composer adds `origin` and the active
-/// push-transform stack before scaling to physical px and pushing the
-/// resulting `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is
-/// the owner-local centerline AABB; the composer applies the shared
+/// Which parametric basis a stroke traces — the payload half that
+/// actually differs between a Bézier and an arc. Named for the shader's
+/// own vocabulary: both lower to a `CurveInstance` on the one curve
+/// pipeline, selected by its `kind` lane, so they are two bases of one
+/// draw rather than two draws.
+///
+/// Both forms are owner-local. The composer folds in `origin` and the
+/// active transform before scaling to physical px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum CurveBasis {
+    /// Cubic Bézier control points. Quadratics promote to cubic and
+    /// straight lines degenerate to one at lowering, so this is every
+    /// non-circular stroke.
+    Cubic {
+        p0: glam::Vec2,
+        p1: glam::Vec2,
+        p2: glam::Vec2,
+        p3: glam::Vec2,
+    },
+    /// Exact circle — no cubic approximation error, and gradient `t`
+    /// tracks the sweep linearly. `a0`/`a1` are radians in the screen
+    /// convention (0 = +x, y-down ⇒ increasing = clockwise), so
+    /// `a1 < a0` is a negative sweep.
+    Arc {
+        center: glam::Vec2,
+        radius: f32,
+        a0: f32,
+        a1: f32,
+    },
+}
+
+impl Default for CurveBasis {
+    /// A degenerate cubic at the origin — the `Default` a
+    /// [`DrawCurvePayload`] literal falls back to, never a real draw.
+    fn default() -> Self {
+        Self::Cubic {
+            p0: glam::Vec2::ZERO,
+            p1: glam::Vec2::ZERO,
+            p2: glam::Vec2::ZERO,
+            p3: glam::Vec2::ZERO,
+        }
+    }
+}
+
+/// Native GPU stroke payload — a cubic or an arc, per [`CurveBasis`].
+/// The composer adds `origin` and the active push-transform stack
+/// before scaling to physical px and pushing the resulting
+/// `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is the
+/// owner-local centerline AABB; the composer applies the shared
 /// stroke/cap/AA bound in physical space for culling and overlap.
 /// `rotation` is the paint-time spin angle sampled from
 /// `PaintAnim::Spin` — non-zero only when the encoder replaced `bbox`
 /// with the rotation-invariant square whose centre is the spin pivot
-/// (same contract as `DrawPolylinePayload`); the composer rotates the
-/// control points about that pivot, which is exact for a bezier
-/// (affine invariance).
+/// (same contract as `DrawPolylinePayload`). The composer spins about
+/// that pivot: exact for a Bézier by affine invariance, and for a
+/// circle by rotating the centre and shifting both angles.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
+    pub(crate) basis: CurveBasis,
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
     pub(crate) rotation: f32,
-    pub(crate) p0: glam::Vec2,
-    pub(crate) p1: glam::Vec2,
-    pub(crate) p2: glam::Vec2,
-    pub(crate) p3: glam::Vec2,
     /// Solid stroke colour. Zeroed when `fill_kind` is a gradient —
     /// the LUT row at `fill_lut_row` supplies the colour in that case.
     pub(crate) color: ColorF16,
@@ -392,52 +433,19 @@ impl DrawTrianglePayload {
 }
 
 impl DrawCurvePayload {
-    /// Canonical noop predicate — zero/negative stroke width or a
-    /// solid fill that's fully transparent. Gradient fills always
-    /// paint (the all-transparent-stops case is caught by
-    /// `Brush::is_noop` before lowering).
+    /// Canonical noop predicate — zero/negative stroke width, a
+    /// degenerate arc radius (nothing to trace), or a solid fill that's
+    /// fully transparent. Gradient fills always paint (the
+    /// all-transparent-stops case is caught by `Brush::is_noop` before
+    /// lowering).
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         if noop_f32(self.width) {
             return true;
         }
-        self.fill_kind == FillKind::SOLID && self.color.is_noop()
-    }
-}
-
-/// Native GPU circular-arc payload — the exact-circle sibling of
-/// [`DrawCurvePayload`]. `center` is owner-local (composer adds
-/// `origin` + the active transform before scaling to physical px);
-/// `a0`/`a1` are start/end angles in radians (screen convention,
-/// `a1 < a0` for a negative sweep). `rotation` is the paint-time spin
-/// angle sampled from `PaintAnim::Spin` — non-zero only when the
-/// encoder replaced `bbox` with the rotation-invariant square whose
-/// centre is the spin pivot (same contract as `DrawPolylinePayload`).
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub(crate) struct DrawArcPayload {
-    pub(crate) bbox: Rect,
-    pub(crate) origin: glam::Vec2,
-    pub(crate) center: glam::Vec2,
-    pub(crate) radius: f32,
-    pub(crate) a0: f32,
-    pub(crate) a1: f32,
-    pub(crate) rotation: f32,
-    /// Solid stroke colour; zeroed for gradients (see
-    /// [`DrawCurvePayload::color`]).
-    pub(crate) color: ColorF16,
-    pub(crate) width: f32,
-    /// See [`DrawCurvePayload::cap`].
-    pub(crate) cap: LineCap,
-    pub(crate) fill_kind: FillKind,
-    pub(crate) fill_lut_row: LutRow,
-}
-
-impl DrawArcPayload {
-    /// Same predicate as [`DrawCurvePayload::is_noop`], plus a
-    /// degenerate radius (nothing to trace).
-    #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
-        if noop_f32(self.width) || noop_f32(self.radius) {
+        if let CurveBasis::Arc { radius, .. } = self.basis
+            && noop_f32(radius)
+        {
             return true;
         }
         self.fill_kind == FillKind::SOLID && self.color.is_noop()

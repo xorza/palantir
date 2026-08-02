@@ -273,9 +273,8 @@ mod hot_struct_sizes {
     use crate::primitives::span::Span;
     use crate::renderer::backend::text::GlyphInstance;
     use crate::renderer::frontend::payload::{
-        DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-        DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
-        ResolvedGradient,
+        DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
+        DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload, ResolvedGradient,
     };
     use crate::renderer::quad::Quad;
     use crate::renderer::render_buffer::curve::CurveInstance;
@@ -419,8 +418,7 @@ mod hot_struct_sizes {
         DrawMeshPayload => "payload::DrawMeshPayload": 48 / 4,
         DrawImagePayload => "payload::DrawImagePayload": 56 / 8,
         DrawTrianglePayload => "payload::DrawTrianglePayload": 56 / 4,
-        DrawCurvePayload => "payload::DrawCurvePayload": 84 / 4,
-        DrawArcPayload => "payload::DrawArcPayload": 72 / 4,
+        DrawCurvePayload => "payload::DrawCurvePayload": 88 / 4,
         // GPU instance / vertex types.
         Quad => "renderer::Quad": 60 / 4,
         CurveInstance => "renderer::CurveInstance": 68 / 4,

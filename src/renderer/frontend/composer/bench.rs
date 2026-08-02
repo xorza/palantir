@@ -4,7 +4,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{DrawCurvePayload, DrawImagePayload, DrawMeshPayload};
+use crate::renderer::frontend::payload::{
+    CurveBasis, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
+};
 use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordPayloads;
@@ -40,10 +42,12 @@ impl ComposeBench {
             cmds.draw_curve(DrawCurvePayload {
                 bbox: Rect::new(16.0, 63.0, 96.0, 2.0),
                 origin: Vec2::ZERO,
-                p0: Vec2::new(16.0, 64.0),
-                p1: Vec2::new(48.0, 64.0),
-                p2: Vec2::new(80.0, 64.0),
-                p3: Vec2::new(112.0, 64.0),
+                basis: CurveBasis::Cubic {
+                    p0: Vec2::new(16.0, 64.0),
+                    p1: Vec2::new(48.0, 64.0),
+                    p2: Vec2::new(80.0, 64.0),
+                    p3: Vec2::new(112.0, 64.0),
+                },
                 color: Color::WHITE.into(),
                 width: 2.0,
                 ..Default::default()

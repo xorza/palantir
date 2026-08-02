@@ -1,4 +1,31 @@
 //! Per-group overlap tracking for mesh, image, and curve replay tiers.
+//!
+//! **Why a union pre-reject plus a linear scan, and not the tiled index
+//! [`text_grid`] uses.** That module's own doc measures this exact shape
+//! at 56.7 µs against its grid's 7.0 — but it is measuring a different
+//! access pattern, and the difference is what makes the cheap structure
+//! right here. A text batch spans groups, so its rect list is long-lived
+//! and every quad queries it; the tiles are what stop that from being
+//! O(n) per quad.
+//!
+//! These lists are group-scoped, and the first query that *survives* the
+//! union pre-reject flushes the group — which clears them. So a scan can
+//! only ever happen once per group transition, never once per draw.
+//! Measured on the `FrameFixture` workload: max occupancy **2**, and
+//! **zero** tier scans across eight frames, because the aggregate union
+//! rejects every query before it reaches a tier. Measured on a synthetic
+//! 400-wire node-graph canvas (the adversarial case, since
+//! [`HigherKindRects::conflicts`] never flushes on curve-after-curve, so
+//! wires accumulate unbounded): occupancy tracks the wire count exactly,
+//! yet the whole compose does **one** 400-rect scan — the first
+//! overlapping quad pays it, flushes, and every later quad scans an empty
+//! list.
+//!
+//! A tiled index would add a per-frame build to save a scan that happens
+//! once per group. Re-measure before changing this; don't re-derive it
+//! from the neighbouring module's numbers.
+//!
+//! [`text_grid`]: crate::renderer::frontend::composer::text_grid
 
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::batch::PaintTier;

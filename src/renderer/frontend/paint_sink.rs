@@ -45,9 +45,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload,
-    GpuFillFields, PushClipPayload,
+    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, GpuFillFields,
+    PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::scene::shapes::paint::ShapeStroke;
@@ -80,8 +80,6 @@ pub(crate) trait PaintSink {
     fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
 
     fn curve(&mut self, payload: DrawCurvePayload);
-
-    fn arc(&mut self, payload: DrawArcPayload);
 
     fn triangle(&mut self, payload: DrawTrianglePayload);
 
@@ -237,13 +235,6 @@ pub(crate) trait PaintSink {
             return;
         }
         self.curve(payload);
-    }
-
-    fn draw_arc(&mut self, payload: DrawArcPayload) {
-        if payload.is_noop() {
-            return;
-        }
-        self.arc(payload);
     }
 
     /// Paint a rounded triangle from three owner-local `points` offset
