@@ -1,5 +1,5 @@
 use crate::layout::axis::Axis;
-use crate::layout::grid::{AxisScratch, GridDepthStack, known_span_size, resolve_axis};
+use crate::layout::grid::{AxisScratch, GridDepthStack, HugRanges, known_span_size, resolve_axis};
 use crate::layout::intrinsic::LenReq;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
@@ -777,10 +777,12 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     let tracks = [Track::fixed(50.0), Track::hug(), Track::fill()];
     let mut a = AxisScratch::default();
     a.reset(tracks.len());
-    let hug_min = [0.0, 10.0, 0.0];
-    let hug_max = [0.0, 30.0, 0.0];
+    let hugs = HugRanges {
+        min: &[0.0, 10.0, 0.0],
+        max: &[0.0, 30.0, 0.0],
+    };
 
-    resolve_axis(&mut a, &tracks, &hug_min, &hug_max, 200.0, 0.0, false);
+    resolve_axis(&mut a, &tracks, hugs, 200.0, 0.0, false);
 
     assert!(
         a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),

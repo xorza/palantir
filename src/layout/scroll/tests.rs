@@ -3,11 +3,13 @@
 
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
+use crate::layout::types::track::Track;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
+use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use glam::UVec2;
@@ -352,5 +354,52 @@ fn toggling_scroll_sizing_busts_measure_cache() {
         scroll_height(&h, "scroll"),
         0.0,
         "Fill collapses in the Hug parent — the frame-1 fit measure is not served stale",
+    );
+}
+
+/// Pin: a `Hug` scroll reports its content extent as its **intrinsic**,
+/// not merely as its measured size.
+///
+/// `Scroll` sets the viewport's `fit` bit on any panned axis the author
+/// left `Hug` — that is what makes a scroll size to its content. Measure
+/// honoured that bit from the start; the intrinsic query did not, and
+/// answered zero for every panned axis. Nothing downstream of `measure`
+/// noticed, because `resolve_axis_size` takes `max(content,
+/// intrinsic_min)` and content won. A Hug grid column is where it
+/// showed: column widths come from the Phase-1 *intrinsic* walk, so the
+/// column resolved to zero and the cell it was meant to size overflowed
+/// it.
+#[test]
+fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
+    const CONTENT_W: f32 = 120.0;
+
+    let mut h = UiHarness::new(SURFACE);
+    let root = h.frame_value(|ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::hug()])
+            .rows([Track::hug()])
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                Scroll::horizontal()
+                    .id(WidgetId::from_hash("hug-scroll"))
+                    .size((Sizing::HUG, Sizing::fixed(40.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("wide"))
+                            .size((Sizing::fixed(CONTENT_W), Sizing::fixed(20.0)))
+                            .show(ui);
+                    });
+            })
+            .response
+            .node()
+    });
+
+    // The Hug column is resolved from the cell's intrinsic, so the
+    // scroll's own arranged width is the column width.
+    let cell = h.main_child_rects(root)[0];
+    assert_eq!(
+        cell.size.w, CONTENT_W,
+        "a Hug column must resolve to the Hug scroll's content width, not collapse to zero",
     );
 }

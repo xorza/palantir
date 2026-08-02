@@ -329,14 +329,18 @@ pub(super) fn intrinsic(
     let mut count = 0_usize;
     for c in tree.active_children(node) {
         let child = query.child(layout, tree, c, query_axis, interned_text);
-        if query.includes(LenReq::MinContent) {
-            range.min = range.min.max(child.min);
-        }
-        if query.includes(LenReq::MaxContent) {
-            range.max += child.max;
+        for (req, slot) in range.requested(query) {
+            *slot = match req {
+                // The widest single child is the floor: narrower than
+                // that and even a one-child line overflows.
+                LenReq::MinContent => slot.max(child.min),
+                // Everything on one line.
+                LenReq::MaxContent => *slot + child.max,
+            };
         }
         count += 1;
     }
+    // Within-line gaps exist only on the single-line (max) reading.
     if query.includes(LenReq::MaxContent) {
         range.max += tree.panel(node).gaps.gap() * count.saturating_sub(1) as f32;
     }

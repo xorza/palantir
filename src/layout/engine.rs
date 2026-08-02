@@ -374,13 +374,71 @@ impl LayoutEngine {
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
-    /// `axis` under content-sizing `req`.
+    /// `axis` for the halves `query` asks for.
     ///
-    /// Pure function of the subtree at `node`: doesn't depend on the
-    /// parent's available width or the arranged rect. Memoized via the
-    /// intra-frame cache so repeated queries during the same `run` cost
-    /// one array load. Consumed by `grid::measure` (Phase 1 column
-    /// resolution) and `stack::measure` (Fill min-content floor).
+    /// Pure function of the subtree at `node`: independent of the
+    /// parent's available width and of the arranged rect. Three layers
+    /// answer it, cheapest first — the intra-frame slot array, last
+    /// frame's snapshot, then a real subtree walk — and only the halves
+    /// still missing after the first two reach the walk, so a range query
+    /// whose min is already cached costs a max-only recursion.
+    ///
+    /// Consumed by `grid::measure` (Phase 1 column resolution) and
+    /// `stack::measure` (Fill min-content floor) via the thin
+    /// [`Self::intrinsic`] / [`Self::intrinsic_range`] wrappers.
+    pub(super) fn intrinsic_query(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        query: IntrinsicQuery,
+        interned_text: &InternedText<'_>,
+    ) -> IntrinsicRange {
+        let idx = node.idx();
+        let mut range = IntrinsicRange::ZERO;
+        let (mut missing_min, mut missing_max) = (false, false);
+        for (req, slot) in range.requested(query) {
+            let cached = self.scratch.intrinsics[idx][req.slot(axis)];
+            if !cached.is_nan() {
+                *slot = cached;
+                continue;
+            }
+            // Cross-frame reuse: an unchanged subtree's intrinsic is still
+            // valid from last frame's measure-cache snapshot. Intrinsic is
+            // `available`-independent, so this hits even on a resize frame
+            // where the desired-cache (`try_lookup`) misses on
+            // `available_q`. Crucially it fires at the *query* site: a
+            // parent computes its `intrinsic_min` (which queries children)
+            // before measuring those children, so the children's own
+            // cache-hit restore comes too late — only a lookup here stops
+            // the ancestor cold-recursing through every unchanged sibling
+            // subtree.
+            if let Some(value) = self.cached_intrinsic(tree, idx, req.slot(axis)) {
+                self.scratch.intrinsics[idx][req.slot(axis)] = value;
+                *slot = value;
+                continue;
+            }
+            match req {
+                LenReq::MinContent => missing_min = true,
+                LenReq::MaxContent => missing_max = true,
+            }
+        }
+
+        let Some(walk) = IntrinsicQuery::of(missing_min, missing_max) else {
+            return range;
+        };
+        self.scratch.probe.intrinsic_computed();
+        let computed = intrinsic::compute(self, tree, node, axis, walk, interned_text);
+        for (req, slot) in range.requested(walk) {
+            let value = computed.get(req);
+            self.scratch.intrinsics[idx][req.slot(axis)] = value;
+            *slot = value;
+        }
+        range
+    }
+
+    /// One half of [`Self::intrinsic_query`].
+    #[inline]
     pub(super) fn intrinsic(
         &mut self,
         tree: &Tree,
@@ -389,37 +447,13 @@ impl LayoutEngine {
         req: LenReq,
         interned_text: &InternedText<'_>,
     ) -> f32 {
-        let slot = req.slot(axis);
-        let idx = node.idx();
-        let cached = self.scratch.intrinsics[idx][slot];
-        if !cached.is_nan() {
-            return cached;
-        }
-        if let Some(value) = self.cached_intrinsic(tree, idx, slot) {
-            self.scratch.intrinsics[idx][slot] = value;
-            return value;
-        }
-        self.scratch.probe.intrinsic_computed();
-        let computed = intrinsic::compute(
-            self,
-            tree,
-            node,
-            axis,
-            IntrinsicQuery::single(req),
-            interned_text,
-        );
-        let value = match req {
-            LenReq::MinContent => computed.min,
-            LenReq::MaxContent => computed.max,
-        };
-        self.scratch.intrinsics[idx][slot] = value;
-        value
+        self.intrinsic_query(tree, node, axis, IntrinsicQuery::single(req), interned_text)
+            .get(req)
     }
 
-    /// Paired min/max-content query for Grid Hug tracks. A cold query
-    /// traverses the subtree once and fills both intra-frame cache slots;
-    /// partially populated and cross-frame cache rows compute only the
-    /// missing side.
+    /// Both halves — what Grid's Hug tracks want, since a track needs the
+    /// content range rather than either end of it.
+    #[inline]
     pub(super) fn intrinsic_range(
         &mut self,
         tree: &Tree,
@@ -427,64 +461,7 @@ impl LayoutEngine {
         axis: Axis,
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
-        let min_slot = LenReq::MinContent.slot(axis);
-        let max_slot = LenReq::MaxContent.slot(axis);
-        let idx = node.idx();
-        let mut range = IntrinsicRange {
-            min: self.scratch.intrinsics[idx][min_slot],
-            max: self.scratch.intrinsics[idx][max_slot],
-        };
-        if !range.min.is_nan() && !range.max.is_nan() {
-            return range;
-        }
-        // Cross-frame reuse: an unchanged subtree's intrinsic is valid from
-        // last frame's measure-cache snapshot. Intrinsic is
-        // `available`-independent, so this hits even on a resize frame
-        // where the desired-cache (`try_lookup`) misses on `available_q`.
-        // Crucially it fires at the *query* site: a parent computes its
-        // `intrinsic_min` (which queries children) before measuring those
-        // children, so the children's own cache-hit restore comes too late
-        // — only a lookup here stops the ancestor cold-recursing through
-        // every unchanged sibling subtree.
-        for (slot, value) in [(min_slot, &mut range.min), (max_slot, &mut range.max)] {
-            if value.is_nan()
-                && let Some(cached) = self.cached_intrinsic(tree, idx, slot)
-            {
-                *value = cached;
-                self.scratch.intrinsics[idx][slot] = cached;
-            }
-        }
-        let min_missing = range.min.is_nan();
-        let max_missing = range.max.is_nan();
-        if !min_missing && !max_missing {
-            return range;
-        }
-
-        // A range row can be partially populated by an earlier single-slot
-        // query. Preserve that work instead of traversing both sides again.
-        if min_missing != max_missing {
-            if min_missing {
-                range.min = self.intrinsic(tree, node, axis, LenReq::MinContent, interned_text);
-            } else {
-                range.max = self.intrinsic(tree, node, axis, LenReq::MaxContent, interned_text);
-            }
-            return range;
-        }
-
-        self.scratch.probe.intrinsic_computed();
-        let computed = intrinsic::compute(
-            self,
-            tree,
-            node,
-            axis,
-            IntrinsicQuery::range(),
-            interned_text,
-        );
-        range.min = computed.min;
-        self.scratch.intrinsics[idx][min_slot] = computed.min;
-        range.max = computed.max;
-        self.scratch.intrinsics[idx][max_slot] = computed.max;
-        range
+        self.intrinsic_query(tree, node, axis, IntrinsicQuery::range(), interned_text)
     }
 
     /// Run measure + arrange for every root in every layer's tree

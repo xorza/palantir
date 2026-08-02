@@ -57,7 +57,7 @@ fn assert_warm_rects_match_cold(
 }
 
 /// Cross-frame measure-cache regression. When the cache hits at a
-/// Grid (or any ancestor), the grid driver's per-frame `GridHugStore`
+/// Grid (or any ancestor), the grid driver's per-frame `GridTrackStore`
 /// scratch must be re-populated from the snapshot — otherwise arrange
 /// computes zero column widths, collapsing every cell to x=0.
 ///

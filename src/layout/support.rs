@@ -6,7 +6,7 @@
 use crate::common::hash;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
@@ -247,11 +247,8 @@ pub(super) fn children_max_intrinsic(
     for c in tree.active_children(node) {
         let child = query.child(layout, tree, c, axis, interned_text);
         let child_offset = offset(tree, c);
-        if query.includes(LenReq::MinContent) {
-            range.min = range.min.max(child.min + child_offset);
-        }
-        if query.includes(LenReq::MaxContent) {
-            range.max = range.max.max(child.max + child_offset);
+        for (req, slot) in range.requested(query) {
+            *slot = slot.max(child.get(req) + child_offset);
         }
     }
     range
