@@ -83,7 +83,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         "expected exactly one explicit collision recorded",
     );
     assert_eq!(
-        h.ui.cascades
+        h.ui.cascade
             .hits
             .iter()
             .map(|r| r.widget_id)
@@ -1933,7 +1933,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     let mut h = cold_ui();
     // Cursor lands inside the future button rect (button is anchored at
     // (0,0) with 60×30 size below). Delivered before any frame ran;
-    // cascades is empty so on_input can't resolve a target.
+    // cascade is empty so on_input can't resolve a target.
     h.move_to(Vec2::new(20.0, 10.0));
     assert_eq!(h.ui.input.hovered, None, "pre-frame: no cascade, no hit");
 
@@ -2384,7 +2384,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         !response.disabled,
         "eager response must retain the unmerged cascade snapshot",
     );
-    let endpoint = h.ui.cascades.by_id[&self_id];
+    let endpoint = h.ui.cascade.by_id[&self_id];
     let chrome = h.ui.forest.trees[endpoint.layer]
         .chrome(endpoint.node)
         .expect("disabled button chrome");

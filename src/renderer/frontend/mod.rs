@@ -36,7 +36,7 @@ use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::cascade::Cascades;
+use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 use crate::scene::record_store::RecordPayloads;
 
@@ -44,7 +44,7 @@ use crate::scene::record_store::RecordPayloads;
 pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
-    pub(crate) cascades: &'a Cascades,
+    pub(crate) cascade: &'a Cascade,
     /// Keeps the record-store read lease alive through encode and compose.
     pub(crate) payloads: Ref<'a, RecordPayloads>,
     pub(crate) gpu_views: &'a WidgetIdMap<GpuViewEntry>,

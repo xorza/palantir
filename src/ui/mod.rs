@@ -42,7 +42,8 @@ use crate::text::run::{TextProbe, TextRun};
 use crate::{InternedStr, TextInput};
 
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::{Cascades, CascadesEngine, cascade_fingerprint};
+use crate::scene::cascade::Cascade;
+use crate::scene::cascade::engine::{CascadeEngine, cascade_fingerprint};
 use crate::scene::damage::{Damage, DamageEngine, DamageInput};
 use crate::shape::Shape;
 use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
@@ -82,9 +83,9 @@ pub struct Ui {
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node + global
-    /// hit index. Written by `CascadesEngine::run` in the paint phase
+    /// hit index. Written by `CascadeEngine::run` in the paint phase
     /// and read by the encoder, input dispatch, and damage compute.
-    pub(crate) cascades: Cascades,
+    pub(crate) cascade: Cascade,
     /// Private, deliberately: everything outside this module reaches
     /// input through `Ui`'s public API, so the surface a caller's own
     /// widget has is the surface every widget in this crate is built
@@ -97,7 +98,7 @@ pub struct Ui {
     /// and scroll-over-nothing; flip to [`InputPolicy::Always`] for
     /// telemetry / custom canvases that need every event.
     pub input_policy: InputPolicy,
-    cascades_engine: CascadesEngine,
+    cascade_engine: CascadeEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
     anim: AnimMap,
@@ -129,7 +130,7 @@ impl Ui {
         FrameScene {
             forest: &self.forest,
             layout: &self.layout,
-            cascades: &self.cascades,
+            cascade: &self.cascade,
             payloads: self.forest.record_store.payloads.borrow(),
             gpu_views: &self.gpu_views,
             display: self.display,
@@ -150,10 +151,10 @@ impl Ui {
             gpu_views: Default::default(),
             layout_engine,
             layout: Default::default(),
-            cascades: Default::default(),
+            cascade: Default::default(),
             input: Default::default(),
             input_policy: Default::default(),
-            cascades_engine: Default::default(),
+            cascade_engine: Default::default(),
             display: Default::default(),
             damage_engine: Default::default(),
             anim: Default::default(),
@@ -220,7 +221,7 @@ impl Ui {
             }
             FramePlan::FullRecord { .. } => {
                 app.update(win, self);
-                // Cold-start warmup: on the very first frame, cascades
+                // Cold-start warmup: on the very first frame, cascade
                 // is empty, so any `on_input` events delivered between
                 // window-open and now hit-tested against nothing
                 // (`hovered`/`scroll_target`/etc. stayed None). Run a
@@ -239,7 +240,7 @@ impl Ui {
                     let saved_input = std::mem::take(&mut self.input);
                     let _ = self.record_pass(win, app);
                     self.input = saved_input;
-                    self.input.refresh_pointer_targets(&self.cascades);
+                    self.input.refresh_pointer_targets(&self.cascade);
                     // Discard any relayout/repaint requests issued
                     // during the blackout pass — the warmup is
                     // "pretend it didn't happen" from the gate's
@@ -290,7 +291,7 @@ impl Ui {
         let prev_time = self.frame_runtime.prev_stamp.map(|s| s.time);
         let input = DamageInput {
             forest: &self.forest,
-            cascades: &self.cascades,
+            cascade: &self.cascade,
             surface,
             prev_time,
             now: self.frame_runtime.time,
@@ -348,7 +349,7 @@ impl Ui {
             self.forest.pre_record();
             // Rebuild record-scoped input ownership and wake watches;
             // PaintOnly frames skip this so their last wake set persists.
-            self.input.begin_record(&self.cascades);
+            self.input.begin_record(&self.cascade);
             // Like the watch set, the cursor request is
             // re-asserted by whoever still wants it this pass; reset
             // here (not per frame) so PaintOnly frames keep the last
@@ -406,7 +407,7 @@ impl Ui {
         // rects, and the arranged rects are determined by (subtree_hash,
         // exact surface, scroll offset/zoom) — so a matching fingerprint
         // means identical cascade output, and last frame's
-        // `Ui::cascades` can be reused verbatim (the tree is rebuilt
+        // `Ui::cascade` can be reused verbatim (the tree is rebuilt
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
         let fp = cascade_fingerprint(&self.forest, self.display);
@@ -419,8 +420,8 @@ impl Ui {
             return;
         }
         self.frame_runtime.prev_cascade_fp = Some(fp);
-        self.cascades_engine
-            .run(&self.forest, &self.layout, self.display, &mut self.cascades);
+        self.cascade_engine
+            .run(&self.forest, &self.layout, self.display, &mut self.cascade);
     }
 
     /// Paint-half of `frame`: diff seen ids against the last painted
@@ -443,7 +444,7 @@ impl Ui {
             self.gpu_views.retain(|wid, _| !removed.contains(wid));
         }
 
-        self.input.end_frame(&self.cascades);
+        self.input.end_frame(&self.cascade);
     }
 }
 
@@ -459,7 +460,7 @@ impl Ui {
     /// host can skip the frame entirely. Animation/tooltip-delay wakes
     /// still drive paints independently via `FrameReport::repaint_after`.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.input.on_input(event, &self.cascades)
+        self.input.on_input(event, &self.cascade)
     }
 
     // The input surface has three verbs, and every method below is one
@@ -544,7 +545,7 @@ impl Ui {
     pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
         let layer = self.forest.current_layer();
         let parent = self.forest.current_parent_id();
-        self.input.key_pressed(layer, parent, &self.cascades, sc)
+        self.input.key_pressed(layer, parent, &self.cascade, sc)
     }
 
     /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
@@ -1027,7 +1028,7 @@ impl Ui {
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
-        let mut state = self.input.response_for(id, &self.cascades, &self.layout);
+        let mut state = self.input.response_for(id, &self.cascade, &self.layout);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.disabled |= self.forest.current_scratch().ancestor_disabled();
@@ -1141,7 +1142,7 @@ impl Ui {
     pub fn focus_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .focused
-            .is_some_and(|f| self.cascades.is_within(f, ancestor))
+            .is_some_and(|f| self.cascade.is_within(f, ancestor))
     }
 
     /// True when the pointer's hover target is `ancestor` or any widget
@@ -1156,7 +1157,7 @@ impl Ui {
     pub fn hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
             .hovered
-            .is_some_and(|h| self.cascades.is_within(h, ancestor))
+            .is_some_and(|h| self.cascade.is_within(h, ancestor))
     }
 
     /// Active `Display` (physical surface size + scale factor). Read
@@ -1262,7 +1263,7 @@ impl Ui {
     pub fn pointer_local(&mut self, id: WidgetId) -> Option<glam::Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.input
-            .pointer_local_for(id, &self.cascades, &self.layout)
+            .pointer_local_for(id, &self.cascade, &self.layout)
     }
 
     /// Currently-held modifier keys. State persists across frames; only
@@ -1294,7 +1295,7 @@ impl Ui {
     /// Same caveat as [`Self::peek_pointer_pos`].
     pub fn peek_pointer_local(&self, id: WidgetId) -> Option<glam::Vec2> {
         self.input
-            .pointer_local_for(id, &self.cascades, &self.layout)
+            .pointer_local_for(id, &self.cascade, &self.layout)
     }
 
     /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch

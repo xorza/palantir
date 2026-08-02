@@ -15,7 +15,7 @@
 //! **Row invariant.** `DamageEngine.prev` only holds entries for
 //! widgets with at least one paint row on their last recorded frame —
 //! chrome, a direct shape, or a child marker (i.e.
-//! `cascades.layers[li].paint_arena.node_spans[i].len > 0`). Rowless
+//! `cascade.layers[li].paint_arena.node_spans[i].len > 0`). Rowless
 //! nodes (childless, chromeless, shapeless) contribute zero pixels and
 //! are skipped on insert; child markers carry zero rects, so a parent
 //! that paints nothing itself still can't trip the full-repaint
@@ -53,7 +53,8 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
-use crate::scene::cascade::{Cascades, Paint, PaintArena};
+use crate::scene::cascade::Cascade;
+use crate::scene::cascade::paint::{Paint, PaintArena};
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::snapshot::{
     NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion, push_screen,
@@ -171,7 +172,7 @@ struct ParentFrame {
 #[derive(Clone, Copy)]
 pub(crate) struct DamageInput<'a> {
     pub(crate) forest: &'a Forest,
-    pub(crate) cascades: &'a Cascades,
+    pub(crate) cascade: &'a Cascade,
     /// WindowDriver-arranged surface rect for this frame. A degenerate
     /// zero-area surface is a caller logic error: hosts clamp physical
     /// size to ≥ 1 px and skip occluded windows before `Ui::frame`
@@ -296,7 +297,7 @@ impl DamageEngine {
     ) -> Damage {
         let DamageInput {
             forest,
-            cascades,
+            cascade,
             surface,
             prev_time,
             now,
@@ -342,7 +343,7 @@ impl DamageEngine {
         let subtree_skips_out = &mut self.subtree_skips;
 
         for (layer, tree) in forest.trees.iter_paint_order() {
-            let layer_cascades = &cascades.layers[layer];
+            let layer_cascades = &cascade.layers[layer];
             let cascade_inputs = layer_cascades.cascade_inputs.as_slice();
             let node_hashes = tree.rollups.node.as_slice();
             let subtree_hashes = tree.rollups.subtree.as_slice();
@@ -687,7 +688,7 @@ impl DamageEngine {
         // every flip even though layout didn't change. The encoder's
         // `PaintAnimCursor::sample` decides per-rect whether to emit a
         // quad (visible half) or skip (hidden half).
-        extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
+        extend_predamaged(&mut self.raw_rects, forest, cascade, prev_time, now);
 
         // Removed-widget eviction tail. Every remaining `prev` entry
         // painted last frame (invariant), so its parts always
@@ -734,7 +735,7 @@ impl DamageEngine {
         extend_predamaged(
             &mut self.raw_rects,
             input.forest,
-            input.cascades,
+            input.cascade,
             input.prev_time,
             input.now,
         );
@@ -849,7 +850,7 @@ fn emit_inverted_overlaps(matched_pos: &[u32], extents: &[Rect], out: &mut Vec<R
 /// Screen-space painted extent of `node`'s whole subtree — the union of
 /// every paint row in `[node, subtree_end)`. Built from the per-shape
 /// `Paint.screen` rects (already transformed + clipped) rather than
-/// `Cascades::subtree_paint_rects` so a non-painting descendant can't
+/// `Cascade::subtree_paint_rects` so a non-painting descendant can't
 /// bias the extent. `None` when the subtree paints nothing. Used for a
 /// child marker's row extent in [`build_row_extents`] and for the
 /// reparent/layer-move damage push in the diff walk.
@@ -877,7 +878,7 @@ fn subtree_paint_extent(
 fn extend_predamaged(
     out: &mut Vec<Rect>,
     forest: &Forest,
-    cascades: &Cascades,
+    cascade: &Cascade,
     prev_time: Option<Duration>,
     now: Duration,
 ) {
@@ -886,7 +887,7 @@ fn extend_predamaged(
     // is always a sub-rect of its owner — nothing new to add.
     let Some(prev) = prev_time else { return };
     for (layer, tree) in forest.trees.iter_paint_order() {
-        let arena = &cascades.layers[layer].paint_arena;
+        let arena = &cascade.layers[layer].paint_arena;
         let paints = &arena.rows;
         let node_spans = &arena.node_spans;
         for e in &tree.paint_anims.entries {

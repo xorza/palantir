@@ -29,7 +29,7 @@ use glam::{BVec2, Vec2};
 /// for the previous frame — which is the lag `Scroll` wants: the bars
 /// describe the content the user is looking at.
 fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
-    ui.cascades
+    ui.cascade
         .endpoint(scroll_id)
         .map_or(Size::ZERO, |endpoint| ui.layout.scroll_content(endpoint))
 }

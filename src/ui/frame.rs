@@ -165,7 +165,7 @@ pub(crate) struct FrameRuntime {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum FramePlan {
     /// Skip pre_record / record / finalize / layout / cascade and
-    /// reuse the retained tree + cascades from the prior frame. Only
+    /// reuse the retained tree + cascade from the prior frame. Only
     /// fired by the anim-only fast path.
     PaintOnly,
     /// Run record + (optional) double-layout + finalize. `force_full`

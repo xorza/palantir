@@ -4,7 +4,8 @@ use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetIdMap;
-use crate::scene::cascade::{CascadeInputHash, Paint};
+use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::paint::Paint;
 use crate::scene::forest::Forest;
 use std::cmp::Ordering;
 
@@ -39,7 +40,7 @@ pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 /// they live in [`crate::scene::damage::DamageEngine::arena`], a single contiguous
 /// arena shared by every widget, and this struct just holds a `Span`
 /// into it. Each row is chrome (row 0 when present), one direct
-/// shape, or a child marker, mirroring `LayerCascades::paint_arena`.
+/// shape, or a child marker, mirroring `LayerCascade::paint_arena`.
 ///
 /// **No cached `rect`.** The node's own paint extent (the union of its
 /// `paint_arena` rows — what the cascade used to store as

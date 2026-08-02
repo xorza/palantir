@@ -3,7 +3,9 @@ use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::{Cascades, CascadesEngine, EntryRow, HitRow};
+use crate::scene::cascade::Cascade;
+use crate::scene::cascade::engine::CascadeEngine;
+use crate::scene::cascade::entry::{EntryRow, HitRow};
 use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::ui::harness::UiHarness;
 use criterion::{BenchmarkId, Criterion};
@@ -41,28 +43,28 @@ const DENSITIES: [Density; 4] = [
     },
 ];
 
-fn fixture(density: Density) -> Cascades {
+fn fixture(density: Density) -> Cascade {
     let interactive_count = ENTRY_COUNT * density.percent / 100;
-    let mut cascades = Cascades::default();
-    cascades.entries.reserve(ENTRY_COUNT);
+    let mut cascade = Cascade::default();
+    cascade.entries.reserve(ENTRY_COUNT);
     for index in 0..ENTRY_COUNT {
         // Put inert rows above interactive rows so sparse traversal cost stays visible.
         let interactive = index < interactive_count;
         if interactive {
-            cascades.hits.push(HitRow {
+            cascade.hits.push(HitRow {
                 rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
                 widget_id: WidgetId::from_hash(index),
                 sense: Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH,
                 focusable: true,
             });
         }
-        cascades.entries.push(EntryRow {
+        cascade.entries.push(EntryRow {
             rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
             transform: TranslateScale::IDENTITY,
             disabled: false,
         });
     }
-    cascades
+    cascade
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -75,8 +77,8 @@ enum RunMutation {
 struct CascadeRunFixture {
     first: UiHarness,
     second: UiHarness,
-    engine: CascadesEngine,
-    cascades: Cascades,
+    engine: CascadeEngine,
+    cascade: Cascade,
     display: Display,
     use_second: bool,
 }
@@ -93,14 +95,14 @@ impl CascadeRunFixture {
             }
         }
         let second = record_fixture(second_state);
-        let mut engine = CascadesEngine::default();
-        let mut cascades = Cascades::default();
-        engine.run(&first.ui.forest, &first.ui.layout, display, &mut cascades);
+        let mut engine = CascadeEngine::default();
+        let mut cascade = Cascade::default();
+        engine.run(&first.ui.forest, &first.ui.layout, display, &mut cascade);
         Self {
             first,
             second,
             engine,
-            cascades,
+            cascade,
             display,
             use_second: true,
         }
@@ -116,7 +118,7 @@ impl CascadeRunFixture {
             &source.ui.forest,
             &source.ui.layout,
             self.display,
-            &mut self.cascades,
+            &mut self.cascade,
         );
         self.use_second = !self.use_second;
     }
@@ -131,7 +133,7 @@ impl CascadeRunFixture {
             &source.ui.forest,
             &source.ui.layout,
             self.display,
-            &mut self.cascades,
+            &mut self.cascade,
         );
         self.use_second = !self.use_second;
     }
@@ -159,7 +161,7 @@ pub fn bench(c: &mut Criterion) {
         group.bench_function(label, |b| {
             b.iter(|| {
                 fixture.run_next();
-                black_box(&fixture.cascades);
+                black_box(&fixture.cascade);
             });
         });
     }
@@ -167,7 +169,7 @@ pub fn bench(c: &mut Criterion) {
     group.bench_function("full_rebuild", |b| {
         b.iter(|| {
             run_fixture.run_next_full();
-            black_box(&run_fixture.cascades);
+            black_box(&run_fixture.cascade);
         });
     });
     group.finish();
@@ -178,10 +180,10 @@ pub fn bench(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(2));
 
     for density in DENSITIES {
-        let cascades = fixture(density);
+        let cascade = fixture(density);
         group.bench_function(BenchmarkId::new("targets", density.label), |b| {
             b.iter(|| {
-                black_box(cascades.hit_test_targets(
+                black_box(cascade.hit_test_targets(
                     QUERY,
                     Sense::hovers,
                     Sense::scrolls,
@@ -191,8 +193,8 @@ pub fn bench(c: &mut Criterion) {
         });
         group.bench_function(BenchmarkId::new("click_focus", density.label), |b| {
             b.iter(|| {
-                black_box(cascades.hit_test(QUERY, Sense::clicks));
-                black_box(cascades.hit_test_focusable(QUERY));
+                black_box(cascade.hit_test(QUERY, Sense::clicks));
+                black_box(cascade.hit_test_focusable(QUERY));
             });
         });
     }
