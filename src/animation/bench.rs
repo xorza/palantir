@@ -46,7 +46,7 @@ fn bench_motion(c: &mut Criterion, name: &str, motion: Motion) {
         map.tick(id, SLOT, first.clone(), spec, 1.0 / 60.0, 1);
     }
 
-    let mut frame_id = 1u64;
+    let mut render_frame_id = 1u64;
     let mut use_second = true;
     let mut group = c.benchmark_group(name);
     group.sample_size(30);
@@ -55,11 +55,11 @@ fn bench_motion(c: &mut Criterion, name: &str, motion: Motion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("animated_look", |b| {
         b.iter(|| {
-            frame_id += 1;
+            render_frame_id += 1;
             let target = if use_second { &second } else { &first };
             use_second = !use_second;
             for &id in &ids {
-                black_box(map.tick(id, SLOT, target.clone(), spec, 1.0 / 60.0, frame_id));
+                black_box(map.tick(id, SLOT, target.clone(), spec, 1.0 / 60.0, render_frame_id));
             }
         });
     });

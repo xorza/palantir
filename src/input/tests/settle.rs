@@ -137,7 +137,7 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     let origin = rect.center();
     let (base_settles, base_records) = (
         h.ui.frame_runtime.settle_frames,
-        h.ui.frame_runtime.record_frames,
+        h.ui.frame_runtime.frame_id,
     );
 
     h.press_at(origin);
@@ -151,7 +151,7 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     }
 
     assert_eq!(
-        h.ui.frame_runtime.record_frames - base_records,
+        h.ui.frame_runtime.frame_id - base_records,
         9,
         "nine full-record frames were driven",
     );

@@ -29,11 +29,11 @@ pub(super) fn record(ui: &mut Ui) {
     // the current frame's outcome isn't known yet.
     let settle = format!(
         " · settle {}/{}",
-        ui.frame_runtime.settle_frames, ui.frame_runtime.record_frames
+        ui.frame_runtime.settle_frames, ui.frame_runtime.frame_id
     );
     let label = format!(
         "f {} · {:>4.0} fps{}{}",
-        ui.frame_runtime.frame_id, ui.frame_runtime.fps_ema, settle, gpu
+        ui.frame_runtime.render_frame_id, ui.frame_runtime.fps_ema, settle, gpu
     );
     let style = TextStyle {
         family: FontFamily::Mono,

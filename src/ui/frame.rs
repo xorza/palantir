@@ -106,8 +106,11 @@ pub(crate) struct FrameRuntime {
     /// See [`Self::dt`].
     pub(crate) dt_accum: f32,
     /// Bumped once per [`crate::Ui::frame`], before either record pass,
-    /// so a settling pass cannot double-advance animation.
-    pub(crate) frame_id: u64,
+    /// so a settling pass cannot double-advance animation. Counts every
+    /// frame that reaches the screen, `PaintOnly` ones included —
+    /// [`Self::frame_id`] is the peer that counts only the frames
+    /// authoring code ran on.
+    pub(crate) render_frame_id: u64,
     /// WindowDriver-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
     /// Time + display from the previous frame, or `None` before the
@@ -124,15 +127,24 @@ pub(crate) struct FrameRuntime {
     /// EMA of `1/raw_dt` across frames; zero before a second timestamp
     /// exists. Uses unclamped wall time so stalls remain visible.
     pub(crate) fps_ema: f32,
-    /// Full-record frames so far, and how many of those needed a
-    /// settling second record pass. Cumulative rather than an EMA
-    /// because the question they answer is "did this gesture stop
-    /// double-recording" — you read the *delta* across an interaction,
-    /// which a decaying average smears. `PaintOnly` frames are excluded
-    /// from both: they can't settle, so counting them would drift the
-    /// ratio toward zero while the UI merely idles. Displayed by the
-    /// opt-in frame-stats overlay.
-    pub(crate) record_frames: u32,
+    /// Full-record frames so far — the frame identity authoring code
+    /// sees, published as [`crate::Ui::frame_id`], since a `PaintOnly`
+    /// frame runs none of it.
+    ///
+    /// Bumped in [`Self::note_processing`] rather than beside
+    /// [`Self::render_frame_id`], so read from inside a record pass it
+    /// counts the record frames *before* this one. Two consecutive
+    /// record frames therefore observe consecutive values, and both
+    /// passes of one frame observe the same one — which is what makes it
+    /// usable as an identity and not merely a tally.
+    pub(crate) frame_id: u64,
+    /// How many of [`Self::frame_id`]'s frames needed a settling second
+    /// record pass. Cumulative rather than an EMA because the question it
+    /// answers is "did this gesture stop double-recording" — you read the
+    /// *delta* across an interaction, which a decaying average smears.
+    /// `PaintOnly` frames can't settle, so they are excluded from both
+    /// halves of that ratio rather than drifting it toward zero while the
+    /// UI merely idles. Displayed by the opt-in frame-stats overlay.
     pub(crate) settle_frames: u32,
     /// Set when an unsettled animation or widget requests another frame.
     pub(crate) repaint_requested: bool,
@@ -165,16 +177,16 @@ pub(super) enum FramePlan {
 impl FrameRuntime {
     pub(super) const MAX_DT: f32 = MAX_ANIM_DT;
 
-    /// Fold this frame's outcome into the settle tally. Called once per
-    /// [`crate::Ui::frame`], after the pass count is known — so the
-    /// overlay, which records *during* a pass, always reads the tally
-    /// through the previous frame.
+    /// Fold this frame's outcome into [`Self::frame_id`] and the settle
+    /// tally. Called once per [`crate::Ui::frame`], after the pass count is
+    /// known — so the overlay, which records *during* a pass, always reads
+    /// both through the previous frame.
     pub(super) fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
             FrameProcessing::PaintOnly => {}
-            FrameProcessing::SingleLayout => self.record_frames += 1,
+            FrameProcessing::SingleLayout => self.frame_id += 1,
             FrameProcessing::DoubleLayout => {
-                self.record_frames += 1;
+                self.frame_id += 1;
                 self.settle_frames += 1;
             }
         }
@@ -183,7 +195,7 @@ impl FrameRuntime {
     pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.time).as_secs_f32();
         let raw_dt = true_dt.min(Self::MAX_DT);
-        if self.frame_id > 0 && true_dt > EPS {
+        if self.render_frame_id > 0 && true_dt > EPS {
             let instant_fps = 1.0 / true_dt;
             self.fps_ema = if self.fps_ema == 0.0 {
                 instant_fps
@@ -200,7 +212,7 @@ impl FrameRuntime {
             0.0
         };
         self.time = now;
-        self.frame_id += 1;
+        self.render_frame_id += 1;
     }
 
     /// Decide what this frame does, **consuming** the wakes that fired by
