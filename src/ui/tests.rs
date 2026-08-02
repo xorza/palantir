@@ -250,7 +250,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
 
     h.frame(&mut record);
     assert!(
-        !h.ui.layout_engine.scratch.cache_hits.is_empty(),
+        !h.ui.layout_engine.scratch.probe.cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
     let main_node = node_for(&h.ui, Layer::Main, main_id);
@@ -393,7 +393,7 @@ fn empty_ui_drives_a_frame_safely() {
     // Synthetic viewport root: even an empty user record produces one node.
     assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
     assert!(h.ui.damage_engine.prev.is_empty());
-    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.probe.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
     assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
 }
@@ -2058,32 +2058,32 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| build(ui, 50.0));
     assert!(
-        h.ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.cascade_ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 50.0));
     assert!(
-        !h.ui.frame_runtime.dbg_cascade_ran,
+        !h.ui.frame_runtime.cascade_ran(),
         "unchanged frame skips the cascade"
     );
 
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        h.ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.cascade_ran(),
         "authoring change re-runs the cascade"
     );
 
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        !h.ui.frame_runtime.dbg_cascade_ran,
+        !h.ui.frame_runtime.cascade_ran(),
         "settles back to skipping"
     );
 
     h.resize(UVec2::new(SURFACE.x + 1, SURFACE.y));
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        h.ui.frame_runtime.dbg_cascade_ran,
+        h.ui.frame_runtime.cascade_ran(),
         "exact-surface change re-runs the cascade"
     );
 }
@@ -2112,17 +2112,17 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
         let mut h = UiHarness::new(SURFACE);
         h.frame(|ui| base(ui));
         assert!(
-            h.ui.frame_runtime.dbg_cascade_ran,
+            h.ui.frame_runtime.cascade_ran(),
             "{label}: first frame runs the cascade"
         );
         h.frame(|ui| base(ui));
         assert!(
-            !h.ui.frame_runtime.dbg_cascade_ran,
+            !h.ui.frame_runtime.cascade_ran(),
             "{label}: unchanged frame skips the cascade"
         );
         h.frame(|ui| changed(ui));
         assert!(
-            h.ui.frame_runtime.dbg_cascade_ran,
+            h.ui.frame_runtime.cascade_ran(),
             "{label}: toggling it must re-run the cascade — the input is \
              missing from subtree_hash / the cascade fingerprint",
         );
@@ -2305,12 +2305,12 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
         h.frame(|ui| base(ui));
         h.frame(|ui| base(ui));
         assert!(
-            !h.ui.frame_runtime.dbg_cascade_ran,
+            !h.ui.frame_runtime.cascade_ran(),
             "{label}: unchanged frame skips the cascade"
         );
         h.frame(|ui| changed(ui));
         assert!(
-            h.ui.frame_runtime.dbg_cascade_ran,
+            h.ui.frame_runtime.cascade_ran(),
             "{label}: identity change must re-run the cascade",
         );
     };

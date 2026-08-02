@@ -411,10 +411,7 @@ impl Ui {
         // NodeId-indexed rows still line up).
         let fp = cascade_fingerprint(&self.forest, self.display);
         let skip = self.frame_runtime.prev_cascade_fp == Some(fp);
-        #[cfg(test)]
-        {
-            self.frame_runtime.dbg_cascade_ran = !skip;
-        }
+        self.frame_runtime.note_cascade_ran(!skip);
         if skip {
             return;
         }

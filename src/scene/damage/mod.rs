@@ -55,6 +55,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::Cascade;
 use crate::scene::cascade::paint::{Paint, PaintArena};
+use crate::scene::damage::probe::DamageProbe;
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::snapshot::{
     NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion, push_screen,
@@ -70,6 +71,7 @@ use std::time::Duration;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+pub(crate) mod probe;
 pub(crate) mod region;
 pub(crate) mod snapshot;
 
@@ -127,25 +129,20 @@ pub(crate) struct DamageEngine {
     /// instead of advancing by 1. Zero on first frame and on
     /// full-repaint fall-through. Gated alongside `dirty` so
     /// production builds don't pay the increment.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) subtree_skips: u32,
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) dirty: Vec<NodeId>,
+    /// Test/bench observability for this pass — see [`DamageProbe`].
+    pub(crate) probe: DamageProbe,
 }
 
 impl Default for DamageEngine {
     fn default() -> Self {
         Self {
-            #[cfg(any(test, feature = "internals"))]
-            dirty: Vec::new(),
+            probe: DamageProbe::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: WidgetIdMap::default(),
             arena: PaintSnapArena::default(),
             raw_rects: Vec::new(),
             order_extents: Vec::new(),
             parent_stack: Vec::new(),
-            #[cfg(any(test, feature = "internals"))]
-            subtree_skips: 0,
         }
     }
 }
@@ -314,11 +311,7 @@ impl DamageEngine {
         if force_full {
             self.invalidate_prev();
         }
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.dirty.clear();
-            self.subtree_skips = 0;
-        }
+        self.probe.begin_pass();
 
         // Pass 1: every damage source pushes its contributions into
         // `self.raw_rects` without applying the merge or budget
@@ -337,10 +330,7 @@ impl DamageEngine {
         let order_extents = &mut self.order_extents;
         let parent_stack = &mut self.parent_stack;
 
-        #[cfg(any(test, feature = "internals"))]
-        let dirty_out = &mut self.dirty;
-        #[cfg(any(test, feature = "internals"))]
-        let subtree_skips_out = &mut self.subtree_skips;
+        let probe = &mut self.probe;
 
         for (layer, tree) in forest.trees.iter_paint_order() {
             let layer_cascades = &cascade.layers[layer];
@@ -407,8 +397,7 @@ impl DamageEngine {
                             push_screens(raw_rects, curr_paints_slice);
                         }
                         e.insert(make_snapshot(paint_span));
-                        #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(NodeId(i as u32));
+                        probe.mark_dirty(NodeId(i as u32));
                         1
                     }
                     // Tier 1 — whole-subtree skip. `subtree_hash` rolls
@@ -425,10 +414,7 @@ impl DamageEngine {
                             && e.get().parent_key == parent_key =>
                     {
                         let span = (subtree_end[i].end() as usize) - i;
-                        #[cfg(any(test, feature = "internals"))]
-                        if span > 1 {
-                            *subtree_skips_out += 1;
-                        }
+                        probe.subtree_skipped(span);
                         span
                     }
                     // Tier 1.5 — moved/reshaped subtree. Authoring is
@@ -534,8 +520,7 @@ impl DamageEngine {
                             raw_rects.push(u);
                         }
                         *e.get_mut() = make_snapshot(leg.span);
-                        #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(NodeId(i as u32));
+                        probe.mark_dirty(NodeId(i as u32));
                         1
                     }
                     Entry::Occupied(e) => {
@@ -546,8 +531,7 @@ impl DamageEngine {
                         push_screens(raw_rects, &arena.snaps[prev.paint_span.range()]);
                         arena.mark_orphaned(prev.paint_span.len);
                         e.remove();
-                        #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(NodeId(i as u32));
+                        probe.mark_dirty(NodeId(i as u32));
                         1
                     }
                 };
@@ -637,8 +621,7 @@ impl DamageEngine {
                                 );
                             }
                         }
-                        #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(NodeId(j as u32));
+                        probe.mark_dirty(NodeId(j as u32));
                     }
                     parent_stack.truncate(jump_base);
                     if let Some(u) = prev_extent {
@@ -726,11 +709,7 @@ impl DamageEngine {
     /// to the structural diff — skip Pass 1 entirely. Only the
     /// caller-supplied predamaged anim rects matter.
     pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Damage {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.dirty.clear();
-            self.subtree_skips = 0;
-        }
+        self.probe.begin_pass();
         self.raw_rects.clear();
         extend_predamaged(
             &mut self.raw_rects,

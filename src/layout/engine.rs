@@ -5,6 +5,7 @@ use crate::layout::cache::{
 };
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
+use crate::layout::probe::LayoutProbe;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
     AxisCtx, TextShapeInput, arrange_size, container_text_shapes, leaf_text_shapes,
@@ -20,8 +21,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
-#[cfg(test)]
-use crate::primitives::widget_id::WidgetId;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::columns::LayoutCore;
@@ -81,6 +80,8 @@ use glam::Vec2;
 /// replays that subtree's rects instead of re-running the drivers.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
+    /// Test-only observability for this run — see [`LayoutProbe`].
+    pub(crate) probe: LayoutProbe,
     pub(super) grid: GridContext,
     pub(super) wrap: WrapScratch,
     pub(super) stack_fill: StackScratch,
@@ -91,36 +92,6 @@ pub(crate) struct LayoutScratch {
     pub(super) arrange_src: Vec<u32>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(super) available_q: Vec<AvailableKey>,
-    /// Count of `intrinsic::compute` (cache-miss) calls this frame —
-    /// test observability for the intrinsic cache. Reset at the top of
-    /// `run`; read by tests to assert a localized change doesn't trigger
-    /// a whole-tree intrinsic re-walk. Test-only so production / bench
-    /// builds carry no counter in the hot `intrinsic` path.
-    #[cfg(test)]
-    pub(crate) intrinsic_computes: u32,
-    /// Subtree roots restored from the measure cache this `run` —
-    /// test observability so cache-hit tests can assert the warm
-    /// frame actually hit (and where) instead of passing vacuously
-    /// when hash stability regresses and every lookup misses.
-    #[cfg(test)]
-    pub(crate) cache_hits: Vec<WidgetId>,
-    /// Which branch [`LayoutEngine::replay_arranged`] took, per `run`.
-    /// Test observability: a replay test that asserts only "warm rects
-    /// equal cold rects" passes vacuously if the replay never fires, and
-    /// the translate branch in particular is easy to write a fixture that
-    /// silently never reaches.
-    #[cfg(test)]
-    pub(crate) arrange_replays: ReplayCounts,
-}
-
-/// Per-`run` tally of [`LayoutEngine::replay_arranged`] outcomes.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ReplayCounts {
-    /// Slot unchanged — the subtree's rects were copied verbatim.
-    pub(crate) copied: u32,
-    /// Slot moved without resizing — rects were copied and shifted.
-    pub(crate) translated: u32,
 }
 
 impl LayoutScratch {
@@ -465,10 +436,7 @@ impl LayoutEngine {
             self.scratch.intrinsics[idx][slot] = value;
             return value;
         }
-        #[cfg(test)]
-        {
-            self.scratch.intrinsic_computes += 1;
-        }
+        self.scratch.probe.intrinsic_computed();
         let computed = intrinsic::compute(
             self,
             tree,
@@ -540,10 +508,7 @@ impl LayoutEngine {
             return range;
         }
 
-        #[cfg(test)]
-        {
-            self.scratch.intrinsic_computes += 1;
-        }
+        self.scratch.probe.intrinsic_computed();
         let computed = intrinsic::compute(
             self,
             tree,
@@ -575,16 +540,13 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        #[cfg(test)]
-        {
-            self.scratch.intrinsic_computes = 0;
-            self.scratch.cache_hits.clear();
-            self.scratch.arrange_replays = ReplayCounts::default();
-        }
         #[cfg(feature = "internals")]
         {
             self.phase_timings = PhaseTimings::default();
         }
+        // Once per run, not per layer: `resize_for` runs inside the layer
+        // loop and would wipe an earlier layer's counts.
+        self.scratch.probe.begin_run();
         self.cache_rebuild =
             !Self::cache_snapshot_matches_forest(&self.cache.previous, forest, surface);
         if self.cache_rebuild {
@@ -698,8 +660,7 @@ impl LayoutEngine {
             let cache_wid = tree.records.widget_id()[node.idx()];
             let cache_hash = tree.rollups.subtree[node.idx()];
             if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, available_q) {
-                #[cfg(test)]
-                self.scratch.cache_hits.push(cache_wid);
+                self.scratch.probe.cache_hit(cache_wid);
                 let curr_start = node.idx();
                 let curr_end = curr_start + hit.desired.len();
                 // Subtree hash includes child count + per-child rollups,
@@ -970,16 +931,10 @@ impl LayoutEngine {
         let delta = rendered.min - src[0].min;
         let dst = &mut out.rect[start..end];
         if delta == Vec2::ZERO {
-            #[cfg(test)]
-            {
-                self.scratch.arrange_replays.copied += 1;
-            }
+            self.scratch.probe.arrange_copied();
             dst.copy_from_slice(src);
         } else {
-            #[cfg(test)]
-            {
-                self.scratch.arrange_replays.translated += 1;
-            }
+            self.scratch.probe.arrange_translated();
             for (d, s) in dst.iter_mut().zip(src) {
                 *d = Rect {
                     min: s.min + delta,

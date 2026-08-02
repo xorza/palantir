@@ -385,6 +385,19 @@ impl PaintSnapArena {
         }
         std::mem::swap(&mut self.snaps, &mut self.scratch);
         self.orphaned = 0;
+        self.note_compaction();
+    }
+
+    /// Bump the compaction counter. Same principle as
+    /// [`DamageProbe`](crate::scene::damage::probe::DamageProbe): the gate
+    /// lives in here so the call site above carries none.
+    ///
+    /// Kept on the arena rather than folded into `DamageProbe` because the
+    /// lifetimes differ — that probe's counters reset every pass, while
+    /// this one accumulates for the life of the arena and the bench reads
+    /// it as a delta across many passes.
+    #[inline]
+    fn note_compaction(&mut self) {
         #[cfg(any(test, feature = "internals"))]
         {
             self.compactions_run = self.compactions_run.saturating_add(1);
