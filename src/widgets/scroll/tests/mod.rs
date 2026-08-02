@@ -1075,7 +1075,7 @@ mod bars {
     ///
     /// The bars' placement reads a *sibling's* measured `scroll_content`,
     /// so it is not the pure function of its own slot that arrange replay
-    /// assumes; `LayoutEngine::arrange` exempts `ScrollBars` for exactly
+    /// assumes; `LayoutEngine::arrange` exempts `Scrollbars` for exactly
     /// this. Asserting the raw rects (not `thumb_rects`, which filters
     /// collapsed bars) is what makes a stale bar visible to the test.
     #[test]

@@ -855,7 +855,7 @@ impl LayoutEngine {
                 out,
             ),
             // Scroll viewport. INF-axis measure of children.
-            LayoutMode::ScrollBars(_) => {
+            LayoutMode::Scrollbars(_) => {
                 scrollbars::measure(self, tree, node, inner_avail, interned_text, out)
             }
             LayoutMode::Scroll(scroll_spec) => scroll::measure(
@@ -882,7 +882,7 @@ impl LayoutEngine {
         let rendered = slot.deflated_by(layout.margin);
         let mode = LayoutMode::from(layout.meta);
         // Replay's precondition is that arrange is a pure function of the
-        // slot (see `replay_arranged`). `ScrollBars` is the one driver
+        // slot (see `replay_arranged`). `Scrollbars` is the one driver
         // that isn't: it reads a *sibling's* measured `scroll_content`, so
         // its bars must be re-placed even when its own subtree hash and
         // slot are unchanged — otherwise a scroll whose content stopped
@@ -909,7 +909,7 @@ impl LayoutEngine {
             LayoutMode::Scroll(scroll_spec) => {
                 scroll::arrange(self, tree, node, inner, scroll_spec, out)
             }
-            LayoutMode::ScrollBars(id) => {
+            LayoutMode::Scrollbars(id) => {
                 let def = tree.scrollbar_defs[usize::from(id)];
                 scrollbars::arrange(self, tree, node, inner, def, out)
             }

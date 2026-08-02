@@ -14,7 +14,7 @@ pub(crate) enum LayoutMode {
     Canvas,
     Grid(GridDefId),
     Scroll(ScrollSpec),
-    ScrollBars(ScrollBarsDefId),
+    Scrollbars(ScrollbarsDefId),
 }
 
 impl LayoutMode {
@@ -50,7 +50,7 @@ impl LayoutMode {
             // `scroll_content`, so content that stops overflowing leaves
             // this subtree's own hash and slot untouched while the bars
             // it should retire stay exactly where they were.
-            Self::ScrollBars(_) => false,
+            Self::Scrollbars(_) => false,
         }
     }
 }
@@ -116,7 +116,7 @@ impl From<LayoutMode> for PackedLayoutMeta {
             LayoutMode::Canvas => (6, 0),
             LayoutMode::Grid(id) => (7, u16::from(id.0)),
             LayoutMode::Scroll(spec) => (8, spec.0),
-            LayoutMode::ScrollBars(id) => (9, u16::from(id.0)),
+            LayoutMode::Scrollbars(id) => (9, u16::from(id.0)),
         };
         Self(u32::from(payload) | (u32::from(tag) << Self::TAG_SHIFT))
     }
@@ -139,7 +139,7 @@ impl From<PackedLayoutMeta> for LayoutMode {
                 Index16::from_raw(payload).expect("packed grid mode has no definition id"),
             )),
             8 => Self::Scroll(ScrollSpec(payload)),
-            9 => Self::ScrollBars(ScrollBarsDefId(
+            9 => Self::Scrollbars(ScrollbarsDefId(
                 Index16::from_raw(payload).expect("packed scrollbars mode has no definition id"),
             )),
             _ => unreachable!("packed layout mode tag {tag} is invalid"),
@@ -173,16 +173,16 @@ impl From<GridDefId> for usize {
 /// packs into 16 bits — same arrangement as [`GridDefId`].
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct ScrollBarsDefId(Index16);
+pub(crate) struct ScrollbarsDefId(Index16);
 
-impl ScrollBarsDefId {
+impl ScrollbarsDefId {
     pub(crate) fn from_index(index: usize) -> Self {
         Self(Index16::new(index))
     }
 }
 
-impl From<ScrollBarsDefId> for usize {
-    fn from(value: ScrollBarsDefId) -> Self {
+impl From<ScrollbarsDefId> for usize {
+    fn from(value: ScrollbarsDefId) -> Self {
         value.0.idx()
     }
 }
@@ -226,9 +226,9 @@ impl ScrollSpec {
 
 #[cfg(test)]
 mod tests {
-    use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollBarsDefId, ScrollSpec};
+    use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
 
-    /// `ScrollBars` is the sole driver that reads outside its own subtree,
+    /// `Scrollbars` is the sole driver that reads outside its own subtree,
     /// and the only thing standing between that and silently stale rects
     /// is this predicate. Pinning both sides keeps a future `true` from
     /// being added by reflex — the failure mode is invisible at runtime.
@@ -252,8 +252,8 @@ mod tests {
             );
         }
         assert!(
-            !LayoutMode::ScrollBars(ScrollBarsDefId::from_index(0)).arrange_depends_only_on_slot(),
-            "ScrollBars reads a sibling's scroll_content and must never replay",
+            !LayoutMode::Scrollbars(ScrollbarsDefId::from_index(0)).arrange_depends_only_on_slot(),
+            "Scrollbars reads a sibling's scroll_content and must never replay",
         );
     }
 }

@@ -5,7 +5,7 @@
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::{self, ScrollBarsDef};
+use crate::layout::scrollbars::{self, ScrollbarsDef};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -263,7 +263,7 @@ impl Bars {
         // map already holds its node — the handle the driver needs to
         // reach `scroll_content`.
         let content = ui.forest.current_node(scroll_id);
-        let def_id = ui.forest.push_scrollbars_def(ScrollBarsDef {
+        let def_id = ui.forest.push_scrollbars_def(ScrollbarsDef {
             content,
             offset: state.offset,
             zoom: state.zoom,
@@ -274,7 +274,7 @@ impl Bars {
             bar_width: self.theme.width,
             min_thumb: self.theme.min_thumb_px,
         });
-        let overlay = Node::scroll_bars(def_id)
+        let overlay = Node::scrollbars(def_id)
             .id(scroll_id.with("bars"))
             .size((Sizing::FILL, Sizing::FILL));
         ui.widget(overlay).record(ui, None, |ui| {
