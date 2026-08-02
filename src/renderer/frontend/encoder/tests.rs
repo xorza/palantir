@@ -768,17 +768,17 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             })
             .inner
     });
-    let cascades = &h.ui.cascades;
+    let cascade = &h.ui.cascade;
     // Main is first in `Layer::PAINT_ORDER`, so its `entries_base` is 0
     // and the node index doubles as the entry index.
     assert!(
-        cascades.entries[child.idx()].disabled,
+        cascade.entries[child.idx()].disabled,
         "a disabled ancestor must flatten into the descendant's effective disabled",
     );
     // A cascaded-off node is never pushed to `hits`, so it cannot be
     // hit-tested — the behaviour the flattened flag exists to produce.
     assert!(
-        !cascades
+        !cascade
             .hits
             .iter()
             .any(|r| r.rect.contains(glam::Vec2::splat(20.0))),

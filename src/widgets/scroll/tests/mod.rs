@@ -40,7 +40,7 @@ fn read_state(h: &mut UiHarness) -> ScrollState {
 }
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {
-    ui.cascades
+    ui.cascade
         .endpoint(outer_id.with("viewport"))
         .expect("scroll viewport endpoint")
 }

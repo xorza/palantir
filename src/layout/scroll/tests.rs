@@ -25,12 +25,12 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
     let outer_id = WidgetId::from_hash(id_salt);
     let viewport_id = outer_id.with("viewport");
     let outer = ui
-        .cascades
+        .cascade
         .by_id
         .get(&outer_id)
         .expect("scroll outer endpoint");
     let viewport = ui
-        .cascades
+        .cascade
         .by_id
         .get(&viewport_id)
         .expect("scroll viewport endpoint");

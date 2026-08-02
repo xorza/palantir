@@ -1,6 +1,6 @@
 //! One frame's plain-data report from [`Ui::frame`]: the post-record
 //! signals a caller may inspect. All frame-shaped state (forest,
-//! layout, cascades, display) stays on [`Ui`] itself. The renderer's
+//! layout, cascade, display) stays on [`Ui`] itself. The renderer's
 //! detailed paint plan remains crate-private; callers see its stable
 //! [`FramePaint`] classification.
 //!
@@ -17,15 +17,15 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrameProcessing {
     /// Paint-anim-only short-circuit fired: no pre_record, no user
-    /// closure, no post_record, no layout, no cascades. Just damage
+    /// closure, no post_record, no layout, no cascade. Just damage
     /// compute + encode + paint against the retained tree.
     PaintOnly,
-    /// Standard frame: one record pass + layout + cascades + damage
+    /// Standard frame: one record pass + layout + cascade + damage
     /// + finalize.
     SingleLayout,
     /// Pass A's closure set the action flag or requested relayout,
     /// so a second `record_pass` (plus its own `post_record` +
-    /// layout + cascades) ran before `finalize_frame`. Capped at
+    /// layout + cascade) ran before `finalize_frame`. Capped at
     /// one retry per `Ui::frame`.
     DoubleLayout,
 }

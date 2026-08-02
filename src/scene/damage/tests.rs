@@ -3,7 +3,8 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
 use crate::renderer::plan::{RenderKind, RenderPlan};
-use crate::scene::cascade::{CascadeInputHash, Paint};
+use crate::scene::cascade::CascadeInputHash;
+use crate::scene::cascade::paint::Paint;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::{Damage, DamageEngine, paints_on_surface};
 use crate::scene::layer::Layer;
@@ -76,7 +77,7 @@ fn first_frame_marks_every_painting_node_dirty() {
     frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = h.ui.cascades.layers[Layer::Main]
+    let painting = h.ui.cascade.layers[Layer::Main]
         .paint_arena
         .node_spans
         .iter()
@@ -2422,7 +2423,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
 
 /// `NodeSnapshot.paint_span` covers one entry per Paint row on the
 /// node — chrome at row 0 when present, then each direct shape — with
-/// matching rect and canonical hash. Mirrors `Cascades::paint_arenas`.
+/// matching rect and canonical hash. Mirrors `Cascade::paint_arenas`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::Shape;
@@ -2449,11 +2450,9 @@ fn node_snapshot_decomposition_matches_cascade() {
 
     let snap = h.ui.damage_engine.prev[&WidgetId::from_hash("multi")];
     let layer = Layer::Main;
-    let node_idx = h.ui.cascades.by_id[&WidgetId::from_hash("multi")]
-        .node
-        .idx();
-    let node_span = h.ui.cascades.layers[layer].paint_arena.node_spans[node_idx];
-    let layer_paints = &h.ui.cascades.layers[layer].paint_arena.rows;
+    let node_idx = h.ui.cascade.by_id[&WidgetId::from_hash("multi")].node.idx();
+    let node_span = h.ui.cascade.layers[layer].paint_arena.node_spans[node_idx];
+    let layer_paints = &h.ui.cascade.layers[layer].paint_arena.rows;
 
     // Chrome lands at row 0 of the node's paint span when present.
     let chrome_paint = layer_paints[node_span.start as usize];
@@ -3029,10 +3028,10 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // Locate the host node by widget id and read its first shape's
     // cascaded screen rect. Pre-fix the rect spans the full 400 px;
     // post-fix it's clamped to (host_width − padding-fold).
-    let cascades = &h.ui.cascades;
-    let host_ep = *cascades.by_id.get(&host_id).expect("host node recorded");
-    let host_entry_idx = (cascades.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
-    let host_rect = cascades.entries[host_entry_idx].rect;
+    let cascade = &h.ui.cascade;
+    let host_ep = *cascade.by_id.get(&host_id).expect("host node recorded");
+    let host_entry_idx = (cascade.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
+    let host_rect = cascade.entries[host_entry_idx].rect;
     let tree = &h.ui.forest.trees[Layer::Main];
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");
@@ -3040,7 +3039,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // span is the chrome `Paint` — whose screen always equals the
     // 80×40 arranged rect and would pass the assertion below even
     // with the clip regressed. The direct shape under test is row 1.
-    let paint_arena = &cascades.layers[Layer::Main].paint_arena;
+    let paint_arena = &cascade.layers[Layer::Main].paint_arena;
     let node_span = paint_arena.node_spans[host_ep.node.idx()];
     assert!(node_span.len >= 2, "expected chrome row + shape row");
     let shape_rect = paint_arena.rows[node_span.start as usize + 1].screen;

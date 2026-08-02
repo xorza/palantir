@@ -14,7 +14,8 @@
 
 use crate::input::key_class::KeyClass;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::{Cascades, ScopeRow};
+use crate::scene::cascade::Cascade;
+use crate::scene::cascade::entry::ScopeRow;
 use crate::scene::layer::Layer;
 
 /// This pass's resolved scope routing.
@@ -73,14 +74,14 @@ impl Scopes {
     /// state because it is the whole input here: a scope path is a
     /// function of where focus sits and what the previous frame
     /// recorded, nothing else.
-    pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascades: &Cascades) {
+    pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascade: &Cascade) {
         self.path.clear();
-        let live = || live_scopes(cascades, &self.closing, &self.closed);
+        let live = || live_scopes(cascade, &self.closing, &self.closed);
         self.active_layer = live().map(|row| row.layer).max();
         if let Some(active) = self.active_layer {
             if let Some(anchor) = focused {
                 self.path.extend(
-                    live().filter(|row| row.layer == active && cascades.is_within(anchor, row.id)),
+                    live().filter(|row| row.layer == active && cascade.is_within(anchor, row.id)),
                 );
             }
             // **Outermost, not last-recorded.** Taking the last row would
@@ -95,7 +96,7 @@ impl Scopes {
             self.outermost = live()
                 .filter(|row| row.layer == active)
                 .fold(None, |root, row| match root {
-                    Some(id) if cascades.is_within(row.id, id) => Some(id),
+                    Some(id) if cascade.is_within(row.id, id) => Some(id),
                     _ => Some(row.id),
                 });
         } else {
@@ -104,7 +105,7 @@ impl Scopes {
         debug_assert!(
             self.path
                 .windows(2)
-                .all(|pair| cascades.is_within(pair[1].id, pair[0].id)),
+                .all(|pair| cascade.is_within(pair[1].id, pair[0].id)),
             "scope path must be outermost-first — `grant` reads it as pre-order",
         );
     }
@@ -159,22 +160,22 @@ impl Scopes {
     /// [`Self::grant`] both answer `None` there and compare equal.
     /// Silencing is [`Self::silences`]'s job, and the caller checks it
     /// first.
-    pub(super) fn reader(&self, parent: Option<WidgetId>, cascades: &Cascades) -> Option<WidgetId> {
+    pub(super) fn reader(&self, parent: Option<WidgetId>, cascade: &Cascade) -> Option<WidgetId> {
         let active = self.active_layer?;
         let Some(parent) = parent else {
             return self.outermost;
         };
-        live_scopes(cascades, &self.closing, &self.closed)
-            .rfind(|row| row.layer == active && cascades.is_within(parent, row.id))
+        live_scopes(cascade, &self.closing, &self.closed)
+            .rfind(|row| row.layer == active && cascade.is_within(parent, row.id))
             .map(|row| row.id)
             .or(self.outermost)
     }
 }
 
-/// The scope rows still owning input: `cascades`'s, minus everything
+/// The scope rows still owning input: `cascade`'s, minus everything
 /// [`Scopes::close`] withdrew.
 ///
-/// **Every scan over `cascades.scopes` goes through here.** The cascade
+/// **Every scan over `cascade.scopes` goes through here.** The cascade
 /// is a frame stale, so it still lists closed overlays; a scan that reads
 /// it raw resolves grants onto a scope that is gone and strands the
 /// surviving one — silently, since the raw stream and the layer gate both
@@ -187,11 +188,11 @@ impl Scopes {
 /// `copied` before `filter`, so the predicate takes `&ScopeRow` rather
 /// than the `&&ScopeRow` a borrowing iterator would hand it.
 fn live_scopes<'a>(
-    cascades: &'a Cascades,
+    cascade: &'a Cascade,
     closing: &'a [WidgetId],
     closed: &'a [WidgetId],
 ) -> impl DoubleEndedIterator<Item = ScopeRow> + 'a {
-    cascades
+    cascade
         .scopes
         .iter()
         .copied()

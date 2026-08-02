@@ -3,7 +3,7 @@
 //!
 //! The previous version drove the full offscreen host frame, which mixed
 //! record/measure/cascade/encode noise into every sample —
-//! `CascadesEngine::run` was the top hotspot at ~7%, and the actual
+//! `CascadeEngine::run` was the top hotspot at ~7%, and the actual
 //! text path (`encode_batch` + atlas uploads) totalled <10%. This
 //! bench skips all of that: a fixed slice of `TextDrawRow`s, shaped once
 //! at construction, fed into `TextBackend::prepare` →

@@ -6,7 +6,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::plan::{RenderKind, RenderPlan};
-use crate::scene::cascade::{CascadePrefixBits, build_cascade_prefix, finish_cascade_input};
+use crate::scene::cascade::engine::{
+    CascadePrefixBits, build_cascade_prefix, finish_cascade_input,
+};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::seen_ids::Endpoint;
@@ -22,8 +24,8 @@ use glam::{UVec2, Vec2};
 /// Screen rect of the first paint row for the widget keyed by
 /// `WidgetId::from_hash(key)` on `Layer::Main`.
 fn first_paint_screen(ui: &Ui, key: &str) -> Rect {
-    let node = ui.cascades.by_id[&WidgetId::from_hash(key)].node;
-    let arena = &ui.cascades.layers[Layer::Main].paint_arena;
+    let node = ui.cascade.by_id[&WidgetId::from_hash(key)].node;
+    let arena = &ui.cascade.layers[Layer::Main].paint_arena;
     let span = arena.node_spans[node.idx()];
     arena.rows[span.start as usize].screen
 }
@@ -55,7 +57,7 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
 }
 
 /// A direct shape recorded on a panel with `.transform(...)` must
-/// land in `Cascades::paint_arenas` at the *composed* transform
+/// land in `Cascade::paint_arenas` at the *composed* transform
 /// (parent ∘ self), not just `parent_transform`. Pins the cascade
 /// half of the `Panel::transform`-applies-to-body contract — the
 /// encoder half is already pinned by
@@ -272,11 +274,11 @@ fn node_spans_rows_mirror_chrome_and_children() {
     });
 
     let layer = Layer::Main;
-    let cascades = &h.ui.cascades;
-    let arena = &cascades.layers[layer].paint_arena;
-    let chrome_idx = cascades.by_id[&WidgetId::from_hash("chrome")].node.idx();
-    let bare_idx = cascades.by_id[&WidgetId::from_hash("bare")].node.idx();
-    let parent_idx = cascades.by_id[&WidgetId::from_hash("parent")].node.idx();
+    let cascade = &h.ui.cascade;
+    let arena = &cascade.layers[layer].paint_arena;
+    let chrome_idx = cascade.by_id[&WidgetId::from_hash("chrome")].node.idx();
+    let bare_idx = cascade.by_id[&WidgetId::from_hash("bare")].node.idx();
+    let parent_idx = cascade.by_id[&WidgetId::from_hash("parent")].node.idx();
     let chrome_span = arena.node_spans[chrome_idx];
     let bare_span = arena.node_spans[bare_idx];
     let parent_span = arena.node_spans[parent_idx];
@@ -285,12 +287,12 @@ fn node_spans_rows_mirror_chrome_and_children() {
         chrome_span.len > 0 && arena.rows[chrome_span.start as usize].screen.area() > 0.0,
         "chromed panel must have a non-empty paint span with non-zero chrome rect",
     );
-    let chrome_entry = cascades
+    let chrome_entry = cascade
         .locate(WidgetId::from_hash("chrome"))
         .unwrap()
         .entry_idx as usize;
     assert_eq!(
-        arena.rows[chrome_span.start as usize].screen, cascades.entries[chrome_entry].rect,
+        arena.rows[chrome_span.start as usize].screen, cascade.entries[chrome_entry].rect,
         "no-shadow chrome must reuse the node's transformed and clipped visible rect",
     );
     assert_eq!(
@@ -333,19 +335,19 @@ fn per_node_columns_track_tree_size() {
         });
         let layer = Layer::Main;
         let nodes = h.ui.forest.trees[layer].records.len();
-        let cascades = &h.ui.cascades.layers[layer];
-        assert_eq!(cascades.cascade_inputs.len(), nodes);
-        assert_eq!(cascades.subtree_paint_rects.len(), nodes);
-        assert_eq!(cascades.subtree_ends.len(), nodes);
-        assert_eq!(cascades.paint_arena.node_spans.len(), nodes);
-        for (i, (&end, &span)) in cascades
+        let cascade = &h.ui.cascade.layers[layer];
+        assert_eq!(cascade.cascade_inputs.len(), nodes);
+        assert_eq!(cascade.subtree_paint_rects.len(), nodes);
+        assert_eq!(cascade.subtree_ends.len(), nodes);
+        assert_eq!(cascade.paint_arena.node_spans.len(), nodes);
+        for (i, (&end, &span)) in cascade
             .subtree_ends
             .iter()
-            .zip(&cascades.paint_arena.node_spans)
+            .zip(&cascade.paint_arena.node_spans)
             .enumerate()
         {
             assert!(end as usize > i && end as usize <= nodes);
-            assert!(span.start as usize + span.len as usize <= cascades.paint_arena.rows.len());
+            assert!(span.start as usize + span.len as usize <= cascade.paint_arena.rows.len());
         }
     }
 }
@@ -458,8 +460,8 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
                 .show(ui);
         });
     });
-    let ep = h.ui.cascades.by_id[&row];
-    let rollup = h.ui.cascades.layers[ep.layer].subtree_paint_rects[ep.node.idx()];
+    let ep = h.ui.cascade.by_id[&row];
+    let rollup = h.ui.cascade.layers[ep.layer].subtree_paint_rects[ep.node.idx()];
     assert_eq!(
         rollup,
         Rect::new(50.0, 0.0, 50.0, 50.0),
@@ -514,7 +516,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     // `hits` is interactive-rows-only, in paint order, and carries its
     // own geometry — so identity is all that needs asserting here.
     assert_eq!(
-        h.ui.cascades
+        h.ui.cascade
             .hits
             .iter()
             .map(|r| r.widget_id)
@@ -522,11 +524,11 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         [hover, focus, popup_scroll],
     );
     let pos = Vec2::splat(50.0);
-    assert_eq!(h.ui.cascades.hit_test(pos, Sense::hovers), Some(hover),);
-    assert_eq!(h.ui.cascades.hit_test(pos, Sense::clicks), None);
-    assert_eq!(h.ui.cascades.hit_test_focusable(pos), Some(focus));
+    assert_eq!(h.ui.cascade.hit_test(pos, Sense::hovers), Some(hover),);
+    assert_eq!(h.ui.cascade.hit_test(pos, Sense::clicks), None);
+    assert_eq!(h.ui.cascade.hit_test_focusable(pos), Some(focus));
     let targets =
-        h.ui.cascades
+        h.ui.cascade
             .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);
     assert_eq!(targets.hover, Some(hover));
     assert_eq!(targets.scroll, Some(popup_scroll));
@@ -535,7 +537,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     h.frame(|ui| {
         Frame::new().id(inert).size(Sizing::FILL).show(ui);
     });
-    assert_eq!(h.ui.cascades.hits.len(), 0);
+    assert_eq!(h.ui.cascade.hits.len(), 0);
     assert_eq!(
         h.ui.response_for(inert).layout_rect,
         Some(Rect::new(0.0, 0.0, 100.0, 100.0)),
@@ -544,18 +546,19 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
 }
 
 fn assert_cascades_match_full(ui: &Ui, label: &str) {
-    use crate::scene::cascade::{Cascades, CascadesEngine};
+    use crate::scene::cascade::Cascade;
+    use crate::scene::cascade::engine::CascadeEngine;
 
-    let mut engine = CascadesEngine::default();
-    let mut full = Cascades::default();
+    let mut engine = CascadeEngine::default();
+    let mut full = Cascade::default();
     engine.run_full(&ui.forest, &ui.layout, ui.display, &mut full);
 
     // Whole-row compares: `entries` / `hits` are AoS and `PartialEq`,
     // so this covers every field and keeps covering any field added
     // later — the previous column-by-column form silently skipped new
     // ones.
-    assert_eq!(ui.cascades.entries, full.entries, "{label}");
-    assert_eq!(ui.cascades.hits, full.hits, "{label}");
+    assert_eq!(ui.cascade.entries, full.entries, "{label}");
+    assert_eq!(ui.cascade.hits, full.hits, "{label}");
 
     let mut id_count = 0;
     for layer in Layer::PAINT_ORDER {
@@ -563,7 +566,7 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
         id_count += widget_ids.len();
         for (index, wid) in widget_ids.iter().copied().enumerate() {
             assert_eq!(
-                ui.cascades.by_id[&wid],
+                ui.cascade.by_id[&wid],
                 Endpoint {
                     layer,
                     node: NodeId(index as u32),
@@ -571,7 +574,7 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
                 "{label}: {layer:?} by-id endpoint"
             );
         }
-        let actual = &ui.cascades.layers[layer];
+        let actual = &ui.cascade.layers[layer];
         let expected = &full.layers[layer];
         assert_eq!(
             actual.cascade_inputs, expected.cascade_inputs,
@@ -606,7 +609,7 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
             "{label}: {layer:?} entry base"
         );
     }
-    assert_eq!(ui.cascades.by_id.len(), id_count, "{label}: by-id length");
+    assert_eq!(ui.cascade.by_id.len(), id_count, "{label}: by-id length");
 }
 
 fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
@@ -804,7 +807,7 @@ fn incremental_scroll_matches_full() {
     assert_cascades_match_full(&h.ui, "scroll");
 }
 
-/// `LayerLayout::rect_hash` is what `CascadesEngine::can_update` reads
+/// `LayerLayout::rect_hash` is what `CascadeEngine::can_update` reads
 /// to decide whether the retained cascade rows still describe the
 /// current arrangement — it replaced a per-node copy of every arranged
 /// rect that `EntryRow` used to carry purely for that comparison.
@@ -894,15 +897,15 @@ fn hit_rows_carry_the_entry_rect() {
             });
     });
 
-    let cascades = &h.ui.cascades;
-    assert!(!cascades.hits.is_empty(), "expected interactive rows");
-    for row in &cascades.hits {
-        let entry_idx = cascades
+    let cascade = &h.ui.cascade;
+    assert!(!cascade.hits.is_empty(), "expected interactive rows");
+    for row in &cascade.hits {
+        let entry_idx = cascade
             .locate(row.widget_id)
             .expect("hit row's widget must be locatable")
             .entry_idx as usize;
         assert_eq!(
-            row.rect, cascades.entries[entry_idx].rect,
+            row.rect, cascade.entries[entry_idx].rect,
             "HitRow::rect must equal the node's EntryRow::rect for {:?}",
             row.widget_id,
         );

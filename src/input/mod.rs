@@ -25,7 +25,7 @@ use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::layout::Layout;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascades;
+use crate::scene::cascade::Cascade;
 use crate::scene::layer::Layer;
 use glam::Vec2;
 use std::time::Duration;
@@ -233,7 +233,7 @@ impl TargetScrollDelta {
 
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
-/// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascades`].
+/// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
@@ -397,9 +397,9 @@ impl InputState {
     /// the whole pass is what keeps grants independent of where in the
     /// pass anything recorded — the same argument the claim resolution
     /// it replaced made for deferring to end-of-pass.
-    pub(crate) fn begin_record(&mut self, cascades: &Cascades) {
+    pub(crate) fn begin_record(&mut self, cascade: &Cascade) {
         self.subs.clear();
-        self.scopes.resolve(self.focused, cascades);
+        self.scopes.resolve(self.focused, cascade);
         self.snapshot_frame_quiescent();
     }
 
@@ -466,7 +466,7 @@ impl InputState {
         &mut self,
         reader: Layer,
         parent: Option<WidgetId>,
-        cascades: &Cascades,
+        cascade: &Cascade,
         shortcut: Shortcut,
     ) -> bool {
         self.subs.watch_key(shortcut);
@@ -479,7 +479,7 @@ impl InputState {
         }
         // `None` on both sides is the no-scopes-anywhere case: an app that
         // declares none reads every chord, exactly as before scopes existed.
-        let scope = self.scopes.reader(parent, cascades);
+        let scope = self.scopes.reader(parent, cascade);
         self.frame_keyboard_events.iter().any(|event| {
             matches!(event, KeyboardEvent::Down(press)
                 if shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope)
@@ -564,12 +564,12 @@ impl InputState {
     }
 
     /// Feed an palantir-native input event. Hit-tests against the
-    /// frozen `Cascades` from this frame's most recent run. Returns an
+    /// frozen `Cascade` from this frame's most recent run. Returns an
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
-    pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) -> InputDelta {
+    pub(crate) fn on_input(&mut self, event: InputEvent, cascade: &Cascade) -> InputDelta {
         if let InputEvent::Zoom(factor) = event
             && !zoom::is_valid(factor)
         {
@@ -607,7 +607,7 @@ impl InputState {
                     }
                 }
                 self.frame_had_action |= latched;
-                self.refresh_pointer_targets(cascades);
+                self.refresh_pointer_targets(cascade);
                 let move_subbed =
                     self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Move);
                 self.hovered != prev_hover
@@ -622,7 +622,7 @@ impl InputState {
                     || self.pinch_target.is_some()
                     || self.captures.iter().any(|c| c.press.is_some());
                 self.pointer_pos = None;
-                self.refresh_pointer_targets(cascades);
+                self.refresh_pointer_targets(cascade);
                 // `Leave` is rare; emit whenever any pointer-class
                 // watch is active so watchers can clean up
                 // (clear crosshair, dismiss hover preview).
@@ -637,7 +637,7 @@ impl InputState {
                 // widget under the pointer). Hover-only widgets are
                 // transparent to presses even though they show as hovered.
                 let pointer_pos = self.pointer_pos;
-                let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
+                let hit = pointer_pos.and_then(|p| cascade.hit_test(p, Sense::clicks));
                 let buttons_subbed =
                     self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Down { pos, button: btn }
@@ -659,7 +659,7 @@ impl InputState {
                 // from a TextEdit either, hence the separate test).
                 let prev_focus = self.focused;
                 if btn == PointerButton::Left {
-                    let focus_hit = pointer_pos.and_then(|p| cascades.hit_test_focusable(p));
+                    let focus_hit = pointer_pos.and_then(|p| cascade.hit_test_focusable(p));
                     match (focus_hit, self.focus_policy) {
                         (Some(id), _) => self.focused = Some(id),
                         (None, FocusPolicy::ClearOnMiss) => self.focused = None,
@@ -707,7 +707,7 @@ impl InputState {
                     let kind = if press.drag != PressDrag::None {
                         ReleaseKind::DragStopped
                     } else {
-                        let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
+                        let hit = pointer_pos.and_then(|p| cascade.hit_test(p, Sense::clicks));
                         if hit == Some(press.target) {
                             ReleaseKind::Click { count: press.seq }
                         } else {
@@ -855,7 +855,7 @@ impl InputState {
     }
 
     /// Re-resolve `hovered` / `scroll_target` / `pinch_target` against
-    /// `cascades` using the current `pointer_pos` — the single owner of
+    /// `cascade` using the current `pointer_pos` — the single owner of
     /// the target-triple assignment (the `PointerMoved` / `PointerLeft`
     /// arms, `end_frame`, and the cold-start warmup all route through
     /// it). The warmup case: pre-frame-1 input events arrived with an
@@ -864,9 +864,9 @@ impl InputState {
     /// this to route the held pointer position onto the right widgets
     /// before the user-visible record pass runs — so hover styling on
     /// frame 1 reflects the actual content under the cursor.
-    pub(crate) fn refresh_pointer_targets(&mut self, cascades: &Cascades) {
+    pub(crate) fn refresh_pointer_targets(&mut self, cascade: &Cascade) {
         if let Some(p) = self.pointer_pos {
-            let hits = cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
+            let hits = cascade.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
             self.hovered = hits.hover;
             self.scroll_target = hits.scroll;
             self.pinch_target = hits.pinch;
@@ -880,9 +880,9 @@ impl InputState {
     /// Once-per-frame close-out (from `Ui::finalize_frame`, after the
     /// final record pass): recompute hover, drop transient per-frame
     /// flags, evict captured widgets that disappeared from the tree.
-    /// Call after `CascadesEngine::run` (whose result `cascades` is
+    /// Call after `CascadeEngine::run` (whose result `cascade` is
     /// passed here).
-    pub(crate) fn end_frame(&mut self, cascades: &Cascades) {
+    pub(crate) fn end_frame(&mut self, cascade: &Cascade) {
         self.drain_per_frame_queues();
         self.scopes.end_frame();
         // `modifiers` deliberately persists: modifier state is a running
@@ -890,7 +890,7 @@ impl InputState {
         // stay `true`.
         for cap in &mut self.captures {
             if let Some(press) = &cap.press
-                && !cascades.by_id.contains_key(&press.target)
+                && !cascade.by_id.contains_key(&press.target)
             {
                 cap.press = None;
             }
@@ -900,11 +900,11 @@ impl InputState {
         // focus to None; otherwise next frame's keystrokes route to a
         // ghost.
         if let Some(focused) = self.focused
-            && !cascades.by_id.contains_key(&focused)
+            && !cascade.by_id.contains_key(&focused)
         {
             self.focused = None;
         }
-        self.refresh_pointer_targets(cascades);
+        self.refresh_pointer_targets(cascade);
     }
 
     /// Returns the raw scroll and pinch deltas attributed to `id` when
@@ -939,36 +939,36 @@ impl InputState {
     pub(crate) fn pointer_local_for(
         &self,
         id: WidgetId,
-        cascades: &Cascades,
+        cascade: &Cascade,
         layout: &Layout,
     ) -> Option<Vec2> {
         let pointer = self.pointer_pos?;
-        let loc = cascades.locate(id)?;
+        let loc = cascade.locate(id)?;
         let layout_rect = layout.arranged_rect(loc.endpoint);
-        let transform = cascades.entries[loc.entry_idx as usize].transform;
+        let transform = cascade.entries[loc.entry_idx as usize].transform;
         Some(pointer_in_widget_space(pointer, layout_rect.min, transform))
     }
 
     pub(crate) fn response_for(
         &self,
         id: WidgetId,
-        cascades: &Cascades,
+        cascade: &Cascade,
         layout: &Layout,
     ) -> ResponseState {
         // Geometry half — needed every frame for theme picking and
         // layout-relative math. `locate` is the lone hash probe, and it
         // yields both the entry index and the endpoint the layout
         // columns are keyed by.
-        let loc = cascades.locate(id);
+        let loc = cascade.locate(id);
         // One gather of the whole `EntryRow` — `entries` is AoS precisely
         // so these three land on one cache line instead of three.
-        let entry = loc.map(|l| cascades.entries[l.entry_idx as usize]);
+        let entry = loc.map(|l| cascade.entries[l.entry_idx as usize]);
         let rect = entry.map(|e| e.rect);
         // The arranged rect lives on `Layout`, which owns it; the
         // cascade used to keep a per-node copy purely so this read
         // wouldn't need the endpoint. Same value either way — the
         // cascade is rebuilt (or provably skipped) whenever an arranged
-        // rect moves, so `layout` and `cascades` always describe the
+        // rect moves, so `layout` and `cascade` always describe the
         // same arrangement.
         let layout_rect = loc.map(|l| layout.arranged_rect(l.endpoint));
         let transform = entry.map_or(TranslateScale::IDENTITY, |e| e.transform);

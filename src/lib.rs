@@ -281,7 +281,9 @@ mod hot_struct_sizes {
     use crate::renderer::render_buffer::image::ImageInstance;
     use crate::renderer::render_buffer::mesh::MeshInstance;
     use crate::renderer::render_buffer::text::TextDrawRow;
-    use crate::scene::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
+    use crate::scene::cascade::CascadeInputHash;
+    use crate::scene::cascade::entry::{EntryRow, HitRow};
+    use crate::scene::cascade::paint::Paint;
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::damage::snapshot::NodeSnapshot;
     use crate::scene::node::Node;

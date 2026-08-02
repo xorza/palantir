@@ -4,7 +4,7 @@ use crate::input::keyboard::{Key, KeyboardEvent, Modifiers, TextChunk};
 use crate::input::{InputEvent, InputState};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascades;
+use crate::scene::cascade::Cascade;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::Ui;
@@ -15,12 +15,12 @@ use strum::EnumCount as _;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
-    let cascades = Cascades::default();
+    let cascade = Cascade::default();
     let target = WidgetId::from_hash("scroll");
     state.scroll_target = Some(target);
     state.on_input(
         InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)),
-        &cascades,
+        &cascade,
     );
     let before_scroll = state.frame_target_deltas.clone();
     state.on_input(
@@ -29,10 +29,10 @@ fn keyboard_events_do_not_perturb_scroll_state() {
             repeat: false,
             physical: Key::Other,
         },
-        &cascades,
+        &cascade,
     );
-    state.on_input(InputEvent::Text(TextChunk::new("a").unwrap()), &cascades);
-    state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
+    state.on_input(InputEvent::Text(TextChunk::new("a").unwrap()), &cascade);
+    state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascade);
     assert_eq!(state.frame_target_deltas, before_scroll);
 }
 
@@ -41,7 +41,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     // Modifiers captured at push time, so a ModifiersChanged between
     // two KeyDowns attributes correctly.
     let mut state = InputState::default();
-    let cascades = Cascades::default();
+    let cascade = Cascade::default();
     state.focused = Some(WidgetId::from_hash("editor"));
 
     state.on_input(
@@ -49,7 +49,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
             ctrl: true,
             ..Modifiers::NONE
         }),
-        &cascades,
+        &cascade,
     );
     state.on_input(
         InputEvent::KeyDown {
@@ -57,16 +57,16 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
             repeat: false,
             physical: Key::Other,
         },
-        &cascades,
+        &cascade,
     );
-    state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
+    state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascade);
     state.on_input(
         InputEvent::KeyDown {
             key: Key::Char('b'),
             repeat: true,
             physical: Key::Other,
         },
-        &cascades,
+        &cascade,
     );
 
     let presses: Vec<_> = state
@@ -89,10 +89,10 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 #[test]
 fn text_events_arrive_in_order_in_keyboard_buffer() {
     let mut state = InputState::default();
-    let cascades = Cascades::default();
+    let cascade = Cascade::default();
     state.focused = Some(WidgetId::from_hash("editor"));
-    state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascades);
-    state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascades);
+    state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascade);
+    state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascade);
     let texts: Vec<_> = state
         .frame_keyboard_events
         .iter()
@@ -478,14 +478,14 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 #[test]
 fn post_record_clears_keys_and_text_but_preserves_modifiers() {
     let mut state = InputState::default();
-    let cascades = Cascades::default();
+    let cascade = Cascade::default();
     state.focused = Some(WidgetId::from_hash("editor"));
     state.on_input(
         InputEvent::ModifiersChanged(Modifiers {
             shift: true,
             ..Modifiers::NONE
         }),
-        &cascades,
+        &cascade,
     );
     state.on_input(
         InputEvent::KeyDown {
@@ -493,12 +493,12 @@ fn post_record_clears_keys_and_text_but_preserves_modifiers() {
             repeat: false,
             physical: Key::Other,
         },
-        &cascades,
+        &cascade,
     );
-    state.on_input(InputEvent::Text(TextChunk::new("x").unwrap()), &cascades);
+    state.on_input(InputEvent::Text(TextChunk::new("x").unwrap()), &cascade);
     let buf_cap_before = state.frame_keyboard_events.capacity();
 
-    state.end_frame(&cascades);
+    state.end_frame(&cascade);
 
     assert!(state.frame_keyboard_events.is_empty());
     // Capacity-retained: typing across frames stays alloc-free.

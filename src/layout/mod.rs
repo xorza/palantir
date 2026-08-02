@@ -51,7 +51,7 @@ pub(crate) struct LayerLayout {
 /// Filled in place by `LayoutEngine::run`, which takes it as `&mut` so the
 /// buffers survive across frames; the encoder, cascade, hit-index,
 /// and tests all read it afterwards. (The cascade pass's own output lives on
-/// `Ui::cascades` — this struct is purely the layout pass's product.)
+/// `Ui::cascade` — this struct is purely the layout pass's product.)
 #[derive(Default)]
 pub(crate) struct Layout {
     pub(crate) layers: PerLayer<LayerLayout>,
@@ -63,7 +63,7 @@ impl Layout {
     /// isn't a `LayoutMode::Scroll`.
     ///
     /// Takes an [`Endpoint`] because that is what
-    /// [`Cascades::endpoint`](crate::scene::cascade::Cascades::endpoint)
+    /// [`Cascade::endpoint`](crate::scene::cascade::Cascade::endpoint)
     /// hands back: the two tables are keyed differently (by widget id,
     /// by node index) and only a caller holding both can bridge them.
     /// Naming each half keeps the bridge from being four raw indexes.
@@ -76,7 +76,7 @@ impl Layout {
     /// coords. Takes an [`Endpoint`] for the same reason
     /// [`Self::scroll_content`] does: this table is keyed by
     /// `(layer, node)` while its callers hold a `WidgetId`, and
-    /// `Cascades` is what bridges the two.
+    /// `Cascade` is what bridges the two.
     ///
     /// This is the single home of the arranged rects. `ResponseState`'s
     /// `layout_rect` reads through here rather than from a copy on the
@@ -123,7 +123,7 @@ impl LayerLayout {
     }
 
     /// Summary of the arranged rects, for the cascade's
-    /// incremental-validity check (`CascadesEngine::can_update`): it
+    /// incremental-validity check (`CascadeEngine::can_update`): it
     /// retains this value from its last full rebuild and compares to
     /// decide whether the rows it kept still describe the current
     /// arrangement.

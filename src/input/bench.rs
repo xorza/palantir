@@ -1,13 +1,13 @@
 //! Pure-input dispatch throughput. Builds a complex UI with hundreds
 //! of overlapping clickable / focusable regions across multiple
-//! ZStacks + a popup layer, warms it through two frames so cascades
+//! ZStacks + a popup layer, warms it through two frames so cascade
 //! and hit-index are populated, then streams `on_input` events in the
 //! inner loop **without** running a frame each iteration.
 //!
 //! What this measures: `Ui::on_input` cost — pointer hover recompute
 //! (`recompute_hover` + `recompute_scroll_target` linear walk over
 //! cascade entries), press/release hit-tests, scroll target lookup.
-//! `Cascades::hit_test` is a reverse linear scan, so overlap density
+//! `Cascade::hit_test` is a reverse linear scan, so overlap density
 //! is the dominant cost driver — the inner ZStacks intentionally
 //! pile O(N) clickable rects on each pointer position.
 //!
@@ -126,7 +126,7 @@ fn build_ui(ui: &mut Ui) {
 
 fn warmed_ui() -> UiHarness {
     let mut h = UiHarness::new(SIZE).scale(SCALE);
-    // Two frames: first builds cascades, second latches scroll-target
+    // Two frames: first builds cascade, second latches scroll-target
     // and any post_record state once the pointer is inside.
     h.frame(build_ui);
     h.move_to(Vec2::new(320.0, 200.0));

@@ -245,10 +245,10 @@ fn menu_body_width_does_not_span_surface() {
 
     let body_id = trigger_id().with("body");
     let rect =
-        h.ui.cascades
+        h.ui.cascade
             .locate(body_id)
             .map(|l| l.entry_idx)
-            .map(|i| h.ui.cascades.entries[i as usize].rect)
+            .map(|i| h.ui.cascade.entries[i as usize].rect)
             .expect("menu body recorded");
     // Theme min_width is 160; sample labels are short so we expect
     // ≤ 200 px wide. SURFACE.w = 400, so a "spans surface" regression

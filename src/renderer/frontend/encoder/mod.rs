@@ -129,7 +129,7 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 /// Walk every tree in the scene forest in paint order, emitting logical-px
 /// paint commands into `out`. No GPU work, no scale/snap math — that
 /// lives in the composer + backend. Per-tree layout rows come off
-/// the scene layout, cascade rows off the scene cascades, keyed by layer.
+/// the scene layout, cascade rows off the scene cascade, keyed by layer.
 ///
 /// `plan` is the paint plan for this frame:
 /// - `RenderKind::Full` paints everything (first frame, surface change,
@@ -180,7 +180,7 @@ impl Encoder {
         // `renderer::plan::DAMAGE_AA_PADDING`.
         let damage_cull_margin = damage_cull_margin(scene.display.scale_factor);
         for (layer, tree) in scene.forest.trees.iter_paint_order() {
-            let layer_cascades = &scene.cascades.layers[layer];
+            let layer_cascades = &scene.cascade.layers[layer];
             let mut ctx = LayerCtx {
                 tree,
                 layout: &scene.layout[layer],
@@ -552,7 +552,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
         return;
     }
 
-    // Off-screen subtree cull. Reads `Cascades::subtree_paint_rects`
+    // Off-screen subtree cull. Reads `Cascade::subtree_paint_rects`
     // — the rolled-up paint bound that includes every descendant —
     // so a Canvas-positioned child overflowing its parent's `Fixed`
     // bound (or a shape with negative-margin overhang) doesn't get

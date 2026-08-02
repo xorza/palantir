@@ -98,8 +98,8 @@ pub(crate) struct SeenIds {
     /// resolution (the first endpoint lives under `raw_id`, which is
     /// the un-disambiguated form of any subsequent occurrence). Same
     /// keys feed the [`Self::rollover`] removed-diff and the
-    /// [`crate::scene::cascade::Cascades::by_id`] snapshot taken at
-    /// the end of each `CascadesEngine::run`.
+    /// [`crate::scene::cascade::Cascade::by_id`] snapshot taken at
+    /// the end of each `CascadeEngine::run`.
     pub(crate) curr: WidgetIdMap<Endpoint>,
     /// Last *painted* frame's `curr`. Only the keys matter for the
     /// rollover diff — values are stale across frames. Same type as

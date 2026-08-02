@@ -182,7 +182,7 @@ const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 pub struct UiHarness {
     /// `pub(crate)` rather than behind an accessor so in-crate tests
     /// reach the engines they assert on (`h.ui.damage_engine`,
-    /// `h.ui.cascades`) the way they reach them off a bare `Ui` today.
+    /// `h.ui.cascade`) the way they reach them off a bare `Ui` today.
     /// Consumers cannot see the field and go through [`Self::ui`].
     pub(crate) ui: Ui,
     /// What every frame stamps with — the harness owns it so no caller
@@ -458,7 +458,7 @@ impl UiHarness {
     fn hit_center_of(&self, id: WidgetId) -> Vec2 {
         let center = self.center_of(id);
         let senses_anything = |sense: Sense| sense != Sense::NONE;
-        let hit = self.ui.cascades.hit_test(center, senses_anything);
+        let hit = self.ui.cascade.hit_test(center, senses_anything);
         assert_eq!(
             hit,
             Some(id),
@@ -667,7 +667,7 @@ impl UiHarness {
     /// hover routing uses. Turns "the press didn't land and I don't know
     /// why" into one assertion.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
-        self.ui.cascades.hit_test(pos, Sense::hovers)
+        self.ui.cascade.hit_test(pos, Sense::hovers)
     }
 
     /// Explicit-id collisions recorded last frame, as the colliding

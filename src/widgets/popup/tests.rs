@@ -374,7 +374,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     let first = body_rect(&h.ui);
     let viewport_id = WidgetId::from_hash("popup-scroll").with("viewport");
     let viewport =
-        h.ui.cascades
+        h.ui.cascade
             .endpoint(viewport_id)
             .expect("popup scroll viewport endpoint");
     assert_eq!(viewport.layer, Layer::Popup);
