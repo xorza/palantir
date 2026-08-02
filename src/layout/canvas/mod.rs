@@ -87,9 +87,9 @@ pub(super) fn arrange(
             continue;
         }
         let d = layout.scratch.desired[c.idx()];
-        let pos = tree.bounds(c).position;
         let child_layout = layouts[c.idx()];
         let bounds = tree.bounds(c);
+        let pos = bounds.position;
         let slot_w = if canvas_size.w().is_hug() {
             d.w
         } else {

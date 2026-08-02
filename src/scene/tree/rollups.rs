@@ -26,7 +26,6 @@ use fixedbitset::FixedBitSet;
 /// Per-chrome authoring hash lives inline on `ChromeRow.hash` (only
 /// chromed nodes pay storage); per-shape canonical hash lives on
 /// `Tree.shapes.hashes`.
-///
 #[derive(Debug, Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<ContentHash>,
@@ -47,7 +46,11 @@ impl SubtreeRollups {
         // avoids the truncate-then-grow round trip when `n` is steady.
         self.node.resize(n, ContentHash::default());
         self.subtree.resize(n, ContentHash::default());
+        // `clear` keeps the length, so the grow only does work the first
+        // time the tree reaches this size. Sized here rather than at the
+        // insert site so `compute_rollups`' loop carries no sizing call.
         self.container_text.clear();
+        self.container_text.grow(n);
     }
 }
 

@@ -210,12 +210,14 @@ impl MeasureCache {
             text_shapes,
         } = input;
         let node_count = tree.records.len();
-        assert_eq!(desired.len(), node_count);
-        assert_eq!(rect.len(), node_count);
-        assert_eq!(scroll_content.len(), node_count);
-        assert_eq!(intrinsics.len(), node_count);
-        assert_eq!(available_q.len(), node_count);
-        assert_eq!(text_spans.len(), node_count);
+        // Column-length agreement is an engine invariant, not input
+        // validation, and this runs once per layer per frame — debug only.
+        debug_assert_eq!(desired.len(), node_count);
+        debug_assert_eq!(rect.len(), node_count);
+        debug_assert_eq!(scroll_content.len(), node_count);
+        debug_assert_eq!(intrinsics.len(), node_count);
+        debug_assert_eq!(available_q.len(), node_count);
+        debug_assert_eq!(text_spans.len(), node_count);
 
         let node_base = self.current.nodes.desired.len() as u32;
         let text_base = self.current.text_shapes.len() as u32;
@@ -242,7 +244,7 @@ impl MeasureCache {
                     self.current.nodes.text_spans.push(Span::default());
                 }
             }
-            assert_eq!(owned_text_count as usize, text_shapes.len());
+            debug_assert_eq!(owned_text_count as usize, text_shapes.len());
 
             for index in (0..node_count).rev() {
                 let end = tree.subtree_end_of(index) as usize;

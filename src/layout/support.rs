@@ -365,7 +365,8 @@ pub(super) fn measure_per_axis_hug(
     Size::new(max_w, max_h)
 }
 
-/// Resolved horizontal/vertical alignment after the cascade.
+/// Per-axis alignment after the child→parent `Auto` fallback — what
+/// [`resolved_axis_align`] hands back.
 pub(super) struct AxisAlignPair {
     pub(super) h: AxisAlign,
     pub(super) v: AxisAlign,
@@ -395,10 +396,6 @@ pub(super) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
     }
 }
 
-/// Resolve the outer extent and alignment offset for one arranged axis.
-/// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
-/// grow to their slot without shrinking below measured content, while the
-/// node's outer min/max bounds remain authoritative.
 /// Outer size of a node arranged into `slot` on both axes with no
 /// alignment — [`arrange_axis`] twice under [`AxisAlign::Auto`], keeping
 /// only the extents.
@@ -422,6 +419,10 @@ pub(super) fn arrange_size(
     )
 }
 
+/// Resolve the outer extent and alignment offset for one arranged axis.
+/// `Fixed` always keeps its measured extent. `Fill` and explicit `Stretch`
+/// grow to their slot without shrinking below measured content, while the
+/// node's outer min/max bounds remain authoritative.
 pub(super) fn arrange_axis(
     axis: Axis,
     align: AxisAlign,

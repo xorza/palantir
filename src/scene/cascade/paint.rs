@@ -24,7 +24,7 @@ pub(crate) struct Paint {
     /// child's own rows do); damage computes a child's painted extent
     /// on demand from its subtree's rows when an order check needs it.
     pub(crate) screen: Rect,
-    /// Authoring hash. For chrome: `Tree.rollups.chrome[node]`.
+    /// Authoring hash. For chrome: the owner's `ChromeRow::hash`.
     /// For shape: `Tree.shapes.hashes[shape_idx]`. For a child marker:
     /// the child's `WidgetId` bits — its stable identity across
     /// reorders.

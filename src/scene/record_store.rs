@@ -82,7 +82,7 @@ impl RecordedGradients {
             current = self.next[idx];
         }
 
-        assert!(
+        debug_assert!(
             self.records.len() < GRADIENT_CHAIN_END as usize,
             "recorded gradient count exceeds the u32 handle range",
         );

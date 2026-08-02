@@ -340,7 +340,7 @@ fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
     );
 }
 
-/// Mixin: any widget builder that holds a `ode` gets the chained
+/// Mixin: any widget builder that holds a [`Node`] gets the chained
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
 /// free by impl'ing just `node_mut`.
 pub trait Configure: Sized {

@@ -193,13 +193,8 @@ impl Bars {
     ) -> Option<ResolvedBar> {
         let track_main = axis.main(geom.space.bar_viewport);
         let content_main = axis.main(scaled);
-        let g = scrollbars::bar_geometry(
-            track_main,
-            content_main,
-            offset,
-            track_main,
-            self.theme.min_thumb_px,
-        )?;
+        let g =
+            scrollbars::bar_geometry(track_main, content_main, offset, self.theme.min_thumb_px)?;
         Some(ResolvedBar {
             track_main,
             content_main,

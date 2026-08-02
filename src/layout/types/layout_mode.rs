@@ -80,10 +80,19 @@ impl PackedLayoutMeta {
         Align::from_raw(self.metadata() & Self::ALIGN_MASK)
     }
 
+    /// Matched rather than transmuted: the two-bit field admits a `3`
+    /// that is not a `Visibility` discriminant, and the `const _` below
+    /// only pins that the widest *valid* variant fits — it says nothing
+    /// about the unused pattern. `NodeFlags::clip_mode` unpacks its own
+    /// two-bit enum the same way, and both compile to the same load.
     #[inline(always)]
     pub(crate) fn visibility(self) -> Visibility {
-        let raw = (self.metadata() & Self::VIS_MASK) >> Self::VIS_SHIFT;
-        unsafe { std::mem::transmute::<u8, Visibility>(raw) }
+        match (self.metadata() & Self::VIS_MASK) >> Self::VIS_SHIFT {
+            0 => Visibility::Visible,
+            1 => Visibility::Hidden,
+            2 => Visibility::Collapsed,
+            _ => unreachable!("packed visibility bits are invalid"),
+        }
     }
 
     #[inline(always)]

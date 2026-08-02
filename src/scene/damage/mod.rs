@@ -124,11 +124,6 @@ pub(crate) struct DamageEngine {
     /// snapshot's [`NodeSnapshot::parent_key`].
     parent_stack: Vec<ParentFrame>,
 
-    /// Count of subtree-skip jumps the last `compute` performed —
-    /// every match of the tier-1 subtree-skip arm jumped `subtree_end - i`
-    /// instead of advancing by 1. Zero on first frame and on
-    /// full-repaint fall-through. Gated alongside `dirty` so
-    /// production builds don't pay the increment.
     /// Test/bench observability for this pass — see [`DamageProbe`].
     pub(crate) probe: DamageProbe,
 }
@@ -209,7 +204,7 @@ impl std::fmt::Debug for DamageInput<'_> {
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
 /// What the GPU should do with this frame:
-/// - `None` — nothing changed; the backbuffer is correct as-is.
+/// - `Skip` — nothing changed; the backbuffer is correct as-is.
 /// - `Full` — clear + paint everything.
 /// - `Partial(region)` — load + scissor; one render pass per rect.
 ///

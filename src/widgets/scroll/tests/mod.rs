@@ -815,37 +815,45 @@ mod bars {
         ScrollbarTheme::default()
     }
 
-    /// `bar_geometry(viewport, content, offset, track, theme)` returns
-    /// `None` when content fits the viewport or the track collapses to
+    /// `bar_geometry(viewport, content, offset, min_thumb)` returns
+    /// `None` when content fits the viewport or the viewport collapses to
     /// zero; otherwise `Some { thumb_size, thumb_offset }`.
+    ///
+    /// The track spans the whole viewport extent, so one length drives
+    /// both the `viewport / content` ratio and the travel:
+    /// `thumb_size = clamp(viewport² / content, min_thumb, viewport)` and
+    /// `thumb_offset = clamp(offset / (content - viewport), 0, 1) *
+    /// (viewport - thumb_size)`.
     #[test]
     fn bar_geometry_thumb_size_and_offset_cases() {
         struct Want {
             thumb_size: Option<f32>,
             thumb_offset: Option<f32>,
         }
-        type Case = (&'static str, f32, f32, f32, f32, Option<Want>);
+        type Case = (&'static str, f32, f32, f32, Option<Want>);
         let cases: &[Case] = &[
             (
+                // 200² / 800 = 50, above the 24 px floor and under the
+                // 200 px viewport, so the raw ratio survives both clamps.
                 "ratio_above_floor",
                 200.0,
                 800.0,
                 0.0,
-                180.0,
                 Some(Want {
-                    thumb_size: Some(45.0),
+                    thumb_size: Some(50.0),
                     thumb_offset: Some(0.0),
                 }),
             ),
             (
+                // Half of the 600 px scrollable range → half of the
+                // 200 - 50 = 150 px travel.
                 "midpoint_offset_rides_linearly",
                 200.0,
                 800.0,
                 300.0,
-                180.0,
                 Some(Want {
-                    thumb_size: Some(45.0),
-                    thumb_offset: Some(67.5),
+                    thumb_size: Some(50.0),
+                    thumb_offset: Some(75.0),
                 }),
             ),
             (
@@ -853,54 +861,46 @@ mod bars {
                 200.0,
                 800.0,
                 600.0,
-                180.0,
                 Some(Want {
-                    thumb_size: Some(45.0),
-                    thumb_offset: Some(180.0 - 45.0),
+                    thumb_size: Some(50.0),
+                    thumb_offset: Some(200.0 - 50.0),
                 }),
             ),
             (
+                // 100² / 10000 = 1 px, floored up to the theme minimum.
                 "clamped_up_to_min_thumb_px",
                 100.0,
                 10_000.0,
                 0.0,
-                180.0,
                 Some(Want {
                     thumb_size: Some(24.0),
                     thumb_offset: None,
                 }),
             ),
             (
-                "clamped_down_to_track_when_min_exceeds_track",
-                100.0,
+                // A viewport shorter than `min_thumb`: the floor would
+                // overshoot the track, so the viewport cap wins.
+                "clamped_down_to_viewport_when_min_exceeds_it",
+                10.0,
                 200.0,
                 0.0,
-                10.0,
                 Some(Want {
                     thumb_size: Some(10.0),
                     thumb_offset: None,
                 }),
             ),
-            (
-                "none_when_content_equals_viewport",
-                200.0,
-                200.0,
-                0.0,
-                180.0,
-                None,
-            ),
+            ("none_when_content_equals_viewport", 200.0, 200.0, 0.0, None),
             (
                 "none_when_content_smaller_than_viewport",
                 200.0,
                 100.0,
                 0.0,
-                180.0,
                 None,
             ),
-            ("none_when_track_zero", 200.0, 800.0, 0.0, 0.0, None),
+            ("none_when_viewport_zero", 0.0, 800.0, 0.0, None),
         ];
-        for (label, viewport, content, offset, track, want) in cases {
-            let got = bar_geometry(*viewport, *content, *offset, *track, theme().min_thumb_px);
+        for (label, viewport, content, offset, want) in cases {
+            let got = bar_geometry(*viewport, *content, *offset, theme().min_thumb_px);
             match (want, got) {
                 (None, None) => {}
                 (Some(want), Some(g)) => {

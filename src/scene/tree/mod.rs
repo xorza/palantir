@@ -147,12 +147,12 @@ impl Tree {
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
-        assert_eq!(
+        debug_assert_eq!(
             self.paint_anims.shape_indices.len(),
             self.paint_anims.entries.len(),
             "paint animation columns differ in length",
         );
-        assert!(
+        debug_assert!(
             self.paint_anims
                 .shape_indices
                 .last()
@@ -267,15 +267,16 @@ impl Tree {
                     }
                 }
             }
-            if has_direct_text && LayoutMode::from(layouts[i].meta) != LayoutMode::Leaf {
-                container_text.grow(n);
+            // One decode for all three consumers below. Sizing of
+            // `container_text` is `reset_for`'s job, not this loop's.
+            let mode = LayoutMode::from(layouts[i].meta);
+            if has_direct_text && mode != LayoutMode::Leaf {
                 container_text.insert(i);
             }
-            if let LayoutMode::Grid(id) = LayoutMode::from(layouts[i].meta) {
-                grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h);
-            }
-            if let LayoutMode::Scrollbars(id) = LayoutMode::from(layouts[i].meta) {
-                scrollbar_defs[usize::from(id)].hash_visual(&mut h);
+            match mode {
+                LayoutMode::Grid(id) => grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h),
+                LayoutMode::Scrollbars(id) => scrollbar_defs[usize::from(id)].hash_visual(&mut h),
+                _ => {}
             }
             let node_hash = h.finish();
             node_out[i] = ContentHash(node_hash);
@@ -367,17 +368,20 @@ impl Tree {
             });
         }
         let mut cols = node.into_columns(widget_id);
-        if let LayoutMode::Grid(id) = LayoutMode::from(cols.layout.meta) {
-            debug_assert!(
+        // Decoded once — the def-handle asserts and the self-Grid stamp
+        // below all want it, and `meta` is immutable past `into_columns`
+        // (only `padding` is rewritten, by the stroke inflation).
+        let mode = LayoutMode::from(cols.layout.meta);
+        match mode {
+            LayoutMode::Grid(id) => debug_assert!(
                 usize::from(id) < self.grid_defs.len(),
                 "LayoutMode::Grid id {id:?} references no grid_def — only Grid::show should push grid nodes",
-            );
-        }
-        if let LayoutMode::Scrollbars(id) = LayoutMode::from(cols.layout.meta) {
-            debug_assert!(
+            ),
+            LayoutMode::Scrollbars(id) => debug_assert!(
                 usize::from(id) < self.scrollbar_defs.len(),
                 "LayoutMode::Scrollbars id {id:?} references no scrollbar_def — only Scroll::show should push bar overlays",
-            );
+            ),
+            _ => {}
         }
         self.check_grid_cell(parent_frame.map(|f| f.node), &cols.bounds);
 
@@ -416,14 +420,11 @@ impl Tree {
         }
         self.extras_idx.push(ex);
 
-        // Stamp the self-Grid bit at open time — `cols.layout.meta` is
-        // already in registers here. Lets `close_node` drop its
-        // `layout[i].meta` read (3 record columns → 2). `new_open`
-        // asserts the 31-bit arena ceiling (high bit is the grid flag).
-        let init_end = SubtreeEnd::new_open(
-            new_id.0,
-            matches!(LayoutMode::from(cols.layout.meta), LayoutMode::Grid(_)),
-        );
+        // Stamp the self-Grid bit at open time — the mode is already
+        // decoded above. Lets `close_node` drop its `layout[i].meta` read
+        // (3 record columns → 2). `new_open` asserts the 31-bit arena
+        // ceiling (high bit is the grid flag).
+        let init_end = SubtreeEnd::new_open(new_id.0, matches!(mode, LayoutMode::Grid(_)));
         self.records.push(NodeRecord {
             widget_id: cols.widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
