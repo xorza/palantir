@@ -2,16 +2,13 @@
 //! [`LayerLayout::scroll_content`]; arrange delegates child placement
 //! to the matching stack driver.
 
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
-use crate::layout::engine::LayoutEngine;
+use crate::layout::pass::LayoutPass;
 use crate::layout::stack;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::zstack;
-use crate::primitives::interned_str::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
 
 /// Measures scroll children with unbounded space on the panned axes,
@@ -19,13 +16,10 @@ use crate::scene::tree::record::NodeId;
 /// desired size.
 #[profiling::function]
 pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     inner_avail: Size,
     spec: ScrollSpec,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
 ) -> Size {
     let pan = spec.pan_mask();
     let fit = spec.fit_mask();
@@ -34,14 +28,14 @@ pub(super) fn measure(
         if pan.y { f32::INFINITY } else { inner_avail.h },
     );
     let raw = if pan.x && pan.y {
-        zstack::measure(layout, tree, node, child_avail, interned_text, out)
+        zstack::measure(pass, node, child_avail)
     } else if pan.y {
-        stack::measure(layout, tree, node, child_avail, Axis::Y, interned_text, out)
+        stack::measure(pass, node, child_avail, Axis::Y)
     } else {
-        stack::measure(layout, tree, node, child_avail, Axis::X, interned_text, out)
+        stack::measure(pass, node, child_avail, Axis::X)
     };
 
-    out.scroll_content[node.idx()] = raw;
+    pass.set_scroll_content(node, raw);
 
     Size::new(
         if pan.x && !fit.x { 0.0 } else { raw.w },
@@ -49,21 +43,14 @@ pub(super) fn measure(
     )
 }
 
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    spec: ScrollSpec,
-    out: &mut LayerLayout,
-) {
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, spec: ScrollSpec) {
     let pan = spec.pan_mask();
     if pan.x && pan.y {
-        zstack::arrange(layout, tree, node, inner, out);
+        zstack::arrange(pass, node, inner);
     } else if pan.y {
-        stack::arrange(layout, tree, node, inner, Axis::Y, out);
+        stack::arrange(pass, node, inner, Axis::Y);
     } else {
-        stack::arrange(layout, tree, node, inner, Axis::X, out);
+        stack::arrange(pass, node, inner, Axis::X);
     }
 }
 

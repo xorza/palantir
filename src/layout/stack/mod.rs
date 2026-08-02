@@ -1,10 +1,9 @@
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::pass::LayoutPass;
 use crate::layout::support::{
-    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset,
-    weighted_share, zero_subtree,
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset, weighted_share,
 };
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -104,6 +103,15 @@ pub(crate) struct StackScratch {
     pool: Vec<FillEntry>,
 }
 
+impl StackScratch {
+    /// Entries this depth pushed, as a mutable slice. `start` is the
+    /// pool length the caller captured on entry.
+    #[inline]
+    fn from(&mut self, start: usize) -> &mut [FillEntry] {
+        &mut self.pool[start..]
+    }
+}
+
 #[derive(Debug)]
 struct StackPlan {
     sum_non_fill_main: f32,
@@ -114,16 +122,16 @@ struct StackPlan {
 }
 
 fn build_stack_plan(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     axis: Axis,
     gap: f32,
-    mut non_fill_main: impl FnMut(&mut LayoutEngine, NodeId) -> f32,
-    mut fill_floor: impl FnMut(&mut LayoutEngine, NodeId) -> f32,
+    mut non_fill_main: impl FnMut(&mut LayoutPass<'_>, NodeId) -> f32,
+    mut fill_floor: impl FnMut(&mut LayoutPass<'_>, NodeId) -> f32,
 ) -> StackPlan {
+    let tree = pass.tree;
     let layouts = tree.records.layout();
-    let fill_start = layout.scratch.stack_fill.pool.len();
+    let fill_start = pass.stack_scratch_mut().pool.len();
     let mut sum_non_fill_main = 0.0f32;
     let mut total_weight = 0.0f64;
     let mut count = 0usize;
@@ -132,16 +140,17 @@ fn build_stack_plan(
         let child_layout = layouts[c.idx()];
         if let Some(weight) = axis.main_sizing(child_layout.size).fill_weight() {
             total_weight += f64::from(weight);
-            let floor = fill_floor(layout, c);
-            layout.scratch.stack_fill.pool.push(FillEntry {
+            let floor = fill_floor(pass, c);
+            let entry = FillEntry {
                 node: c,
                 weight,
                 floor,
                 cap: axis.main(tree.bounds(c).max_size) + axis.spacing(child_layout.margin),
                 frozen_alloc: None,
-            });
+            };
+            pass.stack_scratch_mut().pool.push(entry);
         } else {
-            sum_non_fill_main += non_fill_main(layout, c);
+            sum_non_fill_main += non_fill_main(pass, c);
         }
     }
     StackPlan {
@@ -155,14 +164,12 @@ fn build_stack_plan(
 
 #[profiling::function]
 pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     inner_avail: Size,
     axis: Axis,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
 ) -> Size {
+    let tree = pass.tree;
     let gap = tree.panel(node).gaps.gap();
     let cross_avail = axis.cross(inner_avail);
 
@@ -192,25 +199,18 @@ pub(super) fn measure(
         fill_start,
         ..
     } = build_stack_plan(
-        layout,
-        tree,
+        pass,
         node,
         axis,
         gap,
-        |layout, c| {
-            let d = layout.measure(
-                tree,
-                c,
-                axis.compose_size(main_avail, cross_avail),
-                interned_text,
-                out,
-            );
+        |pass, c| {
+            let d = pass.measure(c, axis.compose_size(main_avail, cross_avail));
             max_cross = max_cross.max(axis.cross(d));
             axis.main(d)
         },
-        |layout, c| {
+        |pass, c| {
             if main_finite {
-                layout.intrinsic(tree, c, axis, LenReq::MinContent, interned_text)
+                pass.intrinsic(c, axis, LenReq::MinContent)
             } else {
                 0.0
             }
@@ -246,7 +246,7 @@ pub(super) fn measure(
     if main_finite {
         let leftover = (main_avail - sum_non_fill_main - total_gap).max(0.0);
         freeze_distribute(
-            &mut layout.scratch.stack_fill.pool[fill_start..],
+            pass.stack_scratch_mut().from(fill_start),
             leftover,
             total_weight,
         );
@@ -254,38 +254,26 @@ pub(super) fn measure(
 
     // Snapshot the pool end because recursive measurement may append entries
     // for nested stacks.
-    let fill_end = layout.scratch.stack_fill.pool.len();
+    let fill_end = pass.stack_scratch_mut().pool.len();
     let mut fill_main = 0.0f32;
     for i in fill_start..fill_end {
-        let entry = layout.scratch.stack_fill.pool[i];
+        let entry = pass.stack_scratch_mut().pool[i];
         let fill_avail = if main_finite {
             entry.frozen_alloc.unwrap()
         } else {
             f32::INFINITY
         };
-        let desired = layout.measure(
-            tree,
-            entry.node,
-            axis.compose_size(fill_avail, cross_avail),
-            interned_text,
-            out,
-        );
+        let desired = pass.measure(entry.node, axis.compose_size(fill_avail, cross_avail));
         fill_main += axis.main(desired);
         max_cross = max_cross.max(axis.cross(desired));
     }
-    layout.scratch.stack_fill.pool.truncate(fill_start);
+    pass.stack_scratch_mut().pool.truncate(fill_start);
 
     axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross)
 }
 
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    axis: Axis,
-    out: &mut LayerLayout,
-) {
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis: Axis) {
+    let tree = pass.tree;
     let panel = tree.panel(node);
     let (gap, justify, parent_child_align) = (panel.gaps.gap(), panel.justify, panel.child_align);
 
@@ -309,13 +297,12 @@ pub(super) fn arrange(
         total_gap,
         fill_start,
     } = build_stack_plan(
-        layout,
-        tree,
+        pass,
         node,
         axis,
         gap,
-        |layout, c| axis.main(layout.scratch.desired[c.idx()]),
-        |layout, c| axis.main(layout.scratch.desired[c.idx()]),
+        |pass, c| axis.main(pass.desired(c)),
+        |pass, c| axis.main(pass.desired(c)),
     );
     // The freeze loop mirrors `measure`: a child whose share is outside
     // `[floor, cap]` freezes at the bound, then the rest re-share.
@@ -323,7 +310,7 @@ pub(super) fn arrange(
     let cross = axis.cross(inner.size);
     let leftover_for_fill = (main_total - sum_non_fill_main - total_gap).max(0.0);
     freeze_distribute(
-        &mut layout.scratch.stack_fill.pool[fill_start..],
+        pass.stack_scratch_mut().from(fill_start),
         leftover_for_fill,
         total_weight,
     );
@@ -332,7 +319,9 @@ pub(super) fn arrange(
     // unwrap: `freeze_distribute` post-condition guarantees every
     // entry's `frozen_alloc` is `Some(_)`.
     let sum_main_arranged = sum_non_fill_main
-        + layout.scratch.stack_fill.pool[fill_start..]
+        + pass
+            .stack_scratch_mut()
+            .from(fill_start)
             .iter()
             .map(|e| e.frozen_alloc.unwrap())
             .sum::<f32>();
@@ -354,12 +343,12 @@ pub(super) fn arrange(
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(tree, c, axis.compose_point(cursor, cross_min), out);
+            pass.zero_subtree(c, axis.compose_point(cursor, cross_min));
             continue;
         }
         let i = c.idx();
         let s = layouts[i];
-        let d = layout.scratch.desired[i];
+        let d = pass.desired(c);
         if !first {
             cursor += effective_gap;
         }
@@ -368,7 +357,7 @@ pub(super) fn arrange(
         let main_size = if axis.main_sizing(s.size).fill_weight().is_some() {
             // unwrap: every Fill child pushed an entry above and the
             // resolve pass filled in `frozen_alloc`.
-            let alloc = layout.scratch.stack_fill.pool[fill_cursor]
+            let alloc = pass.stack_scratch_mut().pool[fill_cursor]
                 .frozen_alloc
                 .unwrap();
             fill_cursor += 1;
@@ -382,10 +371,10 @@ pub(super) fn arrange(
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
-        layout.arrange(tree, c, child_rect, out);
+        pass.arrange(c, child_rect);
         cursor += main_size;
     }
-    layout.scratch.stack_fill.pool.truncate(fill_start);
+    pass.stack_scratch_mut().pool.truncate(fill_start);
 }
 
 /// Intrinsic size of a stack on `query_axis`. When the query

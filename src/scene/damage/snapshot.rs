@@ -6,6 +6,7 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::cascade::paint::Paint;
+use crate::scene::damage::push_screen;
 use crate::scene::forest::Forest;
 use std::cmp::Ordering;
 
@@ -415,17 +416,6 @@ impl PaintSnapArena {
         {
             self.compact(forest, prev);
         }
-    }
-}
-
-/// Push one screen rect into the raw-rect buffer, dropping
-/// paint-empty rects — child markers (always zero) and fully
-/// clipped-away shapes produce no pixels, so they have nothing to
-/// clear or repaint.
-#[inline]
-pub(super) fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
-    if !screen.is_paint_empty() {
-        out.push(screen);
     }
 }
 

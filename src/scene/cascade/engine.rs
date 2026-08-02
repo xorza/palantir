@@ -108,7 +108,7 @@ impl CascadeEngine {
             self.paint_scratch.reset_for(n);
             let incremental_complete = self.run_tree::<true>(
                 tree,
-                &layout.layers[layer],
+                &layout[layer],
                 &mut cascade.layers[layer],
                 &mut TreeSink {
                     entries: &mut cascade.entries,
@@ -137,7 +137,7 @@ impl CascadeEngine {
         if self.display_scale != Some(display.scale_factor) {
             return false;
         }
-        let total: usize = forest.trees.0.iter().map(|tree| tree.records.len()).sum();
+        let total = forest.total_nodes();
         if cascade.entries.len() != total {
             return false;
         }
@@ -151,7 +151,7 @@ impl CascadeEngine {
             {
                 return false;
             }
-            if lc.layout_hash != layout.layers[layer].rect_hash() {
+            if lc.layout_hash != layout[layer].rect_hash() {
                 return false;
             }
             if lc
@@ -174,7 +174,7 @@ impl CascadeEngine {
         display: Display,
         cascade: &mut Cascade,
     ) {
-        let total: usize = forest.trees.0.iter().map(|tree| tree.records.len()).sum();
+        let total = forest.total_nodes();
         cascade.entries.clear();
         cascade.entries.reserve(total);
         cascade.hits.clear();
@@ -187,7 +187,7 @@ impl CascadeEngine {
             self.stack.clear();
             let full_complete = self.run_tree::<false>(
                 tree,
-                &layout.layers[layer],
+                &layout[layer],
                 &mut cascade.layers[layer],
                 &mut TreeSink {
                     entries: &mut cascade.entries,
@@ -207,7 +207,7 @@ impl CascadeEngine {
                 "run_tree must emit one entry per recorded node",
             );
             cascade.layers[layer].static_hash = tree.rollups.cascade_static;
-            cascade.layers[layer].layout_hash = layout.layers[layer].rect_hash();
+            cascade.layers[layer].layout_hash = layout[layer].rect_hash();
         }
 
         // `SeenIds::pre_record` clears `curr` before a relayout pass can
