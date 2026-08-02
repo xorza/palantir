@@ -328,7 +328,7 @@ impl GridHugStore {
 /// layout pass. Both are heap-resident and capacity-retained across
 /// frames; no fixed track-count limit.
 #[profiling::function]
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -583,7 +583,7 @@ fn resolve_fixed(a: &mut AxisScratch, tracks: &[Track]) {
     }
 }
 
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -958,7 +958,7 @@ fn resolve_axis(
 ///   distribution.
 ///
 /// Span > 1 cells are excluded, matching `measure`.
-pub(crate) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

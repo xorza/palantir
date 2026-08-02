@@ -302,3 +302,42 @@ fn pointer_local_uses_unclipped_widget_origin() {
         Some(response.transform.inverse_vector(pointer - surface_origin)),
     );
 }
+
+/// The quiescent and non-quiescent paths must agree on every field they
+/// both own — the geometry half plus `focused`. They used to be two
+/// separate `ResponseState` constructions, so a field filled on one path
+/// could be silently defaulted on the other; this pins that they don't
+/// diverge.
+///
+/// Driven by toggling *only* `frame_quiescent`, with the same widget and
+/// the same cascade underneath, so any difference is attributable to the
+/// path taken rather than to the state it read.
+#[test]
+fn quiescent_and_full_paths_agree_on_geometry() {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_focusable_leaf);
+
+    // Drive `InputState` directly against the harness's frozen cascade +
+    // layout: `Ui::response_for` owns the quiescent snapshot, and the
+    // point here is to flip that one bit with everything else held equal.
+    let mut s = InputState {
+        focused: Some(focusable_id()),
+        ..InputState::default()
+    };
+
+    s.frame_quiescent = true;
+    let quiet = s.response_for(focusable_id(), &h.ui.cascade, &h.ui.layout);
+    s.frame_quiescent = false;
+    let full = s.response_for(focusable_id(), &h.ui.cascade, &h.ui.layout);
+
+    assert_eq!(quiet.rect, full.rect);
+    assert_eq!(quiet.layout_rect, full.layout_rect);
+    assert_eq!(quiet.transform, full.transform);
+    assert_eq!(quiet.disabled, full.disabled);
+    assert_eq!(quiet.focused, full.focused);
+    assert!(
+        quiet.rect.is_some(),
+        "fixture must actually arrange, or the comparison is vacuous",
+    );
+    assert!(quiet.focused, "focus must survive the quiescent path");
+}

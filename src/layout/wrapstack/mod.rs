@@ -18,7 +18,7 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
-    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset, zero_subtree,
 };
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -110,7 +110,7 @@ pub(crate) struct WrapScratch {
 /// same `desired` values, so the assignment is deterministic across
 /// both passes.
 #[profiling::function]
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -161,7 +161,7 @@ pub(crate) fn measure(
     axis.compose_size(max_line_main, total_cross)
 }
 
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -303,7 +303,7 @@ pub(crate) fn arrange(
 ///   overflows).
 /// - **MaxContent** on main: sum + within-line gaps (single line).
 /// - Cross axis: max child intrinsic (single-line approximation).
-pub(crate) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -317,7 +317,15 @@ pub(crate) fn intrinsic<const RANGE: bool>(
         // wrapped cross depends on resolved main width — height-given-
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
-        return children_max_intrinsic(layout, tree, node, query_axis, query, interned_text);
+        return children_max_intrinsic(
+            layout,
+            tree,
+            node,
+            query_axis,
+            query,
+            interned_text,
+            no_offset,
+        );
     }
     let mut range = IntrinsicRange::ZERO;
     let mut count = 0_usize;

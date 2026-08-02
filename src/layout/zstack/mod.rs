@@ -3,8 +3,8 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
-    AxisAlignPair, arrange_axis, children_max_intrinsic, measure_per_axis_hug, resolved_axis_align,
-    zero_subtree,
+    AxisAlignPair, arrange_axis, children_max_intrinsic, measure_per_axis_hug, no_offset,
+    resolved_axis_align, zero_subtree,
 };
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedText;
@@ -16,7 +16,7 @@ use glam::Vec2;
 /// Intrinsic size of a ZStack: max over children on the queried axis.
 /// Children stack at the same origin, so the parent hugs the largest
 /// child.
-pub(crate) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -24,7 +24,7 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     query: IntrinsicQuery<RANGE>,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
-    children_max_intrinsic(layout, tree, node, axis, query, interned_text)
+    children_max_intrinsic(layout, tree, node, axis, query, interned_text, no_offset)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -39,7 +39,7 @@ pub(crate) fn intrinsic<const RANGE: bool>(
 /// Content size = `max(child desired)` per axis, so the panel hugs the
 /// largest child (cross-axis fall-back when ZStack is Hug).
 #[profiling::function]
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -63,7 +63,7 @@ pub(crate) fn measure(
 /// `child_align` as fallback when child's own axis is `Auto`).
 /// Defaults pin to top-left unless the child has `Sizing::fill` — then `Auto`
 /// falls back to stretch on that axis.
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

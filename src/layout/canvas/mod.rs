@@ -3,7 +3,7 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::support::{
-    arrange_size, children_max_intrinsic_offset, measure_per_axis_hug, zero_subtree,
+    arrange_size, children_max_intrinsic, measure_per_axis_hug, zero_subtree,
 };
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedText;
@@ -127,7 +127,7 @@ pub(super) fn intrinsic<const RANGE: bool>(
         axis.main_sizing(tree.records.layout()[node.idx()].size),
         Sizing::HUG
     );
-    children_max_intrinsic_offset(layout, tree, node, axis, query, interned_text, |tree, c| {
+    children_max_intrinsic(layout, tree, node, axis, query, interned_text, |tree, c| {
         if pos_inflates {
             axis.main_v(tree.bounds(c).position)
         } else {

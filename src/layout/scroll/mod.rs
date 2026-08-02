@@ -18,7 +18,7 @@ use crate::scene::tree::record::NodeId;
 /// records their full content extent, and returns the viewport's
 /// desired size.
 #[profiling::function]
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -49,7 +49,7 @@ pub(crate) fn measure(
     )
 }
 
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
