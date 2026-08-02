@@ -280,7 +280,7 @@ mod hot_struct_sizes {
     use crate::renderer::render_buffer::curve::CurveInstance;
     use crate::renderer::render_buffer::image::ImageInstance;
     use crate::renderer::render_buffer::mesh::MeshInstance;
-    use crate::renderer::render_buffer::text::TextRun;
+    use crate::renderer::render_buffer::text::TextDrawRow;
     use crate::scene::cascade::{CascadeInputHash, EntryRow, HitRow, Paint};
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::damage::snapshot::NodeSnapshot;
@@ -427,6 +427,6 @@ mod hot_struct_sizes {
         GlyphInstance => "text::GlyphInstance": 20 / 4,
         PlacedGlyph => "text::PlacedGlyph": 32 / 4,
         ShapedTextRef => "text::ShapedTextRef": 32 / 8,
-        TextRun => "renderer::TextRun": 64 / 8,
+        TextDrawRow => "renderer::TextDrawRow": 64 / 8,
     }
 }

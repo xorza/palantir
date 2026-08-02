@@ -7,7 +7,7 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::toggle::{ToggleChrome, toggle_row};
+use crate::widgets::toggle::{self, ToggleChrome};
 use crate::widgets::widget::WidgetEntry;
 
 /// One option in a radio group. `current` is the group's shared
@@ -89,7 +89,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             // radio pip must never square-corner.
             pill: Some(pip_size * 0.5),
         };
-        toggle_row(ui, entry, chrome, self.label, |ui, _| {
+        toggle::toggle_row(ui, entry, chrome, self.label, |ui, _| {
             if selected {
                 let dot_size = pip_size - 2.0 * dot_inset;
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);

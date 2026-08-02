@@ -15,7 +15,7 @@ use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::image::{ImageDrawRow, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
-use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::text::TextDrawRow;
 
 /// Deepest rounded-mask chain representable by the renderer's
 /// eight-bit stencil counter.
@@ -31,7 +31,7 @@ pub(crate) const MAX_ROUNDED_CLIP_DEPTH: u32 = u8::MAX as u32;
 #[derive(Debug)]
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
-    pub(crate) texts: Vec<TextRun>,
+    pub(crate) texts: Vec<TextDrawRow>,
     /// Scene-wide mesh rows, SoA-stored. The underlying vertex/index
     /// bytes live in the recording's
     /// [`RecordPayloads::meshes`](crate::scene::record_store::RecordPayloads::meshes);

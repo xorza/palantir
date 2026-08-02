@@ -22,7 +22,7 @@ use crate::renderer::render_buffer::curve::{
 };
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
-use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
@@ -609,7 +609,7 @@ fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
 /// (text layout shaping) — only the paint-time scale is snapped. At a
 /// non-rung zoom level the rendered glyph block is up to `STEP/2`
 /// wider/narrower than the layout-space rect it nominally fills. The
-/// extra width is clipped at `TextRun.bounds`, and the cascade
+/// extra width is clipped at `TextDrawRow.bounds`, and the cascade
 /// inflates text damage rects by the same fraction so a rung-jump
 /// between consecutive frames repaints all affected pixels (see
 /// `scene::shapes::record::text_paint_bbox_local`).
@@ -1505,7 +1505,7 @@ impl PaintSink for ComposeSession<'_> {
         // batch's `texts_start` captures this run's index.
         let b = self.composer.open_batch(self.out);
         b.strict |= new_strict;
-        self.out.texts.push(TextRun {
+        self.out.texts.push(TextDrawRow {
             origin: phys_rect.min,
             bounds,
             // Linear ColorU8 straight to the text backend.
