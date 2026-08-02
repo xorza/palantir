@@ -9,6 +9,13 @@ use glam::Vec2;
 /// [`ShapedTextRef`] — source bytes from the active record store plus the
 /// shaped-buffer key — when the encoded glyph cache misses.
 ///
+/// Named for the `*DrawRow` pattern its siblings in this module already
+/// use ([`ImageDrawRow`](crate::renderer::render_buffer::image::ImageDrawRow),
+/// [`MeshDrawRow`](crate::renderer::render_buffer::mesh::MeshDrawRow)), not
+/// `TextRun` — that name belongs to [`crate::TextRun`], the *authoring*
+/// input a caller hands to `Ui`. The two sat at opposite ends of the
+/// pipeline under one name.
+///
 /// **Layout**: fields ordered so the struct is `Pod` with no internal
 /// padding. `ShapedTextRef` (32 B, align 8) leads so its alignment
 /// requirement is satisfied without filler. Color stores **straight-alpha
@@ -17,7 +24,7 @@ use glam::Vec2;
 /// keeps the per-frame hot path Pod-shaped.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct TextRun {
+pub(crate) struct TextDrawRow {
     pub(crate) text: ShapedTextRef,
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,

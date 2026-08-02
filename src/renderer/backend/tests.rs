@@ -13,7 +13,7 @@ use crate::primitives::urect::URect;
 use crate::renderer::backend::schedule::{MaskPlan, RenderStep, build_mask_plan, for_each_step};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
-use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::text::key::{ShapedTextRef, TextShapeKey};
 use glam::{UVec2, Vec2};
@@ -138,8 +138,8 @@ fn dummy_quad() -> Quad {
     }
 }
 
-fn dummy_text() -> TextRun {
-    TextRun {
+fn dummy_text() -> TextDrawRow {
+    TextDrawRow {
         origin: glam::Vec2::ZERO,
         bounds: URect {
             x: 0,

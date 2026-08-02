@@ -15,15 +15,15 @@ pub(super) fn record_texture(bytes: u64) {
 /// Snapshot the counters and reset to zero. Call between bench iters
 /// (or between frames in an instrumented harness) to get per-frame
 /// numbers.
-pub(crate) fn take() -> Stats {
-    Stats {
+pub(crate) fn take() -> WriteStats {
+    WriteStats {
         texture_calls: TEXTURE_CALLS.swap(0, Relaxed),
         texture_bytes: TEXTURE_BYTES.swap(0, Relaxed),
     }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-pub(crate) struct Stats {
+pub(crate) struct WriteStats {
     pub(crate) texture_calls: u64,
     pub(crate) texture_bytes: u64,
 }

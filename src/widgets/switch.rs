@@ -8,7 +8,7 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::toggle::{ToggleChrome, toggle_row};
+use crate::widgets::toggle::{self, ToggleChrome};
 use crate::widgets::widget::WidgetEntry;
 use glam::Vec2;
 
@@ -87,7 +87,7 @@ impl<'a> Switch<'a> {
             )),
             pill: Some(track_h * 0.5),
         };
-        toggle_row(ui, entry, chrome, self.label, |ui, track| {
+        toggle::toggle_row(ui, entry, chrome, self.label, |ui, track| {
             // The track's stroke auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
             // declared position is content-box-relative. Feed the stroke

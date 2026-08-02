@@ -12,7 +12,7 @@
 mod internals {
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
-    use crate::renderer::render_buffer::text::TextRun;
+    use crate::renderer::render_buffer::text::TextDrawRow;
     use crate::scene::record_store::RecordStore;
     use crate::text::key::ShapedTextRef;
     use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
@@ -29,7 +29,7 @@ mod internals {
         viewport: UVec2,
         scale: f32,
         color: ColorU8,
-    ) -> TextRun {
+    ) -> TextDrawRow {
         let recorded = store.record_text(store.intern_str(text));
         let request = TextShapeRequest::unbounded(
             text,
@@ -39,7 +39,7 @@ mod internals {
             FontWeight::Regular,
         );
         shaper.layout(request);
-        TextRun {
+        TextDrawRow {
             text: ShapedTextRef::new(request.key, &recorded),
             origin,
             bounds: URect::new(0, 0, viewport.x, viewport.y),
@@ -98,7 +98,7 @@ mod gpu_regression {
     use crate::renderer::backend::queue::Queue;
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::tests::internals::make_inner_run;
-    use crate::renderer::render_buffer::text::TextRun;
+    use crate::renderer::render_buffer::text::TextDrawRow;
     use crate::scene::record_store::RecordStore;
     use crate::text::TextShaper;
     use glam::{UVec2, Vec2};
@@ -123,7 +123,7 @@ mod gpu_regression {
         backend: &mut TextBackend,
         store: &RecordStore,
         scale: f32,
-        runs: &[TextRun],
+        runs: &[TextDrawRow],
     ) {
         let mut belt = StagingBelt::new(device.clone(), 1 << 16);
         let mut encoder =

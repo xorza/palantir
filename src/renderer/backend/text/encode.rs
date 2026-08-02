@@ -27,7 +27,7 @@
 
 use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
-use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::TextShapeRequest;
 use crate::text::key::TextShapeKey;
 use crate::text::render::{
@@ -187,11 +187,11 @@ impl EncodedCache {
     }
 }
 
-/// Build the cache key for a `TextRun` placed at `frame_scale * r.scale`,
+/// Build the cache key for a `TextDrawRow` placed at `frame_scale * r.scale`,
 /// plus the integer-pixel origin (cosmic's subpixel bins absorb the
 /// fractional component into per-glyph `CacheKey`s, so two runs at
 /// different fractional origins live in different cache entries).
-pub(super) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
+pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey {
     let scale = frame_scale * r.scale;
     let area_color: u32 = bytemuck::cast(r.color);
     let sub = render::subpixel_origin(r.origin);

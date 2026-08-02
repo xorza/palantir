@@ -855,7 +855,7 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
 #[test]
 fn compose_propagates_transform_scale_to_text_runs() {
     // A `TranslateScale(_, 2.0)` ancestor must surface on the emitted
-    // TextRun.scale so glyphon paints proportionally larger glyphs.
+    // TextDrawRow.scale so glyphon paints proportionally larger glyphs.
     // Without this the rect stretches but the glyph rasters stay at
     // the originally-shaped size — visible as text "not zooming" inside
     // a zoomed Scroll viewport.

@@ -8,7 +8,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::toggle::{ToggleChrome, toggle_row};
+use crate::widgets::toggle::{self, ToggleChrome};
 use crate::widgets::widget::WidgetEntry;
 
 /// Two-state boolean toggle. Takes a `&mut bool` whose owner controls
@@ -81,7 +81,7 @@ impl<'a> Checkbox<'a> {
             // Square box: the theme's own corner radius stands.
             pill: None,
         };
-        toggle_row(ui, entry, chrome, self.label, |ui, _| {
+        toggle::toggle_row(ui, entry, chrome, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
                     Shape::polyline(&check, PolylineColors::Single(indicator), indicator_stroke)

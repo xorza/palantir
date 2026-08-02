@@ -37,7 +37,7 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
-use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::TextShaper;
 use crate::text::render::RunPlacement;
 
@@ -216,7 +216,7 @@ impl TextBackend {
         ctx: &mut GpuCtx<'_>,
         scale: f32,
         batch_idx: usize,
-        runs: &[TextRun],
+        runs: &[TextDrawRow],
         interned_text: &InternedText<'_>,
     ) {
         debug_assert_eq!(

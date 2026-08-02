@@ -5,7 +5,7 @@
 //! record/measure/cascade/encode noise into every sample —
 //! `CascadesEngine::run` was the top hotspot at ~7%, and the actual
 //! text path (`encode_batch` + atlas uploads) totalled <10%. This
-//! bench skips all of that: a fixed slice of `TextRun`s, shaped once
+//! bench skips all of that: a fixed slice of `TextDrawRow`s, shaped once
 //! at construction, fed into `TextBackend::prepare` →
 //! `flush` → `render_batch` each iteration.
 //!
@@ -52,7 +52,7 @@ use crate::renderer::backend::queue::Queue;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::text::encode::internals::SweepBench;
 use crate::renderer::backend::viewport::ViewportPush;
-use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
 use crate::text::key::ShapedTextRef;
 use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
@@ -97,14 +97,14 @@ struct BenchText {
 
 #[derive(Clone, Copy, Debug)]
 struct BenchBatch<'a> {
-    runs: &'a [TextRun],
+    runs: &'a [TextDrawRow],
     scale: f32,
 }
 
 #[derive(Debug)]
 struct BenchRuns {
     store: RecordStore,
-    runs: Vec<TextRun>,
+    runs: Vec<TextDrawRow>,
 }
 
 impl BenchText {
@@ -118,7 +118,7 @@ impl BenchText {
         &mut self,
         ctx: &mut GpuCtx<'_>,
         scale: f32,
-        runs: &[TextRun],
+        runs: &[TextDrawRow],
         interned_text: &InternedText<'_>,
     ) {
         self.prepare_batch(ctx, scale, 0, runs, interned_text);
@@ -129,7 +129,7 @@ impl BenchText {
         ctx: &mut GpuCtx<'_>,
         scale: f32,
         batch_index: usize,
-        runs: &[TextRun],
+        runs: &[TextDrawRow],
         interned_text: &InternedText<'_>,
     ) {
         self.backend
@@ -226,7 +226,7 @@ fn make_run(
     viewport: UVec2,
     scale: f32,
     color: ColorU8,
-) -> TextRun {
+) -> TextDrawRow {
     let recorded = store.record_text(store.intern_str(text));
     let request = TextShapeRequest::unbounded(
         text,
@@ -236,7 +236,7 @@ fn make_run(
         FontWeight::Regular,
     );
     shaper.layout(request);
-    TextRun {
+    TextDrawRow {
         text: ShapedTextRef::new(request.key, &recorded),
         origin,
         bounds: URect::new(0, 0, viewport.x, viewport.y),
@@ -246,7 +246,7 @@ fn make_run(
 }
 
 /// Shape one frame's worth of runs against `shaper`. Stable layout so
-/// the same `TextRun` slice is reusable across iterations; only the
+/// the same `TextDrawRow` slice is reusable across iterations; only the
 /// per-iteration `scale` argument to `prepare` changes between frames.
 fn build_runs(shaper: &TextShaper) -> BenchRuns {
     let store = RecordStore::default();
@@ -312,7 +312,7 @@ fn run_frame(
     belt: &mut wgpu::util::StagingBelt,
     target_view: &wgpu::TextureView,
     store: &RecordStore,
-    runs: &[TextRun],
+    runs: &[TextDrawRow],
     scale: f32,
 ) {
     run_batches(
