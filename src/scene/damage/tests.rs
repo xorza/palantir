@@ -3032,7 +3032,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let cascades = &h.ui.cascades;
     let host_ep = *cascades.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascades.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
-    let host_rect = cascades.entries.rect()[host_entry_idx];
+    let host_rect = cascades.entries[host_entry_idx].rect;
     let tree = &h.ui.forest.trees[Layer::Main];
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");

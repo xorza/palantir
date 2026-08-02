@@ -57,6 +57,33 @@ impl Hasher {
     pub(crate) fn pod<T: bytemuck::NoUninit>(&mut self, v: &T) {
         self.0.write(bytemuck::bytes_of(v));
     }
+
+    /// Hash a whole slice of pod values as one contiguous byte run —
+    /// the [`Self::pod`] counterpart for columns. Same `NoUninit`
+    /// bound, same reason: no padding means the byte view is
+    /// well-defined, so the cast is sound.
+    ///
+    /// This is where a bulk write actually pays. `FxHasher::write`
+    /// consumes 8 bytes per iteration, so hashing an N-element column
+    /// in one call costs roughly `size_of::<T>() * N / 8` mix ops
+    /// instead of one per field per element.
+    ///
+    /// Does **not** write the length. A caller hashing a variable-length
+    /// column alongside other data must fold the length in itself, or
+    /// two different splits of the same bytes collide.
+    ///
+    /// **Not hash-equal to a per-element [`Self::pod`] loop.**
+    /// `FxHasher::write` consumes its input in `usize`-sized chunks, so
+    /// one 16-byte write and two 8-byte writes end in different states.
+    /// Switching a loop to this method changes the value it produces —
+    /// fine for a hash only ever compared against itself (a cache key
+    /// recomputed each run), wrong for anything persisted or compared
+    /// across a version boundary. Pinned by
+    /// [`pod_slice_differs_from_element_wise_pod`].
+    #[inline]
+    pub(crate) fn pod_slice<T: bytemuck::NoUninit>(&mut self, v: &[T]) {
+        self.0.write(bytemuck::cast_slice(v));
+    }
 }
 
 impl std::hash::Hasher for Hasher {
@@ -145,6 +172,72 @@ mod tests {
         h2.write(bytemuck::bytes_of(&pair));
         assert_eq!(h1.finish(), h2.finish(), "case: repr(C) Pair");
         check("repr(C) Pair", bytemuck::bytes_of(&pair));
+
+        // Same contract for the slice form.
+        let pairs = [pair, Pair { a: 1, b: 2 }];
+        let mut h1 = Hasher::new();
+        h1.pod_slice(&pairs);
+        let mut h2 = Hasher::new();
+        h2.write(bytemuck::cast_slice(&pairs));
+        assert_eq!(h1.finish(), h2.finish(), "case: &[Pair]");
+    }
+
+    #[test]
+    fn pod_slice_differs_from_element_wise_pod() {
+        // `FxHasher::write` consumes `usize`-sized chunks, so one
+        // 16-byte write does not land in the same state as two 8-byte
+        // writes. Bulk and per-element hashing are therefore *not*
+        // interchangeable, however natural the swap looks at a call
+        // site. Pinned in the surprising direction on purpose: the
+        // intuitive assumption is equivalence, and a caller who assumes
+        // it for a persisted key gets a silent mismatch rather than a
+        // failure.
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::NoUninit)]
+        struct Pair {
+            a: u32,
+            b: u32,
+        }
+        let pairs = [
+            Pair {
+                a: 0x1234_5678,
+                b: 0x9abc_def0,
+            },
+            Pair { a: 1, b: 2 },
+        ];
+
+        let mut per_element = Hasher::new();
+        for p in &pairs {
+            per_element.pod(p);
+        }
+        let mut bulk = Hasher::new();
+        bulk.pod_slice(&pairs);
+        assert_ne!(
+            per_element.finish(),
+            bulk.finish(),
+            "if these ever coincide the chunking contract changed — \
+             re-read pod_slice's docs before relying on either form",
+        );
+    }
+
+    #[test]
+    fn pod_slice_length_is_not_folded_in() {
+        // Documented contract: `pod_slice` hashes bytes only. Two
+        // different splits of the same byte run collide, which is why
+        // callers hashing a variable-length column must write the
+        // length themselves. Pinned so the omission stays a deliberate
+        // property rather than a latent surprise.
+        let a: [u32; 2] = [0x1111_1111, 0x2222_2222];
+        let b: [u16; 4] = [0x1111, 0x1111, 0x2222, 0x2222];
+        let mut ha = Hasher::new();
+        ha.pod_slice(&a);
+        let mut hb = Hasher::new();
+        hb.pod_slice(&b);
+        assert_eq!(
+            ha.finish(),
+            hb.finish(),
+            "same bytes must hash the same regardless of element split",
+        );
     }
 
     #[test]

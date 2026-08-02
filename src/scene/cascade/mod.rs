@@ -35,7 +35,6 @@ use crate::scene::tree::recording::Placement;
 use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
-use soa_rs::{Soa, Soars};
 use std::hash::Hasher as _;
 
 /// Per-node fingerprint of cascade inputs flowing in from ancestors
@@ -128,46 +127,63 @@ impl PaintArena {
     }
 }
 
-/// One per-node cascade row. Stored as `Soa<EntryRow>` on
-/// [`Cascades::entries`] so each field becomes its own contiguous
-/// slice. Hit tests use [`Cascades::hits`] to visit only rows
-/// that can interact, reading `rect` and the relevant flags while
-/// response lookup reaches every row through [`Cascades::by_id`].
-/// Same cache argument as palantir's `Tree.records: Soa<NodeRecord>`.
-#[derive(Soars, Clone, Copy, Debug)]
-#[soa_derive(Debug)]
+/// One per-node cascade row, in `Vec<EntryRow>` on
+/// [`Cascades::entries`].
+///
+/// **Array-of-structs on purpose.** Every consumer of this table is a
+/// single-index gather, never a column walk:
+/// [`crate::input::InputState::response_for`] reads all three fields at
+/// one index once per widget per frame, and `pointer_local_for` reads
+/// two. Splitting them into `soa_rs` columns put those fields on three
+/// separate cache lines per lookup; interleaved they share one 32-byte
+/// row. This is the opposite call from `Tree.records: Soa<NodeRecord>`,
+/// which *is* column-walked by the measure/arrange passes — the access
+/// pattern, not the row count, is what picks the layout.
+///
+/// Hit testing does not read this table at all: [`HitRow`] carries its
+/// own geometry so the hit scan stays sequential over interactive rows.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct EntryRow {
     /// Visible screen rect (post-transform, clipped by ancestor clip).
-    /// Read for rows referenced by [`Cascades::hits`].
     pub(crate) rect: Rect,
-    /// Pointer interactions this row participates in (`HOVER` / `CLICK`
-    /// / `DRAG` / `SCROLL`).
-    pub(crate) sense: Sense,
-    /// Focus eligibility — checked by the focusable hit-test only.
-    pub(crate) focusable: bool,
-    /// Effective disabled (self OR any ancestor). Mirrors what
-    /// `cascaded_off` already used to null `sense`/`focusable`,
-    /// preserved here so per-widget responses can read it.
-    pub(crate) disabled: bool,
-    /// Pre-transform layout rect (unclipped, in world coords).
-    /// Surfaced via `ResponseState::layout_rect` so callers can read
-    /// a widget's arranged position without the cascade's transform +
-    /// clip applied — useful for drawing connection geometry into a
-    /// scrolling/zoomed parent's coordinate system.
-    pub(crate) layout_rect: Rect,
-    /// The cumulative ancestor transform mapping this node's `layout_rect`
+    /// The cumulative ancestor transform mapping this node's layout rect
     /// into unclipped surface space. The visible `rect` may be smaller
     /// after ancestor clipping. Surfaced via `ResponseState::transform`
     /// for converting surface-space vectors into widget-local logical
     /// coordinates — `IDENTITY` when untransformed.
     pub(crate) transform: TranslateScale,
+    /// Effective disabled (self OR any ancestor). Mirrors what
+    /// `cascaded_off` already used to null `sense`/`focusable`,
+    /// preserved here so per-widget responses can read it.
+    pub(crate) disabled: bool,
 }
 
-#[derive(Soars, Clone, Copy, Debug)]
-#[soa_derive(Debug)]
+/// One interactive row — a node whose effective `sense` is nonempty or
+/// which is focusable. Pushed in paint order, so a reverse scan yields
+/// topmost-first.
+///
+/// **Self-sufficient on purpose.** This table carries the geometry and
+/// gates the hit tests need so a hit test is a dense sequential scan
+/// over interactive rows alone, with no indirection into the all-node
+/// [`Cascades::entries`]. It previously held only `(entry_idx,
+/// widget_id)` and gathered `rect` / `sense` / `focusable` from
+/// `entries` at scattered indices — one random access per candidate
+/// row, over a table sized by *every* node rather than the interactive
+/// subset.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct HitRow {
-    pub(crate) entry_idx: u32,
+    /// Visible screen rect — the same value as `EntryRow::rect` for
+    /// this node. Duplicated into this row deliberately: it is what
+    /// makes the scan sequential, and interactive rows are a small
+    /// fraction of all nodes.
+    pub(crate) rect: Rect,
     pub(crate) widget_id: WidgetId,
+    /// Pointer interactions this row participates in (`HOVER` / `CLICK`
+    /// / `DRAG` / `SCROLL`). Already cascaded — `Sense::NONE` for a
+    /// disabled or invisible subtree.
+    pub(crate) sense: Sense,
+    /// Focus eligibility — checked by the focusable hit-test only.
+    pub(crate) focusable: bool,
 }
 
 /// One declared input scope, in record order across every layer — the
@@ -184,10 +200,19 @@ pub(crate) struct HitRow {
 /// one, and because threading four more parameters through
 /// `run_tree` is what the argument count is for.
 struct TreeSink<'a> {
-    entries: &'a mut Soa<EntryRow>,
-    hits: &'a mut Soa<HitRow>,
+    entries: &'a mut Vec<EntryRow>,
+    hits: &'a mut Vec<HitRow>,
     scopes: &'a mut Vec<ScopeRow>,
     layer: Layer,
+}
+
+/// Where one widget's per-frame rows live — the flat
+/// [`Cascades::entries`] index plus the `(layer, node)` [`Endpoint`]
+/// the layout columns are keyed by. Produced by [`Cascades::locate`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WidgetLocation {
+    pub(crate) entry_idx: u32,
+    pub(crate) endpoint: Endpoint,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -265,6 +290,12 @@ impl std::fmt::Debug for Frame {
 pub(crate) struct LayerCascades {
     /// Paint-excluding authoring hash from the last full rebuild.
     static_hash: ContentHash,
+    /// `LayerLayout::rect_hash` as of the last full rebuild — the
+    /// arranged geometry these retained rows were built against.
+    /// [`CascadesEngine::can_update`] compares it to the live layout's
+    /// hash to decide whether the retained non-paint columns still
+    /// describe the current arrangement.
+    layout_hash: ContentHash,
     /// Per-node `cascade_input` fingerprint, indexed the same way as
     /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
     /// ancestor state + own arranged rect hash with the cascade-resolved
@@ -331,21 +362,16 @@ impl LayerCascades {
 #[derive(Debug, Default)]
 pub(crate) struct Cascades {
     pub(crate) layers: PerLayer<LayerCascades>,
-    /// Pre-order hit-test rows in SoA form — each field is its own
-    /// contiguous slice (`entries.rect()`, `entries.sense()`,
-    /// `entries.layout_rect()`, …), keeping response lookups
-    /// node-aligned while hit tests reach interactive rows through
-    /// [`Self::hits`].
-    /// Layers append in paint order so reverse iteration yields
-    /// topmost-first.
-    pub(crate) entries: Soa<EntryRow>,
-    /// Entry indices and widget IDs for rows whose effective `sense`
-    /// is nonempty or which are focusable, in the same paint order as
-    /// [`Self::entries`]. Hit tests reverse-scan this compact table while
-    /// response lookup retains the full node-aligned entry table. SoA
-    /// keeps the two columns at 12 bytes per hit while one row push
-    /// updates both; `Vec<HitRow>` would pad each row to 16 bytes.
-    pub(crate) hits: Soa<HitRow>,
+    /// One row per recorded node, node-aligned within each layer's
+    /// block (`layers[l].entries_base + node.0`). Read only by
+    /// per-widget response lookup, which gathers a whole row at one
+    /// index — see [`EntryRow`] for why it is AoS. Layers append in
+    /// paint order.
+    pub(crate) entries: Vec<EntryRow>,
+    /// Interactive rows only, in the same paint order as
+    /// [`Self::entries`]. Hit tests reverse-scan this table and read
+    /// nothing else — see [`HitRow`].
+    pub(crate) hits: Vec<HitRow>,
     /// Declared input scopes in record order — see [`ScopeRow`].
     pub(crate) scopes: Vec<ScopeRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
@@ -381,12 +407,19 @@ impl Cascades {
         self.by_id.get(&id).copied()
     }
 
-    /// Global entry index of the widget last recorded under `id`,
-    /// or `None` if `id` isn't in the most recent cascade run.
+    /// Both indexes a widget's per-frame rows are reached by, from one
+    /// `by_id` probe. `response_for` needs the entry index (for
+    /// [`Cascades::entries`]) *and* the endpoint (for the layout
+    /// columns, which are keyed by `(layer, node)`), once per widget per
+    /// frame — resolving them separately would double the hash lookups
+    /// on that path.
     #[inline]
-    pub(crate) fn entry_idx_of(&self, id: WidgetId) -> Option<u32> {
-        let ep = self.by_id.get(&id)?;
-        Some(self.layers[ep.layer].entries_base + ep.node.0)
+    pub(crate) fn locate(&self, id: WidgetId) -> Option<WidgetLocation> {
+        let endpoint = *self.by_id.get(&id)?;
+        Some(WidgetLocation {
+            entry_idx: self.layers[endpoint.layer].entries_base + endpoint.node.0,
+            endpoint,
+        })
     }
 
     /// True when `descendant`'s most recent record sits inside
@@ -404,23 +437,15 @@ impl Cascades {
             && d.node.0 < self.layers[a.layer].subtree_ends[a.node.idx()]
     }
 
-    fn hit_rows(&self) -> impl DoubleEndedIterator<Item = (usize, WidgetId)> + '_ {
-        self.hits
-            .entry_idx()
-            .iter()
-            .zip(self.hits.widget_id())
-            .map(|(&entry, &widget_id)| (entry as usize, widget_id))
-    }
-
     /// Reverse walk (topmost-first under the pre-order paint walk) returning
-    /// the first entry whose rect contains `pos` and whose `gate(i)` passes.
-    /// Shared by [`Self::hit_test`] and [`Self::hit_test_focusable`], which
-    /// differ only in the per-entry gate column they consult.
-    fn hit_first(&self, pos: Vec2, gate: impl Fn(usize) -> bool) -> Option<WidgetId> {
-        let rects = self.entries.rect();
-        for (i, widget_id) in self.hit_rows().rev() {
-            if gate(i) && rects[i].contains(pos) {
-                return Some(widget_id);
+    /// the first interactive row whose rect contains `pos` and whose
+    /// `gate(row)` passes. Shared by [`Self::hit_test`] and
+    /// [`Self::hit_test_focusable`], which differ only in the field of
+    /// the row they gate on.
+    fn hit_first(&self, pos: Vec2, gate: impl Fn(&HitRow) -> bool) -> Option<WidgetId> {
+        for row in self.hits.iter().rev() {
+            if gate(row) && row.rect.contains(pos) {
+                return Some(row.widget_id);
             }
         }
         None
@@ -429,8 +454,7 @@ impl Cascades {
     /// Topmost entry under `pos` whose `Sense` passes `filter` (hoverable for
     /// hover, clickable for press/release).
     pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
-        let senses = self.entries.sense();
-        self.hit_first(pos, |i| filter(senses[i]))
+        self.hit_first(pos, |row| filter(row.sense))
     }
 
     /// One reverse walk that finds the topmost match for each of
@@ -446,23 +470,21 @@ impl Cascades {
         scroll_filter: impl Fn(Sense) -> bool,
         pinch_filter: impl Fn(Sense) -> bool,
     ) -> HitTargets {
-        let rects = self.entries.rect();
-        let senses = self.entries.sense();
         let mut hover = None;
         let mut scroll = None;
         let mut pinch = None;
-        for (i, widget_id) in self.hit_rows().rev() {
-            if !rects[i].contains(pos) {
+        for row in self.hits.iter().rev() {
+            if !row.rect.contains(pos) {
                 continue;
             }
-            if hover.is_none() && hover_filter(senses[i]) {
-                hover = Some(widget_id);
+            if hover.is_none() && hover_filter(row.sense) {
+                hover = Some(row.widget_id);
             }
-            if scroll.is_none() && scroll_filter(senses[i]) {
-                scroll = Some(widget_id);
+            if scroll.is_none() && scroll_filter(row.sense) {
+                scroll = Some(row.widget_id);
             }
-            if pinch.is_none() && pinch_filter(senses[i]) {
-                pinch = Some(widget_id);
+            if pinch.is_none() && pinch_filter(row.sense) {
+                pinch = Some(row.widget_id);
             }
             if hover.is_some() && scroll.is_some() && pinch.is_some() {
                 break;
@@ -476,8 +498,7 @@ impl Cascades {
     }
 
     pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {
-        let focusables = self.entries.focusable();
-        self.hit_first(pos, |i| focusables[i])
+        self.hit_first(pos, |row| row.focusable)
     }
 }
 
@@ -561,8 +582,7 @@ impl CascadesEngine {
             {
                 return false;
             }
-            let base = entries_base as usize;
-            if cascades.entries.layout_rect()[base..base + n] != layout.layers[layer].rect {
+            if lc.layout_hash != layout.layers[layer].rect_hash() {
                 return false;
             }
             if lc
@@ -618,6 +638,7 @@ impl CascadesEngine {
                 "run_tree must emit one entry per recorded node",
             );
             cascades.layers[layer].static_hash = tree.rollups.cascade_static;
+            cascades.layers[layer].layout_hash = layout.layers[layer].rect_hash();
         }
 
         // `SeenIds::pre_record` clears `curr` before a relayout pass can
@@ -870,8 +891,10 @@ impl CascadesEngine {
                 let focusable = !cascaded_off && attrs.is_focusable();
                 if sense != Sense::NONE || focusable {
                     hits.push(HitRow {
-                        entry_idx: entries.len() as u32,
+                        rect: visible_rect,
                         widget_id: widget_ids[iu],
+                        sense,
+                        focusable,
                     });
                 }
                 // A scope in a disabled or invisible subtree owns
@@ -890,11 +913,8 @@ impl CascadesEngine {
                 }
                 entries.push(EntryRow {
                     rect: visible_rect,
-                    sense,
-                    focusable,
-                    disabled,
-                    layout_rect,
                     transform: parent_transform,
+                    disabled,
                 });
             }
 
