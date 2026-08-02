@@ -119,7 +119,17 @@ pub(crate) struct MeasureSnapshot {
     descriptors: Vec<ArenaSnapshot>,
     descriptor_wids: Vec<WidgetId>,
     pub(super) roots: Vec<RootSnapshotKey>,
+    /// Ordered fold over the `WidgetId`s in `descriptor_wids`, rebuilt
+    /// from scratch by every capture.
     descriptor_identity: u64,
+    /// The `descriptor_identity` [`Self::snapshots`] was last built for.
+    ///
+    /// Held beside the map so the two travel together through
+    /// `finish_frame`'s buffer swap. That is the whole trick: this
+    /// snapshot's map is reusable exactly when the capture that just
+    /// filled the same struct produced the same identity, so nothing has
+    /// to reason about which frame the retained map came from.
+    snapshots_identity: u64,
 }
 
 impl MeasureSnapshot {
@@ -133,10 +143,49 @@ impl MeasureSnapshot {
         self.descriptor_identity = 0;
     }
 
-    #[cfg(any(test, feature = "internals"))]
-    fn clear(&mut self) {
-        self.begin_capture();
+    /// Rebuild `snapshots` from `descriptor_wids`, unless the capture
+    /// that just ran produced the very id sequence the retained map was
+    /// already built for.
+    ///
+    /// Sequence equality is *approximated* by `descriptor_identity`; a
+    /// collision would hand `try_lookup` a map pointing at another
+    /// widget's descriptor. That is survivable — the `subtree_hash` and
+    /// `available_q` checks there reject a mismatched descriptor, so the
+    /// worst case is a missed hit — but it would be silent, so
+    /// [`Self::snapshots_match_descriptors`] proves the approximation in
+    /// debug builds instead of leaving it argued.
+    /// Returns whether it rebuilt, which is the only thing distinguishing
+    /// the two paths from outside — the map ends up correct either way.
+    fn refresh_snapshots(&mut self) -> bool {
+        if self.snapshots_identity == self.descriptor_identity {
+            debug_assert!(
+                self.snapshots_match_descriptors(),
+                "descriptor_identity collided: the retained WidgetId → descriptor map \
+                 disagrees with the descriptors just captured",
+            );
+            return false;
+        }
         self.snapshots.clear();
+        for (descriptor, wid) in self.descriptor_wids.iter().copied().enumerate() {
+            self.snapshots.insert(wid, descriptor as u32);
+        }
+        self.snapshots_identity = self.descriptor_identity;
+        true
+    }
+
+    /// Every captured descriptor is reachable through `snapshots` at its
+    /// own index — precisely what reusing the map claims. One hash probe
+    /// per descriptor, so it is only ever called from a `debug_assert!`.
+    fn snapshots_match_descriptors(&self) -> bool {
+        self.snapshots.len() == self.descriptor_wids.len()
+            && self
+                .descriptor_wids
+                .iter()
+                .copied()
+                .enumerate()
+                .all(|(descriptor, wid)| {
+                    self.snapshots.get(&wid).copied() == Some(descriptor as u32)
+                })
     }
 }
 
@@ -146,12 +195,21 @@ pub(crate) struct MeasureCache {
     current: MeasureSnapshot,
     hug_offsets: Vec<u32>,
     text_bounds: Vec<Span>,
-    previous_descriptor_identity: u64,
+    /// Snapshot-map rebuilds run so far. Lets a test prove the reuse gate
+    /// in [`Self::finish_frame`] both fires and busts — without it the
+    /// `debug_assert` guarding reuse passes vacuously on any frame that
+    /// silently stopped reusing. Same arrangement as
+    /// [`PaintSnapArena::compactions_run`]: accumulates for the life of
+    /// the cache, so readers take a delta.
+    ///
+    /// [`PaintSnapArena::compactions_run`]:
+    ///     crate::scene::damage::snapshot::PaintSnapArena::compactions_run
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) snapshot_rebuilds: u32,
 }
 
 impl MeasureCache {
     pub(super) fn begin_frame(&mut self) {
-        self.previous_descriptor_identity = self.current.descriptor_identity;
         self.current.begin_capture();
     }
 
@@ -338,21 +396,52 @@ impl MeasureCache {
     }
 
     pub(super) fn finish_frame(&mut self) {
-        if self.current.descriptor_identity != self.previous_descriptor_identity
-            || self.current.snapshots.len() != self.current.descriptors.len()
-        {
-            self.current.snapshots.clear();
-            for (descriptor, wid) in self.current.descriptor_wids.iter().copied().enumerate() {
-                self.current.snapshots.insert(wid, descriptor as u32);
-            }
+        if self.current.refresh_snapshots() {
+            self.note_snapshot_rebuild();
         }
         std::mem::swap(&mut self.previous, &mut self.current);
     }
 
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) fn clear(&mut self) {
-        self.previous.clear();
-        self.current.clear();
+    /// Bump the rebuild counter. Gated in here so `finish_frame` carries
+    /// no `#[cfg]` of its own — the pattern
+    /// [`PaintSnapArena::note_compaction`] uses.
+    ///
+    /// [`PaintSnapArena::note_compaction`]:
+    ///     crate::scene::damage::snapshot::PaintSnapArena
+    #[inline]
+    fn note_snapshot_rebuild(&mut self) {
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.snapshot_rebuilds = self.snapshot_rebuilds.saturating_add(1);
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use super::*;
+
+    impl MeasureSnapshot {
+        /// Drop the retained descriptor map along with the captured
+        /// columns. `snapshots_identity` has to go with it — leaving it
+        /// set would let the next capture that happens to fold to the
+        /// same value reuse a map that is no longer there.
+        fn clear(&mut self) {
+            self.begin_capture();
+            self.snapshots.clear();
+            self.snapshots_identity = 0;
+        }
+    }
+
+    impl MeasureCache {
+        /// Force a cold start: both buffers forget everything, so the
+        /// next frame measures from scratch. Used by the cache's own
+        /// tests, `layout::intrinsic`'s, and the `caches` bench to
+        /// separate a cold pass from a warm one mid-run.
+        pub(crate) fn clear(&mut self) {
+            self.previous.clear();
+            self.current.clear();
+        }
     }
 }
 
