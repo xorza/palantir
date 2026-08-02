@@ -12,7 +12,7 @@ use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
+    BrushSource, CurveBasis, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
     DrawPolylinePayload, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
@@ -439,13 +439,15 @@ fn emit_one_shape<S: PaintSink>(
             let fill = ctx.brush_source(*fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
             out.draw_curve(DrawCurvePayload {
+                basis: CurveBasis::Cubic {
+                    p0: *p0,
+                    p1: *p1,
+                    p2: *p2,
+                    p3: *p3,
+                },
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
                 origin: owner_rect.min,
                 rotation,
-                p0: *p0,
-                p1: *p1,
-                p2: *p2,
-                p3: *p3,
                 color: fill.color,
                 width: *width,
                 cap: *cap,
@@ -464,17 +466,20 @@ fn emit_one_shape<S: PaintSink>(
             cap,
             bbox,
         } => {
-            // Same owner-local convention as `Curve`; the composer
-            // resolves center/radius to physical px.
+            // Same owner-local convention as `Curve` — and the same
+            // payload, which is what keeps the two bases' cull, spin,
+            // and sub-instance sizing one code path in the composer.
             let fill = ctx.brush_source(*fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
-            out.draw_arc(DrawArcPayload {
+            out.draw_curve(DrawCurvePayload {
+                basis: CurveBasis::Arc {
+                    center: *center,
+                    radius: *radius,
+                    a0: *a0,
+                    a1: *a1,
+                },
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
                 origin: owner_rect.min,
-                center: *center,
-                radius: *radius,
-                a0: *a0,
-                a1: *a1,
                 rotation,
                 color: fill.color,
                 width: *width,

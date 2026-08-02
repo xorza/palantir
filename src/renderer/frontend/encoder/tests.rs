@@ -17,7 +17,7 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::frontend::payload::{BrushSource, PushClipPayload};
+use crate::renderer::frontend::payload::{BrushSource, CurveBasis, PushClipPayload};
 use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
 use crate::renderer::gradient_atlas::handle::{SharedGradientAtlas, internals::registration_count};
 use crate::scene::damage::region::DamageRegion;
@@ -588,7 +588,6 @@ fn screen_rects_by_fill(cmds: &RecordedPaint) -> Vec<(ColorF16, Rect)> {
             | PaintCall::Polyline(_)
             | PaintCall::Image { .. }
             | PaintCall::Curve(_)
-            | PaintCall::Arc(_)
             | PaintCall::Triangle(_) => {}
         }
     }
@@ -1311,14 +1310,21 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
         .calls
         .iter()
         .find_map(|command| match command {
-            PaintCall::Arc(payload) => Some(payload),
+            PaintCall::Curve(payload) => Some(payload),
             _ => None,
         })
-        .expect("spun arc must emit a DrawArc");
+        .expect("spun arc must emit a curve draw");
     assert!(p.rotation != 0.0, "spin must sample a non-zero rotation");
-    // Geometry rides owner-local and unrotated.
-    assert_eq!(p.center, Vec2::new(50.0, 20.0));
-    assert_eq!((p.a0, p.a1), (0.0, PI));
+    // Geometry rides owner-local and unrotated, on the arc basis.
+    assert_eq!(
+        p.basis,
+        CurveBasis::Arc {
+            center: Vec2::new(50.0, 20.0),
+            radius: 10.0,
+            a0: 0.0,
+            a1: PI,
+        },
+    );
 
     // Centerline bbox spans (40,20)..(60,30) (endpoints + the π/2
     // crossing). Sweeping it about owner centre c = (40, 20) gives

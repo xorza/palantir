@@ -10,7 +10,7 @@ use crate::primitives::span::Span;
 use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    CurveBasis, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
@@ -1130,19 +1130,12 @@ impl PaintSink for ComposeSession<'_> {
 
     fn curve(&mut self, p: DrawCurvePayload) {
         let scale = self.display.scale_factor;
-        let display = self.display;
-        let width_phys = p.width * self.current_transform.scale * scale;
+        let xform = self.current_transform;
+        let width_phys = p.width * xform.scale * scale;
         let cap = p.cap;
-        let bbox_urect = stroke_bbox_urect(
-            self.current_transform,
-            p.bbox,
-            p.origin,
-            width_phys,
-            cap,
-            None,
-            display,
-        );
-        // Clip-cull + batch-close: curve sits above text in the
+        let bbox_urect =
+            stroke_bbox_urect(xform, p.bbox, p.origin, width_phys, cap, None, self.display);
+        // Clip-cull + batch-close: a curve sits above text in the
         // kind order (same as mesh/image), so a surviving draw
         // closes the open text batch first.
         if !self
@@ -1151,127 +1144,99 @@ impl PaintSink for ComposeSession<'_> {
         {
             return;
         }
-        // Transform control points to physical px. Owner
-        // origin folds in here so the record stays
-        // owner-local (cross-frame stable). No pixel
-        // snapping — snapping control points would warp
-        // the curve shape; AA fringe lives in the shader.
-        // Paint-time spin rotates the control points about
-        // the payload-bbox centre first (the encoder's
-        // pivot contract, see `spin_bbox`) — exact for a
-        // bezier by affine invariance.
-        let mut ctrl = [p.p0, p.p1, p.p2, p.p3];
-        if p.rotation != 0.0 {
-            let pivot = p.bbox.center();
-            let rotor = Vec2::from_angle(p.rotation);
-            for q in &mut ctrl {
-                *q = rotor.rotate(*q - pivot) + pivot;
-            }
-        }
-        let [p0, p1, p2, p3] =
-            ctrl.map(|q| self.current_transform.apply_point(q + p.origin) * scale);
-        // Adaptive sub-instance count from post-transform
-        // control-polygon length. Polygon length bounds
-        // arc length from above — slight overshoot, but
-        // never undershoots → no faceting from too-coarse
-        // sampling. Near-straight cubics (`Shape::line`
-        // lowers as one; graph wires often relax to one)
-        // short-circuit to a single instance: every chord
-        // of a flat curve lies on the segment, so the 16
-        // baked chords render it exactly at any length.
-        let n = if cubic_is_flat(p0, p1, p2, p3) {
-            1
-        } else {
-            let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
-            sub_instance_count(l)
+        // Owner origin folds in here so the record stays owner-local
+        // (cross-frame stable). No pixel snapping — snapping geometry
+        // would warp the traced shape; the AA fringe lives in the
+        // shader.
+        let to_phys = |q: Vec2| xform.apply_point(q + p.origin) * scale;
+        // Paint-time spin is about the payload-bbox centre, which the
+        // encoder guarantees is the owner-box pivot whenever
+        // `rotation != 0` (see `spin_bbox`). Both bases below rotate
+        // about it exactly — a Bézier by affine invariance, a circle by
+        // moving its centre and shifting both angles.
+        let pivot = p.bbox.center();
+        let rotor = (p.rotation != 0.0).then(|| Vec2::from_angle(p.rotation));
+        // Style lanes are basis-independent; each arm below fills in
+        // the geometry and its own `kind`.
+        let color: ColorU8 = p.color.into();
+        let proto = CurveInstance {
+            width: width_phys,
+            color0: color,
+            color1: color,
+            cap: cap_lanes(cap as u32, cap as u32),
+            fill_kind: p.fill_kind,
+            fill_lut_row: p.fill_lut_row,
+            ..bytemuck::Zeroable::zeroed()
         };
-        let color: ColorU8 = p.color.into();
-        push_sub_instances(
-            self.out,
-            n,
-            CurveInstance {
-                p0,
-                p1,
-                p2,
-                p3,
-                width: width_phys,
-                color0: color,
-                color1: color,
-                cap: cap_lanes(cap as u32, cap as u32),
-                fill_kind: p.fill_kind,
-                fill_lut_row: p.fill_lut_row,
-                kind: CURVE_KIND_CUBIC,
-                ..bytemuck::Zeroable::zeroed()
-            },
-        );
-    }
-
-    fn arc(&mut self, p: DrawArcPayload) {
-        let scale = self.display.scale_factor;
-        let display = self.display;
-        let width_phys = p.width * self.current_transform.scale * scale;
-        let cap = p.cap;
-        let bbox_urect = stroke_bbox_urect(
-            self.current_transform,
-            p.bbox,
-            p.origin,
-            width_phys,
-            cap,
-            None,
-            display,
-        );
-        if !self
-            .composer
-            .enter_higher_kind(PaintTier::Curve, bbox_urect, self.out)
-        {
-            return;
-        }
-        // Paint-time spin: rotate the center about the
-        // payload-bbox centre (the encoder guarantees
-        // `bbox.center()` is the owner-box pivot when
-        // `rotation != 0`, same contract as DrawPolyline)
-        // and shift both angles — exact for a circle, no
-        // control-point rotation needed.
-        let mut center = p.center;
-        let mut a0 = p.a0;
-        let mut a1 = p.a1;
-        if p.rotation != 0.0 {
-            let pivot = p.bbox.center();
-            center = Vec2::from_angle(p.rotation).rotate(center - pivot) + pivot;
-            a0 += p.rotation;
-            a1 += p.rotation;
-        }
-        // The transform stack is translate + uniform scale
-        // (no rotation/skew — see `TranslateScale`), so a
-        // circle maps to a circle: transform the center,
-        // scale the radius. Angles pass through untouched.
-        let center_phys = self.current_transform.apply_point(center + p.origin) * scale;
-        let radius_phys = p.radius * self.current_transform.scale * scale;
-        // Adaptive sub-instance count from the *exact* arc
-        // length `r·|sweep|` — no control-polygon overshoot.
-        // Same ~1.5 px chord target as the cubic path; at
-        // that density the chord sagitta is `≈ c²/(8r)` ≤
-        // 0.3 px even at r = 1, buried under the AA fringe.
-        let n = sub_instance_count(radius_phys * (a1 - a0).abs());
-        let color: ColorU8 = p.color.into();
-        push_sub_instances(
-            self.out,
-            n,
-            CurveInstance {
-                p0: center_phys,
-                p1: Vec2::new(radius_phys, 0.0),
-                p2: Vec2::new(a0, a1),
-                p3: Vec2::ZERO,
-                width: width_phys,
-                color0: color,
-                color1: color,
-                cap: cap_lanes(cap as u32, cap as u32),
-                fill_kind: p.fill_kind,
-                fill_lut_row: p.fill_lut_row,
-                kind: CURVE_KIND_ARC,
-                ..bytemuck::Zeroable::zeroed()
-            },
-        );
+        let (proto, n) = match p.basis {
+            CurveBasis::Cubic { p0, p1, p2, p3 } => {
+                let mut ctrl = [p0, p1, p2, p3];
+                if let Some(rotor) = rotor {
+                    for q in &mut ctrl {
+                        *q = rotor.rotate(*q - pivot) + pivot;
+                    }
+                }
+                let [p0, p1, p2, p3] = ctrl.map(to_phys);
+                // Adaptive sub-instance count from the post-transform
+                // control-polygon length. Polygon length bounds arc
+                // length from above — slight overshoot, but never
+                // undershoots → no faceting from too-coarse sampling.
+                // Near-straight cubics (`Shape::line` lowers as one;
+                // graph wires often relax to one) short-circuit to a
+                // single instance: every chord of a flat curve lies on
+                // the segment, so the 16 baked chords render it exactly
+                // at any length.
+                let n = if cubic_is_flat(p0, p1, p2, p3) {
+                    1
+                } else {
+                    let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
+                    sub_instance_count(l)
+                };
+                let proto = CurveInstance {
+                    p0,
+                    p1,
+                    p2,
+                    p3,
+                    kind: CURVE_KIND_CUBIC,
+                    ..proto
+                };
+                (proto, n)
+            }
+            CurveBasis::Arc {
+                center,
+                radius,
+                mut a0,
+                mut a1,
+            } => {
+                let mut center = center;
+                if let Some(rotor) = rotor {
+                    center = rotor.rotate(center - pivot) + pivot;
+                    a0 += p.rotation;
+                    a1 += p.rotation;
+                }
+                // The transform stack is translate + uniform scale (no
+                // rotation/skew — see `TranslateScale`), so a circle
+                // maps to a circle: transform the centre, scale the
+                // radius. Angles pass through untouched.
+                let radius_phys = radius * xform.scale * scale;
+                // Adaptive sub-instance count from the *exact* arc
+                // length `r·|sweep|` — no control-polygon overshoot.
+                // Same ~1.5 px chord target as the cubic path; at that
+                // density the chord sagitta is `≈ c²/(8r)` ≤ 0.3 px
+                // even at r = 1, buried under the AA fringe.
+                let n = sub_instance_count(radius_phys * (a1 - a0).abs());
+                let proto = CurveInstance {
+                    p0: to_phys(center),
+                    p1: Vec2::new(radius_phys, 0.0),
+                    p2: Vec2::new(a0, a1),
+                    p3: Vec2::ZERO,
+                    kind: CURVE_KIND_ARC,
+                    ..proto
+                };
+                (proto, n)
+            }
+        };
+        push_sub_instances(self.out, n, proto);
     }
 
     fn polyline(&mut self, p: DrawPolylinePayload) {

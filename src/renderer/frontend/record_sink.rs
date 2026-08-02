@@ -19,8 +19,8 @@
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
+    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
+    DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 
@@ -106,7 +106,6 @@ paint_calls! {
     Mesh(DrawMeshPayload) => mesh,
     Polyline(DrawPolylinePayload) => polyline,
     Curve(DrawCurvePayload) => curve,
-    Arc(DrawArcPayload) => arc,
     Triangle(DrawTrianglePayload) => triangle,
     --
     PopClip => pop_clip,
