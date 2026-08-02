@@ -4,11 +4,6 @@
   is called from a loop in `allocate`; `allocate` also prefers eviction
   over growth, so the mask atlas parks at 1024² and pays the scan for
   every new raster under churn.
-- `CosmicMeasure`'s probation tier does not hold the population it was
-  written for: `TextEncoder::encode_run` → `extract_glyphs` →
-  `ensure_buffer` → `cache_hit` promotes a buffer to the 120-frame
-  protected window on the same frame it was inserted, so resize/zoom
-  drags retain ~`120 × visible runs` shaped buffers.
 - `MeasureCache::refresh_snapshots` rebuilds the whole `WidgetId` map
   whenever the descriptor id sequence changes at all — every frame
   during virtualized-list scroll or any widget add/remove.
