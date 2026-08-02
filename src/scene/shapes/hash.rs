@@ -36,8 +36,8 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             hash_optional_rect(*local_rect, &mut h);
             corners.hash(&mut h);
             hash_brush(fill, *fill_grad_hash, &mut h);
-            // Pod-byte hash for `(color, width)` — one `write()` dispatch.
-            h.write(bytemuck::bytes_of(stroke));
+            // Pod-byte hash for `(color, width)` — one dispatch.
+            h.pod(stroke);
         }
         // `content_hash` already folds width + color_mode + cap + join
         // + points + colors; bbox/spans are frame-local and excluded.
@@ -179,7 +179,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             approx::hash_visual_vec2(*c, &mut h);
             approx::hash_visual_f32(*radius, &mut h);
             fill.hash(&mut h);
-            h.write(bytemuck::bytes_of(stroke));
+            h.pod(stroke);
         }
     }
     ContentHash(h.finish())

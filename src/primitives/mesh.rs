@@ -1,10 +1,10 @@
+use crate::common::hash::Hasher;
 use crate::primitives::rect::Rect;
 use crate::primitives::{approx, color::ColorU8};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
-use rustc_hash::FxHasher;
 use std::cell::Cell;
-use std::hash::Hasher;
+use std::hash::Hasher as _;
 
 /// One vertex of a user-supplied mesh. 12 B (pos 8 + color 4), no
 /// padding — directly castable into a wgpu vertex buffer.
@@ -113,12 +113,12 @@ impl Mesh {
         if let Some(h) = self.cached_hash.get() {
             return h;
         }
-        let mut h = FxHasher::default();
+        let mut h = Hasher::new();
         for vertex in &self.vertices {
             approx::hash_visual_vec2(vertex.pos, &mut h);
             h.write_u32(vertex.color.to_u32());
         }
-        h.write(bytemuck::cast_slice(self.indices.as_slice()));
+        h.pod_slice(self.indices.as_slice());
         let v = h.finish();
         self.cached_hash.set(Some(v));
         v

@@ -10,7 +10,7 @@
 //! [`Shape`]: crate::shape::Shape
 
 use crate::common::content_hash::ContentHash;
-use crate::common::hash::Hasher as FxHasher;
+use crate::common::hash::Hasher;
 use crate::primitives::approx;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
@@ -30,7 +30,7 @@ use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 use std::f32::consts::TAU;
-use std::hash::Hasher;
+use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeInput<'a> {
@@ -57,7 +57,7 @@ pub(super) struct LoweredBrush {
 /// `GradientId`, so downstream cache keys don't need the store.
 #[inline]
 fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
-    let mut h = FxHasher::new();
+    let mut h = Hasher::new();
     h.write_u8(tag);
     g.hash(&mut h);
     h.finish()
@@ -178,7 +178,7 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
         fill_tag,
         ..bytemuck::Zeroable::zeroed()
     };
-    let mut h = FxHasher::new();
+    let mut h = Hasher::new();
     h.pod(&packed);
     let hash = ContentHash(h.finish());
     ChromeRow {
@@ -240,11 +240,11 @@ pub(super) fn polyline(
     // Hash contract for polyline records: no variant tag needed —
     // polylines are the only shape lowering into this record, and
     // `compute_record_hash` writes the record tag anyway.
-    let mut h = FxHasher::new();
+    let mut h = Hasher::new();
     for &point in points {
         approx::hash_visual_vec2(point, &mut h);
     }
-    h.write(bytemuck::cast_slice(lowered_colors));
+    h.pod_slice(lowered_colors);
     let style = (approx::canon_bits(width) as u64) << 24
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
