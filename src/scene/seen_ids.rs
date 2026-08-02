@@ -24,7 +24,7 @@
 //!    [`crate::text::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per application frame from
-//!    [`crate::Ui::finalize_frame`]; `prev` stays anchored at the last
+//!    `FrameCycle::finalize_frame`; `prev` stays anchored at the last
 //!    *painted* frame regardless of how many discard passes ran. Ids
 //!    seen only in a discarded pass (double-layout pass A, cold-start
 //!    warmup) are collected into `discarded` at the next `pre_record`

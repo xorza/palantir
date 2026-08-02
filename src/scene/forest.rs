@@ -39,7 +39,7 @@ pub(crate) struct Forest {
     pub(crate) scratch: PerLayer<RecordingScratch>,
     /// Per-frame `WidgetId` tracker. Mutated by `open_node` (collision
     /// detection + auto-id disambiguation), reset by `pre_record`, and
-    /// rolled over by `Ui::finalize_frame` (which fans `ids.removed`
+    /// rolled over by `FrameCycle::finalize_frame` (which fans `ids.removed`
     /// out to per-widget caches). Lives on `Forest` so any path that
     /// reaches `open_node` — including direct callers that bypass
     /// `Widget::record` — gets the same collision check.

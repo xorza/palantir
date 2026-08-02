@@ -116,7 +116,7 @@ impl Watches {
     }
 
     /// Capacity-retained pre-record clear. Called from
-    /// [`Ui::record_pass`](crate::Ui) before every full record
+    /// `FrameCycle::record_pass` before every full record
     /// (including pass B of a double-layout frame).
     pub(super) fn clear(&mut self) {
         self.pointer_mask = PointerWake::NONE;

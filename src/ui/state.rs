@@ -8,7 +8,7 @@
 //! two rows live in different stores and don't see each other. Not
 //! checked; debug aid wasn't worth a hashmap probe per call.
 //!
-//! Sweep: when a widget stops being recorded, `Ui::finalize_frame`
+//! Sweep: when a widget stops being recorded, `FrameCycle::finalize_frame`
 //! calls `sweep_removed` with the diff (once per frame, after the
 //! final record pass); each per-T store `swap_remove`s affected rows
 //! and patches the swapped neighbour's index in O(1) using the

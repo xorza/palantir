@@ -226,7 +226,7 @@ impl CascadeEngine {
 
 /// Fingerprint of everything [`CascadeEngine::run`] reads, cheaply.
 /// Equal fingerprints across two frames ⇒ identical cascade output, so
-/// `Ui::post_record` skips the run and reuses last frame's `Cascade`
+/// `FrameCycle::post_record` skips the run and reuses last frame's `Cascade`
 /// (O5 stage 0 — full-frame skip, gated on the frame runtime's cascade fingerprint).
 /// Folds:
 /// - the exact surface (a sub-quantum resize can hit the measure

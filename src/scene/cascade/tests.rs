@@ -968,7 +968,7 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
 ///
 /// Two hand-maintained enumerations decide whether cascade output can be
 /// reused. `cascade_fingerprint` is the outer one — a match in
-/// `Ui::post_record` skips `CascadeEngine::run` outright and reuses last
+/// `FrameCycle::post_record` skips `CascadeEngine::run` outright and reuses last
 /// frame's `Cascade` verbatim. `can_update` is the inner one, choosing
 /// between repairing paint in place and rebuilding every row. Neither
 /// references the other, and both fail silently: the outer one by

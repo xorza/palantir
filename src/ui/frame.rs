@@ -28,8 +28,8 @@ impl WakeReasons {
     /// future paint. Requires a full record + measure + arrange +
     /// cascade pass.
     pub(crate) const REAL: Self = Self(1 << 0);
-    /// Paint-anim quantum boundary, filed in `Ui::post_record` from
-    /// `Forest::post_record`'s `min_wake`. On its own, only needs a
+    /// Paint-anim quantum boundary, filed in `FrameCycle::run` from
+    /// `Forest::min_paint_anim_wake`. On its own, only needs a
     /// damage compute + paint — record/post-record output from the
     /// prior frame is reused as-is.
     pub(crate) const ANIM: Self = Self(1 << 1);
@@ -176,7 +176,7 @@ pub(super) enum FramePlan {
 impl FrameRuntime {
     /// Record whether `post_record` ran the cascade this frame. Same
     /// principle as the probe structs: the gate lives here, so the call
-    /// site in `Ui::post_record` carries none.
+    /// site in `FrameCycle::post_record` carries none.
     #[inline]
     pub(crate) fn note_cascade_ran(&mut self, #[allow(unused_variables)] ran: bool) {
         #[cfg(test)]

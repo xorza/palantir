@@ -6,7 +6,7 @@
 //!
 //! **Doesn't measure GPU work.** `WgpuBackend::submit` (render-pass
 //! setup, scissor changes, queue submission) is not exercised — this
-//! is `Ui::post_record` time only. Decisions about per-pass cost
+//! is `FrameCycle::post_record` time only. Decisions about per-pass cost
 //! (e.g. proximity-merge thresholds) need a GPU-aware bench.
 //!
 //! `UiHarness::new(SURFACE)` leaves the cosmic shaper unset, so text measurement
@@ -117,7 +117,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
         });
 }
 
-/// Drive the ack-the-frame contract during benches. `Ui::pre_record`
+/// Drive the ack-the-frame contract during benches. `FrameCycle::record_pass`
 /// auto-rewinds damage if the previous `FrameOutput` wasn't marked
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.

@@ -361,7 +361,7 @@ pub(crate) struct InputState {
     pub(crate) signal_since_last_frame: InputSignal,
     /// Wake-gate watches ([`PointerWake`] / [`KeyboardWake`]
     /// flag masks + specific-chord list). Cleared pre-record (in
-    /// `Ui::record_pass`); widgets re-assert each active frame. The
+    /// `FrameCycle::record_pass`); widgets re-assert each active frame. The
     /// masks **persist across silent frames** — that's the wake
     /// signal a dormant popup needs to be paged in by the next click.
     /// `on_input` short-circuits on the masks before touching event
@@ -903,7 +903,7 @@ impl InputState {
         }
     }
 
-    /// Once-per-frame close-out (from `Ui::finalize_frame`, after the
+    /// Once-per-frame close-out (from `FrameCycle::finalize_frame`, after the
     /// final record pass): recompute hover, drop transient per-frame
     /// flags, evict captured widgets that disappeared from the tree.
     /// Call after `CascadeEngine::run` (whose result `cascade` is
