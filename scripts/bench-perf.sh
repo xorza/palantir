@@ -130,20 +130,40 @@ GOV=$(cat /sys/devices/system/cpu/cpu${PIN_CPU}/cpufreq/scaling_governor 2>/dev/
 [ "$GOV" != "performance" ] && echo "    NOTE: governor=$GOV (not 'performance') — frequency scaling adds variance."
 
 # ── Build ────────────────────────────────────────────────────────────
+# STRIP=none is load-bearing when palantir is built inside an enclosing
+# workspace: cargo ignores `[profile.*]` from non-root packages, so
+# palantir's own `strip = "none"` never applies and the host workspace's
+# bench profile can strip the symtab, leaving perf with raw addresses.
+# DEBUG=2 (not line-tables-only) is what carries the inline records
+# `perf --inline` needs — under `lto = "fat"` most of the frame pipeline
+# is inlined and invisible without them.
 echo "==> Building bench '$BENCH_NAME' with debug symbols"
 CARGO_BUILD_ARGS=(--bench "$BENCH_NAME")
 [ -n "$FEATURES_ARG" ] && CARGO_BUILD_ARGS+=(--features "$FEATURES_ARG")
-CARGO_PROFILE_BENCH_DEBUG=line-tables-only \
-    cargo bench "${CARGO_BUILD_ARGS[@]}" --no-run 2>&1 | tail -3
+BUILD_LOG=$(CARGO_PROFILE_BENCH_STRIP=none CARGO_PROFILE_BENCH_DEBUG=2 \
+    cargo bench "${CARGO_BUILD_ARGS[@]}" --no-run 2>&1)
+echo "$BUILD_LOG" | tail -3
 
-# Criterion writes to the workspace target; palantir is a git submodule so
-# its package dir isn't the workspace root — search up for target/release.
-BENCH_BIN=""
-for d in target ../target; do
-    cand=$(ls -t "$d/release/deps/${BENCH_NAME}"-* 2>/dev/null | grep -vE '\.(d|so)$' | head -1)
-    [ -n "$cand" ] && { BENCH_BIN=$cand; break; }
-done
+# Take the path cargo just printed rather than guessing by mtime: a
+# newer binary from a different feature/flag set (a plain `cargo bench`
+# run) otherwise wins the `ls -t` race and gets profiled instead.
+BENCH_BIN=$(echo "$BUILD_LOG" \
+    | sed -n "s/.*Executable .*(\(.*${BENCH_NAME}-[0-9a-f]*\))$/\1/p" | tail -1)
+if [ ! -x "$BENCH_BIN" ]; then
+    # Criterion writes to the workspace target; palantir is a git submodule so
+    # its package dir isn't the workspace root — search up for target/release.
+    BENCH_BIN=""
+    for d in target ../target; do
+        cand=$(ls -t "$d/release/deps/${BENCH_NAME}"-* 2>/dev/null | grep -vE '\.(d|so)$' | head -1)
+        [ -n "$cand" ] && { BENCH_BIN=$cand; break; }
+    done
+fi
 [ -x "$BENCH_BIN" ] || { echo "error: could not locate built bench binary for '$BENCH_NAME'" >&2; exit 1; }
+if ! nm "$BENCH_BIN" >/dev/null 2>&1; then
+    echo "    WARNING: '$BENCH_BIN' has no symbol table — perf will report raw" >&2
+    echo "             addresses. An enclosing workspace's [profile.bench] is" >&2
+    echo "             overriding strip/debug; see docs/frame-bench-hotspots.md." >&2
+fi
 echo "    binary: $BENCH_BIN"
 echo "    pinned to CPU $PIN_CPU   callgraph: $CALLGRAPH_MODE"
 [ -n "$FILTER_ARG" ] && echo "    filter: $FILTER_ARG"
@@ -152,6 +172,16 @@ rm -f "$PERF_DATA" "$PERF_REPORT" "$PERF_STAT" "$PERF_MICRO" \
       "$PERF_IBS_DATA" "$PERF_IBS" "$PERF_MEM_DATA" "$PERF_MEM" "$PERF_DATA.old"
 
 run() { taskset -c "$PIN_CPU" "$@" "$BENCH_BIN" "${BENCH_ARGS[@]}"; }
+
+# perf demangles legacy Rust symbols but not the v0 scheme rustc emits
+# now, so every palantir frame would read as `_RNvMNtNt…`. rustfilt
+# handles both; without it the reports stay mangled but usable.
+if command -v rustfilt >/dev/null 2>&1; then
+    demangle() { rustfilt; }
+else
+    echo "    NOTE: rustfilt not on PATH — symbols stay v0-mangled (cargo install rustfilt)"
+    demangle() { cat; }
+fi
 
 # ── perf stat: hardware counters ─────────────────────────────────────
 # AMD has a single homogeneous `cpu` PMU; Intel hybrid needs the explicit
@@ -218,7 +248,7 @@ echo "==> perf record (-F $PERF_FREQ ${CG[*]} -e $CG_EVENT)"
 run perf record -F "$PERF_FREQ" "${CG[@]}" -e "$CG_EVENT" -o "$PERF_DATA" >/dev/null 2>&1 \
   || echo "    (record failed — check paranoid level)"
 [ -f "$PERF_DATA" ] && perf report -i "$PERF_DATA" --stdio --no-children -g none \
-  --percent-limit 1.0 >"$PERF_REPORT" 2>/dev/null
+  --percent-limit 1.0 2>/dev/null | demangle >"$PERF_REPORT"
 
 # ── Precise-IP pass (no skid): AMD IBS / Intel PEBS ──────────────────
 # Regular cycles sampling skids the recorded IP past the costly
@@ -233,7 +263,7 @@ if [ -z "${SKIP_IBS:-}" ]; then
         echo "==> perf record (IBS precise, ibs_op// -c $IBS_PERIOD)"
         run perf record -e ibs_op// -c "$IBS_PERIOD" -o "$PERF_IBS_DATA" >/dev/null 2>&1 \
           && perf report -i "$PERF_IBS_DATA" --stdio --no-children -g none \
-             --percent-limit 1.0 >"$PERF_IBS" 2>/dev/null \
+             --percent-limit 1.0 2>/dev/null | demangle >"$PERF_IBS" \
           || echo "    (IBS record failed — needs paranoid <= -1 / CAP_PERFMON)"
       else
         echo "==> (IBS unavailable: no ibs_op PMU)"
@@ -243,7 +273,7 @@ if [ -z "${SKIP_IBS:-}" ]; then
       echo "==> perf record (PEBS precise, cpu_core/cycles/ppp -F $PERF_FREQ)"
       run perf record -F "$PERF_FREQ" -e cpu_core/cycles/ppp -o "$PERF_IBS_DATA" >/dev/null 2>&1 \
         && perf report -i "$PERF_IBS_DATA" --stdio --no-children -g none \
-           --percent-limit 1.0 >"$PERF_IBS" 2>/dev/null \
+           --percent-limit 1.0 2>/dev/null | demangle >"$PERF_IBS" \
         || echo "    (PEBS record failed)"
       ;;
   esac
@@ -264,7 +294,7 @@ if [ -z "${SKIP_MEM:-}" ]; then
   esac
   if [ "${MEM_OK:-0}" = 1 ]; then
     perf mem report -i "$PERF_MEM_DATA" --stdio --sort=mem,sym,dso \
-      --percent-limit 1.0 >"$PERF_MEM" 2>/dev/null || echo "    (perf mem report failed)"
+      --percent-limit 1.0 2>/dev/null | demangle >"$PERF_MEM" || echo "    (perf mem report failed)"
   else
     echo "    (perf mem unavailable — needs IBS/PEBS + paranoid <= 0)"
   fi
