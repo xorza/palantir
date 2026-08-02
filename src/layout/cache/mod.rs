@@ -289,18 +289,26 @@ impl MeasureCache {
         let has_text = !text_shapes.is_empty();
         if has_text {
             self.current.text_shapes.extend_from_slice(text_shapes);
-            self.text_bounds.clear();
+            // Bare `resize`, no `clear` first: the loop below writes
+            // every slot, so the fill value is irrelevant and clearing
+            // would only add a truncate-then-regrow round trip at a
+            // steady tree size. Same convention as
+            // `SubtreeRollups::reset_for`.
             self.text_bounds.resize(node_count, Span::default());
             let mut owned_text_count = 0u32;
             for (index, span) in text_spans.iter().copied().enumerate() {
-                if span.len != 0 {
-                    let stored = Span::new(text_base + span.start, span.len);
-                    self.current.nodes.text_spans.push(stored);
-                    self.text_bounds[index] = stored;
-                    owned_text_count += span.len;
+                // Both arms assign, which is what makes the column
+                // total. A text-less node used to inherit the reset's
+                // default, so dropping that reset without this would let
+                // a longer previous tree's bound leak through.
+                let stored = if span.len == 0 {
+                    Span::default()
                 } else {
-                    self.current.nodes.text_spans.push(Span::default());
-                }
+                    owned_text_count += span.len;
+                    Span::new(text_base + span.start, span.len)
+                };
+                self.current.nodes.text_spans.push(stored);
+                self.text_bounds[index] = stored;
             }
             debug_assert_eq!(owned_text_count as usize, text_shapes.len());
 
@@ -331,7 +339,8 @@ impl MeasureCache {
         let layouts = tree.records.layout();
         let has_grids = !tree.grid_defs.is_empty();
         if has_grids {
-            self.hug_offsets.clear();
+            // Every slot `0..=node_count` is assigned below, so this
+            // wants the length, not the zeroes.
             self.hug_offsets.resize(node_count + 1, 0);
             for (index, layout) in layouts.iter().copied().enumerate() {
                 self.hug_offsets[index] = self.current.hugs.len() as u32;
