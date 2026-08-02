@@ -32,10 +32,17 @@ impl<'de> Deserialize<'de> for Color {
     }
 }
 
+/// Parse `#rrggbb` / `#rrggbbaa` (the `#` optional) into an sRGB
+/// [`Color`]. Deserialization input is untrusted, so every rejection is
+/// an `Err` — the length arms select on **bytes** and each digit is
+/// decoded by hand, because indexing the `str` instead would panic on a
+/// char boundary for any 6- or 8-*byte* non-ASCII input (`"日本"` is
+/// exactly six bytes), and delegating to `u8::from_str_radix` would
+/// accept its leading `+` sign as a hex digit position.
 fn parse_hex(value: &str) -> Result<Color, &'static str> {
-    let body = value.strip_prefix('#').unwrap_or(value);
+    let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
     let parse_byte = |index: usize| -> Result<u8, &'static str> {
-        u8::from_str_radix(&body[index..index + 2], 16).map_err(|_| "invalid hex digit")
+        Ok(hex_nibble(body[index])? << 4 | hex_nibble(body[index + 1])?)
     };
     match body.len() {
         6 => Ok(Color::rgb_u8(
@@ -50,6 +57,17 @@ fn parse_hex(value: &str) -> Result<Color, &'static str> {
             parse_byte(6)?,
         )),
         _ => Err("expected #rrggbb or #rrggbbaa"),
+    }
+}
+
+/// One hex digit's value, either case. Anything else — including every
+/// non-ASCII byte — is a rejection.
+const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err("invalid hex digit"),
     }
 }
 
@@ -330,6 +348,17 @@ mod tests {
             parse_hex("#3266cc80").unwrap(),
             Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
         );
+        // Either digit case, both lengths. The serializer only ever
+        // emits lowercase, so nothing else pins that a hand-written
+        // uppercase theme file still parses.
+        assert_eq!(
+            parse_hex("#3266CC").unwrap(),
+            Color::rgb_u8(0x32, 0x66, 0xcc)
+        );
+        assert_eq!(
+            parse_hex("#3266CC80").unwrap(),
+            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
+        );
     }
 
     #[test]
@@ -340,5 +369,16 @@ mod tests {
         assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
         assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
         assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
+        // Regression: the length arms select on bytes, so these reach a
+        // digit decode rather than a `str` index. `"日本"` is 6 bytes and
+        // `"αβγδ"` is 8, hitting both arms; indexing the `str` split a
+        // char boundary and panicked instead of rejecting the input —
+        // in a deserializer whose whole job is to reject it.
+        assert!(parse_hex("日本").is_err(), "6-byte non-ASCII");
+        assert!(parse_hex("#日本").is_err(), "6-byte non-ASCII, hashed");
+        assert!(parse_hex("αβγδ").is_err(), "8-byte non-ASCII");
+        // `u8::from_str_radix` accepts a leading sign, so the old parser
+        // read `"+a+b+c"` as rgb(10, 11, 12).
+        assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
     }
 }
