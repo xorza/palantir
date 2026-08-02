@@ -88,7 +88,7 @@ impl ScrollbarsDef {
 }
 
 /// Thumb extent and travel along one axis, or `None` when the bar can't
-/// be drawn meaningfully — a non-positive track, or content that fits.
+/// be drawn meaningfully — a non-positive viewport, or content that fits.
 /// The "content fits" arm is what makes an idle scroll show no thumb.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) struct BarGeometry {
@@ -96,20 +96,23 @@ pub(crate) struct BarGeometry {
     pub(crate) thumb_offset: f32,
 }
 
+/// A bar's track always spans its axis' whole viewport extent, so
+/// `viewport` is both the ratio the thumb expresses and the length it
+/// travels along. The two used to be separate parameters that every call
+/// site filled with the same expression.
 pub(crate) fn bar_geometry(
     viewport: f32,
     content: f32,
     offset: f32,
-    track_len: f32,
     min_thumb: f32,
 ) -> Option<BarGeometry> {
-    if track_len <= 0.0 || content <= viewport {
+    if viewport <= 0.0 || content <= viewport {
         return None;
     }
-    let raw = viewport / content * track_len;
-    let thumb_size = raw.max(min_thumb).min(track_len);
+    let raw = viewport / content * viewport;
+    let thumb_size = raw.max(min_thumb).min(viewport);
     let max_off = (content - viewport).max(f32::EPSILON);
-    let travel = (track_len - thumb_size).max(0.0);
+    let travel = (viewport - thumb_size).max(0.0);
     let thumb_offset = (offset / max_off).clamp(0.0, 1.0) * travel;
     Some(BarGeometry {
         thumb_size,
@@ -146,7 +149,6 @@ fn axis_rects(
         main,
         axis.main(scaled_content),
         axis.main_v(def.offset),
-        main,
         def.min_thumb,
     )?;
     // The bar sits in the far-edge strip of the *outer* extent, not the

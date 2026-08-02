@@ -131,20 +131,6 @@ fn root_available(layer: Layer, slot: &RootSlot, surface: Rect) -> Size {
 /// per node and a tree that large exhausts memory first.
 const NO_ARRANGE_SRC: u32 = u32::MAX;
 
-/// CPU nanoseconds the last [`LayoutEngine::run`] spent in each half of
-/// the layout pass, summed over every root in every layer.
-///
-/// Split because the cross-frame cache covers only the first half.
-/// [`MeasureCache::try_lookup`] can short-circuit an entire subtree — in
-/// steady state the root itself, so measure collapses to a few whole-tree
-/// `copy_from_slice`s — while [`LayoutEngine::arrange`] walks every node
-/// with full driver dispatch regardless. A whole-`run` number averages
-/// that asymmetry away; these two are what make it visible.
-///
-/// The sliver between the two (resolving the root's own size from
-/// `desired`) is charged to neither: it is one `arrange_size` call per
-/// root, independent of tree size.
-///
 /// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).

@@ -35,7 +35,19 @@
 
 use crate::primitives::widget_id::WidgetId;
 
-/// Measure / arrange split for one `LayoutEngine::run`.
+/// CPU nanoseconds one `LayoutEngine::run` spent in each half of the
+/// layout pass, summed over every root in every layer.
+///
+/// Split because the cross-frame cache covers only the first half.
+/// `MeasureCache::try_lookup` can short-circuit an entire subtree — in
+/// steady state the root itself, so measure collapses to a few whole-tree
+/// `copy_from_slice`s — while `LayoutEngine::arrange` walks every node
+/// with full driver dispatch regardless. A whole-`run` number averages
+/// that asymmetry away; these two are what make it visible.
+///
+/// The sliver between the two (resolving the root's own size from
+/// `desired`) is charged to neither: it is one `arrange_size` call per
+/// root, independent of tree size.
 ///
 /// `internals`-gated rather than test-gated: the `caches` bench is the
 /// only consumer, and the four clock reads per root per frame are no

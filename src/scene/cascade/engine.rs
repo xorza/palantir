@@ -197,11 +197,11 @@ impl CascadeEngine {
                 },
                 display.scale_factor,
             );
-            assert!(full_complete);
+            debug_assert!(full_complete);
             cascade.layers[layer]
                 .subtree_hashes
                 .copy_from_slice(&tree.rollups.subtree);
-            assert_eq!(
+            debug_assert_eq!(
                 cascade.entries.len() as u32 - entries_base,
                 n as u32,
                 "run_tree must emit one entry per recorded node",

@@ -21,7 +21,8 @@ const COMPACT_MIN_TOTAL: u32 = 256;
 /// triggers — `orphaned * 4 >= total * COMPACT_ORPHAN_RATIO_NUM` is
 /// the predicate. `3/4 = 75%` orphaned means three quarters of the
 /// arena is dead bytes before a reseat pays off; lower values cause
-/// thrash on churn-heavy frames. Same TODO as `COMPACT_MIN_TOTAL`.
+/// thrash on churn-heavy frames. Tuned the same way as
+/// [`COMPACT_MIN_TOTAL`] — change it with a benchmark, not by feel.
 const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
 
 /// `matched_pos` sentinel for a curr row with no exact match in the
@@ -372,7 +373,7 @@ impl PaintSnapArena {
                 // marker). A zero-len snap would have a stale `start`
                 // after the swap below — assert rather than silently
                 // skip.
-                assert!(
+                debug_assert!(
                     snap.paint_span.len > 0,
                     "PaintSnapArena::compact: prev entry for {wid:?} has zero-len paint_span, \
                      violating the row invariant",

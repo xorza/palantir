@@ -574,13 +574,22 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
         .sum()
 }
 
-fn resolve_fixed(a: &mut AxisScratch, tracks: &[Track]) {
+/// Phase 1 of [`resolve_axis`], also run standalone by `measure_inner`
+/// before the per-cell loop so `known_span_size` reads Fixed rows as
+/// resolved while Hug and Fill rows are still unknown. Returns the total
+/// extent the Fixed tracks consumed, which is what `resolve_axis` needs
+/// and the standalone caller ignores. Callers reset `a` first — both do,
+/// via `AxisScratch::reset` or `resolve_axis`'s own `fill`/`clear`.
+fn resolve_fixed(a: &mut AxisScratch, tracks: &[Track]) -> f32 {
+    let mut consumed = 0.0;
     for (i, t) in tracks.iter().enumerate() {
         if let Some(value) = t.size.fixed_value() {
             a.sizes[i] = value.clamp(t.min, t.max);
             a.resolved.insert(i);
+            consumed += a.sizes[i];
         }
     }
+    consumed
 }
 
 pub(super) fn arrange(
@@ -828,14 +837,7 @@ fn resolve_axis(
     let total_gap = gap * n.saturating_sub(1) as f32;
 
     // Phase 1: Fixed.
-    let mut consumed = total_gap;
-    for (i, t) in tracks.iter().enumerate() {
-        if let Some(value) = t.size.fixed_value() {
-            a.sizes[i] = value.clamp(t.min, t.max);
-            a.resolved.insert(i);
-            consumed += a.sizes[i];
-        }
-    }
+    let mut consumed = total_gap + resolve_fixed(a, tracks);
 
     // Phase 2: Hug, constraint-solved against remaining-after-Fixed.
     // Single pass: snapshot each Hug track's clamped `(lo, hi)` once,

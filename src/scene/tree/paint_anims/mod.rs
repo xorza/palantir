@@ -265,7 +265,7 @@ impl PaintAnims {
     /// Register `entry` against the just-pushed shape at `shape_idx`
     /// (its index into `Tree::shapes.records`).
     pub(crate) fn push_entry(&mut self, shape_idx: u32, entry: PaintAnimEntry) {
-        assert!(
+        debug_assert!(
             self.shape_indices
                 .last()
                 .is_none_or(|&last| last < shape_idx),

@@ -6,7 +6,6 @@ use crate::primitives::span::Span;
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
 /// Star) with optional `[min, max]` clamps. Defaults: `min = 0.0`,
 /// `max = INFINITY` (no clamp).
-///
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Track {
     pub(crate) size: Sizing,
