@@ -17,6 +17,7 @@ pub use crate::renderer::backend::text::bench::bench as text_atlas;
 pub use crate::renderer::frontend::bench::bench as gradient;
 pub use crate::renderer::frontend::composer::bench::bench as composer;
 pub use crate::renderer::frontend::composer::text_grid::bench::bench as text_grid;
+pub use crate::renderer::gradient_atlas::bench::bench as gradient_atlas;
 pub use crate::scene::cascade::bench::bench as cascade;
 pub use crate::scene::damage::bench::bench as damage;
 pub use crate::scene::tree::paint_anims::bench::bench as paint_anims;

@@ -3,7 +3,9 @@
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::fill_wire::LutRow;
-use crate::renderer::gradient_atlas::{CpuGradientAtlas, DEFAULT_MAX_ATLAS_ROWS, FlushedRows};
+use crate::renderer::gradient_atlas::{
+    CpuGradientAtlas, DEFAULT_MAX_ATLAS_ROWS, FlushedRows, MAX_ATLAS_ROWS,
+};
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -16,10 +18,15 @@ pub(crate) struct SharedGradientAtlas {
 impl SharedGradientAtlas {
     /// Atlas whose growth ceiling is the device's
     /// `max_texture_dimension_2d` — one LUT row is one texture row, so
-    /// that limit is the real bound. `None` (deviceless tests, benches)
-    /// falls back to [`DEFAULT_MAX_ATLAS_ROWS`].
+    /// that limit is the hardware bound — clamped by the
+    /// [`MAX_ATLAS_ROWS`] policy ceiling, since growth never reverses
+    /// and the hardware number is far above any sane frame. `None`
+    /// (deviceless tests, benches) falls back to
+    /// [`DEFAULT_MAX_ATLAS_ROWS`].
     pub(crate) fn new(max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
-        let max_rows = max_texture_dimension_2d.map_or(DEFAULT_MAX_ATLAS_ROWS, NonZeroU32::get);
+        let max_rows = max_texture_dimension_2d
+            .map_or(DEFAULT_MAX_ATLAS_ROWS, NonZeroU32::get)
+            .min(MAX_ATLAS_ROWS);
         Self {
             cpu: Rc::new(RefCell::new(CpuGradientAtlas::new(max_rows))),
         }
@@ -47,10 +54,22 @@ impl SharedGradientAtlas {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+mod internals {
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 
-    pub(crate) fn registration_count(atlas: &SharedGradientAtlas) -> u64 {
-        atlas.cpu.borrow().clock
+    impl SharedGradientAtlas {
+        /// Resolved growth ceiling, for the clamp test.
+        pub(crate) fn max_rows(&self) -> u32 {
+            self.cpu.borrow().max_rows()
+        }
+
+        /// `register_stops` calls so far. Lets the encoder's resolver
+        /// tests prove their per-pass memo suppresses repeat
+        /// registrations — a memoized call and a cache hit are otherwise
+        /// indistinguishable from outside. Accumulates for the life of
+        /// the atlas, so readers take a delta.
+        pub(crate) fn registrations(&self) -> u32 {
+            self.cpu.borrow().probe.registrations()
+        }
     }
 }

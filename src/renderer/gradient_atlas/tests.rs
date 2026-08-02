@@ -1,9 +1,11 @@
+use crate::common::hash::Hasher;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::color::ColorU8;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
+use std::hash::Hasher as _;
 
 /// One baked texel decoded back to a linear `Color`. The f16 store
 /// round-trips losslessly enough that `≈` comparisons hold to well
@@ -325,40 +327,31 @@ fn register_same_gradient_twice_reuses_row() {
     );
 }
 
-/// A matching probe hash is only a candidate: the exact bake key must
-/// also match before a row can be reused.
+/// Keys differing in the smallest possible way — one stop byte, or
+/// only the interpolation space — must land on different rows. The
+/// index is keyed on the whole `GradientLutKey`, so this is hashbrown's
+/// `Eq` doing the work rather than a hand-written confirm; the atlas
+/// still owns the claim that nothing *else* distinguishes a bake.
 #[test]
-fn register_hash_collision_confirms_exact_key() {
+fn near_identical_keys_never_share_a_row() {
     let mut atlas = CpuGradientAtlas::default();
-    let occupant = distinct_grad(0.1);
-    let target = distinct_grad(0.2);
-    let occupant_key = GradientLutKey {
-        stops: occupant.stops,
-        interp: occupant.interp,
-    };
-    let target_key = GradientLutKey {
-        stops: target.stops,
-        interp: target.interp,
-    };
-    assert_ne!(occupant_key, target_key);
+    let base = LinearGradient::two_stop(0.0, ColorU8::rgb(10, 20, 30), ColorU8::WHITE);
+    let one_byte_off = LinearGradient::two_stop(0.0, ColorU8::rgb(10, 20, 31), ColorU8::WHITE);
 
-    let target_hash = hash_lut(&target_key.stops, target_key.interp);
-    let colliding_row = 1 + (target_hash % u64::from(INITIAL_ATLAS_ROWS - 1)) as u32;
-    atlas.rows[colliding_row as usize] = Some(GradientAtlasSlot {
-        content_hash: target_hash,
-        key: occupant_key.clone(),
-    });
+    let mut rows = HashSet::new();
+    for g in [&base, &one_byte_off] {
+        for interp in [Interp::Oklab, Interp::Linear] {
+            let row = atlas.register_stops(&g.stops, interp);
+            assert_real_row(&atlas, row);
+            assert!(rows.insert(row), "row {} aliased a distinct key", row.0);
+        }
+    }
+    assert_eq!(rows.len(), 4);
 
-    let target_row = atlas.register_stops(&target_key.stops, target_key.interp);
-    assert_ne!(target_row.0, colliding_row);
-    assert_eq!(
-        atlas.rows[target_row.0 as usize].as_ref().unwrap().key,
-        target_key,
-    );
-    assert_eq!(
-        atlas.rows[colliding_row as usize].as_ref().unwrap().key,
-        occupant_key
-    );
+    // And each of the four still resolves back to its own row.
+    let first = atlas.register_stops(&base.stops, Interp::Oklab);
+    let second = atlas.register_stops(&one_byte_off.stops, Interp::Oklab);
+    assert_ne!(first, second);
 }
 
 /// Distinct gradients get distinct rows; both leave the atlas
@@ -373,12 +366,9 @@ fn register_distinct_gradients_get_distinct_rows() {
     assert!(atlas.dirty.is_some());
 }
 
-/// Linear-probe collision handling: if two gradients hash to the
-/// same row id, the second one probes to the next free slot. We
-/// can't easily construct a guaranteed-collision pair without
-/// knowing the FxHash output, so we register many distinct
-/// gradients and verify each gets a unique row (which exercises
-/// the probe path naturally when collisions occur).
+/// Filling the atlas one distinct gradient at a time hands out every
+/// real row exactly once — no key aliases another's row, and no row is
+/// skipped, so the whole table is reachable.
 #[test]
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
@@ -419,7 +409,13 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
     let _ = atlas.flush();
     let lru = filled_rows[0];
     // Push one more distinct gradient → forces eviction.
+    let evictions = atlas.probe.evictions();
     let new_row = register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(
+        atlas.probe.evictions(),
+        evictions + 1,
+        "the newcomer must have displaced a resident, not taken a free row",
+    );
     assert_ne!(new_row.0, 0, "row 0 (magenta) must never be evicted");
     assert_eq!(
         new_row, lru,
@@ -521,11 +517,18 @@ fn growth_stops_at_max_rows_and_falls_back() {
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
     assert_eq!(rows.len(), (INITIAL_ATLAS_ROWS * 2 - 1) as usize);
 
+    let bakes = atlas.probe.bakes();
     let overflow = register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(
         overflow,
         LutRow::FALLBACK,
         "capped atlas must fall back to magenta, not evict a live row",
+    );
+    assert_eq!(atlas.probe.fallbacks(), 1);
+    assert_eq!(
+        atlas.probe.bakes(),
+        bakes,
+        "a fallback must not bake — there is no row to bake into",
     );
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2, "cap must hold");
     // The fallback row is still magenta — the overflow never baked
@@ -545,11 +548,10 @@ fn growth_stops_at_max_rows_and_falls_back() {
 /// content — this frame's draw payloads already hold those ids, so a
 /// row moving or being rewritten under them would repaint issued draws.
 ///
-/// The probe modulus changes with the capacity, so re-registering a
-/// resident gradient afterwards may bake a *duplicate* into a second
-/// row (documented on `CpuGradientAtlas::grow`). That is a wasted row,
-/// never a wrong colour: both rows hold identical texels, and the
-/// stale copy falls out as the LRU victim later.
+/// Lookup goes through the key → row index, which growth doesn't
+/// touch, so re-registering a resident gradient afterwards returns its
+/// *original* row — the duplicate bake the open-addressed table used
+/// to produce (its probe modulus moved with the capacity) is gone.
 #[test]
 fn growth_preserves_resident_row_content() {
     let mut atlas = CpuGradientAtlas::default();
@@ -566,13 +568,13 @@ fn growth_preserves_resident_row_content() {
         atlas.baked[pinned_row.0 as usize], pinned_texels,
         "growth must not disturb a row this frame's draws reference",
     );
-    // Re-registering resolves to a row baked with the same content,
-    // whether that's the original or a post-growth duplicate.
+    // Growth leaves the index alone, so this resolves to the original
+    // row rather than baking a second copy of the same gradient.
     let after = register_for(&mut atlas, pinned);
-    assert_real_row(&atlas, after);
+    assert_eq!(after, pinned_row, "growth baked a duplicate row");
     assert_eq!(
         atlas.baked[after.0 as usize], pinned_texels,
-        "a duplicate row must carry identical texels, not a different gradient",
+        "the resident row's texels must survive growth intact",
     );
 }
 
@@ -702,4 +704,289 @@ fn flush_range_covers_min_to_max_dirty_rows() {
     }
     // Clean atlas: nothing to upload.
     assert!(atlas.flush().is_none());
+}
+
+/// The invariant `register_stops` reads eviction off: rows registered
+/// this epoch form a head prefix of the MRU list, so checking the tail
+/// alone is equivalent to scanning for the oldest unprotected row.
+///
+/// Built as a genuinely mixed frame — fresh claims, hits on resident
+/// rows, and rows left untouched — because the property is only
+/// interesting when all three are present. Checked again after a flush
+/// (the whole list becomes stale, so a vacuous all-stale prefix) and
+/// after a partial re-touch in the new epoch.
+#[test]
+fn epoch_current_rows_form_an_mru_prefix() {
+    let mut atlas = CpuGradientAtlas::default();
+    for i in 0..40 {
+        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    }
+    let _ = atlas.flush();
+    assert!(atlas.epoch_prefix_holds(), "a fresh epoch protects nothing",);
+
+    // New epoch: re-touch some resident rows out of insertion order,
+    // claim some fresh ones, leave the rest alone.
+    for i in [7, 31, 2, 19] {
+        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    }
+    for i in 40..48 {
+        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    }
+    for i in [3, 44] {
+        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    }
+    assert!(
+        atlas.epoch_prefix_holds(),
+        "hits and claims must both move their row to the MRU head",
+    );
+
+    // 13 distinct rows were registered this epoch — 4 re-touched, 8
+    // freshly claimed, then 3 (new) and 44 (already counted, a repeat
+    // hit inside the same epoch). Pinning the count keeps the prefix
+    // check above from passing vacuously on an empty prefix.
+    let protected = (0..48)
+        .filter(|i| {
+            let g = distinct_grad(*i as f32 * 0.01);
+            atlas
+                .resident_row(&g.stops, g.interp)
+                .is_some_and(|row| atlas.row_epoch[row as usize] == atlas.epoch)
+        })
+        .count();
+    assert_eq!(protected, 13);
+}
+
+/// Growth leaves lookup alone: every gradient resident beforehand still
+/// resolves to the row it already occupied, so no draw payload issued
+/// this frame is repainted and no duplicate row is baked.
+#[test]
+fn growth_leaves_resident_lookups_on_their_original_rows() {
+    let mut atlas = CpuGradientAtlas::default();
+    let resident: Vec<LinearGradient> = (0..(INITIAL_ATLAS_ROWS - 1))
+        .map(|i| distinct_grad(i as f32 * 0.01))
+        .collect();
+    let before: Vec<u32> = resident
+        .iter()
+        .map(|g| register_for(&mut atlas, g.clone()).0)
+        .collect();
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS);
+
+    // Same epoch, so the overflow has to grow rather than evict.
+    register_for(&mut atlas, distinct_grad(9999.0));
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
+
+    let bakes = atlas.probe.bakes();
+    for (g, &row) in resident.iter().zip(&before) {
+        assert_eq!(
+            atlas.resident_row(&g.stops, g.interp),
+            Some(row),
+            "growth moved a resident gradient off row {row}",
+        );
+        assert_eq!(
+            register_for(&mut atlas, g.clone()).0,
+            row,
+            "re-registering after growth baked a duplicate instead of \
+             resolving to row {row}",
+        );
+    }
+    assert_eq!(
+        atlas.probe.bakes(),
+        bakes,
+        "re-registering after growth baked at all — the open-addressed \
+         table used to duplicate here because its probe modulus moved",
+    );
+    // A duplicate bake would have consumed rows beyond the 255 resident
+    // ones plus the overflow.
+    assert_eq!(atlas.index_len(), INITIAL_ATLAS_ROWS as usize);
+}
+
+/// Eviction takes the outgoing gradient out of the index with its row.
+/// Leaving it behind is the failure mode unique to splitting lookup
+/// from storage: the stale entry would resolve to a row now holding
+/// somebody else's bake, and the evicted gradient would paint the
+/// wrong colours instead of re-baking.
+#[test]
+fn eviction_drops_the_outgoing_key_from_the_index() {
+    let mut atlas = CpuGradientAtlas::default();
+    let first = distinct_grad(0.0);
+    let first_row = register_for(&mut atlas, first.clone()).0;
+    for i in 1..(INITIAL_ATLAS_ROWS - 1) {
+        register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+    }
+    let _ = atlas.flush();
+
+    // `first` is the least-recently-registered, so it is the victim.
+    let newcomer = distinct_grad(9999.0);
+    assert_eq!(register_for(&mut atlas, newcomer.clone()).0, first_row);
+    assert_eq!(
+        atlas.resident_row(&first.stops, first.interp),
+        None,
+        "evicted gradient still resolves to a row",
+    );
+    assert_eq!(
+        atlas.resident_row(&newcomer.stops, newcomer.interp),
+        Some(first_row),
+    );
+    // The table stayed at one entry per occupied row.
+    assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
+
+    // Re-registering the evicted content re-bakes it somewhere else,
+    // and its texels are the real gradient rather than the newcomer's.
+    let _ = atlas.flush();
+    let reborn = register_for(&mut atlas, first.clone()).0;
+    assert_ne!(reborn, first_row);
+    let mut expected = fresh_row();
+    bake_stops(&first.stops, first.interp, &mut expected);
+    assert_eq!(atlas.baked[reborn as usize], expected);
+}
+
+/// The row ceiling is the *policy* cap, not the device's texture
+/// limit: growth never reverses, so a 16384-row adapter would let one
+/// pathological frame pin 32 MB for the life of the process.
+#[test]
+fn shared_atlas_clamps_device_limit_to_the_policy_cap() {
+    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+    use std::num::NonZeroU32;
+
+    let huge = SharedGradientAtlas::new(NonZeroU32::new(16384));
+    assert_eq!(huge.max_rows(), MAX_ATLAS_ROWS);
+    // A device below the cap still binds.
+    let small = SharedGradientAtlas::new(NonZeroU32::new(1024));
+    assert_eq!(small.max_rows(), 1024);
+    // Deviceless keeps the conservative downlevel fallback.
+    assert_eq!(
+        SharedGradientAtlas::new(None).max_rows(),
+        DEFAULT_MAX_ATLAS_ROWS,
+    );
+}
+
+/// The headline steady-state property: a frame redrawing unchanged
+/// gradients bakes nothing. Every registration resolves from the index,
+/// nothing is evicted, and the atlas holds its size.
+///
+/// This is what the cache is *for*, and before the probe existed there
+/// was no way to tell it from a cache that re-baked every row and
+/// happened to return the same ids.
+#[test]
+fn steady_state_frames_never_rebake() {
+    const GRADIENTS: u32 = 64;
+    const FRAMES: u32 = 10;
+
+    let mut atlas = CpuGradientAtlas::default();
+    let content: Vec<_> = (0..GRADIENTS)
+        .map(|i| distinct_grad(i as f32 * 0.01))
+        .collect();
+    let rows: Vec<LutRow> = content
+        .iter()
+        .map(|g| register_for(&mut atlas, g.clone()))
+        .collect();
+    assert_eq!(atlas.probe.bakes(), GRADIENTS);
+    let after_warmup = atlas.probe.bakes();
+
+    for _ in 0..FRAMES {
+        atlas.flush();
+        for (g, &row) in content.iter().zip(&rows) {
+            assert_eq!(
+                register_for(&mut atlas, g.clone()),
+                row,
+                "steady-state frame moved a gradient off its row",
+            );
+        }
+    }
+
+    assert_eq!(
+        atlas.probe.bakes(),
+        after_warmup,
+        "a steady-state frame must not bake",
+    );
+    assert_eq!(atlas.probe.evictions(), 0);
+    assert_eq!(atlas.probe.growths(), 0);
+    assert_eq!(atlas.probe.hits(), GRADIENTS * FRAMES);
+    assert_eq!(
+        atlas.probe.registrations(),
+        GRADIENTS * (FRAMES + 1),
+        "warm-up misses plus every frame's hits",
+    );
+    assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS);
+}
+
+/// Churn across epochs evicts; it must never grow.
+///
+/// This is the ratchet guard. Growth is one-way — the atlas has no
+/// shrink path — so a workload that grows the table when it should have
+/// evicted permanently enlarges every structure the register path
+/// touches. A gradient animated per frame produces exactly this:
+/// a working set far larger than the table, none of it reused.
+///
+/// Cycling a set twice the table's size is LRU's worst case by
+/// construction, so every registration here is a miss. That is the
+/// point — it is the shape most likely to trip a grow-instead-of-evict
+/// bug, and each round crosses an epoch boundary the way a real frame
+/// does.
+#[test]
+fn cross_epoch_churn_evicts_without_growing() {
+    let working_set = (INITIAL_ATLAS_ROWS * 2) as usize;
+    let mut atlas = CpuGradientAtlas::default();
+    let content: Vec<_> = (0..working_set)
+        .map(|i| distinct_grad(i as f32 * 0.01))
+        .collect();
+
+    for round in 0..4 {
+        for g in &content {
+            atlas.flush();
+            let row = register_for(&mut atlas, g.clone());
+            assert_real_row(&atlas, row);
+        }
+        assert_eq!(
+            atlas.capacity(),
+            INITIAL_ATLAS_ROWS,
+            "round {round} grew the atlas instead of evicting",
+        );
+    }
+
+    let registrations = (working_set * 4) as u32;
+    assert_eq!(atlas.probe.registrations(), registrations);
+    assert_eq!(atlas.probe.growths(), 0);
+    // Cyclic access over 2x the table never reuses a resident row, so
+    // every registration misses; the first INITIAL_ATLAS_ROWS - 1 take
+    // never-claimed rows and the rest evict.
+    assert_eq!(atlas.probe.hits(), 0, "cyclic churn cannot hit");
+    assert_eq!(atlas.probe.bakes(), registrations);
+    assert_eq!(
+        atlas.probe.evictions(),
+        registrations - (INITIAL_ATLAS_ROWS - 1),
+    );
+    assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
+}
+
+/// A miss bakes exactly one row — never two.
+///
+/// The old table could bake a resident gradient a second time after a
+/// growth moved its probe base, which showed up only as a quietly
+/// wasted row. Pinning bakes against misses makes any repeat bake a
+/// failure rather than a slow leak.
+#[test]
+fn every_miss_bakes_exactly_one_row() {
+    let mut atlas = CpuGradientAtlas::default();
+    // Mixed traffic: fresh content, immediate repeats, and repeats of
+    // content registered several steps back.
+    let content: Vec<_> = (0..40).map(|i| distinct_grad(i as f32 * 0.01)).collect();
+    let sequence: Vec<usize> = (0..40).chain(0..40).chain([3, 3, 17, 39, 0]).collect();
+
+    let mut expected_bakes = 0u32;
+    let mut seen = HashSet::new();
+    for &i in &sequence {
+        if seen.insert(i) {
+            expected_bakes += 1;
+        }
+        register_for(&mut atlas, content[i].clone());
+    }
+
+    assert_eq!(atlas.probe.bakes(), expected_bakes);
+    assert_eq!(atlas.probe.bakes(), 40, "each distinct gradient baked once");
+    assert_eq!(
+        atlas.probe.hits(),
+        sequence.len() as u32 - expected_bakes,
+        "every non-first occurrence must resolve from the index",
+    );
+    assert_eq!(atlas.probe.evictions(), 0, "40 gradients fit in 255 rows");
 }
