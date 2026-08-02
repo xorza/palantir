@@ -248,12 +248,12 @@ pub(super) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut La
 /// position. Same closure-parameter shape the measure side uses for the
 /// identical split (`measure_per_axis_hug`, shared by `zstack::measure`
 /// and `canvas::measure`).
-pub(super) fn children_max_intrinsic<const RANGE: bool>(
+pub(super) fn children_max_intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
     mut offset: impl FnMut(&Tree, NodeId) -> f32,
 ) -> IntrinsicRange {

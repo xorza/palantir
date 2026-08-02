@@ -115,12 +115,12 @@ pub(super) fn arrange(
 /// reach this branch — see `intrinsic.rs`), drops the positional offset
 /// so a `.position(...)` past `available` can't floor `Fill` above what
 /// the parent offered.
-pub(super) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let pos_inflates = matches!(

@@ -958,13 +958,13 @@ fn resolve_axis(
 ///   distribution.
 ///
 /// Span > 1 cells are excluded, matching `measure`.
-pub(super) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     idx: GridDefId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let def = tree.grid_defs[usize::from(idx)];

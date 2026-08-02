@@ -391,13 +391,13 @@ pub(super) fn arrange(
 /// Intrinsic size of a stack on `query_axis`. When the query
 /// axis matches the stack's `main_axis`, sum children's intrinsic on
 /// that axis plus gaps; otherwise (cross axis), max over children.
-pub(super) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     main_axis: Axis,
     query_axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     if main_axis != query_axis {
