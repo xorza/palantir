@@ -160,6 +160,11 @@ impl Tree {
             "paint animation shape index exceeds shapes.records",
         );
         self.rollups.reset_for(self.records.len());
+        self.rollups.paint_cardinality = paint_cardinality(
+            self.shapes.records.len(),
+            self.chrome_table.len(),
+            self.records.len(),
+        );
         self.compute_rollups();
     }
 
@@ -189,6 +194,9 @@ impl Tree {
             subtree,
             cascade_static,
             container_text,
+            // Stamped by `post_record` before this pass — a whole-tree
+            // count, not a per-node fold.
+            paint_cardinality: _,
         } = &mut self.rollups;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
@@ -578,6 +586,16 @@ impl Tree {
             .chrome
             .map(|s| &self.chrome_table[s.idx()])
     }
+}
+
+/// Fold the three counts that move whenever some node's paint-row count
+/// does. Free fn so the `Tree` field reads and the arithmetic sit apart.
+fn paint_cardinality(shapes: usize, chrome_rows: usize, nodes: usize) -> u64 {
+    let mut h = Hasher::new();
+    h.write_usize(shapes);
+    h.write_usize(chrome_rows);
+    h.write_usize(nodes);
+    h.finish()
 }
 
 pub(crate) mod extras;

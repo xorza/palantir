@@ -98,6 +98,12 @@ impl CascadeInputHash {
 pub(crate) struct LayerCascade {
     /// Paint-excluding authoring hash from the last full rebuild.
     static_hash: ContentHash,
+    /// `Tree::rollups.paint_cardinality` as of the last full rebuild.
+    /// The incremental walk can only repair paint rows in place, so a
+    /// changed row count sends it home empty-handed after it has already
+    /// walked part of the tree; comparing this first turns that wasted
+    /// half-walk into an immediate full rebuild.
+    paint_cardinality: u64,
     /// `LayerLayout::rect_hash` as of the last full rebuild — the
     /// arranged geometry these retained rows were built against.
     /// [`CascadeEngine::can_update`] compares it to the live layout's

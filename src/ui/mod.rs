@@ -98,7 +98,7 @@ pub struct Ui {
     /// and scroll-over-nothing; flip to [`InputPolicy::Always`] for
     /// telemetry / custom canvases that need every event.
     pub input_policy: InputPolicy,
-    cascade_engine: CascadeEngine,
+    pub(crate) cascade_engine: CascadeEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
     anim: AnimMap,
