@@ -239,35 +239,16 @@ pub(super) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut La
     out.rect[start..end].fill(zero);
 }
 
-/// Max over non-collapsed children's outer intrinsic on `axis`. Used by
-/// drivers whose own size on an axis is "the largest child wants this
-/// much" (ZStack, Stack cross-axis, WrapStack). Canvas, which also folds
-/// in each child's declared position, uses [`children_max_intrinsic_offset`].
+/// Max over non-collapsed children's outer intrinsic on `axis`, each
+/// child's contribution shifted by `offset`.
+///
+/// Drivers whose own size on an axis is "the largest child wants this
+/// much" (ZStack, Stack cross-axis, WrapStack) pass
+/// [`no_offset`] — Canvas is the one that folds in each child's declared
+/// position. Same closure-parameter shape the measure side uses for the
+/// identical split (`measure_per_axis_hug`, shared by `zstack::measure`
+/// and `canvas::measure`).
 pub(super) fn children_max_intrinsic<const RANGE: bool>(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    axis: Axis,
-    query: IntrinsicQuery<RANGE>,
-    interned_text: &InternedText<'_>,
-) -> IntrinsicRange {
-    let mut range = IntrinsicRange::ZERO;
-    for c in tree.active_children(node) {
-        let child = query.child(layout, tree, c, axis, interned_text);
-        if query.includes(LenReq::MinContent) {
-            range.min = range.min.max(child.min);
-        }
-        if query.includes(LenReq::MaxContent) {
-            range.max = range.max.max(child.max);
-        }
-    }
-    range
-}
-
-/// Like [`children_max_intrinsic`] but adds a per-child positional offset
-/// on the same axis before taking the max. Canvas alone needs it — on Hug
-/// axes the child's declared position folds into its contribution.
-pub(super) fn children_max_intrinsic_offset<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -288,6 +269,13 @@ pub(super) fn children_max_intrinsic_offset<const RANGE: bool>(
         }
     }
     range
+}
+
+/// The [`children_max_intrinsic`] offset for drivers that place children
+/// at the container origin — every one except Canvas.
+#[inline]
+pub(super) fn no_offset(_: &Tree, _: NodeId) -> f32 {
+    0.0
 }
 
 /// Main-axis offset + effective inter-child gap for one row of

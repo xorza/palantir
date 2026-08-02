@@ -1004,28 +1004,36 @@ impl InputState {
         // own `node.disabled` on top after calling.
         let disabled = entry.is_some_and(|e| e.disabled);
 
-        // Interaction half — on a quiescent frame every field below is at
-        // its default, so skip the per-button capture scan and the
-        // scroll/zoom lookups that every idle widget would otherwise pay.
-        // `focused` is the one interaction field still read live: it can
-        // be set by `request_focus` after `frame_quiescent` was snapshotted.
+        // Built once, here — the quiescent path returns it as-is and the
+        // interaction half below assigns into it. Two constructions let a
+        // newly-added field be filled on one path and silently defaulted
+        // on the other.
+        //
+        // `focused` sits in the geometry half despite being interaction
+        // state: it is read live rather than from the quiescent snapshot,
+        // because `request_focus` can set it mid-record, after
+        // `frame_quiescent` was taken.
+        let mut state = ResponseState {
+            rect,
+            layout_rect,
+            transform,
+            disabled,
+            focused: self.focused == Some(id),
+            ..ResponseState::default()
+        };
+
+        // On a quiescent frame every remaining field is already at its
+        // default, so skip the per-button capture scan and the
+        // scroll/zoom lookups every idle widget would otherwise pay.
         if self.frame_quiescent {
-            return ResponseState {
-                rect,
-                layout_rect,
-                transform,
-                disabled,
-                focused: self.focused == Some(id),
-                ..ResponseState::default()
-            };
+            return state;
         }
 
         let me_under_pointer = self.hovered == Some(id);
         let left_press = self.capture(PointerButton::Left).press;
         // Hover is left-capture-gated: while some *other* widget holds
         // the left press, nothing else reads hovered.
-        let hovered = me_under_pointer && left_press.is_none_or(|p| p.target == id);
-        let focused = self.focused == Some(id);
+        state.hovered = me_under_pointer && left_press.is_none_or(|p| p.target == id);
 
         // One uniform slice per button. Phase priority mirrors the
         // capture: a live press is `Down` (its `fresh` edge) or
@@ -1086,27 +1094,15 @@ impl InputState {
             }
             buttons[btn.idx()] = ButtonState { phase, drag };
         }
-        let [left, right, middle] = buttons;
+        [state.left, state.right, state.middle] = buttons;
 
-        let scroll = self.scroll_delta_for(id);
-        let pointer_local = self
+        state.scroll = self.scroll_delta_for(id);
+        state.pointer_local = self
             .pointer_pos
             .zip(layout_rect)
             .map(|(pointer, layout)| pointer_in_widget_space(pointer, layout.min, transform));
 
-        ResponseState {
-            rect,
-            layout_rect,
-            transform,
-            pointer_local,
-            hovered,
-            disabled,
-            focused,
-            left,
-            right,
-            middle,
-            scroll,
-        }
+        state
     }
 }
 

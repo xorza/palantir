@@ -3,8 +3,8 @@ use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::support::{
-    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, weighted_share,
-    zero_subtree,
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset,
+    weighted_share, zero_subtree,
 };
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -154,7 +154,7 @@ fn build_stack_plan(
 }
 
 #[profiling::function]
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -278,7 +278,7 @@ pub(crate) fn measure(
     axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross)
 }
 
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -391,7 +391,7 @@ pub(crate) fn arrange(
 /// Intrinsic size of a stack on `query_axis`. When the query
 /// axis matches the stack's `main_axis`, sum children's intrinsic on
 /// that axis plus gaps; otherwise (cross axis), max over children.
-pub(crate) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic<const RANGE: bool>(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -401,7 +401,15 @@ pub(crate) fn intrinsic<const RANGE: bool>(
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     if main_axis != query_axis {
-        return children_max_intrinsic(layout, tree, node, query_axis, query, interned_text);
+        return children_max_intrinsic(
+            layout,
+            tree,
+            node,
+            query_axis,
+            query,
+            interned_text,
+            no_offset,
+        );
     }
     let mut range = IntrinsicRange::ZERO;
     let mut count = 0_usize;

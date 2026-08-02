@@ -171,7 +171,7 @@ fn axis_rects(
 /// Bars never inflate their scroll: the overlay reports `ZERO` so a
 /// `Hug` ancestor sizes to content alone. Children are still measured so
 /// their `desired` rows exist for the arrange below.
-pub(crate) fn measure(
+pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -188,7 +188,7 @@ pub(crate) fn measure(
 /// Assign each of the four bar leaves its resolved rect, zero-extent for
 /// an axis that shows no bar. Child order is the recording contract from
 /// this module's doc.
-pub(crate) fn arrange(
+pub(super) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
