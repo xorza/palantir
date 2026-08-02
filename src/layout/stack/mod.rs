@@ -418,3 +418,36 @@ pub(super) fn intrinsic(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::layout::stack::{FillEntry, freeze_distribute};
+    use crate::scene::tree::record::NodeId;
+
+    /// Run the Fill freeze loop over `(weight, floor, cap)` triples and
+    /// hand back each entry's allocation.
+    ///
+    /// Exists so `cross_driver_tests::fill_solvers` can drive this and
+    /// `grid`'s twin from one table — the two solve the same
+    /// `[floor, cap]`-clamped weighted distribution and are kept apart
+    /// on purpose, so something has to hold them to that.
+    pub(crate) fn distribute_fill(items: &[(f32, f32, f32)], leftover: f32) -> Vec<f32> {
+        let mut entries: Vec<FillEntry> = items
+            .iter()
+            .enumerate()
+            .map(|(i, &(weight, floor, cap))| FillEntry {
+                node: NodeId(i as u32),
+                weight,
+                floor,
+                cap,
+                frozen_alloc: None,
+            })
+            .collect();
+        let total_weight: f64 = items.iter().map(|&(w, _, _)| f64::from(w)).sum();
+        freeze_distribute(&mut entries, leftover, total_weight);
+        entries
+            .iter()
+            .map(|e| e.frozen_alloc.expect("freeze_distribute fills every entry"))
+            .collect()
+    }
+}

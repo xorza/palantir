@@ -7,7 +7,7 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::scene::cascade::engine::{
-    CascadePrefixBits, build_cascade_prefix, finish_cascade_input,
+    CascadePrefixBits, build_cascade_prefix, cascade_fingerprint, finish_cascade_input,
 };
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
@@ -960,5 +960,105 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
     assert!(
         rows >= 2,
         "the rebuilt cascade must carry both shape rows, got {rows}",
+    );
+}
+
+/// Pin: every cascade input busts **both** gates.
+///
+/// Two hand-maintained enumerations decide whether cascade output can be
+/// reused. `cascade_fingerprint` is the outer one — a match in
+/// `Ui::post_record` skips `CascadeEngine::run` outright and reuses last
+/// frame's `Cascade` verbatim. `can_update` is the inner one, choosing
+/// between repairing paint in place and rebuilding every row. Neither
+/// references the other, and both fail silently: the outer one by
+/// serving a stale cascade, the inner by keeping `entries` / `hits` /
+/// `cascade_inputs` that no longer describe the frame.
+///
+/// So for each input, assert it moves the fingerprint *and* forces a
+/// full rebuild. The control case at the end is what stops this passing
+/// vacuously — an unchanged frame must move neither.
+#[test]
+fn every_cascade_input_busts_both_reuse_gates() {
+    fn scene(ui: &mut Ui, size: f32, transformed: bool) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .transform(if transformed {
+                TranslateScale::from_translation(Vec2::new(7.0, 0.0))
+            } else {
+                TranslateScale::IDENTITY
+            })
+            .show(ui, |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("body"))
+                    .size((Sizing::fixed(size), Sizing::fixed(40.0)))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        ..Default::default()
+                    })
+                    .show(ui, |_| {});
+            });
+    }
+
+    /// `(label, apply the mutation to a harness already showing the base
+    /// scene)`.
+    type Mutation = (&'static str, fn(&mut UiHarness));
+    let mutations: &[Mutation] = &[
+        // Authoring: reaches the fingerprint through the root's
+        // subtree_hash and `can_update` through `cascade_static`.
+        ("resized child", |h| {
+            h.frame(|ui| scene(ui, 120.0, false));
+        }),
+        // Ancestor transform: same two columns, different field.
+        ("root transform", |h| {
+            h.frame(|ui| scene(ui, 100.0, true));
+        }),
+        // Surface: reaches the fingerprint directly and `can_update`
+        // through the arranged rects it hashes.
+        ("surface resize", |h| {
+            h.resize(UVec2::new(260, 200));
+            h.frame(|ui| scene(ui, 100.0, false));
+        }),
+    ];
+
+    for &(label, mutate) in mutations {
+        let mut h = UiHarness::new(UVec2::new(200, 200));
+        h.frame(|ui| scene(ui, 100.0, false));
+        let base_fp = cascade_fingerprint(&h.ui.forest, h.ui.display);
+        let rebuilds = h.ui.cascade_engine.full_rebuilds;
+        let abandoned = h.ui.cascade_engine.abandoned_incrementals;
+
+        mutate(&mut h);
+
+        assert_ne!(
+            base_fp,
+            cascade_fingerprint(&h.ui.forest, h.ui.display),
+            "`{label}` left the fingerprint unmoved — the frame would reuse a stale cascade",
+        );
+        assert!(
+            h.ui.cascade_engine.full_rebuilds > rebuilds,
+            "`{label}` did not force a full rebuild — `can_update` kept columns \
+             that no longer describe the frame",
+        );
+        assert_eq!(
+            h.ui.cascade_engine.abandoned_incrementals, abandoned,
+            "`{label}` should be caught by `can_update`, not discovered mid-walk",
+        );
+    }
+
+    // Control: an identical frame must move neither gate, or the
+    // assertions above would hold for any frame at all.
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(|ui| scene(ui, 100.0, false));
+    let base_fp = cascade_fingerprint(&h.ui.forest, h.ui.display);
+    let rebuilds = h.ui.cascade_engine.full_rebuilds;
+    h.frame(|ui| scene(ui, 100.0, false));
+    assert_eq!(
+        base_fp,
+        cascade_fingerprint(&h.ui.forest, h.ui.display),
+        "an unchanged frame must keep its fingerprint",
+    );
+    assert_eq!(
+        h.ui.cascade_engine.full_rebuilds, rebuilds,
+        "an unchanged frame must not rebuild",
     );
 }
