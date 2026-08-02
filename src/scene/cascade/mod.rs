@@ -245,18 +245,26 @@ impl Cascade {
             && d.node.0 < self.layers[a.layer].subtree_ends[a.node.idx()]
     }
 
-    /// Reverse walk (topmost-first under the pre-order paint walk) returning
-    /// the first interactive row whose rect contains `pos` and whose
-    /// `gate(row)` passes. Shared by [`Self::hit_test`] and
-    /// [`Self::hit_test_focusable`], which differ only in the field of
+    /// Interactive rows under `pos`, topmost first.
+    ///
+    /// The one reverse scan every hit test is built from: rows are pushed
+    /// in paint order, so walking back yields the topmost match first and
+    /// the caller stops when it has what it needs.
+    #[inline]
+    fn hits_under(&self, pos: Vec2) -> impl Iterator<Item = &HitRow> {
+        self.hits
+            .iter()
+            .rev()
+            .filter(move |row| row.rect.contains(pos))
+    }
+
+    /// Topmost row under `pos` passing `gate`. Shared by [`Self::hit_test`]
+    /// and [`Self::hit_test_focusable`], which differ only in the field of
     /// the row they gate on.
     fn hit_first(&self, pos: Vec2, gate: impl Fn(&HitRow) -> bool) -> Option<WidgetId> {
-        for row in self.hits.iter().rev() {
-            if gate(row) && row.rect.contains(pos) {
-                return Some(row.widget_id);
-            }
-        }
-        None
+        self.hits_under(pos)
+            .find(|row| gate(row))
+            .map(|row| row.widget_id)
     }
 
     /// Topmost entry under `pos` whose `Sense` passes `filter` (hoverable for
@@ -265,12 +273,12 @@ impl Cascade {
         self.hit_first(pos, |row| filter(row.sense))
     }
 
-    /// One reverse walk that finds the topmost match for each of
-    /// three filters at once. Used on `PointerMoved` and at
-    /// `post_record` to recompute hover + scroll + pinch targets in a
-    /// single pass over `entries`. Independent filters: a `Sense::DRAG
-    /// | Sense::SCROLL` widget sits in both hover and scroll target
-    /// slots if it's the topmost match for each.
+    /// One reverse walk that finds the topmost match for each of three
+    /// filters at once. Used on `PointerMoved` and at `post_record` to
+    /// recompute hover + scroll + pinch targets in a single pass.
+    /// Independent filters: a `Sense::DRAG | Sense::SCROLL` widget sits in
+    /// both hover and scroll target slots if it's the topmost match for
+    /// each. Stops as soon as all three are filled.
     pub(crate) fn hit_test_targets(
         &self,
         pos: Vec2,
@@ -278,31 +286,24 @@ impl Cascade {
         scroll_filter: impl Fn(Sense) -> bool,
         pinch_filter: impl Fn(Sense) -> bool,
     ) -> HitTargets {
-        let mut hover = None;
-        let mut scroll = None;
-        let mut pinch = None;
-        for row in self.hits.iter().rev() {
-            if !row.rect.contains(pos) {
-                continue;
+        // Three explicit arms rather than a loop over boxed filters: this
+        // runs per pointer move, and the closures stay monomorphised.
+        let mut targets = HitTargets::default();
+        for row in self.hits_under(pos) {
+            if targets.hover.is_none() && hover_filter(row.sense) {
+                targets.hover = Some(row.widget_id);
             }
-            if hover.is_none() && hover_filter(row.sense) {
-                hover = Some(row.widget_id);
+            if targets.scroll.is_none() && scroll_filter(row.sense) {
+                targets.scroll = Some(row.widget_id);
             }
-            if scroll.is_none() && scroll_filter(row.sense) {
-                scroll = Some(row.widget_id);
+            if targets.pinch.is_none() && pinch_filter(row.sense) {
+                targets.pinch = Some(row.widget_id);
             }
-            if pinch.is_none() && pinch_filter(row.sense) {
-                pinch = Some(row.widget_id);
-            }
-            if hover.is_some() && scroll.is_some() && pinch.is_some() {
+            if targets.hover.is_some() && targets.scroll.is_some() && targets.pinch.is_some() {
                 break;
             }
         }
-        HitTargets {
-            hover,
-            scroll,
-            pinch,
-        }
+        targets
     }
 
     pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {

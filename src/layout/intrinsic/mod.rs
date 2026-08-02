@@ -14,7 +14,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
-use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::layout_mode::{LayoutMode, ScrollChildLayout};
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::interned_str::InternedText;
 use crate::scene::node::columns::LayoutCore;
@@ -41,6 +41,37 @@ pub(crate) struct IntrinsicRange {
 
 impl IntrinsicRange {
     pub(crate) const ZERO: Self = Self { min: 0.0, max: 0.0 };
+
+    /// The half `req` names.
+    #[inline]
+    pub(crate) fn get(self, req: LenReq) -> f32 {
+        match req {
+            LenReq::MinContent => self.min,
+            LenReq::MaxContent => self.max,
+        }
+    }
+
+    /// The `(kind, slot)` pairs `query` asks for, as mutable handles into
+    /// this accumulator.
+    ///
+    /// Every driver's `intrinsic` folds children into a range under the
+    /// same gate, and each used to spell it as two near-identical
+    /// `if query.includes(..)` blocks — so a third `LenReq` would mean
+    /// editing six call sites, and forgetting one is silent. Iterating
+    /// the requested halves puts the gate here and leaves each driver
+    /// one loop body.
+    #[inline]
+    pub(crate) fn requested(
+        &mut self,
+        query: IntrinsicQuery,
+    ) -> impl Iterator<Item = (LenReq, &mut f32)> {
+        [
+            (LenReq::MinContent, &mut self.min),
+            (LenReq::MaxContent, &mut self.max),
+        ]
+        .into_iter()
+        .filter(move |(req, _)| query.includes(*req))
+    }
 }
 
 /// Which content sizes one query asks for: a single [`LenReq`], or both
@@ -73,6 +104,19 @@ impl IntrinsicQuery {
         Self { single_req: None }
     }
 
+    /// The query covering exactly the requested halves, or `None` when
+    /// neither survives. Lets a caller that discards one half — a scroll
+    /// on a panned axis — narrow the recursion instead of computing a
+    /// value it will throw away.
+    pub(crate) const fn of(min: bool, max: bool) -> Option<Self> {
+        match (min, max) {
+            (true, true) => Some(Self::range()),
+            (true, false) => Some(Self::single(LenReq::MinContent)),
+            (false, true) => Some(Self::single(LenReq::MaxContent)),
+            (false, false) => None,
+        }
+    }
+
     #[inline]
     pub(crate) fn includes(self, req: LenReq) -> bool {
         match self.single_req {
@@ -81,6 +125,12 @@ impl IntrinsicQuery {
         }
     }
 
+    /// This child's intrinsic under the same query.
+    ///
+    /// Halves the query didn't ask for come back as `0.0`. Read the
+    /// result through [`IntrinsicRange::get`] inside an
+    /// [`IntrinsicRange::requested`] loop and that can't bite — the two
+    /// iterate the same set.
     #[inline]
     pub(crate) fn child(
         self,
@@ -90,20 +140,7 @@ impl IntrinsicQuery {
         axis: Axis,
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
-        let Some(req) = self.single_req else {
-            return engine.intrinsic_range(tree, node, axis, interned_text);
-        };
-        let value = engine.intrinsic(tree, node, axis, req, interned_text);
-        match req {
-            LenReq::MinContent => IntrinsicRange {
-                min: value,
-                max: 0.0,
-            },
-            LenReq::MaxContent => IntrinsicRange {
-                min: 0.0,
-                max: value,
-            },
-        }
+        engine.intrinsic_query(tree, node, axis, self, interned_text)
     }
 }
 
@@ -174,22 +211,13 @@ pub(crate) fn compute(
     } else {
         let mut content = content_intrinsic(engine, tree, node, axis, query, interned_text, layout);
         let pad = axis.spacing(layout.padding);
-        if query.includes(LenReq::MinContent) {
-            content.min += pad;
-        }
-        if query.includes(LenReq::MaxContent) {
-            content.max += pad;
+        for (_, value) in content.requested(query) {
+            *value += pad;
         }
         content
     };
 
-    for (req, value) in [
-        (LenReq::MinContent, &mut content.min),
-        (LenReq::MaxContent, &mut content.max),
-    ] {
-        if !query.includes(req) {
-            continue;
-        }
+    for (_, value) in content.requested(query) {
         *value = resolve_axis_size(AxisCtx {
             sizing,
             content_plus_padding: *value,
@@ -232,25 +260,39 @@ fn content_intrinsic(
         LayoutMode::Grid(grid_def_id) => {
             grid::intrinsic(engine, tree, node, grid_def_id, axis, query, interned_text)
         }
-        // Scroll viewports "want" zero on every panned axis — sizing
-        // comes from the viewport's own `Sizing`, never from content.
-        // The non-panned axis falls back to a stack intrinsic on the
-        // panned axis (pan-Y → stack on Y, pan-X → stack on X). If
-        // both axes pan, the answer is unconditionally zero.
         // Bars are absolutely placed chrome in a reserved gutter: they
         // must never floor the scroll they decorate, on either axis.
         LayoutMode::Scrollbars(_) => IntrinsicRange::ZERO,
-        LayoutMode::Scroll(scroll_spec) => {
-            let pan = scroll_spec.pan_mask();
-            let pan_axis = match axis {
-                Axis::X => pan.x,
-                Axis::Y => pan.y,
+        // A scroll's intrinsic has to answer exactly what its measure
+        // would: same driver, same per-axis contribution rule. Both come
+        // off the spec so the two can't drift — `ScrollSpec::contributes`
+        // documents the `fit` case that used to be missing here.
+        // A scroll's two content sizes differ in kind, so one rule can't
+        // serve both. **Min**-content on a panned axis is zero: being
+        // able to shrink below the content is what scrolling *is*, and
+        // `resolve_sizing` floors the viewport's own size with this, so
+        // anything larger pins a `Hug` scroll open at its content.
+        // **Max**-content is what the viewport would take given room —
+        // the content extent exactly when the author asked it to `fit`
+        // ([`ScrollSpec::contributes`]). Either way the driver matches
+        // the one `scroll::measure` runs, off the same spec.
+        LayoutMode::Scroll(spec) => {
+            let wants_min = query.includes(LenReq::MinContent) && !spec.pans(axis);
+            let wants_max = query.includes(LenReq::MaxContent) && spec.contributes(axis);
+            let Some(content_query) = IntrinsicQuery::of(wants_min, wants_max) else {
+                return IntrinsicRange::ZERO;
             };
-            if pan_axis {
-                IntrinsicRange::ZERO
-            } else {
-                let main = if pan.y { Axis::Y } else { Axis::X };
-                stack::intrinsic(engine, tree, node, main, axis, query, interned_text)
+            let content = match spec.child_layout() {
+                ScrollChildLayout::Layered => {
+                    zstack::intrinsic(engine, tree, node, axis, content_query, interned_text)
+                }
+                ScrollChildLayout::Flow(main) => {
+                    stack::intrinsic(engine, tree, node, main, axis, content_query, interned_text)
+                }
+            };
+            IntrinsicRange {
+                min: if wants_min { content.min } else { 0.0 },
+                max: if wants_max { content.max } else { 0.0 },
             }
         }
     }
@@ -279,11 +321,12 @@ fn leaf(
             },
             ts.shape_request(),
         );
-        if query.includes(LenReq::MinContent) {
-            range.min = range.min.max(axis.main(ts.wrap.min_content(&unbounded)));
-        }
-        if query.includes(LenReq::MaxContent) {
-            range.max = range.max.max(axis.main(ts.wrap.max_content(&unbounded)));
+        for (req, slot) in range.requested(query) {
+            let run = match req {
+                LenReq::MinContent => ts.wrap.min_content(&unbounded),
+                LenReq::MaxContent => ts.wrap.max_content(&unbounded),
+            };
+            *slot = slot.max(axis.main(run));
         }
     }
     range

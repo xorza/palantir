@@ -1,4 +1,5 @@
 use crate::common::index16::Index16;
+use crate::layout::axis::Axis;
 use crate::layout::types::align::Align;
 use crate::scene::visibility::Visibility;
 use glam::BVec2;
@@ -196,6 +197,20 @@ impl From<ScrollbarsDefId> for usize {
     }
 }
 
+/// Which driver lays a scroll viewport's children out. Derived from the
+/// spec's pan mask by [`ScrollSpec::child_layout`], so measure, arrange,
+/// and the intrinsic query can't pick different ones — they used to
+/// spell the same three-way choice out separately, and the intrinsic
+/// copy drifted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScrollChildLayout {
+    /// Both axes pan, so neither constrains the other and children stack
+    /// at the origin.
+    Layered,
+    /// One axis pans; children flow along it.
+    Flow(Axis),
+}
+
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ScrollSpec(u16);
@@ -218,6 +233,51 @@ impl ScrollSpec {
     #[inline]
     pub(crate) fn fit_mask(self) -> BVec2 {
         BVec2::new(self.0 & Self::FIT_X != 0, self.0 & Self::FIT_Y != 0)
+    }
+
+    /// The driver that lays this viewport's children out.
+    #[inline]
+    pub(crate) fn child_layout(self) -> ScrollChildLayout {
+        let pan = self.pan_mask();
+        match (pan.x, pan.y) {
+            (true, true) => ScrollChildLayout::Layered,
+            (false, true) => ScrollChildLayout::Flow(Axis::Y),
+            // An x-only pan flows along X, and so does the degenerate
+            // no-pan spec no constructor can currently produce.
+            _ => ScrollChildLayout::Flow(Axis::X),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn pans(self, axis: Axis) -> bool {
+        let pan = self.pan_mask();
+        match axis {
+            Axis::X => pan.x,
+            Axis::Y => pan.y,
+        }
+    }
+
+    /// Whether `axis` folds its measured content extent into the size the
+    /// viewport reports for itself.
+    ///
+    /// A panned axis normally reports nothing — the viewport takes that
+    /// axis from its own `Sizing`, not from what it scrolls over — but
+    /// `fit` opts back in, which is how a `Hug` scroll sizes to content.
+    ///
+    /// This is the **max**-content rule, and only that. A panned axis'
+    /// *min*-content stays zero whatever `fit` says: `resolve_sizing`
+    /// floors a node's own size with its min-content intrinsic, and
+    /// shrinking below the content is precisely what scrolling is for —
+    /// floor a `Hug` scroll at its content and it pins itself open,
+    /// ignoring both `max_size` and the space its parent actually has.
+    #[inline]
+    pub(crate) fn contributes(self, axis: Axis) -> bool {
+        let fit = self.fit_mask();
+        !self.pans(axis)
+            || match axis {
+                Axis::X => fit.x,
+                Axis::Y => fit.y,
+            }
     }
 
     pub(crate) fn with_fit(mut self, fit: BVec2) -> Self {

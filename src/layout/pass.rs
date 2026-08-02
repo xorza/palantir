@@ -21,7 +21,7 @@ use crate::layout::cache::quantize_available;
 use crate::layout::engine::{
     LayoutEngine, NO_ARRANGE_SRC, resolve_sizing, restore_after_cache_hit,
 };
-use crate::layout::grid::{GridContext, GridHugStore};
+use crate::layout::grid::{GridContext, GridTrackStore};
 use crate::layout::intrinsic::{IntrinsicRange, LenReq};
 use crate::layout::probe::PhaseSpan;
 use crate::layout::stack::StackScratch;
@@ -92,10 +92,10 @@ impl LayoutPass<'_> {
         &mut self.engine.scratch.grid
     }
 
-    /// The hug pool alone, for the sites that don't also need the depth
-    /// stack.
+    /// The durable per-grid track store alone, for the sites that don't
+    /// also need the depth stack.
     #[inline]
-    pub(super) fn grid_hugs_mut(&mut self) -> &mut GridHugStore {
+    pub(super) fn grid_tracks_mut(&mut self) -> &mut GridTrackStore {
         &mut self.engine.scratch.grid.hugs
     }
 

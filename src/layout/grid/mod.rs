@@ -40,7 +40,7 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
 /// preserve these. Pinned by
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
 fn reset_hugs_for(pass: &mut LayoutPass<'_>, idx: GridDefId) {
-    let hugs = pass.grid_hugs_mut();
+    let hugs = pass.grid_tracks_mut();
     for (axis, kind) in HUG_ORDER {
         hugs.slice_mut(idx, axis, kind).fill(0.0);
     }
@@ -51,7 +51,7 @@ fn reset_hugs_for(pass: &mut LayoutPass<'_>, idx: GridDefId) {
 /// the per-axis struct so their capacity is retained across frames.
 ///
 /// Per-track content-driven `[min, max]` Hug ranges live in
-/// `GridHugStore` (durable across the whole layout pass); they're passed
+/// `GridTrackStore` (durable across the whole layout pass); they're passed
 /// into `resolve_axis` as slices alongside this scratch.
 #[derive(Debug, Default)]
 struct AxisScratch {
@@ -60,6 +60,19 @@ struct AxisScratch {
     offsets: Vec<f32>,
     flexible: Vec<usize>,
     hug_bounds: Vec<HugBound>,
+}
+
+/// The per-track content range one axis solves against: `min[i]` is
+/// track `i`'s min-content floor, `max[i]` its preferred extent.
+///
+/// Bundled because they were two adjacent same-typed `&[f32]`
+/// parameters on [`resolve_axis`] — swapping them compiles, and the
+/// common path (every Hug track fits at its max) wouldn't even fail a
+/// test.
+#[derive(Clone, Copy, Debug)]
+struct HugRanges<'a> {
+    min: &'a [f32],
+    max: &'a [f32],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -102,7 +115,7 @@ struct GridScratch {
 #[derive(Debug, Default)]
 pub(crate) struct GridContext {
     pub(crate) depth_stack: GridDepthStack,
-    pub(crate) hugs: GridHugStore,
+    pub(crate) hugs: GridTrackStore,
     pub(super) track_aggregator: Vec<f32>,
 }
 
@@ -137,10 +150,14 @@ impl GridDepthStack {
 }
 
 /// Flat per-track pool with one `(rows, cols)` slot per recorded
-/// `GridDef`. Carries hug ranges (`max`/`min`, fed by Phase-1 cell
-/// intrinsics and Phase-2 cell-height accumulation), measure-resolved
-/// track sizes (`sizes`, the output of `resolve_axis`), and the input
-/// `total` each axis was resolved against (`totals`). Measure pass
+/// `GridDef` — every grid's track state for the whole layout pass.
+///
+/// Three things per track, not just the hug ranges the name used to
+/// claim: the content ranges (`max`/`min`, fed by Phase-1 cell
+/// intrinsics and Phase-2 cell-height accumulation), the
+/// measure-resolved track sizes (`sizes`, the output of
+/// [`resolve_axis`]), and the input `total` each axis was resolved
+/// against (`totals`). Measure pass
 /// writes; arrange pass reads. Per-depth scratch in `depth_stack`
 /// gets clobbered by sibling grids before arrange runs, so the pool
 /// persists for the whole layout pass instead.
@@ -154,7 +171,7 @@ impl GridDepthStack {
 ///
 /// Capacity retained across frames.
 #[derive(Debug, Default)]
-pub(crate) struct GridHugStore {
+pub(crate) struct GridTrackStore {
     max_pool: Vec<f32>,
     min_pool: Vec<f32>,
     /// Resolved track sizes from the last measure of each grid. Parallel
@@ -172,16 +189,16 @@ pub(crate) struct GridHugStore {
     /// sentinel that spelled "unmeasured" the same way would drop that
     /// grid off the reuse path every frame.
     totals_pool: Vec<[Option<f32>; 2]>,
-    slots: Vec<GridHugSlot>,
+    slots: Vec<GridTrackSlot>,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct GridHugSlot {
+struct GridTrackSlot {
     rows: Span,
     cols: Span,
 }
 
-impl GridHugStore {
+impl GridTrackStore {
     pub(crate) fn reset_for(&mut self, tree: &Tree) {
         self.max_pool.clear();
         self.min_pool.clear();
@@ -191,7 +208,7 @@ impl GridHugStore {
         for def in &tree.grid_defs {
             let rows = self.alloc(def.rows.len as usize);
             let cols = self.alloc(def.cols.len as usize);
-            self.slots.push(GridHugSlot { rows, cols });
+            self.slots.push(GridTrackSlot { rows, cols });
             self.totals_pool.push([None, None]);
         }
     }
@@ -232,6 +249,15 @@ impl GridHugStore {
     /// Both pools' slices for one `(idx, axis)` in one call. Single
     /// slot lookup; the borrow checker splits the `&mut self` because
     /// `min_pool` and `max_pool` are separate fields.
+    /// Both content-range pools for `(idx, axis)`, as the solver's
+    /// input bundle.
+    fn ranges(&self, idx: GridDefId, axis: Axis) -> HugRanges<'_> {
+        HugRanges {
+            min: self.slice(idx, axis, HugKind::Min),
+            max: self.slice(idx, axis, HugKind::Max),
+        }
+    }
+
     fn slice_mut_pair(&mut self, idx: GridDefId, axis: Axis) -> (&mut [f32], &mut [f32]) {
         let r = self.axis_slice(idx, axis);
         (&mut self.min_pool[r.clone()], &mut self.max_pool[r])
@@ -327,7 +353,7 @@ impl GridHugStore {
 /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
 /// and gets clobbered by sibling grids between this measure and the
 /// matching arrange. Hug sizes therefore live in `grid.hugs`
-/// (`GridHugStore`), keyed by `GridDef` index, durable for the whole
+/// (`GridTrackStore`), keyed by `GridDef` index, durable for the whole
 /// layout pass. Both are heap-resident and capacity-retained across
 /// frames; no fixed track-count limit.
 #[profiling::function]
@@ -400,12 +426,12 @@ fn measure_inner(
             let i = cell.col as usize;
             if t.size.is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
-                let (cols_min, cols_max) = pass.grid_hugs_mut().slice_mut_pair(idx, Axis::X);
+                let (cols_min, cols_max) = pass.grid_tracks_mut().slice_mut_pair(idx, Axis::X);
                 cols_min[i] = cols_min[i].max(range.min);
                 cols_max[i] = cols_max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
-                let cols_min = pass.grid_hugs_mut().slice_mut(idx, Axis::X, HugKind::Min);
+                let cols_min = pass.grid_tracks_mut().slice_mut(idx, Axis::X, HugKind::Min);
                 cols_min[i] = cols_min[i].max(min);
             }
         }
@@ -435,8 +461,7 @@ fn measure_inner(
         resolve_axis(
             &mut s.col,
             col_tracks,
-            hugs.slice(idx, Axis::X, HugKind::Min),
-            hugs.slice(idx, Axis::X, HugKind::Max),
+            hugs.ranges(idx, Axis::X),
             inner_avail.w,
             col_gap,
             !grid_sizing_w.is_hug(),
@@ -497,7 +522,7 @@ fn measure_inner(
         // Skip multi-row spans: their height is distributed across rows,
         // not attributable to one row.
         if cell.row_span == 1 {
-            let hugs = pass.grid_hugs_mut();
+            let hugs = pass.grid_tracks_mut();
             let row = cell.row as usize;
             let sizing = row_tracks[row].size;
             if sizing.is_hug() {
@@ -524,8 +549,7 @@ fn measure_inner(
         resolve_axis(
             &mut s.row,
             row_tracks,
-            hugs.slice(idx, Axis::Y, HugKind::Min),
-            hugs.slice(idx, Axis::Y, HugKind::Max),
+            hugs.ranges(idx, Axis::Y),
             inner_avail.h,
             row_gap,
             !grid_sizing_h.is_hug(),
@@ -733,7 +757,7 @@ fn span_size(sizes: &[f32], span: Span, gap: f32) -> f32 {
 fn resolve_or_reuse(
     a: &mut AxisScratch,
     tracks: &[Track],
-    hugs: &mut GridHugStore,
+    hugs: &mut GridTrackStore,
     idx: GridDefId,
     axis: Axis,
     total: f32,
@@ -748,15 +772,7 @@ fn resolve_or_reuse(
         a.sizes.copy_from_slice(hugs.sizes_slice(idx, axis));
         return;
     }
-    resolve_axis(
-        a,
-        tracks,
-        hugs.slice(idx, axis, HugKind::Min),
-        hugs.slice(idx, axis, HugKind::Max),
-        total,
-        gap,
-        false,
-    );
+    resolve_axis(a, tracks, hugs.ranges(idx, axis), total, gap, false);
 }
 
 #[inline]
@@ -795,8 +811,7 @@ fn content_floor(track: &Track, min_content: f32) -> f32 {
 fn resolve_axis(
     a: &mut AxisScratch,
     tracks: &[Track],
-    hug_min: &[f32],
-    hug_max: &[f32],
+    hugs: HugRanges<'_>,
     total: f32,
     gap: f32,
     commit_fill: bool,
@@ -825,8 +840,8 @@ fn resolve_axis(
     let mut hug_max_sum = 0.0_f32;
     for (i, t) in tracks.iter().enumerate() {
         if t.size.is_hug() {
-            let lo = content_floor(t, hug_min[i]);
-            let hi = hug_max[i].max(lo).min(t.max);
+            let lo = content_floor(t, hugs.min[i]);
+            let hi = hugs.max[i].max(lo).min(t.max);
             hug_min_sum += lo;
             hug_max_sum += hi;
             a.hug_bounds.push(HugBound { idx: i, lo, hi });
@@ -888,7 +903,7 @@ fn resolve_axis(
             let t = &tracks[i];
             let weight = t.size.fill_weight().unwrap();
             let candidate = weighted_share(remaining, weight, flexible_weight);
-            let lo = content_floor(t, hug_min[i]);
+            let lo = content_floor(t, hugs.min[i]);
             candidate < lo || candidate > t.max
         });
         match clamp_idx {
@@ -897,7 +912,7 @@ fn resolve_axis(
                 let t = &tracks[i];
                 let weight = t.size.fill_weight().unwrap();
                 let candidate = weighted_share(remaining, weight, flexible_weight);
-                let lo = content_floor(t, hug_min[i]);
+                let lo = content_floor(t, hugs.min[i]);
                 let clamped = candidate.clamp(lo, t.max);
                 a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);

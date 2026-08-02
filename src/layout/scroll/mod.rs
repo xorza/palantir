@@ -5,7 +5,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::pass::LayoutPass;
 use crate::layout::stack;
-use crate::layout::types::layout_mode::ScrollSpec;
+use crate::layout::types::layout_mode::{ScrollChildLayout, ScrollSpec};
 use crate::layout::zstack;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -22,35 +22,35 @@ pub(super) fn measure(
     spec: ScrollSpec,
 ) -> Size {
     let pan = spec.pan_mask();
-    let fit = spec.fit_mask();
     let child_avail = Size::new(
         if pan.x { f32::INFINITY } else { inner_avail.w },
         if pan.y { f32::INFINITY } else { inner_avail.h },
     );
-    let raw = if pan.x && pan.y {
-        zstack::measure(pass, node, child_avail)
-    } else if pan.y {
-        stack::measure(pass, node, child_avail, Axis::Y)
-    } else {
-        stack::measure(pass, node, child_avail, Axis::X)
+    let raw = match spec.child_layout() {
+        ScrollChildLayout::Layered => zstack::measure(pass, node, child_avail),
+        ScrollChildLayout::Flow(main) => stack::measure(pass, node, child_avail, main),
     };
 
     pass.set_scroll_content(node, raw);
 
     Size::new(
-        if pan.x && !fit.x { 0.0 } else { raw.w },
-        if pan.y && !fit.y { 0.0 } else { raw.h },
+        if spec.contributes(Axis::X) {
+            raw.w
+        } else {
+            0.0
+        },
+        if spec.contributes(Axis::Y) {
+            raw.h
+        } else {
+            0.0
+        },
     )
 }
 
 pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, spec: ScrollSpec) {
-    let pan = spec.pan_mask();
-    if pan.x && pan.y {
-        zstack::arrange(pass, node, inner);
-    } else if pan.y {
-        stack::arrange(pass, node, inner, Axis::Y);
-    } else {
-        stack::arrange(pass, node, inner, Axis::X);
+    match spec.child_layout() {
+        ScrollChildLayout::Layered => zstack::arrange(pass, node, inner),
+        ScrollChildLayout::Flow(main) => stack::arrange(pass, node, inner, main),
     }
 }
 

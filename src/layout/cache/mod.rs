@@ -8,7 +8,7 @@ pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
 use crate::layout::ShapedText;
-use crate::layout::grid::GridHugStore;
+use crate::layout::grid::GridTrackStore;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::num::F32Ext;
@@ -62,7 +62,7 @@ pub(super) struct CaptureTreeInput<'a> {
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(super) available_q: &'a mut Vec<AvailableKey>,
-    pub(super) grid_hugs: &'a GridHugStore,
+    pub(super) grid_hugs: &'a GridTrackStore,
     pub(super) text_spans: &'a [Span],
     pub(super) text_shapes: &'a [ShapedText],
 }

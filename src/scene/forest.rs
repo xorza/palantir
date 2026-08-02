@@ -266,20 +266,7 @@ impl Forest {
     /// buffer. Asserts a node is currently open so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
     pub(crate) fn add_shape(&mut self, shape: Shape<'_>) {
-        let layer = self.current_layer();
-        self.assert_node_open(layer, "add_shape");
-        // Static shapes must not pay a sentinel push into the sparse registry.
-        if self.trees[layer]
-            .shapes
-            .add(shape, &self.record_store)
-            .is_some()
-        {
-            self.scratch[layer]
-                .open_frames
-                .last_mut()
-                .unwrap()
-                .paint_rows += 1;
-        }
+        self.push_shape("add_shape", |tree, store| tree.shapes.add(shape, store));
     }
 
     /// Append a `GpuView` shape (a
@@ -288,20 +275,16 @@ impl Forest {
     /// node. Only the redraw `epoch` rides the shape — the view's `id` + app
     /// `paint` live in `Ui::gpu_views` keyed by the owner's `WidgetId`; this is
     /// assembled by `Ui::gpu_view`, not lowered from a user-facing [`Shape`],
-    /// so it skips the lowering path.
+    /// so it skips the lowering path and can never noop-collapse.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
-        let layer = self.current_layer();
-        self.assert_node_open(layer, "add_gpu_view");
-        self.trees[layer].shapes.add_gpu_view(epoch);
-        self.scratch[layer]
-            .open_frames
-            .last_mut()
-            .unwrap()
-            .paint_rows += 1;
+        self.push_shape("add_gpu_view", |tree, _| {
+            tree.shapes.add_gpu_view(epoch);
+            Some(0)
+        });
     }
 
-    /// Same as `add_shape`, but registers a `PaintAnim` against the
-    /// freshly-pushed shape so the encoder applies the sampled
+    /// Same as [`Self::add_shape`], but registers a `PaintAnim` against
+    /// the freshly-pushed shape so the encoder applies the sampled
     /// `PaintMod` at paint time and `post_record` folds the anim's
     /// `next_wake` into the host's repaint queue. Drops silently
     /// (no entry pushed) if the shape itself was noop-collapsed.
@@ -329,6 +312,36 @@ impl Forest {
                 node_idx: frame.node.0,
             },
         );
+    }
+
+    /// Shared body of the plain `add_*` entry points: gate on an open
+    /// node, hand `push` the active tree, and charge the open frame one
+    /// paint row for whatever it actually stored.
+    ///
+    /// `push` returns `None` when the shape noop-collapsed — a static
+    /// shape must not pay a sentinel push into the sparse registry, so
+    /// the row counter only advances for shapes that survived.
+    /// `add_shape_animated` doesn't route through here: it needs the row
+    /// index *and* the open frame after the push, which would mean
+    /// handing the closure the frame too.
+    #[inline]
+    fn push_shape(
+        &mut self,
+        what: &str,
+        push: impl FnOnce(&mut Tree, &RecordStore) -> Option<u32>,
+    ) {
+        let layer = self.current_layer();
+        self.assert_node_open(layer, what);
+        // Disjoint borrow: record storage, `trees`, and `scratch` are
+        // separate fields, so all three can be borrowed for the same call.
+        let tree = &mut self.trees[layer];
+        if push(tree, &self.record_store).is_some() {
+            self.scratch[layer]
+                .open_frames
+                .last_mut()
+                .unwrap()
+                .paint_rows += 1;
+        }
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, placement: Placement) {

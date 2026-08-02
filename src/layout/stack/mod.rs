@@ -404,20 +404,14 @@ pub(super) fn intrinsic(
     let mut count = 0_usize;
     for c in tree.active_children(node) {
         let child = query.child(layout, tree, c, query_axis, interned_text);
-        if query.includes(LenReq::MinContent) {
-            range.min += child.min;
-        }
-        if query.includes(LenReq::MaxContent) {
-            range.max += child.max;
+        for (req, slot) in range.requested(query) {
+            *slot += child.get(req);
         }
         count += 1;
     }
     let gaps = tree.panel(node).gaps.gap() * count.saturating_sub(1) as f32;
-    if query.includes(LenReq::MinContent) {
-        range.min += gaps;
-    }
-    if query.includes(LenReq::MaxContent) {
-        range.max += gaps;
+    for (_, slot) in range.requested(query) {
+        *slot += gaps;
     }
     range
 }
