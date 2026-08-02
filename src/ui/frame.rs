@@ -122,7 +122,7 @@ pub(crate) struct FrameRuntime {
     /// Whether the most recent `post_record` ran the cascade, used to pin
     /// the unchanged-frame skip gate.
     #[cfg(test)]
-    pub(crate) dbg_cascade_ran: bool,
+    dbg_cascade_ran: bool,
     /// EMA of `1/raw_dt` across frames; zero before a second timestamp
     /// exists. Uses unclamped wall time so stalls remain visible.
     pub(crate) fps_ema: f32,
@@ -174,6 +174,24 @@ pub(super) enum FramePlan {
 }
 
 impl FrameRuntime {
+    /// Record whether `post_record` ran the cascade this frame. Same
+    /// principle as the probe structs: the gate lives here, so the call
+    /// site in `Ui::post_record` carries none.
+    #[inline]
+    pub(crate) fn note_cascade_ran(&mut self, #[allow(unused_variables)] ran: bool) {
+        #[cfg(test)]
+        {
+            self.dbg_cascade_ran = ran;
+        }
+    }
+
+    /// Whether the last `post_record` ran the cascade — pins the
+    /// unchanged-frame skip gate.
+    #[cfg(test)]
+    pub(crate) fn cascade_ran(&self) -> bool {
+        self.dbg_cascade_ran
+    }
+
     pub(super) const MAX_DT: f32 = MAX_ANIM_DT;
 
     /// Fold this frame's outcome into [`Self::frame_id`] and the settle

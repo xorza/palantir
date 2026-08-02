@@ -83,7 +83,7 @@ fn first_frame_marks_every_painting_node_dirty() {
         .iter()
         .filter(|s| s.len > 0)
         .count();
-    assert_eq!(h.ui.damage_engine.dirty.len(), painting);
+    assert_eq!(h.ui.damage_engine.probe.dirty().len(), painting);
     // First frame is `force_full`, so `compute` short-circuits to
     // `Damage::Full` after the structural diff — and the Vacant arm
     // skips its raw-rect pushes (the region would be discarded), so
@@ -104,7 +104,7 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut h, build);
     frame(&mut h, build);
 
-    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.probe.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
     assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
 }
@@ -659,17 +659,18 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut h, build);
     assert_eq!(
-        h.ui.damage_engine.subtree_skips, 0,
+        h.ui.damage_engine.probe.subtree_skips(),
+        0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut h, build);
     assert!(
-        h.ui.damage_engine.subtree_skips >= 1,
+        h.ui.damage_engine.probe.subtree_skips() >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        h.ui.damage_engine.subtree_skips,
+        h.ui.damage_engine.probe.subtree_skips(),
     );
-    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.probe.dirty().is_empty());
 }
 
 /// Pin: a widget that loses its background between frames flips from
@@ -877,8 +878,8 @@ fn fill_change_marks_only_the_changed_leaf() {
         one_frame(ui, RED);
     });
 
-    assert_eq!(h.ui.damage_engine.dirty.len(), 1);
-    let dirty_id = h.ui.damage_engine.dirty[0];
+    assert_eq!(h.ui.damage_engine.probe.dirty().len(), 1);
+    let dirty_id = h.ui.damage_engine.probe.dirty()[0];
     assert_eq!(
         h.ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
@@ -927,7 +928,8 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
     // but its arranged x shifts from 50 → 80. Both are dirty.
     let dirty_ids: Vec<WidgetId> =
         h.ui.damage_engine
-            .dirty
+            .probe
+            .dirty()
             .iter()
             .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
             .collect();
@@ -996,7 +998,8 @@ fn added_widget_contributes_curr_rect_to_damage() {
 
     let dirty_ids: Vec<WidgetId> =
         h.ui.damage_engine
-            .dirty
+            .probe
+            .dirty()
             .iter()
             .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
             .collect();
@@ -1140,7 +1143,8 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // `cascade_input` is stable, so all damage comes from the child.
     let dirty_widget_ids: Vec<WidgetId> =
         h.ui.damage_engine
-            .dirty
+            .probe
+            .dirty()
             .iter()
             .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
             .collect();
@@ -1444,7 +1448,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // any snapshot field.
     build(60.0, &mut h);
     assert!(
-        h.ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.probe.dirty().is_empty(),
         "still frame after motion must not dirty any node",
     );
     assert_eq!(
@@ -1782,7 +1786,10 @@ fn display_change_forces_full_repaint() {
         );
         let f2 = h.frame(&mut build).plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
-        assert!(h.ui.damage_engine.dirty.is_empty(), "case: {label} steady");
+        assert!(
+            h.ui.damage_engine.probe.dirty().is_empty(),
+            "case: {label} steady"
+        );
         // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_plan = h.set_display(*mutated).frame(&mut build).plan;
         assert!(
@@ -1796,7 +1803,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} display change"
         );
         assert!(
-            !h.ui.damage_engine.dirty.is_empty(),
+            !h.ui.damage_engine.probe.dirty().is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
@@ -1807,7 +1814,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
-            h.ui.damage_engine.dirty.is_empty(),
+            h.ui.damage_engine.probe.dirty().is_empty(),
             "case: {label} post-mutation dirty empty"
         );
     }
@@ -1863,7 +1870,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 
     h.frame(&mut scene);
     h.frame(&mut scene);
-    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.probe.dirty().is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
     // diff sees it as a cascade-state change and damages its paint_rect
@@ -1914,7 +1921,7 @@ fn stable_surface_does_not_short_circuit() {
     h.frame(|ui| build(ui, BLUE));
     let warm = h.frame(|ui| build(ui, BLUE)).plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
-    assert!(h.ui.damage_engine.dirty.is_empty());
+    assert!(h.ui.damage_engine.probe.dirty().is_empty());
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
@@ -1978,7 +1985,7 @@ fn button_hover_damage_covers_only_the_button() {
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.probe.dirty().is_empty(),
         "off-button pointer should reach a no-diff steady state"
     );
 
@@ -1995,11 +2002,11 @@ fn button_hover_damage_covers_only_the_button() {
     build(&mut h, &mut hot_node, &mut cold_node);
 
     assert_eq!(
-        h.ui.damage_engine.dirty.len(),
+        h.ui.damage_engine.probe.dirty().len(),
         1,
         "only the hovered button should be dirty"
     );
-    let dirty_id = h.ui.damage_engine.dirty[0];
+    let dirty_id = h.ui.damage_engine.probe.dirty()[0];
     assert_eq!(
         h.ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("hot"),
@@ -2014,7 +2021,7 @@ fn button_hover_damage_covers_only_the_button() {
     // Next frame at same cursor → no diff (settled).
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.probe.dirty().is_empty(),
         "settled hover should produce no further damage"
     );
 }
@@ -2055,14 +2062,15 @@ fn button_unhover_damage_covers_only_the_button() {
     h.move_to(hot_rect.min + Vec2::new(5.0, 5.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
-    assert!(h.ui.damage_engine.dirty.is_empty(), "settled hover");
+    assert!(h.ui.damage_engine.probe.dirty().is_empty(), "settled hover");
 
     // Pointer leaves the button.
     h.move_to(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
-    assert_eq!(h.ui.damage_engine.dirty.len(), 1);
+    assert_eq!(h.ui.damage_engine.probe.dirty().len(), 1);
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.widget_id()[h.ui.damage_engine.dirty[0].idx()],
+        h.ui.forest.trees[Layer::Main].records.widget_id()
+            [h.ui.damage_engine.probe.dirty()[0].idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
@@ -2568,7 +2576,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     frame(&mut h, |ui| build(120.0, ui));
     frame(&mut h, |ui| build(120.0, ui));
     assert!(
-        h.ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.probe.dirty().is_empty(),
         "steady frame must produce no diff"
     );
 
@@ -2915,7 +2923,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut h, |ui| build("abc", ui));
     frame(&mut h, |ui| build("abc", ui));
     assert!(
-        h.ui.damage_engine.dirty.is_empty(),
+        h.ui.damage_engine.probe.dirty().is_empty(),
         "steady frame must produce no diff"
     );
 

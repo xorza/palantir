@@ -785,7 +785,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     );
     let second_scene = h.frame_value(build_interleaved_container_text);
     assert!(
-        !h.ui.layout_engine.scratch.cache_hits.is_empty(),
+        !h.ui.layout_engine.scratch.probe.cache_hits().is_empty(),
         "second identical frame should exercise measure-cache replay",
     );
     let second_layout = &h.ui.layout[Layer::Main];

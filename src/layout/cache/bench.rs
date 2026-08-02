@@ -516,7 +516,7 @@ mod tests {
             build_broad_variant(ui, true);
         });
         assert_eq!(
-            h.ui.layout_engine.scratch.cache_hits.len(),
+            h.ui.layout_engine.scratch.probe.cache_hits().len(),
             21,
             "seven unchanged siblings hit at each of the three branch levels",
         );
