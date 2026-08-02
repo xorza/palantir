@@ -397,8 +397,8 @@ mod hot_struct_sizes {
         ContentHash => "rollups::ContentHash": 8 / 8,
         CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
         // Cascade per-node and input per-target rows.
-        EntryRow => "cascade::EntryRow": 48 / 4,
-        HitRow => "cascade::HitRow": 16 / 8,
+        EntryRow => "cascade::EntryRow": 32 / 4,
+        HitRow => "cascade::HitRow": 32 / 8,
         Paint => "cascade::Paint": 24 / 8,
         ResponseState => "input::ResponseState": 136 / 4,
         Widget => "widgets::Widget": 128 / 8,

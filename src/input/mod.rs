@@ -22,6 +22,7 @@ use crate::input::scope::Scopes;
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
+use crate::layout::Layout;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascades;
@@ -935,28 +936,47 @@ impl InputState {
                 .all(|c| c.press.is_none() && c.release.is_none());
     }
 
-    pub(crate) fn pointer_local_for(&self, id: WidgetId, cascades: &Cascades) -> Option<Vec2> {
+    pub(crate) fn pointer_local_for(
+        &self,
+        id: WidgetId,
+        cascades: &Cascades,
+        layout: &Layout,
+    ) -> Option<Vec2> {
         let pointer = self.pointer_pos?;
-        let entry_idx = cascades.entry_idx_of(id)? as usize;
-        let layout_rect = cascades.entries.layout_rect()[entry_idx];
-        let transform = cascades.entries.transform()[entry_idx];
+        let loc = cascades.locate(id)?;
+        let layout_rect = layout.arranged_rect(loc.endpoint);
+        let transform = cascades.entries[loc.entry_idx as usize].transform;
         Some(pointer_in_widget_space(pointer, layout_rect.min, transform))
     }
 
-    pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
+    pub(crate) fn response_for(
+        &self,
+        id: WidgetId,
+        cascades: &Cascades,
+        layout: &Layout,
+    ) -> ResponseState {
         // Geometry half — needed every frame for theme picking and
-        // layout-relative math. `entry_idx_of` is the lone hash probe.
-        let entry_idx = cascades.entry_idx_of(id).map(|i| i as usize);
-        let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
-        let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
-        let transform = entry_idx.map_or(TranslateScale::IDENTITY, |i| {
-            cascades.entries.transform()[i]
-        });
+        // layout-relative math. `locate` is the lone hash probe, and it
+        // yields both the entry index and the endpoint the layout
+        // columns are keyed by.
+        let loc = cascades.locate(id);
+        // One gather of the whole `EntryRow` — `entries` is AoS precisely
+        // so these three land on one cache line instead of three.
+        let entry = loc.map(|l| cascades.entries[l.entry_idx as usize]);
+        let rect = entry.map(|e| e.rect);
+        // The arranged rect lives on `Layout`, which owns it; the
+        // cascade used to keep a per-node copy purely so this read
+        // wouldn't need the endpoint. Same value either way — the
+        // cascade is rebuilt (or provably skipped) whenever an arranged
+        // rect moves, so `layout` and `cascades` always describe the
+        // same arrangement.
+        let layout_rect = loc.map(|l| layout.arranged_rect(l.endpoint));
+        let transform = entry.map_or(TranslateScale::IDENTITY, |e| e.transform);
         // Cascade flattens parent-disabled into each entry, so this is
         // the **effective** ancestor-or-self disabled — one frame stale.
         // Widgets that need lag-free self-toggle response merge their
         // own `node.disabled` on top after calling.
-        let disabled = entry_idx.is_some_and(|i| cascades.entries.disabled()[i]);
+        let disabled = entry.is_some_and(|e| e.disabled);
 
         // Interaction half — on a quiescent frame every field below is at
         // its default, so skip the per-button capture scan and the

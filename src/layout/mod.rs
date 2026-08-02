@@ -15,6 +15,8 @@ pub(crate) mod zstack;
 #[cfg(test)]
 mod cross_driver_tests;
 
+use crate::common::content_hash::ContentHash;
+use crate::common::hash::Hasher;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::layer::Layer;
@@ -22,6 +24,7 @@ use crate::scene::layer::PerLayer;
 use crate::scene::seen_ids::Endpoint;
 use crate::scene::tree::Tree;
 use crate::text::key::TextShapeKey;
+use std::hash::Hasher as _;
 use std::ops::{Index, IndexMut};
 
 /// Per-layer layout output — the SoA columns the encoder + hit-index
@@ -68,6 +71,20 @@ impl Layout {
     pub(crate) fn scroll_content(&self, endpoint: Endpoint) -> Size {
         self.layers[endpoint.layer].scroll_content[endpoint.node.idx()]
     }
+
+    /// The node's arranged rect — pre-transform, unclipped, in world
+    /// coords. Takes an [`Endpoint`] for the same reason
+    /// [`Self::scroll_content`] does: this table is keyed by
+    /// `(layer, node)` while its callers hold a `WidgetId`, and
+    /// `Cascades` is what bridges the two.
+    ///
+    /// This is the single home of the arranged rects. `ResponseState`'s
+    /// `layout_rect` reads through here rather than from a copy on the
+    /// cascade's per-node row.
+    #[inline]
+    pub(crate) fn arranged_rect(&self, endpoint: Endpoint) -> Rect {
+        self.layers[endpoint.layer].rect[endpoint.node.idx()]
+    }
 }
 
 impl Index<Layer> for Layout {
@@ -103,5 +120,32 @@ impl LayerLayout {
         self.text_shapes.clear();
         self.text_spans.clear();
         self.text_spans.resize(n, Span::default());
+    }
+
+    /// Summary of the arranged rects, for the cascade's
+    /// incremental-validity check (`CascadesEngine::can_update`): it
+    /// retains this value from its last full rebuild and compares to
+    /// decide whether the rows it kept still describe the current
+    /// arrangement.
+    ///
+    /// **Computed on demand, not cached on the struct.** Only the
+    /// cascade wants it, and the cascade is skipped outright on most
+    /// frames (`Ui::post_record`'s fingerprint gate). Refreshing it at
+    /// the tail of every `LayoutEngine::run` would charge every layout
+    /// pass — including the cache-hit ones that touch nothing else —
+    /// for an answer usually nobody reads.
+    ///
+    /// Hashed as raw bytes rather than through `approx`'s visual
+    /// quantisation on purpose: this gates a *cache-validity* decision,
+    /// so it must be at least as strict as the exact element-wise
+    /// comparison it replaces. Quantising would let a sub-quantum
+    /// arrange shift retain a cascade built for the old rects. `Rect`
+    /// is `Pod`, so the whole column hashes in one bulk write — the
+    /// per-field form cost four hash rounds per rect instead of two.
+    pub(crate) fn rect_hash(&self) -> ContentHash {
+        let mut h = Hasher::new();
+        h.write_usize(self.rect.len());
+        h.pod_slice(&self.rect);
+        ContentHash(h.finish())
     }
 }

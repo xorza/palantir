@@ -1027,7 +1027,7 @@ impl Ui {
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
-        let mut state = self.input.response_for(id, &self.cascades);
+        let mut state = self.input.response_for(id, &self.cascades, &self.layout);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.disabled |= self.forest.current_scratch().ancestor_disabled();
@@ -1261,7 +1261,8 @@ impl Ui {
     /// hover target. [`Self::peek_pointer_local`] is the unwatched read.
     pub fn pointer_local(&mut self, id: WidgetId) -> Option<glam::Vec2> {
         self.watch_pointer(PointerWake::MOVE);
-        self.input.pointer_local_for(id, &self.cascades)
+        self.input
+            .pointer_local_for(id, &self.cascades, &self.layout)
     }
 
     /// Currently-held modifier keys. State persists across frames; only
@@ -1292,7 +1293,8 @@ impl Ui {
     /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch.
     /// Same caveat as [`Self::peek_pointer_pos`].
     pub fn peek_pointer_local(&self, id: WidgetId) -> Option<glam::Vec2> {
-        self.input.pointer_local_for(id, &self.cascades)
+        self.input
+            .pointer_local_for(id, &self.cascades, &self.layout)
     }
 
     /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch

@@ -1,5 +1,6 @@
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
@@ -285,11 +286,11 @@ fn node_spans_rows_mirror_chrome_and_children() {
         "chromed panel must have a non-empty paint span with non-zero chrome rect",
     );
     let chrome_entry = cascades
-        .entry_idx_of(WidgetId::from_hash("chrome"))
-        .unwrap() as usize;
+        .locate(WidgetId::from_hash("chrome"))
+        .unwrap()
+        .entry_idx as usize;
     assert_eq!(
-        arena.rows[chrome_span.start as usize].screen,
-        cascades.entries.rect()[chrome_entry],
+        arena.rows[chrome_span.start as usize].screen, cascades.entries[chrome_entry].rect,
         "no-shadow chrome must reuse the node's transformed and clipped visible rect",
     );
     assert_eq!(
@@ -510,15 +511,16 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         });
     });
 
+    // `hits` is interactive-rows-only, in paint order, and carries its
+    // own geometry — so identity is all that needs asserting here.
     assert_eq!(
-        h.ui.cascades.hits.entry_idx(),
-        [
-            h.ui.cascades.entry_idx_of(hover).unwrap(),
-            h.ui.cascades.entry_idx_of(focus).unwrap(),
-            h.ui.cascades.entry_idx_of(popup_scroll).unwrap(),
-        ],
+        h.ui.cascades
+            .hits
+            .iter()
+            .map(|r| r.widget_id)
+            .collect::<Vec<_>>(),
+        [hover, focus, popup_scroll],
     );
-    assert_eq!(h.ui.cascades.hits.widget_id(), [hover, focus, popup_scroll],);
     let pos = Vec2::splat(50.0);
     assert_eq!(h.ui.cascades.hit_test(pos, Sense::hovers), Some(hover),);
     assert_eq!(h.ui.cascades.hit_test(pos, Sense::clicks), None);
@@ -548,39 +550,12 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     let mut full = Cascades::default();
     engine.run_full(&ui.forest, &ui.layout, ui.display, &mut full);
 
-    assert_eq!(ui.cascades.entries.len(), full.entries.len(), "{label}");
-    assert_eq!(ui.cascades.entries.rect(), full.entries.rect(), "{label}");
-    assert_eq!(ui.cascades.entries.sense(), full.entries.sense(), "{label}");
-    assert_eq!(
-        ui.cascades.entries.focusable(),
-        full.entries.focusable(),
-        "{label}"
-    );
-    assert_eq!(
-        ui.cascades.entries.disabled(),
-        full.entries.disabled(),
-        "{label}"
-    );
-    assert_eq!(
-        ui.cascades.entries.layout_rect(),
-        full.entries.layout_rect(),
-        "{label}"
-    );
-    assert_eq!(
-        ui.cascades.entries.transform(),
-        full.entries.transform(),
-        "{label}"
-    );
-    assert_eq!(
-        ui.cascades.hits.entry_idx(),
-        full.hits.entry_idx(),
-        "{label}"
-    );
-    assert_eq!(
-        ui.cascades.hits.widget_id(),
-        full.hits.widget_id(),
-        "{label}"
-    );
+    // Whole-row compares: `entries` / `hits` are AoS and `PartialEq`,
+    // so this covers every field and keeps covering any field added
+    // later — the previous column-by-column form silently skipped new
+    // ones.
+    assert_eq!(ui.cascades.entries, full.entries, "{label}");
+    assert_eq!(ui.cascades.hits, full.hits, "{label}");
 
     let mut id_count = 0;
     for layer in Layer::PAINT_ORDER {
@@ -827,4 +802,109 @@ fn incremental_scroll_matches_full() {
     h.frame(build);
 
     assert_cascades_match_full(&h.ui, "scroll");
+}
+
+/// `LayerLayout::rect_hash` is what `CascadesEngine::can_update` reads
+/// to decide whether the retained cascade rows still describe the
+/// current arrangement — it replaced a per-node copy of every arranged
+/// rect that `EntryRow` used to carry purely for that comparison.
+///
+/// So it has to discriminate on exactly one axis. Identical geometry
+/// must hash equal even when paint changed, or every recolour would
+/// force a full cascade rebuild and the incremental path would never
+/// fire. Any moved rect must hash different, or a stale cascade
+/// survives a relayout.
+#[test]
+fn rect_hash_tracks_geometry_and_ignores_paint() {
+    fn build(size: f32, fill: Color) -> impl FnMut(&mut Ui) {
+        move |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .size(Sizing::fixed(200.0))
+                .show(ui, |ui| {
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("child"))
+                        .size(Sizing::fixed(size))
+                        .background(Background {
+                            fill: fill.into(),
+                            ..Default::default()
+                        })
+                        .show(ui, |_| {});
+                });
+        }
+    }
+
+    let mut h = UiHarness::new(UVec2::splat(300));
+    h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
+    let base = h.ui.layout[Layer::Main].rect_hash();
+
+    // Same geometry, same paint — a rebuild of an identical frame.
+    h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
+    assert_eq!(
+        h.ui.layout[Layer::Main].rect_hash(),
+        base,
+        "an identical frame must hash equal, or the cascade never takes its incremental path",
+    );
+
+    // Same geometry, different paint: `can_update` must still be able
+    // to retain its rows and repair paint only.
+    h.frame(build(50.0, Color::rgb(0.0, 1.0, 0.0)));
+    assert_eq!(
+        h.ui.layout[Layer::Main].rect_hash(),
+        base,
+        "a paint-only change must not move the rect hash",
+    );
+
+    // Geometry moved — the one case that must invalidate.
+    h.frame(build(80.0, Color::rgb(1.0, 0.0, 0.0)));
+    let moved = h.ui.layout[Layer::Main].rect_hash();
+    assert_ne!(
+        moved, base,
+        "a resized child must move the rect hash, or a stale cascade survives relayout",
+    );
+
+    // And it is a function of the geometry, not a change counter:
+    // going back to the original size returns the original hash.
+    h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
+    assert_eq!(
+        h.ui.layout[Layer::Main].rect_hash(),
+        base,
+        "the hash must be a pure function of the arranged rects",
+    );
+}
+
+/// The interactive table is self-sufficient: every `HitRow` carries the
+/// same `rect` the node's `EntryRow` does, so the hit scan never needs
+/// to reach back into `entries`. If those two ever disagreed, hit
+/// testing would silently use stale geometry.
+#[test]
+fn hit_rows_carry_the_entry_rect() {
+    let mut h = UiHarness::new(UVec2::splat(300));
+    h.frame(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size(Sizing::fixed(200.0))
+            .sense(crate::input::sense::Sense::HOVER)
+            .show(ui, |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .size(Sizing::fixed(60.0))
+                    .sense(crate::input::sense::Sense::CLICK)
+                    .show(ui, |_| {});
+            });
+    });
+
+    let cascades = &h.ui.cascades;
+    assert!(!cascades.hits.is_empty(), "expected interactive rows");
+    for row in &cascades.hits {
+        let entry_idx = cascades
+            .locate(row.widget_id)
+            .expect("hit row's widget must be locatable")
+            .entry_idx as usize;
+        assert_eq!(
+            row.rect, cascades.entries[entry_idx].rect,
+            "HitRow::rect must equal the node's EntryRow::rect for {:?}",
+            row.widget_id,
+        );
+    }
 }

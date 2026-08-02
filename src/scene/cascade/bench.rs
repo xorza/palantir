@@ -50,21 +50,16 @@ fn fixture(density: Density) -> Cascades {
         let interactive = index < interactive_count;
         if interactive {
             cascades.hits.push(HitRow {
-                entry_idx: index as u32,
+                rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
                 widget_id: WidgetId::from_hash(index),
+                sense: Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH,
+                focusable: true,
             });
         }
         cascades.entries.push(EntryRow {
             rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
-            sense: if interactive {
-                Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH
-            } else {
-                Sense::NONE
-            },
-            focusable: interactive,
-            disabled: false,
-            layout_rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
             transform: TranslateScale::IDENTITY,
+            disabled: false,
         });
     }
     cascades
