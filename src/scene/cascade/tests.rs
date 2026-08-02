@@ -10,7 +10,7 @@ use crate::scene::cascade::{CascadePrefixBits, build_cascade_prefix, finish_casc
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::seen_ids::Endpoint;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::harness::UiHarness;

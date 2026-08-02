@@ -8,7 +8,7 @@
 //! `support::arrange_axis` for the two invariants this test guards.
 
 use crate::scene::layer::Layer;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 

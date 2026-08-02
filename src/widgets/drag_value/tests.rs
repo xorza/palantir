@@ -5,7 +5,7 @@ use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::drag_value::{DragNum, DragValue, DragValueState, round_to_decimals};
 use crate::widgets::panel::Panel;

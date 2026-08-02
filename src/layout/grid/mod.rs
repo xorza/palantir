@@ -11,7 +11,7 @@ use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use fixedbitset::FixedBitSet;
 use glam::Vec2;
 use std::ops::Range;

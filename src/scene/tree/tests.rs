@@ -10,7 +10,7 @@ use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::Placement;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;

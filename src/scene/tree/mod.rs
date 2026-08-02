@@ -43,8 +43,8 @@ use crate::scene::shapes::paint::ChromeRow;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::extras::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
-use crate::scene::tree::node::{NodeId, NodeRecord, SubtreeEnd};
 use crate::scene::tree::paint_anims::PaintAnims;
+use crate::scene::tree::record::{NodeId, NodeRecord, SubtreeEnd};
 use crate::scene::tree::recording::{OpenFrame, RecordingScratch, RootSlot};
 use crate::scene::tree::rollups::SubtreeRollups;
 use soa_rs::Soa;
@@ -582,8 +582,8 @@ impl Tree {
 
 pub(crate) mod extras;
 pub(crate) mod iter;
-pub(crate) mod node;
 pub(crate) mod paint_anims;
+pub(crate) mod record;
 pub(crate) mod recording;
 pub(crate) mod rollups;
 
@@ -591,7 +591,7 @@ pub(crate) mod rollups;
 pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::scene::tree::node::NodeId;
+    use crate::scene::tree::record::NodeId;
     use crate::scene::tree::*;
 
     impl Tree {

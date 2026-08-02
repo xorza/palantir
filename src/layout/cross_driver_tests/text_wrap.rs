@@ -12,7 +12,7 @@ use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
@@ -946,7 +946,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
 /// rect shorter than its content, visibly clipping at the bottom.
 #[test]
 fn fill_panel_grows_to_contain_wrapped_content_on_y() {
-    use crate::scene::tree::node::NodeId;
+    use crate::scene::tree::record::NodeId;
     use crate::widgets::panel::Panel;
     fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut inner = NodeId(0);

@@ -28,7 +28,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 
 /// The strip a scroll's content actually occupies: its own extent less
 /// the reserved bar gutters and the user padding.

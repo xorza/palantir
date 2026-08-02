@@ -14,8 +14,8 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
 use crate::scene::shapes::lower::ChromeInput;
 use crate::scene::tree::Tree;
-use crate::scene::tree::node::NodeId;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry};
+use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::{Placement, RecordingScratch};
 use crate::shape::Shape;
 use std::time::Duration;
@@ -393,7 +393,7 @@ mod internals {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::forest::Forest;
     use crate::scene::layer::Layer;
-    use crate::scene::tree::node::NodeId;
+    use crate::scene::tree::record::NodeId;
 
     impl Forest {
         /// The node carrying `id` on `layer`. A linear scan — fine for

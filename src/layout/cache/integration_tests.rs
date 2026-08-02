@@ -17,7 +17,7 @@ use crate::primitives::{
 use crate::renderer::frontend::record_sink::assert_same_paint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;

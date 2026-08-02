@@ -6,7 +6,7 @@ use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, spinner::Spinner};

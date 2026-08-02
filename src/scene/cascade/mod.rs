@@ -30,7 +30,7 @@ use crate::scene::seen_ids::Endpoint;
 use crate::scene::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::{TreeItem, TreeItems};
-use crate::scene::tree::node::NodeId;
+use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::Placement;
 use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
 use crate::text::TEXT_SCALE_STEP;

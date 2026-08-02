@@ -108,7 +108,7 @@ mod tests {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
-    use crate::scene::tree::node::NodeId;
+    use crate::scene::tree::record::NodeId;
     use crate::ui::harness::UiHarness;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::radio::RadioButton;
