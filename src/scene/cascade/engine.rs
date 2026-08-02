@@ -92,6 +92,11 @@ pub(crate) struct CascadeEngine {
     /// row-count change up front or discovered it mid-tree.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) abandoned_incrementals: u32,
+    /// Full rebuilds performed. With `abandoned_incrementals` this
+    /// separates "`can_update` said no" from "the incremental walk gave
+    /// up", which are otherwise indistinguishable from the outside.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) full_rebuilds: u32,
 }
 
 impl CascadeEngine {
@@ -145,6 +150,14 @@ impl CascadeEngine {
         }
     }
 
+    #[inline]
+    fn note_full_rebuild(&mut self) {
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.full_rebuilds = self.full_rebuilds.saturating_add(1);
+        }
+    }
+
     /// A match proves every retained non-paint cascade and hit-test
     /// column remains valid; the incremental walk only repairs paint.
     fn can_update(
@@ -195,6 +208,7 @@ impl CascadeEngine {
         display: Display,
         cascade: &mut Cascade,
     ) {
+        self.note_full_rebuild();
         let total = forest.total_nodes();
         cascade.entries.clear();
         cascade.entries.reserve(total);

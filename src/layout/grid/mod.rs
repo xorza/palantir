@@ -1040,3 +1040,35 @@ pub(super) fn intrinsic(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::layout::grid::{AxisScratch, HugRanges, resolve_axis};
+    use crate::layout::types::track::Track;
+
+    /// Grid's Phase-3 Fill distributor over the same `(weight, floor,
+    /// cap)` triples `stack::internals::distribute_fill` takes, with no
+    /// Fixed or Hug tracks and no gap so `total` is the whole leftover.
+    pub(crate) fn distribute_fill(items: &[(f32, f32, f32)], total: f32) -> Vec<f32> {
+        let tracks: Vec<Track> = items
+            .iter()
+            .map(|&(weight, _, cap)| Track::fill_weight(weight).max(cap))
+            .collect();
+        let floors: Vec<f32> = items.iter().map(|&(_, floor, _)| floor).collect();
+        let unused_max = vec![0.0; items.len()];
+        let mut axis = AxisScratch::default();
+        axis.reset(items.len());
+        resolve_axis(
+            &mut axis,
+            &tracks,
+            HugRanges {
+                min: &floors,
+                max: &unused_max,
+            },
+            total,
+            0.0,
+            false,
+        );
+        axis.sizes.clone()
+    }
+}
