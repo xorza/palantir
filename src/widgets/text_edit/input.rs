@@ -36,8 +36,12 @@ pub(super) struct InputResult {
 /// rendering it. The three travel together because they are set on the
 /// same builder and read at the same call, and bundling them is what
 /// keeps [`handle_input`]'s parameter list inside its own means.
+///
+/// Not to be confused with [`crate::InputPolicy`], which is unrelated —
+/// that one gates whether a frame re-records at all. This is per-widget
+/// and concerns which keystrokes a field takes.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct InputPolicy {
+pub(super) struct AcceptPolicy {
     /// Cap on buffer length; `None` is unbounded.
     pub(super) max_chars: Option<usize>,
     /// Select everything when focus lands without a same-frame press.
@@ -67,11 +71,11 @@ pub(super) fn run_input(
     is_focused: bool,
     text: &mut String,
     layout: &TextLayout,
-    policy: InputPolicy,
+    policy: AcceptPolicy,
     state: &mut TextEditState,
 ) -> InputResult {
     let ctx = &layout.ctx;
-    let InputPolicy {
+    let AcceptPolicy {
         max_chars,
         select_all_on_focus,
         filter,

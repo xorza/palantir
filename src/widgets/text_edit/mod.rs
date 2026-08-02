@@ -19,7 +19,7 @@ use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::edit_state::EditState;
-use crate::widgets::text_edit::input::{InputPolicy, InputResult, run_input};
+use crate::widgets::text_edit::input::{AcceptPolicy, InputResult, run_input};
 use crate::widgets::text_edit::view::{
     CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput,
     SELECTION_RECTS_INLINE_CAPACITY, SelectionRects, ViewState, ViewUpdateInput,
@@ -398,7 +398,7 @@ impl<'a> TextEdit<'a> {
             is_focused,
             self.text,
             &layout,
-            InputPolicy {
+            AcceptPolicy {
                 max_chars: self.max_chars,
                 select_all_on_focus: self.select_all_on_focus,
                 filter,
