@@ -267,8 +267,7 @@ impl Tree {
                     }
                 }
             }
-            // One decode for all three consumers below. Sizing of
-            // `container_text` is `reset_for`'s job, not this loop's.
+            // One decode for all three consumers below.
             let mode = LayoutMode::from(layouts[i].meta);
             if has_direct_text && mode != LayoutMode::Leaf {
                 container_text.insert(i);

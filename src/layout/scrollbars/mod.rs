@@ -98,8 +98,7 @@ pub(crate) struct BarGeometry {
 
 /// A bar's track always spans its axis' whole viewport extent, so
 /// `viewport` is both the ratio the thumb expresses and the length it
-/// travels along. The two used to be separate parameters that every call
-/// site filled with the same expression.
+/// travels along.
 pub(crate) fn bar_geometry(
     viewport: f32,
     content: f32,
