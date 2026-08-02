@@ -19,7 +19,7 @@ use crate::primitives::{
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::payload::{BrushSource, CurveBasis, PushClipPayload};
 use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
-use crate::renderer::gradient_atlas::handle::{SharedGradientAtlas, internals::registration_count};
+use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
@@ -74,9 +74,9 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
 
     resolver.begin(gradients.len());
     let first = resolver.source(&gradients, &atlas, brush);
-    let registered = registration_count(&atlas);
+    let registered = atlas.registrations();
     let repeated = resolver.source(&gradients, &atlas, brush);
-    assert_eq!(registration_count(&atlas), registered);
+    assert_eq!(atlas.registrations(), registered);
     match (first, repeated) {
         (BrushSource::Gradient(first), BrushSource::Gradient(repeated)) => {
             assert_eq!(first.axis, repeated.axis);
@@ -89,7 +89,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     resolver.begin(gradients.len());
     assert!(resolver.resolved[0].is_none());
     let _ = resolver.source(&gradients, &atlas, brush);
-    assert_eq!(registration_count(&atlas), registered + 1);
+    assert_eq!(atlas.registrations(), registered + 1);
 }
 
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a

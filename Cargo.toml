@@ -146,6 +146,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "gradient_atlas"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "curve_pipeline"
 harness = false
 required-features = ["internals"]
