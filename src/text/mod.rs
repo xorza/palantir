@@ -169,11 +169,6 @@ impl ShaperInner {
     }
 }
 
-/// Max cosmic buffers retained after per-frame maintenance. Backend misses
-/// restore entries from retained text sources, so the cache needs no separate
-/// live-layout allowance.
-const BUFFER_BUDGET: usize = 2048;
-
 impl<'a> TextShapeRequest<'a> {
     /// Metrics were validated at record time; invalid values here are a
     /// logic error, debug-asserted by [`TextShapeKey::unbounded`].
@@ -292,11 +287,12 @@ impl TextShaper {
 }
 
 impl ShaperInner {
-    /// Bound the ordinary content cache. Layout and reuse entries may retain
-    /// evicted keys because the encoder reconstructs every emitted run.
+    /// Age out the ordinary content cache. Layout and reuse entries may
+    /// retain dropped keys because the encoder reconstructs every emitted
+    /// run.
     fn end_frame(&mut self) {
         if let Some(cosmic) = self.cosmic.as_mut() {
-            cosmic.end_frame_evict(BUFFER_BUDGET);
+            cosmic.end_frame();
         }
     }
 
@@ -520,13 +516,15 @@ pub(crate) mod internals {
                 .is_some_and(|cosmic| cosmic.buffer_for(key).is_some())
         }
 
-        pub(crate) fn evict_cosmic_buffers(&self, max_keep: usize) {
+        /// Drop every shaped buffer now — see
+        /// [`CosmicMeasure::drop_all_buffers`].
+        pub(crate) fn drop_cosmic_buffers(&self) {
             self.inner
                 .borrow_mut()
                 .cosmic
                 .as_mut()
                 .expect("cosmic buffer eviction requires a cosmic text shaper")
-                .end_frame_evict(max_keep);
+                .drop_all_buffers();
         }
     }
 

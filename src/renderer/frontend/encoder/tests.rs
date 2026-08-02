@@ -333,7 +333,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     let mut h = UiHarness::with_text(UVec2::new(200, 200));
     h.frame(body);
     let key = h.ui.layout[Layer::Main].text_shapes[0].key;
-    h.ui.resources.text.evict_cosmic_buffers(0);
+    h.ui.resources.text.drop_cosmic_buffers();
     assert!(
         !h.ui.resources.text.has_cosmic_buffer(key),
         "fixture must evict the retained layout's key",
@@ -358,7 +358,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     drop(interned_text);
     drop(scene);
 
-    h.ui.resources.text.evict_cosmic_buffers(0);
+    h.ui.resources.text.drop_cosmic_buffers();
     let measure_calls = h.ui.resources.text.measure_calls();
     h.ui.request_repaint();
     h.frame(body);

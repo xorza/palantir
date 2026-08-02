@@ -682,8 +682,16 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let b_key = b.ui.layout[Layer::Main].text_shapes[0].key;
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    assert!(a.ui.resources.text.has_cosmic_buffer(a_key));
-    assert!(a.ui.resources.text.has_cosmic_buffer(b_key));
+    for (label, shaper) in [("A", &a.ui.resources.text), ("B", &b.ui.resources.text)] {
+        assert!(
+            shaper.has_cosmic_buffer(a_key),
+            "window {label} shares the buffer cache, so it sees A's key",
+        );
+        assert!(
+            shaper.has_cosmic_buffer(b_key),
+            "window {label} shares the buffer cache, so it sees B's key",
+        );
+    }
     assert!(a.ui.layout_engine.text.has_entry(text_id, 0));
     assert!(b.ui.layout_engine.text.has_entry(text_id, 0));
 
@@ -711,8 +719,6 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
         after_b_removal,
         "window B removal must not evict window A's reuse row",
     );
-    assert!(a.ui.resources.text.has_cosmic_buffer(a_key));
-    assert!(a.ui.resources.text.has_cosmic_buffer(b_key));
 }
 
 #[test]
@@ -769,10 +775,10 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    idle.ui.resources.text.evict_cosmic_buffers(1);
+    idle.ui.resources.text.drop_cosmic_buffers();
     assert!(
         !idle.ui.resources.text.has_cosmic_buffer(idle_key),
-        "newer active-window churn must evict the idle window's key",
+        "the idle window's shaped buffer must be gone before the paint",
     );
 
     let idle_paint = idle
