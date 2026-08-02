@@ -12,7 +12,6 @@ use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
@@ -408,9 +407,7 @@ impl CascadeEngine {
                 tree,
                 layout,
                 node: id,
-                layout_rect,
                 visible_rect,
-                padding: layout_core.padding,
                 parent_transform,
                 parent_clip,
                 shape_clip,
@@ -668,18 +665,28 @@ fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, ha
 }
 
 /// Inputs to [`compute_paint_rect`], threaded from `run_tree`.
-/// `shape_transform` (the `parent ∘ self_anchored` descendants also
-/// inherit) and `clips` are computed once at the call site and passed
-/// in so we don't re-probe the sparse `transform_of` column, recompose
-/// the transform, or re-read the SoA `attrs` column — all showed up as
-/// duplicate work in cascade profiling.
+///
+/// Everything here is something the walk **already holds for its own
+/// reasons**, so passing it is reuse rather than a wide-parameter habit;
+/// a field earns its place by that test alone. `shape_transform` (the
+/// `parent ∘ self_anchored` descendants also inherit) and `clips` are
+/// the pointed cases — computed once at the call site so we don't
+/// re-probe the sparse `transform_of` column, recompose the transform,
+/// or re-read the SoA `attrs` column, all of which showed up as
+/// duplicate work in cascade profiling. `visible_rect` is the same
+/// bargain from the other end: the full walk pushes it into `hits` and
+/// `entries` regardless, and deriving it here would apply and intersect
+/// it a second time per node.
+///
+/// What is *not* here is the counterpart: `layout_rect` and the node's
+/// `padding` are one indexed load each off lines this walk has already
+/// touched, and `padding` is read only by the text arm — so they are
+/// derived below instead of widening every node's bundle by 24 B.
 struct PaintRectCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
     node: NodeId,
-    layout_rect: Rect,
     visible_rect: Rect,
-    padding: Spacing,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
@@ -693,9 +700,7 @@ impl std::fmt::Debug for PaintRectCtx<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PaintRectCtx")
             .field("node", &self.node)
-            .field("layout_rect", &self.layout_rect)
             .field("visible_rect", &self.visible_rect)
-            .field("padding", &self.padding)
             .field("parent_transform", &self.parent_transform)
             .field("parent_clip", &self.parent_clip)
             .field("shape_clip", &self.shape_clip)
@@ -737,9 +742,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         tree,
         layout,
         node,
-        layout_rect,
         visible_rect,
-        padding,
         parent_transform,
         parent_clip,
         shape_clip,
@@ -748,6 +751,9 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         clips,
         has_children,
     } = ctx;
+    // The walk read this same slot to build `visible_rect`, so it is a
+    // hot line rather than a fresh fetch.
+    let layout_rect = layout.rect[node.idx()];
     let paints_start = arena.rows.len() as u32;
 
     // `Option<Rect>` because zero-size sentinels bias `Rect::union`
@@ -816,6 +822,10 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                     );
                     let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
                     text_ord += 1;
+                    // Read here rather than carried in: the text arm is
+                    // the only reader, so a node with no text shape never
+                    // touches the column.
+                    let padding = tree.records.layout()[node.idx()].padding;
                     let local = text_paint_bbox_local(
                         *local_origin,
                         *align,
