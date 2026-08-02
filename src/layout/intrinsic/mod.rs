@@ -43,16 +43,42 @@ impl IntrinsicRange {
     pub(crate) const ZERO: Self = Self { min: 0.0, max: 0.0 };
 }
 
-/// `RANGE` keeps the recursive hot path free of per-node mode branches.
+/// Which content sizes one query asks for: a single [`LenReq`], or both
+/// in one recursion (`None`).
+///
+/// **A runtime field on purpose.** This was a `const RANGE: bool`
+/// threaded through eleven items across six modules, on the theory that
+/// specializing kept the recursive path free of per-node mode branches.
+/// Measured on `caches`' intrinsic arms, that theory is backwards: the
+/// mode is constant for the whole of one query tree, so the branch is
+/// predicted every time, while the second monomorphization doubles the
+/// code the recursion walks through. Removing it made
+/// `grid/intrinsic/forced_miss` ~9% faster (33.7 → 30.7 µs measure, mean
+/// of seven interleaved rounds, distributions non-overlapping), with
+/// `measure`/`heavy`/`broad` forced-miss arms moving the same direction.
+/// Re-specializing needs a measurement that says otherwise.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) struct IntrinsicQuery<const RANGE: bool> {
-    single_req: LenReq,
+pub(crate) struct IntrinsicQuery {
+    single_req: Option<LenReq>,
 }
 
-impl<const RANGE: bool> IntrinsicQuery<RANGE> {
+impl IntrinsicQuery {
+    pub(crate) const fn single(req: LenReq) -> Self {
+        Self {
+            single_req: Some(req),
+        }
+    }
+
+    pub(crate) const fn range() -> Self {
+        Self { single_req: None }
+    }
+
     #[inline]
     pub(crate) fn includes(self, req: LenReq) -> bool {
-        RANGE || self.single_req == req
+        match self.single_req {
+            Some(single) => single == req,
+            None => true,
+        }
     }
 
     #[inline]
@@ -64,34 +90,19 @@ impl<const RANGE: bool> IntrinsicQuery<RANGE> {
         axis: Axis,
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
-        if RANGE {
-            engine.intrinsic_range(tree, node, axis, interned_text)
-        } else {
-            let value = engine.intrinsic(tree, node, axis, self.single_req, interned_text);
-            match self.single_req {
-                LenReq::MinContent => IntrinsicRange {
-                    min: value,
-                    max: 0.0,
-                },
-                LenReq::MaxContent => IntrinsicRange {
-                    min: 0.0,
-                    max: value,
-                },
-            }
-        }
-    }
-}
-
-impl IntrinsicQuery<false> {
-    pub(crate) const fn single(req: LenReq) -> Self {
-        Self { single_req: req }
-    }
-}
-
-impl IntrinsicQuery<true> {
-    pub(crate) const fn range() -> Self {
-        Self {
-            single_req: LenReq::MinContent,
+        let Some(req) = self.single_req else {
+            return engine.intrinsic_range(tree, node, axis, interned_text);
+        };
+        let value = engine.intrinsic(tree, node, axis, req, interned_text);
+        match req {
+            LenReq::MinContent => IntrinsicRange {
+                min: value,
+                max: 0.0,
+            },
+            LenReq::MaxContent => IntrinsicRange {
+                min: 0.0,
+                max: value,
+            },
         }
     }
 }
@@ -132,12 +143,12 @@ const _: () = {
 ///
 /// Pure function of the subtree at `node`. Engine caches the result; this
 /// function is the cache miss path.
-pub(crate) fn compute<const RANGE: bool>(
+pub(crate) fn compute(
     engine: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let layout = tree.records.layout()[node.idx()];
@@ -193,12 +204,12 @@ pub(crate) fn compute<const RANGE: bool>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn content_intrinsic<const RANGE: bool>(
+fn content_intrinsic(
     engine: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
     layout: LayoutCore,
 ) -> IntrinsicRange {
@@ -250,12 +261,12 @@ fn content_intrinsic<const RANGE: bool>(
 /// don't drive size. Lives here rather than in a `leaf` module because
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
-fn leaf<const RANGE: bool>(
+fn leaf(
     engine: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     let wid = tree.records.widget_id()[node.idx()];

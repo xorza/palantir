@@ -16,12 +16,12 @@ use glam::Vec2;
 /// Intrinsic size of a ZStack: max over children on the queried axis.
 /// Children stack at the same origin, so the parent hugs the largest
 /// child.
-pub(super) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     children_max_intrinsic(layout, tree, node, axis, query, interned_text, no_offset)

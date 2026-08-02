@@ -303,13 +303,13 @@ pub(super) fn arrange(
 ///   overflows).
 /// - **MaxContent** on main: sum + within-line gaps (single line).
 /// - Cross axis: max child intrinsic (single-line approximation).
-pub(super) fn intrinsic<const RANGE: bool>(
+pub(super) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     main_axis: Axis,
     query_axis: Axis,
-    query: IntrinsicQuery<RANGE>,
+    query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     if main_axis != query_axis {
