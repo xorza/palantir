@@ -20,7 +20,7 @@
 //! `removed` set as every other per-widget cache; the backend then frees the
 //! orphaned texture (see `ImagePipeline::paint_gpu_views`).
 
-use crate::renderer::texture_id::TextureId;
+use crate::primitives::texture_id::TextureId;
 use glam::UVec2;
 use std::cell::RefCell;
 use std::rc::Rc;

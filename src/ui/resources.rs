@@ -1,7 +1,7 @@
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::Diagnostics;
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::texture_id::TextureIdSource;
+use crate::renderer::texture_id_source::TextureIdSource;
 use crate::text::TextShaper;
 use crate::window::WindowDirectory;
 use std::num::NonZeroU32;
@@ -52,7 +52,7 @@ impl UiResources {
 #[cfg(test)]
 mod tests {
     use crate::primitives::image::Image;
-    use crate::renderer::texture_id::TextureId;
+    use crate::primitives::texture_id::TextureId;
     use crate::ui::resources::UiResources;
 
     #[test]

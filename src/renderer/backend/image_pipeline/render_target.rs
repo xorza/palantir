@@ -1,12 +1,12 @@
 //! Framework-owned off-screen targets for composited `GpuView`s.
 
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
 use crate::renderer::render_buffer::image::RenderTargetDraw;
 use crate::renderer::render_owner::RenderOwnerId;
-use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;

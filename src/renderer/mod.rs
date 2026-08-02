@@ -22,4 +22,4 @@ pub(crate) mod plan;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
 pub(crate) mod render_owner;
-pub(crate) mod texture_id;
+pub(crate) mod texture_id_source;

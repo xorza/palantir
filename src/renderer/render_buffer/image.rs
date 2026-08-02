@@ -2,8 +2,8 @@
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::rect::Rect;
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_view::GpuPaintRef;
-use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
 use soa_rs::Soars;
 

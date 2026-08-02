@@ -1,7 +1,7 @@
 use crate::primitives::color::Color;
 use crate::primitives::image::Image;
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::texture_id::TextureIdSource;
+use crate::renderer::texture_id_source::TextureIdSource;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::record::ShapeRecord;
