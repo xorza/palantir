@@ -170,7 +170,7 @@ mod gpu_regression {
             1.0,
             ColorU8::rgba(240, 240, 240, 255),
         )];
-        shaper.evict_cosmic_buffers(0);
+        shaper.drop_cosmic_buffers();
         assert!(
             !shaper.has_cosmic_buffer(runs[0].text.key),
             "fixture must start with an evicted shaped buffer",

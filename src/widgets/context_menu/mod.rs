@@ -39,7 +39,7 @@ struct ContextMenuState {
 /// which auto-opens at the pointer on a right-click (`right.clicked()`):
 ///
 /// ```
-/// # use palantir::{Button, ContextMenu, MenuItem, Ui};
+/// # use palantir::{Button, ContextMenu, Configure, MenuItem, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let trigger = Button::new().label("…").show(ui).snapshot();
 /// ContextMenu::attach(ui, &trigger)

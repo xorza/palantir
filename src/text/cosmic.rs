@@ -2,12 +2,13 @@
 //! per [`TextShapeKey`] — every input that affects shaping (text hash,
 //! font size, wrap width, line height, family, weight, halign, fit) —
 //! so steady-state measurement is `HashMap` lookup only: no reshape,
-//! no allocation. The cache is bounded:
-//! [`CosmicMeasure::end_frame_evict`] drops the least-recently-used
-//! buffers each frame. Missing buffers are reconstructible from the
-//! retained text source at the backend boundary, so a continuous resize
-//! drag — every width unique, a fresh entry per run per frame — stays
-//! bounded without explicit cache ownership. Evicted buffers feed a
+//! no allocation. The cache is bounded by **age, not capacity** —
+//! [`CosmicMeasure::end_frame`] drops entries untouched for
+//! [`PROBATION_KEEP_FRAMES`] / [`PROTECTED_KEEP_FRAMES`], see there for
+//! why the two windows exist. Missing buffers are reconstructible from
+//! the retained text source at the backend boundary, so a continuous
+//! resize drag — every width unique, a fresh entry per run per frame —
+//! stays bounded without explicit cache ownership. Evicted buffers feed a
 //! bounded recycle pool so later misses retain Cosmic Text's internal
 //! line, shaping, and layout allocations.
 //!
@@ -47,6 +48,25 @@ const INTER: &[u8] = include_bytes!("../../assets/fonts/Inter-VariableFont_opsz,
 const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf");
 
 const RECYCLE_POOL_CAP: usize = 128;
+
+/// Frames a *probationary* entry — inserted but never looked up again —
+/// survives before [`CosmicMeasure::end_frame`] drops it.
+///
+/// Short on purpose. This population is scan traffic: a resize or zoom
+/// drag quantizes to a new whole-pixel wrap width nearly every frame, so
+/// each run mints a key that will never be asked for again. Holding those
+/// for the protected window would let one drag accumulate
+/// `runs × PROTECTED_KEEP_FRAMES` dead buffers.
+pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
+
+/// Frames a *protected* entry — one that has been looked up at least once
+/// since insertion — survives untouched.
+///
+/// Matches `ENCODED_CACHE_KEEP_FRAMES` in the backend text encoder,
+/// deliberately: that cache is what generates the render-side lookups
+/// this one exists to answer, so a buffer should outlive the encoded
+/// entry that would come asking for it.
+pub(super) const PROTECTED_KEEP_FRAMES: u64 = 120;
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
@@ -98,9 +118,12 @@ struct CacheEntry {
     /// and a single-line flag describing the resolve, both inert — only
     /// the unbounded root's copy is ever read back.
     root: TextRoot,
-    /// Monotonic access generation at the last measure or encode-time
-    /// touch. The LRU recency key for [`CosmicMeasure::end_frame_evict`].
-    last_used: u64,
+    /// Last frame on which this entry is kept; [`CosmicMeasure::end_frame`]
+    /// drops it once the clock passes this. Insertion sets it one
+    /// probation window out and every lookup pushes it a protected window
+    /// out, so the two-tier policy needs no separate "has been reused"
+    /// flag — the deadline *is* the tier.
+    keep_until: u64,
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated by
@@ -115,12 +138,19 @@ pub(super) struct CosmicMeasure {
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
     swash_cache: SwashCache,
     cache: FxHashMap<TextShapeKey, CacheEntry>,
-    /// Monotonic cache-access counter. Unique recency values let eviction
-    /// retain exactly the configured number of most-recent entries.
-    use_gen: u64,
-    /// Reusable scratch holding every entry's `last_used` during
-    /// [`Self::end_frame_evict`], retained so eviction allocates nothing.
-    evict_scratch: Vec<u64>,
+    /// Frames elapsed, bumped by [`Self::end_frame`]. Stamped onto every
+    /// entry it touches, and the reference point both retention windows
+    /// measure back from.
+    frame: u64,
+    /// Earliest `keep_until` in the cache, or `u64::MAX` when it is
+    /// empty. Lets [`Self::end_frame`] skip the sweep in O(1) while no
+    /// entry can have expired.
+    ///
+    /// Only ever conservative: a lookup extends an entry's deadline
+    /// without advancing this, so a stale value costs one sweep that
+    /// drops nothing and then recomputes itself exactly. It is never too
+    /// late, which is the direction that would let an expired entry live.
+    next_expiry: u64,
     /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
     /// line, shaping, and layout allocations when the buffer is reset.
     recycle_pool: Vec<Buffer>,
@@ -165,8 +195,8 @@ impl CosmicMeasure {
             font_system,
             swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
-            use_gen: 0,
-            evict_scratch: Vec::new(),
+            frame: 0,
+            next_expiry: u64::MAX,
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis: None,
             truncate_scratch: String::new(),
@@ -281,7 +311,7 @@ impl std::fmt::Debug for CosmicMeasure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CosmicMeasure")
             .field("cache", &self.cache.len())
-            .field("use_gen", &self.use_gen)
+            .field("frame", &self.frame)
             .finish_non_exhaustive()
     }
 }
@@ -335,15 +365,7 @@ impl CosmicMeasure {
             intrinsic_min: extent.intrinsic_min,
             single_line: extent.single_line,
         };
-        let last_used = self.next_use_gen();
-        self.cache.insert(
-            key,
-            CacheEntry {
-                buffer,
-                root,
-                last_used,
-            },
-        );
+        self.insert(key, buffer, root);
         root
     }
 
@@ -481,15 +503,7 @@ impl CosmicMeasure {
             intrinsic_min: 0.0,
             single_line: true,
         };
-        let last_used = self.next_use_gen();
-        self.cache.insert(
-            key,
-            CacheEntry {
-                buffer,
-                root,
-                last_used,
-            },
-        );
+        self.insert(key, buffer, root);
         root
     }
 
@@ -542,21 +556,30 @@ impl CosmicMeasure {
         );
     }
 
-    fn next_use_gen(&mut self) -> u64 {
-        let next = self.use_gen;
-        self.use_gen = self
-            .use_gen
-            .checked_add(1)
-            .expect("text cache LRU generation overflowed");
-        next
+    /// Store a freshly shaped buffer. Entries start probationary; only a
+    /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
+    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, root: TextRoot) {
+        let keep_until = self.frame + PROBATION_KEEP_FRAMES;
+        self.next_expiry = self.next_expiry.min(keep_until);
+        self.cache.insert(
+            key,
+            CacheEntry {
+                buffer,
+                root,
+                keep_until,
+            },
+        );
     }
 
     /// A cached entry's [`TextRoot`] for `key`, or `None` on a miss.
-    /// Refreshes `last_used` for both layout-time hits and encoder ensures.
+    /// Layout hits and encoder ensures both land here, and both push the
+    /// entry's deadline out to the protected window — being asked for at
+    /// all is the evidence that separates reuse from scan traffic, so no
+    /// separate promotion step is needed.
     fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextRoot> {
-        let now = self.next_use_gen();
+        let keep_until = self.frame + PROTECTED_KEEP_FRAMES;
         self.cache.get_mut(&key).map(|entry| {
-            entry.last_used = now;
+            entry.keep_until = keep_until;
             entry.root
         })
     }
@@ -570,31 +593,39 @@ impl CosmicMeasure {
         buffer
     }
 
-    /// Retain the `max_keep` most-recently-used buffers. Every entry is
-    /// reconstructible at encode, so no owner or layout can pin a key.
-    pub(super) fn end_frame_evict(&mut self, max_keep: usize) {
-        if self.cache.len() <= max_keep {
+    /// Advance the frame clock and drop every buffer whose deadline has
+    /// passed.
+    ///
+    /// Age, not capacity. A count budget cannot express what this cache
+    /// needs: set below the live working set it thrashes — UI redraw is a
+    /// cyclic access pattern, LRU's worst case, so the overflow misses
+    /// every frame forever — and set above it, a resize drag fills it with
+    /// widths that can never be hit again. Ageing bounds both without a
+    /// number to guess: an app keeps exactly what it keeps touching, and
+    /// scan traffic falls out on its own.
+    ///
+    /// [`Self::next_expiry`] skips the sweep outright while nothing can
+    /// have expired, so a steady frame pays one comparison and a churning
+    /// one pays in proportion to its churn.
+    pub(super) fn end_frame(&mut self) {
+        self.frame += 1;
+        if self.frame <= self.next_expiry {
             return;
         }
-        if max_keep == 0 {
-            let cache = &mut self.cache;
-            let recycle_pool = &mut self.recycle_pool;
-            for (_, entry) in cache.drain() {
-                recycle_buffer(recycle_pool, entry.buffer);
-            }
-            return;
-        }
-        self.evict_scratch.clear();
-        self.evict_scratch
-            .extend(self.cache.values().map(|entry| entry.last_used));
-        let cut = self.evict_scratch.len() - max_keep;
-        let (_, &mut cutoff, _) = self.evict_scratch.select_nth_unstable(cut);
+        let frame = self.frame;
+        let mut next_expiry = u64::MAX;
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
-        for (_, entry) in cache.extract_if(|_, entry| entry.last_used < cutoff) {
+        for (_, entry) in cache.extract_if(|_, entry| {
+            if entry.keep_until < frame {
+                return true;
+            }
+            next_expiry = next_expiry.min(entry.keep_until);
+            false
+        }) {
             recycle_buffer(recycle_pool, entry.buffer);
         }
-        debug_assert_eq!(self.cache.len(), max_keep);
+        self.next_expiry = next_expiry;
     }
 }
 
@@ -782,8 +813,12 @@ fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
     intrinsic_min
 }
 
-#[cfg(test)]
+// Wider than `cfg(test)`: `drop_all_buffers` is reached from the
+// `internals`-gated GPU tests in `renderer::backend::text`, which build
+// without `cfg(test)`.
+#[cfg(any(test, feature = "internals"))]
 mod internals {
+    #![allow(dead_code)]
     use super::*;
 
     #[derive(Debug, PartialEq, Eq)]
@@ -798,6 +833,20 @@ mod internals {
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {
             self.cache.len()
+        }
+
+        /// Drop every shaped buffer now, recycling each one, without
+        /// waiting out a retention window. Lets tests that exercise the
+        /// *restore* path (which any eviction can trigger) set up a
+        /// guaranteed-cold cache in one call, instead of encoding this
+        /// cache's retention policy into tests that aren't about it.
+        pub(crate) fn drop_all_buffers(&mut self) {
+            let cache = &mut self.cache;
+            let recycle_pool = &mut self.recycle_pool;
+            for (_, entry) in cache.drain() {
+                recycle_buffer(recycle_pool, entry.buffer);
+            }
+            self.next_expiry = u64::MAX;
         }
 
         pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
