@@ -5,7 +5,7 @@ use crate::layout::cache::{
 };
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
-use crate::layout::probe::LayoutProbe;
+use crate::layout::probe::{LayoutProbe, PhaseSpan};
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
     AxisCtx, TextShapeInput, arrange_size, container_text_shapes, leaf_text_shapes,
@@ -145,18 +145,6 @@ const NO_ARRANGE_SRC: u32 = u32::MAX;
 /// `desired`) is charged to neither: it is one `arrange_size` call per
 /// root, independent of tree size.
 ///
-/// `internals`-gated: the `caches` bench is the only consumer, and the
-/// four clock reads per root per frame are no longer negligible against
-/// the pass they measure — arrange replay took the cached layout pass to
-/// ~4 µs, so the instrumentation would be a low single-digit percentage
-/// of it, landing inside the frame but outside the spans it reports.
-#[cfg(feature = "internals")]
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct PhaseTimings {
-    pub(crate) measure_ns: u64,
-    pub(crate) arrange_ns: u64,
-}
-
 /// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
@@ -175,10 +163,6 @@ pub(crate) struct LayoutEngine {
     cache_rebuild: bool,
     pub(crate) text: TextSystem,
     pub(crate) cache: MeasureCache,
-    /// Measure / arrange split for the most recent [`Self::run`]; see
-    /// [`PhaseTimings`] for why it is gated.
-    #[cfg(feature = "internals")]
-    pub(crate) phase_timings: PhaseTimings,
 }
 
 /// Splat every per-subtree side-state column carried by `arenas` back
@@ -346,8 +330,6 @@ impl LayoutEngine {
             cache_rebuild: false,
             text: TextSystem::new(shaper),
             cache: MeasureCache::default(),
-            #[cfg(feature = "internals")]
-            phase_timings: PhaseTimings::default(),
         }
     }
 
@@ -540,10 +522,6 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        #[cfg(feature = "internals")]
-        {
-            self.phase_timings = PhaseTimings::default();
-        }
         // Once per run, not per layer: `resize_for` runs inside the layer
         // loop and would wipe an earlier layer's counts.
         self.scratch.probe.begin_run();
@@ -563,13 +541,9 @@ impl LayoutEngine {
             for slot in &tree.roots {
                 let root = slot.first_node;
                 let available = root_available(layer, slot, surface);
-                #[cfg(feature = "internals")]
-                let measure_start = std::time::Instant::now();
+                let measure_span = PhaseSpan::start();
                 let desired = self.measure(tree, root, available, interned_text, layer_out);
-                #[cfg(feature = "internals")]
-                {
-                    self.phase_timings.measure_ns += measure_start.elapsed().as_nanos() as u64;
-                }
+                self.scratch.probe.add_measure(measure_span);
                 let root_layout = tree.records.layout()[root.idx()];
                 let size = arrange_size(&root_layout, tree.bounds(root), desired, available);
                 // Overlay policies need the current measured body, not a
@@ -579,13 +553,9 @@ impl LayoutEngine {
                 } else {
                     slot.placement.origin(size, surface)
                 };
-                #[cfg(feature = "internals")]
-                let arrange_start = std::time::Instant::now();
+                let arrange_span = PhaseSpan::start();
                 self.arrange(tree, root, Rect { min: origin, size }, layer_out);
-                #[cfg(feature = "internals")]
-                {
-                    self.phase_timings.arrange_ns += arrange_start.elapsed().as_nanos() as u64;
-                }
+                self.scratch.probe.add_arrange(arrange_span);
             }
             if self.cache_rebuild {
                 self.cache.capture_tree(
