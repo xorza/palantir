@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
 use crate::display::Display;
-use crate::input::policy::InputPolicy;
+use crate::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::approx::EPS;
 use crate::ui::frame_report::FrameProcessing;
 
@@ -76,8 +76,7 @@ pub(super) struct FrameClassifyInput {
     pub(super) display: Display,
     pub(super) damage_baseline_valid: bool,
     pub(super) input_policy: InputPolicy,
-    pub(super) had_input: bool,
-    pub(super) input_requested_repaint: bool,
+    pub(super) input_signal: InputSignal,
     pub(super) close_requested: bool,
 }
 
@@ -243,10 +242,9 @@ impl FrameRuntime {
             );
         }
 
-        let input_forces_record = match input.input_policy {
-            InputPolicy::Always => input.had_input,
-            InputPolicy::OnDelta => input.input_requested_repaint,
-        };
+        // The policy names a cut on `InputSignal`'s ordered scale; the
+        // gate is the comparison.
+        let input_forces_record = input.input_signal >= input.input_policy.record_threshold();
         let paint_only = !force_full
             && !self.repaint_requested
             && !input_forces_record
@@ -293,7 +291,7 @@ mod tests {
     use glam::UVec2;
 
     use crate::display::Display;
-    use crate::input::policy::InputPolicy;
+    use crate::input::policy::{InputPolicy, InputSignal};
     use crate::ui::frame::{FrameClassifyInput, FramePlan, FrameRuntime, FrameStamp, WakeReasons};
 
     #[derive(Clone, Copy, Debug)]
@@ -305,8 +303,7 @@ mod tests {
         wake: WakeReasons,
         repaint_requested: bool,
         input_policy: InputPolicy,
-        had_input: bool,
-        input_requested_repaint: bool,
+        input_signal: InputSignal,
         close_requested: bool,
         expected: FramePlan,
     }
@@ -322,8 +319,7 @@ mod tests {
                 wake: WakeReasons::default(),
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: true },
             },
@@ -335,8 +331,7 @@ mod tests {
                 wake: WakeReasons::default(),
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: true },
             },
@@ -348,8 +343,7 @@ mod tests {
                 wake: WakeReasons::ANIM,
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: true },
             },
@@ -361,8 +355,7 @@ mod tests {
                 wake: WakeReasons::ANIM,
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: false,
                 expected: FramePlan::PaintOnly,
             },
@@ -374,8 +367,7 @@ mod tests {
                 wake: WakeReasons::REAL,
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: false },
             },
@@ -387,8 +379,7 @@ mod tests {
                 wake: WakeReasons::REAL.merge(WakeReasons::ANIM),
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: false },
             },
@@ -400,8 +391,7 @@ mod tests {
                 wake: WakeReasons::ANIM,
                 repaint_requested: false,
                 input_policy: InputPolicy::Always,
-                had_input: true,
-                input_requested_repaint: false,
+                input_signal: InputSignal::Inert,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: false },
             },
@@ -413,8 +403,7 @@ mod tests {
                 wake: WakeReasons::ANIM,
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: true,
-                input_requested_repaint: true,
+                input_signal: InputSignal::Repaint,
                 close_requested: false,
                 expected: FramePlan::FullRecord { force_full: false },
             },
@@ -426,8 +415,7 @@ mod tests {
                 wake: WakeReasons::ANIM,
                 repaint_requested: false,
                 input_policy: InputPolicy::OnDelta,
-                had_input: false,
-                input_requested_repaint: false,
+                input_signal: InputSignal::None,
                 close_requested: true,
                 expected: FramePlan::FullRecord { force_full: false },
             },
@@ -456,8 +444,7 @@ mod tests {
                 display,
                 damage_baseline_valid: case.damage_baseline_valid,
                 input_policy: case.input_policy,
-                had_input: case.had_input,
-                input_requested_repaint: case.input_requested_repaint,
+                input_signal: case.input_signal,
                 close_requested: case.close_requested,
             });
 
