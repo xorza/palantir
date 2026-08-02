@@ -67,23 +67,18 @@ const WORKING_SET: u32 = 128;
 /// Seed base for the `miss` arms, past anything [`filled`] uses.
 const CHURN_BASE: u32 = 1_000_000;
 
-/// Distinct stop sequence per seed. Walks the colour cube in a way that
-/// can't repeat within a run, so every seed is a distinct bake key.
+/// Distinct stop sequence per seed, walking the colour cube directly so
+/// every seed is a distinct bake key.
+///
+/// Deliberately *structured* rather than pre-mixed: whole channels stay
+/// constant across a run, which is what a real themed palette looks
+/// like and what `GradientStops::hash` has to spread. These arms ran at
+/// 232 ns and 615 ns per hit while that hash packed colour into the high
+/// half of its word; keeping the naive fixture makes them an end-to-end
+/// guard on the layout as well as on the atlas.
 fn gradient_for(seed: u32) -> GradientStops {
-    // Spread the seed before slicing it into colour bytes. Walking the
-    // cube directly (`seed as u8`, `seed >> 8`, …) leaves whole channels
-    // constant across a run, and `GradientStops::hash` folds each stop
-    // into the *high* half of a `write_u64` — so the varying bits land
-    // where FxHash propagates them least and the index degenerates into
-    // long probe chains. That measures the fixture, not the atlas.
-    let mix = |v: u32| {
-        let mut h = v.wrapping_mul(0x9e37_79b9);
-        h ^= h >> 15;
-        h.wrapping_mul(0x85eb_ca6b)
-    };
-    let (x, y) = (mix(seed), mix(seed ^ 0x5bf0_3635));
-    let a = ColorU8::rgb(x as u8, (x >> 8) as u8, (x >> 16) as u8);
-    let b = ColorU8::rgb(y as u8, (y >> 8) as u8, (y >> 16) as u8);
+    let a = ColorU8::rgb(seed as u8, (seed >> 8) as u8, (seed >> 16) as u8);
+    let b = ColorU8::rgb((seed >> 4) as u8, (seed >> 12) as u8, 0x40);
     GradientStops::new([Stop::new(0.0, a), Stop::new(1.0, b)])
 }
 
