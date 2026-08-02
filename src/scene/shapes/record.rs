@@ -7,7 +7,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::renderer::texture_id::TextureId;
+use crate::primitives::texture_id::TextureId;
 use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};

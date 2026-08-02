@@ -11,12 +11,12 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
     rect::Rect,
 };
-use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::ShapedTextRef;

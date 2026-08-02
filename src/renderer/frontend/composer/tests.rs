@@ -3,6 +3,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::interned_str::TextSource;
 use crate::primitives::span::Span;
+use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
@@ -15,7 +16,6 @@ use crate::renderer::frontend::payload::{
 use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::texture_id::TextureId;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};

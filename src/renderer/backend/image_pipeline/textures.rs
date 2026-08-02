@@ -1,11 +1,11 @@
 //! Registered-image GPU bindings and their upload/drop lifecycle.
 
 use crate::primitives::image::Image;
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
 use crate::renderer::backend::queue::Queue;
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::texture_id::TextureId;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug)]

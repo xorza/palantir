@@ -20,7 +20,8 @@
 //! Single-threaded `Rc<RefCell<…>>`; cheap to clone, with shared inner state.
 
 use crate::primitives::image::Image;
-use crate::renderer::texture_id::{TextureId, TextureIdSource};
+use crate::primitives::texture_id::TextureId;
+use crate::renderer::texture_id_source::TextureIdSource;
 use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroU32;
@@ -205,7 +206,7 @@ impl ImageRegistry {
 #[cfg(test)]
 mod tests {
     use crate::renderer::image_registry::*;
-    use crate::renderer::texture_id::TextureIdSource;
+    use crate::renderer::texture_id_source::TextureIdSource;
     use std::num::NonZeroU32;
 
     fn reg(max_dimension: u32) -> ImageRegistry {

@@ -12,6 +12,7 @@ mod render_target;
 mod textures;
 
 use crate::primitives::span::Span;
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
@@ -20,7 +21,6 @@ use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant}
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::image::{ImageInstance, RenderTargetDraw};
 use crate::renderer::render_owner::RenderOwnerId;
-use crate::renderer::texture_id::TextureId;
 use std::time::Duration;
 
 #[derive(Debug)]

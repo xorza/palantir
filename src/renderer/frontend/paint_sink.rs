@@ -42,6 +42,7 @@ use crate::primitives::color::ColorF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::rect::Rect;
+use crate::primitives::texture_id::TextureId;
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
@@ -49,7 +50,6 @@ use crate::renderer::frontend::payload::{
     GpuFillFields, PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
-use crate::renderer::texture_id::TextureId;
 use crate::scene::shapes::paint::ShapeStroke;
 use crate::text::key::ShapedTextRef;
 
@@ -301,11 +301,11 @@ mod tests {
     use crate::primitives::rect::Rect;
 
     use crate::primitives::stroke::Stroke;
+    use crate::primitives::texture_id::TextureId;
     use crate::renderer::frontend::paint_sink::PaintSink;
     use crate::renderer::frontend::payload::{BrushSource, DrawPolylinePayload};
     use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
     use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
-    use crate::renderer::texture_id::TextureId;
     use crate::scene::shapes::paint::ShapeStroke;
     use glam::Vec2;
     use std::cell::RefCell;
