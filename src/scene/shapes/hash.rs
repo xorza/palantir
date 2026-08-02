@@ -4,9 +4,10 @@
 //! schedule. `Tree::compute_rollups` and damage diff both read those
 //! precomputed `ContentHash`es; no production code rehashes records.
 //!
-//! The schedule is `discriminant byte → per-variant fields`. Stable
-//! discriminants come from the explicit `= N` annotations on
-//! [`ShapeRecord`].
+//! The schedule is `tag byte → per-variant fields`. The tag comes from
+//! [`ShapeRecord::tag`], which is its own source of truth — the enum's
+//! `repr` discriminant is unread, so variants can be reordered without
+//! moving a hash.
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
