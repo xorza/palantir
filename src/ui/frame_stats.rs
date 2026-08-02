@@ -43,7 +43,7 @@ pub(super) fn record(ui: &mut Ui) {
         ..ui.theme.text.clone()
     };
     let chrome = Background::fill(Color::linear_rgba(0.0, 0.0, 0.0, 0.75));
-    ui.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
+    ui.layer(Layer::Debug).show(|ui| {
         Panel::hstack()
             .size((Sizing::FILL, Sizing::HUG))
             .justify(Justify::End)

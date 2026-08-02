@@ -504,7 +504,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
                     .disabled(true)
                     .show(ui);
             });
-        ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
+        ui.layer(Layer::Popup).show(|ui| {
             Frame::new()
                 .id(popup_scroll)
                 .size(Sizing::FILL)
@@ -712,7 +712,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
     }
 
     fn layered(ui: &mut Ui, layer: Layer) {
-        ui.layer(layer, Vec2::splat(10.0), None, |ui| {
+        ui.layer(layer).at(Vec2::splat(10.0)).show(|ui| {
             colored_frame(ui, Color::WHITE);
         });
     }

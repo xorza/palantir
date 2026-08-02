@@ -143,7 +143,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
         Panel::vstack().auto_id().show(ui, |ui| {
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
-        ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
+        ui.layer(Layer::Popup).show(|ui| {
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
     });
@@ -212,7 +212,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
                     .size((40.0, 20.0))
                     .show(ui);
             });
-        ui.layer(Layer::Popup, Vec2::new(80.0, 60.0), None, |ui| {
+        ui.layer(Layer::Popup).at(Vec2::new(80.0, 60.0)).show(|ui| {
             Button::new()
                 .id(popup_id)
                 .label("popup layer")
@@ -2289,7 +2289,7 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
             .id(WidgetId::from_hash("anchor"))
             .size(50.0)
             .show(ui);
-        ui.layer(layer, Vec2::new(10.0, 10.0), None, |ui| {
+        ui.layer(layer).at(Vec2::new(10.0, 10.0)).show(|ui| {
             Frame::new()
                 .id(WidgetId::from_hash(key))
                 .size(20.0)

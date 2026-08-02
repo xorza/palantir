@@ -514,8 +514,8 @@ fn tooltip_inside_popup_records_without_panic() {
 fn layer_below_current_scope_panics() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        ui.layer(Layer::Modal, Vec2::ZERO, None, |ui| {
-            ui.layer(Layer::Popup, Vec2::ZERO, None, |_ui| {});
+        ui.layer(Layer::Modal).show(|ui| {
+            ui.layer(Layer::Popup).show(|_ui| {});
         });
     });
 }

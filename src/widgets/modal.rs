@@ -1,4 +1,3 @@
-use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
@@ -8,7 +7,9 @@ use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::node::ThemeDefaults;
 use crate::scene::node::{Configure, Node};
+use crate::scene::tree::recording::Placement;
 use crate::ui::Ui;
+use crate::widgets::overlay_scope::OverlayScope;
 use crate::widgets::theme::modal::ModalTheme;
 use glam::Vec2;
 
@@ -97,35 +98,19 @@ impl<'a> Modal<'a> {
         // Root fills the surface, dims it, eats stray pointer events,
         // and centers the card. The card re-senses `Sense::ABSORB_POINTER` so clicks
         // on it never fall through to this dismiss-backdrop.
-        //
-        // A modal *owns* input, it does not merely outrank the popups
-        // below it. Its root declares an `ALL` scope on `Layer::Modal`,
-        // which raises the active layer: a popup underneath stops seeing
-        // Escape entirely instead of dismissing alongside the modal,
-        // while the modal's own body keeps reading because a scope
-        // silences only layers strictly *below* its own.
         let mut root = Node::zstack()
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
-        root.flags.set_key_filter(KeyFilter::ALL);
-        // Escape is read *inside* the modal's layer — outside it the
-        // ambient layer is below the scope and the read is silenced,
-        // which is what the old owner-scoped claim handle existed to
-        // work around.
-        let escape = ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
+        let placement = Placement::fixed(Vec2::ZERO, Some(surface.size));
+        let scope = OverlayScope::claim(root_id, Layer::Modal, placement, &mut root);
+        let escape = scope.record(ui, |ui| {
             ui.node(root_id, root, Some(&dim), |ui| {
                 ui.widget(card).record(ui, Some(&card_bg), body);
             });
-            ui.escape_pressed()
         });
         let dismissed = ui.response_for(root_id).left.clicked() || escape;
-        // A scope path is resolved from a cascade one frame old, so a
-        // dismissing modal that kept its scope would swallow one more
-        // frame of input from where it used to be.
-        if dismissed {
-            ui.close_scope(root_id);
-        }
+        scope.withdraw(ui, dismissed);
 
         ModalResponse { dismissed }
     }

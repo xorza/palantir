@@ -35,6 +35,7 @@ pub(crate) mod frame;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;
+mod overlay_scope;
 pub(crate) mod panel;
 pub(crate) mod popup;
 pub(crate) mod progress_bar;
