@@ -37,13 +37,13 @@
 //!   triplet and runs only `oklab_to_linear` per texel. Perceptually
 //!   uniform; CSS Color 4 default.
 
-use crate::common::hash::Hasher as FxHasher;
+use crate::common::hash::Hasher;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
-use std::hash::{Hash, Hasher};
+use std::hash::{Hash, Hasher as _};
 
 pub(crate) mod bake;
 pub(crate) mod handle;
@@ -420,7 +420,7 @@ impl CpuGradientAtlas {
 /// centre/radius, conic centre/start-angle).
 #[inline]
 fn hash_lut(stops: &GradientStops, interp: Interp) -> u64 {
-    let mut h = FxHasher::new();
+    let mut h = Hasher::new();
     stops.hash(&mut h);
     interp.hash(&mut h);
     h.finish()

@@ -1,13 +1,14 @@
-use rustc_hash::FxHasher;
+use crate::common::hash::Hasher;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+use std::hash::Hasher as _;
 use std::panic::Location;
 
 #[derive(Debug, Default)]
 pub(crate) struct IdHasher(u64);
 
-impl Hasher for IdHasher {
+impl std::hash::Hasher for IdHasher {
     #[inline]
     fn finish(&self) -> u64 {
         self.0
@@ -39,7 +40,7 @@ impl WidgetId {
     pub(crate) const VIEWPORT: Self = Self(u64::MAX);
 
     pub fn from_hash(h: impl Hash) -> Self {
-        let mut hasher = FxHasher::default();
+        let mut hasher = Hasher::new();
         h.hash(&mut hasher);
         Self::nonzero(hasher.finish())
     }
@@ -48,7 +49,7 @@ impl WidgetId {
     /// where the parent already has a stable id — widget authors use this to
     /// key the child nodes they open inside their `show` body.
     pub fn with(self, h: impl Hash) -> Self {
-        let mut hasher = FxHasher::default();
+        let mut hasher = Hasher::new();
         self.0.hash(&mut hasher);
         h.hash(&mut hasher);
         Self::nonzero(hasher.finish())
@@ -64,7 +65,8 @@ impl WidgetId {
 
     /// Stable across frames as long as the call site is unchanged.
     ///
-    /// Hashes the caller's `(file, line, column)` through `FxHasher`.
+    /// Hashes the caller's `(file, line, column)` through the crate's
+    /// FxHash-backed [`Hasher`].
     /// `Location::caller()` resolves at *runtime*, so this runs on every
     /// widget constructor call — with a byte-serial FNV-1a over the file
     /// path it was the single largest record-pass cost in the frame
@@ -81,7 +83,7 @@ impl WidgetId {
     #[track_caller]
     pub fn auto_stable() -> Self {
         let l = Location::caller();
-        let mut hasher = FxHasher::default();
+        let mut hasher = Hasher::new();
         hasher.write(l.file().as_bytes());
         hasher.write_u32(l.line());
         hasher.write_u32(l.column());
@@ -105,6 +107,10 @@ mod tests {
     #[test]
     fn auto_stable_hashes_location_via_fx() {
         let (id, l) = id_and_loc();
+        // Deliberately the *raw* `FxHasher`, not the crate wrapper the
+        // production path now uses: rebuilding the expected value with
+        // the same type under test would assert nothing. This is the
+        // cross-check that the wrapper still hashes like plain FxHash.
         let mut hasher = FxHasher::default();
         hasher.write(l.file().as_bytes());
         hasher.write_u32(l.line());

@@ -260,7 +260,7 @@ fn distinct_grad(seed: f32) -> LinearGradient {
     // for the (r, g, b) bytes, so different seeds produce visibly
     // different stop colours and the (stops, interp) hash lands in
     // distinct atlas rows.
-    let mut h = FxHasher::new();
+    let mut h = Hasher::new();
     h.write_u32(seed.to_bits());
     let v = h.finish();
     let r = v as u8;
