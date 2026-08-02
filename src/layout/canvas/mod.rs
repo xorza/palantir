@@ -1,10 +1,8 @@
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
-use crate::layout::support::{
-    arrange_size, children_max_intrinsic, measure_per_axis_hug, zero_subtree,
-};
+use crate::layout::pass::LayoutPass;
+use crate::layout::support::{arrange_size, children_max_intrinsic, measure_per_axis_hug};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -37,56 +35,36 @@ use crate::scene::tree::record::NodeId;
 /// space and auto-compensate the scroll's offset so visible state stays
 /// stable).
 #[profiling::function]
-pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner_avail: Size,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
-) -> Size {
-    let canvas_size = tree.records.layout()[node.idx()].size;
+pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size) -> Size {
+    let canvas_size = pass.tree.records.layout()[node.idx()].size;
     let pos_inflates_x = canvas_size.w().is_hug();
     let pos_inflates_y = canvas_size.h().is_hug();
     // Active children only: a collapsed child at (100,100) must not
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    measure_per_axis_hug(
-        layout,
-        tree,
-        node,
-        inner_avail,
-        interned_text,
-        out,
-        |tree, c, d| {
-            let pos = tree.bounds(c).position;
-            let off_x = if pos_inflates_x { pos.x } else { 0.0 };
-            let off_y = if pos_inflates_y { pos.y } else { 0.0 };
-            Size::new(off_x + d.w, off_y + d.h)
-        },
-    )
+    measure_per_axis_hug(pass, node, inner_avail, |tree, c, d| {
+        let pos = tree.bounds(c).position;
+        let off_x = if pos_inflates_x { pos.x } else { 0.0 };
+        let off_y = if pos_inflates_y { pos.y } else { 0.0 };
+        Size::new(off_x + d.w, off_y + d.h)
+    })
 }
 
 /// Each child gets a slot at `inner.min + bounds.position`, sized per its
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    out: &mut LayerLayout,
-) {
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect) {
+    let tree = pass.tree;
     let layouts = tree.records.layout();
     let canvas_size = layouts[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(tree, c, inner.min, out);
+            pass.zero_subtree(c, inner.min);
             continue;
         }
-        let d = layout.scratch.desired[c.idx()];
+        let d = pass.desired(c);
         let child_layout = layouts[c.idx()];
         let bounds = tree.bounds(c);
         let pos = bounds.position;
@@ -104,7 +82,7 @@ pub(super) fn arrange(
             min: inner.min + pos,
             size: arrange_size(&child_layout, bounds, d, Size::new(slot_w, slot_h)),
         };
-        layout.arrange(tree, c, child_rect, out);
+        pass.arrange(c, child_rect);
     }
 }
 

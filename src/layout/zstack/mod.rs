@@ -1,10 +1,10 @@
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
+use crate::layout::pass::LayoutPass;
 use crate::layout::support::{
     AxisAlignPair, arrange_axis, children_max_intrinsic, measure_per_axis_hug, no_offset,
-    resolved_axis_align, zero_subtree,
+    resolved_axis_align,
 };
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_str::InternedText;
@@ -39,23 +39,8 @@ pub(super) fn intrinsic(
 /// Content size = `max(child desired)` per axis, so the panel hugs the
 /// largest child (cross-axis fall-back when ZStack is Hug).
 #[profiling::function]
-pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner_avail: Size,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
-) -> Size {
-    measure_per_axis_hug(
-        layout,
-        tree,
-        node,
-        inner_avail,
-        interned_text,
-        out,
-        |_, _, d| d,
-    )
+pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size) -> Size {
+    measure_per_axis_hug(pass, node, inner_avail, |_, _, d| d)
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
@@ -63,25 +48,20 @@ pub(super) fn measure(
 /// `child_align` as fallback when child's own axis is `Auto`).
 /// Defaults pin to top-left unless the child has `Sizing::fill` — then `Auto`
 /// falls back to stretch on that axis.
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    out: &mut LayerLayout,
-) {
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect) {
+    let tree = pass.tree;
     let parent_child_align = tree.panel(node).child_align;
     let layouts = tree.records.layout();
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(tree, c, inner.min, out);
+            pass.zero_subtree(c, inner.min);
             continue;
         }
         let i = c.idx();
         let s = layouts[i];
         let bounds = tree.bounds(c);
-        let mut d = layout.scratch.desired[i];
+        let mut d = pass.desired(c);
         if matches!(LayoutMode::from(s.meta), LayoutMode::Scroll(_)) {
             // Scroll content sizes its Hug wrapper, but its viewport clips to the slot.
             d = d.min(inner.size);
@@ -94,7 +74,7 @@ pub(super) fn arrange(
             min: inner.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, child_rect, out);
+        pass.arrange(c, child_rect);
     }
 }
 

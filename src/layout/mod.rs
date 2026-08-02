@@ -4,6 +4,7 @@ mod canvas;
 pub(crate) mod engine;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
+pub(crate) mod pass;
 pub(crate) mod probe;
 pub(crate) mod scroll;
 pub(crate) mod scrollbars;
@@ -33,7 +34,7 @@ use std::ops::{Index, IndexMut};
 /// grid track hugs) lives on `LayoutScratch` directly. SoA columns
 /// indexed by `NodeId.0`. Capacity is reused across frames via
 /// `resize_for`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct LayerLayout {
     pub(crate) rect: Vec<Rect>,
     pub(crate) scroll_content: Vec<Size>,
@@ -53,9 +54,14 @@ pub(crate) struct LayerLayout {
 /// buffers survive across frames; the encoder, cascade, hit-index,
 /// and tests all read it afterwards. (The cascade pass's own output lives on
 /// `Ui::cascade` — this struct is purely the layout pass's product.)
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Layout {
-    pub(crate) layers: PerLayer<LayerLayout>,
+    /// Private: `Index<Layer>` is the one way to a layer's columns, so
+    /// there is a single spelling to grep for. The two [`Endpoint`]
+    /// accessors below sit alongside it because they answer a different
+    /// question — they bridge a `WidgetId`-keyed caller into this
+    /// `(layer, node)`-keyed table.
+    layers: PerLayer<LayerLayout>,
 }
 
 impl Layout {

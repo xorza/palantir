@@ -9,6 +9,7 @@
 use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
+use crate::scene::tree::record::{NodeId, SubtreeEnd};
 
 /// One row of a node's paint span — chrome (row 0 when the node has
 /// chrome), one direct shape, or a child marker, in record order.
@@ -56,5 +57,69 @@ impl PaintArena {
         self.rows.clear();
         self.rows.reserve(n_nodes);
         self.node_spans.resize(n_nodes, Span::default());
+    }
+
+    /// Screen-space painted extent of `node`'s whole subtree, or `None`
+    /// when the subtree paints nothing.
+    ///
+    /// Folded from the per-row `Paint.screen` rects rather than read off
+    /// `LayerCascade::subtree_paint_rects`, so a non-painting descendant
+    /// can't bias the answer.
+    ///
+    /// One linear fold, no per-node span hops: the cascade visits nodes
+    /// in pre-order with a monotone row cursor and stamps every node's
+    /// slot (an empty span still carries the cursor as its `start`), so a
+    /// subtree's rows are one contiguous run — this node's `start`
+    /// through the `start` of the first node past the subtree.
+    pub(crate) fn subtree_extent(&self, node: NodeId, subtree_end: &[SubtreeEnd]) -> Option<Rect> {
+        let end = subtree_end[node.idx()].end() as usize;
+        let start_row = self.node_spans[node.idx()].start as usize;
+        let end_row = match self.node_spans.get(end) {
+            Some(next) => next.start as usize,
+            None => self.rows.len(),
+        };
+        self.rows[start_row..end_row].union_screens()
+    }
+}
+
+/// Slice-level reads over a run of paint rows.
+///
+/// Both arenas holding `Paint`s hand out bare slices — the cascade's live
+/// [`PaintArena::rows`] and the damage diff's retained
+/// `PaintSnapArena::snaps` — so these belong on the slice rather than on
+/// either owner, which is what kept them scattered as free functions
+/// across two damage files.
+pub(crate) trait PaintRows {
+    /// The rows that actually produce pixels, in row order. Child markers
+    /// and fully clipped-away shapes carry a paint-empty screen and drop
+    /// out here.
+    fn screens(&self) -> impl Iterator<Item = Rect>;
+
+    /// Screen-space union of [`Self::screens`], or `None` when no row
+    /// produces pixels. The empty ones stay out: folding a child
+    /// marker's zero box in would drag the union to the origin, and a
+    /// clipped-away shape's would drag it to the clip edge.
+    fn union_screens(&self) -> Option<Rect>;
+
+    /// Whether any row produces visible pixels on `surface`.
+    fn any_on_surface(&self, surface: Rect) -> bool;
+}
+
+impl PaintRows for [Paint] {
+    #[inline]
+    fn screens(&self) -> impl Iterator<Item = Rect> {
+        self.iter()
+            .map(|paint| paint.screen)
+            .filter(|screen| !screen.is_paint_empty())
+    }
+
+    #[inline]
+    fn union_screens(&self) -> Option<Rect> {
+        self.screens().reduce(|acc, screen| acc.union(screen))
+    }
+
+    #[inline]
+    fn any_on_surface(&self, surface: Rect) -> bool {
+        self.screens().any(|screen| screen.intersects(surface))
     }
 }

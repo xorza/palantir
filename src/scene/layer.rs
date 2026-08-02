@@ -53,14 +53,16 @@ const _: () = {
     }
 };
 
-/// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`]. Implements
-/// `Index<Layer>` / `IndexMut<Layer>` for the natural sugar,
-/// `IntoIterator` for `&` and `&mut` so `for t in &per` works, plus
-/// [`Self::iter_paint_order`] for layer-tagged iteration. Order-blind
-/// slice access goes through the `pub(crate)` `.0` array directly.
+/// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`].
+///
+/// Three ways in, one per question the caller is asking: `Index<Layer>`
+/// / `IndexMut<Layer>` for a known layer, [`Self::iter`] /
+/// [`Self::iter_mut`] when the layer doesn't matter, and
+/// [`Self::iter_paint_order`] when it does. The backing array is private
+/// so those stay the only spellings.
 #[derive(Debug)]
 #[repr(transparent)]
-pub(crate) struct PerLayer<T>(pub(crate) [T; Layer::COUNT]);
+pub(crate) struct PerLayer<T>([T; Layer::COUNT]);
 
 impl<T: Default> Default for PerLayer<T> {
     fn default() -> Self {
@@ -69,6 +71,16 @@ impl<T: Default> Default for PerLayer<T> {
 }
 
 impl<T> PerLayer<T> {
+    /// Every layer's slot, order unspecified — for folds that don't care
+    /// which layer a value came from.
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.0.iter()
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.0.iter_mut()
+    }
+
     /// Iterate `(Layer, &T)` in [`Layer::PAINT_ORDER`] — bottom-up
     /// (under-first). Reverse for topmost-first hit-test traversal.
     pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &T)> {
@@ -98,7 +110,7 @@ impl<'a, T> IntoIterator for &'a PerLayer<T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        self.iter()
     }
 }
 
@@ -106,6 +118,6 @@ impl<'a, T> IntoIterator for &'a mut PerLayer<T> {
     type Item = &'a mut T;
     type IntoIter = std::slice::IterMut<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter_mut()
+        self.iter_mut()
     }
 }

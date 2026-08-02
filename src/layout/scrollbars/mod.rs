@@ -19,15 +19,12 @@
 use glam::{BVec2, Vec2};
 use std::hash::Hash;
 
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
-use crate::layout::engine::LayoutEngine;
+use crate::layout::pass::LayoutPass;
 use crate::primitives::approx;
-use crate::primitives::interned_str::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
 
 /// The strip a scroll's content actually occupies: its own extent less
@@ -172,16 +169,12 @@ fn axis_rects(
 /// Bars never inflate their scroll: the overlay reports `ZERO` so a
 /// `Hug` ancestor sizes to content alone. Children are still measured so
 /// their `desired` rows exist for the arrange below.
-pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner_avail: Size,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
-) -> Size {
+pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size) -> Size {
+    // `tree` is a shared reborrow independent of `pass`, so the child
+    // walk and the `&mut pass` recursion coexist without buffering.
+    let tree = pass.tree;
     for child in tree.children(node) {
-        layout.measure(tree, child.id, inner_avail, interned_text, out);
+        pass.measure(child.id, inner_avail);
     }
     Size::ZERO
 }
@@ -189,15 +182,8 @@ pub(super) fn measure(
 /// Assign each of the four bar leaves its resolved rect, zero-extent for
 /// an axis that shows no bar. Child order is the recording contract from
 /// this module's doc.
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    def: ScrollbarsDef,
-    out: &mut LayerLayout,
-) {
-    let raw_content = out.scroll_content[def.content.idx()];
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, def: ScrollbarsDef) {
+    let raw_content = pass.scroll_content(def.content);
     let scaled_content = Size::new(raw_content.w * def.zoom, raw_content.h * def.zoom);
     let vertical = axis_rects(&def, inner.size, scaled_content, Axis::Y);
     let horizontal = axis_rects(&def, inner.size, scaled_content, Axis::X);
@@ -208,6 +194,7 @@ pub(super) fn arrange(
         horizontal.map(|b| b.track),
         horizontal.map(|b| b.thumb),
     ];
+    let tree = pass.tree;
     for (child, slot) in tree.children(node).zip(slots) {
         // An absent bar collapses to zero extent at the overlay origin
         // rather than going unrecorded, so its `WidgetId` keeps its state
@@ -222,6 +209,6 @@ pub(super) fn arrange(
             min: inner.min + local.min,
             size: local.size,
         };
-        layout.arrange(tree, child.id, rect, out);
+        pass.arrange(child.id, rect);
     }
 }

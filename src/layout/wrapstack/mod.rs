@@ -13,12 +13,12 @@
 //! shared arrange-axis resolution makes Fill children grow to that
 //! height without shrinking below their measured content.
 
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::pass::LayoutPass;
 use crate::layout::support::{
-    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset, zero_subtree,
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset,
 };
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
@@ -104,6 +104,28 @@ pub(crate) struct WrapScratch {
     pool: Vec<NodeId>,
 }
 
+impl WrapScratch {
+    #[inline]
+    fn len(&self) -> usize {
+        self.pool.len()
+    }
+
+    #[inline]
+    fn push(&mut self, node: NodeId) {
+        self.pool.push(node);
+    }
+
+    #[inline]
+    fn at(&self, index: usize) -> NodeId {
+        self.pool[index]
+    }
+
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+        self.pool.truncate(len);
+    }
+}
+
 /// Pack children into lines; return content size (max-line-main, sum
 /// line-cross + line-gaps). Each call recomputes the packing — cheap
 /// (one pass over children), and arrange uses the same logic on the
@@ -111,14 +133,12 @@ pub(crate) struct WrapScratch {
 /// both passes.
 #[profiling::function]
 pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     inner_avail: Size,
     axis: Axis,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
 ) -> Size {
+    let tree = pass.tree;
     let panel = tree.panel(node);
     let gap = panel.gaps.gap();
     let line_gap = panel.gaps.line_gap();
@@ -139,13 +159,7 @@ pub(super) fn measure(
         line_count += 1;
     };
     for c in tree.active_children(node) {
-        let d = layout.measure(
-            tree,
-            c,
-            axis.compose_size(f32::INFINITY, cross_avail),
-            interned_text,
-            out,
-        );
+        let d = pass.measure(c, axis.compose_size(f32::INFINITY, cross_avail));
         let pack = child_pack(axis, d);
         pack_child(&mut line, gap, main_avail, pack, &mut complete_line);
     }
@@ -161,14 +175,8 @@ pub(super) fn measure(
     axis.compose_size(max_line_main, total_cross)
 }
 
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    axis: Axis,
-    out: &mut LayerLayout,
-) {
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis: Axis) {
+    let tree = pass.tree;
     let panel = tree.panel(node);
     let gap = panel.gaps.gap();
     let line_gap = panel.gaps.line_gap();
@@ -181,21 +189,20 @@ pub(super) fn arrange(
     // justify) and `line_cross` (for cross-axis place). Buffer node
     // IDs in the engine's flat `wrap.pool` at this depth's slice,
     // flush on overflow / end-of-children. Sizes come from
-    // `layout.scratch.desired` at flush time, so the buffer is just node
+    // `pass.desired(..)` at flush time, so the buffer is just node
     // IDs.
     let layouts = tree.records.layout();
-    let line_start = layout.scratch.wrap.pool.len() as u32;
+    let line_start = pass.wrap_scratch_mut().len() as u32;
     let mut line = LinePack::default();
     let mut cross_cursor = axis.cross_v(inner.min);
     let mut first_line = true;
 
-    let place_line = |layout: &mut LayoutEngine,
-                      out: &mut LayerLayout,
+    let place_line = |pass: &mut LayoutPass<'_>,
                       line_main: f32,
                       line_cross: f32,
                       cross_cursor: &mut f32,
                       first_line: &mut bool| {
-        let line_end = layout.scratch.wrap.pool.len();
+        let line_end = pass.wrap_scratch_mut().len();
         let line_start = line_start as usize;
         if line_end == line_start {
             return;
@@ -216,13 +223,12 @@ pub(super) fn arrange(
         // calling `layout.arrange`, which needs `&mut layout`.
         // `NodeId` is `Copy`, so no slice borrow into the pool.
         for i in line_start..line_end {
-            let c = layout.scratch.wrap.pool[i];
+            let c = pass.wrap_scratch_mut().at(i);
             if i > line_start {
                 main_cursor += eff_gap;
             }
-            let i = c.idx();
-            let d = layout.scratch.desired[i];
-            let s = layouts[i];
+            let d = pass.desired(c);
+            let s = layouts[c.idx()];
             // Cross axis: each child placed within the line's cross
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
@@ -235,7 +241,7 @@ pub(super) fn arrange(
                 main_size,
                 cross_p.size,
             );
-            layout.arrange(tree, c, child_rect, out);
+            pass.arrange(c, child_rect);
             main_cursor += main_size;
         }
         *cross_cursor += line_cross;
@@ -243,7 +249,7 @@ pub(super) fn arrange(
         // `layout.arrange` calls above may have temporarily extended
         // and re-truncated the pool past `line_end`; we ignore those
         // and reset to our depth's start.
-        layout.scratch.wrap.pool.truncate(line_start);
+        pass.wrap_scratch_mut().truncate(line_start);
     };
 
     // Walk all children: collapsed get zeroed at the cursor, active
@@ -254,37 +260,29 @@ pub(super) fn arrange(
             // Anchor inside this layout's inner rect at the current
             // cursor. Position is stable; size is zero so there's no
             // visual or input contribution.
-            zero_subtree(
-                tree,
-                c,
-                axis.compose_point(axis.main_v(inner.min), cross_cursor),
-                out,
-            );
+            pass.zero_subtree(c, axis.compose_point(axis.main_v(inner.min), cross_cursor));
             continue;
         }
 
-        let i = c.idx();
-        let d = layout.scratch.desired[i];
+        let d = pass.desired(c);
         let pack = child_pack(axis, d);
         // On wrap, `pack_child` places the just-finished line (which
         // empties the pool back to this depth's start); the child that
         // triggered the wrap is then pushed as the new line's first node.
         pack_child(&mut line, gap, main_avail, pack, |line_main, line_cross| {
             place_line(
-                layout,
-                out,
+                pass,
                 line_main,
                 line_cross,
                 &mut cross_cursor,
                 &mut first_line,
             )
         });
-        layout.scratch.wrap.pool.push(c);
+        pass.wrap_scratch_mut().push(c);
     }
     if line.occupied {
         place_line(
-            layout,
-            out,
+            pass,
             line.main,
             line.cross,
             &mut cross_cursor,

@@ -4,14 +4,14 @@
 //! caching and result writing.
 
 use crate::common::hash;
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::pass::LayoutPass;
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::interned_str::InternedText;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::size::Size;
 use crate::scene::node::columns::{BoundsExtras, LayoutCore};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
@@ -20,7 +20,6 @@ use crate::scene::tree::record::NodeId;
 use crate::text::key::TextShapeKey;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight, TextShapeRequest};
-use glam::Vec2;
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`] and [`container_text_shapes`]; named so the fields
@@ -226,19 +225,6 @@ pub(super) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
     rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }
 
-/// Set this node and every descendant to a zero-size rect anchored at
-/// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
-/// directly — no recursion, no child cursors.
-pub(super) fn zero_subtree(tree: &Tree, node: NodeId, anchor: Vec2, out: &mut LayerLayout) {
-    let zero = Rect {
-        min: anchor,
-        size: Size::ZERO,
-    };
-    let start = node.idx();
-    let end = tree.subtree_end_of(start) as usize;
-    out.rect[start..end].fill(zero);
-}
-
 /// Max over non-collapsed children's outer intrinsic on `axis`, each
 /// child's contribution shifted by `offset`.
 ///
@@ -325,14 +311,12 @@ pub(super) fn justify_offsets(
 /// from `contrib`) into a per-axis max. Drivers differ only in
 /// whether they add a positional offset.
 pub(super) fn measure_per_axis_hug(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     inner_avail: Size,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
+    let tree = pass.tree;
     let node_layout = tree.records.layout()[node.idx()];
     // Per-axis-hug availability: a `Hug` axis passes `INF` so the child
     // reports its natural size; a bounded axis passes the committed inner
@@ -357,7 +341,7 @@ pub(super) fn measure_per_axis_hug(
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.active_children(node) {
-        let d = layout.measure(tree, c, child_avail, interned_text, out);
+        let d = pass.measure(c, child_avail);
         let cont = contrib(tree, c, d);
         max_w = max_w.max(cont.w);
         max_h = max_h.max(cont.h);

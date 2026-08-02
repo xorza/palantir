@@ -72,6 +72,20 @@ impl Forest {
         self.layer_stack.last().copied().unwrap_or(Layer::Main)
     }
 
+    /// Recorded nodes across every layer. The cascade sizes its flat
+    /// per-node tables against this and the measure cache checks its
+    /// snapshot against it, so it is one method rather than the same
+    /// fold spelled three ways.
+    pub(crate) fn total_nodes(&self) -> usize {
+        self.trees.iter().map(|tree| tree.records.len()).sum()
+    }
+
+    /// Top-level roots across every layer — the companion count to
+    /// [`Self::total_nodes`], read by the measure cache's snapshot key.
+    pub(crate) fn total_roots(&self) -> usize {
+        self.trees.iter().map(|tree| tree.roots.len()).sum()
+    }
+
     /// Intern a grid's track definition into the current layer's tree.
     /// The returned handle is what a `Node::grid` packs, and `open_node`
     /// debug-asserts that a grid node's handle resolves — pushing
@@ -127,10 +141,10 @@ impl Forest {
         self.layer_stack.clear();
         self.ids.pre_record();
         self.collisions.clear();
-        for t in &mut self.trees {
+        for t in self.trees.iter_mut() {
             t.pre_record();
         }
-        for s in &mut self.scratch {
+        for s in self.scratch.iter_mut() {
             s.clear();
         }
     }
@@ -165,8 +179,8 @@ impl Forest {
     /// record and paint-only paths so the next anim boundary is queued
     /// regardless of which path ran.
     pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Option<Duration> {
-        (&self.trees)
-            .into_iter()
+        self.trees
+            .iter()
             .flat_map(|tree| &tree.paint_anims.entries)
             .filter_map(|entry| entry.anim.next_wake(now))
             .min()

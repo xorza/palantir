@@ -1,10 +1,8 @@
-use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
-use crate::layout::support::{
-    AxisAlignPair, arrange_axis, resolved_axis_align, weighted_share, zero_subtree,
-};
+use crate::layout::pass::LayoutPass;
+use crate::layout::support::{AxisAlignPair, arrange_axis, resolved_axis_align, weighted_share};
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::layout::types::track::Track;
 use crate::primitives::interned_str::InternedText;
@@ -41,8 +39,8 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
 /// and inflating the grid's `desired.h`. Measure-only — arrange must
 /// preserve these. Pinned by
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
-fn reset_hugs_for(layout: &mut LayoutEngine, idx: GridDefId) {
-    let hugs = &mut layout.scratch.grid.hugs;
+fn reset_hugs_for(pass: &mut LayoutPass<'_>, idx: GridDefId) {
+    let hugs = pass.grid_hugs_mut();
     for (axis, kind) in HUG_ORDER {
         hugs.slice_mut(idx, axis, kind).fill(0.0);
     }
@@ -105,7 +103,7 @@ struct GridScratch {
 pub(crate) struct GridContext {
     pub(crate) depth_stack: GridDepthStack,
     pub(crate) hugs: GridHugStore,
-    track_aggregator: Vec<f32>,
+    pub(super) track_aggregator: Vec<f32>,
 }
 
 /// Nesting stack of per-depth grid scratch. One `GridScratch` slot per
@@ -334,40 +332,25 @@ impl GridHugStore {
 /// frames; no fixed track-count limit.
 #[profiling::function]
 pub(super) fn measure(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     idx: GridDefId,
     inner_avail: Size,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
 ) -> Size {
-    let depth = layout.scratch.grid.depth_stack.enter();
-    let result = measure_inner(
-        layout,
-        tree,
-        node,
-        idx,
-        depth,
-        inner_avail,
-        interned_text,
-        out,
-    );
-    layout.scratch.grid.depth_stack.exit();
+    let depth = pass.grid_mut().depth_stack.enter();
+    let result = measure_inner(pass, node, idx, depth, inner_avail);
+    pass.grid_mut().depth_stack.exit();
     result
 }
 
-#[allow(clippy::too_many_arguments)]
 fn measure_inner(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     idx: GridDefId,
     depth: usize,
     inner_avail: Size,
-    interned_text: &InternedText<'_>,
-    out: &mut LayerLayout,
 ) -> Size {
+    let tree = pass.tree;
     let def = tree.grid_defs[usize::from(idx)];
     let row_tracks = &tree.grid_tracks[def.rows.range()];
     let col_tracks = &tree.grid_tracks[def.cols.range()];
@@ -375,10 +358,10 @@ fn measure_inner(
     let n_cols = col_tracks.len();
     let row_gap = def.row_gap;
     let col_gap = def.col_gap;
-    let scratch = layout.scratch.grid.depth_stack.at(depth);
+    let scratch = pass.grid_mut().depth_stack.at(depth);
     scratch.col.reset(n_cols);
     scratch.row.reset(n_rows);
-    reset_hugs_for(layout, idx);
+    reset_hugs_for(pass, idx);
 
     if n_rows == 0 || n_cols == 0 {
         // Recurse with `Size::ZERO` so leaves still take the Leaf measure arm
@@ -387,7 +370,7 @@ fn measure_inner(
         // entry per text record, regardless of whether the rect is zero.
         // Skipping the walk breaks `text_reshape_skipped_when_unchanged`.
         for c in tree.children(node).map(|c| c.id) {
-            layout.measure(tree, c, Size::ZERO, interned_text, out);
+            pass.measure(c, Size::ZERO);
         }
         return Size::ZERO;
     }
@@ -416,17 +399,13 @@ fn measure_inner(
             let t = &col_tracks[cell.col as usize];
             let i = cell.col as usize;
             if t.size.is_hug() {
-                let range = layout.intrinsic_range(tree, c, Axis::X, interned_text);
-                let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
+                let range = pass.intrinsic_range(c, Axis::X);
+                let (cols_min, cols_max) = pass.grid_hugs_mut().slice_mut_pair(idx, Axis::X);
                 cols_min[i] = cols_min[i].max(range.min);
                 cols_max[i] = cols_max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
-                let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, interned_text);
-                let cols_min = layout
-                    .scratch
-                    .grid
-                    .hugs
-                    .slice_mut(idx, Axis::X, HugKind::Min);
+                let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
+                let cols_min = pass.grid_hugs_mut().slice_mut(idx, Axis::X, HugKind::Min);
                 cols_min[i] = cols_min[i].max(min);
             }
         }
@@ -451,7 +430,7 @@ fn measure_inner(
     {
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.scratch.grid;
+        } = pass.grid_mut();
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
@@ -481,7 +460,7 @@ fn measure_inner(
         let cell = tree.bounds(c).grid;
 
         let avail = {
-            let s = layout.scratch.grid.depth_stack.at(depth);
+            let s = pass.grid_mut().depth_stack.at(depth);
             // `known_span_size` returns INFINITY if any spanned col is
             // unresolved. After `resolve_axis` ran above, Fixed and Hug
             // cols are marked resolved; Fill cols intentionally stay
@@ -507,7 +486,7 @@ fn measure_inner(
             Size::new(avail_w, avail_h)
         };
 
-        let d = layout.measure(tree, c, avail, interned_text, out);
+        let d = pass.measure(c, avail);
 
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
@@ -518,7 +497,7 @@ fn measure_inner(
         // Skip multi-row spans: their height is distributed across rows,
         // not attributable to one row.
         if cell.row_span == 1 {
-            let hugs = &mut layout.scratch.grid.hugs;
+            let hugs = pass.grid_hugs_mut();
             let row = cell.row as usize;
             let sizing = row_tracks[row].size;
             if sizing.is_hug() {
@@ -540,7 +519,7 @@ fn measure_inner(
     {
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.scratch.grid;
+        } = pass.grid_mut();
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.row,
@@ -557,7 +536,7 @@ fn measure_inner(
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
     // claims leftover at arrange; `resolve_sizing` separately floors this
     // raw answer at the Grid intrinsic, which includes Fill content.
-    let s = layout.scratch.grid.depth_stack.at(depth);
+    let s = pass.grid_mut().depth_stack.at(depth);
     let total_w =
         sum_non_fill(col_tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
     let total_h =
@@ -597,28 +576,20 @@ fn resolve_fixed(a: &mut AxisScratch, tracks: &[Track]) -> f32 {
     consumed
 }
 
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    inner: Rect,
-    idx: GridDefId,
-    out: &mut LayerLayout,
-) {
-    let depth = layout.scratch.grid.depth_stack.enter();
-    arrange_inner(layout, tree, node, inner, idx, depth, out);
-    layout.scratch.grid.depth_stack.exit();
+pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, idx: GridDefId) {
+    let depth = pass.grid_mut().depth_stack.enter();
+    arrange_inner(pass, node, inner, idx, depth);
+    pass.grid_mut().depth_stack.exit();
 }
 
 fn arrange_inner(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
+    pass: &mut LayoutPass<'_>,
     node: NodeId,
     inner: Rect,
     idx: GridDefId,
     depth: usize,
-    out: &mut LayerLayout,
 ) {
+    let tree = pass.tree;
     let def = tree.grid_defs[usize::from(idx)];
     let row_tracks = &tree.grid_tracks[def.rows.range()];
     let col_tracks = &tree.grid_tracks[def.cols.range()];
@@ -626,13 +597,13 @@ fn arrange_inner(
     let n_cols = col_tracks.len();
     let row_gap = def.row_gap;
     let col_gap = def.col_gap;
-    let scratch = layout.scratch.grid.depth_stack.at(depth);
+    let scratch = pass.grid_mut().depth_stack.at(depth);
     scratch.col.reset(n_cols);
     scratch.row.reset(n_rows);
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node).map(|c| c.id) {
-            zero_subtree(tree, c, inner.min, out);
+            pass.zero_subtree(c, inner.min);
         }
         return;
     }
@@ -654,7 +625,7 @@ fn arrange_inner(
     {
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.scratch.grid;
+        } = pass.grid_mut();
         let s = depth_stack.at(depth);
         resolve_or_reuse(
             &mut s.col,
@@ -683,17 +654,16 @@ fn arrange_inner(
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(tree, c, inner.min, out);
+            pass.zero_subtree(c, inner.min);
             continue;
         }
-        let i = c.idx();
-        let s_node = layouts[i];
+        let s_node = layouts[c.idx()];
         let bounds = tree.bounds(c);
         let cell = bounds.grid;
-        let d = layout.scratch.desired[i];
+        let d = pass.desired(c);
 
         let (slot_x, slot_y, slot_w, slot_h) = {
-            let s = layout.scratch.grid.depth_stack.at(depth);
+            let s = pass.grid_mut().depth_stack.at(depth);
             let slot_x = s.col.offsets[cell.col as usize];
             let slot_y = s.row.offsets[cell.row as usize];
             let slot_w = span_size(&s.col.sizes, cell.track_span(Axis::X), col_gap);
@@ -709,7 +679,7 @@ fn arrange_inner(
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, child_rect, out);
+        pass.arrange(c, child_rect);
     }
 }
 
@@ -994,14 +964,12 @@ pub(super) fn intrinsic(
 
     let wants_min = query.includes(LenReq::MinContent);
     let wants_max = query.includes(LenReq::MaxContent);
-    let base = layout.scratch.grid.track_aggregator.len();
+    let base = layout.grid_track_aggregator().len();
     let min_base = base;
     let max_base = base + usize::from(wants_min) * n_tracks;
     let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * n_tracks;
     layout
-        .scratch
-        .grid
-        .track_aggregator
+        .grid_track_aggregator()
         .resize(base + slot_count, 0.0);
     for (i, t) in tracks.iter().enumerate() {
         let initial = t
@@ -1009,10 +977,10 @@ pub(super) fn intrinsic(
             .fixed_value()
             .map_or(t.min, |value| value.clamp(t.min, t.max));
         if wants_min {
-            layout.scratch.grid.track_aggregator[min_base + i] = initial;
+            layout.grid_track_aggregator()[min_base + i] = initial;
         }
         if wants_max {
-            layout.scratch.grid.track_aggregator[max_base + i] = initial;
+            layout.grid_track_aggregator()[max_base + i] = initial;
         }
     }
 
@@ -1028,11 +996,11 @@ pub(super) fn intrinsic(
         }
         let child = query.child(layout, tree, c, axis, interned_text);
         if wants_min {
-            let slot = &mut layout.scratch.grid.track_aggregator[min_base + track_idx];
+            let slot = &mut layout.grid_track_aggregator()[min_base + track_idx];
             *slot = slot.max(content_floor(t, child.min));
         }
         if wants_max {
-            let slot = &mut layout.scratch.grid.track_aggregator[max_base + track_idx];
+            let slot = &mut layout.grid_track_aggregator()[max_base + track_idx];
             *slot = slot.max(content_floor(t, child.max));
         }
     }
@@ -1040,18 +1008,18 @@ pub(super) fn intrinsic(
     let gaps = gap * n_tracks.saturating_sub(1) as f32;
     let mut range = IntrinsicRange::ZERO;
     if wants_min {
-        range.min = layout.scratch.grid.track_aggregator[min_base..min_base + n_tracks]
+        range.min = layout.grid_track_aggregator()[min_base..min_base + n_tracks]
             .iter()
             .sum::<f32>()
             + gaps;
     }
     if wants_max {
-        range.max = layout.scratch.grid.track_aggregator[max_base..max_base + n_tracks]
+        range.max = layout.grid_track_aggregator()[max_base..max_base + n_tracks]
             .iter()
             .sum::<f32>()
             + gaps;
     }
-    layout.scratch.grid.track_aggregator.truncate(base);
+    layout.grid_track_aggregator().truncate(base);
     range
 }
 

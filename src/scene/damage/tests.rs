@@ -5,8 +5,9 @@ use crate::primitives::{color::Color, rect::Rect, size::Size, transform::Transla
 use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::cascade::paint::Paint;
+use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::damage::{Damage, DamageEngine, paints_on_surface};
+use crate::scene::damage::{Damage, DamageEngine};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::record::NodeId;
@@ -2386,7 +2387,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
         },
     ];
     assert!(
-        !paints_on_surface(&straddling, Rect::new(0.0, 0.0, 100.0, 100.0)),
+        !straddling.any_on_surface(Rect::new(0.0, 0.0, 100.0, 100.0)),
         "the union can cross the surface even though no paint row does",
     );
 

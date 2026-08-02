@@ -54,17 +54,16 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::Cascade;
-use crate::scene::cascade::paint::{Paint, PaintArena};
+use crate::scene::cascade::paint::{PaintArena, PaintRows};
 use crate::scene::damage::probe::DamageProbe;
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::snapshot::{
-    NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion, push_screen,
+    NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion,
 };
 use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::record::NodeId;
-use crate::scene::tree::record::SubtreeEnd;
 use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
@@ -376,7 +375,7 @@ impl DamageEngine {
                     // row-invariant note).
                     Entry::Vacant(_)
                         if subtree_end[i].end() as usize == i + 1
-                            && !paints_on_surface(curr_paints_slice, surface) =>
+                            && !curr_paints_slice.any_on_surface(surface) =>
                     {
                         1
                     }
@@ -389,7 +388,7 @@ impl DamageEngine {
                         // and `raw_rects`' retained capacity tracks real
                         // incremental frames, not the whole tree.
                         if !force_full {
-                            push_screens(raw_rects, curr_paints_slice);
+                            raw_rects.extend(curr_paints_slice.screens());
                         }
                         e.insert(make_snapshot(paint_span));
                         probe.mark_dirty(NodeId(i as u32));
@@ -494,7 +493,7 @@ impl DamageEngine {
                         // — e.g. all canvas connections when an
                         // unrelated node is deleted.
                         if prev.cascade_input != curr_cascade_input
-                            && let Some(u) = union_screens(curr_paints_slice)
+                            && let Some(u) = curr_paints_slice.union_screens()
                         {
                             raw_rects.push(u);
                         }
@@ -506,11 +505,9 @@ impl DamageEngine {
                         // their tier-1 skip (their snapshots are intact
                         // and this push already covers them).
                         if prev.parent_key != parent_key
-                            && let Some(u) = subtree_paint_extent(
-                                NodeId(i as u32),
-                                subtree_end,
-                                &layer_cascades.paint_arena,
-                            )
+                            && let Some(u) = layer_cascades
+                                .paint_arena
+                                .subtree_extent(NodeId(i as u32), subtree_end)
                         {
                             raw_rects.push(u);
                         }
@@ -523,7 +520,7 @@ impl DamageEngine {
                         // everything the node *was* painting, then
                         // evict.
                         let prev = *e.get();
-                        push_screens(raw_rects, &arena.snaps[prev.paint_span.range()]);
+                        raw_rects.extend(arena.snaps[prev.paint_span.range()].screens());
                         arena.mark_orphaned(prev.paint_span.len);
                         e.remove();
                         probe.mark_dirty(NodeId(i as u32));
@@ -582,7 +579,7 @@ impl DamageEngine {
                         match prev_map.get_mut(&widget_ids[j]) {
                             Some(snap) => {
                                 if let Some(u) =
-                                    union_screens(&arena.snaps[snap.paint_span.range()])
+                                    arena.snaps[snap.paint_span.range()].union_screens()
                                 {
                                     prev_extent = Some(prev_extent.map_or(u, |a| a.union(u)));
                                 }
@@ -600,7 +597,7 @@ impl DamageEngine {
                             // visible frame.
                             None => {
                                 let curr = &layer_paints[span.range()];
-                                if !paints_on_surface(curr, surface) {
+                                if !curr.any_on_surface(surface) {
                                     continue;
                                 }
                                 let paint_span = arena.append(curr);
@@ -676,10 +673,8 @@ impl DamageEngine {
         // between them.
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
-                push_screens(
-                    &mut self.raw_rects,
-                    &self.arena.snaps[snap.paint_span.range()],
-                );
+                self.raw_rects
+                    .extend(self.arena.snaps[snap.paint_span.range()].screens());
                 self.arena.mark_orphaned(snap.paint_span.len);
             }
         }
@@ -717,44 +712,15 @@ impl DamageEngine {
     }
 }
 
-/// Drain every paint's screen rect into the raw-rect buffer. Used by
-/// the Vacant-insert arm (everything's new), the eviction arm
-/// (everything's going), and the removed-widget tail.
+/// Push one screen rect into the raw-rect buffer, dropping paint-empty
+/// rects — child markers (always zero) and fully clipped-away shapes
+/// produce no pixels, so they have nothing to clear or repaint. Lives
+/// beside `DamageEngine::raw_rects`, the buffer every caller is filling.
 #[inline]
-fn push_screens(out: &mut Vec<Rect>, paints: &[Paint]) {
-    for p in paints {
-        push_screen(out, p.screen);
+pub(super) fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
+    if !screen.is_paint_empty() {
+        out.push(screen);
     }
-}
-
-/// Screen-space union of a node's pixel-producing paint rows — the
-/// node's own paint extent, formerly stored as `Cascade.paint_rect`.
-/// The cascade no longer caches it; the damage diff recomputes it here
-/// on its cold paths (the Vacant surface-cull and the tier-3
-/// cascade-state union push) from the same `paint_arena` slice those
-/// arms already touch. Paint-empty rows (child markers, clipped-away
-/// shapes) are skipped — folding their zero boxes in would bias the
-/// union toward the origin / clip edge. `None` when no row produces
-/// pixels.
-#[inline]
-fn union_screens(paints: &[Paint]) -> Option<Rect> {
-    paints
-        .iter()
-        .map(|p| p.screen)
-        .filter(|s| !s.is_paint_empty())
-        .reduce(|acc, s| acc.union(s))
-}
-
-/// True when any of the node's paint rows produces visible pixels on
-/// `surface`. One predicate, two coupled sites: the Vacant arm skips
-/// the snapshot insert for a childless node where this is false, and
-/// tier 1.5's insert leg repays that skip the frame it turns true —
-/// they must agree or painting-but-untracked nodes reappear.
-#[inline]
-fn paints_on_surface(paints: &[Paint], surface: Rect) -> bool {
-    paints
-        .iter()
-        .any(|paint| !paint.screen.is_paint_empty() && paint.screen.intersects(surface))
 }
 
 /// `advance` sentinel returned by the diff's tier-1.5 match arm
@@ -766,7 +732,7 @@ const MOVED_SUBTREE: usize = usize::MAX;
 
 /// Screen-space extent per row of `node`'s paint span, in row order:
 /// chrome and direct shapes keep their own `Paint.screen`; a child
-/// marker's zero rect is swapped for [`subtree_paint_extent`] — the
+/// marker's zero rect is swapped for [`PaintArena::subtree_extent`] — the
 /// pixels that actually move when the child's paint order flips. Only
 /// built on the inversion path — child extents walk the whole child
 /// subtree's rows.
@@ -784,9 +750,9 @@ fn build_row_extents(node: NodeId, tree: &Tree, arena: &PaintArena, out: &mut Ve
     for item in tree.tree_items(node) {
         out.push(match item {
             TreeItem::ShapeRecord(..) => arena.rows[node_span.start as usize + out.len()].screen,
-            TreeItem::Child(c) => {
-                subtree_paint_extent(c.id, subtree_end, arena).unwrap_or(Rect::ZERO)
-            }
+            TreeItem::Child(c) => arena
+                .subtree_extent(c.id, subtree_end)
+                .unwrap_or(Rect::ZERO),
         });
     }
     debug_assert_eq!(
@@ -819,34 +785,6 @@ fn emit_inverted_overlaps(matched_pos: &[u32], extents: &[Rect], out: &mut Vec<R
             push_screen(out, extents[j1].intersect(extents[j2]));
         }
     }
-}
-
-/// Screen-space painted extent of `node`'s whole subtree — the union of
-/// every paint row in `[node, subtree_end)`. Built from the per-shape
-/// `Paint.screen` rects (already transformed + clipped) rather than
-/// `Cascade::subtree_paint_rects` so a non-painting descendant can't
-/// bias the extent. `None` when the subtree paints nothing. Used for a
-/// child marker's row extent in [`build_row_extents`] and for the
-/// reparent/layer-move damage push in the diff walk.
-///
-/// The cascade visits nodes in pre-order with a monotone arena cursor
-/// and stamps every node's `node_spans` slot (empty spans still carry
-/// the cursor as `start`), so a subtree's rows are one contiguous run:
-/// from the node's own `start` to the `start` of the first node past
-/// the subtree (or the arena's end). One linear fold, no per-node span
-/// hops.
-fn subtree_paint_extent(
-    node: NodeId,
-    subtree_end: &[SubtreeEnd],
-    arena: &PaintArena,
-) -> Option<Rect> {
-    let end = subtree_end[node.idx()].end() as usize;
-    let start_row = arena.node_spans[node.idx()].start as usize;
-    let end_row = match arena.node_spans.get(end) {
-        Some(next) => next.start as usize,
-        None => arena.rows.len(),
-    };
-    union_screens(&arena.rows[start_row..end_row])
 }
 
 fn extend_predamaged(
@@ -897,7 +835,7 @@ impl DamageEngine {
     /// didn't paint last frame (no `prev` entry).
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;
-        union_screens(&self.arena.snaps[snap.paint_span.range()])
+        self.arena.snaps[snap.paint_span.range()].union_screens()
     }
 
     fn compact_paint_snaps(&mut self, forest: &Forest) {
