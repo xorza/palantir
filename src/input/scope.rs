@@ -10,7 +10,9 @@
 //! independent of where in the pass anything recorded, and it is also
 //! what makes the reads cheap: everything that depends only on the
 //! cascade is computed here, so [`Scopes::grant`] is a handful of bit
-//! tests and [`Scopes::reader`] one containment probe per scope.
+//! tests and [`Scopes::reader`] one containment probe per scope — and
+//! that scan only on the first read at a given record position, the rest
+//! of a chord table hitting [`ReaderMemo`].
 
 use crate::input::key_class::KeyClass;
 use crate::primitives::widget_id::WidgetId;
@@ -44,6 +46,8 @@ pub(super) struct Scopes {
     /// otherwise recompute it — one scan of the layer's scopes per pass
     /// instead of per chord.
     outermost: Option<WidgetId>,
+    /// [`Self::reader`]'s last answer — see [`ReaderMemo`].
+    reader_memo: Option<ReaderMemo>,
     /// Scopes withdrawn by [`Self::close`] during the frame being
     /// recorded.
     ///
@@ -67,6 +71,24 @@ pub(super) struct Scopes {
     closed: Vec<WidgetId>,
 }
 
+/// The scope [`Scopes::reader`] last answered for, and for whom.
+///
+/// An app polls its whole chord table from one record position, so that
+/// scan repeats verbatim once per chord: it reads `parent`, the cascade,
+/// and the two withdrawal columns, none of which move between two polls
+/// at the same position. Holding one entry collapses a table of `n`
+/// chords to one scan — the rest are a `WidgetId` compare.
+///
+/// Keyed on `parent` alone, because the two things that *can* invalidate
+/// it both clear the memo outright: [`Scopes::resolve`] rebuilds the pass
+/// and [`Scopes::close`] withdraws a scope mid-pass. Nothing else the
+/// scan reads changes within a pass.
+#[derive(Copy, Clone, Debug)]
+struct ReaderMemo {
+    parent: WidgetId,
+    scope: Option<WidgetId>,
+}
+
 impl Scopes {
     /// Rebuild the pass's routing from `focused` and the cascade.
     ///
@@ -76,6 +98,7 @@ impl Scopes {
     /// recorded, nothing else.
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascade: &Cascade) {
         self.path.clear();
+        self.reader_memo = None;
         let live = || live_scopes(cascade, &self.closing, &self.closed);
         self.active_layer = live().map(|row| row.layer).max();
         if let Some(active) = self.active_layer {
@@ -115,6 +138,9 @@ impl Scopes {
     pub(super) fn close(&mut self, owner: WidgetId) {
         if !self.closing.contains(&owner) {
             self.closing.push(owner);
+            // A withdrawal lands mid-pass, so reads after it must not see
+            // the answer reads before it got.
+            self.reader_memo = None;
         }
     }
 
@@ -160,15 +186,26 @@ impl Scopes {
     /// [`Self::grant`] both answer `None` there and compare equal.
     /// Silencing is [`Self::silences`]'s job, and the caller checks it
     /// first.
-    pub(super) fn reader(&self, parent: Option<WidgetId>, cascade: &Cascade) -> Option<WidgetId> {
+    pub(super) fn reader(
+        &mut self,
+        parent: Option<WidgetId>,
+        cascade: &Cascade,
+    ) -> Option<WidgetId> {
         let active = self.active_layer?;
         let Some(parent) = parent else {
             return self.outermost;
         };
-        live_scopes(cascade, &self.closing, &self.closed)
+        if let Some(memo) = self.reader_memo
+            && memo.parent == parent
+        {
+            return memo.scope;
+        }
+        let scope = live_scopes(cascade, &self.closing, &self.closed)
             .rfind(|row| row.layer == active && cascade.is_within(parent, row.id))
             .map(|row| row.id)
-            .or(self.outermost)
+            .or(self.outermost);
+        self.reader_memo = Some(ReaderMemo { parent, scope });
+        scope
     }
 }
 

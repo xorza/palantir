@@ -272,6 +272,63 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     }
 }
 
+/// A `close_scope` takes effect for reads **after it in the same pass**,
+/// not just on the next resolution.
+///
+/// Nested scopes, and the read sits inside the inner one. With focus on
+/// an unrecorded id nothing anchors a scope path, so the grant falls to
+/// the layer's outermost — the root — while the read speaks for the
+/// inner scope containing it, and the two disagree: no chord. Closing
+/// the inner scope leaves the root as the innermost live scope over that
+/// same record position, the two agree, and the chord lands.
+///
+/// The flip is the assertion: same position, same pass, same chord, both
+/// answers. A `reader` result cached across the close reports the first
+/// answer twice and this fails on the second.
+#[test]
+fn a_close_reaches_reads_later_in_its_own_pass() {
+    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let (mut before, mut after) = (false, false);
+    // `closes` is false on the setup frame: a close outlives its own
+    // frame, so closing there would leave `inner` already withdrawn when
+    // the pass under test starts and there would be no flip to see.
+    let nested = |ui: &mut Ui, closes: bool, before: &mut bool, after: &mut bool| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .input_scope(KeyFilter::ALL)
+            .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
+            .show(ui, |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .input_scope(KeyFilter::ALL)
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui, |ui| {
+                        *before |= ui.escape_pressed();
+                        if closes {
+                            ui.close_scope(WidgetId::from_hash("inner"));
+                        }
+                        *after |= ui.escape_pressed();
+                    });
+            });
+    };
+    // The setup frame reads nothing — no key is queued yet — so it can
+    // share the accumulators with the frame that does.
+    h.frame(|ui| nested(ui, false, &mut before, &mut after));
+    press_escape(&mut h);
+    h.frame(|ui| nested(ui, true, &mut before, &mut after));
+
+    assert!(
+        !before,
+        "while the inner scope stands, the read it contains speaks for it \
+         and the outermost grant does not reach it",
+    );
+    assert!(
+        after,
+        "closing the inner scope hands the read to the root, which holds \
+         the grant — in the same pass",
+    );
+}
+
 /// Feed an Escape that the keyboard wake-gate will actually deliver.
 /// The gate drops an unsubscribed chord when nothing is focused, and
 /// `end_frame` evicts focus whose widget was not recorded — so this has
