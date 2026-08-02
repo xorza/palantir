@@ -100,25 +100,9 @@ pub(crate) struct PaintSnapArena {
     /// Reusable destination for compaction (and a swap target). Same
     /// invariants as `snaps` after a `swap`.
     scratch: Vec<Paint>,
-    /// Retained "which prev paints have been claimed?" flags for the
-    /// content-keyed slow path in [`Self::diff_changed_leg`]. Sized to
-    /// `prev_span.len` per call; capacity is reused so steady-state
-    /// content reshuffles don't allocate.
-    prev_matched: Vec<bool>,
-    /// Pass-1 exact-match position map: for each curr paint, the prev
-    /// row it paired with (`ROW_UNMATCHED` when pass 1 didn't pair
-    /// it). Feeds the within-node order-inversion check — an exact
-    /// pair emits no content damage, but two of them swapping paint
-    /// order still flips their overlap's pixels. Capacity retained.
-    pub(super) matched_pos: Vec<u32>,
-    /// Sort-merge scratch for the content-keyed passes: `(key, row
-    /// index)` pairs for the unclaimed prev side / the unmatched curr
-    /// side. Sorting + merging both sides replaces the old restart-
-    /// from-zero first-fit scan, bounding the all-rows-shifted case
-    /// (one shape inserted at the front of a big node) at
-    /// O(n log n) instead of O(n²). Capacity retained.
-    prev_keyed: Vec<(PaintKey, u32)>,
-    curr_keyed: Vec<(PaintKey, u32)>,
+    /// The content-keyed matcher's scratch. Its own type so each phase
+    /// can be a method that names the precondition it inherits.
+    matcher: RowMatcher,
     /// Count of `Paint` entries in `snaps` that no live
     /// `NodeSnapshot::paint_span` points into. Drives the compaction
     /// trigger.
@@ -147,6 +131,14 @@ pub(super) struct ChangedLeg {
 }
 
 impl PaintSnapArena {
+    /// Which prev row each curr row paired with on the last
+    /// [`Self::diff_changed_leg`], for the caller's order-inversion
+    /// check. `ROW_UNMATCHED` where nothing paired.
+    #[inline]
+    pub(super) fn matched_positions(&self) -> &[u32] {
+        &self.matcher.matched_pos
+    }
+
     /// Reset to empty — caller's next `compute` will repopulate.
     pub(super) fn clear(&mut self) {
         self.snaps.clear();
@@ -228,114 +220,16 @@ impl PaintSnapArena {
             };
         }
 
-        // Split-borrow: the matching passes read prev_slice (& self.snaps)
-        // and write the scratch bitmap + keyed-index lists simultaneously.
-        let Self {
-            snaps,
-            prev_matched,
-            matched_pos,
-            prev_keyed,
-            curr_keyed,
-            ..
-        } = self;
-        let prev_slice = &snaps[prev_start..prev_start + prev_len];
+        // Split-borrow: the phases read `prev` out of `snaps` while
+        // writing the matcher's columns. Disjoint fields, one
+        // destructure.
+        let Self { snaps, matcher, .. } = self;
+        let prev = &snaps[prev_start..prev_start + prev_len];
 
-        prev_matched.clear();
-        prev_matched.resize(prev_len, false);
-        matched_pos.clear();
-        matched_pos.resize(curr_paints.len(), ROW_UNMATCHED);
-
-        // Pass 1 — exact (screen, hash) pairs. No damage. A positional
-        // pre-pass claims same-index matches first: the dominant churn
-        // shape (one shape changed, the rest in place — every wire of a
-        // dragged canvas node) pairs in O(n). Build the keyed leftovers
-        // here too, so the slow path traverses each side only once.
-        // Identical rows are interchangeable, so which duplicate pairs
-        // up doesn't matter.
-        prev_keyed.clear();
-        curr_keyed.clear();
-        let shared_len = prev_len.min(curr_paints.len());
-        for j in 0..shared_len {
-            let p = prev_slice[j];
-            let c = curr_paints[j];
-            if p == c {
-                prev_matched[j] = true;
-                matched_pos[j] = j as u32;
-            } else {
-                prev_keyed.push((PaintKey::of(&p), j as u32));
-                curr_keyed.push((PaintKey::of(&c), j as u32));
-            }
-        }
-        for (offset, p) in prev_slice[shared_len..].iter().enumerate() {
-            prev_keyed.push((PaintKey::of(p), (shared_len + offset) as u32));
-        }
-        for (offset, c) in curr_paints[shared_len..].iter().enumerate() {
-            curr_keyed.push((PaintKey::of(c), (shared_len + offset) as u32));
-        }
-        // Sorting by (key, row index) makes each merge claim ascending
-        // indices on both sides — the same pairing the old first-fit
-        // scan produced.
-        prev_keyed.sort_unstable();
-        curr_keyed.sort_unstable();
-
-        // Pass 1b — exact pairs anywhere in the span, merged over the
-        // sorted keys.
-        let (mut pi, mut ci) = (0, 0);
-        while pi < prev_keyed.len() && ci < curr_keyed.len() {
-            let (pk, prow) = prev_keyed[pi];
-            let (ck, crow) = curr_keyed[ci];
-            match pk.cmp(&ck) {
-                Ordering::Less => pi += 1,
-                Ordering::Greater => ci += 1,
-                Ordering::Equal => {
-                    // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
-                    // screens are never `==` — confirm before pairing.
-                    if prev_slice[prow as usize] == curr_paints[crow as usize] {
-                        prev_matched[prow as usize] = true;
-                        matched_pos[crow as usize] = prow;
-                        ci += 1;
-                    }
-                    pi += 1;
-                }
-            }
-        }
-
-        // Pass 2 — hash-only pairs surface as moves; unmatched curr
-        // surfaces as adds. `PaintKey` orders hash-major, so the same
-        // sorted buffers merge by hash alone — no re-sort. Child
-        // markers can't reach the move leg's pushes with anything
-        // visible — their screens are zero (paint-empty), so the
-        // pushes below skip them; an added/removed child's pixels
-        // are damaged by its own nodes' Vacant/evict arms.
-        let mut pi = 0;
-        for &(ck, crow) in curr_keyed.iter() {
-            if matched_pos[crow as usize] != ROW_UNMATCHED {
-                continue;
-            }
-            while pi < prev_keyed.len() {
-                let (pk, prow) = prev_keyed[pi];
-                if prev_matched[prow as usize] || pk.hash < ck.hash {
-                    pi += 1;
-                } else {
-                    break;
-                }
-            }
-            match prev_keyed.get(pi) {
-                Some(&(pk, prow)) if pk.hash == ck.hash => {
-                    push_screen(out, prev_slice[prow as usize].screen);
-                    push_screen(out, curr_paints[crow as usize].screen);
-                    prev_matched[prow as usize] = true;
-                    pi += 1;
-                }
-                _ => push_screen(out, curr_paints[crow as usize].screen),
-            }
-        }
-        // Remaining prev paints — removals.
-        for (i, &p) in prev_slice.iter().enumerate() {
-            if !prev_matched[i] {
-                push_screen(out, p.screen);
-            }
-        }
+        matcher.begin(prev, curr_paints);
+        matcher.claim_exact(prev, curr_paints);
+        matcher.emit_moves_and_adds(out, prev, curr_paints);
+        matcher.emit_removals(out, prev);
 
         let span = if prev_len == curr_paints.len() {
             snaps[prev_span.range()].copy_from_slice(curr_paints);
@@ -415,6 +309,164 @@ impl PaintSnapArena {
             && self.orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
         {
             self.compact(forest, prev);
+        }
+    }
+}
+
+/// Scratch for the content-keyed row matcher, and the phases that fill
+/// it.
+///
+/// One type rather than four loose `Vec`s on the arena so the phase
+/// order reads as a call sequence and each phase's doc can state what
+/// the previous one left behind. The sort order in particular is
+/// load-bearing twice over and used to be recorded only in a comment on
+/// [`PaintKey`], forty lines from the merge that depends on it.
+///
+/// Every column keeps its capacity across frames, so a steady-state
+/// content reshuffle allocates nothing.
+#[derive(Debug, Default)]
+struct RowMatcher {
+    /// Which prev rows have been claimed by some phase.
+    prev_matched: Vec<bool>,
+    /// For each curr row, the prev row it paired with, or
+    /// [`ROW_UNMATCHED`]. Survives the call for the caller's
+    /// order-inversion check: an exact pair emits no content damage, but
+    /// two of them swapping paint order still flips their overlap.
+    matched_pos: Vec<u32>,
+    /// `(key, row)` for the rows each side still has unclaimed, sorted.
+    /// Sorting and merging replaced a restart-from-zero first-fit scan,
+    /// bounding the all-rows-shifted case (one shape inserted at the
+    /// front of a big node) at O(n log n) rather than O(n²).
+    prev_keyed: Vec<(PaintKey, u32)>,
+    curr_keyed: Vec<(PaintKey, u32)>,
+}
+
+impl RowMatcher {
+    /// Phase 1 — reset, claim every same-index bit-identical pair, and
+    /// key whatever is left over.
+    ///
+    /// The positional pre-pass is what makes the dominant churn shape
+    /// cheap: one shape changed and the rest in place — every wire of a
+    /// dragged canvas node — pairs in O(n) and leaves both keyed lists
+    /// empty, so the merges below skip trivially. Identical rows are
+    /// interchangeable, so which duplicate pairs up doesn't matter.
+    ///
+    /// **Leaves both keyed lists sorted by `(key, row)`.** Ascending row
+    /// within an equal-key run makes the merges claim ascending indices
+    /// on both sides, reproducing the first-fit scan's pairing; and
+    /// `PaintKey` being hash-major is what lets
+    /// [`Self::emit_moves_and_adds`] re-merge the very same buffers on
+    /// hash alone without re-sorting.
+    fn begin(&mut self, prev: &[Paint], curr: &[Paint]) {
+        self.prev_matched.clear();
+        self.prev_matched.resize(prev.len(), false);
+        self.matched_pos.clear();
+        self.matched_pos.resize(curr.len(), ROW_UNMATCHED);
+        self.prev_keyed.clear();
+        self.curr_keyed.clear();
+
+        let shared = prev.len().min(curr.len());
+        for row in 0..shared {
+            let (p, c) = (prev[row], curr[row]);
+            if p == c {
+                self.prev_matched[row] = true;
+                self.matched_pos[row] = row as u32;
+            } else {
+                self.prev_keyed.push((PaintKey::of(&p), row as u32));
+                self.curr_keyed.push((PaintKey::of(&c), row as u32));
+            }
+        }
+        for (offset, p) in prev[shared..].iter().enumerate() {
+            self.prev_keyed
+                .push((PaintKey::of(p), (shared + offset) as u32));
+        }
+        for (offset, c) in curr[shared..].iter().enumerate() {
+            self.curr_keyed
+                .push((PaintKey::of(c), (shared + offset) as u32));
+        }
+        self.prev_keyed.sort_unstable();
+        self.curr_keyed.sort_unstable();
+    }
+
+    /// Phase 2 — exact `(screen, hash)` pairs anywhere in the span, not
+    /// just at matching indices. Emits no damage: same shape, same place.
+    ///
+    /// Requires the sorted keyed lists [`Self::begin`] leaves.
+    fn claim_exact(&mut self, prev: &[Paint], curr: &[Paint]) {
+        let (mut pi, mut ci) = (0, 0);
+        while pi < self.prev_keyed.len() && ci < self.curr_keyed.len() {
+            let (pk, prow) = self.prev_keyed[pi];
+            let (ck, crow) = self.curr_keyed[ci];
+            match pk.cmp(&ck) {
+                Ordering::Less => pi += 1,
+                Ordering::Greater => ci += 1,
+                Ordering::Equal => {
+                    // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
+                    // screens are never `==` — confirm before pairing.
+                    if prev[prow as usize] == curr[crow as usize] {
+                        self.prev_matched[prow as usize] = true;
+                        self.matched_pos[crow as usize] = prow;
+                        ci += 1;
+                    }
+                    pi += 1;
+                }
+            }
+        }
+    }
+
+    /// Phase 3 — a still-unmatched curr row sharing a prev row's `hash`
+    /// is the same shape somewhere else: emit both rects, the old place
+    /// and the new. One with no partner is an add, so only its own rect
+    /// goes out.
+    ///
+    /// **Requires `curr_keyed` sorted hash-major** — the property
+    /// [`Self::begin`] establishes through [`PaintKey`]'s field order.
+    /// Iterating it yields non-decreasing hashes, which is the whole
+    /// reason a single never-reset forward cursor over `prev_keyed` can
+    /// serve every curr row. Reset that cursor, or order either list any
+    /// other way, and the pairing degrades silently.
+    ///
+    /// Sub-pixel float wobble on `Paint.screen` (the composer's pixel
+    /// snapping runs downstream) makes strict `==` brittle, which is why
+    /// a hash-only fallback exists at all — but it runs *after* the
+    /// exact phase, so a shape that stayed put keeps its pairing even
+    /// when another shape with the same hash moved within the node.
+    ///
+    /// Child markers can't push anything visible here: their screens are
+    /// zero, so [`push_screen`] drops them. An added or removed child's
+    /// pixels are damaged by its own node's tier instead.
+    fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], curr: &[Paint]) {
+        let mut pi = 0;
+        for &(ck, crow) in &self.curr_keyed {
+            if self.matched_pos[crow as usize] != ROW_UNMATCHED {
+                continue;
+            }
+            while pi < self.prev_keyed.len() {
+                let (pk, prow) = self.prev_keyed[pi];
+                if self.prev_matched[prow as usize] || pk.hash < ck.hash {
+                    pi += 1;
+                } else {
+                    break;
+                }
+            }
+            match self.prev_keyed.get(pi) {
+                Some(&(pk, prow)) if pk.hash == ck.hash => {
+                    push_screen(out, prev[prow as usize].screen);
+                    push_screen(out, curr[crow as usize].screen);
+                    self.prev_matched[prow as usize] = true;
+                    pi += 1;
+                }
+                _ => push_screen(out, curr[crow as usize].screen),
+            }
+        }
+    }
+
+    /// Phase 4 — prev rows no phase claimed are gone; clear their pixels.
+    fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint]) {
+        for (row, p) in prev.iter().enumerate() {
+            if !self.prev_matched[row] {
+                push_screen(out, p.screen);
+            }
         }
     }
 }

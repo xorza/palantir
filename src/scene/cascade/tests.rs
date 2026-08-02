@@ -911,3 +911,54 @@ fn hit_rows_carry_the_entry_rect() {
         );
     }
 }
+
+/// Pin: a widget that adds a shape without moving goes straight to the
+/// full rebuild instead of attempting an incremental walk first.
+///
+/// `cascade_static` deliberately excludes chrome and direct shapes, so
+/// paint-only edits can stay on the incremental path — but the
+/// incremental walk repairs a node's paint rows *in place* and can only
+/// bail once a row count changes, which it discovers mid-tree, after
+/// having duplicated part of the work the rebuild then redoes. Both
+/// paths end in the same cascade, so only the counter can tell them
+/// apart.
+#[test]
+fn adding_a_shape_skips_the_doomed_incremental_walk() {
+    fn build(ui: &mut Ui, extra_shape: bool) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("host"))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(Color::WHITE));
+                if extra_shape {
+                    // Same layout, same rects, one more paint row — the
+                    // caret / focus-ring / hover-highlight shape.
+                    ui.add_shape(Shape::rect(Rect::new(20.0, 0.0, 10.0, 10.0)).fill(Color::WHITE));
+                }
+            });
+    }
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(|ui| build(ui, false));
+    let baseline = h.ui.cascade_engine.abandoned_incrementals;
+
+    h.frame(|ui| build(ui, true));
+    assert_eq!(
+        h.ui.cascade_engine.abandoned_incrementals, baseline,
+        "a row-count change must be caught by `can_update`, not discovered mid-walk",
+    );
+
+    // And the cascade it produced is still right: the host now owns two
+    // shape rows where it owned one.
+    let rows = h.ui.cascade.layers[Layer::Main]
+        .paint_arena
+        .node_spans
+        .iter()
+        .map(|span| span.len)
+        .max()
+        .expect("nodes recorded");
+    assert!(
+        rows >= 2,
+        "the rebuilt cascade must carry both shape rows, got {rows}",
+    );
+}

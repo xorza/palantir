@@ -266,7 +266,7 @@ impl LayerWalk<'_> {
         // slow path — the fast path is order-identical by construction —
         // and moved/added rows already pushed full rects covering any
         // overlap they sit in, so only exact pairs participate.
-        if !leg.geometry_unchanged && has_order_inversion(&self.arena.matched_pos) {
+        if !leg.geometry_unchanged && has_order_inversion(self.arena.matched_positions()) {
             self.emit_inverted_overlaps(node);
         }
 
@@ -383,7 +383,7 @@ impl LayerWalk<'_> {
     /// sub-EPS overlap sliver paints nothing; neither earns a merge slot.
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
-        let matched = &self.arena.matched_pos;
+        let matched = self.arena.matched_positions();
         for j2 in 1..matched.len() {
             let p2 = matched[j2];
             if p2 == ROW_UNMATCHED {

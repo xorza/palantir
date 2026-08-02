@@ -83,6 +83,15 @@ pub(crate) struct CascadeEngine {
     stack: Vec<Frame>,
     paint_scratch: PaintArena,
     display_scale: Option<f32>,
+    /// Incremental walks that got partway and gave up, forcing the full
+    /// rebuild they had already started duplicating.
+    ///
+    /// Counted because the wasted half-walk is invisible from the
+    /// outside — both paths end in the same correct cascade, so a test
+    /// asserting only on output can't tell whether `can_update` caught a
+    /// row-count change up front or discovered it mid-tree.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) abandoned_incrementals: u32,
 }
 
 impl CascadeEngine {
@@ -119,9 +128,20 @@ impl CascadeEngine {
                 display.scale_factor,
             );
             if !incremental_complete {
+                self.note_abandoned_incremental();
                 self.run_full(forest, layout, display, cascade);
                 return;
             }
+        }
+    }
+
+    /// Bump the abandoned-walk counter; gated in here so `run` carries
+    /// no `#[cfg]`.
+    #[inline]
+    fn note_abandoned_incremental(&mut self) {
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.abandoned_incrementals = self.abandoned_incrementals.saturating_add(1);
         }
     }
 
@@ -147,6 +167,7 @@ impl CascadeEngine {
             let lc = &cascade.layers[layer];
             if lc.entries_base != entries_base
                 || lc.static_hash != tree.rollups.cascade_static
+                || lc.paint_cardinality != tree.rollups.paint_cardinality
                 || lc.subtree_hashes.len() != n
             {
                 return false;
@@ -207,6 +228,7 @@ impl CascadeEngine {
                 "run_tree must emit one entry per recorded node",
             );
             cascade.layers[layer].static_hash = tree.rollups.cascade_static;
+            cascade.layers[layer].paint_cardinality = tree.rollups.paint_cardinality;
             cascade.layers[layer].layout_hash = layout[layer].rect_hash();
         }
 

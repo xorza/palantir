@@ -31,6 +31,28 @@ pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<ContentHash>,
     pub(crate) subtree: Vec<ContentHash>,
     pub(crate) cascade_static: ContentHash,
+    /// How many paint rows this tree's nodes will emit between them, as
+    /// three counts folded together: stored shapes, chrome rows, and
+    /// nodes.
+    ///
+    /// The cascade's incremental walk can only repair a node's paint
+    /// rows *in place*, so it bails the moment a node's row count moves
+    /// — and `cascade_static` deliberately excludes chrome and direct
+    /// shapes, precisely so paint-only edits stay on the incremental
+    /// path. The gap between those two facts is a widget that adds a
+    /// shape without moving (a caret appearing, a focus ring, a hover
+    /// highlight): `can_update` waved it through, the walk got partway
+    /// and gave up, and the whole cascade was rebuilt anyway. This lets
+    /// `can_update` see that case coming.
+    ///
+    /// A conservative signal, and only ever an optimisation — the walk's
+    /// per-node length check stays the correctness backstop. It can miss
+    /// (one node gains a shape while another loses one, leaving the
+    /// counts level), and it can over-fire (an *invisible* node gaining
+    /// chrome bumps the count without emitting a row). Both land on the
+    /// same answer the old code reached, just sooner or with one wasted
+    /// rebuild respectively.
+    pub(crate) paint_cardinality: u64,
     pub(crate) container_text: FixedBitSet,
 }
 
@@ -51,6 +73,7 @@ impl SubtreeRollups {
         // insert site so `compute_rollups`' loop carries no sizing call.
         self.container_text.clear();
         self.container_text.grow(n);
+        self.paint_cardinality = 0;
     }
 }
 
