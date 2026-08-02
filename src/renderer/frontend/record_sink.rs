@@ -24,49 +24,93 @@ use crate::renderer::frontend::payload::{
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 
-/// One recorded [`PaintSink`] call, owning whatever the call carried.
-/// A `GpuView` composite records as [`Self::Image`] carrying its paint
-/// callback, exactly as the sink sees it.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum PaintCall {
-    Clip(PushClipPayload),
-    PopClip,
-    PushTransform(TranslateScale),
-    PopTransform,
-    Rect(DrawRectPayload),
-    Shadow(DrawShadowPayload),
-    Text(DrawTextPayload),
-    Mesh(DrawMeshPayload),
-    Polyline(DrawPolylinePayload),
-    Image {
-        payload: DrawImagePayload,
-        paint: Option<GpuPaintRef>,
-    },
-    Curve(DrawCurvePayload),
-    Arc(DrawArcPayload),
-    Triangle(DrawTrianglePayload),
+/// Declare [`PaintCall`] alongside the three transcriptions that have
+/// to stay in lockstep with it — the variant name used in assertion
+/// messages, the replay dispatch, and the [`PaintSink`] impl that does
+/// the recording — from one table of `Variant(Payload) => sink_method`.
+///
+/// Two shapes because the sink has two: calls carrying a single `Copy`
+/// payload, and the two pops that carry nothing. `image` is written out
+/// by hand below the repetitions — it is the one call whose sink method
+/// takes a second argument, and pretending it were uniform would cost
+/// more than it saves.
+macro_rules! paint_calls {
+    (
+        $( $variant:ident($payload:ty) => $method:ident, )*
+        --
+        $( $unit:ident => $unit_method:ident, )*
+    ) => {
+        /// One recorded [`PaintSink`] call, owning whatever the call
+        /// carried. A `GpuView` composite records as [`Self::Image`]
+        /// carrying its paint callback, exactly as the sink sees it.
+        #[derive(Clone, Debug, PartialEq)]
+        pub(crate) enum PaintCall {
+            $( $variant($payload), )*
+            $( $unit, )*
+            Image {
+                payload: DrawImagePayload,
+                paint: Option<GpuPaintRef>,
+            },
+        }
+
+        impl PaintCall {
+            /// Short name for assertion messages — the variant alone,
+            /// without the payload a `Debug` dump would print.
+            pub(crate) fn kind(&self) -> &'static str {
+                match self {
+                    $( Self::$variant(_) => stringify!($variant), )*
+                    $( Self::$unit => stringify!($unit), )*
+                    Self::Image { .. } => "Image",
+                }
+            }
+
+            /// Push this call back into `sink` through the *required*
+            /// half of the trait. See [`RecordedPaint::replay`] for why
+            /// that bypasses the no-op gate.
+            fn replay_into(&self, sink: &mut impl PaintSink) {
+                match self {
+                    $( Self::$variant(payload) => sink.$method(*payload), )*
+                    $( Self::$unit => sink.$unit_method(), )*
+                    Self::Image { payload, paint } => sink.image(*payload, paint.as_ref()),
+                }
+            }
+        }
+
+        impl PaintSink for RecordedPaint {
+            $(
+                fn $method(&mut self, payload: $payload) {
+                    self.calls.push(PaintCall::$variant(payload));
+                }
+            )*
+            $(
+                fn $unit_method(&mut self) {
+                    self.calls.push(PaintCall::$unit);
+                }
+            )*
+            fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
+                self.calls.push(PaintCall::Image {
+                    payload,
+                    paint: paint.cloned(),
+                });
+            }
+        }
+    };
 }
 
-impl PaintCall {
-    /// Short name for assertion messages — the variant alone, without
-    /// the payload a `Debug` dump would print.
-    pub(crate) fn kind(&self) -> &'static str {
-        match self {
-            Self::Clip(_) => "Clip",
-            Self::PopClip => "PopClip",
-            Self::PushTransform(_) => "PushTransform",
-            Self::PopTransform => "PopTransform",
-            Self::Rect(_) => "Rect",
-            Self::Shadow(_) => "Shadow",
-            Self::Text(_) => "Text",
-            Self::Mesh(_) => "Mesh",
-            Self::Polyline(_) => "Polyline",
-            Self::Image { .. } => "Image",
-            Self::Curve(_) => "Curve",
-            Self::Arc(_) => "Arc",
-            Self::Triangle(_) => "Triangle",
-        }
-    }
+paint_calls! {
+    Clip(PushClipPayload) => clip,
+    PushTransform(TranslateScale) => push_transform,
+    Rect(DrawRectPayload) => rect,
+    Shadow(DrawShadowPayload) => shadow,
+    Text(DrawTextPayload) => text,
+    Mesh(DrawMeshPayload) => mesh,
+    Polyline(DrawPolylinePayload) => polyline,
+    Curve(DrawCurvePayload) => curve,
+    Arc(DrawArcPayload) => arc,
+    Triangle(DrawTrianglePayload) => triangle,
+    --
+    PopClip => pop_clip,
+    PopTransform => pop_transform,
 }
 
 /// Every paint call one encode made, in order.
@@ -84,21 +128,7 @@ impl RecordedPaint {
     /// **not** come from a recording would bypass it.
     pub(crate) fn replay(&self, sink: &mut impl PaintSink) {
         for call in &self.calls {
-            match call {
-                PaintCall::Clip(p) => sink.clip(*p),
-                PaintCall::PopClip => sink.pop_clip(),
-                PaintCall::PushTransform(t) => sink.push_transform(*t),
-                PaintCall::PopTransform => sink.pop_transform(),
-                PaintCall::Rect(p) => sink.rect(*p),
-                PaintCall::Shadow(p) => sink.shadow(*p),
-                PaintCall::Text(p) => sink.text(*p),
-                PaintCall::Mesh(p) => sink.mesh(*p),
-                PaintCall::Polyline(p) => sink.polyline(*p),
-                PaintCall::Image { payload, paint } => sink.image(*payload, paint.as_ref()),
-                PaintCall::Curve(p) => sink.curve(*p),
-                PaintCall::Arc(p) => sink.arc(*p),
-                PaintCall::Triangle(p) => sink.triangle(*p),
-            }
+            call.replay_into(sink);
         }
     }
 
@@ -106,63 +136,6 @@ impl RecordedPaint {
     /// encoder assertions want ("how many clips did this subtree emit").
     pub(crate) fn count(&self, pred: impl Fn(&PaintCall) -> bool) -> usize {
         self.calls.iter().filter(|call| pred(call)).count()
-    }
-}
-
-impl PaintSink for RecordedPaint {
-    fn clip(&mut self, payload: PushClipPayload) {
-        self.calls.push(PaintCall::Clip(payload));
-    }
-
-    fn pop_clip(&mut self) {
-        self.calls.push(PaintCall::PopClip);
-    }
-
-    fn push_transform(&mut self, transform: TranslateScale) {
-        self.calls.push(PaintCall::PushTransform(transform));
-    }
-
-    fn pop_transform(&mut self) {
-        self.calls.push(PaintCall::PopTransform);
-    }
-
-    fn rect(&mut self, payload: DrawRectPayload) {
-        self.calls.push(PaintCall::Rect(payload));
-    }
-
-    fn shadow(&mut self, payload: DrawShadowPayload) {
-        self.calls.push(PaintCall::Shadow(payload));
-    }
-
-    fn text(&mut self, payload: DrawTextPayload) {
-        self.calls.push(PaintCall::Text(payload));
-    }
-
-    fn mesh(&mut self, payload: DrawMeshPayload) {
-        self.calls.push(PaintCall::Mesh(payload));
-    }
-
-    fn polyline(&mut self, payload: DrawPolylinePayload) {
-        self.calls.push(PaintCall::Polyline(payload));
-    }
-
-    fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
-        self.calls.push(PaintCall::Image {
-            payload,
-            paint: paint.cloned(),
-        });
-    }
-
-    fn curve(&mut self, payload: DrawCurvePayload) {
-        self.calls.push(PaintCall::Curve(payload));
-    }
-
-    fn arc(&mut self, payload: DrawArcPayload) {
-        self.calls.push(PaintCall::Arc(payload));
-    }
-
-    fn triangle(&mut self, payload: DrawTrianglePayload) {
-        self.calls.push(PaintCall::Triangle(payload));
     }
 }
 

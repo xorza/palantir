@@ -1,105 +1,23 @@
-//! Custom wire formats for primitive types.
+//! The shared four-lane wire format.
+//!
+//! [`Corners`](crate::primitives::corners::Corners) and
+//! [`Spacing`](crate::primitives::spacing::Spacing) both serialize as
+//! "a number, a 1-, 2-, or 4-node array, or a named table", differing
+//! only in what their lanes are called and how the 2-node shorthand
+//! expands. That policy is [`LaneCodec`], implemented next to each type;
+//! the `Serialize` / `Deserialize` impls that drive it live there too.
+//! What stays here is the machinery neither type owns.
 
-use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
 
-use ::serde::de::{self, Error as _, IgnoredAny, MapAccess, SeqAccess, Visitor};
-use ::serde::ser::{SerializeSeq, SerializeStruct};
-use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-use crate::primitives::color::{Color, ColorU8};
-use crate::primitives::corners::Corners;
-use crate::primitives::size::Size;
-use crate::primitives::spacing::Spacing;
-
-impl Serialize for Color {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let ColorU8 { r, g, b, a } = self.to_srgb_u8();
-        let hex = if a == 0xff {
-            format!("#{r:02x}{g:02x}{b:02x}")
-        } else {
-            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
-        };
-        serializer.serialize_str(&hex)
-    }
-}
-
-impl<'de> Deserialize<'de> for Color {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = Cow::<'de, str>::deserialize(deserializer)?;
-        parse_hex(raw.trim()).map_err(D::Error::custom)
-    }
-}
-
-/// Parse `#rrggbb` / `#rrggbbaa` (the `#` optional) into an sRGB
-/// [`Color`]. Deserialization input is untrusted, so every rejection is
-/// an `Err` — the length arms select on **bytes** and each digit is
-/// decoded by hand, because indexing the `str` instead would panic on a
-/// char boundary for any 6- or 8-*byte* non-ASCII input (`"日本"` is
-/// exactly six bytes), and delegating to `u8::from_str_radix` would
-/// accept its leading `+` sign as a hex digit position.
-fn parse_hex(value: &str) -> Result<Color, &'static str> {
-    let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
-    let parse_byte = |index: usize| -> Result<u8, &'static str> {
-        Ok(hex_nibble(body[index])? << 4 | hex_nibble(body[index + 1])?)
-    };
-    match body.len() {
-        6 => Ok(Color::rgb_u8(
-            parse_byte(0)?,
-            parse_byte(2)?,
-            parse_byte(4)?,
-        )),
-        8 => Ok(Color::rgba_u8(
-            parse_byte(0)?,
-            parse_byte(2)?,
-            parse_byte(4)?,
-            parse_byte(6)?,
-        )),
-        _ => Err("expected #rrggbb or #rrggbbaa"),
-    }
-}
-
-/// One hex digit's value, either case. Anything else — including every
-/// non-ASCII byte — is a rejection.
-const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
-    match byte {
-        b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
-        b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err("invalid hex digit"),
-    }
-}
-
-impl Serialize for Size {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let finite = |value: f32| value.is_finite().then_some(value);
-        let mut state = serializer.serialize_struct("Size", 2)?;
-        state.serialize_field("w", &finite(self.w))?;
-        state.serialize_field("h", &finite(self.h))?;
-        state.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Size {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct RawSize {
-            w: Option<f32>,
-            h: Option<f32>,
-        }
-
-        let raw = RawSize::deserialize(deserializer)?;
-        Ok(Size::new(
-            raw.w.unwrap_or(f32::INFINITY),
-            raw.h.unwrap_or(f32::INFINITY),
-        ))
-    }
-}
+use ::serde::de::{self, IgnoredAny, MapAccess, SeqAccess, Visitor};
+use ::serde::ser::SerializeSeq;
+use ::serde::{Deserializer, Serializer};
 
 /// Per-type policy for the shared lane serde. Implementors are the
 /// `[u16; 4]`-backed primitives whose four lanes carry domain meaning.
-trait LaneCodec: Sized {
+pub(super) trait LaneCodec: Sized {
     /// Struct-form field names, in lane order. Must be length 4.
     const FIELDS: &'static [&'static str];
 
@@ -114,71 +32,7 @@ trait LaneCodec: Sized {
     fn expand_two(pair: [f32; 2]) -> [f32; 4];
 }
 
-impl LaneCodec for Corners {
-    const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
-
-    fn from_lane_array(lanes: [f32; 4]) -> Self {
-        Self::new(lanes[0], lanes[1], lanes[2], lanes[3])
-    }
-
-    fn to_lane_array(&self) -> [f32; 4] {
-        self.as_array()
-    }
-
-    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
-        (lanes[0] == lanes[1] && lanes[2] == lanes[3]).then_some([lanes[0], lanes[2]])
-    }
-
-    fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
-        [top, top, bottom, bottom]
-    }
-}
-
-impl LaneCodec for Spacing {
-    const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
-
-    fn from_lane_array(lanes: [f32; 4]) -> Self {
-        Self::new(lanes[0], lanes[1], lanes[2], lanes[3])
-    }
-
-    fn to_lane_array(&self) -> [f32; 4] {
-        self.as_array()
-    }
-
-    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
-        (lanes[0] == lanes[2] && lanes[1] == lanes[3]).then_some([lanes[0], lanes[1]])
-    }
-
-    fn expand_two([horizontal, vertical]: [f32; 2]) -> [f32; 4] {
-        [horizontal, vertical, horizontal, vertical]
-    }
-}
-
-impl Serialize for Corners {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serialize_lanes(self, serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Corners {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserialize_lanes(deserializer)
-    }
-}
-
-impl Serialize for Spacing {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serialize_lanes(self, serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Spacing {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserialize_lanes(deserializer)
-    }
-}
-
-fn serialize_lanes<T: LaneCodec, S: Serializer>(v: &T, s: S) -> Result<S::Ok, S::Error> {
+pub(super) fn serialize_lanes<T: LaneCodec, S: Serializer>(v: &T, s: S) -> Result<S::Ok, S::Error> {
     let lanes = v.to_lane_array();
     let [a, b, c, d] = lanes;
     if a == b && b == c && c == d {
@@ -197,7 +51,9 @@ fn serialize_lanes<T: LaneCodec, S: Serializer>(v: &T, s: S) -> Result<S::Ok, S:
     seq.end()
 }
 
-fn deserialize_lanes<'de, T: LaneCodec, D: Deserializer<'de>>(d: D) -> Result<T, D::Error> {
+pub(super) fn deserialize_lanes<'de, T: LaneCodec, D: Deserializer<'de>>(
+    d: D,
+) -> Result<T, D::Error> {
     d.deserialize_any(LaneVisitor::<T>(PhantomData))
 }
 
@@ -265,9 +121,12 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
 mod tests {
     use ::serde::de::value::{Error, MapDeserializer, SeqDeserializer};
 
-    use crate::primitives::color::Color;
-    use crate::primitives::serde::{LaneCodec, deserialize_lanes, parse_hex};
+    use crate::primitives::serde::{LaneCodec, deserialize_lanes};
 
+    /// A codec with neutral lane names, so these tests pin the shared
+    /// machinery rather than either real type's field spellings. The
+    /// per-type halves — which 2-node shorthand a type emits and expands,
+    /// and what its lanes are called — are pinned beside those types.
     #[derive(Clone, Copy, Debug, PartialEq)]
     struct TestLanes([f32; 4]);
 
@@ -321,8 +180,12 @@ mod tests {
         }
     }
 
+    /// The three map outcomes, all decided by the shared visitor: an
+    /// absent lane defaults, a repeated one is a duplicate, and a name
+    /// outside `FIELDS` is rejected rather than ignored — the last is
+    /// what stops a typo in a theme file from silently reading as zero.
     #[test]
-    fn map_preserves_missing_defaults_and_rejects_duplicate_fields() {
+    fn map_defaults_missing_lanes_and_rejects_duplicate_or_unknown_fields() {
         let missing = MapDeserializer::<_, Error>::new([("a", 1.0), ("c", 3.0)].into_iter());
         assert_eq!(
             deserialize_lanes::<TestLanes, _>(missing).unwrap(),
@@ -332,53 +195,12 @@ mod tests {
         let duplicate = MapDeserializer::<_, Error>::new([("a", 1.0), ("a", 2.0)].into_iter());
         let error = deserialize_lanes::<TestLanes, _>(duplicate).unwrap_err();
         assert_eq!(error.to_string(), "duplicate field `a`");
-    }
 
-    #[test]
-    fn color_parse_accepts_with_and_without_hash() {
+        let unknown = MapDeserializer::<_, Error>::new([("a", 1.0), ("typo", 2.0)].into_iter());
+        let error = deserialize_lanes::<TestLanes, _>(unknown).unwrap_err();
         assert_eq!(
-            parse_hex("#3266cc").unwrap(),
-            Color::rgb_u8(0x32, 0x66, 0xcc)
+            error.to_string(),
+            "unknown field `typo`, expected one of `a`, `b`, `c`, `d`",
         );
-        assert_eq!(
-            parse_hex("3266cc").unwrap(),
-            Color::rgb_u8(0x32, 0x66, 0xcc)
-        );
-        assert_eq!(
-            parse_hex("#3266cc80").unwrap(),
-            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
-        );
-        // Either digit case, both lengths. The serializer only ever
-        // emits lowercase, so nothing else pins that a hand-written
-        // uppercase theme file still parses.
-        assert_eq!(
-            parse_hex("#3266CC").unwrap(),
-            Color::rgb_u8(0x32, 0x66, 0xcc)
-        );
-        assert_eq!(
-            parse_hex("#3266CC80").unwrap(),
-            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
-        );
-    }
-
-    #[test]
-    fn color_parse_rejects_malformed_input() {
-        assert!(parse_hex("").is_err());
-        assert!(parse_hex("#").is_err());
-        assert!(parse_hex("#abc").is_err(), "3-digit not supported");
-        assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
-        assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
-        assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
-        // Regression: the length arms select on bytes, so these reach a
-        // digit decode rather than a `str` index. `"日本"` is 6 bytes and
-        // `"αβγδ"` is 8, hitting both arms; indexing the `str` split a
-        // char boundary and panicked instead of rejecting the input —
-        // in a deserializer whose whole job is to reject it.
-        assert!(parse_hex("日本").is_err(), "6-byte non-ASCII");
-        assert!(parse_hex("#日本").is_err(), "6-byte non-ASCII, hashed");
-        assert!(parse_hex("αβγδ").is_err(), "8-byte non-ASCII");
-        // `u8::from_str_radix` accepts a leading sign, so the old parser
-        // read `"+a+b+c"` as rgb(10, 11, 12).
-        assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
     }
 }

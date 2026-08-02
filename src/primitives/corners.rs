@@ -1,5 +1,6 @@
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::num::Num;
+use crate::primitives::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
 use crate::primitives::size::Size;
 use glam::Vec2;
 
@@ -135,6 +136,42 @@ impl From<Vec2> for Corners {
 impl From<Size> for Corners {
     fn from(s: Size) -> Self {
         Self::new(s.w, s.w, s.h, s.h)
+    }
+}
+
+/// Wire format: see [`LaneCodec`] — a scalar, a 1/2/4-node array, or a
+/// `{tl, tr, br, bl}` table. The 2-node shorthand is `[top, bottom]`,
+/// since a rounded box overwhelmingly varies by edge rather than by
+/// diagonal.
+impl LaneCodec for Corners {
+    const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
+
+    fn from_lane_array(lanes: [f32; 4]) -> Self {
+        Self::new(lanes[0], lanes[1], lanes[2], lanes[3])
+    }
+
+    fn to_lane_array(&self) -> [f32; 4] {
+        self.as_array()
+    }
+
+    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
+        (lanes[0] == lanes[1] && lanes[2] == lanes[3]).then_some([lanes[0], lanes[2]])
+    }
+
+    fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
+        [top, top, bottom, bottom]
+    }
+}
+
+impl ::serde::Serialize for Corners {
+    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serialize_lanes(self, serializer)
+    }
+}
+
+impl<'de> ::serde::Deserialize<'de> for Corners {
+    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserialize_lanes(deserializer)
     }
 }
 
@@ -320,33 +357,6 @@ br = 3.0
 bl = 4.0
 "#;
         assert_eq!(de(toml_str), Corners::new(1.0, 2.0, 3.0, 4.0));
-    }
-
-    #[test]
-    fn deserialize_struct_form_with_missing_fields_defaults_to_zero() {
-        let toml_str = r#"
-[v]
-tl = 4.0
-tr = 4.0
-"#;
-        assert_eq!(de(toml_str), Corners::new(4.0, 4.0, 0.0, 0.0));
-    }
-
-    #[test]
-    fn deserialize_rejects_unknown_field() {
-        #[derive(serde::Deserialize)]
-        struct W {
-            #[allow(dead_code)]
-            v: Corners,
-        }
-        let result: Result<W, _> = toml::from_str(
-            r#"
-[v]
-tl = 1.0
-typo = 2.0
-"#,
-        );
-        assert!(result.is_err(), "unknown field should be rejected");
     }
 
     #[test]

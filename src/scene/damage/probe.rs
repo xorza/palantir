@@ -1,14 +1,14 @@
-//! Observability for the damage diff.
+//! Observability for the damage diff. Built on
+//! [`BenchOnly`](crate::common::probe::BenchOnly), whose module doc
+//! explains the gated-cell pattern and why the two gates exist.
 //!
-//! Same pattern as [`crate::layout::probe::LayoutProbe`], whose module doc
-//! explains it: gated fields, unconditional mutators, so the diff walk
-//! carries no `#[cfg]` of its own.
-//!
-//! This one is `cfg(any(test, feature = "internals"))` rather than
-//! test-only because the `damage` bench asserts against the counters. It
-//! can afford that where the layout probe cannot — nothing here pushes to
-//! a `Vec` on a steady-state frame, so it doesn't perturb the alloc benches.
+//! This one is on the wider gate rather than test-only because the
+//! `damage` bench asserts against the counters. It can afford that where
+//! [`LayoutProbe`](crate::layout::probe::LayoutProbe) cannot: `dirty`
+//! pushes only on a node that actually changed, so a steady-state frame
+//! appends nothing and the alloc benches see no allocation from here.
 
+use crate::common::probe::BenchOnly;
 use crate::scene::tree::record::NodeId;
 
 /// What the diff walk did this pass.
@@ -19,31 +19,23 @@ use crate::scene::tree::record::NodeId;
 pub(crate) struct DamageProbe {
     /// Nodes whose paint rows the diff re-read — the ones that actually
     /// changed. Tests assert both the count and the identities.
-    #[cfg(any(test, feature = "internals"))]
-    dirty: Vec<NodeId>,
+    dirty: BenchOnly<Vec<NodeId>>,
     /// Whole-subtree skips taken. The headline steady-state metric: a
     /// tree that skips at the root does one of these and nothing else.
-    #[cfg(any(test, feature = "internals"))]
-    subtree_skips: u32,
+    subtree_skips: BenchOnly<u32>,
 }
 
 impl DamageProbe {
     /// Clear both counters for a new pass, retaining `dirty`'s capacity.
     #[inline]
     pub(crate) fn begin_pass(&mut self) {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.dirty.clear();
-            self.subtree_skips = 0;
-        }
+        self.dirty.clear();
+        self.subtree_skips.reset();
     }
 
     #[inline]
-    pub(crate) fn mark_dirty(&mut self, #[allow(unused_variables)] node: NodeId) {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.dirty.push(node);
-        }
+    pub(crate) fn mark_dirty(&mut self, node: NodeId) {
+        self.dirty.push(node);
     }
 
     /// Record a subtree skip covering `span` nodes.
@@ -54,10 +46,9 @@ impl DamageProbe {
     /// that rule here means the walk calls this unconditionally instead of
     /// wrapping it in the test-shaped `if` it used to.
     #[inline]
-    pub(crate) fn subtree_skipped(&mut self, #[allow(unused_variables)] span: usize) {
-        #[cfg(any(test, feature = "internals"))]
+    pub(crate) fn subtree_skipped(&mut self, span: usize) {
         if span > 1 {
-            self.subtree_skips += 1;
+            self.subtree_skips.bump();
         }
     }
 }
@@ -70,10 +61,10 @@ impl DamageProbe {
 #[allow(dead_code)]
 impl DamageProbe {
     pub(crate) fn dirty(&self) -> &[NodeId] {
-        &self.dirty
+        self.dirty.as_slice()
     }
 
     pub(crate) fn subtree_skips(&self) -> u32 {
-        self.subtree_skips
+        self.subtree_skips.count()
     }
 }
