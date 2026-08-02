@@ -36,6 +36,20 @@ pub(super) struct Scopes {
     /// Capacity is retained across passes, so a stable tree resolves
     /// allocation-free.
     path: Vec<ScopeRow>,
+    /// [`live_scopes`] folded once at [`Self::resolve`] time, because
+    /// that pass reads it three ways — for [`Self::active_layer`], for
+    /// the [`Self::path`] fill, and for the [`Self::outermost`] fold —
+    /// and the filter behind it costs two `Vec` scans *per row*. All
+    /// three want the same instant's rows, so one fold is not just
+    /// cheaper but the more honest shape.
+    ///
+    /// **A snapshot, not a live view**, which is why [`Self::reader`]
+    /// keeps calling [`live_scopes`] itself: [`Self::close`] lands
+    /// mid-pass and has no cascade to refold this from, so reads after a
+    /// close would go on seeing the withdrawn scope here.
+    ///
+    /// Capacity is retained across passes, like [`Self::path`].
+    live: Vec<ScopeRow>,
     /// Topmost layer declaring any scope. An overlay declaring one
     /// raises this, which cuts every layer beneath it off both streams —
     /// the whole of what the old keyboard/pointer claim pair did, from
@@ -99,12 +113,16 @@ impl Scopes {
     pub(super) fn resolve(&mut self, focused: Option<WidgetId>, cascade: &Cascade) {
         self.path.clear();
         self.reader_memo = None;
-        let live = || live_scopes(cascade, &self.closing, &self.closed);
-        self.active_layer = live().map(|row| row.layer).max();
+        self.live.clear();
+        self.live
+            .extend(live_scopes(cascade, &self.closing, &self.closed));
+        self.active_layer = self.live.iter().map(|row| row.layer).max();
         if let Some(active) = self.active_layer {
             if let Some(anchor) = focused {
                 self.path.extend(
-                    live().filter(|row| row.layer == active && cascade.is_within(anchor, row.id)),
+                    self.live
+                        .iter()
+                        .filter(|row| row.layer == active && cascade.is_within(anchor, row.id)),
                 );
             }
             // **Outermost, not last-recorded.** Taking the last row would
@@ -116,12 +134,13 @@ impl Scopes {
             // the next root. The fold therefore ends on the last root,
             // which is what breaks the tie between two *sibling* overlays
             // on one layer — exactly as the old topmost-claim did.
-            self.outermost = live()
-                .filter(|row| row.layer == active)
-                .fold(None, |root, row| match root {
+            self.outermost = self.live.iter().filter(|row| row.layer == active).fold(
+                None,
+                |root, row| match root {
                     Some(id) if cascade.is_within(row.id, id) => Some(id),
                     _ => Some(row.id),
-                });
+                },
+            );
         } else {
             self.outermost = None;
         }
@@ -219,8 +238,8 @@ impl Scopes {
 /// keep working.
 ///
 /// Takes the two withdrawal columns rather than `&Scopes`, because
-/// [`Scopes::resolve`] scans while filling `path` and only a field-level
-/// borrow leaves that field free.
+/// [`Scopes::resolve`] scans while filling [`Scopes::live`] and only a
+/// field-level borrow leaves that field free.
 ///
 /// `copied` before `filter`, so the predicate takes `&ScopeRow` rather
 /// than the `&&ScopeRow` a borrowing iterator would hand it.
