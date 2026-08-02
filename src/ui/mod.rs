@@ -3,6 +3,7 @@ pub(crate) mod bench;
 #[cfg(feature = "internals")]
 pub(crate) mod bench_fixture;
 pub(crate) mod frame;
+mod frame_cycle;
 pub(crate) mod frame_report;
 mod frame_stats;
 pub(crate) mod layer_scope;
@@ -13,7 +14,7 @@ use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
-use crate::display::{self, Display};
+use crate::display::Display;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -24,14 +25,12 @@ use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
-use crate::renderer::plan::RenderPlan;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Node, Salt};
@@ -41,11 +40,12 @@ use crate::{InternedStr, TextInput};
 
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
-use crate::scene::cascade::engine::{CascadeEngine, cascade_fingerprint};
-use crate::scene::damage::{Damage, DamageEngine, DamageInput};
+use crate::scene::cascade::engine::CascadeEngine;
+use crate::scene::damage::DamageEngine;
 use crate::shape::Shape;
-use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
-use crate::ui::frame_report::{FrameProcessing, FrameReport};
+use crate::ui::frame::{FrameInput, FrameRuntime, WakeReasons};
+use crate::ui::frame_cycle::FrameCycle;
+use crate::ui::frame_report::FrameReport;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
@@ -120,10 +120,14 @@ impl std::fmt::Debug for Ui {
     }
 }
 
-/// Construction + host-driven frame lifecycle: `frame` and the private
-/// record / clock / classify / cascade / finalize passes it runs. User
-/// code never calls these directly — `WindowDriver` drives them. The widget
-/// authoring API lives in the second `impl Ui` block below.
+/// The widget- and host-facing authoring API: input feed, watches,
+/// repaint/relayout requests, shape recording, per-widget state, and
+/// animation, plus the crate-facing handles a host needs
+/// (construction, [`Self::frame`], [`Self::frame_scene`]).
+///
+/// The frame lifecycle those handles start — record / measure /
+/// arrange / cascade / finalize, and the resets between them — is
+/// [`FrameCycle`]'s, and user code never reaches it.
 impl Ui {
     pub(crate) fn frame_scene(&self) -> FrameScene<'_> {
         FrameScene {
@@ -163,292 +167,18 @@ impl Ui {
         }
     }
 
-    /// Drive one application frame for `win`. Runs [`App::update`] once on a
-    /// fully recorded frame, then replays [`App::record`] for cold-start
-    /// warmup, action input, or `request_relayout`. Paint-only frames skip
-    /// both hooks. `stamp.time` is monotonic host time.
+    /// Drive one application frame for `win`, delegating to
+    /// [`FrameCycle`] — see there for the pass order and what each pass
+    /// resets. `stamp.time` is monotonic host time.
     pub(crate) fn frame<T: App>(
         &mut self,
         input: FrameInput,
         win: WindowToken,
         app: &mut T,
     ) -> FrameReport {
-        profiling::scope!("Ui::frame");
-        let FrameInput {
-            stamp,
-            damage_baseline_valid,
-        } = input;
-        // Record payloads are cleared inside `record_pass` (the only path
-        // that repopulates it). PaintOnly frames must NOT clear: the
-        // live `tree.shapes` from last frame still references record payloads
-        // contents by index (gradients, polyline points/colors, mesh
-        // verts/indices, interned text spans). Clearing here would
-        // leave dangling indices the encoder then dereferences.
-        debug_assert!(
-            display::scale_factor_is_valid(stamp.display.scale_factor),
-            "Display::scale_factor must be finite and ≥ EPSILON; got {}",
-            stamp.display.scale_factor,
-        );
-
-        let first_frame = self.frame_runtime.prev_stamp.is_none();
-        self.frame_runtime.advance_clock(stamp.time);
-        // Refresh the input clock so input handlers running before the
-        // next frame timestamp double-clicks on this deterministic time.
-        self.input.frame_time = self.frame_runtime.time;
-        let plan = self.frame_runtime.take_frame_plan(FrameClassifyInput {
-            display: stamp.display,
-            damage_baseline_valid,
-            input_policy: self.input_policy,
-            input_signal: self.input.signal_since_last_frame,
-            close_requested: self.window_frame.close_requested,
-        });
-
-        self.frame_runtime.repaint_requested = false;
-        self.frame_runtime.relayout_requested = false;
-        self.display = stamp.display;
-
-        let processing = match plan {
-            FramePlan::PaintOnly => {
-                profiling::scope!("Ui::frame.paint_only");
-                // PaintOnly skips `record_pass` → skips `post_record`
-                // → skips the input cleanup. Under `OnDelta`, an
-                // unrouted event can still land here with the sticky
-                // arrival flag set even though no queue accepted it.
-                self.input.drain_per_frame_queues();
-                FrameProcessing::PaintOnly
-            }
-            FramePlan::FullRecord { .. } => {
-                app.update(win, self);
-                // Cold-start warmup: on the very first frame, cascade
-                // is empty, so any `on_input` events delivered between
-                // window-open and now hit-tested against nothing
-                // (`hovered`/`scroll_target`/etc. stayed None). Run a
-                // blackout record pass — input swapped out for an
-                // empty `InputState` so widgets see no pointer, no
-                // keys, no queued events — purely to build the cascade.
-                // Then restore the real input and re-route the held
-                // `pointer_pos` against the just-built cascade so the
-                // user-visible pass below records against correct
-                // hover targets. Without this, frame 1 widgets see
-                // None response_rects (one-frame stale on `text_edit`,
-                // `scroll`, `radio`, …) and a pointer hovering a
-                // button doesn't actually hover it until frame 2.
-                if first_frame {
-                    profiling::scope!("Ui::record_pass.warmup");
-                    let saved_input = std::mem::take(&mut self.input);
-                    let _ = self.record_pass(win, app);
-                    self.input = saved_input;
-                    self.input.refresh_pointer_targets(&self.cascade);
-                    // Discard any relayout/repaint requests issued
-                    // during the blackout pass — the warmup is
-                    // "pretend it didn't happen" from the gate's
-                    // perspective. Without this, a widget that asks
-                    // for relayout in its first record (legitimate)
-                    // would trigger the existing `double_layout` arm
-                    // *on top of* the warmup, giving three record
-                    // passes on frame 1 instead of two.
-                    self.frame_runtime.relayout_requested = false;
-                    self.frame_runtime.repaint_requested = false;
-                }
-                let action_flag = {
-                    profiling::scope!("Ui::record_pass.A");
-                    self.record_pass(win, app)
-                };
-                let double_layout = action_flag || self.frame_runtime.relayout_requested;
-                if double_layout {
-                    profiling::scope!(
-                        "Ui::record_pass.B",
-                        if self.frame_runtime.relayout_requested {
-                            "relayout"
-                        } else {
-                            "action"
-                        }
-                    );
-                    // Pass B paints, regardless of any further re-record
-                    // request — caps relayout at one retry per frame.
-                    self.input.drain_per_frame_queues();
-                    let _ = self.record_pass(win, app);
-                }
-                self.finalize_frame();
-
-                if double_layout {
-                    FrameProcessing::DoubleLayout
-                } else {
-                    FrameProcessing::SingleLayout
-                }
-            }
-        };
-
-        self.frame_runtime.note_processing(processing);
-
-        // Damage compute reads `ids.removed` to know which widgets
-        // dropped between frames. On `PaintOnly` no widgets were
-        // recorded so nothing was removed — pass an empty set
-        // instead of stale state from the previous frame.
-        let surface = self.display.logical_rect();
-        let prev_time = self.frame_runtime.prev_stamp.map(|s| s.time);
-        let input = DamageInput {
-            forest: &self.forest,
-            cascade: &self.cascade,
-            surface,
-            prev_time,
-            now: self.frame_runtime.time,
-        };
-        let damage = match plan {
-            FramePlan::PaintOnly => self.damage_engine.compute_paint_only(input),
-            FramePlan::FullRecord { force_full } => {
-                self.damage_engine
-                    .compute(input, &self.forest.ids.removed, force_full)
-            }
-        };
-
-        // First-frame contract: no prev snapshot to diff against, so
-        // every painting widget is "new" — `damage_engine.compute`
-        // must return `Damage::Full`. The walk itself is still
-        // load-bearing (seeds `prev` for frame 2's incremental diff)
-        // so we keep the call; the assert just pins the invariant.
-        debug_assert!(
-            !first_frame || matches!(damage, Damage::Full),
-            "first frame must produce Damage::Full; got {damage:?}",
-        );
-
-        // Re-queue the next paint-anim boundary regardless of path.
-        // FullRecord rebuilt `paint_anims.entries` during record;
-        // PaintOnly retained last frame's. Either way the fold below
-        // gives the next quantum boundary — without this, PaintOnly
-        // drains the queued ANIM wake without replacing it and the
-        // caret freezes until input forces a FullRecord.
-        if let Some(min_wake) = self.forest.min_paint_anim_wake(self.frame_runtime.time) {
-            self.frame_runtime.schedule_wake(
-                min_wake,
-                WakeReasons::ANIM,
-                self.display.refresh_millihertz,
-            );
-        }
-
-        self.frame_runtime.prev_stamp = Some(stamp);
-
-        FrameReport {
-            repaint_requested: self.frame_runtime.repaint_requested,
-            repaint_after: self.frame_runtime.repaint_wakes.first().map(|w| w.deadline),
-            plan: RenderPlan::from_damage(damage, self.theme.window_clear),
-            processing,
-        }
+        FrameCycle::new(self).run(input, win, app)
     }
 
-    /// One `pre_record` → user record → drain action flag → `post_record`
-    /// cycle. Returns whether the cycle saw action input (which triggers
-    /// a second pass in `Ui::frame`).
-    fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
-        {
-            profiling::scope!("Ui::pre_record");
-            // `forest.pre_record` clears both its trees and the retained
-            // payloads their shape records index into.
-            self.forest.pre_record();
-            // Rebuild record-scoped input ownership and wake watches;
-            // PaintOnly frames skip this so their last wake set persists.
-            self.input.begin_record(&self.cascade);
-            // Like the watch set, the cursor request is
-            // re-asserted by whoever still wants it this pass; reset
-            // here (not per frame) so PaintOnly frames keep the last
-            // recorded cursor instead of flickering back to the arrow.
-            self.window_requests.cursor = CursorIcon::default();
-        }
-        // Synthetic viewport root for Layer::Main. Without this, the
-        // first user-recorded node becomes the root and the layout
-        // engine forces its rect to the surface — silently overriding
-        // declared `Sizing` / `Sense` on the top-level widget. ZStack +
-        // Fill matches the historical "root paints full surface"
-        // behavior while letting user roots respect their own sizing.
-        let mut viewport = Node::zstack();
-        viewport.size = Some(Sizing::FILL.into());
-        // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
-        // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
-        // like any other parent-scoped id (see `Ui::widget`).
-        self.forest.open_node(WidgetId::VIEWPORT, viewport, None);
-        {
-            profiling::scope!("Ui::record_user");
-            app.record(win, self);
-        }
-        let action_flag = self.input.finish_record();
-        if self.resources.diagnostics.overlay.borrow().frame_stats {
-            frame_stats::record(self);
-        }
-        self.forest.close_node();
-        self.post_record();
-        action_flag
-    }
-
-    /// Record-half of `frame`: finalize hashes, run measure / arrange,
-    /// then cascade. Cascade runs here (not in `finalize_frame`) so
-    /// pass B of a `request_relayout` frame reads pass A's arranged
-    /// rects via [`Self::response_for`] like steady-state frames do.
-    /// Stale cache entries (for widgets recorded last frame but
-    /// absent this pass) are tolerated through `layout.run` — they
-    /// can't match live keys — and reaped once in `finalize_frame`
-    /// against the final pass's id set.
-    fn post_record(&mut self) {
-        profiling::scope!("Ui::post_record");
-        self.forest.post_record();
-        let payloads = self.forest.record_store.payloads.borrow();
-        let interned_text = payloads.interned_text();
-        self.layout_engine.run(
-            &self.forest,
-            &interned_text,
-            self.display.logical_rect(),
-            &mut self.layout,
-        );
-        drop(interned_text);
-        drop(payloads);
-        // O5 stage 0: skip the cascade when nothing feeding it changed.
-        // The cascade is a pure function of subtree authoring + arranged
-        // rects, and the arranged rects are determined by (subtree_hash,
-        // exact surface, scroll offset/zoom) — so a matching fingerprint
-        // means identical cascade output, and last frame's
-        // `Ui::cascade` can be reused verbatim (the tree is rebuilt
-        // with identical structure when `subtree_hash` matches, so its
-        // NodeId-indexed rows still line up).
-        let fp = cascade_fingerprint(&self.forest, self.display);
-        let skip = self.frame_runtime.prev_cascade_fp == Some(fp);
-        self.frame_runtime.note_cascade_ran(!skip);
-        if skip {
-            return;
-        }
-        self.frame_runtime.prev_cascade_fp = Some(fp);
-        self.cascade_engine
-            .run(&self.forest, &self.layout, self.display, &mut self.cascade);
-    }
-
-    /// Paint-half of `frame`: diff seen ids against the last painted
-    /// frame, fan the `removed` set out to per-widget caches, run
-    /// input/damage against the final pass's cascade. Sweep runs
-    /// here (once per `frame`) rather than per `post_record` so a
-    /// widget that vanishes in pass A but returns in pass B keeps
-    /// its state across the discard.
-    fn finalize_frame(&mut self) {
-        profiling::scope!("Ui::finalize_frame");
-        let removed = self.forest.ids.rollover();
-        self.layout_engine.text.end_frame(removed);
-        self.state.sweep_removed(removed);
-        self.anim.sweep_removed(removed);
-        // Evict views whose widget vanished this frame; the backend frees the
-        // orphaned texture the next frame it's no longer in `frame_targets`.
-        // Guarded like the sweep_removed family — `retain` walks the whole
-        // map even when nothing was removed.
-        if !removed.is_empty() {
-            self.gpu_views.retain(|wid, _| !removed.contains(wid));
-        }
-
-        self.input.end_frame(&self.cascade);
-    }
-}
-
-/// Widget- and host-facing authoring API: input feed, watches,
-/// repaint/relayout requests, shape recording, per-widget state, and
-/// animation. Distinct from the host-driven frame lifecycle above
-/// (`frame` + its private record/cascade/finalize passes), which user
-/// code never calls directly.
-impl Ui {
     /// Feed an palantir-native input event. Returns an [`InputDelta`]
     /// the host reads to decide whether to request a redraw — pointer
     /// moves over inert surfaces leave `requests_repaint` false so the

@@ -88,7 +88,7 @@ pub(crate) struct DamageEngine {
     /// `compute` builds the next frame's region. Defaults to
     /// [`DEFAULT_PASS_BUDGET_PX`]; override in place (e.g. from a
     /// debug-overlay slider, a TBDR backend init, or a test) before
-    /// the next `Ui::post_record` runs.
+    /// the next `FrameCycle::post_record` runs.
     pub(crate) budget_px: f32,
     /// Last frame's snapshot, **only for widgets with paint rows last
     /// frame** (see the row invariant in the module doc).

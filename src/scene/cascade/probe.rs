@@ -5,7 +5,7 @@
 //! ## Why these accumulate instead of resetting per pass
 //!
 //! Both peer probes clear their counters at the top of the pass they
-//! measure. This one deliberately doesn't. `Ui::post_record`'s
+//! measure. This one deliberately doesn't. `FrameCycle::post_record`'s
 //! fingerprint gate skips [`CascadeEngine::run`] outright on an
 //! unchanged frame, so a per-run reset would simply not fire on those
 //! frames and every skipped frame would report the *previous* run's

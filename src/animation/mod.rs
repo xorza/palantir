@@ -588,7 +588,7 @@ impl AnimMap {
 
     /// Drop rows for removed widgets and for slots that weren't
     /// poked this frame, then clear the `touched` flags on the rows
-    /// that survive. Called from `Ui::finalize_frame` once per frame; the
+    /// that survive. Called from `FrameCycle::finalize_frame` once per frame; the
     /// `removed` set is the same one that drives `StateMap` / text /
     /// layout sweeps. A `(WidgetId, AnimSlot)` row goes away if
     /// either (a) the widget itself disappeared or (b) the call site

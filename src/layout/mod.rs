@@ -137,7 +137,7 @@ impl LayerLayout {
     ///
     /// **Computed on demand, not cached on the struct.** Only the
     /// cascade wants it, and the cascade is skipped outright on most
-    /// frames (`Ui::post_record`'s fingerprint gate). Refreshing it at
+    /// frames (`FrameCycle::post_record`'s fingerprint gate). Refreshing it at
     /// the tail of every `LayoutEngine::run` would charge every layout
     /// pass — including the cache-hit ones that touch nothing else —
     /// for an answer usually nobody reads.
