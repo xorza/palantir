@@ -54,18 +54,13 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::Cascade;
-use crate::scene::cascade::paint::{PaintArena, PaintRows};
+use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::probe::DamageProbe;
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
-use crate::scene::damage::snapshot::{
-    NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion,
-};
+use crate::scene::damage::snapshot::{NodeSnapshot, PaintSnapArena};
+use crate::scene::damage::walk::{LayerWalk, ParentFrame};
 use crate::scene::forest::Forest;
-use crate::scene::tree::Tree;
-use crate::scene::tree::iter::TreeItem;
-use crate::scene::tree::record::NodeId;
 use rustc_hash::FxHashSet;
-use std::collections::hash_map::Entry;
 use std::time::Duration;
 
 #[cfg(feature = "internals")]
@@ -73,6 +68,7 @@ pub(crate) mod bench;
 pub(crate) mod probe;
 pub(crate) mod region;
 pub(crate) mod snapshot;
+mod walk;
 
 /// Output of one frame's damage pass plus the cross-frame state it
 /// reads to produce that output.
@@ -139,17 +135,6 @@ impl Default for DamageEngine {
             parent_stack: Vec::new(),
         }
     }
-}
-
-/// One open ancestor on the diff walk's parent stack.
-#[derive(Clone, Copy, Debug)]
-struct ParentFrame {
-    /// Pre-order index one past the ancestor's subtree — popped once
-    /// the walk reaches it.
-    end: u32,
-    /// The ancestor's `WidgetId` bits — the `parent_key` of every node
-    /// directly under it.
-    key: u64,
 }
 
 /// Per-frame inputs shared by [`DamageEngine::compute`] and
@@ -315,335 +300,21 @@ impl DamageEngine {
         // the buffer into the bounded region.
         self.raw_rects.clear();
 
-        // Alias each mutated field once so the diff body can name
-        // them independently — Entry holds the borrow on `prev` only,
-        // leaving `arena` / `raw_rects` free.
-        let prev_map = &mut self.prev;
-        let arena = &mut self.arena;
-        let raw_rects = &mut self.raw_rects;
-        let order_extents = &mut self.order_extents;
-        let parent_stack = &mut self.parent_stack;
-
-        let probe = &mut self.probe;
-
         for (layer, tree) in forest.trees.iter_paint_order() {
-            let layer_cascades = &cascade.layers[layer];
-            let cascade_inputs = layer_cascades.cascade_inputs.as_slice();
-            let node_hashes = tree.rollups.node.as_slice();
-            let subtree_hashes = tree.rollups.subtree.as_slice();
-            let n = tree.records.len();
-            let widget_ids = tree.records.widget_id();
-            let subtree_end = tree.records.subtree_end();
-            let layer_paints = &layer_cascades.paint_arena.rows;
-            let layer_node_paints = &layer_cascades.paint_arena.node_spans;
-            let subtree_extents = layer_cascades.subtree_paint_rects.as_slice();
-            parent_stack.clear();
-            let mut i = 0;
-            while i < n {
-                while parent_stack.last().is_some_and(|f| i as u32 >= f.end) {
-                    parent_stack.pop();
-                }
-                // Roots key on the layer discriminant, so a subtree
-                // migrating between layers can't read as "unchanged".
-                let parent_key = parent_stack.last().map_or(layer as u64, |f| f.key);
-                let node_span = layer_node_paints[i];
-                let curr_paints_slice = &layer_paints[node_span.range()];
-                let curr_node_hash = node_hashes[i];
-                let curr_subtree_hash = subtree_hashes[i];
-                let curr_cascade_input = cascade_inputs[i];
-                // This node's next-frame snapshot — every field but
-                // `paint_span` is fixed per node, so the arms differ
-                // only in which span they pass.
-                let make_snapshot = |paint_span| NodeSnapshot {
-                    paint_span,
-                    hash: curr_node_hash,
-                    subtree_hash: curr_subtree_hash,
-                    cascade_input: curr_cascade_input,
-                    parent_key,
-                };
-                let advance = match prev_map.entry(widget_ids[i]) {
-                    // Skip the snapshot insert for a new *childless* node
-                    // that paints nothing or paints entirely off-surface.
-                    // `union_screens` is the former `Cascade.paint_rect`,
-                    // recomputed here on the cold (Vacant) path rather than
-                    // stored per node. A node with children always inserts
-                    // — its child-marker rows track paint order, and its
-                    // children can paint on-surface (canvas overhang) even
-                    // when its own rows don't. The off-surface half of the
-                    // skip is repaid by tier 1.5's insert leg the frame a
-                    // move puts the rows on-surface (see the module doc's
-                    // row-invariant note).
-                    Entry::Vacant(_)
-                        if subtree_end[i].end() as usize == i + 1
-                            && !curr_paints_slice.any_on_surface(surface) =>
-                    {
-                        1
-                    }
-                    Entry::Vacant(e) => {
-                        let paint_span = arena.append(curr_paints_slice);
-                        // On a force-full frame every node lands in this
-                        // arm (the map was invalidated at entry) and the
-                        // early return below discards the region — skip
-                        // the pushes so a resize storm does no rect work
-                        // and `raw_rects`' retained capacity tracks real
-                        // incremental frames, not the whole tree.
-                        if !force_full {
-                            raw_rects.extend(curr_paints_slice.screens());
-                        }
-                        e.insert(make_snapshot(paint_span));
-                        probe.mark_dirty(NodeId(i as u32));
-                        1
-                    }
-                    // Tier 1 — whole-subtree skip. `subtree_hash` rolls
-                    // up this node's own `node_hash`, so a match already
-                    // implies the node itself is unchanged; paired with an
-                    // unchanged `cascade_input` (own `layout_rect` +
-                    // ancestor state) every descendant is bit-identical by
-                    // induction. Cheapest high-value check — the dominant
-                    // steady-state path skips the whole tree at the root —
-                    // so it goes first.
-                    Entry::Occupied(e)
-                        if e.get().subtree_hash == curr_subtree_hash
-                            && e.get().cascade_input == curr_cascade_input
-                            && e.get().parent_key == parent_key =>
-                    {
-                        let span = (subtree_end[i].end() as usize) - i;
-                        probe.subtree_skipped(span);
-                        span
-                    }
-                    // Tier 1.5 — moved/reshaped subtree. Authoring is
-                    // identical (`subtree_hash` matches ⇒ same widgets,
-                    // same rows, same row hashes by induction) but
-                    // `cascade_input` changed: ancestor state
-                    // (transform/clip/visibility/disabled) or this
-                    // node's own arranged rect moved — a scroll tick, a
-                    // pan, a sibling-shift. Only the rows' *screens*
-                    // differ, so damage is exactly "everything the
-                    // subtree painted before ∪ everything it paints
-                    // now" — two extent rects instead of the per-row
-                    // hash-matcher's 2-rects-per-row flood (which made
-                    // `collapse_from` + the matcher ~18% of a scrolling
-                    // frame). Snapshots still need their screens +
-                    // `cascade_input` refreshed for next frame's
-                    // baseline; that bulk refresh happens after the
-                    // match (it needs free access to `prev_map`, which
-                    // the `Entry` borrow holds here) — see the
-                    // `MOVED_SUBTREE` block below.
-                    Entry::Occupied(e)
-                        if e.get().subtree_hash == curr_subtree_hash
-                            && e.get().parent_key == parent_key =>
-                    {
-                        MOVED_SUBTREE
-                    }
-                    // Tier 2 — node's own authoring + cascade state
-                    // unchanged but `subtree_hash` differs, so a descendant
-                    // changed. Own paints are identical (`hash` +
-                    // `cascade_input` equal ⇒ identical screens), so the
-                    // arena slots stay correct; just refresh the rollup and
-                    // descend.
-                    Entry::Occupied(mut e)
-                        if e.get().hash == curr_node_hash
-                            && e.get().cascade_input == curr_cascade_input
-                            && e.get().parent_key == parent_key =>
-                    {
-                        e.get_mut().subtree_hash = curr_subtree_hash;
-                        1
-                    }
-                    Entry::Occupied(mut e) if !curr_paints_slice.is_empty() => {
-                        let prev = *e.get();
-                        let leg =
-                            arena.diff_changed_leg(raw_rects, prev.paint_span, curr_paints_slice);
-                        // Order check — exact-matched rows emitted no content
-                        // damage, but pairs whose relative paint order
-                        // inverted (a raised node, a shape crossing a child
-                        // boundary, coincident shapes swapping) still flip
-                        // their overlap's pixels. `matched_pos` is only
-                        // populated on the slow path — the fast path
-                        // (`geometry_unchanged`) is order-identical by
-                        // construction. Moved/added rows already pushed
-                        // their full rects, which cover any overlap they
-                        // sit in, so only exact pairs participate.
-                        if !leg.geometry_unchanged && has_order_inversion(&arena.matched_pos) {
-                            build_row_extents(
-                                NodeId(i as u32),
-                                tree,
-                                &layer_cascades.paint_arena,
-                                order_extents,
-                            );
-                            emit_inverted_overlaps(&arena.matched_pos, order_extents, raw_rects);
-                        }
-                        // A `cascade_input` change (ancestor disable,
-                        // clip-saturated pan, visibility toggle) alters
-                        // pixels of rows the per-shape diff matched
-                        // exactly and emitted nothing for — a hidden
-                        // node's untouched shapes must still clear. So
-                        // the union repaints on any `cascade_input`
-                        // flip, INCLUDING frames where some row also
-                        // changed (`!geometry_unchanged`): gating on
-                        // geometry left the exact-matched rows undamaged
-                        // when a visibility flip landed on the same
-                        // frame as a mid-tween shape. A pure `node_hash`
-                        // flip with unchanged `cascade_input` means the
-                        // authoring stream differed without touching own
-                        // pixels — most commonly a child added/removed
-                        // (the per-child marker folded into `node_hash`
-                        // by `compute_rollups`), already covered by the
-                        // subtree/eviction diff. Repainting the union
-                        // there spuriously re-damages every direct shape
-                        // — e.g. all canvas connections when an
-                        // unrelated node is deleted.
-                        if prev.cascade_input != curr_cascade_input
-                            && let Some(u) = curr_paints_slice.union_screens()
-                        {
-                            raw_rects.push(u);
-                        }
-                        // Reparent / layer move at otherwise-identical
-                        // content: compositing order against outside
-                        // overlappers flipped, which no hash captures.
-                        // The whole subtree moved together, so damage
-                        // its current painted extent — descendants keep
-                        // their tier-1 skip (their snapshots are intact
-                        // and this push already covers them).
-                        if prev.parent_key != parent_key
-                            && let Some(u) = layer_cascades
-                                .paint_arena
-                                .subtree_extent(NodeId(i as u32), subtree_end)
-                        {
-                            raw_rects.push(u);
-                        }
-                        *e.get_mut() = make_snapshot(leg.span);
-                        probe.mark_dirty(NodeId(i as u32));
-                        1
-                    }
-                    Entry::Occupied(e) => {
-                        // Rows → rowless transition: push
-                        // everything the node *was* painting, then
-                        // evict.
-                        let prev = *e.get();
-                        raw_rects.extend(arena.snaps[prev.paint_span.range()].screens());
-                        arena.mark_orphaned(prev.paint_span.len);
-                        e.remove();
-                        probe.mark_dirty(NodeId(i as u32));
-                        1
-                    }
-                };
-                // Tier 1.5 body — runs outside the match so it can
-                // freely probe `prev_map` for every subtree node (the
-                // `Entry` above held the map borrow). Pushes the two
-                // extent rects, then refreshes each descendant's
-                // snapshot in place: same-count row copy (equal
-                // `subtree_hash` pins the row count — `copy_from_slice`
-                // length-asserts it) plus the new `cascade_input`.
-                // `hash`/`subtree_hash`/`parent_key` are unchanged by
-                // the same induction, and `paint_span` is reused, so no
-                // arena append/orphan churn. Entry-less nodes (skipped
-                // by the Vacant-arm off-surface filter back when they
-                // painted nothing visible) get their snapshot inserted
-                // the moment a move puts their rows on-surface —
-                // without that, the node's pixels stay invisible to
-                // later prev-extent folds and to the removed-widget
-                // eviction tail (stale pixels on the next move /
-                // removal — the second-move and removal legs of
-                // `offscreen_node_scrolling_into_view_is_covered_and_stays_sound`
-                // pin this).
-                let advance = if advance == MOVED_SUBTREE {
-                    let end = subtree_end[i].end() as usize;
-                    let mut prev_extent: Option<Rect> = None;
-                    // Mini parent stack over the jump so inserted
-                    // snapshots carry the same `parent_key` the
-                    // per-node walk would have stamped. Rides the tail
-                    // of the outer `parent_stack`; truncated below.
-                    let jump_base = parent_stack.len();
-                    for j in i..end {
-                        while parent_stack.len() > jump_base
-                            && parent_stack.last().is_some_and(|f| j as u32 >= f.end)
-                        {
-                            parent_stack.pop();
-                        }
-                        // At `j == i` the stack top is still `i`'s own
-                        // parent (or empty at a root), so this reads
-                        // the outer `parent_key` — one expression
-                        // serves the whole range.
-                        let j_parent_key = parent_stack.last().map_or(parent_key, |f| f.key);
-                        let j_end = subtree_end[j].end();
-                        if j_end as usize > j + 1 {
-                            parent_stack.push(ParentFrame {
-                                end: j_end,
-                                key: widget_ids[j].0,
-                            });
-                        }
-                        let span = layer_node_paints[j];
-                        if span.len == 0 {
-                            continue;
-                        }
-                        match prev_map.get_mut(&widget_ids[j]) {
-                            Some(snap) => {
-                                if let Some(u) =
-                                    arena.snaps[snap.paint_span.range()].union_screens()
-                                {
-                                    prev_extent = Some(prev_extent.map_or(u, |a| a.union(u)));
-                                }
-                                arena.snaps[snap.paint_span.range()]
-                                    .copy_from_slice(&layer_paints[span.range()]);
-                                snap.cascade_input = cascade_inputs[j];
-                            }
-                            // Off-surface at its last per-node visit ⇒
-                            // it painted nothing, so there are no prev
-                            // pixels to fold; its current pixels are
-                            // inside the curr-extent push either way.
-                            // Insert the snapshot the Vacant arm would
-                            // have once the rows land on-surface, so
-                            // the node is tracked from its first
-                            // visible frame.
-                            None => {
-                                let curr = &layer_paints[span.range()];
-                                if !curr.any_on_surface(surface) {
-                                    continue;
-                                }
-                                let paint_span = arena.append(curr);
-                                prev_map.insert(
-                                    widget_ids[j],
-                                    NodeSnapshot {
-                                        paint_span,
-                                        hash: node_hashes[j],
-                                        subtree_hash: subtree_hashes[j],
-                                        cascade_input: cascade_inputs[j],
-                                        parent_key: j_parent_key,
-                                    },
-                                );
-                            }
-                        }
-                        probe.mark_dirty(NodeId(j as u32));
-                    }
-                    parent_stack.truncate(jump_base);
-                    if let Some(u) = prev_extent {
-                        raw_rects.push(u);
-                    }
-                    // Rolled-up curr extent from the cascade — already
-                    // `Rect::ZERO`-seeded for invisible subtrees, so a
-                    // hide transition damages only the prev pixels.
-                    let curr_extent = subtree_extents[i];
-                    if !curr_extent.is_paint_empty() {
-                        raw_rects.push(curr_extent);
-                    }
-                    end - i
-                } else {
-                    advance
-                };
-                // Descending into children (advance == 1 on a
-                // container) opens a parent frame; subtree-skips jump
-                // past their descendants, so nothing to push there.
-                if advance == 1 {
-                    let end = subtree_end[i].end();
-                    if end as usize > i + 1 {
-                        parent_stack.push(ParentFrame {
-                            end,
-                            key: widget_ids[i].0,
-                        });
-                    }
-                }
-                i += advance;
+            LayerWalk {
+                prev: &mut self.prev,
+                arena: &mut self.arena,
+                raw_rects: &mut self.raw_rects,
+                order_extents: &mut self.order_extents,
+                parents: &mut self.parent_stack,
+                probe: &mut self.probe,
+                surface,
+                force_full,
+                layer,
+                tree,
+                cascade: &cascade.layers[layer],
             }
+            .run();
         }
 
         // Structural diff has populated `self.prev` for next frame's
@@ -720,70 +391,6 @@ impl DamageEngine {
 pub(super) fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
     if !screen.is_paint_empty() {
         out.push(screen);
-    }
-}
-
-/// `advance` sentinel returned by the diff's tier-1.5 match arm
-/// (moved/reshaped subtree). The refresh body runs *after* the match —
-/// it needs `prev_map` access the `Entry` borrow forbids — and this
-/// value routes to it. Real advances are bounded by the tree size, so
-/// the sentinel can't collide.
-const MOVED_SUBTREE: usize = usize::MAX;
-
-/// Screen-space extent per row of `node`'s paint span, in row order:
-/// chrome and direct shapes keep their own `Paint.screen`; a child
-/// marker's zero rect is swapped for [`PaintArena::subtree_extent`] — the
-/// pixels that actually move when the child's paint order flips. Only
-/// built on the inversion path — child extents walk the whole child
-/// subtree's rows.
-///
-/// Rows are 1:1 with chrome + the node's `TreeItems` stream (the
-/// cascade emits them from the same walk), so the two cursors advance
-/// in lockstep.
-fn build_row_extents(node: NodeId, tree: &Tree, arena: &PaintArena, out: &mut Vec<Rect>) {
-    let node_span = arena.node_spans[node.idx()];
-    let subtree_end = tree.records.subtree_end();
-    out.clear();
-    if tree.chrome(node).is_some() {
-        out.push(arena.rows[node_span.start as usize].screen);
-    }
-    for item in tree.tree_items(node) {
-        out.push(match item {
-            TreeItem::ShapeRecord(..) => arena.rows[node_span.start as usize + out.len()].screen,
-            TreeItem::Child(c) => arena
-                .subtree_extent(c.id, subtree_end)
-                .unwrap_or(Rect::ZERO),
-        });
-    }
-    debug_assert_eq!(
-        out.len(),
-        node_span.len as usize,
-        "row extents out of sync with the owner's paint span",
-    );
-}
-
-/// Push the extent intersection of every exact-matched row pair whose
-/// relative paint order inverted since last frame. `extents[j]` is the
-/// curr row's screen extent (a [`build_row_extents`] slot). O(rows²)
-/// pair enumeration, reached only behind a [`has_order_inversion`]
-/// gate on the rare frame an order actually flipped. Rows that merely
-/// shifted because a sibling was added or removed keep their relative
-/// order and contribute nothing. `push_screen` drops degenerate
-/// results — a zero-size extent pinned strictly inside a sibling DOES
-/// pass `intersects` (all four strict compares hold), and a sub-EPS
-/// overlap sliver paints nothing; neither earns a merge slot.
-fn emit_inverted_overlaps(matched_pos: &[u32], extents: &[Rect], out: &mut Vec<Rect>) {
-    for j2 in 1..matched_pos.len() {
-        let p2 = matched_pos[j2];
-        if p2 == ROW_UNMATCHED {
-            continue;
-        }
-        for (j1, &p1) in matched_pos.iter().enumerate().take(j2) {
-            if p1 == ROW_UNMATCHED || p1 < p2 {
-                continue;
-            }
-            push_screen(out, extents[j1].intersect(extents[j2]));
-        }
     }
 }
 
