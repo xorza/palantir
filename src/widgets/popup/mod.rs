@@ -1,4 +1,3 @@
-use crate::input::key_class::KeyFilter;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
@@ -10,6 +9,7 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::chrome;
 use crate::widgets::frame::Frame;
+use crate::widgets::overlay_scope::OverlayScope;
 use glam::Vec2;
 use std::cell::Cell;
 
@@ -187,15 +187,9 @@ impl Popup {
         // eater derived from it — is parent-scoped to the trigger's site the
         // way any other widget is, not to `Layer::Popup`'s empty root.
         let mut widget = ui.widget(node);
-        let keyboard_owner = widget.id();
         let eater_id = widget.id().with("eater");
-        // The popup body declares an `ALL` scope on `Layer::Popup`,
-        // which is what orders it against overlays above and what stops
-        // it silencing its own body: a scope cuts off layers strictly
-        // *below* it, so a `TextEdit` in a popup keeps draining the
-        // stream.
-        widget.node.flags.set_key_filter(KeyFilter::ALL);
-        ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
+        let scope = OverlayScope::claim(widget.id(), Layer::Popup, position, &mut widget.node);
+        ui.layer(Layer::Popup).show(|ui| {
             // Eater records first → paints under the body. Hit-test runs
             // reverse-iter so the body's leaves still win inside its rect.
             //
@@ -222,13 +216,8 @@ impl Popup {
                 ui.theme.panel_clip,
             );
             let handle = PopupHandle::new();
-            // Escape is read *inside* the popup's layer: outside it the
-            // ambient layer sits below the scope and the read is
-            // silenced, which is what the old owner-scoped claim handle
-            // existed to work around.
-            let escape = ui.overlay_layer(Layer::Popup, position, |ui| {
+            let escape = scope.record(ui, |ui| {
                 widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
-                ui.escape_pressed()
             });
             let dismiss_mode = click_outside == ClickOutside::Dismiss;
             // Every button dismisses, not just the primary. The eater
@@ -246,12 +235,7 @@ impl Popup {
                 dismissed: dismiss_mode && (eater_clicked || escape),
                 close_requested: handle.requested.get(),
             };
-            // Drops the scope, so the frame after dismissal reaches
-            // `Main` intact rather than being swallowed by a popup that
-            // is already gone.
-            if response.closed() {
-                ui.close_scope(keyboard_owner);
-            }
+            scope.withdraw(ui, response.closed());
             response
         }
     }

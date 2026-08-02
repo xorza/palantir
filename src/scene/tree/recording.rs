@@ -101,10 +101,6 @@ impl Placement {
         Self::Fixed { anchor, size }
     }
 
-    pub(crate) const fn overlay(position: OverlayPosition) -> Self {
-        Self::Overlay(position)
-    }
-
     pub(crate) fn available(self, surface: Rect) -> Size {
         match self {
             Self::Fixed { anchor, size: None } => {
@@ -123,6 +119,15 @@ impl Placement {
             Self::Fixed { anchor, .. } => anchor,
             Self::Overlay(position) => position.resolve(measured, surface),
         }
+    }
+}
+
+/// An anchor-relative position *is* a placement, which is what lets
+/// [`LayerScope::placement`](crate::ui::layer_scope::LayerScope::placement)
+/// take either form through one `impl Into<Placement>` parameter.
+impl From<OverlayPosition> for Placement {
+    fn from(position: OverlayPosition) -> Self {
+        Self::Overlay(position)
     }
 }
 

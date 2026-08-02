@@ -359,7 +359,7 @@ fn sample_layers(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) -> [usize; 
 /// records inside it, which is what puts a read's `parent` within the
 /// scope.
 fn scope_leaf(ui: &mut Ui, layer: Layer, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    ui.layer(layer, glam::Vec2::ZERO, None, |ui| {
+    ui.layer(layer).show(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash(id))
             .input_scope(KeyFilter::ALL)

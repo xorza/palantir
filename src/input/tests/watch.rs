@@ -393,7 +393,7 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let scoped = |ui: &mut Ui| {
         empty_watch_buttons(ui);
-        ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
+        ui.layer(Layer::Popup).show(|ui| {
             Frame::new()
                 .id(WidgetId::from_hash("overlay"))
                 .input_scope(KeyFilter::ALL)
@@ -459,7 +459,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     };
     let plain_layer = |ui: &mut Ui| {
         empty_watch_buttons(ui);
-        ui.layer(Layer::Modal, Vec2::ZERO, None, empty);
+        ui.layer(Layer::Modal).show(empty);
     };
 
     // A scope takes effect on the frame *after* the one that declared

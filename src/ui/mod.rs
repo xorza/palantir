@@ -5,6 +5,7 @@ pub(crate) mod bench_fixture;
 pub(crate) mod frame;
 pub(crate) mod frame_report;
 mod frame_stats;
+pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod state;
 
@@ -23,11 +24,9 @@ use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
-use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
@@ -37,7 +36,6 @@ use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Node, Salt};
 use crate::scene::tree::paint_anims::PaintAnim;
-use crate::scene::tree::recording::Placement;
 use crate::text::run::{TextProbe, TextRun};
 use crate::{InternedStr, TextInput};
 
@@ -48,6 +46,7 @@ use crate::scene::damage::{Damage, DamageEngine, DamageInput};
 use crate::shape::Shape;
 use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, FrameRuntime, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
+use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
@@ -883,24 +882,18 @@ impl Ui {
         self.forest.add_shape_animated(shape.into(), anim);
     }
 
-    /// Record `body` as a side layer placed at `anchor` (top-left
-    /// position). `size = None` makes the body's "available" extend
-    /// from `anchor` to the surface bottom-right; `size = Some(s)`
-    /// caps it at `s`, still clamped to the surface so an oversized
-    /// cap can't bleed past the viewport. The root's own `Sizing`
-    /// (Hug/Fill/Fixed) then governs the painted size within that
-    /// available. Recordable from the `Main` baseline or nested inside a
+    /// Open a side layer — an arena that paints above the `Main` tree,
+    /// escapes ancestor clip, and hit-tests on top of it. Configure the
+    /// placement on the returned [`LayerScope`] and terminate with
+    /// [`LayerScope::show`]; the defaults anchor at the surface origin
+    /// with the whole surface available.
+    ///
+    /// Recordable from the `Main` baseline or nested inside a
     /// higher-ranked side layer's body (a tooltip raised from a popup or
-    /// modal). The nested layer must sit strictly above the current scope
+    /// modal). A nested layer must sit strictly above the current scope
     /// in `Layer::PAINT_ORDER`, else it would paint under its parent.
-    pub fn layer<R>(
-        &mut self,
-        layer: Layer,
-        anchor: glam::Vec2,
-        size: Option<Size>,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
-        self.placed_layer(layer, Placement::fixed(anchor, size), body)
+    pub fn layer(&mut self, layer: Layer) -> LayerScope<'_> {
+        LayerScope::new(self, layer)
     }
 
     /// Withdraw an [`input_scope`](crate::Configure::input_scope) this
@@ -916,30 +909,6 @@ impl Ui {
     /// nothing.
     pub fn close_scope(&mut self, id: WidgetId) {
         self.input.close_scope(id);
-    }
-
-    pub(crate) fn overlay_layer<R>(
-        &mut self,
-        layer: Layer,
-        position: OverlayPosition,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
-        self.placed_layer(layer, Placement::overlay(position), body)
-    }
-
-    /// Forwards `body`'s value so a layer scope can hand something back —
-    /// notably an `input_scope` declared inside it, which is how an
-    /// overlay records its capture against the layer it actually lives on.
-    fn placed_layer<R>(
-        &mut self,
-        layer: Layer,
-        placement: Placement,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
-        self.forest.push_layer(layer, placement);
-        let result = body(self);
-        self.forest.pop_layer();
-        result
     }
 
     /// Resolve `node`'s stable [`WidgetId`] for this frame and hand

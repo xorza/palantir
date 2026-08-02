@@ -841,7 +841,7 @@ fn ui_layer_records_popup_into_separate_tree() {
                     .size(30.0)
                     .show(ui);
             });
-        ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+        ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("popup-root"))
                 .show(ui, |ui| {
@@ -906,7 +906,11 @@ fn ui_layer_size_caps_overlay_available() {
                 .id(WidgetId::from_hash("main"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |_| {});
-            ui.layer(Layer::Popup, anchor, *cap, |ui| {
+            let mut scope = ui.layer(Layer::Popup).at(anchor);
+            if let Some(cap) = cap {
+                scope = scope.max_size(*cap);
+            }
+            scope.show(|ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("overlay-root"))
                     .size((Sizing::FILL, Sizing::FILL))
@@ -933,7 +937,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
                     .size(20.0)
                     .show(ui);
             });
-        ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |_| {});
+        ui.layer(Layer::Popup).show(|_| {});
     });
     assert_eq!(h.ui.forest.trees[Layer::Main].roots.len(), 1);
     assert!(h.ui.forest.trees[Layer::Popup].roots.is_empty());
@@ -954,7 +958,7 @@ fn forest_independence_across_recording_orders() {
             });
     };
     let record_popup = |ui: &mut Ui| {
-        ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+        ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("popup-root"))
                 .show(ui, |ui| {
@@ -996,7 +1000,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
                     .id(WidgetId::from_hash("trigger"))
                     .label("menu")
                     .show(ui);
-                ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+                ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-body"))
                         .show(ui, |ui| {
@@ -1075,7 +1079,7 @@ fn mid_recording_popup_keeps_trees_independent() {
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(marker(2));
-                ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+                ui.layer(Layer::Popup).at(popup_anchor).show(|ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-root"))
                         .show(ui, |ui| {

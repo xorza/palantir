@@ -212,7 +212,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
                 .default_id(bubble_id)
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
-            ui.overlay_layer(Layer::Tooltip, position, |ui| {
+            ui.layer(Layer::Tooltip).placement(position).show(|ui| {
                 ui.widget(node).record(ui, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(&text_style)

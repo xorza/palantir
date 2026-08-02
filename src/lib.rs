@@ -210,6 +210,7 @@ pub use text::wrap::TextWrap;
 pub use text::{FontFamily, FontWeight, TextShaper};
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
+pub use ui::layer_scope::LayerScope;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
