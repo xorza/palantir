@@ -8,7 +8,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollBarsDefId, ScrollSpec};
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
 use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::size::Size;
@@ -233,8 +233,8 @@ impl Node {
     /// children are placed by `layout::scrollbars` after measure, which
     /// is the only point the content extent they size against exists.
     #[track_caller]
-    pub(crate) fn scroll_bars(id: ScrollBarsDefId) -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::ScrollBars(id)))
+    pub(crate) fn scrollbars(id: ScrollbarsDefId) -> Self {
+        Self::new(NodeMode::Resolved(LayoutMode::Scrollbars(id)))
     }
 
     #[track_caller]

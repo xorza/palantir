@@ -3,8 +3,8 @@
 //! `cascade` and `damage` turn what lands here into the immutable
 //! per-frame data input and rendering read.
 
-use crate::layout::scrollbars::ScrollBarsDef;
-use crate::layout::types::layout_mode::{GridDefId, ScrollBarsDefId};
+use crate::layout::scrollbars::ScrollbarsDef;
+use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
@@ -90,7 +90,7 @@ impl Forest {
 
     /// Intern a bar overlay's definition into the current layer's tree.
     /// Companion to [`Self::push_grid_def`]; same layer contract.
-    pub(crate) fn push_scrollbars_def(&mut self, def: ScrollBarsDef) -> ScrollBarsDefId {
+    pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         let layer = self.current_layer();
         self.trees[layer].push_scrollbars_def(def)
     }

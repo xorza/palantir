@@ -48,7 +48,7 @@ pub(crate) fn viewport(outer: Size, reserve_y: f32, reserve_x: f32, padding: Spa
 /// Everything the driver needs that *is* known while recording, plus a
 /// handle to the viewport whose measured content it isn't.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ScrollBarsDef {
+pub(crate) struct ScrollbarsDef {
     /// Viewport node whose [`LayerLayout::scroll_content`] sizes the
     /// thumbs. Resolved at record time out of the *current* pass's id
     /// map, so it is valid for exactly the pass that recorded it — the
@@ -68,7 +68,7 @@ pub(crate) struct ScrollBarsDef {
     pub(crate) min_thumb: f32,
 }
 
-impl ScrollBarsDef {
+impl ScrollbarsDef {
     /// Visual hash for the authoring rollup. `content` is deliberately
     /// **excluded**: it is a positional index that shifts whenever any
     /// earlier sibling's subtree grows, which would invalidate this
@@ -128,7 +128,7 @@ struct BarRects {
 /// Resolve one axis. `outer` is the overlay's arranged size, which is
 /// the scroll's outer rect — the overlay is `Fill` on both axes.
 fn axis_rects(
-    def: &ScrollBarsDef,
+    def: &ScrollbarsDef,
     outer: Size,
     scaled_content: Size,
     axis: Axis,
@@ -193,7 +193,7 @@ pub(crate) fn arrange(
     tree: &Tree,
     node: NodeId,
     inner: Rect,
-    def: ScrollBarsDef,
+    def: ScrollbarsDef,
     out: &mut LayerLayout,
 ) {
     let raw_content = out.scroll_content[def.content.idx()];

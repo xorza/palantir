@@ -26,8 +26,8 @@ use crate::ClipMode;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::index16::Index16;
-use crate::layout::scrollbars::ScrollBarsDef;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollBarsDefId};
+use crate::layout::scrollbars::ScrollbarsDef;
+use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
@@ -94,9 +94,9 @@ pub(crate) struct Tree {
 
     pub(crate) grid_tracks: Vec<Track>,
     pub(crate) grid_defs: Vec<GridDef>,
-    /// Side table for [`LayoutMode::ScrollBars`], same arrangement as
+    /// Side table for [`LayoutMode::Scrollbars`], same arrangement as
     /// `grid_defs`: the def is too wide for the packed 16-bit payload.
-    pub(crate) scrollbar_defs: Vec<ScrollBarsDef>,
+    pub(crate) scrollbar_defs: Vec<ScrollbarsDef>,
 
     /// Top-level root slots in this tree, in record order. Each slot's
     /// `first_node` indexes `records`; pipeline passes iterate the
@@ -274,7 +274,7 @@ impl Tree {
             if let LayoutMode::Grid(id) = LayoutMode::from(layouts[i].meta) {
                 grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h);
             }
-            if let LayoutMode::ScrollBars(id) = LayoutMode::from(layouts[i].meta) {
+            if let LayoutMode::Scrollbars(id) = LayoutMode::from(layouts[i].meta) {
                 scrollbar_defs[usize::from(id)].hash_visual(&mut h);
             }
             let node_hash = h.finish();
@@ -296,8 +296,8 @@ impl Tree {
     /// Intern one bar overlay's def, returning the id its node packs.
     /// Called only by `Scroll::show`, which is why the `open_node`
     /// debug assert can treat a dangling id as a caller bug.
-    pub(crate) fn push_scrollbars_def(&mut self, def: ScrollBarsDef) -> ScrollBarsDefId {
-        let id = ScrollBarsDefId::from_index(self.scrollbar_defs.len());
+    pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
+        let id = ScrollbarsDefId::from_index(self.scrollbar_defs.len());
         self.scrollbar_defs.push(def);
         id
     }
@@ -373,10 +373,10 @@ impl Tree {
                 "LayoutMode::Grid id {id:?} references no grid_def — only Grid::show should push grid nodes",
             );
         }
-        if let LayoutMode::ScrollBars(id) = LayoutMode::from(cols.layout.meta) {
+        if let LayoutMode::Scrollbars(id) = LayoutMode::from(cols.layout.meta) {
             debug_assert!(
                 usize::from(id) < self.scrollbar_defs.len(),
-                "LayoutMode::ScrollBars id {id:?} references no scrollbar_def — only Scroll::show should push bar overlays",
+                "LayoutMode::Scrollbars id {id:?} references no scrollbar_def — only Scroll::show should push bar overlays",
             );
         }
         self.check_grid_cell(parent_frame.map(|f| f.node), &cols.bounds);
