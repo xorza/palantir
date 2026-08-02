@@ -1,4 +1,7 @@
 use crate::primitives::{approx, half_simd::F16x4};
+use ::serde::de::Error as _;
+use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Cow;
 
 #[repr(C)]
 #[derive(
@@ -465,6 +468,66 @@ impl From<ColorF16> for ColorU8 {
     }
 }
 
+/// Wire format: a CSS-style hex string, `#rrggbb` or `#rrggbbaa`. The
+/// 6-digit form is emitted whenever alpha is fully opaque.
+impl Serialize for Color {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let ColorU8 { r, g, b, a } = self.to_srgb_u8();
+        let hex = if a == 0xff {
+            format!("#{r:02x}{g:02x}{b:02x}")
+        } else {
+            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+        };
+        serializer.serialize_str(&hex)
+    }
+}
+
+impl<'de> Deserialize<'de> for Color {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = Cow::<'de, str>::deserialize(deserializer)?;
+        parse_hex(raw.trim()).map_err(D::Error::custom)
+    }
+}
+
+/// Parse `#rrggbb` / `#rrggbbaa` (the `#` optional) into an sRGB
+/// [`Color`]. Deserialization input is untrusted, so every rejection is
+/// an `Err` — the length arms select on **bytes** and each digit is
+/// decoded by hand, because indexing the `str` instead would panic on a
+/// char boundary for any 6- or 8-*byte* non-ASCII input (`"日本"` is
+/// exactly six bytes), and delegating to `u8::from_str_radix` would
+/// accept its leading `+` sign as a hex digit position.
+fn parse_hex(value: &str) -> Result<Color, &'static str> {
+    let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
+    let parse_byte = |index: usize| -> Result<u8, &'static str> {
+        Ok(hex_nibble(body[index])? << 4 | hex_nibble(body[index + 1])?)
+    };
+    match body.len() {
+        6 => Ok(Color::rgb_u8(
+            parse_byte(0)?,
+            parse_byte(2)?,
+            parse_byte(4)?,
+        )),
+        8 => Ok(Color::rgba_u8(
+            parse_byte(0)?,
+            parse_byte(2)?,
+            parse_byte(4)?,
+            parse_byte(6)?,
+        )),
+        _ => Err("expected #rrggbb or #rrggbbaa"),
+    }
+}
+
+/// One hex digit's value, either case. Anything else — including every
+/// non-ASCII byte — is a rejection.
+const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err("invalid hex digit"),
+    }
+}
+
 /// sRGB→linear via cubic polynomial. Const-friendly (`f32::powf` is not
 /// const-stable; see rust-lang/rust#57241). Industry-standard cubic fit
 /// (Hejl-Burgess-Dawson and similar) over `[0, 1]`; max abs error ~1.5e-3
@@ -646,6 +709,54 @@ mod tests {
             let (s2, _) = toml_roundtrip(p);
             assert_eq!(s1, s2);
         }
+    }
+
+    #[test]
+    fn color_parse_accepts_with_and_without_hash() {
+        assert_eq!(
+            parse_hex("#3266cc").unwrap(),
+            Color::rgb_u8(0x32, 0x66, 0xcc)
+        );
+        assert_eq!(
+            parse_hex("3266cc").unwrap(),
+            Color::rgb_u8(0x32, 0x66, 0xcc)
+        );
+        assert_eq!(
+            parse_hex("#3266cc80").unwrap(),
+            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
+        );
+        // Either digit case, both lengths. The serializer only ever
+        // emits lowercase, so nothing else pins that a hand-written
+        // uppercase theme file still parses.
+        assert_eq!(
+            parse_hex("#3266CC").unwrap(),
+            Color::rgb_u8(0x32, 0x66, 0xcc)
+        );
+        assert_eq!(
+            parse_hex("#3266CC80").unwrap(),
+            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
+        );
+    }
+
+    #[test]
+    fn color_parse_rejects_malformed_input() {
+        assert!(parse_hex("").is_err());
+        assert!(parse_hex("#").is_err());
+        assert!(parse_hex("#abc").is_err(), "3-digit not supported");
+        assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
+        assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
+        assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
+        // Regression: the length arms select on bytes, so these reach a
+        // digit decode rather than a `str` index. `"日本"` is 6 bytes and
+        // `"αβγδ"` is 8, hitting both arms; indexing the `str` split a
+        // char boundary and panicked instead of rejecting the input —
+        // in a deserializer whose whole job is to reject it.
+        assert!(parse_hex("日本").is_err(), "6-byte non-ASCII");
+        assert!(parse_hex("#日本").is_err(), "6-byte non-ASCII, hashed");
+        assert!(parse_hex("αβγδ").is_err(), "8-byte non-ASCII");
+        // `u8::from_str_radix` accepts a leading sign, so the old parser
+        // read `"+a+b+c"` as rgb(10, 11, 12).
+        assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
     }
 
     #[test]

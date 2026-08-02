@@ -1,38 +1,25 @@
-//! Build-gated observability for the layout pass.
+//! Build-gated observability for the layout pass. Built on
+//! [`TestOnly`](crate::common::probe::TestOnly), whose module doc
+//! explains the gated-cell pattern and why the gates differ between
+//! passes.
 //!
-//! ## The pattern
+//! Test-only rather than the wider gate because [`Self::cache_hit`]
+//! pushes to a `Vec` on *every* cache hit, which in steady state is
+//! every subtree root — the `alloc_free` bench requires `internals` and
+//! asserts steady-state frames allocate nothing, so it would end up
+//! measuring this probe instead of the frame.
 //!
-//! Counters that exist only in some builds used to sit as individually
-//! `#[cfg]`-gated fields on the struct they measured, which forced a gate
-//! at every write site too — `LayoutScratch` carried three such fields and
-//! `DamageEngine` two, and the write sites needed a `#[cfg]` block each,
-//! sometimes an extra gated local just to split a borrow.
+//! ## The one field still hand-gated
 //!
-//! Instead, one probe struct owns the gated fields and exposes
-//! **unconditional** mutators whose bodies are gated. Production call sites
-//! are plain method calls; in a build without the counters the methods have
-//! empty bodies and the struct is zero-sized, so they compile away. The
-//! only remaining `#[cfg]`s are on the fields themselves and the read
-//! accessors — which is the one placement the crate's convention allows,
-//! since a struct field's gate cannot move anywhere else.
-//!
-//! Peer: [`crate::scene::damage::probe::DamageProbe`].
-//!
-//! ## Mixed gates inside this struct
-//!
-//! Most fields are `cfg(test)`; [`Self::phase_timings`] is
-//! `cfg(feature = "internals")` because benches are its only reader.
-//! Per-field gates are what let one struct serve both without widening
-//! either — see below for why widening the test ones would be wrong.
-//!
-//! ## Why the counters are `cfg(test)` and damage's are not
-//!
-//! `DamageProbe` is `cfg(any(test, feature = "internals"))` because benches
-//! read its counters. This one must stay test-only: [`Self::cache_hit`]
-//! pushes to a `Vec`, and the `alloc_free` bench — which requires
-//! `internals` and asserts steady-state frames allocate nothing — would
-//! start measuring this probe's allocation instead of the frame's.
+//! [`PhaseTimings`] is `cfg(feature = "internals")` — narrower than
+//! either shared cell, because benches are its only reader and a test
+//! build must not pay the clock reads. It also can't ride a cell: the
+//! mutator's closure would have to call [`PhaseSpan::elapsed_ns`], which
+//! doesn't exist without the feature, and a closure body typechecks
+//! whether or not it runs. So it keeps the per-write `#[cfg]` the rest
+//! of this file no longer needs.
 
+use crate::common::probe::TestOnly;
 use crate::primitives::widget_id::WidgetId;
 
 /// CPU nanoseconds one `LayoutEngine::run` spent in each half of the
@@ -92,6 +79,9 @@ impl PhaseSpan {
 
 /// Per-`run` tally of [`LayoutEngine::replay_arranged`] outcomes.
 ///
+/// Assembled on read from the two counters below rather than stored:
+/// tests compare it as a literal, so it stays a plain-`u32` value type.
+///
 /// [`LayoutEngine::replay_arranged`]: crate::layout::engine::LayoutEngine
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -112,21 +102,17 @@ pub(crate) struct ReplayCounts {
 pub(crate) struct LayoutProbe {
     /// `intrinsic::compute` (cache-miss) calls this run. Tests assert a
     /// localized change doesn't trigger a whole-tree intrinsic re-walk.
-    #[cfg(test)]
-    intrinsic_computes: u32,
+    intrinsic_computes: TestOnly<u32>,
     /// Subtree roots restored from the measure cache this run. A cache-hit
     /// test that asserts only "warm rects equal cold rects" passes
     /// vacuously if the lookup never hit, so tests assert *where* it hit.
-    #[cfg(test)]
-    cache_hits: Vec<WidgetId>,
+    cache_hits: TestOnly<Vec<WidgetId>>,
     /// Which branch `replay_arranged` took. The translate branch in
     /// particular is easy to write a fixture that silently never reaches.
-    #[cfg(test)]
-    arrange_replays: ReplayCounts,
-    /// Measure / arrange wall time this run. Gated `internals` rather
-    /// than `test` because benches are its only reader — see
-    /// [`PhaseTimings`], and the module doc for why the two gates in this
-    /// struct differ.
+    copied: TestOnly<u32>,
+    translated: TestOnly<u32>,
+    /// Measure / arrange wall time this run. See the module doc for why
+    /// this one keeps its own gate.
     #[cfg(feature = "internals")]
     phase_timings: PhaseTimings,
 }
@@ -136,12 +122,10 @@ impl LayoutProbe {
     /// a test build doesn't reallocate each frame.
     #[inline]
     pub(crate) fn begin_run(&mut self) {
-        #[cfg(test)]
-        {
-            self.intrinsic_computes = 0;
-            self.cache_hits.clear();
-            self.arrange_replays = ReplayCounts::default();
-        }
+        self.intrinsic_computes.reset();
+        self.cache_hits.clear();
+        self.copied.reset();
+        self.translated.reset();
         #[cfg(feature = "internals")]
         {
             self.phase_timings = PhaseTimings::default();
@@ -169,34 +153,22 @@ impl LayoutProbe {
 
     #[inline]
     pub(crate) fn intrinsic_computed(&mut self) {
-        #[cfg(test)]
-        {
-            self.intrinsic_computes += 1;
-        }
+        self.intrinsic_computes.bump();
     }
 
     #[inline]
-    pub(crate) fn cache_hit(&mut self, #[allow(unused_variables)] widget: WidgetId) {
-        #[cfg(test)]
-        {
-            self.cache_hits.push(widget);
-        }
+    pub(crate) fn cache_hit(&mut self, widget: WidgetId) {
+        self.cache_hits.push(widget);
     }
 
     #[inline]
     pub(crate) fn arrange_copied(&mut self) {
-        #[cfg(test)]
-        {
-            self.arrange_replays.copied += 1;
-        }
+        self.copied.bump();
     }
 
     #[inline]
     pub(crate) fn arrange_translated(&mut self) {
-        #[cfg(test)]
-        {
-            self.arrange_replays.translated += 1;
-        }
+        self.translated.bump();
     }
 }
 
@@ -210,25 +182,28 @@ impl LayoutProbe {
 }
 
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
-/// and gating them here is what lets the fields themselves be absent.
+/// and gating them here is what lets the counters themselves be absent.
 #[cfg(test)]
 impl LayoutProbe {
     pub(crate) fn intrinsic_computes(&self) -> u32 {
-        self.intrinsic_computes
+        self.intrinsic_computes.count()
     }
 
     /// Zero the intrinsic counter mid-run — for a test that primes a frame
     /// and then counts only what a subsequent query costs.
     pub(crate) fn reset_intrinsic_computes(&mut self) {
-        self.intrinsic_computes = 0;
+        self.intrinsic_computes.reset();
     }
 
     pub(crate) fn cache_hits(&self) -> &[WidgetId] {
-        &self.cache_hits
+        self.cache_hits.as_slice()
     }
 
     pub(crate) fn arrange_replays(&self) -> ReplayCounts {
-        self.arrange_replays
+        ReplayCounts {
+            copied: self.copied.count(),
+            translated: self.translated.count(),
+        }
     }
 }
 

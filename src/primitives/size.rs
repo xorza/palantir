@@ -95,6 +95,37 @@ impl<W: Num, H: Num> From<(W, H)> for Size {
     }
 }
 
+/// Wire format: a `{w, h}` table whose fields are optional, because
+/// [`Size::INF`] — the "no upper bound" sentinel — has no finite
+/// spelling. A non-finite axis serializes as absent and an absent axis
+/// deserializes back to infinity.
+impl ::serde::Serialize for Size {
+    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use ::serde::ser::SerializeStruct;
+        let finite = |value: f32| value.is_finite().then_some(value);
+        let mut state = serializer.serialize_struct("Size", 2)?;
+        state.serialize_field("w", &finite(self.w))?;
+        state.serialize_field("h", &finite(self.h))?;
+        state.end()
+    }
+}
+
+impl<'de> ::serde::Deserialize<'de> for Size {
+    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(::serde::Deserialize)]
+        struct RawSize {
+            w: Option<f32>,
+            h: Option<f32>,
+        }
+
+        let raw = RawSize::deserialize(deserializer)?;
+        Ok(Size::new(
+            raw.w.unwrap_or(f32::INFINITY),
+            raw.h.unwrap_or(f32::INFINITY),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::primitives::size::Size;

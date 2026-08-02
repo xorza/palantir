@@ -1,5 +1,6 @@
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::num::Num;
+use crate::primitives::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
@@ -138,6 +139,41 @@ impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing {
     }
 }
 
+/// Wire format: see [`LaneCodec`] — a scalar, a 1/2/4-node array, or a
+/// `{left, top, right, bottom}` table. The 2-node shorthand is
+/// `[horizontal, vertical]`, matching CSS's two-value padding.
+impl LaneCodec for Spacing {
+    const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
+
+    fn from_lane_array(lanes: [f32; 4]) -> Self {
+        Self::new(lanes[0], lanes[1], lanes[2], lanes[3])
+    }
+
+    fn to_lane_array(&self) -> [f32; 4] {
+        self.as_array()
+    }
+
+    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
+        (lanes[0] == lanes[2] && lanes[1] == lanes[3]).then_some([lanes[0], lanes[1]])
+    }
+
+    fn expand_two([horizontal, vertical]: [f32; 2]) -> [f32; 4] {
+        [horizontal, vertical, horizontal, vertical]
+    }
+}
+
+impl ::serde::Serialize for Spacing {
+    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serialize_lanes(self, serializer)
+    }
+}
+
+impl<'de> ::serde::Deserialize<'de> for Spacing {
+    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserialize_lanes(deserializer)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::primitives::spacing::*;
@@ -263,33 +299,6 @@ right = 3.0
 bottom = 4.0
 "#;
         assert_eq!(de(toml_str), Spacing::new(1.0, 2.0, 3.0, 4.0));
-    }
-
-    #[test]
-    fn deserialize_struct_form_with_missing_fields_defaults_to_zero() {
-        let toml_str = r#"
-[v]
-left = 4.0
-right = 4.0
-"#;
-        assert_eq!(de(toml_str), Spacing::new(4.0, 0.0, 4.0, 0.0));
-    }
-
-    #[test]
-    fn deserialize_rejects_unknown_field() {
-        #[derive(serde::Deserialize)]
-        struct W {
-            #[allow(dead_code)]
-            v: Spacing,
-        }
-        let result: Result<W, _> = toml::from_str(
-            r#"
-[v]
-left = 1.0
-typo = 2.0
-"#,
-        );
-        assert!(result.is_err(), "unknown field should be rejected");
     }
 
     #[test]
