@@ -15,18 +15,10 @@ fn cursor_xy_x_cases() {
         ("lh_independent_short", "abc", 2, 16.0, 16.0, 16.0),
         ("lh_independent_tall", "abc", 2, 16.0, 24.0, 16.0),
     ];
+    let m = TextShaper::test_mono();
     for (label, text, offset, fs, lh_v, expected) in cases {
-        let m = TextShaper::test_mono();
         assert_eq!(
-            m.cursor_xy(
-                text,
-                *offset,
-                TestShape {
-                    line_height_px: *lh_v,
-                    ..shape(*fs)
-                }
-            )
-            .x,
+            m.cursor_xy(text, *offset, shape(*fs).leading(*lh_v)).x,
             *expected,
             "case: {label}"
         );
@@ -119,8 +111,12 @@ fn byte_at_xy_mono_fallback() {
 
 #[test]
 fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
-    // Real shaping: caret at the cursor_xy of byte i must hit-test
-    // back to a byte close to i; widths sweep monotonically.
+    // Real shaping: sweeping x across a run must never walk the answer
+    // backwards, and an x past the end must clamp. The exact
+    // caret → hit → caret identity is a stronger claim and is pinned
+    // separately by `caret_and_hit_test_round_trip_in_block_local_space`;
+    // this one holds even where a boundary x is ambiguous between two
+    // adjacent offsets.
     let m = TextShaper::new();
     let s = "hello";
     let fs = 16.0;
@@ -214,9 +210,9 @@ fn selection_rects_match_cosmic_highlight_spans() {
         },
     ];
     for case in cases {
-        let params = TestShape {
-            max_width_px: case.max_width_px,
-            ..ui_shape(16.0)
+        let params = match case.max_width_px {
+            Some(w) => ui_shape(16.0).width(w),
+            None => ui_shape(16.0),
         };
         let mut expected = Vec::new();
         m.probe_layout(case.text, params, |layout| {
@@ -338,11 +334,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     // `measure` end-to-end (unbounded + wrap-shape), so no
     // pre-prime is needed — the shaper builds whatever cache
     // entry it needs on first hit.
-    let shape = TestShape {
-        max_width_px: Some(wrap),
-        halign: HAlign::Right,
-        ..ui_shape(font)
-    };
+    let shape = ui_shape(font).width(wrap).halign(HAlign::Right);
     let block = m.measure(text, shape).size.w;
     let pos = m.cursor_xy(text, text.len(), shape);
     assert!(
@@ -359,15 +351,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     // And the left-aligned counterpart still anchors at zero —
     // sanity-pins the helper isn't accidentally always returning
     // the right edge.
-    let pos_left = m.cursor_xy(
-        text,
-        text.len(),
-        TestShape {
-            max_width_px: Some(wrap),
-            halign: HAlign::Left,
-            ..ui_shape(font)
-        },
-    );
+    let pos_left = m.cursor_xy(text, text.len(), shape.halign(HAlign::Left));
     assert!(
         pos_left.x.abs() < 0.5,
         "left-aligned caret on empty trailing line stays at 0; \
@@ -393,22 +377,9 @@ fn cursor_xy_on_empty_line_respects_right_align() {
 fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
     let mut m = CosmicMeasure::with_bundled_fonts();
     let wrap = 200.0;
-    let bounded = |halign| TestShape {
-        max_width_px: Some(wrap),
-        halign,
-        ..ui_shape(16.0)
-    };
+    let bounded = |halign| ui_shape(16.0).width(wrap).halign(halign);
     for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {
-        let unbounded = m
-            .measure(
-                text,
-                TestShape {
-                    max_width_px: None,
-                    ..ui_shape(16.0)
-                },
-            )
-            .size
-            .w;
+        let unbounded = m.measure(text, ui_shape(16.0)).size.w;
         // The run fits the wrap target on one line, so binding a width
         // cannot change how wide the glyphs are — only where cosmic puts
         // them. Every alignment must therefore report the natural width.
@@ -445,11 +416,7 @@ fn caret_and_hit_test_round_trip_in_block_local_space() {
     // the narrow line carries a non-zero block-local offset, which is
     // exactly where an unpaired correction would show up.
     let text = "wwwwww\ni";
-    let shape = TestShape {
-        max_width_px: Some(300.0),
-        halign: HAlign::Right,
-        ..ui_shape(16.0)
-    };
+    let shape = ui_shape(16.0).width(300.0).halign(HAlign::Right);
     for byte in [0usize, 1, 3, 6, 7, 8] {
         assert!(
             text.is_char_boundary(byte),

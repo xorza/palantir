@@ -208,27 +208,32 @@ pub(crate) mod internals {
     use crate::text::cache_probe::CacheCounts;
     use crate::text::layout_probe::Caret;
     use crate::text::request::internals::TestShape;
-    use crate::text::root::internals::TestMeasure;
     use crate::text::wrap::LineFit;
 
+    /// Everything a layout probe can answer: the extent, and the key of
+    /// the buffer it shaped under.
+    ///
+    /// Deliberately *not* a [`TestMeasure`]. The probe keeps only the
+    /// extent — the wrap floor and the line count are the root's — so
+    /// handing back a `TestMeasure` meant inventing two of its four
+    /// fields, and a test that read one was pinning the invention rather
+    /// than the shaper. Two fields, both real.
+    #[derive(Clone, Copy, Debug)]
+    pub(crate) struct ProbeMeasure {
+        pub(crate) size: Size,
+        pub(crate) key: TextShapeKey,
+    }
+
     impl TextShaper {
-        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> TestMeasure {
+        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ProbeMeasure {
             let shapes_buffers = self.shapes_buffers();
-            self.probe_layout(text, shape, |probe| {
-                let key = if shapes_buffers && !probe.request.text.is_empty() {
+            self.probe_layout(text, shape, |probe| ProbeMeasure {
+                size: probe.size,
+                key: if shapes_buffers && !probe.request.text.is_empty() {
                     probe.request.key
                 } else {
                     TextShapeKey::INVALID
-                };
-                // The probe keeps only the extent; the wrap floor and line
-                // count are the root's, so re-derive them for the tests
-                // that assert on them.
-                TestMeasure {
-                    size: probe.size,
-                    key,
-                    intrinsic_min: None,
-                    single_line: true,
-                }
+                },
             })
         }
 

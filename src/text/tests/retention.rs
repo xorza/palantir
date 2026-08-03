@@ -1,15 +1,29 @@
 use super::*;
 
+/// The body every retention case shapes, so a key derived in one place
+/// resolves in another.
+const BODY: &str = "hello world";
+
+/// The shape `fill_distinct_widths` inserts at index `i`. A named
+/// function rather than an inline literal: a case that wants to hit one
+/// of those keys again asks for the same index instead of re-deriving
+/// the arithmetic, so the two cannot drift apart.
+fn distinct_width_shape(i: u32) -> TestShape {
+    // Distinct width ⇒ distinct cache key ⇒ a fresh insert.
+    shape(14.0)
+        .leading(18.0)
+        .width(40.0 + i as f32 * 5.0)
+        .halign(HAlign::Left)
+}
+
 #[test]
 fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let text = "restore this shaped buffer after eviction";
-    let wrap_params = TestShape {
-        line_height_px: 18.003,
-        max_width_px: Some(96.003),
-        weight: FontWeight::Bold,
-        halign: HAlign::Center,
-        ..shape(15.003)
-    };
+    let wrap_params = shape(15.003)
+        .leading(18.003)
+        .width(96.003)
+        .weight(FontWeight::Bold)
+        .halign(HAlign::Center);
     let mut wrap = CosmicMeasure::with_bundled_fonts();
     let original = wrap.measure(text, wrap_params);
     let original_glyphs = glyph_positions(&wrap, original.key);
@@ -26,19 +40,9 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
 
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
         let mut truncated = CosmicMeasure::with_bundled_fonts();
-        let params = TestShape {
-            max_width_px: Some(84.003),
-            ..wrap_params
-        };
-        let unbounded = truncated.measure(
-            text,
-            TestShape {
-                max_width_px: None,
-                halign: HAlign::Auto,
-                ..params
-            },
-        );
-        let original = truncated.measure_with_fit(text, params, fit, unbounded.key);
+        let params = wrap_params.width(84.003);
+        let cut = truncate(&mut truncated, text, params, fit);
+        let (original, unbounded) = (cut.fitted, cut.unbounded);
         let original_glyphs = glyph_positions(&truncated, original.key);
         truncated.drop_all_buffers();
         assert!(truncated.shaped_run(original.key).is_none(), "fit: {fit:?}");
@@ -72,22 +76,17 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
 #[test]
 fn recycled_buffer_matches_fresh_shape_at_new_width() {
     let text = "recycled cosmic buffers must reshape exactly across a new wrapping width";
-    let base = TestShape {
-        line_height_px: 18.0,
-        max_width_px: Some(180.0),
-        weight: FontWeight::Bold,
-        halign: HAlign::Right,
-        ..shape(15.0)
-    };
+    let base = shape(15.0)
+        .leading(18.0)
+        .width(180.0)
+        .weight(FontWeight::Bold)
+        .halign(HAlign::Right);
     let mut recycled = CosmicMeasure::with_bundled_fonts();
     recycled.measure(text, base);
     recycled.drop_all_buffers();
     assert_eq!(recycled.recycle_pool_stats().len, 1);
 
-    let narrow = TestShape {
-        max_width_px: Some(72.0),
-        ..base
-    };
+    let narrow = base.width(72.0);
     let actual = recycled.measure(text, narrow);
     assert_eq!(
         recycled.recycle_pool_stats().len,
@@ -113,14 +112,10 @@ fn recycle_pool_retention_is_bounded() {
 
     for round in 0..2 {
         for i in 0..pool.limit + 16 {
+            let width = 40.0 + (round * (pool.limit + 16) + i) as f32;
             c.measure(
                 "bounded recycle pool",
-                TestShape {
-                    line_height_px: 18.0,
-                    max_width_px: Some(40.0 + (round * (pool.limit + 16) + i) as f32),
-                    halign: HAlign::Left,
-                    ..shape(14.0)
-                },
+                shape(14.0).leading(18.0).width(width).halign(HAlign::Left),
             );
         }
         c.drop_all_buffers();
@@ -135,21 +130,7 @@ fn recycle_pool_retention_is_bounded() {
 /// per width, all inserted in the current frame.
 fn fill_distinct_widths(c: &mut CosmicMeasure, n: u32) -> Vec<TextShapeKey> {
     (0..n)
-        .map(|i| {
-            c.measure(
-                "hello world",
-                TestShape {
-                    font_size_px: 14.0,
-                    line_height_px: 18.0,
-                    // Distinct width ⇒ distinct cache key ⇒ a fresh insert.
-                    max_width_px: Some(40.0 + i as f32 * 5.0),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Left,
-                },
-            )
-            .key
-        })
+        .map(|i| c.measure(BODY, distinct_width_shape(i)).key)
         .collect()
 }
 
@@ -208,19 +189,12 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
 
     // An encoder ensure is a lookup like any other.
     c.ensure_buffer(TextShapeRequest {
-        text: "hello world",
+        text: BODY,
         key: keys[0],
     });
-    // A layout-side measure of the same key is too.
-    let reshaped = c.measure(
-        "hello world",
-        TestShape {
-            line_height_px: 18.0,
-            max_width_px: Some(40.0 + 5.0),
-            halign: HAlign::Left,
-            ..shape(14.0)
-        },
-    );
+    // A layout-side measure of the same key is too — asked for by index
+    // rather than by re-deriving index 1's width.
+    let reshaped = c.measure(BODY, distinct_width_shape(1));
     assert_eq!(reshaped.key, keys[1], "same parameters, same key");
 
     // One frame past probation: the two untouched keys are gone, the two
@@ -271,7 +245,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
                 "a working-set key must never be evicted",
             );
             c.ensure_buffer(TextShapeRequest {
-                text: "hello world",
+                text: BODY,
                 key: *key,
             });
         }
@@ -284,12 +258,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
         // a progress percentage.
         c.measure(
             &format!("tick {frame}"),
-            TestShape {
-                line_height_px: 18.0,
-                max_width_px: Some(200.0),
-                halign: HAlign::Left,
-                ..shape(14.0)
-            },
+            shape(14.0).leading(18.0).width(200.0).halign(HAlign::Left),
         );
         c.end_frame();
         lens.push(c.cache_len());

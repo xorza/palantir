@@ -18,28 +18,19 @@ fn cache_key_discriminates_every_shaping_axis() {
         ),
         (
             "line height",
-            TestShape {
-                line_height_px: 24.0,
-                ..shape(16.0)
-            },
+            shape(16.0).leading(24.0),
             (|k: TextShapeKey| k.lh_q) as fn(TextShapeKey) -> u32,
             base.lh_q,
         ),
         (
             "family",
-            TestShape {
-                family: FontFamily::Mono,
-                ..shape(16.0)
-            },
+            shape(16.0).family(FontFamily::Mono),
             (|k: TextShapeKey| k.family_q as u32) as fn(TextShapeKey) -> u32,
             base.family_q as u32,
         ),
         (
             "weight",
-            TestShape {
-                weight: FontWeight::Bold,
-                ..shape(16.0)
-            },
+            shape(16.0).weight(FontWeight::Bold),
             (|k: TextShapeKey| k.weight_q as u32) as fn(TextShapeKey) -> u32,
             base.weight_q as u32,
         ),
@@ -106,14 +97,7 @@ fn invalid_metrics_panic_before_any_shaping_dispatch() {
     let mono = TextShaper::test_mono();
     let cosmic = TextShaper::new();
     for (label, font_size_px, line_height_px) in cases {
-        let params = TestShape {
-            font_size_px,
-            line_height_px,
-            max_width_px: None,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-            halign: HAlign::Auto,
-        };
+        let params = shape(font_size_px).leading(line_height_px);
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
             assert!(
@@ -134,21 +118,18 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
     use crate::primitives::approx::EPS;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let widget_id = WidgetId::from_hash("invalid metrics");
-    let calls = shaper.measure_calls();
+    let calls = text.shaper.measure_calls();
 
     let panicked = catch_unwind(AssertUnwindSafe(|| {
         text.shape_run(
             slot(widget_id),
             "hi",
-            TestShape {
-                line_height_px: 16.0,
-                max_width_px: Some(40.0),
-                halign: HAlign::Center,
-                ..shape(EPS * 0.5)
-            },
+            shape(EPS * 0.5)
+                .leading(16.0)
+                .width(40.0)
+                .halign(HAlign::Center),
             TextWrap::Ellipsis,
         )
     }))
@@ -162,7 +143,7 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
         "invalid metrics entered the reuse cache",
     );
     assert_eq!(
-        shaper.measure_calls(),
+        text.shaper.measure_calls(),
         calls,
         "invalid metrics reached a shaping dispatch",
     );
@@ -172,46 +153,28 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
 fn bounded_width_canonicalizes_and_rejects_non_finite_values() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let base = TestShape {
-        line_height_px: 19.2,
-        ..shape(16.0)
-    };
+    let base = shape(16.0).leading(19.2);
     let shaper = TextShaper::new();
     let unbounded = shaper.measure("hi", base);
     assert!(
         unbounded.key.max_width_px().is_none(),
         "None is the unbounded form",
     );
-    let zero = shaper.measure(
-        "hi",
-        TestShape {
-            max_width_px: Some(0.0),
-            ..base
-        },
-    );
+    let zero = shaper.measure("hi", base.width(0.0));
     assert_eq!(
         zero.key.max_width_px(),
         Some(0.0),
         "zero is a valid bounded width",
     );
     // Negative widths (over-constrained layouts) clamp to the zero-width key.
-    let negative = shaper.measure(
-        "hi",
-        TestShape {
-            max_width_px: Some(-1.0),
-            ..base
-        },
-    );
+    let negative = shaper.measure("hi", base.width(-1.0));
     assert_eq!(negative.key, zero.key);
     for (label, width) in [
         ("NaN", f32::NAN),
         ("positive infinity", f32::INFINITY),
         ("negative infinity", f32::NEG_INFINITY),
     ] {
-        let params = TestShape {
-            max_width_px: Some(width),
-            ..base
-        };
+        let params = base.width(width);
         let calls = shaper.measure_calls();
         assert!(
             catch_unwind(AssertUnwindSafe(|| shaper.measure("hi", params))).is_err(),
@@ -240,13 +203,13 @@ fn cache_key_collapses_halign_when_unbounded() {
     // callers don't pay an N-way cache split. With a target it must
     // discriminate, or two alignments share one shaped buffer.
     let mut c = CosmicMeasure::with_bundled_fonts();
-    let key = |c: &mut CosmicMeasure, halign, max_width_px| {
+    let key = |c: &mut CosmicMeasure, halign, max_width_px: Option<f32>| {
+        let base = shape(16.0).halign(halign);
         c.measure(
             "hi",
-            TestShape {
-                halign,
-                max_width_px,
-                ..shape(16.0)
+            match max_width_px {
+                Some(w) => base.width(w),
+                None => base,
             },
         )
         .key
@@ -269,70 +232,36 @@ fn cache_key_collapses_halign_when_unbounded() {
 
 #[test]
 fn bounded_identity_cache_keys_width_and_halign() {
-    let m = TextShaper::new();
-    let mut text = TextSystem::new(m.clone());
+    let mut text = TextSystem::cosmic();
     let wid = WidgetId::from_hash("w");
     let params = shape(16.0);
     text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
-    let baseline = m.measure_calls();
+    let baseline = text.shaper.measure_calls();
 
-    text.shape_run(
-        slot(wid),
-        "hi",
-        TestShape {
-            max_width_px: Some(200.0),
-            halign: HAlign::Left,
-            ..params
-        },
-        TextWrap::Wrap,
-    );
-    let after_left = m.measure_calls();
+    let wrap_at = |text: &mut TextSystem, width, halign| {
+        text.shape_run(
+            slot(wid),
+            "hi",
+            params.width(width).halign(halign),
+            TextWrap::Wrap,
+        );
+        text.shaper.measure_calls()
+    };
+
+    let after_left = wrap_at(&mut text, 200.0, HAlign::Left);
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
-
-    text.shape_run(
-        slot(wid),
-        "hi",
-        TestShape {
-            max_width_px: Some(200.0),
-            halign: HAlign::Left,
-            ..params
-        },
-        TextWrap::Wrap,
-    );
     assert_eq!(
-        m.measure_calls(),
+        wrap_at(&mut text, 200.0, HAlign::Left),
         after_left,
-        "identical wrap call must hit cache"
-    );
-
-    text.shape_run(
-        slot(wid),
-        "hi",
-        TestShape {
-            max_width_px: Some(200.0),
-            halign: HAlign::Right,
-            ..params
-        },
-        TextWrap::Wrap,
+        "identical wrap call must hit cache",
     );
     assert_eq!(
-        m.measure_calls(),
+        wrap_at(&mut text, 200.0, HAlign::Right),
         after_left + 1,
         "halign change at same target must bust wrap reuse",
     );
-
-    text.shape_run(
-        slot(wid),
-        "hi",
-        TestShape {
-            max_width_px: Some(201.0),
-            halign: HAlign::Right,
-            ..params
-        },
-        TextWrap::Wrap,
-    );
     assert_eq!(
-        m.measure_calls(),
+        wrap_at(&mut text, 201.0, HAlign::Right),
         after_left + 2,
         "width change must bust wrap reuse",
     );
@@ -344,18 +273,11 @@ fn bounded_identity_cache_keys_width_and_halign() {
 #[test]
 fn quantized_key_shaping_is_insertion_order_independent() {
     let text = "canonical text wraps onto more than one aligned line";
-    let first = TestShape {
-        line_height_px: 19.201,
-        max_width_px: Some(101.001),
-        halign: HAlign::Right,
-        ..shape(16.001)
-    };
-    let second = TestShape {
-        font_size_px: 16.006,
-        line_height_px: 19.206,
-        max_width_px: Some(101.006),
-        ..first
-    };
+    let first = shape(16.001)
+        .leading(19.201)
+        .width(101.001)
+        .halign(HAlign::Right);
+    let second = first.font_size(16.006).leading(19.206).width(101.006);
 
     let mut first_then_second = CosmicMeasure::with_bundled_fonts();
     let a = first_then_second.measure(text, first);

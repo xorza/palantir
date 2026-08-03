@@ -361,6 +361,14 @@ pub(crate) mod internals {
             Self::new(TextShaper::test_mono())
         }
 
+        /// A system over the real cosmic shaper — the twin of
+        /// [`Self::mono`]. Callers reach the shaper back through
+        /// `self.shaper` rather than holding a second handle, so a test
+        /// needs no `TextShaper::new()` + `clone()` of its own.
+        pub(crate) fn cosmic() -> Self {
+            Self::new(TextShaper::new())
+        }
+
         /// Both entry points against one slot, the way a frame drives them:
         /// the intrinsic pass takes the root, then the measure pass resolves
         /// a width off the row it freshened. Dispatch count is unchanged from

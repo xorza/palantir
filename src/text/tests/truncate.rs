@@ -2,24 +2,14 @@ use super::*;
 
 #[test]
 fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let wid = WidgetId::from_hash("fitting truncate");
-    let fitting = TestShape {
-        max_width_px: Some(200.0),
-        halign: HAlign::Center,
-        ..shape(16.0)
-    };
-    let unbounded_shape = TestShape {
-        max_width_px: None,
-        halign: HAlign::Auto,
-        ..fitting
-    };
+    let fitting = shape(16.0).width(200.0).halign(HAlign::Center);
 
     for (ordinal, wrap) in [(0u16, TextWrap::Truncate), (1, TextWrap::Ellipsis)] {
         let run_slot = slot_at(wid, ordinal);
         let fit = wrap.line_fit().unwrap();
-        let natural = text.shape_run(run_slot, "ok", unbounded_shape, wrap);
+        let natural = text.shape_run(run_slot, "ok", fitting.unbounded(), wrap);
         let calls = text.shaper.measure_calls();
 
         let fitted = text.shape_run(run_slot, "ok", fitting, wrap);
@@ -41,11 +31,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         );
 
         // Over-wide text still resolves through the truncating path.
-        let narrow = TestShape {
-            max_width_px: Some(20.0),
-            ..fitting
-        };
-        let truncated = text.shape_run(run_slot, "wider than twenty", narrow, wrap);
+        let truncated = text.shape_run(run_slot, "wider than twenty", fitting.width(20.0), wrap);
         assert_ne!(truncated.key, truncated.key.unbounded_version());
         assert_eq!(truncated.key.fit_q, fit as u8);
         assert!(truncated.size.w <= 20.0);
@@ -61,74 +47,75 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
     );
     // One line at the 16 px leading `fitting` carries — the collapse is
     // what makes a two-line source measure a single line tall.
-    assert_eq!(multiline.size.h, 16.0);
+    assert_eq!(multiline.size.h, one_line_h(fitting));
 }
 
+/// Both truncating fits cut an over-wide label to one line that fits the
+/// committed width. They differ only in the marker: `Ellipsis` appends
+/// `…` and reserves its advance, `Clip` cuts flush. Everything else — the
+/// overflow precondition, the single-line height, the zero wrap floor,
+/// and keying distinctly from each other and from the wrapped buffer at
+/// the same width — is one contract stated once over both.
+///
+/// Pins "labels never overflow their box", which Button relies on.
 #[test]
-fn cosmic_ellipsis_elides_long_line_to_width() {
-    // A label wider than the committed width truncates to one line that
-    // fits, with a trailing ellipsis. Pins the "labels never overflow
-    // their box" contract the Button relies on.
+fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let long = "Screenshot 2026-05-28 at 01.21.25.png";
-    let w = 120.0;
-    let elided = measure_truncated(
-        &mut c,
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            ..shape(16.0)
-        },
-        LineFit::Ellipsis,
-    );
+    let params = shape(16.0).width(120.0);
+    let w = params.max_width_px.unwrap();
+
     // Precondition: the natural single line genuinely overflows `w`.
-    let full = c.measure(long, shape(16.0));
+    let full = c.measure(long, params.unbounded());
     assert!(
         full.size.w > w,
         "precondition: natural line ({}) must overflow the cap ({w})",
         full.size.w,
     );
-    // Elided result fits the cap (ceil tolerance) and stays one line.
-    assert!(
-        elided.size.w <= w + 1.0,
-        "elided width {} must fit cap {w}",
-        elided.size.w,
-    );
-    assert!(
-        elided.size.h <= (16.0 * LINE_HEIGHT_MULT).ceil() + 0.5,
-        "elided run must be a single line, got h={}",
-        elided.size.h,
-    );
-    assert_eq!(
-        elided.intrinsic_min,
-        Some(0.0),
-        "an elided run has zero min floor"
-    );
-    let zero_width = measure_truncated(
-        &mut c,
-        long,
-        TestShape {
-            max_width_px: Some(0.0),
-            ..shape(16.0)
-        },
-        LineFit::Ellipsis,
-    );
-    assert_eq!(
-        zero_width.size.w, 0.0,
-        "an ellipsis that cannot fit collapses to zero width",
-    );
-    // The elided buffer must not collide with the *wrapped* buffer at the
-    // same width — they hold different strings, so distinct cache keys.
-    let wrapped = c.measure(
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            ..shape(16.0)
-        },
-    );
+
+    let mut keys = Vec::new();
+    for fit in [LineFit::Clip, LineFit::Ellipsis] {
+        let cut = measure_truncated(&mut c, long, params, fit);
+        assert!(
+            cut.size.w <= w,
+            "{fit:?} width {} must fit cap {w}",
+            cut.size.w,
+        );
+        assert_eq!(
+            cut.size.h,
+            one_line_h(params),
+            "{fit:?} must measure exactly one line",
+        );
+        assert_eq!(
+            cut.intrinsic_min,
+            Some(0.0),
+            "{fit:?} shrinks to nothing, so its floor is zero",
+        );
+        assert_eq!(cut.key.fit_q, fit as u8);
+        assert_eq!(
+            cut.key.text_hash, full.key.text_hash,
+            "{fit:?}: bounded keys reuse the source text hash",
+        );
+
+        // An ellipsis that cannot fit its own marker collapses to nothing;
+        // a clip has no marker to reserve and does the same at zero width.
+        let zero = measure_truncated(&mut c, long, params.width(0.0), fit);
+        assert_eq!(
+            zero.size.w, 0.0,
+            "{fit:?} at zero width must collapse to zero",
+        );
+        keys.push(cut.key);
+    }
+
+    // Clip, ellipsis, and wrap bake three different strings at the same
+    // width, so all three must key distinct cache slots.
+    let wrapped = c.measure(long, params);
+    assert_eq!(wrapped.key.fit_q, LineFit::Wrap as u8);
+    assert_ne!(keys[0], keys[1], "clip and ellipsis must key distinctly");
+    assert_ne!(keys[0], wrapped.key, "clip and wrap must key distinctly");
     assert_ne!(
-        elided.key, wrapped.key,
-        "elision and wrap must key distinct cache slots at the same width",
+        keys[1], wrapped.key,
+        "ellipsis and wrap must key distinctly"
     );
 }
 
@@ -238,7 +225,14 @@ fn ellipsis_never_measures_wider_than_its_budget() {
     // form once it lands at a word end (Arabic medial → final). Both resolve
     // through fonts this crate does not bundle, so the bound — never an exact
     // width — is what holds on every machine.
+    //
+    // One measurer across every combination, not one per: the cache is
+    // keyed by everything that affects shaping, and
+    // `truncation_from_cached_unbounded_is_order_independent` pins that
+    // prior contents cannot change a result. Sharing it also exercises
+    // that, and spares 15 system-font scans.
     let base = shape(16.0);
+    let mut c = CosmicMeasure::with_bundled_fonts();
     for text in [
         "flag \u{1f1fa}\u{1f1f8} emoji \u{1f600} run",
         "\u{1f469}\u{200d}\u{1f469}\u{200d}\u{1f467} family emoji",
@@ -247,19 +241,9 @@ fn ellipsis_never_measures_wider_than_its_budget() {
     ] {
         for family in [FontFamily::Sans, FontFamily::Mono] {
             for fit in [LineFit::Clip, LineFit::Ellipsis] {
-                let mut c = CosmicMeasure::with_bundled_fonts();
                 for width_px in 0..=160 {
                     let width = width_px as f32;
-                    let m = measure_truncated(
-                        &mut c,
-                        text,
-                        TestShape {
-                            max_width_px: Some(width),
-                            family,
-                            ..base
-                        },
-                        fit,
-                    );
+                    let m = measure_truncated(&mut c, text, base.family(family).width(width), fit);
                     // Widths are whole pixels and `size.w` is ceil'd, so a
                     // run that fits its budget cannot round past it.
                     assert!(
@@ -282,17 +266,9 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let unbounded = shape(16.0);
     let elide = |c: &mut CosmicMeasure, text: &str, width: f32| {
-        measure_truncated(
-            c,
-            text,
-            TestShape {
-                max_width_px: Some(width),
-                ..unbounded
-            },
-            LineFit::Ellipsis,
-        )
-        .size
-        .w
+        measure_truncated(c, text, unbounded.width(width), LineFit::Ellipsis)
+            .size
+            .w
     };
 
     let rtl = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
@@ -330,139 +306,34 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     );
 }
 
+/// A label that already fits its cap is shaped whole — no spurious
+/// ellipsis, and the extent is the natural one *exactly*. Exact, not
+/// approximate: the fitting path reshapes the identical string through
+/// the same measurer, so a pixel of drift means truncation fired when it
+/// should not have and dropped a glyph.
+///
+/// The halign row is the regression that motivated it: a `Center`-aligned
+/// label in a 400 px cap once measured ~half the box wide, because the
+/// shaped buffer baked in the width and the per-line align that the
+/// encoder applies again.
 #[test]
-fn cosmic_ellipsis_short_text_not_truncated() {
-    // A label that already fits the cap is shaped whole — no spurious
-    // ellipsis, width matches the natural measurement.
+fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
     let mut c = CosmicMeasure::with_bundled_fonts();
-    let short = "ok";
-    let natural = c.measure(short, shape(16.0));
-    let elided = measure_truncated(
-        &mut c,
-        short,
-        TestShape {
-            max_width_px: Some(200.0),
-            ..shape(16.0)
-        },
-        LineFit::Ellipsis,
-    );
-    assert!(
-        (elided.size.w - natural.size.w).abs() <= 2.0,
-        "short text must not truncate: elided {} vs natural {}",
-        elided.size.w,
-        natural.size.w,
-    );
-}
-
-#[test]
-fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
-    // Regression: a single-line label that fits a wide cap must measure to
-    // its natural glyph width, not inflate toward the box, even with a
-    // non-`Auto` halign (the encoder positions the line; the shaped buffer
-    // must not bake in width + per-line align). A `Center`-aligned label in
-    // a 400 px cap previously measured ~half the box wide.
-    let mut c = CosmicMeasure::with_bundled_fonts();
-    let label = "File";
-    let cap = 400.0;
-    let natural = c.measure(label, shape(16.0));
-    for fit in [false, true] {
-        let m = measure_truncated(
-            &mut c,
-            label,
-            TestShape {
-                max_width_px: Some(cap),
-                halign: HAlign::Center,
-                ..shape(16.0)
-            },
-            if fit {
-                LineFit::Ellipsis
-            } else {
-                LineFit::Clip
-            },
-        );
-        assert!(
-            (m.size.w - natural.size.w).abs() <= 2.0,
-            "centered fitting label must measure natural width ({}), got {} (with_ellipsis={fit})",
-            natural.size.w,
-            m.size.w,
-        );
+    for (label, text, cap, halign) in [
+        ("short label", "ok", 200.0, HAlign::Auto),
+        ("centered in a wide cap", "File", 400.0, HAlign::Center),
+        ("right-aligned in a wide cap", "File", 400.0, HAlign::Right),
+    ] {
+        let params = shape(16.0).width(cap).halign(halign);
+        let natural = c.measure(text, params.unbounded());
+        for fit in [LineFit::Clip, LineFit::Ellipsis] {
+            let fitted = measure_truncated(&mut c, text, params, fit);
+            assert_eq!(
+                fitted.size, natural.size,
+                "{label} ({fit:?}) must measure its natural extent",
+            );
+        }
     }
-}
-
-#[test]
-fn cosmic_singleline_clips_to_width_without_ellipsis() {
-    // The default `SingleLine` mode (clip, no marker) cuts an over-wide
-    // label to fit the cap on one line — like the ellipsis path but with no
-    // trailing `…`, and reserving no room for one. Distinct cache slot from
-    // both the wrapped and the ellipsized buffers at the same width.
-    let mut c = CosmicMeasure::with_bundled_fonts();
-    let long = "Screenshot 2026-05-28 at 01.21.25.png";
-    let w = 120.0;
-    let full = c.measure(long, shape(16.0));
-    assert!(
-        full.size.w > w,
-        "precondition: natural line ({}) must overflow the cap ({w})",
-        full.size.w,
-    );
-    let clipped = measure_truncated(
-        &mut c,
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            ..shape(16.0)
-        },
-        LineFit::Clip,
-    );
-    assert!(
-        clipped.size.w <= w + 1.0,
-        "clipped width {} must fit cap {w}",
-        clipped.size.w,
-    );
-    assert!(
-        clipped.size.h <= (16.0 * LINE_HEIGHT_MULT).ceil() + 0.5,
-        "clipped run must be a single line, got h={}",
-        clipped.size.h,
-    );
-    assert_eq!(
-        clipped.intrinsic_min,
-        Some(0.0),
-        "a clipped run has zero min floor"
-    );
-    // Clip and ellipsis cut to the same cap but bake different strings (the
-    // ellipsis path appends `…` and reserves its width), so they must key
-    // distinct cache slots.
-    let elided = measure_truncated(
-        &mut c,
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            ..shape(16.0)
-        },
-        LineFit::Ellipsis,
-    );
-    // Clip, ellipsis, and wrap each bake a distinct buffer at the same width.
-    let wrapped = c.measure(
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            ..shape(16.0)
-        },
-    );
-    assert_ne!(
-        clipped.key, elided.key,
-        "clip and ellipsis must key distinctly"
-    );
-    assert_ne!(
-        clipped.key, wrapped.key,
-        "clip and wrap must key distinctly"
-    );
-    assert_eq!(
-        clipped.key.text_hash, full.key.text_hash,
-        "bounded keys reuse the source text hash",
-    );
-    assert_eq!(clipped.key.fit_q, LineFit::Clip as u8);
-    assert_eq!(elided.key.fit_q, LineFit::Ellipsis as u8);
-    assert_eq!(wrapped.key.fit_q, LineFit::Wrap as u8);
 }
 
 #[test]
@@ -471,8 +342,10 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     // reports zero min-content (shrinks to the ellipsis); the wrap
     // counterpart instead grows height and keeps the longest-word floor.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
-    let w = 40.0;
-    let elided = mono_shape(long, 16.0, 16.0, Some(w), LineFit::Ellipsis);
+    let params = shape(16.0).width(40.0);
+    let w = params.max_width_px.unwrap();
+
+    let elided = mono_shape(long, params, LineFit::Ellipsis);
     assert_eq!(elided.size.w, w, "elided mono caps at the width");
     assert_eq!(elided.size.h, 16.0, "elided mono is one line");
     assert_eq!(
@@ -480,7 +353,8 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
         Some(0.0),
         "elided mono has zero floor"
     );
-    let wrapped = mono_shape(long, 16.0, 16.0, Some(w), LineFit::Wrap);
+
+    let wrapped = mono_shape(long, params, LineFit::Wrap);
     assert!(wrapped.size.h > 16.0, "wrap grows height across lines");
     assert!(
         wrapped.wrap_floor() > 0.0,
@@ -494,20 +368,11 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
 #[test]
 fn truncation_from_cached_unbounded_is_order_independent() {
     let long = "the quick brown fox jumps over the lazy dog";
-    let (fs, w) = (14.0, 80.0);
+    let target = shape(14.0).width(80.0).halign(HAlign::Left);
 
     // Fresh measurer: only the target measurement.
     let mut fresh = CosmicMeasure::with_bundled_fonts();
-    let r_fresh = measure_truncated(
-        &mut fresh,
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            halign: HAlign::Left,
-            ..shape(fs)
-        },
-        LineFit::Ellipsis,
-    );
+    let r_fresh = truncate(&mut fresh, long, target, LineFit::Ellipsis);
 
     // Reused measurer: populate unrelated unbounded, truncated, and ellipsis
     // cache entries first, then measure the identical target.
@@ -515,63 +380,41 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     measure_truncated(
         &mut reused,
         "a considerably longer string that grows the probe buffer capacity",
-        TestShape {
-            max_width_px: Some(220.0),
-            family: FontFamily::Mono,
-            halign: HAlign::Left,
-            ..shape(20.0)
-        },
+        shape(20.0)
+            .width(220.0)
+            .family(FontFamily::Mono)
+            .halign(HAlign::Left),
         LineFit::Ellipsis,
     );
     measure_truncated(
         &mut reused,
         "short",
-        TestShape {
-            max_width_px: Some(30.0),
-            halign: HAlign::Left,
-            ..shape(10.0)
-        },
+        shape(10.0).width(30.0).halign(HAlign::Left),
         LineFit::Clip,
     );
-    let r_reused = measure_truncated(
-        &mut reused,
-        long,
-        TestShape {
-            max_width_px: Some(w),
-            halign: HAlign::Left,
-            ..shape(fs)
-        },
-        LineFit::Ellipsis,
-    );
+    let r_reused = measure_truncated(&mut reused, long, target, LineFit::Ellipsis);
 
     assert_eq!(
-        r_fresh.size, r_reused.size,
+        r_fresh.fitted.size, r_reused.size,
         "unrelated cached buffers changed the measured size",
     );
     assert_eq!(
-        r_fresh.key, r_reused.key,
+        r_fresh.fitted.key, r_reused.key,
         "same inputs must map to the same cache key regardless of prior shaping",
     );
 
     // Truncation actually fired: the ellipsized line is narrower than the
     // full unbounded shape (and fits within the width budget).
-    let unbounded = fresh.measure(
-        long,
-        TestShape {
-            halign: HAlign::Left,
-            ..shape(fs)
-        },
-    );
     assert!(
-        r_fresh.size.w < unbounded.size.w,
+        r_fresh.fitted.size.w < r_fresh.unbounded.size.w,
         "expected truncation: ellipsized {} should be < unbounded {}",
-        r_fresh.size.w,
-        unbounded.size.w,
+        r_fresh.fitted.size.w,
+        r_fresh.unbounded.size.w,
     );
     assert!(
-        r_fresh.size.w <= w + 1.0,
-        "ellipsized width {} should fit within budget {w}",
-        r_fresh.size.w,
+        r_fresh.fitted.size.w <= 80.0,
+        "ellipsized width {} should fit within budget 80",
+        r_fresh.fitted.size.w,
     );
 }
 
@@ -590,11 +433,7 @@ fn ellipsis_stays_within_budget_under_size_churn() {
         let r = measure_truncated(
             &mut c,
             long,
-            TestShape {
-                max_width_px: Some(width),
-                halign: HAlign::Left,
-                ..shape(fs)
-            },
+            shape(fs).width(width).halign(HAlign::Left),
             LineFit::Ellipsis,
         );
         assert!(
@@ -617,16 +456,13 @@ fn ellipsis_stays_within_budget_under_size_churn() {
 fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let text = "first paragraph here\nsecond paragraph";
-    let params = TestShape {
-        max_width_px: Some(90.0),
-        ..shape(16.0)
-    };
-    let one_line = 16.0_f32;
+    let params = shape(16.0).width(90.0);
 
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
         let r = measure_truncated(&mut c, text, params, fit);
         assert_eq!(
-            r.size.h, one_line,
+            r.size.h,
+            one_line_h(params),
             "{fit:?} must measure one line, got h={}",
             r.size.h,
         );
@@ -652,7 +488,7 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     // The contrast: wrapping the same text keeps both paragraphs.
     let wrapped = c.measure(text, params);
     assert!(
-        wrapped.size.h > one_line * 2.0,
+        wrapped.size.h > one_line_h(params) * 2.0,
         "premise: wrapped keeps every line, got h={}",
         wrapped.size.h,
     );
