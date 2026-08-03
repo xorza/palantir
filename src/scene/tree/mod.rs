@@ -2,10 +2,13 @@
 //! (`bounds`/`panel`/`chrome`), flat shape buffer,
 //! and the subtree-rollup hashes used by cross-frame caches.
 //!
-//! ## Noop policy
+//! ## Noop filtering at this tier
 //!
-//! Tree storage is the canonical gate for "is this worth keeping
-//! around?" Two sites enforce it, both single-site for their column:
+//! Tier 2 of the pipeline's noop policy — see
+//! [`paint_sink`](crate::renderer::frontend::paint_sink) for the policy
+//! itself and why the tiers aren't redundant. Storage answers "is this
+//! worth keeping around?", an optimization; correctness is tier 3's.
+//! Two sites enforce it here, each single-site for its column:
 //!
 //! - `Shapes::add` drops shapes whose authoring inputs would emit no
 //!   pixels (`Shape::is_noop` covers every variant). Saves per-shape
@@ -17,10 +20,8 @@
 //!   tight.
 //!
 //! Partial-noop chrome (e.g. shadow-only) survives storage and is
-//! dropped per-emit by `PaintSink::draw_*`'s gates. Together with
-//! the authoring filter at `Shapes::add` and the emit-time gates on
-//! `PaintSink`, every layer has exactly one canonical noop site,
-//! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
+//! dropped per-emit downstream, which is why `Ui::add_shape` and the
+//! encoder branches stay gate-free pass-throughs.
 
 use crate::ClipMode;
 use crate::common::content_hash::ContentHash;

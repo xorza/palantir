@@ -123,11 +123,11 @@ impl std::fmt::Debug for Ui {
 /// The widget- and host-facing authoring API: input feed, watches,
 /// repaint/relayout requests, shape recording, per-widget state, and
 /// animation, plus the crate-facing handles a host needs
-/// (construction, [`Self::frame`], [`Self::frame_scene`]).
+/// (construction, `Self::frame`, `Self::frame_scene`).
 ///
 /// The frame lifecycle those handles start — record / measure /
 /// arrange / cascade / finalize, and the resets between them — is
-/// [`FrameCycle`]'s, and user code never reaches it.
+/// `FrameCycle`'s, and user code never reaches it.
 impl Ui {
     pub(crate) fn frame_scene(&self) -> FrameScene<'_> {
         FrameScene {
@@ -851,7 +851,7 @@ impl Ui {
     }
 
     /// This frame's monotonic index among the frames that reached the
-    /// screen, bumped once per [`Self::frame`] before either record pass —
+    /// screen, bumped once per `Self::frame` before either record pass —
     /// so both passes of one frame observe the same value.
     ///
     /// For code measuring what the display saw. It counts paint-only frames

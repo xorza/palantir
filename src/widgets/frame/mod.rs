@@ -6,8 +6,8 @@ use crate::widgets::response::Response;
 /// A simple decorated rectangle: optional background / size / margin
 /// plus an optional `Sense`. Used directly for dividers / hit-areas /
 /// bg swatches. Chrome + clip behavior come from
-/// [`Self::background`] / [`Configure::clip_rect`] /
-/// [`Configure::clip_rounded`].
+/// [`Self::background`] / [`Configure::clip_rect`](crate::Configure::clip_rect) /
+/// [`Configure::clip_rounded`](crate::Configure::clip_rounded).
 #[derive(Debug)]
 pub struct Frame {
     node: Node,

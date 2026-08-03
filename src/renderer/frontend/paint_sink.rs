@@ -11,29 +11,47 @@
 //! consumes. **Provided** methods are the encoder-facing surface: they
 //! own the no-op gates and the brush/stroke lowering, then call down.
 //! Keeping that half here rather than in either sink is what keeps the
-//! no-op policy single-copy — it can't drift between the two sinks
-//! because there is only one copy of it. It is not *unbypassable*: the
-//! required half is crate-visible, so `sink.rect(payload)` compiles
-//! anywhere and skips the gate. `RecordedPaint::replay` is the one
-//! place that does so, and only because its input already passed.
+//! gate single-copy — it can't drift between the two sinks because
+//! there is only one copy of it.
 //!
 //! ## Noop policy
 //!
-//! Every `draw_*` early-returns when its inputs would emit no visible
-//! pixels (transparent fill color, no-op stroke, no-op shadow tint).
-//! **The provided half is the single canonical gate** — callers
-//! don't need to pre-check, and the encoder doesn't gate per branch.
-//! Upstream filters (`Shape::is_noop` at `Ui::add_shape`,
-//! whole-`Background::is_noop` at `Tree::open_node`) are performance
-//! optimizations that skip expensive lowering (text shaping, payload
-//! staging) or sparse-column writes, not correctness gates.
+//! **The canonical statement of the tier policy — the whole pipeline's,
+//! not just this module's.** Other tiers point here rather than restate
+//! it; what they document locally is which *values* they consider
+//! invisible, never the policy.
+//!
+//! `is_noop` appears at three tiers, and they are not redundant with
+//! each other — each answers a different question at a point where the
+//! others cannot:
+//!
+//! 1. **Primitives** (`Color`, `Stroke`, `Shadow`, `Brush`,
+//!    `TranslateScale`, …) answer "is this *value* invisible". They are
+//!    the vocabulary the other two tiers are written in.
+//! 2. **Authoring shapes** (`Shape::is_noop`, at `Shapes::add`) compose
+//!    those to skip *lowering* — text shaping, payload staging, mesh
+//!    hashing. A payload-level gate cannot do this job: by the time a
+//!    payload exists, the work being skipped has already happened.
+//!    `Background::is_noop` at `Tree::open_node` is the same tier for
+//!    chrome, skipping a sparse-column write.
+//! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from this
+//!    trait's provided half) are the **single correctness gate**.
+//!    Callers don't pre-check and the encoder doesn't gate per branch;
+//!    everything funnels here.
+//!
+//! So tier 2 is an optimization and tier 3 is correctness — a shape
+//! that slips past tier 2 still paints nothing, but pays for lowering.
+//! The gate is not *unbypassable*: the required half is crate-visible,
+//! so `sink.rect(payload)` compiles anywhere and skips it.
+//! `RecordedPaint::replay` is the one place that does, and only because
+//! its input already passed.
 //!
 //! Exception: [`PaintSink::draw_polyline`] doesn't gate on colour. Its
 //! colors live in spans (`PerSegment` can mix one solid stop with N
 //! transparent), and an O(n) read on every emit would dominate the
 //! per-call cost. Colour noops are caught by `Shape::Polyline::is_noop`
-//! at the authoring boundary instead; the payload's own `is_noop` still
-//! gates degenerate geometry (point count / width).
+//! at tier 2 instead; the payload's own `is_noop` still gates
+//! degenerate geometry (point count / width).
 //!
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
