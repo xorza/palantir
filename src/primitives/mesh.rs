@@ -269,18 +269,15 @@ fn checked_rebased_index(base: u32, index: u32) -> u32 {
         .expect("appended mesh index exceeds u32 range")
 }
 
-// Sister inline loops in `forest/shapes/lower.rs` — `polyline` /
-// `curve_inner` — fuse this AABB-of-points pattern with their copy
-// pass — don't "DRY" them into a shared helper, the fusion is the win.
+// This used to warn against sharing the fold with the sister loops in
+// `scene/shapes/lower.rs`, on the grounds that fusing the AABB pass into
+// the copy pass was the win. Measured, it is the opposite: splitting
+// them is ~3x faster past a handful of points, because each half then
+// gets to be the fast version of itself — the fold vectorizes when
+// nothing else shares the loop body, and the copy becomes one `memcpy`
+// instead of per-point `push`es. Hence the shared `Aabb`.
 fn compute_aabb(verts: &[MeshVertex]) -> Rect {
-    let Some((first, rest)) = verts.split_first() else {
-        return Rect::ZERO;
-    };
-    let mut bounds = Aabb::new(first.pos);
-    for v in rest {
-        bounds.push(v.pos);
-    }
-    bounds.finish()
+    Aabb::of_iter(verts.iter().map(|v| v.pos))
 }
 
 /// Vertex colours are `ColorU8`, so positions are the only place a mesh
