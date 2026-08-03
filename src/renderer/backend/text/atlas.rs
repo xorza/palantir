@@ -243,7 +243,7 @@ impl GlyphAtlas {
             cache: FxHashMap::default(),
             free: Vec::new(),
             current_frame: 0,
-            unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 1),
+            unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 2),
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
             probe: AtlasProbe::default(),

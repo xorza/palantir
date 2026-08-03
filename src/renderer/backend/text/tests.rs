@@ -339,14 +339,20 @@ mod gpu_regression {
             backend.encoder.cache.map[&stable_key].span, stable_span,
             "a disjoint run must retain its encoded span",
         );
+        // The rebuild is proven by the generation below, not by where
+        // the row landed: dropping the stale row frees its block, and
+        // the re-encode is the same length, so it reclaims that very
+        // block. Asserting *that* is the stronger statement — an
+        // invalidation must not cost arena growth.
         let replacement = backend.encoder.cache.map[&invalidated_key].span;
-        assert_ne!(
+        assert_eq!(
             replacement, invalidated_span,
-            "the run referencing the changed slot must be rebuilt",
+            "the rebuilt run must reclaim the block its stale template freed",
         );
         assert_eq!(
-            replacement.start, arena_before as u32,
-            "the rebuilt run must append one replacement span",
+            backend.encoder.cache.arena.len(),
+            arena_before,
+            "a slot invalidation must not grow the arena",
         );
         assert_eq!(
             backend.encoder.cache.arena[replacement.range()][1].generation,
@@ -523,7 +529,15 @@ mod gpu_regression {
         );
         assert_eq!(backend.encoder.instances.len(), 9);
         assert_eq!(backend.encoder.cache.map.len(), 1);
-        assert_eq!(backend.encoder.cache.arena.len(), 9);
+        let cached = backend.encoder.cache.map.values().next().unwrap().span;
+        assert_eq!(
+            cached.len, 9,
+            "the whole run is cached, not a culled prefix"
+        );
+        // Blocks round up to `BLOCK_GRANULE`, so nine glyphs occupy a
+        // twelve-slot block. The row's own length is the invariant here;
+        // the arena length is the allocator's business.
+        assert_eq!(backend.encoder.cache.arena.len(), 12);
         backend.tick_frame();
 
         // Frame 4 replays the cached template: same 9 instances with
@@ -540,7 +554,7 @@ mod gpu_regression {
         assert_eq!(backend.encoder.cache.map.len(), 1);
         assert_eq!(
             backend.encoder.cache.arena.len(),
-            9,
+            12,
             "a hit must not re-encode"
         );
     }

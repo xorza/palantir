@@ -59,30 +59,40 @@ pub(crate) mod wrap;
 /// Single source — `composer::TEXT_SCALE_STEP` re-exports this value.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
-/// Frames a *rendered* run's cached artifacts survive untouched: the
-/// shaped buffer ([`cosmic::PROTECTED_KEEP_FRAMES`]) and the glyph
-/// template the backend encodes from it
-/// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`).
+/// Frames a *rendered* run's shaped buffer survives untouched — the
+/// protected tier of the shaped-buffer cache
+/// ([`cosmic::PROTECTED_KEEP_FRAMES`]), and the ceiling the backend's
+/// glyph-template window
+/// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
+/// stay under.
 ///
-/// One value rather than two, because the two windows are not
-/// independent. The encoded cache is what generates the render-side
-/// buffer lookups, so a buffer whose window expired first would be
-/// silently restored from source on a hit the encoder had already
-/// counted as free — the retention would still be *correct*, just
-/// quietly paying to reshape. Deriving both from here is what keeps
-/// that from drifting apart in a later edit to one of them.
+/// The two windows are not independent, but the relation between them
+/// is an **ordering, not an equality**. The encoded cache is what
+/// generates the render-side buffer lookups, so a buffer whose window
+/// expired first would be silently restored from source on a miss the
+/// encoder had already counted as cheap — still *correct*, just quietly
+/// paying to reshape. Everything that matters is preserved by keeping
+/// the buffer window the longer one; the encoded side is free to sit
+/// below it, and does, because its window doubles as its population
+/// multiplier. The `const _` assertion beside that constant is the
+/// tripwire.
 ///
-/// **A shared constant is only half of that, and for a while it was the
-/// only half.** Each cache also counted its own frames, off different
-/// events: this side ticked on the record path (`FullRecord` frames
-/// only), the encoder's on the submit path — which additionally runs
-/// for `PaintOnly` frames and used to skip any frame that prepared no
-/// text batch. Equal numbers over unequal clocks, so a recorded frame
-/// that drew no text aged buffers and not encoded entries, and the
-/// ordering this constant exists to guarantee simply did not hold.
-/// Both now read one clock — see
+/// **Comparable numbers are only half of an ordering.** Each cache also
+/// counts frames, and they used to count off different events: this side
+/// ticked on the record path (`FullRecord` frames only), the encoder's
+/// on the submit path — which additionally runs for `PaintOnly` frames
+/// and used to skip any frame that prepared no text batch. Two windows
+/// over unequal clocks, so a recorded frame that drew no text aged
+/// buffers and not encoded entries, and the ordering simply did not
+/// hold. Both now read one clock — see
 /// [`ShaperInner::frame`](shaper::ShaperInner) — which is what makes
-/// the equality mean something.
+/// comparing the two windows mean anything at all.
+///
+/// The two were also one *value* for a while, on the reasoning that a
+/// shared constant is what stops them drifting apart. That conflated
+/// "cannot cross" with "must match", and matching cost the encoded cache
+/// four times the resident rows it needed — the shaped side has a
+/// probation tier to shed gesture churn, and the encoded side has none.
 ///
 /// Lives here rather than with either cache because `renderer` depends
 /// on `text` and not the reverse, so this is the only spot both can
