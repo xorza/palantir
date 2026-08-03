@@ -16,7 +16,7 @@
 //! lends a `RefMut<CosmicMeasure>` whose
 //! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`]
 //! translate shaped buffers into palantir-native placements and bitmaps;
-//! `text/mod.rs` documents why there's no `TextMeasure` trait.
+//! [`crate::text`] documents why there's no `TextMeasure` trait.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
 //! text rather than storing the full string), but at typical UI scales the
@@ -31,8 +31,10 @@ use crate::text::key::TextShapeKey;
 use crate::text::render::{
     GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
 };
+use crate::text::request::TextShapeRequest;
+use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
-use crate::text::{FontFamily, FontWeight, TextRoot, TextShapeRequest};
+use crate::text::{FontFamily, FontWeight};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     SwashCache, SwashContent, Weight, fontdb,
@@ -1040,6 +1042,8 @@ fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
 mod internals {
     #![allow(dead_code)]
     use super::*;
+    use crate::text::request::internals::TestShape;
+    use crate::text::root::internals::TestMeasure;
 
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) struct RecyclePoolStats {
@@ -1049,6 +1053,43 @@ mod internals {
     }
 
     impl CosmicMeasure {
+        pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TestMeasure {
+            self.measure_with_fit_key(shape.request(text, LineFit::Wrap))
+        }
+
+        /// Shape `request` and pair the result with the key it shaped
+        /// under — invalid for empty text, which mints no buffer.
+        fn measure_with_fit_key(&mut self, request: TextShapeRequest<'_>) -> TestMeasure {
+            let key = if request.text.is_empty() {
+                TextShapeKey::INVALID
+            } else {
+                request.key
+            };
+            // The wrap-floor tests measure through this helper, so it
+            // asks for the floor on every root it shapes — but the floor
+            // is an unbounded-root property, so a bounded request skips
+            // it exactly as production does.
+            let floor = match request.key.max_width_px() {
+                Some(_) => WrapFloor::Skip,
+                None => WrapFloor::Scan,
+            };
+            TestMeasure::new(self.shape(request, floor), key)
+        }
+
+        /// Truncating-fit measure. Named apart from the production
+        /// `measure_truncated` — inherent methods can't share a name.
+        pub(crate) fn measure_with_fit(
+            &mut self,
+            text: &str,
+            shape: TestShape,
+            fit: LineFit,
+            unbounded_key: TextShapeKey,
+        ) -> TestMeasure {
+            let request = shape.request(text, fit);
+            debug_assert_eq!(request.key.unbounded_version(), unbounded_key);
+            self.measure_with_fit_key(request)
+        }
+
         /// Number of shaped buffers currently cached. Reach-in for the
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {

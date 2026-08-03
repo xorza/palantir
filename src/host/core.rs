@@ -23,7 +23,7 @@ use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
 use crate::renderer::frontend::Frontend;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use crate::window::WindowToken;
 
 #[derive(Debug)]

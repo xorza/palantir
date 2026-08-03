@@ -38,8 +38,8 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
-use crate::text::TextShaper;
 use crate::text::render::RunPlacement;
+use crate::text::shaper::TextShaper;
 
 use encode::{TextEncoder, encode_key_for};
 

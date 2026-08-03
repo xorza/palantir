@@ -165,7 +165,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::seen_ids::Endpoint;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame::{FrameInput, FrameStamp};
 use crate::ui::frame_report::FrameReport;

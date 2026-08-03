@@ -343,8 +343,8 @@ fn selection_rects_offset_matches_text() {
 /// relative to the widest one — never as an offset of the block itself,
 /// which would be the same alignment applied twice.
 mod per_line {
-    use crate::text::TextShaper;
-    use crate::text::internals::TestShape;
+    use crate::text::request::internals::TestShape;
+    use crate::text::shaper::TextShaper;
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};

@@ -40,7 +40,7 @@ use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::primitives::approx::EPS;
 use crate::renderer::backend::BackendConfig;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::window::WindowToken;
 

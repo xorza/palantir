@@ -662,7 +662,7 @@ fn text_reuse_evicts_disappeared_widgets() {
 #[test]
 fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     use crate::layout::types::sizing::Sizing;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
 
     fn text_window(ui: &mut Ui, content: &'static str, width: f32) {
         Panel::vstack()
@@ -734,7 +734,8 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::scene::node::Node;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
-    use crate::text::{FontFamily, FontWeight, TextShaper};
+    use crate::text::shaper::TextShaper;
+    use crate::text::{FontFamily, FontWeight};
     use crate::ui::frame_report::FrameProcessing;
 
     const HALF: Duration = Duration::from_millis(500);
@@ -1659,7 +1660,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::shape::Shape;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
     use std::collections::HashSet;
 

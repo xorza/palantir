@@ -1,22 +1,25 @@
 //! Read-only geometry over one shaped text layout: caret placement,
-//! pixel hit-testing, and selection rects. Consumed by `TextEdit` —
-//! never by the shaping hot path. Placing a measured block inside its
-//! leaf rect is plain box alignment with no text state, so it lives with
-//! `Align` as [`crate::layout::types::align::align_in_rect`].
+//! pixel hit-testing, and selection rects. Reached by widgets through
+//! [`TextProbe`](crate::text::probe::TextProbe) — never by the shaping
+//! hot path. Placing a measured block inside its leaf rect is plain box
+//! alignment with no text state, so it lives with `Align` as
+//! [`crate::layout::types::align::align_in_rect`].
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::text::cosmic::ShapedRun;
 use crate::text::mono;
-use crate::text::{ShaperInner, TextShapeRequest};
+use crate::text::request::TextShapeRequest;
+use crate::text::shaper::ShaperInner;
 use std::cell::RefMut;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// One shaped text layout leased for read-only geometry queries,
-/// minted by `TextShaper::layout`. Holds the shaper's exclusive
-/// `RefCell` borrow until dropped — re-entering the shaper while a
-/// probe is alive is a logic error the `RefCell` catches at runtime.
+/// minted by [`TextShaper::layout`](crate::text::shaper::TextShaper).
+/// Holds the shaper's exclusive `RefCell` borrow until dropped —
+/// re-entering the shaper while a probe is alive is a logic error the
+/// `RefCell` catches at runtime.
 #[derive(Debug)]
 pub(crate) struct TextLayoutProbe<'s, 't> {
     /// Extent of the shaped run. `Size::ZERO` for empty text.
@@ -284,7 +287,7 @@ pub(super) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
 
 #[cfg(test)]
 mod internals {
-    use crate::text::probe::TextLayoutProbe;
+    use crate::text::layout_probe::TextLayoutProbe;
 
     impl TextLayoutProbe<'_, '_> {
         /// Raw shaped buffer, reach-in for the in-tree cross-checks

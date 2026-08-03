@@ -25,7 +25,7 @@ use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::{Bootstrap, native};
 use crate::renderer::backend::BackendConfig;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use crate::window::{WindowCommands, WindowConfig, WindowToken};
 
 pub(super) struct WinitRuntime<T> {

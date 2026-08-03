@@ -23,7 +23,7 @@ use crate::scene::node::columns::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::RootSlot;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use crate::text::system::TextSystem;
 
 /// Per-frame intermediate state: every field is reset / overwritten at

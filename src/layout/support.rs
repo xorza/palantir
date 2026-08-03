@@ -18,8 +18,9 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::record::NodeId;
 use crate::text::key::TextShapeKey;
+use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight, TextShapeRequest};
+use crate::text::{FontFamily, FontWeight};
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`] and [`container_text_shapes`]; named so the fields

@@ -2,7 +2,7 @@
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::urect::URect;
-use crate::text::key::ShapedTextRef;
+use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
 
 /// One shaped text run placed in physical-px space. The backend resolves

@@ -28,11 +28,11 @@
 use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::renderer::render_buffer::text::TextDrawRow;
-use crate::text::TextShapeRequest;
 use crate::text::key::TextShapeKey;
 use crate::text::render::{
     self, GlyphImageKind, GlyphRasterKey, PlacedGlyph, RunPlacement, TextRenderSession,
 };
+use crate::text::request::TextShapeRequest;
 use rustc_hash::FxHashMap;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};

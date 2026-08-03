@@ -19,7 +19,7 @@ use crate::primitives::{
 };
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::key::ShapedTextRef;
+use crate::text::shaped_ref::ShapedTextRef;
 
 /// Physical gradient identity resolved for this encode pass.
 #[derive(Clone, Copy, Debug, PartialEq)]

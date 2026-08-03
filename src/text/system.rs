@@ -35,8 +35,10 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::key::TextShapeKey;
+use crate::text::request::TextShapeRequest;
+use crate::text::root::TextRoot;
+use crate::text::shaper::TextShaper;
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
-use crate::text::{TextRoot, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Both entry points take the run's *unbounded* request and derive every
@@ -345,8 +347,9 @@ impl WrapSlot {
 pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::primitives::widget_id::WidgetId;
-    use crate::text::TextShaper;
-    use crate::text::internals::{TestMeasure, TestShape};
+    use crate::text::request::internals::TestShape;
+    use crate::text::root::internals::TestMeasure;
+    use crate::text::shaper::TextShaper;
     use crate::text::system::{TextRunSlot, TextSystem};
     use crate::text::wrap::TextWrap;
 

@@ -1,17 +1,17 @@
 //! Deterministic placeholder shaping for the mono fallback: every glyph is
 //! `font_size_px * 0.5` wide, so the engine can run in tests and headless
 //! tools without a font system. [`internals::measure`] is the metric
-//! behind [`TextShaper::test_mono`](crate::text::TextShaper).
+//! behind [`TextShaper::test_mono`](crate::text::shaper::TextShaper).
 //!
-//! [`caret_x`] and [`byte_at_x`] are the geometry [`probe`] falls back to
-//! when a layout has no shaped buffer, and they compile in every build:
+//! [`caret_x`] and [`byte_at_x`] are the geometry [`layout_probe`] falls
+//! back to when a layout has no shaped buffer, and they compile in every build:
 //! empty text is unshaped in production too, and it is answered here so
 //! the caller carries no `cfg`. Everything past that point — a *non-empty*
 //! run with no shaped buffer — exists only under the mono shaper, so the
 //! layout itself lives in the gated [`internals`] and production builds
 //! reach an unreachable branch instead.
 //!
-//! [`probe`]: crate::text::probe
+//! [`layout_probe`]: crate::text::layout_probe
 
 /// Caret-x for a run with no shaped buffer. Empty text has no glyphs to
 /// walk in any build, and its block is zero-width, so the only position
@@ -55,12 +55,13 @@ pub(super) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
 /// The mono layout itself. Only [`TextShaper::test_mono`] produces runs
 /// that reach it, so production builds compile none of this.
 ///
-/// [`TextShaper::test_mono`]: crate::text::TextShaper
+/// [`TextShaper::test_mono`]: crate::text::shaper::TextShaper
 #[cfg(any(test, feature = "internals"))]
 pub(super) mod internals {
     use crate::primitives::size::Size;
+    use crate::text::request::TextShapeRequest;
+    use crate::text::root::TextRoot;
     use crate::text::wrap::{LineFit, WrapFloor};
-    use crate::text::{TextRoot, TextShapeRequest};
 
     /// Caret-x along a single-line mono layout (0.5×font_size per byte).
     /// Multi-line aware callers should go through `cursor_xy` instead —

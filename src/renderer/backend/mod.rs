@@ -46,7 +46,7 @@ use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::record_store::RecordPayloads;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use rustc_hash::FxHashMap;
 use std::time::Instant;
 use wgpu::util::StagingBelt;

@@ -24,7 +24,7 @@
 //! one frame and is shared across windows, so readers take a delta.
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
-//! [`TextShaper::measure_calls`]: crate::text::TextShaper
+//! [`TextShaper::measure_calls`]: crate::text::shaper::TextShaper
 
 use crate::common::probe::TestOnly;
 

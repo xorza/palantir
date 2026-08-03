@@ -15,7 +15,8 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
-use crate::text::key::{ShapedTextRef, TextShapeKey};
+use crate::text::key::TextShapeKey;
+use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
 
 /// "Simplified" view of the render schedule — strips bookkeeping

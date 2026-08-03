@@ -1,6 +1,6 @@
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::text::TextRoot;
+use crate::text::root::TextRoot;
 
 /// Canonical width used by width-bounded cache identity
 /// ([`crate::text::key::TextShapeKey::bounded`]) and the fitting-truncate
@@ -19,7 +19,8 @@ pub(super) fn canonical_wrap_width(width: f32) -> f32 {
 /// Whether a shape pays for the segment scan behind
 /// [`TextRoot::intrinsic_min`].
 ///
-/// Deliberately *not* part of [`TextShapeRequest`](crate::text::TextShapeRequest):
+/// Deliberately *not* part of
+/// [`TextShapeRequest`](crate::text::request::TextShapeRequest):
 /// it selects which fields of the result get filled in, not which buffer
 /// answers. Two shapes differing only in this must share one cache entry,
 /// which is why the floor is memoized onto the entry instead of keyed.
@@ -189,7 +190,7 @@ impl TextWrap {
 mod tests {
     use crate::layout::cache::quantize_available;
     use crate::primitives::size::Size;
-    use crate::text::TextRoot;
+    use crate::text::root::TextRoot;
     use crate::text::wrap;
     use crate::text::wrap::{LineFit, TextWrap};
 
