@@ -212,7 +212,10 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 /// unboundedly under a long zoom gesture while comfortably outliving
 /// any short flicker (visibility toggle, hover paint) that drops a run
 /// for a frame.
-const ENCODED_CACHE_KEEP_FRAMES: u64 = 120;
+/// Sourced from [`crate::text::RENDERED_RUN_KEEP_FRAMES`], which the
+/// shaped-buffer cache's protected window derives from too — the two
+/// have to agree, so they are one value.
+const ENCODED_CACHE_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRAMES;
 
 /// CPU-side glyph encoder: owns the atlas, the encoded-run cache, the
 /// per-miss extraction scratch, and the frame's accumulated instances.

@@ -82,11 +82,11 @@ pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// Frames a *protected* entry — one that has been looked up at least once
 /// since insertion — survives untouched.
 ///
-/// Matches `ENCODED_CACHE_KEEP_FRAMES` in the backend text encoder,
-/// deliberately: that cache is what generates the render-side lookups
-/// this one exists to answer, so a buffer should outlive the encoded
-/// entry that would come asking for it.
-pub(super) const PROTECTED_KEEP_FRAMES: u64 = 120;
+/// Sourced from [`crate::text::RENDERED_RUN_KEEP_FRAMES`] so it cannot
+/// drift from the encoded-run cache's window: that cache is what
+/// generates the render-side lookups this one exists to answer, so a
+/// buffer has to outlive the encoded entry that would come asking.
+pub(super) const PROTECTED_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRAMES;
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
