@@ -809,6 +809,37 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         );
         at += HALF;
     }
+
+    // The clock advancing is only half of it. What the streak has to
+    // produce is *ageing*: a populated cache whose entries are no longer
+    // being asked for must reach its retention window and expire, on
+    // paint-only frames alone. A stalled clock ticks nothing out, which
+    // is the failure this streak is long enough to see — the run's
+    // buffer was promoted to the protected window when it was recorded,
+    // and no paint-only frame looks it up again.
+    let before = shaper.cache_counts();
+    for step in 0..=crate::text::RENDERED_RUN_KEEP_FRAMES {
+        let report = ui
+            .at(at)
+            .frame(|_| panic!("PaintOnly must not re-record the tree"));
+        assert_eq!(
+            report.processing,
+            FrameProcessing::PaintOnly,
+            "streak step {step}: fixture must keep producing paint-only frames",
+        );
+        at += HALF;
+    }
+    let over_the_streak = shaper.cache_counts() - before;
+    assert!(
+        over_the_streak.expiries > 0,
+        "a paint-only streak past the protected window must age the \
+         shaped-buffer cache; counts over the streak = {over_the_streak:?}",
+    );
+    assert_eq!(
+        over_the_streak.shapes, 0,
+        "and must do it without reshaping anything — paint-only records \
+         nothing, so there is nothing to shape",
+    );
 }
 
 #[test]
