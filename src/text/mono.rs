@@ -14,11 +14,12 @@
 //! [`probe`]: crate::text::probe
 
 /// Caret-x for a run with no shaped buffer. Empty text has no glyphs to
-/// walk in any build and takes `empty_x` — the caller's alignment-aware
-/// empty-line placement.
-pub(super) fn caret_x(text: &str, byte_offset: usize, font_size_px: f32, empty_x: f32) -> f32 {
+/// walk in any build, and its block is zero-width, so the only position
+/// in it is the block's own origin — the owner is what places that block
+/// against an alignment.
+pub(super) fn caret_x(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
     if text.is_empty() {
-        return empty_x;
+        return 0.0;
     }
     #[cfg(any(test, feature = "internals"))]
     {

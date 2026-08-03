@@ -561,7 +561,7 @@ pub(crate) mod internals {
                 .borrow()
                 .cosmic
                 .as_ref()
-                .is_some_and(|cosmic| cosmic.buffer_for(key).is_some())
+                .is_some_and(|cosmic| cosmic.shaped_run(key).is_some())
         }
 
         /// Drop every shaped buffer now — see

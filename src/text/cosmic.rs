@@ -129,6 +129,15 @@ fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
     }
 }
 
+/// A resident shaped buffer paired with the x its glyph block starts at,
+/// so every reader normalizes the same way off one lookup.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ShapedRun<'a> {
+    pub(super) buffer: &'a Buffer,
+    /// See [`CacheEntry::left`].
+    pub(super) left: f32,
+}
+
 #[derive(Debug)]
 struct CacheEntry {
     /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
@@ -138,6 +147,20 @@ struct CacheEntry {
     /// and a single-line flag describing the resolve, both inert — only
     /// the unbounded root's copy is ever read back.
     root: TextRoot,
+    /// x of the block's left edge in buffer space — what every reader
+    /// subtracts to put the block's own origin at 0.
+    ///
+    /// Cosmic does not lay every line out from 0. A non-left per-line
+    /// align shifts each line right by `(line_width - line_w) * factor`,
+    /// and *any* RTL run in a width-bounded buffer starts at `line_width`
+    /// and advances leftward (`shape.rs`'s `start_x`), alignment or not.
+    /// Measuring from 0 would then count that gap as part of the run's
+    /// own width, and the encoder — which aligns the measured block
+    /// inside the leaf rect — would apply the offset a second time.
+    ///
+    /// Zero for every unbounded buffer, so only a wrapped, width-bounded
+    /// run can carry a non-zero value.
+    left: f32,
     /// Last frame on which this entry is kept; [`CosmicMeasure::end_frame`]
     /// drops it once the clock passes this. Insertion sets it one
     /// probation window out and every lookup pushes it a protected window
@@ -229,14 +252,17 @@ impl CosmicMeasure {
         }
     }
 
-    /// Look up the shaped buffer for `key`. Returns `None` for keys that
+    /// Look up the shaped run for `key`. Returns `None` for keys that
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextShapeKey::INVALID`].
-    pub(super) fn buffer_for(&self, key: TextShapeKey) -> Option<&Buffer> {
+    pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
         if key.is_invalid() {
             return None;
         }
-        self.cache.get(&key).map(|e| &e.buffer)
+        self.cache.get(&key).map(|e| ShapedRun {
+            buffer: &e.buffer,
+            left: e.left,
+        })
     }
 
     /// Resolve `request` to palantir-native glyph placements for the
@@ -254,7 +280,7 @@ impl CosmicMeasure {
         out: &mut Vec<PlacedGlyph>,
     ) -> bool {
         debug_assert!(!request.key.is_invalid());
-        let buffer = self
+        let ShapedRun { buffer, left } = self
             .ensure_buffer(request)
             .expect("a valid render key must resolve to a shaped buffer");
 
@@ -264,6 +290,12 @@ impl CosmicMeasure {
             scale,
             bounds,
         } = placement;
+        // `origin` positions the *measured block*, whose left edge is
+        // `left` in buffer space — so pull the origin back by it and the
+        // per-glyph offsets land where the measurement said they would.
+        // Folding it into the origin rather than into each `physical.x`
+        // keeps the subpixel binning consistent with the shift.
+        let origin_x = origin.x - left * scale;
         let bounds_top = bounds.y as f32;
         let bounds_bot = (bounds.y + bounds.h) as f32;
         let mut culled = false;
@@ -288,7 +320,7 @@ impl CosmicMeasure {
                     glyph.color_opt.is_none(),
                     "per-glyph colour override requires folding colour into EncodedKey",
                 );
-                let physical = glyph.physical((origin.x, origin.y), scale);
+                let physical = glyph.physical((origin_x, origin.y), scale);
                 out.push(PlacedGlyph {
                     raster_key: GlyphRasterKey(physical.cache_key),
                     x: physical.x,
@@ -359,14 +391,14 @@ impl CosmicMeasure {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let root = shaped_extent(
+        let geometry = shaped_geometry(
             &buffer,
             key.max_width_px()
                 .is_none()
                 .then_some(&mut self.break_scratch),
         );
-        self.insert(key, buffer, root);
-        root
+        self.insert(key, buffer, geometry);
+        geometry.root
     }
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
@@ -440,7 +472,7 @@ impl CosmicMeasure {
             // branch cannot overrun `width`.
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            shaped_extent(&buffer, None).size
+            shaped_geometry(&buffer, None).root.size
         } else {
             // The cut spends advances measured in the *whole* run's shaping,
             // but the prefix reshapes in its own context: a joining script's
@@ -487,7 +519,7 @@ impl CosmicMeasure {
                     None,
                 );
                 buffer.shape_until_scroll(&mut self.font_system, false);
-                let size = shaped_extent(&buffer, None).size;
+                let size = shaped_geometry(&buffer, None).root.size;
                 if size.w <= width || cut == 0 {
                     break size;
                 }
@@ -498,13 +530,18 @@ impl CosmicMeasure {
         // Truncated runs are one natural line by construction: the cut
         // prefix comes from the unbounded probe's first layout run, and a
         // truncated run can shrink to nothing, so its floor is zero.
-        let root = TextRoot {
-            size,
-            intrinsic_min: 0.0,
-            single_line: true,
+        // The prefix reshapes on an unbounded buffer with no per-line
+        // align, so its block already starts at 0.
+        let geometry = ShapedGeometry {
+            root: TextRoot {
+                size,
+                intrinsic_min: 0.0,
+                single_line: true,
+            },
+            left: 0.0,
         };
-        self.insert(key, buffer, root);
-        root
+        self.insert(key, buffer, geometry);
+        geometry.root
     }
 
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
@@ -549,7 +586,7 @@ impl CosmicMeasure {
     /// [`TextShapeKey::INVALID`] — any other key is shaped on the spot,
     /// so the final lookup doubles as the check that the restore landed
     /// under its own key.
-    pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> Option<&Buffer> {
+    pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> Option<ShapedRun<'_>> {
         if request.key.is_invalid() {
             return None;
         }
@@ -557,17 +594,14 @@ impl CosmicMeasure {
             self.shape(request);
         }
         Some(
-            &self
-                .cache
-                .get(&request.key)
-                .expect("restored text buffer did not land under its own TextShapeKey")
-                .buffer,
+            self.shaped_run(request.key)
+                .expect("restored text buffer did not land under its own TextShapeKey"),
         )
     }
 
     /// Store a freshly shaped buffer. Entries start probationary; only a
     /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
-    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, root: TextRoot) {
+    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, geometry: ShapedGeometry) {
         // Counted here rather than per `shape_until_scroll` so one
         // cached run is one tally: `measure_truncated`'s back-off can
         // reshape a prefix several times to land inside the committed
@@ -581,7 +615,8 @@ impl CosmicMeasure {
             key,
             CacheEntry {
                 buffer,
-                root,
+                root: geometry.root,
+                left: geometry.left,
                 keep_until,
             },
         );
@@ -780,8 +815,12 @@ pub(super) fn fitting_prefix(
 
 /// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is
 /// its leftmost) of a shaped buffer's first layout run, or `0.0` when
-/// empty — the rendered width of one line. The per-run analogue inside
-/// [`shaped_extent`] takes the max across runs.
+/// empty — the rendered width of one line.
+///
+/// Both callers work on unbounded buffers, whose lines start at 0, so the
+/// right edge is the width. [`shaped_geometry`] spans `left..right`
+/// instead because it also measures width-bounded buffers, which cosmic
+/// may anchor away from the origin.
 fn first_line_right(buffer: &Buffer) -> f32 {
     buffer
         .layout_runs()
@@ -790,40 +829,60 @@ fn first_line_right(buffer: &Buffer) -> f32 {
         .unwrap_or(0.0)
 }
 
-/// Measured extent of a shaped `buffer`: bounding size (ceil'd) plus the
-/// widest unbreakable segment, the floor the wrap path uses when a parent
-/// commits a narrower width. Passing `breaks` opts into the
+/// Measured geometry of a shaped `buffer`: the run's own extent plus the
+/// block origin every reader normalizes against.
+#[derive(Clone, Copy, Debug)]
+struct ShapedGeometry {
+    root: TextRoot,
+    /// See [`CacheEntry::left`].
+    left: f32,
+}
+
+/// Measure a shaped `buffer`: the union of its lines' glyph spans (ceil'd)
+/// plus the widest unbreakable segment, the floor the wrap path uses when
+/// a parent commits a narrower width. Passing `breaks` opts into the
 /// text-length-proportional segment scan (it doubles as that scan's
 /// scratch); bounded shapes pass `None` — their floor comes from the
 /// unbounded root — and report `0.0`, the inert reading
 /// [`CacheEntry::root`] documents.
-fn shaped_extent(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> TextRoot {
-    let mut max_w = 0.0_f32;
+///
+/// Width is `right - left` across every line, not `right` alone. Cosmic
+/// anchors a line wherever its alignment and direction put it, so the
+/// distance from 0 is the run's width *plus* whatever gap precedes it;
+/// spanning the union measures the glyphs and nothing else. Taking both
+/// edges per line also subsumes the RTL case a trailing-edge scan needed
+/// a `max` for: a right-to-left run's last glyph is its leftmost.
+///
+/// Glyphless lines are skipped rather than contributing a zero-width span
+/// at 0, which would drag `left` back to the origin for a block that
+/// starts elsewhere.
+fn shaped_geometry(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedGeometry {
+    let mut left = f32::INFINITY;
+    let mut right = f32::NEG_INFINITY;
     let mut total_h = 0.0_f32;
     let mut runs = 0usize;
     for run in buffer.layout_runs() {
         runs += 1;
-        // `line_w` is content width before per-line alignment; when
-        // align shifts glyphs right, the glyph cluster's physical x
-        // extends past `line_w`. Take the last glyph's trailing edge so
-        // the measured bbox encloses every rendered pixel — otherwise
-        // the text backend clips right-aligned glyphs against an
-        // undersized `TextBounds`.
-        // Max, not the last glyph: an RTL run reads right-to-left, so its
-        // last glyph is the *leftmost* one.
-        let line_right = run
-            .glyphs
-            .iter()
-            .map(|g| g.x + g.w)
-            .reduce(f32::max)
-            .unwrap_or(run.line_w);
-        max_w = max_w.max(line_right);
         total_h = total_h.max(run.line_top + run.line_height);
+        for glyph in run.glyphs {
+            left = left.min(glyph.x);
+            right = right.max(glyph.x + glyph.w);
+        }
     }
-    TextRoot {
-        size: Size::new(max_w.ceil(), total_h.ceil()),
-        intrinsic_min: breaks.map_or(0.0, |breaks| intrinsic_min_width(buffer, breaks)),
-        single_line: runs <= 1,
+    // No glyphs anywhere — an empty buffer, or one holding only newlines.
+    // The block is empty and sits at the origin.
+    let (left, width) = if left <= right {
+        (left, right - left)
+    } else {
+        (0.0, 0.0)
+    };
+    ShapedGeometry {
+        root: TextRoot {
+            size: Size::new(width.ceil(), total_h.ceil()),
+            intrinsic_min: breaks.map_or(0.0, |breaks| intrinsic_min_width(buffer, breaks)),
+            single_line: runs <= 1,
+        },
+        left,
     }
 }
 
