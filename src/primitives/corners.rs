@@ -111,9 +111,10 @@ impl Corners {
     }
 
     /// True when every corner is within UI epsilon of zero. Routes
-    /// through `approx::noop_f16_bits` so the bit-trick lives in one
-    /// place — see that fn for the IEEE 754 rationale and NaN
-    /// semantics.
+    /// through [`F16x4::any_lane_above`] so the lane compare lives in
+    /// one place — see that method for the SWAR rationale.
+    ///
+    /// [`F16x4::any_lane_above`]: crate::primitives::half_simd::F16x4::any_lane_above
     #[inline]
     pub const fn approx_zero(&self) -> bool {
         // "Every lane within EPS" is the negation of "some lane above
@@ -123,6 +124,14 @@ impl Corners {
         // it. The shape-level NaN gate is what drops such a shape.
         const EPS_BITS: u16 = half::f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
         !self.0.any_lane_above(EPS_BITS)
+    }
+
+    /// True if any radius is NaN. `const`, so the predicates that gate
+    /// on it can be too; [`NanCheck`] delegates here rather than
+    /// keeping a second copy.
+    #[inline]
+    pub(crate) const fn has_nan(&self) -> bool {
+        self.0.has_nan()
     }
 }
 
@@ -183,7 +192,7 @@ impl<'de> ::serde::Deserialize<'de> for Corners {
 impl NanCheck for Corners {
     #[inline]
     fn has_nan(&self) -> bool {
-        self.as_array().iter().any(|radius| radius.is_nan())
+        Corners::has_nan(self)
     }
 }
 
