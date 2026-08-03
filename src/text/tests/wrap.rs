@@ -2,60 +2,65 @@ use super::*;
 
 #[test]
 fn mono_measure_cases() {
-    type Case = (&'static str, &'static str, f32, f32, Option<f32>, Size);
-    let cases: &[Case] = &[
-        ("empty", "", 16.0, 16.0, None, Size::ZERO),
+    // Mono lays every ASCII byte out `font_size * 0.5` wide on a
+    // `line_height` band, so each expected size below is arithmetic.
+    //
+    // `single_line` is asserted alongside, and the height column is what
+    // makes it checkable rather than restated: a case measuring one band
+    // tall must report `true`, two bands `false`. That flag is what gates
+    // `TextSystem::measure`'s fitting-truncate skip, so a shape that lost
+    // it would silently start reshaping every fitting label.
+    let base = shape(16.0);
+    let tall = base.leading(24.0);
+    for (label, text, params, expected, single_line) in [
+        ("empty", "", base, Size::ZERO, true),
         (
             "unbroken_legacy_short",
             "Hi",
-            16.0,
-            16.0,
-            None,
+            base,
             Size::new(16.0, 16.0),
+            true,
         ),
         (
             "unbroken_legacy_long",
             "hello!!",
-            16.0,
-            16.0,
-            None,
+            base,
             Size::new(56.0, 16.0),
+            true,
         ),
         (
             "wraps_below_unbroken",
             "12345678",
-            16.0,
-            16.0,
-            Some(32.0),
+            base.width(32.0),
             Size::new(32.0, 32.0),
+            false,
         ),
         (
             "line_height_param_short",
             "Hi",
-            16.0,
-            24.0,
-            None,
+            tall,
             Size::new(16.0, 24.0),
+            true,
         ),
         (
             "line_height_param_wrapped",
             "12345678",
-            16.0,
-            24.0,
-            Some(32.0),
+            tall.width(32.0),
             Size::new(32.0, 48.0),
+            false,
         ),
-    ];
-    for (label, text, fs, lh_v, max_w, expected) in cases {
-        let r = mono_shape(text, *fs, *lh_v, *max_w, LineFit::Wrap);
-        assert_eq!(r.size, *expected, "case: {label}");
+    ] {
+        let r = mono_shape(text, params, LineFit::Wrap);
+        assert_eq!(r.size, expected, "case: {label}");
+        assert_eq!(r.single_line, single_line, "case: {label}");
+        assert_eq!(
+            r.single_line,
+            r.size.h <= params.line_height_px,
+            "case: {label}: single_line must agree with the measured height",
+        );
     }
     // Empty also produces the INVALID sentinel.
-    assert!(
-        mono_shape("", 16.0, 16.0, None, LineFit::Wrap)
-            .key
-            .is_invalid()
-    );
+    assert!(mono_shape("", base, LineFit::Wrap).key.is_invalid());
 }
 
 #[test]
@@ -78,16 +83,9 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
     );
 
     let width = |c: &mut CosmicMeasure, family, weight| {
-        c.measure(
-            "MMMM",
-            TestShape {
-                family,
-                weight,
-                ..shape(16.0)
-            },
-        )
-        .size
-        .w
+        c.measure("MMMM", shape(16.0).family(family).weight(weight))
+            .size
+            .w
     };
     let sans = width(&mut c, FontFamily::Sans, FontWeight::Regular);
     let sans_bold = width(&mut c, FontFamily::Sans, FontWeight::Bold);
@@ -170,14 +168,9 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         },
     ];
 
+    let params = shape(16.0);
     for (ordinal, case) in cases.into_iter().enumerate() {
-        let request = TextShapeRequest::unbounded(
-            "aa bbbb",
-            16.0,
-            16.0,
-            FontFamily::Sans,
-            FontWeight::Regular,
-        );
+        let request = params.unbounded_request("aa bbbb");
         let slot = slot_at(widget_id, ordinal as u16);
         let unbounded = text.root(slot, request, case.wrap);
         let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
@@ -199,20 +192,18 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         );
     }
 
+    let empty_slot = slot_at(widget_id, cases.len() as u16);
+    let empty_request = params.unbounded_request("");
     let empty = text.measure(
-        slot_at(widget_id, cases.len() as u16),
-        TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular),
+        empty_slot,
+        empty_request,
         TextWrap::Ellipsis,
         HAlign::Auto,
         Some(24.0),
     );
     assert_eq!(empty.measured, Size::ZERO);
     assert_eq!(TextWrap::Ellipsis.content_size(empty.measured), Size::ZERO);
-    let empty_root = text.root(
-        slot_at(widget_id, cases.len() as u16),
-        TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular),
-        TextWrap::Ellipsis,
-    );
+    let empty_root = text.root(empty_slot, empty_request, TextWrap::Ellipsis);
     assert_eq!(TextWrap::Ellipsis.min_content(&empty_root), Size::ZERO);
     assert_eq!(TextWrap::Ellipsis.max_content(&empty_root), Size::ZERO);
 }
@@ -235,14 +226,13 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     // no buffer was cached for the empty input.
     assert!(c.shaped_run(r.key).is_none());
 
+    // The mono fallback agrees, and empty text short-circuits ahead of
+    // the dispatch tally — a run with nothing to shape is not a shape.
     let shaper = TextShaper::test_mono();
     let calls = shaper.measure_calls();
     let r = shaper.measure("", ui_shape(16.0));
     assert_eq!(r.size, Size::ZERO);
-    assert_eq!(
-        r.intrinsic_min, None,
-        "the probe helper never scans a floor"
-    );
+    assert!(r.key.is_invalid(), "empty text mints no shaped buffer");
     assert_eq!(shaper.measure_calls(), calls);
 }
 
@@ -314,13 +304,7 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     // Width-bounded shapes skip the segment scan and report a zero floor —
     // every consumer derives it from the unbounded root instead.
     let full = c.measure("hello world hi", shape);
-    let bounded = c.measure(
-        "hello world hi",
-        TestShape {
-            max_width_px: Some(60.0),
-            ..shape
-        },
-    );
+    let bounded = c.measure("hello world hi", shape.width(60.0));
     assert!(bounded.size.h > full.size.h, "60 px must force a wrap");
     assert_eq!(
         bounded.intrinsic_min, None,
@@ -339,17 +323,16 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
 /// share a string, which is exactly the case a single-policy test misses.
 #[test]
 fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
-    let mut text = TextSystem::new(TextShaper::new());
+    let mut text = TextSystem::cosmic();
     let wid = WidgetId::from_hash("wrap-floor");
     // One long unbreakable word, so the floor is well clear of both zero
     // and the full run width.
     let content = "a extraordinarily b";
-    let request =
-        || TextShapeRequest::unbounded(content, 16.0, 19.2, FontFamily::Sans, FontWeight::Regular);
+    let request = shape(16.0).leading(19.2).unbounded_request(content);
 
     // The five policies that never read the floor leave it unscanned —
     // this is the saving, and it is what makes the backfill necessary.
-    let plain = text.root(slot_at(wid, 0), request(), TextWrap::Wrap);
+    let plain = text.root(slot_at(wid, 0), request, TextWrap::Wrap);
     assert_eq!(
         plain.intrinsic_min, None,
         "Wrap must not pay for a floor it never reads",
@@ -358,7 +341,7 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     // A second slot over the same string now hits the buffer the first run
     // shaped, so the floor cannot come from shaping — it has to be scanned
     // against the resident buffer.
-    let overflow = text.root(slot_at(wid, 1), request(), TextWrap::WrapWithOverflow);
+    let overflow = text.root(slot_at(wid, 1), request, TextWrap::WrapWithOverflow);
     let floor = overflow.wrap_floor();
     assert!(
         floor > 0.0 && floor < overflow.size.w,
@@ -369,14 +352,14 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
 
     // Same value as a shaper that scanned from the start, so the backfill
     // is the real scan and not an approximation.
-    let fresh = TextSystem::new(TextShaper::new())
-        .root(slot_at(wid, 0), request(), TextWrap::WrapWithOverflow)
+    let fresh = TextSystem::cosmic()
+        .root(slot_at(wid, 0), request, TextWrap::WrapWithOverflow)
         .wrap_floor();
     assert_eq!(floor, fresh, "backfilled floor must equal a fresh scan");
 
     // And the policy change is picked up on the *same* slot too: the row's
     // key is unchanged, so only the floor's absence can trigger the refill.
-    let same_slot = text.root(slot_at(wid, 0), request(), TextWrap::WrapWithOverflow);
+    let same_slot = text.root(slot_at(wid, 0), request, TextWrap::WrapWithOverflow);
     assert_eq!(same_slot.wrap_floor(), fresh, "same-slot policy change");
 
     // The floor is what WrapWithOverflow floors its shaping width at, so a

@@ -23,11 +23,7 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
     let quantized_same = text.shape_run(
         run_slot,
         "hi",
-        TestShape {
-            font_size_px: 16.006,
-            line_height_px: 16.006,
-            ..compact
-        },
+        compact.font_size(16.006).leading(16.006),
         TextWrap::SingleLine,
     );
     assert_eq!(quantized_same.key, same.key);
@@ -39,15 +35,7 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
         "raw values in the same 1/64 px bucket must reuse the canonical row",
     );
 
-    let r2 = text.shape_run(
-        run_slot,
-        "hi",
-        TestShape {
-            line_height_px: 24.0,
-            ..compact
-        },
-        TextWrap::SingleLine,
-    );
+    let r2 = text.shape_run(run_slot, "hi", compact.leading(24.0), TextWrap::SingleLine);
     assert_eq!(r2.size, Size::new(16.0, 24.0));
     assert_eq!(
         text.shaper.measure_calls(),
@@ -73,16 +61,8 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
     let old = text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
     assert_eq!(old.size, Size::new(16.0, 16.0));
     assert_eq!(
-        text.shape_run(
-            slot(wid),
-            "hi",
-            TestShape {
-                max_width_px: Some(32.0),
-                ..params
-            },
-            TextWrap::Wrap,
-        )
-        .size,
+        text.shape_run(slot(wid), "hi", params.width(32.0), TextWrap::Wrap)
+            .size,
         Size::new(16.0, 16.0),
     );
 
@@ -90,16 +70,8 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
     assert_eq!(current.size, Size::new(64.0, 16.0));
     // Eight 8 px glyphs at 32 px fit four per line: 32 px × two 16 px lines.
     assert_eq!(
-        text.shape_run(
-            slot(wid),
-            "abcdefgh",
-            TestShape {
-                max_width_px: Some(32.0),
-                ..params
-            },
-            TextWrap::Wrap,
-        )
-        .size,
+        text.shape_run(slot(wid), "abcdefgh", params.width(32.0), TextWrap::Wrap)
+            .size,
         Size::new(32.0, 32.0),
     );
 }
@@ -124,14 +96,14 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     text.shape_run(slot_at(a, 1), "hi", params, TextWrap::SingleLine);
     text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
-    text.end_frame(&FxHashSet::default());
+    frame_end(&mut text);
     assert_eq!(text.entry_count(), 3, "rows used this frame all survive");
 
     // Second frame touches only `a`'s first row. The untouched two stay:
     // being unused for a frame is what a measure-cache hit looks like, not
     // evidence the run is gone.
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
-    text.end_frame(&FxHashSet::default());
+    frame_end(&mut text);
     assert_eq!(text.entry_count(), 3, "an unused frame drops nothing");
     assert!(text.has_entry(a, 1), "untouched sibling row survives");
     assert!(text.has_entry(b, 0), "untouched row of another widget too");
@@ -153,10 +125,10 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
 /// intrinsic pass takes the root, the measure pass resolves a width.
 /// Returns the bounded key the renderer would replay.
 fn drive(text: &mut TextSystem, slot: TextRunSlot, body: &str, width: Option<f32>) -> TextShapeKey {
-    let shape = TestShape {
-        max_width_px: width,
-        halign: HAlign::Left,
-        ..ui_shape(14.0)
+    let base = ui_shape(14.0).halign(HAlign::Left);
+    let shape = match width {
+        Some(w) => base.width(w),
+        None => base,
     };
     text.shape_run(slot, body, shape, TextWrap::Wrap).key
 }
@@ -171,19 +143,26 @@ fn drive(text: &mut TextSystem, slot: TextRunSlot, body: &str, width: Option<f32
 /// supersession works or not.
 fn drive_visible(
     text: &mut TextSystem,
-    shaper: &TextShaper,
     slot: TextRunSlot,
     body: &str,
     width: Option<f32>,
 ) -> TextShapeKey {
     let key = drive(text, slot, body, width);
-    shaper.render_ensure(TextShapeRequest { text: body, key });
+    text.shaper
+        .render_ensure(TextShapeRequest { text: body, key });
     key
 }
 
 /// End a frame with nothing removed — the steady case.
 fn frame_end(text: &mut TextSystem) {
     text.end_frame(&FxHashSet::default());
+}
+
+/// Idle frames, for aging a buffer toward one of the retention windows.
+fn idle(text: &mut TextSystem, frames: u64) {
+    for _ in 0..frames {
+        frame_end(text);
+    }
 }
 
 /// A resize drag is the population the probation window exists for, and
@@ -205,8 +184,7 @@ fn resize_drag_retains_only_the_probation_window() {
     const RUNS: u32 = 8;
     const FRAMES: u32 = 60;
 
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let slots: Vec<TextRunSlot> = (0..RUNS)
         .map(|i| slot(WidgetId::from_hash(("drag", i))))
         .collect();
@@ -216,16 +194,16 @@ fn resize_drag_retains_only_the_probation_window() {
     // would mint one buffer a frame instead of eight.
     let bodies: Vec<String> = (0..RUNS).map(|i| format!("row {i} of the list")).collect();
 
-    let before = shaper.cache_counts();
+    let before = text.shaper.cache_counts();
     for frame in 0..FRAMES {
         // Whole-pixel steps, so every frame quantizes to a fresh key.
         let width = 120.0 + frame as f32 * 3.0;
         for (s, body) in slots.iter().zip(&bodies) {
-            drive_visible(&mut text, &shaper, *s, body, Some(width));
+            drive_visible(&mut text, *s, body, Some(width));
         }
         frame_end(&mut text);
     }
-    let counts = shaper.cache_counts() - before;
+    let counts = text.shaper.cache_counts() - before;
 
     // `TextWrap::Wrap` always binds, so a fresh run costs an unbounded
     // root plus a bounded resolve. Afterwards the reuse row answers the
@@ -238,17 +216,15 @@ fn resize_drag_retains_only_the_probation_window() {
 
     // Residency: the live bounded key per run, the buffers still inside
     // their shortened window, and the unbounded root per run. The
-    // protected window would have held all 480.
-    let resident = shaper.cosmic_cache_len() as u32;
+    // protected window would have held all 480 — two orders of magnitude
+    // above this ceiling, so the bound is what tells the two policies
+    // apart, and one assertion states it.
+    let resident = text.shaper.cosmic_cache_len() as u32;
     let ceiling = RUNS * (cosmic::PROBATION_KEEP_FRAMES as u32 + 2) + RUNS;
     assert!(
         resident <= ceiling,
         "drag retained {resident} buffers, over the {ceiling} the \
          probation window allows — supersession is not reaching them",
-    );
-    assert!(
-        resident < RUNS * FRAMES / 4,
-        "drag retention is tracking the protected window ({resident})",
     );
 }
 
@@ -259,21 +235,17 @@ fn resize_drag_retains_only_the_probation_window() {
 /// the slot vanishes rather than moving to a new key.
 #[test]
 fn scrolled_away_run_keeps_the_protected_window() {
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let wid = WidgetId::from_hash("scrolled row");
-    let key = drive_visible(&mut text, &shaper, slot(wid), "row content", Some(200.0));
+    let key = drive_visible(&mut text, slot(wid), "row content", Some(200.0));
     frame_end(&mut text);
 
     // Out of view: the widget stops being recorded, so its reuse row is
     // dropped. Nothing supersedes the key — it may well come back.
-    let removed = FxHashSet::from_iter([wid]);
-    text.end_frame(&removed);
-    for _ in 0..cosmic::PROBATION_KEEP_FRAMES + 2 {
-        frame_end(&mut text);
-    }
+    text.end_frame(&FxHashSet::from_iter([wid]));
+    idle(&mut text, cosmic::PROBATION_KEEP_FRAMES + 2);
     assert!(
-        shaper.has_cosmic_buffer(key),
+        text.shaper.has_cosmic_buffer(key),
         "a scrolled-away run must keep the protected window",
     );
 
@@ -282,28 +254,29 @@ fn scrolled_away_run_keeps_the_protected_window() {
     // is reshaped: a wrapped run's root buffer is never promoted (the
     // encoder replays the bounded key), and nothing misses it, because
     // the reuse row caches the root *value* rather than its buffer.
-    let before = shaper.cache_counts();
+    let before = text.shaper.cache_counts();
     let again = drive(&mut text, slot(wid), "row content", Some(200.0));
     assert_eq!(again, key);
     assert_eq!(
-        (shaper.cache_counts() - before).shapes,
+        (text.shaper.cache_counts() - before).shapes,
         1,
         "the bounded buffer must survive the scroll — only the root reshapes",
     );
 
     // What that saved, stated as a contrast: past the protected window
     // the buffer is genuinely gone and has to be rebuilt.
-    for _ in 0..cosmic::PROTECTED_KEEP_FRAMES + 1 {
-        frame_end(&mut text);
-    }
-    assert!(!shaper.has_cosmic_buffer(key), "premise: the window lapsed");
-    let before = shaper.cache_counts();
+    idle(&mut text, cosmic::PROTECTED_KEEP_FRAMES + 1);
+    assert!(
+        !text.shaper.has_cosmic_buffer(key),
+        "premise: the window lapsed"
+    );
+    let before = text.shaper.cache_counts();
     assert_eq!(
-        drive_visible(&mut text, &shaper, slot(wid), "row content", Some(200.0)),
+        drive_visible(&mut text, slot(wid), "row content", Some(200.0)),
         key
     );
     assert_eq!(
-        (shaper.cache_counts() - before).shapes,
+        (text.shaper.cache_counts() - before).shapes,
         1,
         "a cold return rebuilds the buffer the renderer replays — and only \
          that: the reuse row still holds both measurements, so layout asks \
@@ -318,21 +291,20 @@ fn scrolled_away_run_keeps_the_protected_window() {
 /// a reshape.
 #[test]
 fn superseded_key_still_hits_inside_the_probation_window() {
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let s = slot(WidgetId::from_hash("oscillating"));
 
-    let narrow = drive_visible(&mut text, &shaper, s, "alternating label", Some(140.0));
+    let narrow = drive_visible(&mut text, s, "alternating label", Some(140.0));
     frame_end(&mut text);
     // Supersedes `narrow`.
-    let wide = drive_visible(&mut text, &shaper, s, "alternating label", Some(260.0));
+    let wide = drive_visible(&mut text, s, "alternating label", Some(260.0));
     frame_end(&mut text);
     assert_ne!(narrow, wide);
 
     // Back to the first width, still inside the shortened window.
-    let before = shaper.cache_counts();
+    let before = text.shaper.cache_counts();
     let returned = drive(&mut text, s, "alternating label", Some(140.0));
-    let counts = shaper.cache_counts() - before;
+    let counts = text.shaper.cache_counts() - before;
     assert_eq!(returned, narrow);
     assert_eq!(
         counts.shapes, 0,
@@ -346,8 +318,7 @@ fn superseded_key_still_hits_inside_the_probation_window() {
 /// The reuse rows absorb it before the shaper is dispatched at all.
 #[test]
 fn steady_state_frames_neither_shape_nor_supersede() {
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let slots: Vec<TextRunSlot> = (0..4)
         .map(|i| slot(WidgetId::from_hash(("steady", i))))
         .collect();
@@ -357,14 +328,14 @@ fn steady_state_frames_neither_shape_nor_supersede() {
     }
     frame_end(&mut text);
 
-    let before = shaper.cache_counts();
+    let before = text.shaper.cache_counts();
     for _ in 0..20 {
         for s in &slots {
             drive(&mut text, *s, "unchanging label", Some(180.0));
         }
         frame_end(&mut text);
     }
-    let counts = shaper.cache_counts() - before;
+    let counts = text.shaper.cache_counts() - before;
     assert_eq!(counts.shapes, 0, "steady state reshaped");
     assert_eq!(counts.supersedes, 0, "steady state superseded a live key");
     assert_eq!(counts.expiries, 0, "steady state expired a live buffer");
@@ -375,31 +346,31 @@ fn steady_state_frames_neither_shape_nor_supersede() {
 /// does not cover, since a drag leaves the unbounded key alone.
 #[test]
 fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let s = slot(WidgetId::from_hash("editor"));
 
-    drive_visible(&mut text, &shaper, s, "hell", Some(200.0));
+    drive_visible(&mut text, s, "hell", Some(200.0));
     frame_end(&mut text);
 
-    let before = shaper.cache_counts();
-    drive_visible(&mut text, &shaper, s, "hello", Some(200.0));
-    let counts = shaper.cache_counts() - before;
+    let before = text.shaper.cache_counts();
+    drive_visible(&mut text, s, "hello", Some(200.0));
+    let counts = text.shaper.cache_counts() - before;
     assert_eq!(
         counts.supersedes, 2,
         "a changed run must retire its root *and* its bounded resolve",
     );
 
     // And the retired pair ages out on the short window, not the long one.
-    for _ in 0..cosmic::PROBATION_KEEP_FRAMES + 2 {
-        frame_end(&mut text);
-    }
+    idle(&mut text, cosmic::PROBATION_KEEP_FRAMES + 2);
     let live = drive(&mut text, s, "hello", Some(200.0));
-    assert!(shaper.has_cosmic_buffer(live) || shaper.cosmic_cache_len() > 0);
     assert!(
-        shaper.cosmic_cache_len() <= 2,
+        text.shaper.has_cosmic_buffer(live),
+        "the live run's own buffer must be resident after its reshape",
+    );
+    assert!(
+        text.shaper.cosmic_cache_len() <= 2,
         "stale keystroke buffers outlived the probation window: {} resident",
-        shaper.cosmic_cache_len(),
+        text.shaper.cosmic_cache_len(),
     );
 }
 
@@ -411,35 +382,32 @@ fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
 /// occasional reshape is the wrong trade).
 #[test]
 fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+    let mut text = TextSystem::cosmic();
     let (a, b) = (
         slot(WidgetId::from_hash("cell a")),
         slot(WidgetId::from_hash("cell b")),
     );
 
-    let shared = drive_visible(&mut text, &shaper, a, "—", Some(60.0));
-    let same = drive_visible(&mut text, &shaper, b, "—", Some(60.0));
+    let shared = drive_visible(&mut text, a, "—", Some(60.0));
+    let same = drive_visible(&mut text, b, "—", Some(60.0));
     assert_eq!(shared, same, "identical runs must share one key");
     frame_end(&mut text);
 
     // Only slot `a` moves on; `b` still displays the shared key.
-    drive_visible(&mut text, &shaper, a, "12.5", Some(60.0));
-    for _ in 0..cosmic::PROBATION_KEEP_FRAMES + 2 {
-        frame_end(&mut text);
-    }
+    drive_visible(&mut text, a, "12.5", Some(60.0));
+    idle(&mut text, cosmic::PROBATION_KEEP_FRAMES + 2);
     assert!(
-        !shaper.has_cosmic_buffer(shared),
+        !text.shaper.has_cosmic_buffer(shared),
         "premise: the shared buffer is demoted by a's move",
     );
 
     // The cost is bounded at one reshape — `b` recovers on its next ask,
     // and only for the buffer: its reuse row kept both measurements.
-    let before = shaper.cache_counts();
-    let recovered = drive_visible(&mut text, &shaper, b, "—", Some(60.0));
+    let before = text.shaper.cache_counts();
+    let recovered = drive_visible(&mut text, b, "—", Some(60.0));
     assert_eq!(recovered, shared);
     assert_eq!(
-        (shaper.cache_counts() - before).shapes,
+        (text.shaper.cache_counts() - before).shapes,
         1,
         "recovery costs one reshape — no more",
     );

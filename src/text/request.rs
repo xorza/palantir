@@ -70,7 +70,57 @@ pub(crate) mod internals {
         pub(crate) halign: HAlign,
     }
 
+    /// Builders, because a case almost always wants one or two overrides
+    /// off a named base. Struct-update syntax spells that across four
+    /// lines and buries the override among the fields it inherits; a
+    /// chain puts what the case is *about* on one line.
+    ///
+    /// Named for the field each sets, so `shape(16.0).halign(Right)` and
+    /// a `halign:` literal stay obviously the same thing.
     impl TestShape {
+        pub(crate) fn font_size(self, font_size_px: f32) -> Self {
+            Self {
+                font_size_px,
+                ..self
+            }
+        }
+
+        pub(crate) fn leading(self, line_height_px: f32) -> Self {
+            Self {
+                line_height_px,
+                ..self
+            }
+        }
+
+        pub(crate) fn width(self, max_width_px: f32) -> Self {
+            Self {
+                max_width_px: Some(max_width_px),
+                ..self
+            }
+        }
+
+        /// The unbounded root of this shape: no wrap width, and no
+        /// per-line alignment, which only means anything with one.
+        pub(crate) fn unbounded(self) -> Self {
+            Self {
+                max_width_px: None,
+                halign: HAlign::Auto,
+                ..self
+            }
+        }
+
+        pub(crate) fn halign(self, halign: HAlign) -> Self {
+            Self { halign, ..self }
+        }
+
+        pub(crate) fn family(self, family: FontFamily) -> Self {
+            Self { family, ..self }
+        }
+
+        pub(crate) fn weight(self, weight: FontWeight) -> Self {
+            Self { weight, ..self }
+        }
+
         pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
             TextShapeRequest::unbounded(
                 text,

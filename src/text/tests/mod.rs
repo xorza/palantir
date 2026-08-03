@@ -39,8 +39,8 @@ mod wrap;
 /// the font size — which keeps the mono fallback's line height numerically
 /// equal to `font_size`, the placeholder layout the mono cases pin.
 ///
-/// Override with struct-update syntax: `TestShape { max_width_px:
-/// Some(32.0), ..shape(16.0) }`.
+/// Override with the `TestShape` builders, so the one thing a case is
+/// about reads on one line: `shape(16.0).width(32.0).halign(HAlign::Right)`.
 fn shape(font_size_px: f32) -> TestShape {
     TestShape {
         font_size_px,
@@ -55,10 +55,13 @@ fn shape(font_size_px: f32) -> TestShape {
 /// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]) — what the real
 /// UI shapes at, and what the cosmic geometry cases pin.
 fn ui_shape(font_size_px: f32) -> TestShape {
-    TestShape {
-        line_height_px: font_size_px * LINE_HEIGHT_MULT,
-        ..shape(font_size_px)
-    }
+    shape(font_size_px).leading(font_size_px * LINE_HEIGHT_MULT)
+}
+
+/// Height of one line at `shape`'s leading, as a measured extent reports
+/// it — `Size` ceils, so a fractional leading rounds up.
+fn one_line_h(shape: TestShape) -> f32 {
+    shape.line_height_px.ceil()
 }
 
 fn slot(widget_id: WidgetId) -> TextRunSlot {
@@ -69,49 +72,36 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
     TextRunSlot { widget_id, ordinal }
 }
 
-fn mono_shape(
-    text: &str,
-    font_size_px: f32,
-    line_height_px: f32,
-    max_width_px: Option<f32>,
-    fit: LineFit,
-) -> TestMeasure {
-    let request = TextShapeRequest::unbounded(
-        text,
-        font_size_px,
-        line_height_px,
-        FontFamily::Sans,
-        FontWeight::Regular,
-    );
-    let request = match max_width_px {
-        Some(width) => request.bounded(width, HAlign::Auto, fit),
-        None => request,
-    };
-    // Mono mints no shaped buffer, so every run it measures is invalid.
-    let root = mono::internals::measure(request, WrapFloor::Scan);
-    TestMeasure {
-        size: root.size,
-        key: TextShapeKey::INVALID,
-        intrinsic_min: root.intrinsic_min,
-        single_line: root.single_line,
-    }
+/// Measure through the mono fallback. Mints no shaped buffer, so every
+/// run it measures carries the invalid sentinel.
+fn mono_shape(text: &str, shape: TestShape, fit: LineFit) -> TestMeasure {
+    let root = mono::internals::measure(shape.request(text, fit), WrapFloor::Scan);
+    TestMeasure::new(root, TextShapeKey::INVALID)
 }
 
+/// A truncating measure and the unbounded probe it cuts from. Truncation
+/// reads the cached unbounded shape, so the probe has to be measured
+/// first — returning both keeps a caller that needs the probe's key from
+/// re-deriving the shape by hand.
+struct Truncated {
+    fitted: TestMeasure,
+    unbounded: TestMeasure,
+}
+
+fn truncate(cosmic: &mut CosmicMeasure, text: &str, shape: TestShape, fit: LineFit) -> Truncated {
+    let unbounded = cosmic.measure(text, shape.unbounded());
+    let fitted = cosmic.measure_with_fit(text, shape, fit, unbounded.key);
+    Truncated { fitted, unbounded }
+}
+
+/// [`truncate`] when only the truncated result is wanted.
 fn measure_truncated(
     cosmic: &mut CosmicMeasure,
     text: &str,
-    params: TestShape,
+    shape: TestShape,
     fit: LineFit,
 ) -> TestMeasure {
-    let unbounded = cosmic.measure(
-        text,
-        TestShape {
-            max_width_px: None,
-            halign: HAlign::Auto,
-            ..params
-        },
-    );
-    cosmic.measure_with_fit(text, params, fit, unbounded.key)
+    truncate(cosmic, text, shape, fit).fitted
 }
 
 #[derive(Clone, Debug, PartialEq)]
