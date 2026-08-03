@@ -14,7 +14,7 @@ use crate::common::hash::Hasher;
 use crate::primitives::approx;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
-use crate::scene::shapes::paint::ShapeBrush;
+use crate::scene::shapes::paint::{CurveBasis, ShapeBrush};
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 
@@ -118,40 +118,37 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         // `Polyline`/`Mesh`, whose payload bytes live in the record store).
         // `bbox` derives from geometry + width + cap and is excluded.
         // Brush folded separately so strokes with the same geometry
-        // but different fills don't collide; the tag byte above keeps
-        // the two kinds apart.
+        // but different fills don't collide. Both bases share this
+        // record's tag byte, so `CurveBasis::tag` goes in ahead of the
+        // basis fields to keep a cubic and an arc apart; the stroke
+        // fields they share are hashed once, after the split.
         ShapeRecord::Curve {
-            p0,
-            p1,
-            p2,
-            p3,
+            basis,
             width,
             fill,
             fill_grad_hash,
             cap,
             bbox: _,
         } => {
-            for point in [p0, p1, p2, p3] {
-                approx::hash_visual_vec2(*point, &mut h);
+            h.write_u8(basis.tag());
+            match basis {
+                CurveBasis::Cubic { p0, p1, p2, p3 } => {
+                    for point in [p0, p1, p2, p3] {
+                        approx::hash_visual_vec2(*point, &mut h);
+                    }
+                }
+                CurveBasis::Arc {
+                    center,
+                    radius,
+                    a0,
+                    a1,
+                } => {
+                    approx::hash_visual_vec2(*center, &mut h);
+                    approx::hash_visual_f32(*radius, &mut h);
+                    approx::hash_visual_f32(*a0, &mut h);
+                    approx::hash_visual_f32(*a1, &mut h);
+                }
             }
-            h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
-            hash_brush(fill, *fill_grad_hash, &mut h);
-        }
-        ShapeRecord::Arc {
-            center,
-            radius,
-            a0,
-            a1,
-            width,
-            fill,
-            fill_grad_hash,
-            cap,
-            bbox: _,
-        } => {
-            approx::hash_visual_vec2(*center, &mut h);
-            approx::hash_visual_f32(*radius, &mut h);
-            approx::hash_visual_f32(*a0, &mut h);
-            approx::hash_visual_f32(*a1, &mut h);
             h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
             hash_brush(fill, *fill_grad_hash, &mut h);
         }

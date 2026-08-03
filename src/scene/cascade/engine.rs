@@ -865,9 +865,6 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                 }
                 ShapeRecord::Curve {
                     width, cap, bbox, ..
-                }
-                | ShapeRecord::Arc {
-                    width, cap, bbox, ..
                 } => {
                     let centerline = lift_to_screen(*bbox, layout_rect.min, shape_transform, None);
                     let screen = stroked_bbox(

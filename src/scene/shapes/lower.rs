@@ -23,7 +23,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::{RecordStore, RecordedGradient};
-use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeBrush, ShapeStroke};
+use crate::scene::shapes::paint::{ChromeRow, CurveBasis, LoweredShadow, ShapeBrush, ShapeStroke};
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
 use crate::shape::polyline::PolylineColors;
 use crate::shape::stroke_bounds::HALF_FRINGE;
@@ -195,8 +195,8 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
 /// compute the content hash. Only `Shape::Polyline` routes through
 /// this — the one multi-segment stroke with interior joins; every
 /// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
-/// `ShapeRecord::Curve`/`Arc` directly. Both render on the GPU
-/// curve pipeline.
+/// `ShapeRecord::Curve` directly, picking its [`CurveBasis`]. Both
+/// render on the GPU curve pipeline.
 pub(super) fn polyline(
     store: &RecordStore,
     points: &[Vec2],
@@ -314,9 +314,9 @@ pub(super) fn line(
     curve_inner([a, a + third, b - third, b], width, lowered, cap)
 }
 
-/// Lower a circular arc into a [`ShapeRecord::Arc`]. Same native-GPU
+/// Lower a circular arc onto [`CurveBasis::Arc`]. Same native-GPU
 /// stroke path as the béziers — no CPU flattening; the shader
-/// evaluates the exact circle, so the record stores center/radius/
+/// evaluates the exact circle, so the basis stores center/radius/
 /// angles verbatim. A linear gradient is sampled along the sweep.
 /// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
 /// pixels and double-blend a translucent stroke.
@@ -335,21 +335,20 @@ pub(super) fn arc(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
     );
-    let lowered = curve_brush(store, &brush);
     let a1 = start_angle + sweep;
     let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
-    let bbox = Rect::from_min_max(lo, hi);
-    ShapeRecord::Arc {
-        center,
-        radius,
-        a0: start_angle,
-        a1,
+    curve_record(
+        CurveBasis::Arc {
+            center,
+            radius,
+            a0: start_angle,
+            a1,
+        },
+        Rect::from_min_max(lo, hi),
         width,
-        fill: lowered.brush,
-        fill_grad_hash: lowered.hash,
+        curve_brush(store, &brush),
         cap,
-        bbox,
-    }
+    )
 }
 
 /// Lower a triangle into a [`ShapeRecord::Triangle`].
@@ -381,20 +380,34 @@ pub(super) fn triangle(
     }
 }
 
-/// Build a `ShapeRecord::Curve` from cubic control points. The record
-/// hash (`compute_record_hash`) covers the control points + width +
-/// cap + brush directly — every input lives inline on the record, so
-/// no lowering-time content hash is captured here.
+/// Build a `ShapeRecord::Curve` from cubic control points, deriving the
+/// tight centerline bbox from the control polygon.
 fn curve_inner(ctrl: [Vec2; 4], width: f32, fill: LoweredBrush, cap: LineCap) -> ShapeRecord {
     let [p0, p1, p2, p3] = ctrl;
-
     let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
-    let bbox = Rect::from_min_max(lo, hi);
+    curve_record(
+        CurveBasis::Cubic { p0, p1, p2, p3 },
+        Rect::from_min_max(lo, hi),
+        width,
+        fill,
+        cap,
+    )
+}
+
+/// The one `ShapeRecord::Curve` constructor — both bases land here, so
+/// the stroke fields they share are assembled in exactly one place.
+/// The record hash (`compute_record_hash`) covers the basis + width +
+/// cap + brush directly; every input lives inline on the record, so no
+/// lowering-time content hash is captured here.
+fn curve_record(
+    basis: CurveBasis,
+    bbox: Rect,
+    width: f32,
+    fill: LoweredBrush,
+    cap: LineCap,
+) -> ShapeRecord {
     ShapeRecord::Curve {
-        p0,
-        p1,
-        p2,
-        p3,
+        basis,
         width,
         fill: fill.brush,
         fill_grad_hash: fill.hash,

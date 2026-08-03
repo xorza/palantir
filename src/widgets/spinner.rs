@@ -180,6 +180,7 @@ mod tests {
     /// floor is what a tiny one lands on.
     #[test]
     fn arc_and_spin_follow_the_spinner_theme() {
+        use crate::scene::shapes::paint::CurveBasis;
         use crate::scene::shapes::record::ShapeRecord;
         use crate::scene::tree::paint_anims::PaintAnim;
 
@@ -200,7 +201,11 @@ mod tests {
                 .records
                 .iter()
                 .find_map(|s| match s {
-                    ShapeRecord::Arc { a1, width, .. } => Some((*a1, *width)),
+                    ShapeRecord::Curve {
+                        basis: CurveBasis::Arc { a1, .. },
+                        width,
+                        ..
+                    } => Some((*a1, *width)),
                     _ => None,
                 })
                 .expect("spinner records one arc");
