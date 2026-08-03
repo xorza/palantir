@@ -6,6 +6,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::nan::NanCheck;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
@@ -301,6 +302,27 @@ fn emit_one_shape<S: PaintSink>(
     text_ordinal: u32,
     out: &mut S,
 ) {
+    // **The lowered-shape invariant**, asserted at the one point every
+    // lowered shape passes through. `Shapes::add` is the single gate
+    // that decides NaN and it drops what it finds, so nothing carrying
+    // one can arrive here.
+    //
+    // This is what lets the tiers below stop re-asking. The only
+    // non-finite checks past this point guard a different source — the
+    // *transform* stack, whose scale can overflow independently of any
+    // shape input (see `urect_from_phys`) — not shape geometry.
+    //
+    // Deliberately not paired with a "not a no-op" assert: whether a
+    // record paints is not answerable here. `local_rect: None` means
+    // "the owner's arranged rect", and text's extent comes from the
+    // shaped measure, so both are layout outputs the record doesn't
+    // carry. That question belongs to `Draw*Payload::is_noop`, one tier
+    // down, which is the first place the resolved geometry exists.
+    debug_assert!(
+        !shape.has_nan(),
+        "a NaN reached the encoder — `Shapes::add`'s gate should have \
+         dropped this shape: {shape:?}",
+    );
     // Paint-anim gate. Today's only alpha source (`BlinkOpacity`) is
     // binary 0/1, so a "hidden" sample just skips emission;
     // fractional-alpha multiplication arrives with a future `Pulse`
