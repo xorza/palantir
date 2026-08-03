@@ -16,6 +16,21 @@ pub(super) fn canonical_wrap_width(width: f32) -> f32 {
     width.max(0.0).quantize_px() as f32
 }
 
+/// Whether a shape pays for the segment scan behind
+/// [`TextRoot::intrinsic_min`].
+///
+/// Deliberately *not* part of [`TextShapeRequest`](crate::text::TextShapeRequest):
+/// it selects which fields of the result get filled in, not which buffer
+/// answers. Two shapes differing only in this must share one cache entry,
+/// which is why the floor is memoized onto the entry instead of keyed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WrapFloor {
+    /// Skip the scan; the floor stays `None`.
+    Skip,
+    /// Scan it, and memoize the result onto the cache entry.
+    Scan,
+}
+
 /// How a width-bounded text run handles overflow. Maps from the public
 /// [`TextWrap`] via [`TextWrap::line_fit`] (`SingleLine`/`Scroll` stay on
 /// the unbounded path); folded into the shape cache key by
@@ -88,6 +103,24 @@ impl TextWrap {
         }
     }
 
+    /// Whether this policy reads [`TextRoot::intrinsic_min`], and so
+    /// whether shaping has to pay for the segment scan that produces it.
+    ///
+    /// Only [`Self::WrapWithOverflow`] does. The scan is a UAX #14 pass
+    /// over the run plus a binary search per glyph — 8x the cost of the
+    /// rest of the measurement on a short label and 25x on a paragraph —
+    /// so the other five policies opt out and the floor stays `None`.
+    pub(super) fn floor_scan(self) -> WrapFloor {
+        match self {
+            TextWrap::WrapWithOverflow => WrapFloor::Scan,
+            TextWrap::SingleLine
+            | TextWrap::Scroll
+            | TextWrap::Truncate
+            | TextWrap::Ellipsis
+            | TextWrap::Wrap => WrapFloor::Skip,
+        }
+    }
+
     /// Min-content demand, from the `unbounded` root measurement
     /// (`TextSystem::measure` with no available width) — not a bounded
     /// resolve, whose height already reflects wrapping.
@@ -99,7 +132,7 @@ impl TextWrap {
             TextWrap::Scroll | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Wrap => {
                 Size::new(0.0, unbounded.size.h)
             }
-            TextWrap::WrapWithOverflow => Size::new(unbounded.intrinsic_min, unbounded.size.h),
+            TextWrap::WrapWithOverflow => Size::new(unbounded.wrap_floor(), unbounded.size.h),
         }
     }
 
@@ -124,7 +157,7 @@ impl TextWrap {
     /// [`Self::min_content`] demands.
     pub(super) fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
-            TextWrap::WrapWithOverflow => available_width_px.max(unbounded.intrinsic_min),
+            TextWrap::WrapWithOverflow => available_width_px.max(unbounded.wrap_floor()),
             TextWrap::SingleLine
             | TextWrap::Scroll
             | TextWrap::Truncate
@@ -159,7 +192,7 @@ mod tests {
     fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextRoot {
         TextRoot {
             size: Size::new(width_px, 16.0),
-            intrinsic_min,
+            intrinsic_min: Some(intrinsic_min),
             single_line,
         }
     }

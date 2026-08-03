@@ -59,7 +59,7 @@ pub(super) fn byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
 #[cfg(any(test, feature = "internals"))]
 pub(super) mod internals {
     use crate::primitives::size::Size;
-    use crate::text::wrap::LineFit;
+    use crate::text::wrap::{LineFit, WrapFloor};
     use crate::text::{TextRoot, TextShapeRequest};
 
     /// Caret-x along a single-line mono layout (0.5×font_size per byte).
@@ -100,7 +100,7 @@ pub(super) mod internals {
     /// [`TextShapeKey::INVALID`](crate::text::key::TextShapeKey::INVALID) for
     /// every run measured this way and the
     /// renderer drops them cleanly.
-    pub(crate) fn measure(request: TextShapeRequest<'_>) -> TextRoot {
+    pub(crate) fn measure(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         let text = request.text;
         if text.is_empty() {
             return TextRoot::ZERO;
@@ -134,9 +134,13 @@ pub(super) mod internals {
         };
         // A truncated run shrinks to nothing — zero floor. Otherwise mono has
         // no real word boundaries, so fall back to "the longest run of
-        // non-space bytes" as the wrap floor.
-        let intrinsic_min = if truncating_fit {
-            0.0
+        // non-space bytes" as the wrap floor. Skipped entirely when the
+        // caller's policy never reads it, matching the cosmic path so the
+        // two agree on when the floor is absent rather than zero.
+        let intrinsic_min = if floor == WrapFloor::Skip {
+            None
+        } else if truncating_fit {
+            Some(0.0)
         } else {
             let mut longest = 0u32;
             let mut run = 0u32;
@@ -153,7 +157,7 @@ pub(super) mod internals {
             if run > longest {
                 longest = run;
             }
-            longest as f32 * glyph_w
+            Some(longest as f32 * glyph_w)
         };
         TextRoot {
             size,

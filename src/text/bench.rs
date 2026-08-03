@@ -3,7 +3,7 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::cosmic;
 use crate::text::system::{TextRunSlot, TextSystem};
-use crate::text::wrap::{LineFit, TextWrap};
+use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
 use criterion::Criterion;
 use rustc_hash::FxHashSet;
@@ -107,11 +107,11 @@ fn bench_reuse_layer(c: &mut Criterion) {
     c.bench_function("text_shape/reuse_layer/single_line_dispatch_x64", |b| {
         let shaper = TextShaper::new();
         for text in &labels {
-            shaper.shape_root(request_for(text));
+            shaper.shape_root(request_for(text), WrapFloor::Skip);
         }
         b.iter(|| {
             for text in &labels {
-                black_box(shaper.shape_root(request_for(text)));
+                black_box(shaper.shape_root(request_for(text), WrapFloor::Skip));
             }
         });
     });
@@ -145,13 +145,13 @@ fn bench_reuse_layer(c: &mut Criterion) {
         let shaper = TextShaper::new();
         for text in &labels {
             let request = request_for(text);
-            shaper.shape_root(request);
+            shaper.shape_root(request, WrapFloor::Skip);
             shaper.shape_bounded(request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap));
         }
         b.iter(|| {
             for text in &labels {
                 let request = request_for(text);
-                black_box(shaper.shape_root(request));
+                black_box(shaper.shape_root(request, WrapFloor::Skip));
                 black_box(shaper.shape_bounded(request.bounded(
                     WRAP_W,
                     HAlign::Left,
