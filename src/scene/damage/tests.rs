@@ -284,6 +284,20 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
         "the non-overlapping node `c` must stay clean; region = {:?}",
         region.iter_rects().collect::<Vec<_>>(),
     );
+
+    // The reorder costs exactly the frame it happens on. Once the
+    // snapshot holds the new order the rows match positionally, so the
+    // changed-paints arm reports `geometry_unchanged` and the inversion
+    // scan — which is O(rows²) once it fires — is never entered again.
+    // Worth pinning: the scan's cost is bearable precisely because it is
+    // one frame per raise rather than one per frame the order stays
+    // flipped.
+    frame(&mut h, |ui| canvas(ui, [b, c, a]));
+    assert!(
+        h.ui.damage_engine.probe.dirty().is_empty(),
+        "a settled reorder must re-damage nothing; dirty = {:?}",
+        h.ui.damage_engine.probe.dirty(),
+    );
 }
 
 /// Regression: two **text**-bearing nodes scrolled fully off the left
