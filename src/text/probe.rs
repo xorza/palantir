@@ -7,7 +7,7 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::text::cosmic::{self, ShapedRun};
+use crate::text::cosmic::ShapedRun;
 use crate::text::mono;
 use crate::text::{ShaperInner, TextShapeRequest};
 use std::cell::RefMut;
@@ -79,7 +79,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         };
 
         let mut last_in_line: Option<Caret> = None;
-        for run in cosmic::visible_runs(buffer, self.request.key.fit()) {
+        for run in buffer.layout_runs() {
             if run.line_i != target.line {
                 continue;
             }
@@ -125,24 +125,11 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             // before asking cosmic — the exact inverse of what
             // [`Self::cursor_xy`] subtracts, which is what keeps the
             // hit-test → caret round trip landing where it started.
-            // `hit` searches the whole buffer, including lines a
-            // truncating fit drops, so clamp y into the painted band
-            // first — otherwise a click below a clipped run resolves to
-            // text that was never drawn.
             Some(ShapedRun { buffer, left }) => buffer
-                .hit(x + left, y.min(self.painted_bottom(buffer)))
+                .hit(x + left, y)
                 .map(|cursor| cursor_to_byte(self.request.text, cursor))
                 .unwrap_or(self.request.text.len()),
             None => mono::byte_at_x(self.request.text, x, self.request.key.font_size_px()),
-        }
-    }
-
-    /// Bottom edge of the last painted line, for clamping a hit test.
-    /// Unbounded for a wrapping run — every line is painted.
-    fn painted_bottom(&self, buffer: &cosmic_text::Buffer) -> f32 {
-        match cosmic::visible_runs(buffer, self.request.key.fit()).last() {
-            Some(run) => run.line_top + run.line_height - 1.0,
-            None => f32::INFINITY,
         }
     }
 
@@ -177,7 +164,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         };
         let start = cursor_from_byte(self.request.text, range.start);
         let end = cursor_from_byte(self.request.text, range.end);
-        for run in cosmic::visible_runs(buffer, self.request.key.fit()) {
+        for run in buffer.layout_runs() {
             push_run_selection_rects(&run, start, end, left, out);
         }
     }

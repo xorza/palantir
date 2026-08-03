@@ -2,7 +2,7 @@ use crate::common::hash::hash_str;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
-use crate::text::cosmic::{self, CosmicMeasure};
+use crate::text::cosmic::{self, ClusterGlyph, CosmicMeasure};
 use crate::text::internals::{TestMeasure, TestShape};
 use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
@@ -103,13 +103,15 @@ struct GlyphPosition {
     end: usize,
 }
 
-/// Glyph geometry exactly as `extract_glyphs` emits it: the runs the fit
-/// actually paints, in block-local space (`left` taken off the buffer's
-/// own x, the same way extraction folds it into the run origin).
+/// Glyph geometry in the same block-local space the renderer and probe
+/// see — `left` off the buffer's own x, exactly as `extract_glyphs` folds
+/// it into the run origin.
 fn glyph_positions(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPosition> {
     let shaped = cosmic.shaped_run(key).expect("shaped buffer must exist");
     let left = shaped.left;
-    cosmic::visible_runs(shaped.buffer, key.fit())
+    shaped
+        .buffer
+        .layout_runs()
         .flat_map(move |run| {
             run.glyphs.iter().map(move |glyph| GlyphPosition {
                 x: glyph.x - left,
@@ -1414,9 +1416,9 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
         elided.size.h,
     );
     assert_eq!(
-        elided.intrinsic_min, None,
-        "a bounded run skips the segment scan, so its floor is absent \
-         rather than zero"
+        elided.intrinsic_min,
+        Some(0.0),
+        "an elided run has zero min floor"
     );
     let zero_width = measure_truncated(
         &mut c,
@@ -1444,6 +1446,104 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
         elided.key, wrapped.key,
         "elision and wrap must key distinct cache slots at the same width",
     );
+}
+
+#[test]
+fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
+    // Hand-built glyph runs, so the cut is checked against arithmetic
+    // rather than against whatever the installed fonts happen to measure.
+    // Each entry is (start, end, advance) in *visual* order.
+    type Run = &'static [(usize, usize, f32)];
+    // "abc", 10 px per glyph, LTR: visual order is logical order.
+    const LTR: Run = &[(0, 1, 10.0), (1, 2, 10.0), (2, 3, 10.0)];
+    // The same three glyphs read right-to-left: the logically-first glyph
+    // is emitted last. A cut driven by visual order would keep the wrong
+    // end of the run.
+    const RTL: Run = &[(2, 3, 10.0), (1, 2, 10.0), (0, 1, 10.0)];
+    // "a🇺🇸": one cluster (bytes 1..9) shaping to two 10 px glyphs. Paying
+    // for one of them must not commit the whole cluster's bytes.
+    const CLUSTER: Run = &[(0, 1, 10.0), (1, 9, 10.0), (1, 9, 10.0)];
+    // "á" decomposed: a zero-width mark glyph sharing the base's cluster
+    // costs nothing, so it must not hold the cut back.
+    const MARK: Run = &[(0, 3, 10.0), (0, 3, 0.0), (3, 4, 10.0)];
+
+    const ANY: usize = usize::MAX;
+    let mut order = Vec::new();
+    for (run, avail, max_end, expected, why) in [
+        (LTR, 0.0, ANY, 0, "no budget keeps nothing"),
+        (LTR, 9.9, ANY, 0, "a glyph is all-or-nothing"),
+        (LTR, 10.0, ANY, 1, "an exact fit is a fit"),
+        (LTR, 25.0, ANY, 2, "the third glyph would overrun"),
+        (LTR, 30.0, ANY, 3, "the whole run fits"),
+        (LTR, 1000.0, ANY, 3, "surplus budget keeps the whole run"),
+        (
+            RTL,
+            10.0,
+            ANY,
+            1,
+            "RTL keeps the logical prefix, not the visual one",
+        ),
+        (RTL, 25.0, ANY, 2, "RTL cut tracks logical order"),
+        (RTL, 30.0, ANY, 3, "the whole RTL run fits"),
+        (
+            CLUSTER,
+            10.0,
+            ANY,
+            1,
+            "one glyph of the cluster is unaffordable",
+        ),
+        (
+            CLUSTER,
+            25.0,
+            ANY,
+            1,
+            "25 px pays for only one of the two cluster glyphs",
+        ),
+        (CLUSTER, 30.0, ANY, 9, "30 px pays for the whole cluster"),
+        (
+            MARK,
+            10.0,
+            ANY,
+            3,
+            "a zero-width mark rides along with its base",
+        ),
+        (MARK, 20.0, ANY, 4, "the following glyph is affordable too"),
+        // `max_end` drives the back-off: feeding back the previous answer
+        // must retire at least one more cluster, all the way to nothing.
+        (LTR, 1000.0, 3, 2, "the bound retires the last glyph"),
+        (LTR, 1000.0, 2, 1, "and the one before it"),
+        (LTR, 1000.0, 1, 0, "and the last one standing"),
+        (LTR, 1000.0, 0, 0, "an exhausted bound stays at nothing"),
+        (RTL, 1000.0, 3, 2, "the bound reads logical order too"),
+        (
+            CLUSTER,
+            1000.0,
+            9,
+            1,
+            "backing off a cluster retires all of its glyphs",
+        ),
+    ] {
+        let cut = cosmic::fitting_prefix(
+            run.len(),
+            |i| ClusterGlyph {
+                start: run[i].0,
+                end: run[i].1,
+                advance: run[i].2,
+            },
+            &mut order,
+            avail,
+            max_end,
+        );
+        assert_eq!(cut, expected, "avail={avail} max_end={max_end}: {why}");
+        // Every bounded cut falls strictly below its bound, so feeding the
+        // previous answer back always makes progress — that is what makes
+        // the back-off terminate. Zero is the floor it terminates *at*: the
+        // production loop stops on an empty cut and never re-bounds by it.
+        assert!(
+            max_end == ANY || max_end == 0 || cut < max_end,
+            "a bounded cut must fall strictly below its bound",
+        );
+    }
 }
 
 #[test]
@@ -1640,9 +1740,9 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
         clipped.size.h,
     );
     assert_eq!(
-        clipped.intrinsic_min, None,
-        "a bounded run skips the segment scan, so its floor is absent \
-         rather than zero"
+        clipped.intrinsic_min,
+        Some(0.0),
+        "a clipped run has zero min floor"
     );
     // Clip and ellipsis cut to the same cap but bake different strings (the
     // ellipsis path appends `…` and reserves its width), so they must key
@@ -1912,9 +2012,8 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             key: original.key,
         });
         assert!(
-            truncated.shaped_run(unbounded.key).is_none(),
-            "a truncating fit is shaped at its own width, so restoring one \
-             must not drag the unbounded probe back in for {fit:?}",
+            truncated.shaped_run(unbounded.key).is_some(),
+            "truncation restoration must rebuild its unbounded probe for {fit:?}",
         );
         let restored = truncated.measure_with_fit(text, params, fit, unbounded.key);
         assert_eq!(restored.size, original.size, "fit: {fit:?}");
@@ -2656,17 +2755,14 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     );
     assert_eq!(TextWrap::Wrap.target_width(1.0, &overflow), 1.0);
 }
-
 /// A truncating fit paints exactly one visual line, including when the
 /// source has a hard newline in it.
 ///
-/// Cosmic is told to glyph-wrap so it cuts at the committed width, which
-/// means the buffer holds every line the text would occupy — and
-/// `Ellipsize::End(Lines(1))` caps visual lines per *buffer* line, not
-/// across paragraphs, so it does not cover this on its own.
-/// [`cosmic::visible_runs`] is what stops the run at line 0, and it has
-/// to stop measurement, glyph extraction and probe geometry alike or they
-/// disagree about where the run ends.
+/// The cut is taken from the *first layout run* of the cached unbounded
+/// probe, so everything past the newline is dropped before the prefix is
+/// ever reshaped. Worth pinning separately from the width cases: a
+/// truncating fit that measured two lines would break every caller that
+/// sizes a row from it.
 #[test]
 fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     let mut c = CosmicMeasure::with_bundled_fonts();
