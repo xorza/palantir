@@ -66,6 +66,24 @@ pub(crate) mod wrap;
 /// Single source — `composer::TEXT_SCALE_STEP` re-exports this value.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
+/// Frames a *rendered* run's cached artifacts survive untouched: the
+/// shaped buffer ([`cosmic::PROTECTED_KEEP_FRAMES`]) and the glyph
+/// template the backend encodes from it
+/// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`).
+///
+/// One value rather than two, because the two windows are not
+/// independent. The encoded cache is what generates the render-side
+/// buffer lookups, so a buffer whose window expired first would be
+/// silently restored from source on a hit the encoder had already
+/// counted as free — the retention would still be *correct*, just
+/// quietly paying to reshape. Deriving both from here is what keeps
+/// that from drifting apart in a later edit to one of them.
+///
+/// Lives here rather than with either cache because `renderer` depends
+/// on `text` and not the reverse, so this is the only spot both can
+/// name. Same reason as [`TEXT_SCALE_STEP`].
+pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
+
 /// Font family picker on [`crate::TextStyle`] and
 /// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the default
 /// proportional face); `Mono` resolves to bundled JetBrains Mono. Both
