@@ -410,8 +410,9 @@ impl ColorF16 {
     /// `EPS` bits) so no f16→f32 conversion is needed.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        use crate::primitives::approx::noop_f16_bits;
-        noop_f16_bits(self.0.0[3])
+        use crate::primitives::approx::{nan_f16_bits, noop_f16_bits};
+        let alpha = self.0.0[3];
+        noop_f16_bits(alpha) || nan_f16_bits(alpha)
     }
 
     /// True when alpha is within `EPS` of 1.0 — paints with full
@@ -603,6 +604,16 @@ fn linear_to_srgb(y: f32) -> f32 {
         x -= f / f_prime;
     }
     x
+}
+
+impl NanCheck for ColorF16 {
+    /// `0x7C00` is f16 infinity, so "magnitude strictly above it" is
+    /// exactly the NaN range — all four channels in one masked add.
+    #[inline]
+    fn has_nan(&self) -> bool {
+        const F16_INFINITY: u16 = 0x7C00;
+        self.0.any_lane_above(F16_INFINITY)
+    }
 }
 
 impl NanCheck for Color {

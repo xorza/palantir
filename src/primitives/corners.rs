@@ -116,9 +116,13 @@ impl Corners {
     /// semantics.
     #[inline]
     pub const fn approx_zero(&self) -> bool {
-        use crate::primitives::approx::noop_f16_bits;
-        let [tl, tr, br, bl] = self.0.0;
-        noop_f16_bits(tl) && noop_f16_bits(tr) && noop_f16_bits(br) && noop_f16_bits(bl)
+        // "Every lane within EPS" is the negation of "some lane above
+        // it", which `F16x4` answers for all four at once. NaN lands
+        // above EPS and so reports non-zero — deliberate: this gates
+        // the sharp-corner fast path, and a NaN radius must not take
+        // it. The shape-level NaN gate is what drops such a shape.
+        const EPS_BITS: u16 = half::f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
+        !self.0.any_lane_above(EPS_BITS)
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::common::hash::Hasher;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
+use crate::primitives::rect::aabb::Aabb;
 use crate::primitives::{approx, color::ColorU8};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -104,7 +105,13 @@ impl Mesh {
     /// triangles. Mirror of `DrawMeshPayload::is_noop` at the user-mesh layer.
     #[inline]
     pub fn is_noop(&self) -> bool {
-        self.vertices.is_empty() || self.indices.len() < 3 || !self.indices.len().is_multiple_of(3)
+        self.vertices.is_empty()
+            || self.indices.len() < 3
+            || !self.indices.len().is_multiple_of(3)
+            // A NaN vertex reaches the AABB by the fold's NaN contract,
+            // so this `O(1)` read stands in for scanning every position.
+            // `bbox` is memoized, so repeat calls are a load.
+            || self.bbox().has_nan()
     }
 
     /// Stable visual hash of vertices + indices. Memoized — repeat calls
@@ -269,13 +276,11 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
     let Some((first, rest)) = verts.split_first() else {
         return Rect::ZERO;
     };
-    let mut lo = first.pos;
-    let mut hi = first.pos;
+    let mut bounds = Aabb::new(first.pos);
     for v in rest {
-        lo = lo.min(v.pos);
-        hi = hi.max(v.pos);
+        bounds.push(v.pos);
     }
-    Rect::from_min_max(lo, hi)
+    bounds.finish()
 }
 
 /// Vertex colours are `ColorU8`, so positions are the only place a mesh

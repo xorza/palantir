@@ -4,6 +4,7 @@ use crate::common::content_hash::ContentHash;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
@@ -444,5 +445,57 @@ impl std::hash::Hash for LoweredShadow {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
+    }
+}
+impl NanCheck for ShapeStroke {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.width.is_nan() || self.color.has_nan()
+    }
+}
+
+/// A gradient's geometry never reaches this far: `lower::brush` screens
+/// it at intern time, so a `Gradient` here is known-finite and only its
+/// solid sibling needs testing.
+impl NanCheck for ShapeBrush {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Solid(color) => color.has_nan(),
+            Self::Gradient(_) => false,
+        }
+    }
+}
+
+impl NanCheck for LoweredShadow {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        use crate::primitives::approx::nan_f16_bits;
+        self.color.has_nan() || self.geom_f16.iter().copied().any(nan_f16_bits)
+    }
+}
+
+/// `Triangle` tests its `bbox` rather than `a`/`b`/`c`/`radius`: the
+/// bbox is derived from all four under the AABB NaN contract, so one
+/// `Rect` test covers them.
+impl NanCheck for QuadShape {
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Rect {
+                local_rect,
+                corners,
+                fill,
+                stroke,
+                ..
+            } => local_rect.has_nan() || corners.has_nan() || fill.has_nan() || stroke.has_nan(),
+            Self::Shadow {
+                local_rect,
+                corners,
+                shadow,
+            } => local_rect.has_nan() || corners.has_nan() || shadow.has_nan(),
+            Self::Triangle {
+                bbox, fill, stroke, ..
+            } => bbox.has_nan() || fill.has_nan() || stroke.has_nan(),
+        }
     }
 }

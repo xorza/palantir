@@ -1,3 +1,5 @@
+pub(crate) mod aabb;
+
 use crate::primitives::nan::NanCheck;
 use crate::primitives::{approx, corners::Corners, num::F32Ext, size::Size, spacing::Spacing};
 use core::f32::consts::FRAC_1_SQRT_2;
@@ -34,6 +36,14 @@ impl Rect {
         size: Size::ZERO,
     };
 
+    /// The poisoned rect an [`Aabb`](aabb::Aabb) folds to once it has
+    /// seen a NaN. [`Self::is_paint_empty`] reports it as invisible, so
+    /// it drops out at the first no-op gate it meets.
+    pub(crate) const NAN: Self = Self {
+        min: Vec2::NAN,
+        size: Size::new(f32::NAN, f32::NAN),
+    };
+
     /// A rect from its top-left corner and extent.
     #[inline]
     pub const fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
@@ -47,10 +57,24 @@ impl Rect {
     ///
     /// # Panics
     ///
-    /// Debug-asserts that `min` is componentwise `<= max`.
+    /// Debug-asserts that `min` is componentwise `<= max`, unless a
+    /// corner is NaN — see the note in the body.
     #[inline]
     pub const fn from_min_max(min: Vec2, max: Vec2) -> Self {
-        debug_assert!(min.x <= max.x && min.y <= max.y);
+        // A NaN corner is exempt, because it is *expected* input under
+        // the AABB NaN contract (see `extend_bounds_keep_nan`): a NaN
+        // vertex is deliberately folded into the bounds so the
+        // shape-level gate can drop the draw and name the shape it came
+        // from. Tripping here instead would report the arithmetic and
+        // not the caller. `max - min` keeps the NaN in `size`, which is
+        // what `is_paint_empty` reads.
+        debug_assert!(
+            (min.x <= max.x && min.y <= max.y)
+                || min.x.is_nan()
+                || min.y.is_nan()
+                || max.x.is_nan()
+                || max.y.is_nan()
+        );
         Self {
             min,
             size: Size::new(max.x - min.x, max.y - min.y),
@@ -91,7 +115,10 @@ impl Rect {
     /// noop gate so the predicate can't drift.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        self.size.is_paint_empty()
+        // `min` needs the NaN half of the test but not the `<= EPS`
+        // half — a rect at a negative origin paints fine, one at an
+        // undefined origin does not.
+        self.size.is_paint_empty() || self.min.has_nan()
     }
 
     /// Half-open containment: the min edges are inside, the max edges are

@@ -108,6 +108,23 @@ pub(crate) const fn noop_f16_bits(bits: u16) -> bool {
     (bits & ABS_MASK) <= EPS_BITS
 }
 
+/// True if an f16 stored as `u16` bits is NaN — exponent all ones with
+/// a non-zero mantissa, i.e. strictly above the infinity pattern once
+/// the sign bit is masked off.
+///
+/// Split out from [`noop_f16_bits`] because the two answer different
+/// questions and want opposite verdicts on NaN: `noop_f16_bits` backs
+/// `Corners::approx_zero`, a **fast-path** test where treating NaN as
+/// zero would route it *into* the sharp-corner shortcut, while
+/// `ColorF16::is_noop` is a **paint** test where a NaN must read as
+/// invisible so the draw is dropped. Paint predicates OR the two.
+#[inline]
+pub(crate) const fn nan_f16_bits(bits: u16) -> bool {
+    const NAN_EXP: u16 = 0x7C00;
+    const ABS_MASK: u16 = 0x7FFF;
+    (bits & ABS_MASK) > NAN_EXP
+}
+
 /// True if an f16 stored as `u16` bits is within `EPS` below 1.0 (or
 /// above). Mirror of `noop_f16_bits` for the opacity end of the
 /// scale: positive f16 values are monotonic in their bit
@@ -138,7 +155,7 @@ pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::primitives::approx::{
-        EPS, approx_zero, canon_bits, hash_rect, hash_visual_f32, hash_visual_rect,
+        EPS, approx_zero, canon_bits, hash_rect, hash_visual_f32, hash_visual_rect, noop_f32,
     };
     use crate::primitives::rect::Rect;
     use std::collections::hash_map::DefaultHasher;
@@ -148,6 +165,122 @@ mod tests {
         let mut hasher = DefaultHasher::new();
         write(&mut hasher);
         hasher.finish()
+    }
+
+    /// **The NaN audit.** Every *paint* no-op predicate — "would this
+    /// put down a texel" — must answer `true` for a NaN anywhere in its
+    /// inputs, because a NaN that survives the gate goes on to poison a
+    /// bbox, a damage rect, or a shader lane, and does it silently.
+    ///
+    /// Deliberately excluded are the predicates that ask a *different*
+    /// question: `approx_zero`, `Size::approx_zero`, `Rect::approx_zero`,
+    /// `Corners::approx_zero`, and `TranslateScale::is_noop` all mean "is
+    /// this value ≈ this constant", and they gate **fast paths**, not
+    /// paint. Answering `true` there would route a NaN *into* the sharp /
+    /// identity shortcut instead of away from it — the opposite of safe.
+    /// They are covered by the shape-level gate instead, which drops a
+    /// NaN before any of them is ever reached.
+    #[test]
+    fn every_paint_noop_predicate_treats_nan_as_invisible() {
+        use crate::primitives::brush::{Brush, CurveBrush};
+        use crate::primitives::color::{Color, ColorF16};
+        use crate::primitives::mesh::Mesh;
+        use crate::primitives::shadow::Shadow;
+        use crate::primitives::size::Size;
+        use crate::primitives::stroke::Stroke;
+        use crate::scene::shapes::paint::ShapeStroke;
+        use glam::Vec2;
+
+        const N: f32 = f32::NAN;
+        let nan_color = Color::rgba(0.0, 0.0, 0.0, N);
+        let mut nan_mesh = Mesh::new();
+        nan_mesh.vertex(Vec2::new(N, 0.0), Color::WHITE);
+        nan_mesh.vertex(Vec2::ZERO, Color::WHITE);
+        nan_mesh.vertex(Vec2::X, Color::WHITE);
+        nan_mesh.triangle(0, 1, 2);
+
+        let cases: &[(&str, bool)] = &[
+            ("noop_f32", noop_f32(N)),
+            ("Size::is_paint_empty/w", Size::new(N, 4.0).is_paint_empty()),
+            ("Size::is_paint_empty/h", Size::new(4.0, N).is_paint_empty()),
+            (
+                "Rect::is_paint_empty/size",
+                Rect::new(0.0, 0.0, N, 4.0).is_paint_empty(),
+            ),
+            (
+                "Rect::is_paint_empty/min",
+                Rect::new(N, 0.0, 4.0, 4.0).is_paint_empty(),
+            ),
+            ("Color::is_noop", nan_color.is_noop()),
+            ("ColorF16::is_noop", ColorF16::from(nan_color).is_noop()),
+            (
+                "Stroke::is_noop/width",
+                Stroke::solid(Color::WHITE, N).is_noop(),
+            ),
+            (
+                "Stroke::is_noop/color",
+                Stroke::solid(nan_color, 2.0).is_noop(),
+            ),
+            (
+                "ShapeStroke::is_noop/width",
+                ShapeStroke::from(Stroke::solid(Color::WHITE, N)).is_noop(),
+            ),
+            (
+                "ShapeStroke::is_noop/color",
+                ShapeStroke::from(Stroke::solid(nan_color, 2.0)).is_noop(),
+            ),
+            ("Brush::is_noop", Brush::Solid(nan_color).is_noop()),
+            (
+                "CurveBrush::is_noop",
+                CurveBrush::Solid(nan_color).is_noop(),
+            ),
+            (
+                "Shadow::is_noop/color",
+                Shadow {
+                    color: nan_color,
+                    ..Shadow::default()
+                }
+                .is_noop(),
+            ),
+            (
+                "Shadow::is_noop/blur",
+                Shadow {
+                    color: Color::WHITE,
+                    blur: N,
+                    ..Shadow::default()
+                }
+                .is_noop(),
+            ),
+            (
+                "Shadow::is_noop/offset",
+                Shadow {
+                    color: Color::WHITE,
+                    offset: Vec2::new(N, 0.0),
+                    ..Shadow::default()
+                }
+                .is_noop(),
+            ),
+            (
+                "Shadow::is_noop/spread",
+                Shadow {
+                    color: Color::WHITE,
+                    spread: N,
+                    ..Shadow::default()
+                }
+                .is_noop(),
+            ),
+            ("Mesh::is_noop", nan_mesh.is_noop()),
+        ];
+
+        let missed: Vec<&str> = cases
+            .iter()
+            .filter(|(_, is_noop)| !is_noop)
+            .map(|(label, _)| *label)
+            .collect();
+        assert!(
+            missed.is_empty(),
+            "these paint no-op predicates let a NaN through: {missed:?}",
+        );
     }
 
     #[test]

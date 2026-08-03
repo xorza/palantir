@@ -2,6 +2,7 @@ use crate::layout::types::align::{self, Align};
 use crate::primitives::color::ColorF16;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::interned_str::RecordedText;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -288,6 +289,60 @@ pub(crate) fn text_paint_bbox_local(
                 size: owner_size,
             };
             align::align_in_rect(owner_local.deflated_by(padding), measured, align)
+        }
+    }
+}
+
+/// **The single NaN gate's predicate.** `Shapes::add` runs this on the
+/// lowered record — one place, one `O(1)` test per shape, in release as
+/// well as debug.
+///
+/// Lowered is the right tier for it. Every bulk input (polyline points,
+/// mesh vertices, curve control points) has by then been folded into a
+/// `bbox` under the AABB NaN contract, so a NaN in any of them shows up
+/// as a NaN bbox — which means one `Rect` test replaces an `O(n)` scan
+/// of the data that produced it, and the check is cheap enough to keep
+/// in release rather than compiling out with the assert.
+///
+/// The one input that does *not* survive lowering is a gradient's
+/// geometry, which is interned into the record store behind a
+/// `GradientId`. `lower::brush` screens it there instead.
+impl NanCheck for ShapeRecord {
+    fn has_nan(&self) -> bool {
+        match self {
+            ShapeRecord::Quad(shape) => shape.has_nan(),
+            // `bbox` carries the points; `content_hash` and the spans
+            // are frame-local indices and can't be NaN.
+            ShapeRecord::Polyline { width, bbox, .. } => width.is_nan() || bbox.has_nan(),
+            ShapeRecord::Text {
+                local_origin,
+                color,
+                font_size_px,
+                line_height_px,
+                ..
+            } => {
+                local_origin.has_nan()
+                    || color.has_nan()
+                    || font_size_px.is_nan()
+                    || line_height_px.is_nan()
+            }
+            ShapeRecord::Mesh {
+                local_rect,
+                tint,
+                bbox,
+                ..
+            } => local_rect.has_nan() || tint.has_nan() || bbox.has_nan(),
+            ShapeRecord::Image {
+                local_rect,
+                tint,
+                fit,
+                ..
+            } => local_rect.has_nan() || tint.has_nan() || fit.has_nan(),
+            // `bbox` is derived from `basis`, so it stands in for the
+            // control points / centre / radius / angles.
+            ShapeRecord::Curve {
+                width, fill, bbox, ..
+            } => width.is_nan() || fill.has_nan() || bbox.has_nan(),
         }
     }
 }
