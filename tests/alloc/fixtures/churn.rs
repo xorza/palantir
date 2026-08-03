@@ -29,7 +29,7 @@
 //! *rise* is the regression this file exists to catch.
 
 use crate::harness::{audit_steady_state, audit_text_steady_state, run_audit};
-use palantir::{Configure, InternedStr, Panel, Sizing, Text, TextWrap};
+use palantir::{Configure, Panel, Sizing, Text, TextWrap};
 use std::fmt::Write as _;
 
 /// Labels per churning fixture — enough that a per-run leak shows up as
@@ -187,60 +187,26 @@ fn changing_label_text_alloc_free() {
     });
 }
 
-/// Interned text held across frames, which is what `TextStore`'s
-/// double-buffered arena swap exists to absorb — and, as measured here,
-/// does not.
+/// Text re-interned every frame, which is the contract `InternedStr`
+/// now states: a handle is valid for the pass that minted it, so a
+/// steady scene interns the same bytes into the same arena frame after
+/// frame.
 ///
-/// `clear` reuses its arena in place while nothing else holds it, and
-/// otherwise swaps to `spare`, allocating a replacement through
-/// `Rc::default()` only when the spare is *also* still owned. The
-/// intent is that one retained generation rides the spare for free and
-/// only two generations can defeat it.
-///
-/// One generation is free, which is the spare doing its job. Two is not:
-/// with both arenas pinned there is nothing to swap to, so the third
-/// arena and the `intern_str` push into its empty `String` are real.
-///
-/// Both arms allocated before `TextStore::clear` stopped vacating
-/// `active` with a `mem::take` — see there for what that cost.
-///
-/// A retained handle also pins its *whole* frame's arena rather than the
-/// span it addresses, so the memory held is the frame's entire text, not
-/// the one string.
+/// Budgeted at zero because `clear` keeps the arena's capacity. This
+/// used to be two fixtures measuring the opposite question — what it
+/// cost to *hold* a handle across frames — back when `TextStore`
+/// double-buffered arenas to keep an escaped handle's bytes alive. The
+/// one-generation arm rode the spare for free; the two-generation arm
+/// allocated a fresh arena every frame, forever, because both were
+/// pinned and there was nothing to swap to. Neither question exists now:
+/// a handle is `Copy`, owns nothing, and cannot outlive its pass.
 #[test]
-fn one_retained_interned_generation_alloc_free() {
-    let mut previous: Option<InternedStr> = None;
-    run_audit("interned_hold_one", 8, 64, 0, move |ui| {
-        // Reading it is what the fixture is about: the handle from the
-        // previous frame is still live *here*, one `clear` after it was
-        // made. Without the read the compiler sees a dead store and the
-        // retention the audit measures reads as an accident.
-        std::hint::black_box(&previous);
-        // Exactly one generation alive: last frame's handle is dropped
-        // by this assignment, before the next `clear` runs.
-        previous = Some(ui.intern("retained across a single frame"));
+fn reinterned_text_alloc_free() {
+    run_audit("intern_per_frame", 8, 64, 0, move |ui| {
+        let label = ui.intern("re-interned every frame");
+        std::hint::black_box(label);
         Panel::vstack()
-            .id_salt("intern-one")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |_ui| {});
-    });
-}
-
-/// The two-generation case — see
-/// [`one_retained_interned_generation_alloc_free`] for the mechanism.
-#[test]
-fn two_retained_interned_generations_alloc_free() {
-    let mut held: [Option<InternedStr>; 2] = [None, None];
-    let mut step = 0usize;
-    // Budget 2, measured: the third arena two pinned generations
-    // genuinely need, plus `intern_str` growing its empty `String`.
-    // Unlike the one-generation arm this cannot reach zero without a
-    // deeper pool — there is no free arena to swap to.
-    run_audit("interned_hold_two", 8, 64, 2, move |ui| {
-        held[step % 2] = Some(ui.intern("retained across two frames"));
-        step += 1;
-        Panel::vstack()
-            .id_salt("intern-two")
+            .id_salt("intern-per-frame")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |_ui| {});
     });
