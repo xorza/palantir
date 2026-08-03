@@ -427,6 +427,27 @@ fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
     (backend, runs)
 }
 
+/// Report what the glyph atlas paid to stay packed over `frames` primed
+/// frames, and how far into audit F2's curve that puts it.
+///
+/// Printed before the measured section, like the residency guard in
+/// `text_shape`: reading it afterwards would make the number depend on
+/// whatever iteration count criterion chose, and report nothing at all
+/// under `--list`.
+fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
+    let atlas = &backend.backend.encoder.atlas;
+    let counts = atlas.probe.counts();
+    let per_frame = counts.evict_scans as f64 / frames.max(1) as f64;
+    eprintln!(
+        "[text_atlas] {label}: live_glyphs={} evictions={} grows={} \
+         scanned={} ({per_frame:.0}/frame over {frames} frames)",
+        atlas.cache.len(),
+        counts.evictions,
+        counts.grows,
+        counts.evict_scans,
+    );
+}
+
 pub fn bench(c: &mut Criterion) {
     let g = gpu();
     let target = make_target(&g.device);
@@ -541,6 +562,7 @@ pub fn bench(c: &mut Criterion) {
                 scale,
             );
         }
+        report_atlas_pressure("zoom_cold", &backend, WARM_SCALE_CYCLE);
         let mut i: u32 = 0;
         group.bench_function("zoom_cold", |b| {
             b.iter(|| {
@@ -575,6 +597,7 @@ pub fn bench(c: &mut Criterion) {
                 scale,
             );
         }
+        report_atlas_pressure("cache_churn", &backend, CHURN_SCALE_CYCLE);
         let mut i: u32 = 0;
         group.bench_function("cache_churn", |b| {
             b.iter(|| {
