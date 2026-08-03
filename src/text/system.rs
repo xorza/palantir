@@ -40,6 +40,13 @@ use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{TextRoot, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+/// Both entry points take the run's *unbounded* request and derive every
+/// bounded key they need from it, so handing them a pre-bounded one would
+/// silently key a row off the wrong identity. Layout only ever builds
+/// unbounded requests (`TextShapeInput::shape_request`), so this is a
+/// contract to assert, not a case to normalize.
+const UNBOUND_REQUEST: &str = "TextSystem entry points take an unbounded request";
+
 /// Per-window text coordinator. Reuse slots belong to the window while
 /// shaped content buffers and the font system remain shared through
 /// [`TextShaper`]. Reuse rows live exactly as long as they are used:
@@ -91,7 +98,7 @@ impl TextSystem {
     /// min/max-content demands are pure functions of it.
     #[inline]
     pub(crate) fn root(&mut self, slot: TextRunSlot, request: TextShapeRequest<'_>) -> TextRoot {
-        let request = request.unbounded_version();
+        debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
         if request.text.is_empty() {
             return TextRoot::ZERO;
         }
@@ -112,7 +119,7 @@ impl TextSystem {
         halign: HAlign,
         available_width_px: Option<f32>,
     ) -> ShapedText {
-        let request = request.unbounded_version();
+        debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
         if request.text.is_empty() {
             return ShapedText {
                 measured: Size::ZERO,

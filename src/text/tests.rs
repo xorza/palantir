@@ -10,6 +10,7 @@ use crate::text::probe;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::*;
+use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 use rustc_hash::FxHashSet;
 
 /// Measurement parameters with the defaults nearly every case wants:

@@ -53,12 +53,6 @@ pub(crate) mod run;
 pub(crate) mod system;
 pub(crate) mod wrap;
 
-/// Leading the shaper hands to cosmic-text's `Metrics::new`, also used
-/// as the default for [`crate::TextStyle::line_height_mult`] so
-/// the caret rect spans the same y-range as the rendered text.
-/// Single source — cosmic and the theme default move together.
-pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
-
 /// Additive step on the text-scale ladder used by the composer to snap
 /// continuous zoom scales to discrete glyph-cache keys (`composer::
 /// snap_text_scale`). The cascade computes text damage rects at the

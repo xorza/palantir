@@ -1,7 +1,15 @@
 use crate::primitives::color::Color;
 use crate::text::key;
-use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT};
+use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::palette::Palette;
+
+/// Default [`TextStyle::line_height_mult`]: the leading widgets resolve
+/// into the `line_height_px` they record, and so also the y-range a caret
+/// spans.
+///
+/// A widget convention, not a shaping one — the shaper takes resolved
+/// pixels off `ShapeRecord::Text` and never consults a multiplier.
+pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
 /// Default text-rendering inputs grouped together so apps can swap the
 /// whole "text look" with one assignment, and so future axes (italic,
