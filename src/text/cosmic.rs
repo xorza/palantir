@@ -77,6 +77,22 @@ const RECYCLE_POOL_CAP: usize = 128;
 /// A demotion, not an eviction: four frames of grace means a label
 /// oscillating between two keys, or a drag reversing back through a
 /// width it just used, still hits.
+///
+/// # Why not reference-counted retention
+///
+/// Letting an entry die when no upper cache still holds it reads like
+/// the obvious replacement for this whole scheme — no windows, no
+/// demotion signal. It does not work, for a measured reason.
+/// `EncodedKey` embeds [`TextShapeKey`], so a width drag mints a fresh
+/// encoded entry every frame and those live
+/// [`RENDERED_RUN_KEEP_FRAMES`](crate::text::RENDERED_RUN_KEEP_FRAMES).
+/// An encoded entry holding its buffer *strongly* therefore pins
+/// `runs x 120` of them — worse than what this window achieves, and the
+/// exact growth it was added to stop. Holding it *weakly* keeps the drag
+/// bounded but leaves buffers dying under live encoded entries, so the
+/// whole restore path (`ShapedTextRef`, `TextSource`,
+/// [`CosmicMeasure::ensure_buffer`]) has to stay — and deleting that was
+/// the other half of the idea. The two wins are mutually exclusive.
 pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 
 /// Frames a *protected* entry — one that has been looked up at least once
@@ -87,6 +103,25 @@ pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// generates the render-side lookups this one exists to answer, so a
 /// buffer has to outlive the encoded entry that would come asking.
 pub(super) const PROTECTED_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRAMES;
+
+/// The cached unbounded shape a truncating fit cuts from.
+///
+/// [`CosmicMeasure::measure_truncated`] calls
+/// [`CosmicMeasure::ensure_buffer`] on this key before reaching for it,
+/// and re-reads it once per back-off round because the shaping in
+/// between needs `&mut self`, so the borrow cannot be held across the
+/// loop.
+///
+/// Takes the map rather than `&self` on purpose: the caller holds
+/// `&mut self.logical_order` at the same time, and only a borrow of the
+/// one field stays disjoint from it.
+#[inline]
+fn truncation_probe(cache: &FxHashMap<TextShapeKey, CacheEntry>, key: TextShapeKey) -> &Buffer {
+    &cache
+        .get(&key)
+        .expect("truncation requires the cached unbounded shape")
+        .buffer
+}
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
@@ -425,6 +460,32 @@ impl CosmicMeasure {
     /// cluster until it fits, so the measured extent never exceeds the
     /// committed width — the cut alone cannot guarantee that, since
     /// reshaping the prefix changes its shaping context.
+    ///
+    /// # Why not `Buffer::set_ellipsize`
+    ///
+    /// Cosmic 0.19 can do this itself, and delegating to it deletes
+    /// roughly 290 lines: this function, [`fitting_prefix`],
+    /// [`ClusterGlyph`], the ellipsis memo, and three retained scratch
+    /// fields. That was written, measured, and reverted — **4.9x slower**
+    /// on `text_shape/resize_drag_frame` (1.42 µs -> 7.13 µs per run per
+    /// frame).
+    ///
+    /// The reason is not the wrap mode (`Wrap::Glyph`, `Wrap::None` and a
+    /// one-line height cap all measure within 10% of each other) but how
+    /// much text is reshaped per committed width. Cosmic has to see the
+    /// whole string to decide where to cut, so every new width reshapes
+    /// all of it; shaping a 108-character label costs ~9x what its
+    /// seven-character cut prefix costs.
+    ///
+    /// **So the dependency on the cached unbounded probe is the point,
+    /// not a wart.** It is what a drag reuses: the full-string shape is
+    /// paid once, [`fitting_prefix`] finds the cut by scanning glyphs
+    /// that are already there, and only the short prefix is reshaped per
+    /// frame. Anything that revisits this has to keep the full-string
+    /// shape cached across widths — cosmic allows that (`set_size`
+    /// re-lays-out without re-shaping), but one buffer holds one layout
+    /// and the cache is keyed per width, so it needs a different
+    /// buffer/key model rather than a different call.
     fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         let key = request.key;
         let fit = key.fit();
@@ -460,11 +521,7 @@ impl CosmicMeasure {
         };
         let probe_key = unbounded.key;
         let fits_whole = {
-            let probe = &self
-                .cache
-                .get(&probe_key)
-                .expect("truncation requires the cached unbounded shape")
-                .buffer;
+            let probe = truncation_probe(&self.cache, probe_key);
             first_line_right(probe) <= width && probe.layout_runs().nth(1).is_none()
         };
 
@@ -491,26 +548,22 @@ impl CosmicMeasure {
             // bottoms out at the empty prefix.
             let mut max_end = usize::MAX;
             loop {
-                let cut = {
-                    let probe = &self
-                        .cache
-                        .get(&probe_key)
-                        .expect("truncation requires the cached unbounded shape")
-                        .buffer;
-                    match probe.layout_runs().next() {
-                        Some(run) => fitting_prefix(
-                            run.glyphs.len(),
-                            |i| ClusterGlyph {
-                                start: run.glyphs[i].start,
-                                end: run.glyphs[i].end,
-                                advance: run.glyphs[i].w,
-                            },
-                            &mut self.logical_order,
-                            avail,
-                            max_end,
-                        ),
-                        None => 0,
-                    }
+                let cut = match truncation_probe(&self.cache, probe_key)
+                    .layout_runs()
+                    .next()
+                {
+                    Some(run) => fitting_prefix(
+                        run.glyphs.len(),
+                        |i| ClusterGlyph {
+                            start: run.glyphs[i].start,
+                            end: run.glyphs[i].end,
+                            advance: run.glyphs[i].w,
+                        },
+                        &mut self.logical_order,
+                        avail,
+                        max_end,
+                    ),
+                    None => 0,
                 };
                 self.truncate_scratch.clear();
                 self.truncate_scratch
@@ -795,6 +848,11 @@ pub(super) struct ClusterGlyph {
 /// within `avail` and stay below `max_end`. `order` is retained scratch,
 /// refilled with the glyph indices sorted into logical order; `glyph` reads
 /// one glyph by its original (visual-order) index.
+///
+/// Reading through `glyph` rather than taking `&[LayoutGlyph]` buys two
+/// things: the caller keeps its borrow of the cache disjoint from its
+/// borrow of `order`, and the cut can be unit-tested against hand-built
+/// advances instead of whatever the installed fonts happen to measure.
 ///
 /// The result is always strictly below `max_end`, so passing the previous
 /// answer retires at least one more cluster — that is what makes

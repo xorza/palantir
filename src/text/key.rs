@@ -156,7 +156,21 @@ impl TextShapeKey {
         (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
     }
 
+    /// The four decoders below `debug_assert` their range and then make
+    /// the last variant total, rather than panicking on an out-of-range
+    /// tag.
+    ///
+    /// Every one of these bytes was written by this crate from the enum
+    /// itself (`family as u8`), so a bad tag is a logic error here, never
+    /// bad data — and these run per shape, which release builds must not
+    /// pay a check for. The restore path is what forces the round-trip to
+    /// exist at all; see `CosmicMeasure::measure_truncated`.
     pub(super) fn family(self) -> FontFamily {
+        debug_assert!(
+            self.family_q <= 1,
+            "invalid FontFamily tag {}",
+            self.family_q
+        );
         match self.family_q {
             0 => FontFamily::Sans,
             1 => FontFamily::Mono,
@@ -165,6 +179,11 @@ impl TextShapeKey {
     }
 
     pub(super) fn weight(self) -> FontWeight {
+        debug_assert!(
+            self.weight_q <= 1,
+            "invalid FontWeight tag {}",
+            self.weight_q
+        );
         match self.weight_q {
             0 => FontWeight::Regular,
             1 => FontWeight::Bold,
@@ -173,6 +192,7 @@ impl TextShapeKey {
     }
 
     pub(super) fn halign(self) -> HAlign {
+        debug_assert!(self.halign_q <= 4, "invalid HAlign tag {}", self.halign_q);
         match self.halign_q {
             0 => HAlign::Auto,
             1 => HAlign::Left,
@@ -184,6 +204,7 @@ impl TextShapeKey {
     }
 
     pub(super) fn fit(self) -> LineFit {
+        debug_assert!(self.fit_q <= 2, "invalid LineFit tag {}", self.fit_q);
         match self.fit_q {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
