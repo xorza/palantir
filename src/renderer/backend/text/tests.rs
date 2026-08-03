@@ -52,7 +52,7 @@ mod internals {
 }
 
 mod wire {
-    use crate::renderer::backend::text::{GlyphInstance, PARAMS_BYTES, PARAMS_OFFSET};
+    use crate::renderer::backend::text::{GlyphInstance, PARAMS_OFFSET};
     use std::mem::{align_of, offset_of, size_of};
 
     #[test]
@@ -65,22 +65,24 @@ mod wire {
         assert_eq!(offset_of!(GlyphInstance, color), 16);
     }
 
+    /// The viewport and the atlas sizes share one immediate region, and
+    /// the shader reads them as `Immediates { viewport, params }`.
+    ///
+    /// Their *adjacency* is no longer worth asserting — `PARAMS_OFFSET`
+    /// is defined as `ViewportPush::BYTES`, so a test comparing the two
+    /// would restate the definition. (It used to be the literal `8`,
+    /// which is why that assertion, and a second one pinning
+    /// `PARAMS_BYTES == 8`, existed at all.) What a wider viewport or a
+    /// third params field can still break is the pair fitting inside the
+    /// region at all, which nothing else checks.
     #[test]
-    fn params_bytes_match_a_vec2_u32() {
-        assert_eq!(PARAMS_BYTES, 8);
-    }
-
-    #[test]
-    fn params_offset_follows_viewport() {
-        // Pinned: atlas sizes live in the shared immediate region right
-        // after `ViewportPush` (8 bytes). If `ViewportPush` grows or
-        // `PARAMS_OFFSET` drifts, the shader's `imm.params` would
-        // read the wrong bytes. Total 16 must also still fit inside
-        // `IMMEDIATES_BYTES`.
+    fn viewport_and_params_fit_the_immediate_region() {
         use crate::renderer::backend::IMMEDIATES_BYTES;
-        use crate::renderer::backend::viewport::ViewportPush;
-        assert_eq!(PARAMS_OFFSET as usize, ViewportPush::BYTES);
-        assert!(PARAMS_OFFSET as usize + PARAMS_BYTES <= IMMEDIATES_BYTES as usize);
+        // The type of `TextBackend::atlas_px`, which `render_batch`
+        // writes with `bytemuck::bytes_of` — so the width is the field's
+        // and needs no constant of its own beside it.
+        let params = size_of::<[u32; 2]>();
+        assert!(PARAMS_OFFSET as usize + params <= IMMEDIATES_BYTES as usize);
     }
 }
 

@@ -451,7 +451,9 @@ fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
 }
 
 /// Report what the glyph atlas paid to stay packed over `frames` primed
-/// frames, and how far into audit F2's curve that puts it.
+/// frames — in particular whether it reached the regime where it
+/// recycles rectangles instead of growing, and what the clock's hand
+/// cost it there.
 ///
 /// Printed before the measured section, like the residency guard in
 /// `text_shape`: reading it afterwards would make the number depend on

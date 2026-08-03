@@ -52,11 +52,16 @@ pub(crate) struct GlyphInstance {
     color: u32,
 }
 
-/// `[color_atlas_size, mask_atlas_size]` follows `ViewportPush` in the
-/// shared immediate region.
-const PARAMS_OFFSET: u32 = 8;
-const PARAMS_BYTES: usize = std::mem::size_of::<[u32; 2]>();
-const _: () = assert!(PARAMS_BYTES == 8);
+/// Offset of `[color_atlas_size, mask_atlas_size]` in the shared
+/// immediate region: straight after the viewport, which is what
+/// `shader.wgsl` declares as `Immediates { viewport, params }`.
+///
+/// Derived rather than written as `8`, because the offset and
+/// `ViewportPush`'s size are the same fact — a literal would let a field
+/// added to the viewport silently overlap these. It replaces an
+/// assertion that `size_of::<[u32; 2]>() == 8`, which restated the
+/// params' own width (true by construction) rather than their placement.
+const PARAMS_OFFSET: u32 = ViewportPush::BYTES as u32;
 
 /// 0 = mask, 1 = color. Encoded in the high bit of `uv.u`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
