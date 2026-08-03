@@ -150,7 +150,7 @@ impl BenchText {
             .render_batch(batch_index, pass, &self.pipelines, false, &viewport);
     }
 
-    /// Frame teardown for the harness, matching `TextSystem::end_frame`
+    /// Frame teardown for the harness, matching `TextSystem`'s
     /// on the production side: what it drives happens to advance the
     /// shared text clock, but the harness is modelling a frame boundary,
     /// not owning the clock.

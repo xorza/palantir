@@ -725,6 +725,92 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     );
 }
 
+/// Every frame that reaches the screen advances the shared text clock,
+/// `PaintOnly` ones included.
+///
+/// Retention is the mild half of why. The sharp half is the glyph
+/// atlas: `eviction_candidate` only offers a slot whose `last_use <
+/// current_frame`, so a stalled clock means *nothing* is evictable. A
+/// full atlas then starves every insert — `Rasterized::AtlasFull`,
+/// glyphs dropped from painted text — and cannot recover on its own,
+/// because the only thing that would free a slot is the clock the
+/// paint-only streak is not turning.
+///
+/// The clock ticks in `TextSystem::end_full_record`, which lives in
+/// `finalize_frame` and so runs only for `FullRecord`. This pins the
+/// separate tick the `PaintOnly` arm owes.
+#[test]
+fn paint_only_frames_advance_the_shared_text_clock() {
+    use crate::host::shared::HostShared;
+    use crate::layout::types::align::Align;
+    use crate::layout::types::sizing::Sizing;
+    use crate::scene::node::Node;
+    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::shape::Shape;
+    use crate::text::shaper::TextShaper;
+    use crate::text::{FontFamily, FontWeight};
+    use crate::ui::frame_report::FrameProcessing;
+
+    const HALF: Duration = Duration::from_millis(500);
+
+    // A blinking text boundary is what makes the harness produce
+    // paint-only frames at all: it repaints on a timer without
+    // re-recording.
+    fn blinking_text(ui: &mut Ui) {
+        let mut node = Node::leaf();
+        node.size = Some((Sizing::fixed(160.0), Sizing::fixed(30.0)).into());
+        ui.widget(node).record(ui, None, |ui| {
+            let text = ui.intern("paint-only clock");
+            ui.add_shape_animated(
+                Shape::Text {
+                    local_origin: None,
+                    text,
+                    color: Color::WHITE,
+                    font_size_px: 16.0,
+                    line_height_px: 19.2,
+                    wrap: TextWrap::SingleLine,
+                    align: Align::default(),
+                    family: FontFamily::Sans,
+                    weight: FontWeight::Regular,
+                },
+                PaintAnim::BlinkOpacity {
+                    half_period: HALF,
+                    started_at: HALF,
+                    stop_after: Duration::MAX,
+                },
+            );
+        });
+    }
+
+    let shared = HostShared::new(TextShaper::new(), None);
+    let mut ui = UiHarness::from_resources(shared.resources.clone(), SURFACE);
+    let shaper = ui.ui.resources.text.clone();
+
+    let first = ui.frame(blinking_text);
+    assert_eq!(first.repaint_after, Some(HALF));
+    let recorded = shaper.frame();
+
+    // Several paint-only frames in a row: the streak that used to
+    // freeze the clock outright.
+    let mut at = HALF;
+    for step in 1..=3u32 {
+        let report = ui
+            .at(at)
+            .frame(|_| panic!("PaintOnly must not re-record the tree"));
+        assert_eq!(
+            report.processing,
+            FrameProcessing::PaintOnly,
+            "step {step}: fixture must produce a paint-only frame",
+        );
+        assert_eq!(
+            shaper.frame(),
+            recorded + u64::from(step),
+            "step {step}: a painted frame must advance the shared text clock",
+        );
+        at += HALF;
+    }
+}
+
 #[test]
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::host::shared::HostShared;

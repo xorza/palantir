@@ -323,7 +323,8 @@ impl TextBackend {
     /// `WgpuBackend::submit`, nowhere near a record pass, and the crate
     /// spends `post_record` on the record half of a frame
     /// (`FrameCycle`, `Forest`, `Tree`). It belongs with the other
-    /// frame-boundary teardowns instead — `TextSystem::end_frame` is its
+    /// frame-boundary teardowns instead — `TextSystem::end_full_record`
+    /// is its
     /// opposite number on the record side.
     ///
     /// It used to return early on an empty `ranges`, which froze this
@@ -426,7 +427,8 @@ pub(crate) mod internals {
     impl TextBackend {
         /// One frame boundary the way a window drives it: advance the
         /// shared text clock — owned by the record pass in production,
-        /// where `TextSystem::end_frame` ticks it before the submit —
+        /// where `TextSystem`'s frame teardown ticks it before the
+        /// submit —
         /// then sweep this side against it.
         ///
         /// Harnesses that drive a `TextBackend` with no `Ui` behind it
