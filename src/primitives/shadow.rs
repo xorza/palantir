@@ -1,6 +1,6 @@
 use crate::primitives::approx::canon_bits;
 use crate::primitives::color::Color;
-use crate::primitives::nan::NanCheck;
+use crate::primitives::nan::{self, NanCheck};
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
@@ -78,7 +78,13 @@ impl Shadow {
 
     #[inline]
     pub const fn is_noop(&self) -> bool {
+        // Geometry is screened for NaN only, not magnitude: a zero-σ
+        // zero-offset shadow still paints a hard-edged rect, so the
+        // tint is the only thing whose *size* decides visibility.
         self.color.is_noop()
+            || nan::vec2_has_nan(self.offset)
+            || self.blur.is_nan()
+            || self.spread.is_nan()
     }
 }
 
