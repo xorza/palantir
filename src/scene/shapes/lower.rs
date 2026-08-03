@@ -20,7 +20,9 @@ use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
+use crate::primitives::rect::aabb::Aabb;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
@@ -102,6 +104,15 @@ fn linear_brush(store: &RecordStore, gradient: &LinearGradient) -> LoweredBrush 
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
 pub(super) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
+    // A gradient's geometry (angle / centre / radii) is interned into
+    // the store behind a `GradientId`, so it is the one authoring input
+    // the record-level NaN gate cannot see. Screen it here, where it is
+    // still in hand, and collapse a broken one to "paints nothing" so
+    // the ordinary no-op machinery drops the shape.
+    if b.has_nan() {
+        debug_assert!(!b.has_nan(), "NaN in gradient geometry: {b:?}");
+        return solid_brush(Color::TRANSPARENT);
+    }
     match b {
         Brush::Solid(color) => solid_brush(*color),
         Brush::Linear(gradient) => linear_brush(store, gradient),
@@ -265,20 +276,43 @@ pub(super) fn polyline(
     let p_start = payloads.polyline_points.len() as u32;
     let c_start = payloads.polyline_colors.len() as u32;
     let (&first, rest) = points.split_first().unwrap();
-    let mut lo = first;
-    let mut hi = first;
+    // Folded under the AABB NaN contract, so a NaN point reaches `bbox`
+    // — which is what lets the record's no-op gate screen this shape in
+    // `O(1)` rather than rescanning every point.
+    let mut bounds = Aabb::new(first);
     payloads.polyline_points.reserve(points.len());
     payloads.polyline_points.push(first);
     for &p in rest {
         payloads.polyline_points.push(p);
-        lo = lo.min(p);
-        hi = hi.max(p);
+        bounds.push(p);
+    }
+    let bbox = bounds.finish();
+    // Earliest point a NaN point is knowable — the fold that just ran
+    // is what detects it. `Shapes::add` drops the record either way, so
+    // bail now rather than paying the two `O(n)` passes still ahead
+    // (the colour copy and the content hash), and hand the arena back
+    // its points so a rejected shape leaves no trace in the store.
+    //
+    // This is the one shape whose no-op gate can't catch a NaN before
+    // lowering: a mesh has a memoized `bbox` to consult at authoring
+    // time, a polyline's points are a bare borrowed slice.
+    if bbox.has_nan() {
+        payloads.polyline_points.truncate(p_start as usize);
+        return ShapeRecord::Polyline {
+            width,
+            color_mode: mode,
+            cap,
+            join,
+            points: Span::new(p_start, 0),
+            colors: Span::new(c_start, 0),
+            bbox,
+            content_hash: 0,
+        };
     }
     payloads
         .polyline_colors
         .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
     let lowered_colors = &payloads.polyline_colors[c_start as usize..];
-    let bbox = Rect::from_min_max(lo, hi);
 
     // Hash contract for polyline records: no variant tag needed —
     // polylines are the only shape lowering into this record, and

@@ -70,16 +70,6 @@ impl Shapes {
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
     pub(crate) fn add(&mut self, shape: Shape<'_>, store: &RecordStore) -> Option<u32> {
-        // Ahead of every other gate, including `is_noop`: `noop_f32`
-        // reads NaN as invisible, so a NaN-width shape would leave
-        // through that early return unexamined.
-        debug_assert!(
-            !shape.has_nan(),
-            "NaN in a paint-shape input — an arithmetic bug on the \
-             calling side (0/0, ∞-∞, an unseeded layout value). Release \
-             builds don't crash on it; the draw silently vanishes, or \
-             worse, poisons a damage bbox and leaves trails. {shape:?}",
-        );
         if let Shape::Polyline(shape) = &shape {
             shape.colors.assert_matches(shape.points.len());
         }
@@ -207,6 +197,22 @@ impl Shapes {
                 }
             }
         };
+        // **The one NaN gate.** Lowered rather than authored, because by
+        // here every bulk input has been folded into a `bbox` under the
+        // AABB NaN contract — so this is `O(1)` for every shape and can
+        // stay in release, where it makes NaN mean what the rest of the
+        // pipeline already means by "no-op": drop the draw. Debug builds
+        // get the loud version.
+        if record.has_nan() {
+            debug_assert!(
+                !record.has_nan(),
+                "NaN in a paint-shape input — an arithmetic bug on the \
+                 calling side (0/0, ∞-∞, an unseeded layout value). It \
+                 would not crash: the draw silently vanishes, or worse, \
+                 poisons a damage bbox and leaves trails. {record:?}",
+            );
+            return None;
+        }
         let idx = self.records.len() as u32;
         let hash = compute_record_hash(&record);
         self.records.push(record);
