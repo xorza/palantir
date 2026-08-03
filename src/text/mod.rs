@@ -242,11 +242,7 @@ impl TextShaper {
     /// measurement.
     pub(crate) fn layout<'t>(&self, request: TextShapeRequest<'t>) -> TextLayoutProbe<'_, 't> {
         let mut inner = self.inner.borrow_mut();
-        let size = if request.text.is_empty() {
-            Size::ZERO
-        } else {
-            inner.dispatch(request, WrapFloor::Skip).size
-        };
+        let size = inner.dispatch(request, WrapFloor::Skip).size;
         TextLayoutProbe::new(size, request, inner)
     }
 
@@ -332,7 +328,15 @@ impl ShaperInner {
     /// Bypass-cache dispatch. Test builds tally it into `measure_calls` —
     /// cosmic may still hit its shaped-buffer cache, so the counter tracks
     /// dispatches, not reshapes.
+    ///
+    /// Empty text answers here, ahead of the tally, so no shaper entry
+    /// point needs a guard of its own and a run with nothing to shape
+    /// never reads as a dispatch. Both backends keep their own guard for
+    /// the callers that reach them directly.
     fn dispatch(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        if request.text.is_empty() {
+            return TextRoot::ZERO;
+        }
         #[cfg(any(test, feature = "internals"))]
         {
             self.measure_calls += 1;
@@ -402,6 +406,8 @@ impl TextRoot {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     #![allow(dead_code)]
+    #[cfg(test)]
+    use crate::text::cache_probe::CacheCounts;
     use crate::text::key::TextShapeKey;
     use crate::text::probe::{Caret, TextLayoutProbe};
     use crate::text::wrap::{LineFit, WrapFloor};
@@ -587,23 +593,16 @@ pub(crate) mod internals {
                 .map_or(0, CosmicMeasure::cache_len)
         }
 
-        /// Snapshot of the shaped-buffer cache's tallies. Copied out
-        /// rather than borrowed so a test can hold a "before" reading
-        /// across calls that need the shaper again.
+        /// Snapshot of the shaped-buffer cache's tallies.
         #[cfg(test)]
         pub(crate) fn cache_counts(&self) -> CacheCounts {
-            let inner = self.inner.borrow();
-            let probe = &inner
+            self.inner
+                .borrow()
                 .cosmic
                 .as_ref()
                 .expect("cache counts require a cosmic text shaper")
-                .probe;
-            CacheCounts {
-                shapes: probe.shapes(),
-                hits: probe.hits(),
-                supersedes: probe.supersedes(),
-                expiries: probe.expiries(),
-            }
+                .probe
+                .counts()
         }
 
         /// The lookup `TextEncoder::encode_run` performs on an
@@ -637,32 +636,6 @@ pub(crate) mod internals {
                 .as_mut()
                 .expect("cosmic buffer eviction requires a cosmic text shaper")
                 .drop_all_buffers();
-        }
-    }
-
-    /// One reading of the shaped-buffer cache's tallies. Subtract two to
-    /// get what a span of frames did — the counters accumulate for the
-    /// life of the shaper.
-    #[cfg(test)]
-    #[derive(Clone, Copy, Debug)]
-    pub(crate) struct CacheCounts {
-        pub(crate) shapes: u32,
-        pub(crate) hits: u32,
-        pub(crate) supersedes: u32,
-        pub(crate) expiries: u32,
-    }
-
-    #[cfg(test)]
-    impl std::ops::Sub for CacheCounts {
-        type Output = Self;
-
-        fn sub(self, base: Self) -> Self {
-            Self {
-                shapes: self.shapes - base.shapes,
-                hits: self.hits - base.hits,
-                supersedes: self.supersedes - base.supersedes,
-                expiries: self.expiries - base.expiries,
-            }
         }
     }
 
