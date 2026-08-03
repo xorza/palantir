@@ -193,7 +193,7 @@ mod gpu_regression {
             "an encoded-cache miss must restore its shaped buffer",
         );
         let arena_after_warmup = backend.encoder.cache.arena.len();
-        backend.post_record();
+        backend.tick_frame();
         assert!(
             !backend.encoder.atlas.cache.is_empty(),
             "warmup should have rasterized at least one glyph",
@@ -285,7 +285,7 @@ mod gpu_regression {
             &runs,
         );
         assert_eq!(backend.encoder.cache.map.len(), 2);
-        backend.post_record();
+        backend.tick_frame();
 
         let entries: Vec<_> = backend
             .encoder
@@ -442,7 +442,7 @@ mod gpu_regression {
             assert_eq!(gb.dim, ga.dim);
             assert_eq!(gb.pos, [ga.pos[0], ga.pos[1] + 40]);
         }
-        backend.post_record();
+        backend.tick_frame();
     }
 
     /// A run whose lines are partially y-culled by its bounds must not
@@ -493,7 +493,7 @@ mod gpu_regression {
             backend.encoder.cache.map.is_empty(),
             "a culled encode must not become a cache template",
         );
-        backend.post_record();
+        backend.tick_frame();
 
         // Frame 2, same clipped run: still a miss, re-encodes to the
         // same 3 instances, still nothing cached.
@@ -507,7 +507,7 @@ mod gpu_regression {
         );
         assert_eq!(backend.encoder.instances.len(), 3);
         assert!(backend.encoder.cache.map.is_empty());
-        backend.post_record();
+        backend.tick_frame();
 
         // Frame 3, unclipped: 3 lines * 3 glyphs = 9 instances, and
         // the full encode is cached (same key as the clipped frames —
@@ -524,7 +524,7 @@ mod gpu_regression {
         assert_eq!(backend.encoder.instances.len(), 9);
         assert_eq!(backend.encoder.cache.map.len(), 1);
         assert_eq!(backend.encoder.cache.arena.len(), 9);
-        backend.post_record();
+        backend.tick_frame();
 
         // Frame 4 replays the cached template: same 9 instances with
         // no re-encode (the arena didn't grow).
@@ -542,6 +542,86 @@ mod gpu_regression {
             backend.encoder.cache.arena.len(),
             9,
             "a hit must not re-encode"
+        );
+    }
+
+    /// Both text caches age on one clock, so a frame that draws no text
+    /// ages neither — and one that draws text ages both by the same
+    /// step.
+    ///
+    /// The regression: this side used to run its own counter, bumped in
+    /// `end_frame`, which returned early whenever the frame prepared
+    /// no text batch. A recorded frame whose damage missed every text
+    /// run therefore aged the shaped-buffer cache and not this one, so
+    /// `RENDERED_RUN_KEEP_FRAMES` — one constant precisely so a buffer
+    /// outlives the encoded entry that would come asking for it —
+    /// described two windows measured in different units. Nothing could
+    /// catch it: each suite drove one clock.
+    #[test]
+    fn both_caches_age_on_one_clock_including_text_free_frames() {
+        let gpu = test_gpu();
+        let shaper = TextShaper::new();
+        let store = RecordStore::default();
+        let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+
+        let runs = [make_inner_run(
+            &store,
+            &shaper,
+            "aged",
+            14.0,
+            14.0 * 1.2,
+            Vec2::new(20.0, 20.0),
+            PHYSICAL,
+            1.0,
+            ColorU8::rgba(240, 240, 240, 255),
+        )];
+        run_one_frame(
+            &gpu.lease.device,
+            &gpu.queue,
+            &mut backend,
+            &store,
+            1.0,
+            &runs,
+        );
+        assert_eq!(backend.encoder.cache.map.len(), 1, "the run is cached");
+        backend.tick_frame();
+
+        // Text-free frames: `prepare_batch` is never called, so `ranges`
+        // stays empty — the exact shape that used to freeze this side.
+        // Both clocks must still move, in lockstep.
+        for _ in 0..8 {
+            let before = shaper.frame();
+            backend.tick_frame();
+            assert_eq!(
+                shaper.frame(),
+                before + 1,
+                "a text-free frame must still advance the shared clock",
+            );
+            assert_eq!(
+                backend.encoder.atlas.current_frame,
+                shaper.frame(),
+                "the atlas must track the shaper's clock, not its own count",
+            );
+        }
+
+        // And the encoded entry expires on that same clock: it was last
+        // used at frame 0, so it dies one frame past its window, without
+        // a single text-bearing frame in between.
+        assert_eq!(
+            backend.encoder.cache.map.len(),
+            1,
+            "premise: still inside the keep window",
+        );
+        while shaper.frame() <= crate::text::RENDERED_RUN_KEEP_FRAMES {
+            backend.tick_frame();
+        }
+        assert!(
+            backend.encoder.cache.map.is_empty(),
+            "text-free frames must age the encoded cache out",
+        );
+        assert!(
+            !shaper.has_cosmic_buffer(runs[0].text.key),
+            "…and the shaped buffer with it, on the same clock",
         );
     }
 
@@ -593,17 +673,17 @@ mod gpu_regression {
             "the space rasterizes to one zero-area entry"
         );
         let first_frame = backend.encoder.atlas.current_frame;
-        backend.post_record();
+        backend.tick_frame();
         assert_eq!(
             backend.encoder.atlas.current_frame,
             first_frame + 1,
             "a prepared zero-instance batch must still advance cache aging",
         );
 
-        // The space's last_use is frame 1. The sweep at frame 512 keeps
-        // it (cutoff 512 - 512 = 0 <= 1); the one at frame 1024 drops
-        // it (cutoff 512 > 1). Advance prepared text frames that don't
-        // touch the space to there.
+        // The space was rasterized on frame 0, so its last_use is 0 and
+        // its ticket falls due at 0 + 512 + 1 = 513 — its own deadline,
+        // not a shared tick. Advance well past that with prepared text
+        // frames that never touch the space again.
         let mut belt = StagingBelt::new(gpu.lease.device.clone(), 1 << 16);
         let mut encoder = gpu
             .lease
@@ -614,12 +694,12 @@ mod gpu_regression {
         while backend.encoder.atlas.current_frame < 1024 {
             let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, 1.0, 0, &[], &interned_text);
-            backend.post_record();
+            backend.tick_frame();
         }
         assert_eq!(
             empties(&backend),
             0,
-            "stale empty entry swept at frame 1024"
+            "stale empty entry reclaimed once its own window lapsed",
         );
 
         // Re-encoding the same run re-inserts the empty entry (the
@@ -638,6 +718,6 @@ mod gpu_regression {
             1,
             "swept empty glyph re-inserts on next use"
         );
-        backend.post_record();
+        backend.tick_frame();
     }
 }

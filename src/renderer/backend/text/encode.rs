@@ -25,6 +25,7 @@
 //! re-checks it while emitting. Atlas growth preserves rects
 //! (`etagere::grow`), so no invalidation is needed there.
 
+use crate::common::expiry_wheel::ExpiryWheel;
 use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::renderer::render_buffer::text::TextDrawRow;
@@ -34,6 +35,7 @@ use crate::text::render::{
 };
 use crate::text::request::TextShapeRequest;
 use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
@@ -95,7 +97,7 @@ pub(super) struct EncodedGlyph {
 /// its span.
 /// After warmup this is alloc-free — the arena/map/scratch all retain
 /// capacity across frames.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct EncodedCache {
     pub(super) map: FxHashMap<EncodedKey, EncodedEntry>,
     /// Append-only arena. Replaced runs leave dead spans behind;
@@ -113,6 +115,36 @@ pub(super) struct EncodedCache {
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
     scratch: Vec<EncodedGlyph>,
+    /// Which rows come due on which frame, so [`Self::sweep`] costs what
+    /// expires rather than what is resident. Runs the same
+    /// file-once/re-file-on-fire protocol the shaped-buffer cache does —
+    /// see [`ExpiryWheel`].
+    ///
+    /// This side needs it more than that one: [`TextEncoder::
+    /// try_emit_cached`] refreshes `last_use` on *every* hit of *every*
+    /// visible run, so the previous `map.retain` walked the whole table
+    /// every frame purely to discover that nothing had lapsed.
+    expiry: ExpiryWheel<EncodedKey>,
+    /// Glyphs reachable through some live row — the compaction trigger's
+    /// denominator.
+    ///
+    /// Maintained incrementally because the sweep no longer visits every
+    /// row and so can no longer total it for free. Every path that adds,
+    /// replaces, or drops a row adjusts it; [`Self::settle`] is the only
+    /// one that adds.
+    live_glyphs: usize,
+}
+
+impl Default for EncodedCache {
+    fn default() -> Self {
+        Self {
+            map: FxHashMap::default(),
+            arena: Vec::new(),
+            scratch: Vec::new(),
+            expiry: ExpiryWheel::with_horizon(ENCODED_CACHE_KEEP_FRAMES + 1),
+            live_glyphs: 0,
+        }
+    }
 }
 
 /// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
@@ -128,26 +160,40 @@ impl EncodedCache {
     ///
     /// Runs every frame, deliberately: a cadence gate would make the
     /// cost lumpy (one frame in N paying for all of them), and uniform
-    /// per-frame cost is worth more here than a lower average — the
-    /// whole pass is ~1.6 ns per live row (`encoded_cache_sweep` bench),
-    /// so there is no burst worth amortizing into a spike.
+    /// per-frame cost is worth more here than a lower average.
     ///
-    /// The live-glyph total is accumulated *inside* the expiry `retain`
-    /// rather than by a second `values()` pass: the survivors are
-    /// already in hand there, and the compaction test needs nothing
-    /// else. One traversal per frame instead of two.
+    /// It used to be a `retain` over the whole table, which is uniform
+    /// but uniformly proportional to the working set — a text-heavy
+    /// frame paid for every resident row to discover that none had
+    /// lapsed, and audit F6 measured ~11 µs at 24k rows. Draining
+    /// [`Self::expiry`] keeps the every-frame cadence and drops the
+    /// proportionality: what a frame pays for is what came due on it.
+    ///
+    /// One traversal per frame is still the rule — hence
+    /// [`Self::live_glyphs`] carrying the compaction denominator across
+    /// frames, since the survivors are no longer all in hand here to
+    /// total.
     fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
-        let cutoff = current_frame.saturating_sub(keep_frames);
-        let mut live = 0usize;
-        self.map.retain(|_, e| {
-            let keep = e.last_use >= cutoff;
-            if keep {
-                live += e.span.len as usize;
+        let map = &mut self.map;
+        let live_glyphs = &mut self.live_glyphs;
+        self.expiry.retire(current_frame, |key| {
+            // Gone already: `try_emit_cached` drops a row whose atlas
+            // slot was reused, leaving its ticket behind.
+            let Entry::Occupied(slot) = map.entry(key) else {
+                return None;
+            };
+            // A hit deliberately files no ticket — that is what keeps a
+            // steadily-drawn run from filing one per frame — so the real
+            // `last_use` is re-read here and a live row is re-filed.
+            let dies_at = slot.get().last_use + keep_frames + 1;
+            if dies_at > current_frame {
+                return Some(dies_at);
             }
-            keep
+            *live_glyphs -= slot.remove().span.len as usize;
+            None
         });
 
-        if self.arena.len() <= live * (1 + COMPACT_RATIO) {
+        if self.arena.len() <= self.live_glyphs * (1 + COMPACT_RATIO) {
             return;
         }
         self.scratch.clear();
@@ -177,13 +223,25 @@ impl EncodedCache {
             return;
         }
         let span = Span::new(pending_start, self.arena.len() as u32 - pending_start);
-        self.map.insert(
+        self.live_glyphs += span.len as usize;
+        let replaced = self.map.insert(
             key,
             EncodedEntry {
                 span,
                 last_use: frame,
             },
         );
+        match replaced {
+            // A re-encode of a live row orphans its old span on the
+            // arena; only the new one is reachable.
+            Some(old) => self.live_glyphs -= old.span.len as usize,
+            // First ticket for this row. A replacement keeps the
+            // outstanding one, which re-files off the refreshed
+            // `last_use` when it fires.
+            None => self
+                .expiry
+                .schedule(key, frame + ENCODED_CACHE_KEEP_FRAMES + 1),
+        }
     }
 }
 
@@ -281,16 +339,19 @@ impl TextEncoder {
             // frame until the next sweep: `encode_run` only replaces it
             // if this run also survives the y-cull, so a culled run
             // would otherwise pay the failed lookup indefinitely.
-            self.cache.map.remove(&run_key.key);
+            if let Some(dead) = self.cache.map.remove(&run_key.key) {
+                self.cache.live_glyphs -= dead.span.len as usize;
+            }
             return false;
         }
         entry.last_use = current_frame;
         true
     }
 
-    /// Frame teardown: age the atlas LRU and sweep both caches.
-    pub(super) fn end_frame(&mut self) {
-        self.atlas.end_frame();
+    /// Frame teardown: take the shaper's `frame` clock into the atlas and
+    /// sweep both caches against it.
+    pub(super) fn end_frame(&mut self, frame: u64) {
+        self.atlas.end_frame(frame);
         self.cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
@@ -481,17 +542,20 @@ pub(crate) mod internals {
                         generation: 1,
                     });
                 }
-                cache.map.insert(
+                // Through `settle`, not by poking the map: it is what
+                // files the expiry ticket and tracks the live-glyph
+                // total, and a fixture missing either would measure a
+                // sweep with nothing to do.
+                cache.settle(
                     EncodedKey {
                         text: TextShapeKey::INVALID,
                         scale_q: row,
                         area_color: 0,
                         bins: 0,
                     },
-                    EncodedEntry {
-                        span: Span::new(start, glyphs_per_row),
-                        last_use: ENCODED_CACHE_KEEP_FRAMES,
-                    },
+                    start,
+                    ENCODED_CACHE_KEEP_FRAMES,
+                    true,
                 );
             }
             Self { cache }
@@ -552,14 +616,7 @@ mod tests {
     fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u32>, at: u64) {
         let start = cache.arena.len() as u32;
         cache.arena.extend(tags.map(glyph));
-        let len = cache.arena.len() as u32 - start;
-        cache.map.insert(
-            k,
-            EncodedEntry {
-                span: Span::new(start, len),
-                last_use: at,
-            },
-        );
+        cache.settle(k, start, at, true);
     }
 
     /// Sweeping every frame makes the retention window exact: a row
@@ -676,6 +733,57 @@ mod tests {
                 assert_eq!(cache.map[&key(2)].last_use, 9);
             }
         }
+    }
+
+    /// The property the wheel exists for: a sweep costs what expires,
+    /// not what is resident.
+    ///
+    /// A steadily-drawn row refreshes `last_use` every frame and files
+    /// nothing; its one outstanding ticket fires once a window, finds it
+    /// live, and re-files. Filing on every touch instead would still
+    /// expire correctly, but would hold `rows × KEEP` tickets and drain
+    /// `rows` of them per frame — the whole-table walk this replaced,
+    /// wearing a different hat.
+    #[test]
+    fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
+        const ROWS: u32 = 50;
+        let mut cache = EncodedCache::default();
+        for row in 0..ROWS {
+            insert(&mut cache, key(row), 0..4, 0);
+        }
+        assert_eq!(cache.expiry.pending(), ROWS as usize, "one ticket each");
+
+        for frame in 1..=ENCODED_CACHE_KEEP_FRAMES * 3 {
+            for row in 0..ROWS {
+                cache
+                    .map
+                    .get_mut(&key(row))
+                    .expect("a drawn row stays resident")
+                    .last_use = frame;
+            }
+            cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        }
+
+        assert_eq!(cache.map.len(), ROWS as usize, "every row is still live");
+        assert_eq!(
+            cache.expiry.pending(),
+            ROWS as usize,
+            "three windows of redraw must not accumulate tickets",
+        );
+        assert_eq!(
+            cache.live_glyphs,
+            ROWS as usize * 4,
+            "the incrementally-tracked live total must match the rows",
+        );
+
+        // And they still die once the redraw stops — the re-filing did
+        // not push the deadline out of reach.
+        let last = ENCODED_CACHE_KEEP_FRAMES * 3;
+        for frame in last + 1..=last + ENCODED_CACHE_KEEP_FRAMES + 1 {
+            cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        }
+        assert!(cache.map.is_empty(), "rows outlived their window");
+        assert_eq!(cache.live_glyphs, 0, "live total must return to zero");
     }
 
     #[test]

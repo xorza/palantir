@@ -1,5 +1,6 @@
 //! Glyph atlas: one struct for both mask + color content.
 
+use crate::common::expiry_wheel::ExpiryWheel;
 use crate::renderer::backend::debug_marker;
 use crate::text::render::{GlyphPlacement, GlyphRasterKey};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
@@ -19,12 +20,20 @@ const INITIAL_MASK_ATLAS_SIZE: u32 = 1024;
 const INITIAL_COLOR_ATLAS_SIZE: u32 = 256;
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
-/// Sweep cadence (frames) for stale non-drawing entries (`alloc: None`).
-/// `evict_one` skips them (nothing to deallocate), so every whitespace
-/// or rejected glyph at every scale rung would otherwise accumulate
-/// forever and bloat its linear scan. 512 ≈ 8 s at 60 fps — far
-/// outside any flicker, and rare enough that the O(map) retain
-/// amortizes to noise.
+/// Frames a non-drawing entry (`alloc: None`) survives unused.
+/// `evict_one` skips them — there is no rectangle to deallocate — so
+/// every whitespace or rejected glyph at every scale rung would
+/// otherwise accumulate forever and bloat its linear scan. 512 ≈ 8 s at
+/// 60 fps, far outside any flicker.
+///
+/// A per-entry deadline on [`GlyphAtlas::unallocated_expiry`], not a
+/// cadence. It used to be a periodic `cache.retain` over the whole glyph
+/// map, which is the shape this crate avoids everywhere else: one frame
+/// in 512 paying for all of them. It also had to be spelled as a
+/// threshold rather than `frame % INTERVAL == 0`, because the shared
+/// clock can advance by more than one and a modulo gate steps over its
+/// own trigger. A wheel has neither problem, and retires each entry on
+/// its own last use instead of rounding every entry to a shared tick.
 const UNALLOCATED_SWEEP_INTERVAL: u64 = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,7 +126,22 @@ pub(super) struct GlyphAtlas {
     /// Slab indices freed by `evict_one` / the empty sweep, reused by
     /// the next `store`.
     free: Vec<u32>,
+    /// Latest value of the shaper's shared frame clock, mirrored here by
+    /// [`Self::end_frame`] — not a count of this atlas's own frames.
+    ///
+    /// The atlas used to increment per submit while the shaped-buffer
+    /// cache incremented per recorded frame, so the two retention
+    /// windows `RENDERED_RUN_KEEP_FRAMES` derives were denominated in
+    /// different units and drifted apart in both directions (a recorded
+    /// frame that drew no text aged buffers only; a `PaintOnly` frame
+    /// aged the atlas only). Reading one clock is what makes the shared
+    /// constant mean what it says.
     pub(super) current_frame: u64,
+    /// Deadlines for non-drawing entries, which `evict_one` cannot
+    /// reclaim. Same file-once/re-file-on-fire protocol as the two
+    /// caches above this one — see [`ExpiryWheel`] — so `touch` stays a
+    /// single indexed store on the hot path and files nothing.
+    unallocated_expiry: ExpiryWheel<GlyphRasterKey>,
     max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(super) bind_group_dirty: bool,
@@ -164,7 +188,8 @@ impl GlyphAtlas {
             slots: Vec::new(),
             cache: FxHashMap::default(),
             free: Vec::new(),
-            current_frame: 1,
+            current_frame: 0,
+            unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 1),
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
             pending_staging: Vec::new(),
@@ -390,6 +415,8 @@ impl GlyphAtlas {
         metadata: PackedGlyphMetadata,
     ) -> u32 {
         debug_assert!(metadata.is_empty());
+        self.unallocated_expiry
+            .schedule(key, self.current_frame + UNALLOCATED_SWEEP_INTERVAL + 1);
         let slot = GlyphSlot {
             x: 0,
             y: 0,
@@ -405,16 +432,20 @@ impl GlyphAtlas {
         self.store(key, slot)
     }
 
-    /// Frame teardown: advance the LRU frame counter and periodically
-    /// sweep stale non-drawing entries.
-    pub(super) fn end_frame(&mut self) {
-        self.current_frame += 1;
-        sweep_stale_unallocated(
-            &mut self.cache,
-            &self.slots,
-            &mut self.free,
-            self.current_frame,
+    /// Frame teardown: take the shaper's `frame` clock and retire the
+    /// non-drawing entries whose deadline came due on it.
+    pub(super) fn end_frame(&mut self, frame: u64) {
+        debug_assert!(
+            frame >= self.current_frame,
+            "the shared frame clock ran backwards",
         );
+        self.current_frame = frame;
+        let cache = &mut self.cache;
+        let slots = &self.slots;
+        let free = &mut self.free;
+        self.unallocated_expiry.retire(frame, |key| {
+            retire_unallocated(cache, slots, free, key, frame)
+        });
     }
 
     /// Allocate a slot in the right packer, evicting then growing as
@@ -526,32 +557,45 @@ impl Side {
     }
 }
 
-/// Drop non-drawing entries (`alloc: None`) not used within the last
-/// [`UNALLOCATED_SWEEP_INTERVAL`] frames, returning their slab indices to
-/// `free`. Runs only on interval frames so steady-state `end_frame`
-/// stays O(1). Allocated entries are `evict_one`'s job; a swept empty
-/// or rejected glyph re-inserts via `insert_unallocated` on next use.
-/// Unallocated slots carry no uv coords and encoded-run caches never
-/// record them, so returning one to `free` does not advance its
-/// generation.
-fn sweep_stale_unallocated(
+/// Settle one drained non-drawing ticket: `Some(due)` to re-file it,
+/// `None` once it has been reclaimed or is no longer this wheel's
+/// business.
+///
+/// A reclaimed entry re-inserts through `insert_unallocated` on next
+/// use, with a fresh ticket. Unallocated slots carry no uv coords and
+/// encoded-run caches never record them, so returning one to `free` does
+/// not advance its generation.
+///
+/// A free function, and one that borrows the three fields rather than
+/// `&mut self`, so the caller can hold `unallocated_expiry` borrowed
+/// across the call to re-file into it.
+fn retire_unallocated(
     cache: &mut FxHashMap<GlyphRasterKey, u32>,
     slots: &[GlyphSlot],
     free: &mut Vec<u32>,
-    current_frame: u64,
-) {
-    if !current_frame.is_multiple_of(UNALLOCATED_SWEEP_INTERVAL) {
-        return;
+    key: GlyphRasterKey,
+    frame: u64,
+) -> Option<u64> {
+    // Gone: reclaimed by an earlier ticket, or its key removed by
+    // `evict_one`.
+    let &idx = cache.get(&key)?;
+    let slot = &slots[idx as usize];
+    // Allocated entries are `evict_one`'s to reclaim, and it advances
+    // their generation when it does. Defensive rather than reachable —
+    // every path that allocates over a slab index removes the old key
+    // from `cache` first, so the lookup above would have missed.
+    if slot.alloc.is_some() {
+        return None;
     }
-    let cutoff = current_frame - UNALLOCATED_SWEEP_INTERVAL;
-    cache.retain(|_, idx| {
-        let s = &slots[*idx as usize];
-        let keep = s.alloc.is_some() || s.last_use >= cutoff;
-        if !keep {
-            free.push(*idx);
-        }
-        keep
-    });
+    // `touch` refreshes `last_use` without filing anything, so the real
+    // deadline is re-read here.
+    let dies_at = slot.last_use + UNALLOCATED_SWEEP_INTERVAL + 1;
+    if dies_at > frame {
+        return Some(dies_at);
+    }
+    cache.remove(&key);
+    free.push(idx);
+    None
 }
 
 fn eviction_candidate(
@@ -676,37 +720,56 @@ mod tests {
         }
     }
 
+    /// Each non-drawing entry retires on its own last use rather than on
+    /// a shared tick. At frame 1024 with a 512-frame window, an entry
+    /// dies once `last_use + 512 + 1 <= 1024`, i.e. `last_use <= 511`.
     #[test]
-    fn empty_sweep_drops_only_stale_unallocated_entries() {
-        // Sweep at frame 1024 uses cutoff 1024 - 512 = 512: empties
-        // with last_use < 512 go, everything else stays.
+    fn a_drained_ticket_retires_only_its_own_stale_empty() {
         let slots = vec![
-            slot(None, 1),                          // stale empty -> swept
-            slot(None, 512),                        // empty exactly at cutoff -> kept
-            slot(None, 1024),                       // fresh empty -> kept
-            slot(Some(AllocId::deserialize(0)), 1), // stale but allocated -> kept
+            slot(None, 1),                          // 1 + 513 = 514 <= 1024 -> reclaimed
+            slot(None, 511),                        // 511 + 513 = 1024 <= 1024 -> reclaimed
+            slot(None, 512),                        // 512 + 513 = 1025 > 1024 -> re-filed
+            slot(None, 1024),                       // freshly touched -> re-filed
+            slot(Some(AllocId::deserialize(0)), 1), // allocated -> evict_one's job
         ];
         let mut cache = FxHashMap::default();
         for i in 0..slots.len() as u32 {
             cache.insert(key(i as u16 + 1), i);
         }
         let mut free = Vec::new();
+        let refile = |cache: &mut FxHashMap<GlyphRasterKey, u32>, free: &mut Vec<u32>, k| {
+            retire_unallocated(cache, &slots, free, k, 1024)
+        };
 
-        // Off-interval frame: no-op even though key(1) is already stale.
-        sweep_stale_unallocated(&mut cache, &slots, &mut free, 1023);
-        assert_eq!(cache.len(), 4);
-        assert!(free.is_empty());
-
-        sweep_stale_unallocated(&mut cache, &slots, &mut free, 1024);
-        assert!(!cache.contains_key(&key(1)), "stale empty must be swept");
-        assert!(cache.contains_key(&key(2)), "last_use == cutoff survives");
-        assert!(cache.contains_key(&key(3)), "fresh empty survives");
-        assert!(
-            cache.contains_key(&key(4)),
-            "allocated entry is never swept"
+        assert_eq!(refile(&mut cache, &mut free, key(1)), None);
+        assert_eq!(refile(&mut cache, &mut free, key(2)), None);
+        assert_eq!(
+            refile(&mut cache, &mut free, key(3)),
+            Some(1025),
+            "an entry still inside its window is re-filed for its own deadline",
         );
-        // The swept entry's slab slot is handed back for reuse.
-        assert_eq!(free, vec![0]);
+        assert_eq!(refile(&mut cache, &mut free, key(4)), Some(1537));
+        assert_eq!(
+            refile(&mut cache, &mut free, key(5)),
+            None,
+            "an allocated entry is not this wheel's business",
+        );
+
+        assert!(
+            !cache.contains_key(&key(1)),
+            "stale empty must be reclaimed"
+        );
+        assert!(!cache.contains_key(&key(2)), "boundary empty too");
+        assert!(cache.contains_key(&key(3)), "one frame short of the window");
+        assert!(cache.contains_key(&key(4)), "fresh empty survives");
+        assert!(cache.contains_key(&key(5)), "allocated entry is untouched");
+        // Reclaimed slab slots are handed back for reuse, in ticket order.
+        assert_eq!(free, vec![0, 1]);
+
+        // A second ticket for an already-reclaimed key is a no-op, not a
+        // double free — that is what makes an early or duplicate fire safe.
+        assert_eq!(refile(&mut cache, &mut free, key(1)), None);
+        assert_eq!(free, vec![0, 1]);
     }
 
     #[test]

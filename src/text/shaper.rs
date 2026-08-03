@@ -47,6 +47,27 @@ pub(crate) struct ShaperInner {
     /// [`TextLayoutProbe`](crate::text::layout_probe::TextLayoutProbe)
     /// reads it through the borrow it holds.
     pub(super) cosmic: Option<CosmicMeasure>,
+    /// **The** frame clock every text cache ages against — the shaped
+    /// buffers here, and the encoded-run cache plus glyph atlas in
+    /// `renderer::backend::text`, which mirror it through
+    /// [`TextShaper::frame`] rather than counting for themselves.
+    ///
+    /// One counter because the two sides tick on different events and
+    /// no pair of separately-incremented counters can be kept in step:
+    /// this one advances on the record path
+    /// (`TextSystem::end_frame`, `FullRecord` frames only), while the
+    /// backend's caches are swept on the submit path, which also runs
+    /// for `PaintOnly` frames and can run more than once per frame
+    /// (offscreen targets). Equal retention *constants* over unequal
+    /// clocks bought nothing; see
+    /// [`RENDERED_RUN_KEEP_FRAMES`](crate::text::RENDERED_RUN_KEEP_FRAMES).
+    ///
+    /// Readers must therefore tolerate a clock that jumps (two windows
+    /// record before one submit) and one that stalls (two submits
+    /// inside one recorded frame). Both are fine for an age comparison;
+    /// neither is fine for a cadence gate written as
+    /// `frame % INTERVAL == 0`.
+    frame: u64,
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
     /// plus every bypass [`TextShaper::layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
@@ -62,17 +83,23 @@ impl ShaperInner {
     fn new(cosmic: Option<CosmicMeasure>) -> Self {
         Self {
             cosmic,
+            frame: 0,
             #[cfg(any(test, feature = "internals"))]
             measure_calls: 0,
         }
     }
 
-    /// Age out the ordinary content cache. Layout and reuse entries may
-    /// retain dropped keys because the encoder reconstructs every emitted
-    /// run.
-    fn end_frame(&mut self) {
+    /// Advance the shared clock and age out the ordinary content cache.
+    /// Layout and reuse entries may retain dropped keys because the
+    /// encoder reconstructs every emitted run.
+    ///
+    /// The tick lives here rather than beside the backend's sweep so a
+    /// headless `Ui` — and every `TextSystem` test — ages text the same
+    /// way a presenting window does.
+    fn tick_frame(&mut self) {
+        self.frame += 1;
         if let Some(cosmic) = self.cosmic.as_mut() {
-            cosmic.end_frame();
+            cosmic.end_frame(self.frame);
         }
     }
 
@@ -180,10 +207,28 @@ impl TextShaper {
         self.inner.borrow().cosmic.is_some()
     }
 
-    /// Bounds the reconstructible cosmic buffer LRU. Called by
-    /// `TextSystem::end_frame`; no-op on the mono fallback.
-    pub(super) fn end_frame(&self) {
-        self.inner.borrow_mut().end_frame();
+    /// Advance the shared frame clock and bound the reconstructible
+    /// cosmic buffer LRU. Called by `TextSystem::end_frame`, so it runs
+    /// once per window per recorded frame; the cache sweep is a no-op on
+    /// the mono fallback but the clock ticks either way, since the
+    /// backend's caches read it through [`Self::frame`].
+    ///
+    /// `tick_frame`, not `end_frame`, because this is the one production
+    /// method that *advances* the clock. Everything downstream — the
+    /// shaped-buffer cache, the glyph atlas, the encoded-run cache —
+    /// receives it as an `end_frame(frame)` argument instead, and the
+    /// two names are what say which side of that line a method is on.
+    pub(crate) fn tick_frame(&self) {
+        self.inner.borrow_mut().tick_frame();
+    }
+
+    /// The current value of the shared frame clock — see
+    /// [`ShaperInner::frame`]. The renderer's glyph atlas and
+    /// encoded-run cache stamp and expire against this rather than
+    /// counting frames of their own, which is what keeps their retention
+    /// window and the shaped-buffer cache's measured in the same unit.
+    pub(crate) fn frame(&self) -> u64 {
+        self.inner.borrow().frame
     }
 
     /// Exclusive render-side lease for one batch's encoded-cache misses:
