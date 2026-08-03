@@ -997,3 +997,78 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
         );
     }
 }
+
+/// A `Fill` text child costs one bounded reshape per frame of a resize
+/// drag, and the drag stays bounded — through the real layout stack, not
+/// just `TextSystem` in isolation.
+///
+/// Two things could break quietly here. `WrapSlot` caches exactly one
+/// width-bounded resolve per reuse row, so a driver that measured one
+/// node at two widths in a frame would evict it twice over and
+/// `supersede` a buffer it was about to reuse; no driver does that today
+/// (stacks take `intrinsic` for sizing then `measure` once at the
+/// resolved share, and grid does the same per cell), and the 1-shape
+/// count below is what says so. And `supersede` is the only signal that
+/// makes the probation window reachable, so if the reuse row ever stopped
+/// surviving a drag frame, retention would silently fall back to the
+/// 120-frame protected window.
+#[test]
+fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
+    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    // Frame 0 shapes the unbounded root and the first bounded resolve.
+    h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
+
+    // Redrawing at the same width reshapes nothing: the layout measure
+    // cache short-circuits the subtree entirely, so `TextSystem` is never
+    // even asked.
+    let before = h.ui.resources.text.cache_counts();
+    h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
+    let steady = h.ui.resources.text.cache_counts() - before;
+    assert_eq!(steady.shapes, 0, "a steady frame must not reshape");
+    assert_eq!(steady.supersedes, 0, "nor demote the buffer still in use");
+
+    // Now drag the share. Every frame commits a fresh whole-pixel width.
+    //
+    // The first changed frame is a transition: the steady frames above
+    // left the reuse row cold (never measured, so swept at end of frame),
+    // so it is rebuilt with an empty wrap slot and has no previous width
+    // to demote. From the second change on the row stays hot and every
+    // replaced width is superseded.
+    let mut shapes = 0;
+    let mut supersedes = 0;
+    for frame in 0..12 {
+        let before = h.ui.resources.text.cache_counts();
+        h.frame_value(|ui| chat_message(ui, 40.0 + frame as f32 * 3.0, PARAGRAPH, 14.0));
+        let d = h.ui.resources.text.cache_counts() - before;
+        // The unbounded root is shaped once for the whole drag; only the
+        // bounded resolve moves. More than one means a driver measured
+        // this node at two widths in the same frame, which would also
+        // thrash the single-slot `WrapSlot`.
+        assert!(
+            d.shapes <= 1,
+            "drag frame {frame} reshaped {} times, so some driver committed \
+             two widths to one node in one frame",
+            d.shapes,
+        );
+        shapes += d.shapes;
+        supersedes += d.supersedes;
+    }
+    assert!(
+        shapes >= 10,
+        "the drag must actually be reshaping ({shapes})"
+    );
+    assert_eq!(
+        supersedes,
+        shapes - 1,
+        "every replaced width but the first must be demoted, or the drag \
+         ages on the protected window",
+    );
+
+    // Twelve distinct widths, but retention tracks the probation window.
+    let resident = h.ui.resources.text.cosmic_cache_len();
+    assert!(
+        resident <= 8,
+        "drag retained {resident} buffers for one run; supersession is not \
+         reaching them through the layout stack",
+    );
+}
