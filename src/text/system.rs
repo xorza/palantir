@@ -119,7 +119,14 @@ impl TextSystem {
         if request.text.is_empty() {
             return TextRoot::ZERO;
         }
-        self.refresh(slot, request, wrap_policy.floor_scan()).root
+        Self::refresh(
+            &mut self.entries,
+            &self.shaper,
+            slot,
+            request,
+            wrap_policy.floor_scan(),
+        )
+        .root
     }
 
     /// The run's extent at a committed width, plus the key of the shaped
@@ -146,43 +153,50 @@ impl TextSystem {
         if let Some(width) = available_width_px {
             debug_assert!(width.is_finite());
         }
-        let entry = self.refresh(slot, request, wrap_policy.floor_scan());
-        let root = entry.root;
-        let wrap = entry.wrap;
+        // Split the fields so the row stays borrowed across the shaping
+        // calls below: they only ever touch `shaper`, so one lookup
+        // covers both reading the row and writing its wrap slot back.
+        let Self {
+            shaper,
+            entries,
+            shapes_buffers,
+        } = self;
+        let shapes_buffers = *shapes_buffers;
+        let entry = Self::refresh(entries, shaper, slot, request, wrap_policy.floor_scan());
 
         let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
-            return self.shaped(request.key, root.size);
+            return shaped(shapes_buffers, request.key, entry.root.size);
         };
-        if fit.resolves_to_unbounded(&root, width) {
-            return self.shaped(request.key, root.size);
+        if fit.resolves_to_unbounded(&entry.root, width) {
+            return shaped(shapes_buffers, request.key, entry.root.size);
         }
-        let width = wrap_policy.target_width(width, &root);
+        let width = wrap_policy.target_width(width, &entry.root);
         let slot_key = WrapSlotKey::new(width, halign, fit);
-        let size = match wrap.get(slot_key) {
+        let size = match entry.wrap.get(slot_key) {
             Some(size) => size,
             None => {
-                let size = self
-                    .shaper
-                    .shape_bounded(request.bounded(width, halign, fit));
+                let size = shaper.shape_bounded(request.bounded(width, halign, fit));
                 // The width this row used to answer is now unreachable
                 // through it. A resize drag leaves the *unbounded* key
                 // alone and replaces only this slot, so it is the drag's
                 // whole dead population — and the unbounded probe
                 // `measure_truncated` re-reads every frame stays on the
                 // long window, which is what keeps a drag cheap.
-                if let Some(stale) = wrap.key.bound(request.key) {
-                    self.shaper.supersede(stale);
+                if let Some(stale) = entry.wrap.key.bound(request.key) {
+                    shaper.supersede(stale);
                 }
-                // Second row lookup, paid only when the committed width
-                // actually moved — dwarfed by the reshape above it.
-                self.refresh(slot, request, WrapFloor::Skip).wrap = WrapSlot {
+                entry.wrap = WrapSlot {
                     key: slot_key,
                     size,
                 };
                 size
             }
         };
-        self.shaped(request.key.bounded(width, halign, fit), size)
+        shaped(
+            shapes_buffers,
+            request.key.bounded(width, halign, fit),
+            size,
+        )
     }
 
     /// Reuse row for `slot`, reshaped if it answers a different run.
@@ -193,24 +207,25 @@ impl TextSystem {
     /// as one that needs it — and would hand back a `None` floor. Asking
     /// the shaper again backfills it from the resident buffer without
     /// reshaping.
-    fn refresh(
-        &mut self,
+    ///
+    /// Takes the two fields rather than `&mut self` so the returned row
+    /// borrows only the map: a caller can then keep the row while it
+    /// shapes through `shaper`, which is what lets
+    /// [`Self::measure`] read a row and write its wrap slot back on one
+    /// lookup.
+    fn refresh<'a>(
+        entries: &'a mut FxHashMap<(WidgetId, u16), TextReuseEntry>,
+        shaper: &TextShaper,
         slot: TextRunSlot,
         request: TextShapeRequest<'_>,
         floor: WrapFloor,
-    ) -> &mut TextReuseEntry {
-        // Disjoint field borrows: the shaper stays readable while the map
-        // is borrowed mutably. That only holds inside one body, which is
-        // why callers copy what they need out of the row before reaching
-        // for the shaper again.
-        let shaper = &self.shaper;
+    ) -> &'a mut TextReuseEntry {
         let fresh = || TextReuseEntry {
             key: request.key,
             root: shaper.shape_root(request, floor),
             wrap: WrapSlot::EMPTY,
         };
-        let entry = self
-            .entries
+        let entry = entries
             .entry((slot.widget_id, slot.ordinal))
             .or_insert_with(&fresh);
         if entry.key != request.key {
@@ -225,22 +240,26 @@ impl TextSystem {
         }
         entry
     }
+}
 
-    /// Pair an extent with the buffer key the renderer resolves it through.
-    /// The key is *derived* from the request rather than stored, so it cannot
-    /// drift from the row it came out of; the gated mono metric shapes no
-    /// buffer, so its runs carry the invalid sentinel and the encoder drops
-    /// them.
-    #[inline]
-    fn shaped(&self, key: TextShapeKey, measured: Size) -> ShapedText {
-        ShapedText {
-            measured,
-            key: if self.shapes_buffers {
-                key
-            } else {
-                TextShapeKey::INVALID
-            },
-        }
+/// Pair an extent with the buffer key the renderer resolves it through.
+/// The key is *derived* from the request rather than stored, so it cannot
+/// drift from the row it came out of; the gated mono metric shapes no
+/// buffer, so its runs carry the invalid sentinel and the encoder drops
+/// them.
+///
+/// Takes `shapes_buffers` rather than `&self` because every caller is
+/// mid-way through a split borrow of [`TextSystem`] and holds the flag by
+/// value already.
+#[inline]
+fn shaped(shapes_buffers: bool, key: TextShapeKey, measured: Size) -> ShapedText {
+    ShapedText {
+        measured,
+        key: if shapes_buffers {
+            key
+        } else {
+            TextShapeKey::INVALID
+        },
     }
 }
 

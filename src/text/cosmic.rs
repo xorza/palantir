@@ -112,15 +112,18 @@ pub(super) const PROTECTED_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRA
 /// between needs `&mut self`, so the borrow cannot be held across the
 /// loop.
 ///
+/// Hands back the whole entry rather than its buffer: the caller wants
+/// the measured [`TextRoot`] as well as the glyphs, and both come out of
+/// the one lookup.
+///
 /// Takes the map rather than `&self` on purpose: the caller holds
 /// `&mut self.logical_order` at the same time, and only a borrow of the
 /// one field stays disjoint from it.
 #[inline]
-fn truncation_probe(cache: &FxHashMap<TextShapeKey, CacheEntry>, key: TextShapeKey) -> &Buffer {
-    &cache
+fn truncation_probe(cache: &FxHashMap<TextShapeKey, CacheEntry>, key: TextShapeKey) -> &CacheEntry {
+    cache
         .get(&key)
         .expect("truncation requires the cached unbounded shape")
-        .buffer
 }
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
@@ -389,7 +392,16 @@ impl CosmicMeasure {
         })
     }
 
+    /// Shape `request`, routing it to the wrapping or truncating path.
+    ///
+    /// Empty text answers here rather than in either path: it mints no
+    /// buffer, which is the contract [`TextShapeKey::INVALID`] pairs
+    /// with, and both `ensure_buffer` and the gated test helpers enter
+    /// through this function.
     pub(super) fn shape(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        if request.text.is_empty() {
+            return TextRoot::ZERO;
+        }
         match (request.key.fit(), request.key.max_width_px()) {
             (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
             _ => self.measure_wrapped(request, floor),
@@ -401,9 +413,6 @@ impl CosmicMeasure {
             floor == WrapFloor::Skip || request.key.max_width_px().is_none(),
             "the wrap floor is a property of the unbounded root",
         );
-        if request.text.is_empty() {
-            return TextRoot::ZERO;
-        }
         let key = request.key;
         if let Some(hit) = self.cache_hit(key) {
             // A resident entry shaped by a policy that didn't want the
@@ -496,9 +505,6 @@ impl CosmicMeasure {
             matches!(fit, LineFit::Clip | LineFit::Ellipsis),
             "measure_truncated requires Clip or Ellipsis",
         );
-        if request.text.is_empty() {
-            return TextRoot::ZERO;
-        }
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
@@ -520,10 +526,12 @@ impl CosmicMeasure {
             width
         };
         let probe_key = unbounded.key;
-        let fits_whole = {
-            let probe = truncation_probe(&self.cache, probe_key);
-            first_line_right(probe) <= width && probe.layout_runs().nth(1).is_none()
-        };
+        // Same question `TextSystem::measure` asks before it ever gets
+        // here, against the same root — so it is asked the same way. The
+        // probe's own measurement already answers it, which is why this
+        // reads the entry rather than re-walking its glyphs.
+        let fits_whole =
+            fit.resolves_to_unbounded(&truncation_probe(&self.cache, probe_key).root, width);
 
         // Shape unbounded on one line: the cut already fit it to `w`, and the
         // encoder owns single-line placement. Binding to `Some(w)` + align
@@ -549,6 +557,7 @@ impl CosmicMeasure {
             let mut max_end = usize::MAX;
             loop {
                 let cut = match truncation_probe(&self.cache, probe_key)
+                    .buffer
                     .layout_runs()
                     .next()
                 {
@@ -673,7 +682,7 @@ impl CosmicMeasure {
         // width, and a workload test cares that the run was shaped, not
         // how many attempts the cut took. The memoized ellipsis probe
         // shapes without inserting and is deliberately not counted.
-        self.probe.shape();
+        self.probe.shapes.bump();
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
         self.next_expiry = self.next_expiry.min(keep_until);
         self.cache.insert(
@@ -719,7 +728,7 @@ impl CosmicMeasure {
             entry.root
         });
         if hit.is_some() {
-            self.probe.hit();
+            self.probe.hits.bump();
         }
         hit
     }
@@ -744,7 +753,7 @@ impl CosmicMeasure {
         let Some(entry) = self.cache.get_mut(&key) else {
             return;
         };
-        self.probe.supersede();
+        self.probe.supersedes.bump();
         // Never *extends* a life: an entry already closer to expiry —
         // one that was inserted and never looked up — keeps its own
         // deadline.
@@ -794,7 +803,7 @@ impl CosmicMeasure {
             next_expiry = next_expiry.min(entry.keep_until);
             false
         }) {
-            probe.expire();
+            probe.expiries.bump();
             recycle_buffer(recycle_pool, entry.buffer);
         }
         self.next_expiry = next_expiry;
@@ -907,10 +916,12 @@ pub(super) fn fitting_prefix(
 /// its leftmost) of a shaped buffer's first layout run, or `0.0` when
 /// empty — the rendered width of one line.
 ///
-/// Both callers work on unbounded buffers, whose lines start at 0, so the
-/// right edge is the width. [`shaped_geometry`] spans `left..right`
-/// instead because it also measures width-bounded buffers, which cosmic
-/// may anchor away from the origin.
+/// For the one-glyph unbounded probe [`CosmicMeasure::ellipsis_advance`]
+/// shapes, whose line starts at 0, the right edge is the width.
+/// [`shaped_geometry`] spans `left..right` instead because it also
+/// measures width-bounded buffers, which cosmic may anchor away from the
+/// origin — and every caller that has a measured [`TextRoot`] to hand
+/// reads `size.w` off that rather than walking glyphs again.
 fn first_line_right(buffer: &Buffer) -> f32 {
     buffer
         .layout_runs()

@@ -29,61 +29,64 @@
 use crate::common::probe::TestOnly;
 
 /// What the shaped-buffer cache did.
+///
+/// The counters are reached through directly rather than through
+/// per-field forwarders: [`TestOnly`] already owns the gate, so
+/// `probe.hits.bump()` is the whole call site and a wrapper would only
+/// restate the field name.
 #[derive(Debug, Default)]
 pub(super) struct CacheProbe {
     /// Runs actually pushed through cosmic — `set_text` plus
     /// `shape_until_scroll`. The cost every other counter here exists to
     /// explain.
-    shapes: TestOnly<u32>,
+    pub(super) shapes: TestOnly<u32>,
     /// Lookups answered from the cache, layout-side and render-side
     /// alike.
-    hits: TestOnly<u32>,
+    pub(super) hits: TestOnly<u32>,
     /// Entries demoted to the probation window because the reuse slot
     /// that owned them moved on to a different key.
-    supersedes: TestOnly<u32>,
+    pub(super) supersedes: TestOnly<u32>,
     /// Buffers dropped by the end-of-frame sweep.
-    expiries: TestOnly<u32>,
-}
-
-impl CacheProbe {
-    #[inline]
-    pub(super) fn shape(&mut self) {
-        self.shapes.bump();
-    }
-
-    #[inline]
-    pub(super) fn hit(&mut self) {
-        self.hits.bump();
-    }
-
-    #[inline]
-    pub(super) fn supersede(&mut self) {
-        self.supersedes.bump();
-    }
-
-    #[inline]
-    pub(super) fn expire(&mut self) {
-        self.expiries.bump();
-    }
+    pub(super) expiries: TestOnly<u32>,
 }
 
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
 /// and gating them here is what lets the counters themselves be absent.
 #[cfg(test)]
 impl CacheProbe {
-    pub(super) fn shapes(&self) -> u32 {
-        self.shapes.count()
+    pub(super) fn counts(&self) -> CacheCounts {
+        CacheCounts {
+            shapes: self.shapes.count(),
+            hits: self.hits.count(),
+            supersedes: self.supersedes.count(),
+            expiries: self.expiries.count(),
+        }
     }
+}
 
-    pub(super) fn hits(&self) -> u32 {
-        self.hits.count()
-    }
+/// One reading of a [`CacheProbe`]'s tallies. Subtract two to get what a
+/// span of frames did — the counters accumulate for the life of the
+/// shaper. Copied out rather than borrowed so a test can hold a "before"
+/// reading across calls that need the shaper again.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CacheCounts {
+    pub(crate) shapes: u32,
+    pub(crate) hits: u32,
+    pub(crate) supersedes: u32,
+    pub(crate) expiries: u32,
+}
 
-    pub(super) fn supersedes(&self) -> u32 {
-        self.supersedes.count()
-    }
+#[cfg(test)]
+impl std::ops::Sub for CacheCounts {
+    type Output = Self;
 
-    pub(super) fn expiries(&self) -> u32 {
-        self.expiries.count()
+    fn sub(self, base: Self) -> Self {
+        Self {
+            shapes: self.shapes - base.shapes,
+            hits: self.hits - base.hits,
+            supersedes: self.supersedes - base.supersedes,
+            expiries: self.expiries - base.expiries,
+        }
     }
 }

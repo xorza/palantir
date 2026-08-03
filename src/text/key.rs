@@ -157,8 +157,8 @@ impl TextShapeKey {
     }
 
     /// The four decoders below `debug_assert` their range and then make
-    /// the last variant total, rather than panicking on an out-of-range
-    /// tag.
+    /// the last variant total, so release builds decode with a jump
+    /// table and no panic path.
     ///
     /// Every one of these bytes was written by this crate from the enum
     /// itself (`family as u8`), so a bad tag is a logic error here, never
@@ -173,8 +173,7 @@ impl TextShapeKey {
         );
         match self.family_q {
             0 => FontFamily::Sans,
-            1 => FontFamily::Mono,
-            other => panic!("invalid FontFamily discriminant in TextShapeKey: {other}"),
+            _ => FontFamily::Mono,
         }
     }
 
@@ -186,8 +185,7 @@ impl TextShapeKey {
         );
         match self.weight_q {
             0 => FontWeight::Regular,
-            1 => FontWeight::Bold,
-            other => panic!("invalid FontWeight discriminant in TextShapeKey: {other}"),
+            _ => FontWeight::Bold,
         }
     }
 
@@ -198,8 +196,7 @@ impl TextShapeKey {
             1 => HAlign::Left,
             2 => HAlign::Center,
             3 => HAlign::Right,
-            4 => HAlign::Stretch,
-            other => panic!("invalid HAlign discriminant in TextShapeKey: {other}"),
+            _ => HAlign::Stretch,
         }
     }
 
@@ -208,8 +205,7 @@ impl TextShapeKey {
         match self.fit_q {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
-            2 => LineFit::Ellipsis,
-            other => panic!("invalid LineFit discriminant in TextShapeKey: {other}"),
+            _ => LineFit::Ellipsis,
         }
     }
 }

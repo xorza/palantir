@@ -51,6 +51,12 @@ impl LineFit {
     /// unbounded root, letting the caller skip the second shape and the
     /// bounded cache entry it would mint.
     ///
+    /// Two callers, one question. `TextSystem::measure` asks it to skip
+    /// the bounded resolve outright; `CosmicMeasure::measure_truncated`
+    /// asks it again for the paths that bypass `TextSystem` (the public
+    /// text probe, buffer restore), where it decides whether the cut
+    /// runs at all. They must agree, so they share this.
+    ///
     /// A fitting single-line truncation shapes glyphs identical to the
     /// root — truncated shaping is halign-independent and single-line by
     /// construction. Never true for [`Self::Wrap`]: cosmic bakes per-line
