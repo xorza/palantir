@@ -101,11 +101,14 @@ fn report_phases(label: &str, mut step: impl FnMut() -> PhaseTimings) {
     }
     let mut measure = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
     let mut arrange = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
+    let mut capture = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
     for _ in 0..PHASE_EVIDENCE_FRAMES {
         let t = step();
         measure.push(t.measure_ns);
         arrange.push(t.arrange_ns);
+        capture.push(t.capture_ns);
     }
+    let cap = summarize(&mut capture);
     let m = summarize(&mut measure);
     let a = summarize(&mut arrange);
     let ratio = if m.min_us > 0.0 {
@@ -115,8 +118,15 @@ fn report_phases(label: &str, mut step: impl FnMut() -> PhaseTimings) {
     };
     eprintln!(
         "[caches] {label} measure_min_us={:.2} measure_median_us={:.2} \
-         arrange_min_us={:.2} arrange_median_us={:.2} arrange_over_measure={ratio}",
-        m.min_us, m.median_us, a.min_us, a.median_us,
+         arrange_min_us={:.2} arrange_median_us={:.2} arrange_over_measure={ratio} \
+         capture_min_us={:.2} capture_median_us={:.2} capture_share={:.0}%",
+        m.min_us,
+        m.median_us,
+        a.min_us,
+        a.median_us,
+        cap.min_us,
+        cap.median_us,
+        100.0 * cap.min_us / (m.min_us + a.min_us + cap.min_us).max(1e-9),
     );
 }
 
