@@ -48,6 +48,10 @@ pub(super) struct CacheProbe {
     pub(super) supersedes: TestOnly<u32>,
     /// Buffers dropped by the end-of-frame sweep.
     pub(super) expiries: TestOnly<u32>,
+    /// Times the "…" advance had to be reshaped because no slot held
+    /// that face. Separate from `shapes`, which counts runs that landed
+    /// in the cache — the ellipsis probe shapes without inserting.
+    pub(super) ellipsis_misses: TestOnly<u32>,
 }
 
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
@@ -60,6 +64,7 @@ impl CacheProbe {
             hits: self.hits.count(),
             supersedes: self.supersedes.count(),
             expiries: self.expiries.count(),
+            ellipsis_misses: self.ellipsis_misses.count(),
         }
     }
 }
@@ -75,6 +80,7 @@ pub(crate) struct CacheCounts {
     pub(crate) hits: u32,
     pub(crate) supersedes: u32,
     pub(crate) expiries: u32,
+    pub(crate) ellipsis_misses: u32,
 }
 
 #[cfg(test)]
@@ -87,6 +93,7 @@ impl std::ops::Sub for CacheCounts {
             hits: self.hits - base.hits,
             supersedes: self.supersedes - base.supersedes,
             expiries: self.expiries - base.expiries,
+            ellipsis_misses: self.ellipsis_misses - base.ellipsis_misses,
         }
     }
 }

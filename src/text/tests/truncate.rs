@@ -137,6 +137,19 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
     // "á" decomposed: a zero-width mark glyph sharing the base's cluster
     // costs nothing, so it must not hold the cut back.
     const MARK: Run = &[(0, 3, 10.0), (0, 3, 0.0), (3, 4, 10.0)];
+    // "ab<cd>e" with an RTL segment in the middle: visual starts run
+    // 0,1,3,2,4, so the run is logical at both ends and inverted only
+    // across the embedded pair. Every other case here is either sorted
+    // outright or fully reversed, which a first-pair check would call
+    // correctly by luck — this one is what forces the ordering scan to
+    // look at the whole run.
+    const BIDI: Run = &[
+        (0, 1, 10.0),
+        (1, 2, 10.0),
+        (3, 4, 10.0),
+        (2, 3, 10.0),
+        (4, 5, 10.0),
+    ];
 
     const ANY: usize = usize::MAX;
     let mut order = Vec::new();
@@ -186,6 +199,28 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
         (LTR, 1000.0, 1, 0, "and the last one standing"),
         (LTR, 1000.0, 0, 0, "an exhausted bound stays at nothing"),
         (RTL, 1000.0, 3, 2, "the bound reads logical order too"),
+        (
+            BIDI,
+            25.0,
+            ANY,
+            2,
+            "the embedded segment has not been paid for",
+        ),
+        (
+            BIDI,
+            30.0,
+            ANY,
+            3,
+            "the logically-third glyph sits third in visual order's tail",
+        ),
+        (BIDI, 50.0, ANY, 5, "the whole bidi run fits"),
+        (
+            BIDI,
+            1000.0,
+            5,
+            4,
+            "the bound retires the logically-last glyph",
+        ),
         (
             CLUSTER,
             1000.0,
@@ -422,6 +457,79 @@ fn truncation_from_cached_unbounded_is_order_independent() {
 /// quantized size every frame, so the ellipsis reservation is recomputed
 /// throughout. Drive a long sweep of sizes through one budget and assert
 /// every one still lands inside it.
+/// The "…" advance is memoized per face, and one slot was not enough.
+///
+/// Record order interleaves faces constantly — a header above its detail
+/// row, bold beside regular in one line, a tree sized per depth — and a
+/// single slot holding only the *last* face missed on every one of those
+/// truncations, giving back the whole ~29% the memo buys.
+///
+/// Driven at a fresh width each round so every call is a truncation
+/// *miss* and actually reaches the memo; a repeated width would hit the
+/// shaped-buffer cache and never ask.
+#[test]
+fn the_ellipsis_memo_survives_interleaved_faces() {
+    const TEXT: &str = "a label far too long for the column it sits in";
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    // Two faces a real frame would interleave: body text and a heavier,
+    // larger heading.
+    let faces = [
+        shape(14.0).leading(18.0),
+        shape(20.0).leading(24.0).weight(FontWeight::Bold),
+    ];
+
+    // Warm both, so what follows measures reuse rather than first touch.
+    for face in faces {
+        truncate(&mut c, TEXT, face.width(120.0), LineFit::Ellipsis);
+    }
+    let warm = c.probe.counts();
+    assert_eq!(
+        warm.ellipsis_misses, 2,
+        "premise: first touch of each face reshapes the marker once",
+    );
+
+    // Now alternate, a fresh width each round — a drag over a two-style
+    // list. Every round is a truncation miss, and every one must still
+    // find its face.
+    for round in 0..8 {
+        for face in faces {
+            truncate(
+                &mut c,
+                TEXT,
+                face.width(119.0 - round as f32),
+                LineFit::Ellipsis,
+            );
+        }
+    }
+    let churn = c.probe.counts() - warm;
+    assert!(
+        churn.shapes >= 16,
+        "premise: each round reshaped, so the memo was actually consulted          ({} shapes)",
+        churn.shapes,
+    );
+    assert_eq!(
+        churn.ellipsis_misses, 0,
+        "an interleaved second face must not evict the first",
+    );
+
+    // And the slots are finite: more distinct faces than they hold does
+    // fall back to reshaping, which is what bounds them.
+    let many: Vec<_> = (0..8)
+        .map(|i| shape(10.0 + i as f32).leading(24.0))
+        .collect();
+    for face in &many {
+        truncate(&mut c, TEXT, face.width(100.0), LineFit::Ellipsis);
+    }
+    let before = c.probe.counts();
+    for face in &many {
+        truncate(&mut c, TEXT, face.width(99.0), LineFit::Ellipsis);
+    }
+    assert!(
+        (c.probe.counts() - before).ellipsis_misses > 0,
+        "eight faces cannot all fit four slots — the memo must be bounded",
+    );
+}
+
 #[test]
 fn ellipsis_stays_within_budget_under_size_churn() {
     let mut c = CosmicMeasure::with_bundled_fonts();
