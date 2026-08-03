@@ -1,25 +1,41 @@
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::record_store::RecordStore;
+use crate::text::cosmic;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap};
 use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
-use criterion::{BatchSize, Criterion};
+use criterion::Criterion;
+use rustc_hash::FxHashSet;
 use std::hint::black_box;
 
 const TEXT: &str = "A long property label used to exercise character-precise truncation across many previously unseen widths.";
-const WIDTHS_PER_BATCH: u32 = 256;
+
+/// Distinct committed widths a drag frame cycles through before
+/// repeating. Comfortably past [`cosmic::PROTECTED_KEEP_FRAMES`] so a
+/// recycled width is a genuine miss rather than an accidental hit —
+/// otherwise the arm would quietly drift into measuring the cache.
+const DRAG_WIDTHS: u32 = 512;
+
+/// Drag frames run before the measured section, to decide residency
+/// deterministically rather than leaving it to however many iterations
+/// criterion picked. Past [`cosmic::PROTECTED_KEEP_FRAMES`], so a
+/// promoted buffer would still be inside its window and unretired
+/// widths would pile up visibly; under [`DRAG_WIDTHS`], so no width
+/// repeats.
+const DRAG_PRIME_FRAMES: u32 = 256;
+
+/// Shaped buffers a superseding drag may hold: the live width, the
+/// unbounded root, and whatever is still inside the probation window,
+/// with room to spare. Derived rather than hardcoded so it tracks the
+/// window it is really about — the failure it guards against retains
+/// [`cosmic::PROTECTED_KEEP_FRAMES`] of them instead.
+const DRAG_RESIDENCY_LIMIT: usize = cosmic::PROBATION_KEEP_FRAMES as usize * 2 + 4;
 
 /// Distinct labels per frame in the reuse-layer A/B benches — a
 /// realistic mid-size UI's worth of text runs, enough that both maps
 /// see real cache pressure rather than one L1-resident entry.
 const REUSE_LAYER_LABELS: usize = 64;
-
-#[derive(Debug)]
-struct BenchState {
-    text: TextSystem,
-}
 
 fn measure_truncated_width(
     text_system: &mut TextSystem,
@@ -37,9 +53,15 @@ fn measure_truncated_width(
 /// layer-less design would issue per frame — one unbounded probe for
 /// single-line runs; unbounded root + bounded resolve for wrapped
 /// runs. Each iteration measures all [`REUSE_LAYER_LABELS`] labels
-/// once (one "frame"); request construction — including the text
-/// hash — is inside the loop on both sides, as layout rebuilds it
+/// once and then ends the frame; request construction — including the
+/// text hash — is inside the loop on both sides, as layout rebuilds it
 /// each frame either way.
+///
+/// The frame boundary belongs in the measured section because the reuse
+/// layer's cost is not only its per-run lookup: `TextSystem::end_frame`
+/// retains every row it holds, once a frame, and the layer-less arms
+/// have no rows to retain. Leaving it out hands the layer a discount on
+/// the very comparison meant to justify it.
 fn bench_reuse_layer(c: &mut Criterion) {
     bench_shared_content(c);
 
@@ -78,6 +100,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
                     None,
                 ));
             }
+            text_system.end_frame(&FxHashSet::default());
         });
     });
 
@@ -114,6 +137,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
                     Some(WRAP_W),
                 ));
             }
+            text_system.end_frame(&FxHashSet::default());
         });
     });
 
@@ -177,6 +201,7 @@ fn bench_shared_content(c: &mut Criterion) {
                     Some(WRAP_W),
                 ));
             }
+            text_system.end_frame(&FxHashSet::default());
         });
     });
 
@@ -202,59 +227,98 @@ fn bench_shared_content(c: &mut Criterion) {
                     Some(widths[i % 2]),
                 ));
             }
+            text_system.end_frame(&FxHashSet::default());
         });
     });
 }
 
-pub fn bench(c: &mut Criterion) {
-    let store = RecordStore::default();
-    let arena_text = store.intern_str(TEXT);
-    c.bench_function("text_input/arena_clone_drop", |b| {
-        b.iter(|| black_box(arena_text.clone()));
-    });
-
-    let reuse_slot = TextRunSlot {
-        widget_id: WidgetId::from_hash("text-shape-reuse-hit"),
+/// One frame of a resize drag, which is the workload the shaped-buffer
+/// cache's retention policy exists for and the only arm here that
+/// reaches it: every other arm holds its widths still or never crosses
+/// a frame boundary, so probation, protection, supersession and expiry
+/// are all unreachable from them.
+///
+/// A drag commits a new whole-pixel width every frame, so each frame
+/// mints a bounded key nothing can ask for again — but leaves the
+/// *unbounded* root untouched, which is why one long-lived
+/// `TextSystem` is the honest fixture. Rebuilding it per batch (what
+/// the neighbouring churn arm does, to guarantee cold misses) would
+/// measure a cold cache forever and hide the retention behaviour
+/// entirely.
+///
+/// Both halves of a frame are modelled — layout's measure *and* the
+/// encoder's restore — because the restore is what promotes a buffer
+/// onto the long window. A layout-only fixture leaves everything
+/// probationary, ages it out regardless, and reports a bounded cache
+/// whether retention works or not.
+///
+/// The residency assertion is the standing guard: with supersession
+/// working the drag holds a handful of buffers; without it every
+/// rendered frame is promoted to the 120-frame window and residency
+/// tracks the drag's length instead.
+fn bench_resize_drag(c: &mut Criterion) {
+    let slot = TextRunSlot {
+        widget_id: WidgetId::from_hash("text-shape-resize-drag"),
         ordinal: 0,
     };
-    c.bench_function("text_shape/ellipsis_reuse_hit", |b| {
-        let mut text_system = TextSystem::new(TextShaper::new());
-        measure_truncated_width(&mut text_system, reuse_slot, TEXT, 80.0);
+    let shaper = TextShaper::new();
+    let mut text = TextSystem::new(shaper.clone());
+
+    // Prime a fixed-length drag and judge residency on that. Reading it
+    // after the measured section instead would make the guard depend on
+    // however many iterations criterion chose — and report nothing at
+    // all under `--list`, where the routine never runs.
+    for step in 0..DRAG_PRIME_FRAMES {
+        black_box(drag_frame(&mut text, &shaper, slot, step));
+    }
+    let resident = shaper.cosmic_cache_len();
+    eprintln!(
+        "[text_shape] resize_drag_frame resident_buffers={resident} \
+         after {DRAG_PRIME_FRAMES} frames",
+    );
+    assert!(
+        resident <= DRAG_RESIDENCY_LIMIT,
+        "a {DRAG_PRIME_FRAMES}-frame drag settled at {resident} shaped \
+         buffers, over the {DRAG_RESIDENCY_LIMIT} the probation window \
+         allows — supersession is not reaching the bounded keys it mints, \
+         so retention is tracking the protected window",
+    );
+
+    let mut step = DRAG_PRIME_FRAMES;
+    c.bench_function("text_shape/resize_drag_frame", |b| {
         b.iter(|| {
-            black_box(measure_truncated_width(
-                &mut text_system,
-                reuse_slot,
-                TEXT,
-                80.0,
-            ));
+            let measured = drag_frame(&mut text, &shaper, slot, step);
+            step = step.wrapping_add(1);
+            black_box(measured.measured)
         });
     });
+}
 
-    bench_reuse_layer(c);
-
-    let churn_slot = TextRunSlot {
-        widget_id: WidgetId::from_hash("text-shape-width-churn"),
-        ordinal: 0,
-    };
-    c.bench_function("text_shape/ellipsis_width_churn", |b| {
-        b.iter_batched(
-            || {
-                let mut text = TextSystem::new(TextShaper::new());
-                measure_truncated_width(&mut text, churn_slot, TEXT, 39.75);
-                BenchState { text }
-            },
-            |mut state| {
-                for i in 0..WIDTHS_PER_BATCH {
-                    let measured = measure_truncated_width(
-                        &mut state.text,
-                        churn_slot,
-                        TEXT,
-                        40.0 + i as f32 * 0.25,
-                    );
-                    black_box(measured.measured);
-                }
-            },
-            BatchSize::SmallInput,
-        );
+/// One drag frame end to end: layout commits a fresh width, the encoder
+/// restores the buffer it will replay, and the frame boundary ages the
+/// cache.
+///
+/// All three matter. Drop the render and every buffer stays
+/// probationary, ages out on its own, and the arm reports a bounded
+/// cache whether retention works or not; drop the frame boundary and a
+/// drag becomes an unbounded fill.
+fn drag_frame(
+    text: &mut TextSystem,
+    shaper: &TextShaper,
+    slot: TextRunSlot,
+    step: u32,
+) -> ShapedText {
+    let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
+    let measured = measure_truncated_width(text, slot, TEXT, width);
+    shaper.render_ensure(TextShapeRequest {
+        text: TEXT,
+        key: measured.key,
     });
+    text.end_frame(&FxHashSet::default());
+    measured
+}
+
+pub fn bench(c: &mut Criterion) {
+    bench_reuse_layer(c);
+    bench_resize_drag(c);
 }

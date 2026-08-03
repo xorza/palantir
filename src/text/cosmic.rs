@@ -26,6 +26,7 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::text::cache_probe::CacheProbe;
 use crate::text::key::TextShapeKey;
 use crate::text::render::{
     GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
@@ -49,14 +50,33 @@ const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf
 
 const RECYCLE_POOL_CAP: usize = 128;
 
-/// Frames a *probationary* entry — inserted but never looked up again —
-/// survives before [`CosmicMeasure::end_frame`] drops it.
+/// Frames a *probationary* entry survives before
+/// [`CosmicMeasure::end_frame`] drops it: one inserted and never looked
+/// up, or one [superseded](CosmicMeasure::supersede) after its reuse
+/// slot moved to a different key.
 ///
 /// Short on purpose. This population is scan traffic: a resize or zoom
 /// drag quantizes to a new whole-pixel wrap width nearly every frame, so
 /// each run mints a key that will never be asked for again. Holding those
-/// for the protected window would let one drag accumulate
+/// for the protected window lets one drag accumulate
 /// `runs × PROTECTED_KEEP_FRAMES` dead buffers.
+///
+/// **Supersession is what makes this window reach that population.**
+/// Insertion alone does not: layout shapes a run and the encoder renders
+/// it on the *same* frame, and that render is a lookup, so every drawn
+/// buffer would otherwise be promoted the moment it was created and the
+/// probation tier would be inert. Steady state cannot repair that by
+/// re-touching it either — the measure cache and the encoded-run cache
+/// both short-circuit before reaching here, so a resident buffer is
+/// never looked up again on a later frame. `TextSystem` holds the only
+/// signal that distinguishes "this run wants a different shape now"
+/// (drag, typing, animation — dead) from "this run left the tree"
+/// (scrolled away — may well return), and it reports the first through
+/// [`CosmicMeasure::supersede`].
+///
+/// A demotion, not an eviction: four frames of grace means a label
+/// oscillating between two keys, or a drag reversing back through a
+/// width it just used, still hits.
 pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 
 /// Frames a *protected* entry — one that has been looked up at least once
@@ -175,6 +195,9 @@ pub(super) struct CosmicMeasure {
     /// logical order — visual order is what the shaped run gives us, and
     /// truncation needs the logical prefix.
     logical_order: Vec<u32>,
+    /// Shape / hit / supersede / expire tallies. Zero-sized outside
+    /// tests.
+    pub(super) probe: CacheProbe,
 }
 
 impl CosmicMeasure {
@@ -202,6 +225,7 @@ impl CosmicMeasure {
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
             logical_order: Vec::new(),
+            probe: CacheProbe::default(),
         }
     }
 
@@ -559,6 +583,13 @@ impl CosmicMeasure {
     /// Store a freshly shaped buffer. Entries start probationary; only a
     /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
     fn insert(&mut self, key: TextShapeKey, buffer: Buffer, root: TextRoot) {
+        // Counted here rather than per `shape_until_scroll` so one
+        // cached run is one tally: `measure_truncated`'s back-off can
+        // reshape a prefix several times to land inside the committed
+        // width, and a workload test cares that the run was shaped, not
+        // how many attempts the cut took. The memoized ellipsis probe
+        // shapes without inserting and is deliberately not counted.
+        self.probe.shape();
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
         self.next_expiry = self.next_expiry.min(keep_until);
         self.cache.insert(
@@ -578,10 +609,44 @@ impl CosmicMeasure {
     /// separate promotion step is needed.
     fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextRoot> {
         let keep_until = self.frame + PROTECTED_KEEP_FRAMES;
-        self.cache.get_mut(&key).map(|entry| {
+        let hit = self.cache.get_mut(&key).map(|entry| {
             entry.keep_until = keep_until;
             entry.root
-        })
+        });
+        if hit.is_some() {
+            self.probe.hit();
+        }
+        hit
+    }
+
+    /// Demote `key` to the probation window: the reuse slot that owned
+    /// it now answers a different key, so nothing can ask for it through
+    /// that slot again. See [`PROBATION_KEEP_FRAMES`] for why this is
+    /// the signal the two-tier policy runs on.
+    ///
+    /// Only ever shortens a deadline — a supersede must not extend the
+    /// life of an entry already closer to expiry — and pulls
+    /// [`Self::next_expiry`] back with it, since the sweep gate would
+    /// otherwise sleep straight through the shortened window.
+    ///
+    /// Silent on a key that isn't resident: the buffer may already have
+    /// aged out, and superseding what is gone is a no-op, not an error.
+    pub(super) fn supersede(&mut self, key: TextShapeKey) {
+        if key.is_invalid() {
+            return;
+        }
+        let keep_until = self.frame + PROBATION_KEEP_FRAMES;
+        let Some(entry) = self.cache.get_mut(&key) else {
+            return;
+        };
+        self.probe.supersede();
+        // Never *extends* a life: an entry already closer to expiry —
+        // one that was inserted and never looked up — keeps its own
+        // deadline.
+        if entry.keep_until > keep_until {
+            entry.keep_until = keep_until;
+            self.next_expiry = self.next_expiry.min(keep_until);
+        }
     }
 
     fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>) -> Buffer {
@@ -616,6 +681,7 @@ impl CosmicMeasure {
         let mut next_expiry = u64::MAX;
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
+        let probe = &mut self.probe;
         for (_, entry) in cache.extract_if(|_, entry| {
             if entry.keep_until < frame {
                 return true;
@@ -623,6 +689,7 @@ impl CosmicMeasure {
             next_expiry = next_expiry.min(entry.keep_until);
             false
         }) {
+            probe.expire();
             recycle_buffer(recycle_pool, entry.buffer);
         }
         self.next_expiry = next_expiry;

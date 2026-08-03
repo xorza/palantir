@@ -10,14 +10,26 @@
 //! cannot be mistaken for a wrapping floor it never scanned for.
 //!
 //! These slots are a second cache in front of the shaper's own
-//! content-keyed one, and the duplication earns its keep — measured, not
-//! assumed. `text_shape/reuse_layer/*` (`src/text/bench.rs`) replays 64
-//! steady-state runs per frame both ways: 0.92 µs through the slots
-//! against 1.24 µs (single-line) and 2.33 µs (wrapped) dispatching
-//! straight to the shaper. The wrapped gap is the large one because
-//! without a slot to hold the bounded result, every wrapped run costs two
-//! dispatches a frame — the unbounded root plus the width resolve — each
-//! hashing a 24-byte key through the shared map.
+//! content-keyed one. `text_shape/reuse_layer/*` (`src/text/bench.rs`)
+//! replays 64 steady-state runs per frame both ways, ending the frame
+//! each iteration so the row retain the slots cost is counted too:
+//!
+//! ```text
+//!               through the slots   straight to the shaper
+//!  single-line        406 ns                559 ns          1.38x
+//!  wrapped            970 ns              1,012 ns          1.04x
+//! ```
+//!
+//! **The wrapped case is now a wash, and it used to be the strongest
+//! argument for the layer** — this doc previously recorded 0.92 µs
+//! against 2.33 µs there. The slot numbers still reproduce; both
+//! dispatch arms have roughly halved since, so the shared map got
+//! cheaper rather than the slots getting dearer. The reasoning behind
+//! the layer is unchanged — a wrapped run without a slot to hold its
+//! bounded result costs two dispatches a frame, the unbounded root plus
+//! the width resolve, each hashing a 24-byte key — but it no longer buys
+//! what it did, and `bench_shared_content` (below) is now the clearer
+//! justification. Worth re-deciding rather than inheriting.
 
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
@@ -128,6 +140,15 @@ impl TextSystem {
                 let size = self
                     .shaper
                     .shape_bounded(request.bounded(width, halign, fit));
+                // The width this row used to answer is now unreachable
+                // through it. A resize drag leaves the *unbounded* key
+                // alone and replaces only this slot, so it is the drag's
+                // whole dead population — and the unbounded probe
+                // `measure_truncated` re-reads every frame stays on the
+                // long window, which is what keeps a drag cheap.
+                if let Some(stale) = wrap.key.bound(request.key) {
+                    self.shaper.supersede(stale);
+                }
                 // Second row lookup, paid only when the committed width
                 // actually moved — dwarfed by the reshape above it.
                 self.refresh(slot, request).wrap = WrapSlot {
@@ -158,7 +179,12 @@ impl TextSystem {
             .entry((slot.widget_id, slot.ordinal))
             .or_insert_with(&fresh);
         if entry.key != request.key {
+            let stale = *entry;
             *entry = fresh();
+            shaper.supersede(stale.key);
+            if let Some(bounded) = stale.wrap.key.bound(stale.key) {
+                shaper.supersede(bounded);
+            }
         } else {
             entry.hot = true;
         }
@@ -213,6 +239,26 @@ impl WrapSlotKey {
         halign_q: 0,
         fit_q: 0,
     };
+
+    /// The full bounded key this slot answered, rebuilt from the row's
+    /// unbounded `root`, or `None` for an unfilled slot. Six stored
+    /// bytes stand in for the eighteen a second [`TextShapeKey`] would
+    /// cost, and [`TextShapeKey::bounded`] varies nothing else — so
+    /// re-attaching them reconstructs the key exactly.
+    ///
+    /// The `None` arm is load-bearing rather than defensive:
+    /// [`Self::EMPTY`]'s `max_w_q` *is* the unbounded sentinel, so an
+    /// unfilled slot would rebuild into the row's own root key. Handing
+    /// that to `supersede` would demote the unbounded probe a width drag
+    /// re-reads every frame — the one buffer the drag most needs kept.
+    fn bound(self, root: TextShapeKey) -> Option<TextShapeKey> {
+        (self != Self::EMPTY).then_some(TextShapeKey {
+            max_w_q: self.max_w_q,
+            halign_q: self.halign_q,
+            fit_q: self.fit_q,
+            ..root
+        })
+    }
 
     fn new(target_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
         let key = TextShapeKey::INVALID.bounded(target_width_px, halign, fit);
