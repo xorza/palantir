@@ -272,6 +272,18 @@ fn the_nan_gate_drops_every_shape_kind() {
             shapes.records.is_empty(),
             "case {label}: nothing may reach the record buffer",
         );
+        // A rejected shape must leave no trace in the payload arena
+        // either. Polyline is the case with teeth: it is the one shape
+        // that reaches lowering with its NaN intact, so its bail has to
+        // come before it stages anything.
+        let payloads = store.payloads.borrow();
+        assert!(
+            payloads.polyline_points.is_empty()
+                && payloads.polyline_colors.is_empty()
+                && payloads.meshes.vertices.is_empty()
+                && payloads.meshes.indices.is_empty(),
+            "case {label}: a rejected shape left bytes in the arena",
+        );
 
         let mut shapes = Shapes::default();
         let store = RecordStore::default();
