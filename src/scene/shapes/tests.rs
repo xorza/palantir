@@ -217,6 +217,21 @@ fn the_nan_gate_drops_every_shape_kind() {
                 .into(),
         ),
         (
+            // Regression: `radius` reaches lowering only through
+            // `radius.max(0.0)`, which launders NaN to `0.0`, so it
+            // used to slip past every gate — the bbox it would have
+            // shown up in was finite.
+            "triangle_radius",
+            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0))
+                .fill(white)
+                .radius(N)
+                .into(),
+            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0))
+                .fill(white)
+                .radius(1.0_f32)
+                .into(),
+        ),
+        (
             "curve_control_point",
             Shape::line(Vec2::ZERO, nan_pt, 2.0).brush(white).into(),
             Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), 2.0)

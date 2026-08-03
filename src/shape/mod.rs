@@ -14,6 +14,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
@@ -309,6 +310,7 @@ impl Shape<'_> {
             Shape::Curve(shape) => shape.is_noop(),
             Shape::Polyline(shape) => shape.is_noop(),
             Shape::Text {
+                local_origin,
                 text,
                 color,
                 font_size_px,
@@ -317,6 +319,13 @@ impl Shape<'_> {
             } => {
                 text.is_empty()
                     || color.is_noop()
+                    // `text_metrics_valid` rejects NaN via `is_finite`;
+                    // `local_origin` needs saying. Worth catching here
+                    // rather than at the record gate: lowering interns
+                    // the string into the text arena, so a shape dropped
+                    // afterwards would have paid for that and left the
+                    // bytes behind.
+                    || local_origin.has_nan()
                     || !key::text_metrics_valid(*font_size_px, *line_height_px)
             }
             Shape::Mesh(shape) => shape.is_noop(),

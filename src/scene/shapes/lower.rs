@@ -434,10 +434,11 @@ pub(super) fn triangle(
     fill: Color,
     stroke: Stroke,
 ) -> ShapeRecord {
-    let lo = a.min(b).min(c);
-    let hi = a.max(b).max(c);
+    // Through `Aabb`, not raw `min`/`max`: those launder a NaN corner
+    // out of the bounds, which would leave the record-level gate
+    // testing a finite bbox for a shape that has one.
     let pad = radius.max(0.0) + HALF_FRINGE;
-    let bbox = Rect::from_min_max(lo, hi).inflated(pad);
+    let bbox = Aabb::of(&[a, b, c]).inflated(pad);
     ShapeRecord::Quad(QuadShape::Triangle {
         a,
         b,

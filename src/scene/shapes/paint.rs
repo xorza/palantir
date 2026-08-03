@@ -475,9 +475,11 @@ impl NanCheck for LoweredShadow {
     }
 }
 
-/// `Triangle` tests its `bbox` rather than `a`/`b`/`c`/`radius`: the
-/// bbox is derived from all four under the AABB NaN contract, so one
-/// `Rect` test covers them.
+/// `Triangle` tests its `bbox` rather than `a`/`b`/`c`, which lowering
+/// folds through `Aabb` under the AABB NaN contract — so one `Rect` test
+/// covers the three corners. `radius` is **not** among them: lowering
+/// only reaches it through `radius.max(0.0)`, which launders a NaN to
+/// `0.0`, so it is named separately here.
 impl NanCheck for QuadShape {
     fn has_nan(&self) -> bool {
         match self {
@@ -494,8 +496,12 @@ impl NanCheck for QuadShape {
                 shadow,
             } => local_rect.has_nan() || corners.has_nan() || shadow.has_nan(),
             Self::Triangle {
-                bbox, fill, stroke, ..
-            } => bbox.has_nan() || fill.has_nan() || stroke.has_nan(),
+                bbox,
+                radius,
+                fill,
+                stroke,
+                ..
+            } => bbox.has_nan() || radius.is_nan() || fill.has_nan() || stroke.has_nan(),
         }
     }
 }
