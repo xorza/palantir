@@ -1,6 +1,7 @@
 //! Glyph atlas: one struct for both mask + color content.
 
 use crate::common::expiry_wheel::ExpiryWheel;
+use crate::common::probe::BenchOnly;
 use crate::renderer::backend::debug_marker;
 use crate::text::render::{GlyphPlacement, GlyphRasterKey};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
@@ -19,6 +20,33 @@ const INITIAL_MASK_ATLAS_SIZE: u32 = 1024;
 /// sessions never touch. Grows on demand through the same blit path.
 const INITIAL_COLOR_ATLAS_SIZE: u32 = 256;
 const ATLAS_GROWTH_FACTOR: u32 = 2;
+
+/// Byte budget below which [`GlyphAtlas::allocate`] grows a side rather
+/// than evicting from it.
+///
+/// `allocate` used to try eviction first unconditionally, so an atlas
+/// never outgrew its initial size no matter how badly it fit: measured
+/// on `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs
+/// performed 2668 evictions and *zero* growths, walking 4.06M cache
+/// entries to pick victims — `evict_one` is O(live glyphs) and
+/// `allocate` calls it in a loop, so the scan repeats for every glyph
+/// the gesture brings in.
+///
+/// Sizing to the working set first turns that into one texture
+/// allocation plus a preserved-rect blit: the same arm now performs a
+/// single growth, zero evictions and zero scanning, and its frame drops
+/// from 609 µs to 61 µs — from a 10x outlier among the `text_atlas`
+/// arms to the same ~55-60 µs band as the rest. Its real working set is
+/// 3700 glyphs, so a 1024² mask was recycling roughly seven of every
+/// ten rasters it held.
+///
+/// The budget is what keeps that from being unbounded — without a
+/// ceiling a thrashing atlas would run to the device maximum, which for
+/// an R8 mask is 8192² = 64 MB. In bytes rather than pixels so both
+/// sides get the same deal: 4 MiB is a 2048² mask or a 1024² colour
+/// atlas, and the mask growing 1 MB -> 4 MB is what the measurement
+/// above cost.
+const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 
 /// Frames a non-drawing entry (`alloc: None`) survives unused.
 /// `evict_one` skips them — there is no rectangle to deallocate — so
@@ -145,6 +173,15 @@ pub(super) struct GlyphAtlas {
     max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(super) bind_group_dirty: bool,
+    /// Evictions performed, growths performed, and — the number audit
+    /// F2 turns on — cache entries *examined* choosing a victim.
+    ///
+    /// `evict_one` is O(live glyphs) and `allocate` calls it in a loop,
+    /// so the eviction count alone understates the cost by whatever the
+    /// cache happens to hold. `scanned` is the product that actually
+    /// bills, and the only one that says whether this atlas reaches the
+    /// region where F2's curve matters.
+    pub(super) probe: AtlasProbe,
 
     /// Glyph pixel data queued by `insert`, packed with per-row padding
     /// so each glyph's copy can satisfy
@@ -192,6 +229,7 @@ impl GlyphAtlas {
             unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 1),
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
+            probe: AtlasProbe::default(),
             pending_staging: Vec::new(),
             pending_staging_used: 0,
             pending_copies: Vec::new(),
@@ -462,10 +500,27 @@ impl GlyphAtlas {
             if let Some(a) = self.sides[content as usize].packer.allocate(need) {
                 return Some(a);
             }
-            if !self.evict_one(content) && !self.grow(device, content) {
+            // Under the budget, buy space before paying for a victim:
+            // one grow is a texture plus a rect-preserving blit, while
+            // eviction is an O(live glyphs) scan that this loop repeats
+            // for every glyph still waiting.
+            let grew = self.eager_growth(content) && self.grow(device, content);
+            // Past the budget — or already at the device maximum, where
+            // the grow above returned false — the atlas holds its size
+            // by recycling rectangles instead.
+            if !grew && !self.evict_one(content) && !self.grow(device, content) {
                 return None;
             }
         }
+    }
+
+    /// Whether `content`'s side is still small enough to grow in
+    /// preference to evicting — see [`EAGER_GROWTH_BYTE_BUDGET`].
+    fn eager_growth(&self, content: ContentType) -> bool {
+        let side = &self.sides[content as usize];
+        let bytes =
+            u64::from(side.size) * u64::from(side.size) * u64::from(content.bytes_per_pixel());
+        bytes < EAGER_GROWTH_BYTE_BUDGET
     }
 
     /// Evict the least-recently-used glyph of `target` content with
@@ -482,11 +537,15 @@ impl GlyphAtlas {
     /// many-thousand-unique-glyph workload (zooming a full CJK document,
     /// say); not worth the complexity until such a workload exists.
     fn evict_one(&mut self, target: ContentType) -> bool {
+        self.probe
+            .evict_scans
+            .edit(|n| *n += self.cache.len() as u64);
         let Some((key, idx)) =
             eviction_candidate(&self.cache, &self.slots, target, self.current_frame)
         else {
             return false;
         };
+        self.probe.evictions.bump();
         self.cache.remove(&key);
         let slot = &mut self.slots[idx as usize];
         let id = slot.alloc.take().unwrap();
@@ -509,6 +568,7 @@ impl GlyphAtlas {
         if side.size >= self.max_texture_dimension_2d {
             return false;
         }
+        self.probe.grows.bump();
         let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(self.max_texture_dimension_2d);
         let new_texture = make_texture(device, content.format(), new_size, content.label());
         let old_size = side.size;
@@ -636,6 +696,45 @@ fn make_texture(
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     })
+}
+
+/// What the glyph atlas paid to keep itself packed. Zero-sized outside
+/// benchmark and test builds.
+///
+/// `BenchOnly` rather than `TestOnly`: the question these answer — does a
+/// real workload drive the atlas into the regime where `evict_one`'s
+/// linear scan bills — is only reachable from `text_atlas`, which the
+/// `internals` feature gates.
+#[derive(Debug, Default)]
+pub(super) struct AtlasProbe {
+    pub(super) evictions: BenchOnly<u32>,
+    pub(super) grows: BenchOnly<u32>,
+    /// Cache entries walked by `eviction_candidate`, summed. The product
+    /// F2 is about.
+    pub(super) evict_scans: BenchOnly<u64>,
+}
+
+/// Reads are gated with their sole consumer: the `text_atlas`
+/// benchmark, which `internals` gates too. A plain `cargo test` build
+/// has no caller.
+#[cfg(feature = "internals")]
+impl AtlasProbe {
+    pub(super) fn counts(&self) -> AtlasCounts {
+        AtlasCounts {
+            evictions: self.evictions.count(),
+            grows: self.grows.count(),
+            evict_scans: *self.evict_scans.get(),
+        }
+    }
+}
+
+/// One reading of an [`AtlasProbe`].
+#[cfg(feature = "internals")]
+#[derive(Clone, Copy, Debug)]
+pub(super) struct AtlasCounts {
+    pub(super) evictions: u32,
+    pub(super) grows: u32,
+    pub(super) evict_scans: u64,
 }
 
 #[cfg(test)]
