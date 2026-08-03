@@ -3,7 +3,6 @@ use crate::renderer::gpu_view::GpuPaint;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
-use crate::widgets::widget::WidgetEntry;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -16,7 +15,7 @@ use std::rc::Rc;
 /// pipeline — so the view clips, rounds, and z-orders like any other widget.
 ///
 /// The renderer callback persists across frames in the widget's per-`WidgetId`
-/// state. The framework-owned off-screen texture has a shorter lifetime: it is
+/// response. The framework-owned off-screen texture has a shorter lifetime: it is
 /// reclaimed whenever this view is absent from a backend submission, including
 /// when unchanged content is culled. [`GpuPaint::init`] can therefore run again
 /// when the view next paints. Per-frame parameters are natural: mutate your own
@@ -101,12 +100,13 @@ impl GpuView {
             paint,
             repaint,
         } = self;
-        let entry = WidgetEntry::enter(ui, node);
-        let id = entry.widget.id();
-        entry.widget.record(ui, None, |ui| {
+        let widget = ui.widget(node);
+        let response = widget.response(ui);
+        let id = widget.id();
+        widget.record(ui, None, |ui| {
             ui.gpu_view(id, paint, repaint);
         });
-        entry.into_response(ui)
+        Response::eager(id, ui, response)
     }
 }
 

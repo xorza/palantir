@@ -2501,8 +2501,9 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
             .snapshot()
     });
     assert!(
-        !response.disabled,
-        "eager response must retain the unmerged cascade snapshot",
+        response.disabled,
+        "a self-disabled widget reports disabled on its own first frame, \
+         before the cascade has seen it",
     );
     let endpoint = h.ui.cascade.by_id[&self_id];
     let chrome = h.ui.forest.trees[endpoint.layer]

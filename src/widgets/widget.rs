@@ -1,7 +1,16 @@
-//! The authoring handle a widget gets once its id is resolved, and the
-//! entry probe interactive widgets build on top of it.
+//! The authoring handle a widget gets once its id is resolved.
+//!
+//! [`Ui::widget`] is the one resolver and [`Widget::record`] the one
+//! opener: one resolution reserves one occurrence slot, and exactly one
+//! `record` claims it. A widget that cannot know its final node at
+//! resolution time overwrites [`Widget::node`] before recording — the
+//! id is what must stay put.
+//!
+//! One handle, no companion type: [`Widget`] owns the node until it
+//! records, and [`Widget::response`] hands back a plain owned
+//! [`ResponseState`] that outlives it.
 
-use crate::input::response::{ButtonPhase, ResponseState};
+use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
@@ -21,10 +30,11 @@ use crate::widgets::response::{InnerResponse, Response};
 /// them. The node stays open for mutation until `record` consumes it.
 ///
 /// Record exactly once: resolution reserved this frame's occurrence
-/// slot for the id and [`Self::record`] claims it. The type is `Copy`
-/// (both halves are), so the compiler won't stop a second `record` call
-/// — the frame will, with a duplicate-endpoint panic.
-#[derive(Clone, Copy, Debug)]
+/// slot for the id and [`Self::record`] claims it. **Deliberately not
+/// `Copy`** even though both halves are — `record` takes `self`, so a
+/// second call is a use-after-move the compiler rejects, rather than a
+/// duplicate-endpoint panic at frame time.
+#[derive(Debug)]
 #[must_use = "record the widget with Widget::record"]
 pub struct Widget {
     id: WidgetId,
@@ -44,113 +54,77 @@ impl Widget {
         self.id
     }
 
+    /// Probe this frame's interaction state, folding in the node's own
+    /// `disabled` bit so a widget disabled *this* frame reads and paints
+    /// as disabled without waiting for the cascade to catch up.
+    ///
+    /// The eager half of the API, for widgets that act on input:
+    /// decorative ones never call this and never pay for the
+    /// `response_for` lookup — which is the whole reason the probe is a
+    /// separate step rather than something [`Ui::widget`] always does.
+    ///
+    /// Returns a plain owned [`ResponseState`], not a borrowing
+    /// [`Response`]: everything a widget does after probing — theme
+    /// resolution, [`Self::record`], the body closure — needs
+    /// `&mut Ui`, and a `Response` holds `&Ui` for its lazy cache.
+    /// Owned state is what lets the probe outlive all of it and become
+    /// the widget's [`Response::eager`] at the end.
+    pub(crate) fn response(&self, ui: &Ui) -> ResponseState {
+        let mut state = ui.response_for(self.id);
+        state.disabled |= self.node.flags.is_disabled();
+        state
+    }
+
     /// Open this widget's node, run its body, and close it.
+    ///
+    /// **The crate's one opener.** Every widget reaches the tree here,
+    /// so the open/close pairing lives in a single place.
     ///
     /// `chrome` is `None` for the common layout-only / text-leaf /
     /// chrome-less path and `Some(bg)` when the widget paints a
     /// background — container widgets resolve an explicit-or-theme
-    /// `Option<Background>` and pass `chrome.as_ref()`. Taken as
-    /// `Option<&Background>` (an 8-byte niche-encoded pointer, not the
-    /// 168 B `Background` by value) so the chrome travels as one pointer
-    /// per hop down `Forest::open_node` → `Tree::open_node` →
-    /// `shapes::lower::background`, and the no-chrome path is just a
-    /// perfectly-predicted `None` branch.
+    /// `Option<Background>` and pass `chrome.as_ref()`. Both it and the
+    /// node travel by reference from here down `Forest::open_node` →
+    /// `Tree::open_node` → `Node::columns`, so neither the 168 B
+    /// `Background` nor the 120 B `Node` is re-copied per hop.
     pub fn record<R>(
         self,
         ui: &mut Ui,
         chrome: Option<&Background>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        ui.node(self.id, self.node, chrome, body)
+        ui.forest.open_node(self.id, self.node, chrome);
+        let r = body(ui);
+        ui.forest.close_node();
+        r
     }
 
-    /// Record this widget and hand back its lazy response paired with
-    /// the body's value — the whole tail of a decorative widget's
-    /// `show()`.
+    /// [`Self::record`] plus a lazy [`Response`] for the node just
+    /// recorded — the whole tail of a decorative widget's `show()`.
     ///
-    /// The response is [`Self::response`], so a widget that never looks
-    /// at it never pays for the `response_for` probe. Widgets returning
-    /// a bare [`Response`] take `.response`; the ones with a body
-    /// closure (`Panel`, `Grid`, `Scroll`) return the pair as-is.
+    /// A convenience over the opener, not a second way to open:
+    /// `record` is what every widget in the crate calls, and this is for
+    /// the handful (`Frame`, `Panel`, `Grid`, `Separator`) whose `show()`
+    /// is exactly "record, then hand the caller a response". Widgets
+    /// returning a bare [`Response`] take `.response`; the ones with a
+    /// body closure return the pair as-is.
+    ///
+    /// The response is **lazy**, so a caller that never reads it never
+    /// pays for the `response_for` probe — which is why opening through
+    /// `record` directly, as the other ~50 sites do, costs nothing extra
+    /// over this and keeps `&Ui` unborrowed afterwards.
     pub fn show<'a, R>(
         self,
         ui: &'a mut Ui,
         chrome: Option<&Background>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<'a, R> {
+        // Read before `record` consumes the widget.
+        let id = self.id;
         let inner = self.record(ui, chrome, body);
         InnerResponse {
-            response: self.response(ui),
+            response: Response::lazy(id, ui),
             inner,
         }
-    }
-
-    /// Lazy [`Response`] for this widget — the return value of choice
-    /// for decorative widgets that never probed their state themselves.
-    pub fn response<'a>(&self, ui: &'a Ui) -> Response<'a> {
-        Response::lazy(self.id, ui)
-    }
-}
-
-/// Per-frame entry probe shared by interactive widgets
-/// (`Button`/`Checkbox`/`RadioButton`): resolve the node into a
-/// [`Widget`] and probe its response exactly once. `state` has
-/// `Node::disabled` OR-ed in for same-frame visuals and interaction;
-/// [`Self::into_response`] restores the cascade snapshot's original
-/// disabled bit for the returned [`Response::eager`].
-#[derive(Debug)]
-pub(crate) struct WidgetEntry {
-    pub(super) widget: Widget,
-    /// This frame's interaction state, `Node::disabled` folded in.
-    ///
-    /// Readable rather than behind an accessor because callers pass it
-    /// alongside `&mut entry.widget.node` — a method would borrow all of
-    /// `entry` and the two uses would conflict, and splitting them by
-    /// copying costs a `ResponseState` memcpy per widget per frame.
-    ///
-    /// It is last frame's cascade snapshot: the only two things a widget
-    /// legitimately knows that the snapshot cannot are
-    /// [`Self::mark_focused`] and [`Self::mark_clicked`]. Writing here
-    /// any other way is inventing input.
-    pub(super) state: ResponseState,
-    raw_disabled: bool,
-}
-
-impl WidgetEntry {
-    pub(super) fn enter(ui: &mut Ui, node: Node) -> Self {
-        let widget = ui.widget(node);
-        let mut state = ui.response_for(widget.id());
-        let raw_disabled = state.disabled;
-        state.disabled |= widget.node.flags.is_disabled();
-        Self {
-            widget,
-            state,
-            raw_disabled,
-        }
-    }
-
-    /// Report the widget as focused for the rest of this frame, after it
-    /// called [`Ui::request_focus`] on itself.
-    ///
-    /// The snapshot predates the request — focus is resolved live, but
-    /// this copy was taken on entry — so without this the widget's own
-    /// response would deny the focus it just took.
-    #[inline]
-    pub(super) fn mark_focused(&mut self) {
-        self.state.focused = true;
-    }
-
-    /// Report a single click, for a widget activated by something the
-    /// pointer pipeline never saw — a keyboard shortcut bound to a menu
-    /// row. Callers read `.clicked()` and must not have to care which
-    /// device produced it.
-    #[inline]
-    pub(super) fn mark_clicked(&mut self) {
-        self.state.left.phase = ButtonPhase::Up { click: Some(1) };
-    }
-
-    pub(super) fn into_response(mut self, ui: &Ui) -> Response<'_> {
-        self.state.disabled = self.raw_disabled;
-        Response::eager(self.widget.id(), ui, self.state)
     }
 }

@@ -773,7 +773,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 ///
 /// `DragValue` calls `Ui::request_focus` on itself mid-`show`, but its
 /// entry snapshot was taken before that — so without
-/// `WidgetEntry::mark_focused` the widget would hand back a response
+/// `ResponseState::mark_focused` the widget would hand back a response
 /// denying the focus it had just taken, and a caller keying off
 /// `response.focused` would lag a frame behind the editor appearing.
 #[test]

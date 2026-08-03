@@ -9,7 +9,6 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::splitter::SplitterTheme;
-use crate::widgets::widget::WidgetEntry;
 use crate::window::CursorIcon;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
@@ -29,7 +28,7 @@ use crate::window::CursorIcon;
 ///
 /// [`Splitter::show`] records both panes through one `FnMut` body called
 /// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
-/// a recursive pane tree can capture its state mutably once.
+/// a recursive pane tree can capture its response mutably once.
 #[derive(Debug)]
 pub struct Splitter<'a> {
     node: Node,
@@ -100,9 +99,9 @@ impl<'a> Splitter<'a> {
         ui: &'u mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> Response<'u> {
-        let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
-        let state = &entry.state;
+        let mut widget = ui.widget(self.node);
+        let response = widget.response(ui);
+        let id = widget.id();
 
         let theme = self.style.unwrap_or(&ui.theme.splitter);
         let thickness = theme.thickness.max(1.0);
@@ -111,7 +110,7 @@ impl<'a> Splitter<'a> {
         let hover_color = theme.hover;
         let drag_color = theme.drag;
 
-        // The divider's interaction state drives both the ratio write
+        // The divider's interaction response drives both the ratio write
         // and its own paint. Last frame's response — the recording below
         // is this frame's.
         let divider_id = id.with("divider");
@@ -122,7 +121,7 @@ impl<'a> Splitter<'a> {
 
         let sync_pending = ui
             .try_state::<SplitterState>(id)
-            .is_some_and(|state| state.sync_ratio_next_record);
+            .is_some_and(|response| response.sync_ratio_next_record);
         let synced_ratio = if sync_pending {
             arranged_pane_ratio(ui, first_id, second_id, axis)
         } else {
@@ -131,11 +130,11 @@ impl<'a> Splitter<'a> {
         let ratio = synced_ratio.unwrap_or_else(|| sanitize_ratio(*self.ratio));
         let mut layout_ratio = ratio;
         let mut resizing = false;
-        if !state.disabled {
+        if !response.disabled {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
             if divider.left.drag.dragging()
-                && let (Some(local), Some(rect)) = (state.pointer_local, state.layout_rect)
+                && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
             {
                 layout_ratio = pointer_to_ratio(
                     axis.main_v(local),
@@ -160,7 +159,7 @@ impl<'a> Splitter<'a> {
 
         let bar_fill = if divider.left.drag.dragging() {
             Some(drag_color)
-        } else if divider.hovered && !state.disabled {
+        } else if divider.hovered && !response.disabled {
             Some(hover_color)
         } else {
             None
@@ -183,8 +182,8 @@ impl<'a> Splitter<'a> {
         let cross_tracks = [Track::fill()];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
         let grid_def_id = ui.forest.push_grid_def(rows, cols, 0.0, 0.0);
-        entry.node.set_grid_def(grid_def_id);
-        entry.record(ui, None, |ui| {
+        widget.node.set_grid_def(grid_def_id);
+        widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
             let mut rule = Node::leaf()
@@ -207,7 +206,7 @@ impl<'a> Splitter<'a> {
             ui.widget(bar).record(ui, Some(&bar_bg), |_| {});
         });
 
-        entry.into_response(ui)
+        Response::eager(id, ui, response)
     }
 }
 

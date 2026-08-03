@@ -310,7 +310,7 @@ mod hot_struct_sizes {
     use crate::widgets::text::Text;
     use crate::widgets::text_edit::TextEdit;
     use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
-    use crate::widgets::widget::{Widget, WidgetEntry};
+    use crate::widgets::widget::Widget;
 
     /// Single source of truth for the per-frame hot-struct inventory.
     /// Each entry is `Type => "name": expected_size / expected_align`.
@@ -407,7 +407,6 @@ mod hot_struct_sizes {
         Paint => "cascade::Paint": 24 / 8,
         ResponseState => "input::ResponseState": 136 / 4,
         Widget => "widgets::Widget": 128 / 8,
-        WidgetEntry => "widgets::WidgetEntry": 272 / 8,
         TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,

@@ -13,7 +13,6 @@ use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::widget::WidgetEntry;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.
 #[derive(Default, Clone, Copy, Debug)]
@@ -24,12 +23,12 @@ struct ComboState {
 /// A dropdown selector: a button-styled trigger showing the current
 /// choice, which opens a [`crate::widgets::popup::Popup`] list of the
 /// options on click. Picking a row sets the `&mut usize` selection and
-/// closes; clicking outside or pressing Esc dismisses. Open/closed state
-/// lives in the state map keyed off the trigger id, so the caller only
+/// closes; clicking outside or pressing Esc dismisses. Open/closed response
+/// lives in the response map keyed off the trigger id, so the caller only
 /// threads the selected index.
 ///
 /// **`*selected` must index `options`.** Showing the current choice is
-/// the trigger's whole contract and there is no placeholder state, so an
+/// the trigger's whole contract and there is no placeholder response, so an
 /// out-of-range index — including any index into an empty list — is a
 /// caller bug and panics. A caller whose option list can shrink or be
 /// replaced between frames owns re-deriving the index alongside it;
@@ -67,17 +66,17 @@ impl<'a> ComboBox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
+        let mut widget = ui.widget(self.node);
+        let response = widget.response(ui);
+        let id = widget.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look =
-            WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), self.style, |t| {
-                &t.button
-            });
+        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), self.style, |t| {
+            &t.button
+        });
 
         let geom = ui.theme.combo_box.clone();
-        let node = &mut entry.node;
+        let node = &mut widget.node;
         node.justify = Justify::SpaceBetween;
         node.child_align = Align::v(VAlign::Center);
         node.gaps.set_gap(geom.row_gap);
@@ -99,7 +98,7 @@ impl<'a> ComboBox<'a> {
         // options aren't `'static`, so they route through `Ui::intern`.
         let label = ui.intern(chosen);
 
-        entry.record(ui, Some(&look.background), |ui| {
+        widget.record(ui, Some(&look.background), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)
@@ -119,9 +118,9 @@ impl<'a> ComboBox<'a> {
             });
         });
 
-        let trigger_rect = entry.state.rect;
+        let trigger_rect = response.rect;
         let mut open = ui.state_mut::<ComboState>(id).open;
-        if !entry.state.disabled && entry.state.left.clicked() {
+        if !response.disabled && response.left.clicked() {
             open = !open;
         }
         // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
@@ -150,7 +149,7 @@ impl<'a> ComboBox<'a> {
         }
         ui.state_mut::<ComboState>(id).open = open;
 
-        entry.into_response(ui)
+        Response::eager(id, ui, response)
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::input::response::ResponseState;
 use crate::layout::types::align::{Align, VAlign};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -9,7 +10,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::widget::WidgetEntry;
+use crate::widgets::widget::Widget;
 
 /// What [`toggle_row`] needs from its caller beyond the entry, the
 /// label, and the indicator body.
@@ -31,7 +32,7 @@ pub(crate) struct ToggleChrome<'a> {
     /// fallback can't be hard-coded here.
     pub(crate) slot: fn(&Theme) -> &ToggleTheme,
     /// Checked / selected / on. Selects which of the theme's two look
-    /// packs the four-state pick runs inside; reaches `resolve_look` as
+    /// packs the four-response pick runs inside; reaches `resolve_look` as
     /// [`ToggleTheme`]'s `Mode`.
     pub(crate) on: bool,
     /// The box/track child recorded before the label, already sized and
@@ -54,18 +55,20 @@ pub(crate) struct ToggleChrome<'a> {
 /// cross-centering, the box chrome, the label leaf — lives here.
 ///
 /// The row `HStack` node (sense + salt already set) rides in
-/// `entry`. `body` runs inside the box child and is handed the
+/// `widget`, its probed response in `probe`. `body` runs inside the box
+/// child and is handed the
 /// box's resolved chrome: `Switch` measures its knob inset against the
 /// *animating* stroke width, which is why the background is passed in
 /// rather than re-derived from the theme.
 pub(crate) fn toggle_row<'ui, 'text>(
     ui: &'ui mut Ui,
-    mut entry: WidgetEntry,
+    mut widget: Widget,
+    response: ResponseState,
     chrome: ToggleChrome<'_>,
     label: TextInput<'text>,
     body: impl FnOnce(&mut Ui, &Background),
 ) -> Response<'ui> {
-    let id = entry.id();
+    let id = widget.id();
     let row_gap = chrome
         .style
         .unwrap_or_else(|| (chrome.slot)(&ui.theme))
@@ -73,8 +76,8 @@ pub(crate) fn toggle_row<'ui, 'text>(
     let mut look = WidgetTheme::resolve(
         ui,
         id,
-        &mut entry.node,
-        &entry.state,
+        &mut widget.node,
+        &response,
         chrome.on,
         chrome.style,
         chrome.slot,
@@ -83,10 +86,10 @@ pub(crate) fn toggle_row<'ui, 'text>(
         look.background.corners = Corners::all(radius);
     }
 
-    entry.node.gaps.set_gap(row_gap);
-    entry.node.child_align = Align::v(VAlign::Center);
+    widget.node.gaps.set_gap(row_gap);
+    widget.node.child_align = Align::v(VAlign::Center);
 
-    entry.record(ui, None, |ui| {
+    widget.record(ui, None, |ui| {
         ui.widget(chrome.boxed.id(id.with("box")))
             .record(ui, Some(&look.background), |ui| body(ui, &look.background));
 
@@ -99,7 +102,7 @@ pub(crate) fn toggle_row<'ui, 'text>(
         }
     });
 
-    entry.into_response(ui)
+    Response::eager(id, ui, response)
 }
 
 #[cfg(test)]

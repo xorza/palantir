@@ -12,7 +12,6 @@ use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
-use crate::widgets::widget::WidgetEntry;
 use std::ops::RangeInclusive;
 
 /// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
@@ -261,8 +260,9 @@ impl<'a> DragValue<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
-        let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
+        let mut widget = ui.widget(self.node);
+        let mut response = widget.response(ui);
+        let id = widget.id();
 
         // Focused + editable + enabled: the inline text editor owns the
         // frame. Pass the chip's last *pre-transform* rect (logical px,
@@ -272,10 +272,10 @@ impl<'a> DragValue<'a> {
         // scaled canvas. Disabled mid-edit falls through to the chip path,
         // which kicks focus out and discards the pending draft below.
         if self.editable && ui.focused_id() == Some(id) {
-            if entry.state.disabled {
+            if response.disabled {
                 ui.request_focus(None);
             } else {
-                return self.show_editing(ui, id, entry.state.layout_rect);
+                return self.show_editing(ui, id, response.layout_rect);
             }
         }
 
@@ -288,9 +288,9 @@ impl<'a> DragValue<'a> {
         // offset by the cumulative travel each frame and commit
         // (snap / round / clamp). One state probe resolves a pending edit,
         // begins a new scrub, and advances or finishes an existing scrub.
-        let drag_started = entry.state.left.drag.started();
-        let drag_delta = entry.state.left.drag.delta();
-        let drag_stopped = entry.state.left.drag.stopped();
+        let drag_started = response.left.drag.started();
+        let drag_delta = response.left.drag.delta();
+        let drag_stopped = response.left.drag.stopped();
         let state = if drag_started {
             Some(ui.state_mut::<DragValueState>(id))
         } else {
@@ -301,7 +301,7 @@ impl<'a> DragValue<'a> {
             // present. Resolve it while editable and enabled, otherwise drop
             // it so a later focus cannot replay stale input.
             if let DragValueState::Editing { buffer } = state {
-                if self.editable && !entry.state.disabled {
+                if self.editable && !response.disabled {
                     changed = self.value.parse_from(buffer, self.min, self.max);
                     committed = true;
                 }
@@ -319,7 +319,7 @@ impl<'a> DragValue<'a> {
 
             let mut stopped_at = None;
             if let DragValueState::Scrubbing { value, speed, last } = state {
-                if !entry.state.disabled
+                if !response.disabled
                     && let Some(delta) = drag_delta
                 {
                     let raw = *value + delta.x as f64 * *speed;
@@ -337,7 +337,7 @@ impl<'a> DragValue<'a> {
             // disabled, the gesture is dropped instead.
             if let Some(last) = stopped_at {
                 *state = DragValueState::Idle;
-                if !entry.state.disabled {
+                if !response.disabled {
                     changed |= self
                         .value
                         .commit_drag(last, self.decimals, self.min, self.max);
@@ -349,9 +349,9 @@ impl<'a> DragValue<'a> {
         // A plain enabled click (no drag latched) enters keyboard entry;
         // `show_editing` seeds the buffer on entry, so a click and a
         // programmatic `request_focus` get the same fresh draft.
-        if self.editable && !entry.state.disabled && entry.state.left.clicked() {
+        if self.editable && !response.disabled && response.left.clicked() {
             ui.request_focus(Some(id));
-            entry.mark_focused();
+            response.mark_focused();
         }
 
         let text = match &self.value {
@@ -363,11 +363,11 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), chip, |t| {
+        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), chip, |t| {
             &t.drag_value.chip
         });
 
-        entry.record(ui, Some(&look.background), |ui| {
+        widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text,
@@ -381,7 +381,7 @@ impl<'a> DragValue<'a> {
             });
         });
         DragValueResponse {
-            response: entry.into_response(ui),
+            response: Response::eager(id, ui, response),
             changed,
             committed,
         }
