@@ -567,7 +567,91 @@ fn bench_region_add(c: &mut Criterion) {
     group.finish();
 }
 
+/// Sibling counts for the paint-order arms. Spaced so the shape of the
+/// curve is readable: if the quadratic pair walk dominates, 512 costs
+/// ~16x what 128 does; if it is noise beside the rest of the diff, the
+/// four numbers stay within a small factor.
+const ORDER_FANOUT: [usize; 4] = [64, 128, 256, 512];
+
+/// `count` overlapping sibling frames under one parent, painted in
+/// `order`.
+///
+/// A `ZStack` rather than a list, for two reasons. It is the shape a
+/// graph canvas actually has — nodes sit on top of one another, which
+/// is the only situation where raising one *means* anything — and it
+/// keeps every child's extent overlapping every other's, so each
+/// inverted pair the walk finds yields a real intersection instead of
+/// being discarded. That is the worst case, which is what a cliff
+/// hunt wants. Stacking them instead would also overflow the viewport
+/// past a few hundred rows and tip damage to `full`.
+///
+/// Ids travel with the *content*, not the slot, so reordering `order`
+/// leaves every row exact-matched and only their relative positions
+/// change — which is precisely what the inversion check looks for. A
+/// list keyed by slot would re-key the rows instead and never reach it.
+fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
+    Panel::zstack()
+        .id_salt("order-root")
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            for &i in order {
+                Frame::new()
+                    .id_salt(("sib", i))
+                    .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.2, 0.25).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            }
+        });
+}
+
+/// Raising one child to the front, which is what clicking a node on a
+/// graph canvas does.
+///
+/// `has_order_inversion` is an O(n) gate, but once it fires
+/// `emit_inverted_overlaps` enumerates every `(j1, j2)` pair — and
+/// raising a single child inverts only `n` of those, so all but a
+/// vanishing fraction of the walk finds nothing. These arms exist to
+/// say whether that difference is visible against the rest of the
+/// damage diff, and from what fanout.
+///
+/// Each iteration alternates between the raised and unraised orders so
+/// every frame trips the inversion; holding one order steady would
+/// settle into `skip` and measure nothing.
+fn bench_paint_order_inversion(c: &mut Criterion) {
+    let mut group = c.benchmark_group("damage/paint_order");
+
+    for count in ORDER_FANOUT {
+        let flat: Vec<usize> = (0..count).collect();
+        let mut raised = flat.clone();
+        let last = raised.pop().expect("fanout is non-empty");
+        raised.insert(0, last);
+
+        let mut h = UiHarness::new(SURFACE);
+        warm_and_assert(
+            &mut h,
+            |ui| build_ordered_siblings(ui, &flat),
+            |ui| build_ordered_siblings(ui, &raised),
+            "partial",
+        );
+
+        let mut flipped = false;
+        group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, _| {
+            b.iter(|| {
+                flipped = !flipped;
+                let order = if flipped { &raised } else { &flat };
+                run_and_ack(&mut h, |ui| build_ordered_siblings(ui, order));
+                black_box(h.damage_region());
+            });
+        });
+    }
+    group.finish();
+}
+
 pub fn bench(c: &mut Criterion) {
     bench_workloads(c);
+    bench_paint_order_inversion(c);
     bench_region_add(c);
 }
