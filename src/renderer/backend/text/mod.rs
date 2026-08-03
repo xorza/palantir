@@ -34,7 +34,7 @@ use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::pipeline_utils::{self, ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::RunPlacement;
@@ -145,15 +145,13 @@ impl TextBackend {
 
         let atlas_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir text atlas layout"),
+            // Mask at 0, colour at 1, one shared sampler at 2 — the
+            // same entry shapes every other group uses, two textures
+            // deep instead of one.
             entries: &[
-                tex_entry(0),
-                tex_entry(1),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
+                pipeline_utils::fragment_texture_entry(0),
+                pipeline_utils::fragment_texture_entry(1),
+                pipeline_utils::fragment_sampler_entry(2),
             ],
         });
 
@@ -347,19 +345,6 @@ impl TextBackend {
         );
         self.encoder.end_frame(self.shaper.frame());
         self.ranges.clear();
-    }
-}
-
-fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::FRAGMENT,
-        ty: wgpu::BindingType::Texture {
-            multisampled: false,
-            view_dimension: wgpu::TextureViewDimension::D2,
-            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-        },
-        count: None,
     }
 }
 

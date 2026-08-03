@@ -136,6 +136,41 @@ impl StencilVariant {
     }
 }
 
+/// One fragment-visible, filterable 2D float texture binding — the only
+/// texture shape any palantir shader declares.
+///
+/// A named entry rather than an inline literal because the layouts that
+/// need it do not all have the same *arity*: the gradient LUT atlas and
+/// the per-image group take one ([`texture_sampler_bgl`]), the glyph
+/// atlas takes two (mask + colour), so no single layout builder covers
+/// them. The entry is the largest piece they can actually share, and
+/// sharing it is what keeps a `filterable` or `view_dimension` change
+/// from reaching some groups and not others.
+pub(super) fn fragment_texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+/// The filtering sampler that pairs with [`fragment_texture_entry`].
+/// Split out for the same reason: it trails a different number of
+/// texture bindings in each layout.
+pub(super) fn fragment_sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
 /// Build a group-0 bind-group layout pairing a filterable 2D float
 /// texture at binding 0 with a filtering sampler at binding 1, both
 /// fragment-visible. The shape shared by the gradient LUT atlas
@@ -146,24 +181,7 @@ pub(super) fn texture_sampler_bgl(
 ) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some(label),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            },
-        ],
+        entries: &[fragment_texture_entry(0), fragment_sampler_entry(1)],
     })
 }
 
