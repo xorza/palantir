@@ -3603,3 +3603,36 @@ fn quad_fast_path_flag_cases() {
         assert_eq!(got, want, "{name}: fill_kind");
     }
 }
+
+/// `PaintSink::draw_polyline` *asserts* its no-op predicate instead of
+/// gating on it, which is only safe if a degenerate polyline slipping
+/// through in release degrades quietly rather than panicking or drawing
+/// garbage. This is what makes that true, so it is the test to fix
+/// before restoring the gate — not this one to delete.
+///
+/// Calls the **required** half directly, since that is the path below
+/// the assert (and the one `RecordedPaint::replay` takes).
+#[test]
+fn degenerate_polyline_emits_nothing_rather_than_panicking() {
+    for points_len in [0u32, 1] {
+        let buf = run(
+            |b, arena| {
+                arena.polyline_points.push(Vec2::ZERO);
+                arena.polyline_colors.push(ColorU8::WHITE);
+                b.polyline(DrawPolylinePayload {
+                    bbox: rect(0.0, 0.0, 4.0, 4.0),
+                    origin: Vec2::ZERO,
+                    width: 2.0,
+                    points_len,
+                    colors_len: 1,
+                    ..Default::default()
+                });
+            },
+            &params(1.0, UVec2::new(64, 64)),
+        );
+        assert!(
+            buf.curves.is_empty(),
+            "points_len={points_len} emitted geometry"
+        );
+    }
+}
