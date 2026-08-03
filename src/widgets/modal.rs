@@ -76,10 +76,11 @@ impl<'a> Modal<'a> {
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ModalResponse {
         let surface = ui.display().logical_rect();
         // The caller's salt names the *backdrop root*, but the node it
-        // arrived on is the card — the root is framework-built below, so
-        // the identity is resolved on its own rather than staged onto a
-        // node that never records.
-        let root_id = ui.widget_id(self.node.salt);
+        // arrived on is the card — the root is framework-built below,
+        // out of the id itself, so identity resolves on its own and the
+        // root is staged onto it once it exists.
+        let mut root_w = ui.widget(self.node);
+        let root_id = root_w.id();
 
         let mt = self.style.unwrap_or(&ui.theme.modal);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
@@ -104,8 +105,11 @@ impl<'a> Modal<'a> {
             .sense(Sense::ABSORB_POINTER);
         let placement = Placement::fixed(Vec2::ZERO, Some(surface.size));
         let scope = OverlayScope::claim(root_id, Layer::Modal, placement, &mut root);
+        // The backdrop root displaces the card the salt arrived on —
+        // after `claim`, which writes the placement into it.
+        root_w.node = root;
         let escape = scope.record(ui, |ui| {
-            ui.node(root_id, root, Some(&dim), |ui| {
+            root_w.record(ui, Some(&dim), |ui| {
                 ui.widget(card).record(ui, Some(&card_bg), body);
             });
         });

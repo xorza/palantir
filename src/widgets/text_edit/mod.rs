@@ -14,7 +14,6 @@ use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::{Response, ResponseSnapshot};
@@ -26,6 +25,7 @@ use crate::widgets::text_edit::view::{
 };
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
+use crate::widgets::widget::Widget;
 use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]
@@ -254,7 +254,8 @@ impl<'a> TextEdit<'a> {
         // Identity resolves on its own: `self.node` keeps being written
         // below (key filter, then `resolve_look`'s spacing defaults), so
         // a copy staged now would be stale by the time it records.
-        let id = ui.widget_id(self.node.salt);
+        let widget = ui.widget(self.node);
+        let id = widget.id();
         // **The state row is moved out for the whole pass and moved back
         // after.** Every stage of the pass wants it, and the stages are
         // separated by `&mut Ui` calls — the keyboard drain, the shape
@@ -267,7 +268,7 @@ impl<'a> TextEdit<'a> {
         // early-returns on an unstyled editor, and a `mem::take` whose
         // write-back only runs on *some* paths silently resets the caret.
         let mut state = std::mem::take(ui.state_mut::<TextEditState>(id));
-        let signals = self.pass(ui, id, &mut state);
+        let signals = self.pass(ui, widget, &mut state);
         *ui.state_mut::<TextEditState>(id) = state;
 
         // Built after the write-back: the response borrows `ui`, so it
@@ -286,7 +287,8 @@ impl<'a> TextEdit<'a> {
     /// One record pass over a state row the caller owns — see
     /// [`Self::show`] for why it is passed in rather than looked up.
     /// Returns the borrow-free half of [`TextEditResponse`].
-    fn pass(mut self, ui: &mut Ui, id: WidgetId, state: &mut TextEditState) -> EditSignals {
+    fn pass(mut self, ui: &mut Ui, mut widget: Widget, state: &mut TextEditState) -> EditSignals {
+        let id = widget.id();
         let mut is_focused = ui.focused_id() == Some(id);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
@@ -339,7 +341,8 @@ impl<'a> TextEdit<'a> {
             let was_focused = state.view.prev_focused;
             state.view.prev_focused = is_focused;
             let chrome = look.background;
-            ui.node(id, self.node, Some(&chrome), |_| {});
+            widget.node = self.node;
+            widget.record(ui, Some(&chrome), |_| {});
             return EditSignals {
                 changed: false,
                 submitted: false,
@@ -461,11 +464,11 @@ impl<'a> TextEdit<'a> {
         });
         let text_color = look.text.color;
         let placeholder = self.placeholder;
+        widget.node = self.node;
         view::record(
             ui,
-            id,
+            widget,
             PaintInput {
-                node: self.node,
                 chrome: look.background,
                 text: self.text,
                 placeholder: &placeholder,

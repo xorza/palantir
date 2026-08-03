@@ -17,13 +17,12 @@ use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::widget::WidgetEntry;
 
 use crate::primitives::interned_str::TextInput;
 use glam::Vec2;
 
-/// Cross-frame state for one context-menu site, keyed off the trigger
-/// widget's id in [`crate::ui::state::StateMap`]. `anchor = Some` is
+/// Cross-frame response for one context-menu site, keyed off the trigger
+/// widget's id in [`crate::ui::response::StateMap`]. `anchor = Some` is
 /// the single source of truth for "menu open".
 #[derive(Default, Clone, Copy, Debug)]
 struct ContextMenuState {
@@ -181,8 +180,8 @@ impl<'a> ContextMenu<'a> {
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        if let Some(state) = ui.try_state_mut::<ContextMenuState>(for_id) {
-            state.anchor = None;
+        if let Some(response) = ui.try_state_mut::<ContextMenuState>(for_id) {
+            response.anchor = None;
         }
     }
 
@@ -214,7 +213,7 @@ pub struct ContextMenuResponse {
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
 /// `Response` so callers branch on `clicked()`; the row also calls
 /// [`PopupHandle::close`] on click so the parent `ContextMenu`
-/// auto-closes without the caller threading state.
+/// auto-closes without the caller threading response.
 ///
 /// If [`Self::shortcut`] is set, the row also intercepts that
 /// shortcut from this frame's key events: matching keypresses
@@ -284,25 +283,25 @@ impl<'a> MenuItem<'a> {
 
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
-        // row's body records only decorative `Text` leaves, so the state
+        // row's body records only decorative `Text` leaves, so the response
         // is identical before and after the node records.
-        let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
-        let disabled = entry.state.disabled;
+        let mut widget = ui.widget(self.node);
+        let mut response = widget.response(ui);
+        let id = widget.id();
+        let disabled = response.disabled;
 
         // Row-only scalars first, off a borrow that ends before
-        // `resolve_look` reborrows `ui` mutably. Everything state-varying
-        // — the four-state pick, the padding/margin defaults, the
+        // `resolve_look` reborrows `ui` mutably. Everything response-varying
+        // — the four-response pick, the padding/margin defaults, the
         // transition — comes back from the shared resolver instead, so a
         // menu row picks and animates exactly like a Button.
         let item = self.style.unwrap_or(&ui.theme.context_menu.item);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
 
-        let look =
-            WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), self.style, |t| {
-                &t.context_menu.item
-            });
+        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), self.style, |t| {
+            &t.context_menu.item
+        });
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the
@@ -312,7 +311,7 @@ impl<'a> MenuItem<'a> {
             ..text_style.clone()
         };
 
-        let node = &mut entry.node;
+        let node = &mut widget.node;
         // Hug+Stretch+SpaceBetween: row hugs content (the default
         // `Sizes` — respects an explicit `.size(...)`), arrange
         // stretches to widest row, label/shortcut pin to opposite
@@ -353,14 +352,14 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        entry.record(ui, Some(&look.background), body);
+        widget.record(ui, Some(&look.background), body);
 
         if shortcut_fired {
-            entry.mark_clicked();
+            response.mark_clicked();
         }
-        // Eager: `state` folds in the synthesized shortcut click, which
+        // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
-        let resp = entry.into_response(ui);
+        let resp = Response::eager(id, ui, response);
         if resp.left.clicked() {
             popup.close();
         }

@@ -8,7 +8,6 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{self, ToggleChrome};
-use crate::widgets::widget::WidgetEntry;
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected
@@ -58,15 +57,16 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = WidgetEntry::enter(ui, self.node);
-        let state = &entry.state;
+        let widget = ui.widget(self.node);
+        let response = widget.response(ui);
+
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
         // matches platform behavior on every OS. A fresh click selects
         // this option, so flip `selected` now (`value` is moved into
         // `current`, so we can't re-derive it) — otherwise the chrome +
         // pip below paint unselected until the next unrelated repaint.
-        if state.left.clicked() && !state.disabled && !selected {
+        if response.left.clicked() && !response.disabled && !selected {
             *self.current = self.value;
             selected = true;
         }
@@ -89,7 +89,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             // radio pip must never square-corner.
             pill: Some(pip_size * 0.5),
         };
-        toggle::toggle_row(ui, entry, chrome, self.label, |ui, _| {
+        toggle::toggle_row(ui, widget, response, chrome, self.label, |ui, _| {
             if selected {
                 let dot_size = pip_size - 2.0 * dot_inset;
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);

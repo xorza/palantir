@@ -9,9 +9,8 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{self, ToggleChrome};
-use crate::widgets::widget::WidgetEntry;
 
-/// Two-state boolean toggle. Takes a `&mut bool` whose owner controls
+/// Two-response boolean toggle. Takes a `&mut bool` whose owner controls
 /// the value — same pattern as egui. Clicking the row flips it.
 ///
 /// Layout: HStack [box, label]. The whole row is one hit target with
@@ -21,7 +20,7 @@ use crate::widgets::widget::WidgetEntry;
 /// occurrence-counter disambiguation).
 ///
 /// Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]) —
-/// chrome via `unchecked.pick(state)` / `checked.pick(state)`, check
+/// chrome via `unchecked.pick(response)` / `checked.pick(response)`, check
 /// glyph color from `indicator`, geometry from `box_size` etc.
 #[derive(Debug)]
 pub struct Checkbox<'a> {
@@ -57,9 +56,10 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = WidgetEntry::enter(ui, self.node);
-        let state = &entry.state;
-        if state.left.clicked() && !state.disabled {
+        let widget = ui.widget(self.node);
+        let response = widget.response(ui);
+
+        if response.left.clicked() && !response.disabled {
             *self.value = !*self.value;
         }
         let checked = *self.value;
@@ -81,7 +81,7 @@ impl<'a> Checkbox<'a> {
             // Square box: the theme's own corner radius stands.
             pill: None,
         };
-        toggle::toggle_row(ui, entry, chrome, self.label, |ui, _| {
+        toggle::toggle_row(ui, widget, response, chrome, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
                     Shape::polyline(&check, PolylineColors::Single(indicator), indicator_stroke)

@@ -8,7 +8,6 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::widget::WidgetEntry;
 
 #[derive(Debug)]
 pub struct Button<'a> {
@@ -72,17 +71,17 @@ impl<'a> Button<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
-        let look =
-            WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), self.style, |t| {
-                &t.button
-            });
+        let mut widget = ui.widget(self.node);
+        let response = widget.response(ui);
+        let id = widget.id();
+        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), self.style, |t| {
+            &t.button
+        });
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        entry.record(ui, Some(&look.background), |ui| {
+        widget.record(ui, Some(&look.background), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(Shape::Text {
@@ -102,8 +101,8 @@ impl<'a> Button<'a> {
             }
         });
         // Eager: theme picking already paid for `response_for`, so
-        // hand the cached state to the caller.
-        entry.into_response(ui)
+        // hand the cached response to the caller.
+        Response::eager(id, ui, response)
     }
 }
 

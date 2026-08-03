@@ -9,10 +9,9 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{self, ToggleChrome};
-use crate::widgets::widget::WidgetEntry;
 use glam::Vec2;
 
-/// Two-state boolean toggle drawn as a pill track with a knob that
+/// Two-response boolean toggle drawn as a pill track with a knob that
 /// slides between the ends — the iOS/Material "switch". Takes a
 /// `&mut bool` whose owner controls the value; clicking the row flips
 /// it. Visuals come from `theme.switch` ([`crate::ToggleTheme`]), which
@@ -55,10 +54,11 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
-        let state = &entry.state;
-        if state.left.clicked() && !state.disabled {
+        let widget = ui.widget(self.node);
+        let response = widget.response(ui);
+        let id = widget.id();
+
+        if response.left.clicked() && !response.disabled {
             *self.value = !*self.value;
         }
         let on = *self.value;
@@ -87,7 +87,7 @@ impl<'a> Switch<'a> {
             )),
             pill: Some(track_h * 0.5),
         };
-        toggle::toggle_row(ui, entry, chrome, self.label, |ui, track| {
+        toggle::toggle_row(ui, widget, response, chrome, self.label, |ui, track| {
             // The track's stroke auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
             // declared position is content-box-relative. Feed the stroke
@@ -216,7 +216,7 @@ mod tests {
         assert!((g.knob_y - 3.0).abs() < 1e-6);
     }
 
-    /// A wider aspect stretches the track and pushes the on-state
+    /// A wider aspect stretches the track and pushes the on-response
     /// knob further right, while leaving the knob itself (a function of
     /// height alone) untouched. 20 px tall at 3:1 is a 60 px track, so
     /// the knob rests at `60 - 14 - 3 = 43` instead of `35 - 14 - 3 = 18`.
@@ -239,7 +239,7 @@ mod tests {
         assert!((g.knob - 2.0).abs() < 1e-6);
     }
 
-    /// Regression: the off-state knob is centred in the track despite the
+    /// Regression: the off-response knob is centred in the track despite the
     /// track's 1 px stroke auto-insetting the Canvas content box. Before
     /// the stroke compensation the knob arranged at (4, 4) — 1 px low and
     /// 1 px right — leaving a 4/2 px top/bottom gap. It must rest `inset`

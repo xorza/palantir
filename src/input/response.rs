@@ -330,6 +330,30 @@ impl Default for ResponseState {
 }
 
 impl ResponseState {
+    /// Report the widget as focused for the rest of this frame, after it
+    /// called [`Ui::request_focus`](crate::Ui::request_focus) on itself.
+    ///
+    /// A probed state predates the request — focus resolves live, but
+    /// the snapshot was taken on entry — so without this the widget's
+    /// own response would deny the focus it just took.
+    #[inline]
+    pub(crate) fn mark_focused(&mut self) {
+        self.focused = true;
+    }
+
+    /// Report a single click, for a widget activated by something the
+    /// pointer pipeline never saw — a keyboard shortcut bound to a menu
+    /// row. Callers read `.clicked()` and must not have to care which
+    /// device produced it.
+    ///
+    /// This and [`Self::mark_focused`] are the only two things a widget
+    /// legitimately knows that its probed snapshot cannot. Writing to a
+    /// probed state any other way is inventing input.
+    #[inline]
+    pub(crate) fn mark_clicked(&mut self) {
+        self.left.phase = ButtonPhase::Up { click: Some(1) };
+    }
+
     /// The per-button slice for a **runtime** `button` value — the one
     /// thing the public fields can't express. For a compile-time-known
     /// button read the field directly (`state.left`, not

@@ -8,7 +8,6 @@ use crate::ui::Ui;
 use crate::widgets::chrome;
 use crate::widgets::response::Response;
 use crate::widgets::theme::slider::SliderTheme;
-use crate::widgets::widget::WidgetEntry;
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a `f32` range. Takes a `&mut f32`;
@@ -60,9 +59,9 @@ impl<'a> Slider<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.id();
-        let state = &entry.state;
+        let mut widget = ui.widget(self.node);
+        let response = widget.response(ui);
+        let id = widget.id();
 
         let theme = self.style.unwrap_or(&ui.theme.slider);
         let knob = theme.knob_size;
@@ -73,9 +72,9 @@ impl<'a> Slider<'a> {
 
         // Pointer drives the value: pressing or dragging the rail maps
         // the cursor x against the last frame's logical width.
-        if !state.disabled
-            && (state.pressed() || state.left.drag.dragging())
-            && let (Some(local), Some(rect)) = (state.pointer_local, state.layout_rect)
+        if !response.disabled
+            && (response.pressed() || response.left.drag.dragging())
+            && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
         {
             let f = pointer_to_fraction(local.x, rect.size.w, knob);
             let v = snap_to_step(
@@ -92,7 +91,7 @@ impl<'a> Slider<'a> {
         let rail_bg = Background::rounded(rail_color, pill);
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
-        let node = &mut entry.node;
+        let node = &mut widget.node;
         node.size
             .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
         node.child_align = Align::v(VAlign::Center);
@@ -101,14 +100,14 @@ impl<'a> Slider<'a> {
         // track, so its position tracks the resolved width without this
         // widget knowing that width at record time.
         let [filled, remainder] = Sizing::split(fraction);
-        entry.record(ui, None, |ui| {
+        widget.record(ui, None, |ui| {
             let rail = Sizing::fixed(rail_h);
             chrome::leaf(ui, id.with("fill"), (filled, rail), Some(&fill_bg));
             let knob = Sizing::fixed(knob);
             chrome::leaf(ui, id.with("knob"), (knob, knob), Some(&knob_bg));
             chrome::leaf(ui, id.with("rail"), (remainder, rail), Some(&rail_bg));
         });
-        entry.into_response(ui)
+        Response::eager(id, ui, response)
     }
 }
 
