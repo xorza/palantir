@@ -117,6 +117,16 @@ impl FillKind {
         let kind = self.0 & 0xFF;
         kind == Self::SHADOW_DROP.0 || kind == Self::SHADOW_INSET.0
     }
+
+    /// True iff this `FillKind` marks a gradient draw — the kinds whose
+    /// colour comes from the atlas row rather than the instance's
+    /// `fill` lane, which is zeroed for them. The no-op gates read this
+    /// so they don't mistake that zeroed lane for a transparent fill.
+    #[inline]
+    pub(crate) const fn is_gradient(self) -> bool {
+        let kind = self.0 & 0xFF;
+        kind >= 1 && kind <= 3
+    }
 }
 
 /// Index into the gradient LUT atlas texture. `LutRow(0)` is the

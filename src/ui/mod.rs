@@ -533,7 +533,9 @@ impl Ui {
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
     /// — minting the stable backend `TextureId` once (on first sight) and
     /// refreshing the app `paint` callback each frame — then append a
-    /// [`ShapeRecord::GpuView`](crate::scene::shapes::record::ShapeRecord::GpuView)
+    /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
+    /// sourced from an
+    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView)
     /// carrying the view's `epoch` to the active node
     /// (the encoder recovers id + paint from the map by `id`).
     ///

@@ -14,6 +14,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
@@ -296,6 +297,38 @@ impl<'a> From<ShadowShape> for Shape<'a> {
 #[inline]
 fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
     local_rect.is_some_and(|rect| rect.is_paint_empty())
+}
+
+/// The authoring-side NaN screen. Dispatches to each shape's own
+/// [`NanCheck`], so a new kind gets a compile error here rather than a
+/// silent hole. Read by exactly one caller — the assert at the top of
+/// `Shapes::add`, ahead of the [`Self::is_noop`] early return, because
+/// `noop_f32` classifies NaN as invisible and a NaN-width shape would
+/// otherwise leave through that door unchecked.
+impl NanCheck for Shape<'_> {
+    fn has_nan(&self) -> bool {
+        match self {
+            Shape::Rect(shape) => shape.has_nan(),
+            Shape::Triangle(shape) => shape.has_nan(),
+            Shape::Curve(shape) => shape.has_nan(),
+            Shape::Polyline(shape) => shape.has_nan(),
+            Shape::Text {
+                local_origin,
+                color,
+                font_size_px,
+                line_height_px,
+                ..
+            } => {
+                local_origin.has_nan()
+                    || color.has_nan()
+                    || font_size_px.is_nan()
+                    || line_height_px.is_nan()
+            }
+            Shape::Mesh(shape) => shape.has_nan(),
+            Shape::Image(shape) => shape.has_nan(),
+            Shape::Shadow(shape) => shape.has_nan(),
+        }
+    }
 }
 
 impl Shape<'_> {

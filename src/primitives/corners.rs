@@ -1,4 +1,5 @@
 use crate::primitives::half_simd::F16x4;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::num::Num;
 use crate::primitives::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
 use crate::primitives::size::Size;
@@ -172,6 +173,13 @@ impl ::serde::Serialize for Corners {
 impl<'de> ::serde::Deserialize<'de> for Corners {
     fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserialize_lanes(deserializer)
+    }
+}
+
+impl NanCheck for Corners {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.as_array().iter().any(|radius| radius.is_nan())
     }
 }
 

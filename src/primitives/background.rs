@@ -66,7 +66,7 @@ impl Background {
 
     /// True when this Background paints nothing visible — transparent
     /// fill + transparent/zero-width stroke + no-op shadow. The
-    /// encoder skips emitting a `DrawRect` for no-op chrome so
+    /// encoder skips emitting a rect quad for no-op chrome so
     /// transparent `Surface::scissor()` defaults don't leak draw
     /// commands. The shadow check is required: the encoder's chrome
     /// branch paints shadow before the rect, so dropping chrome

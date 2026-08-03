@@ -17,7 +17,7 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::frontend::payload::{BrushSource, PushClipPayload};
+use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload, PushClipPayload, QuadGeom};
 use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::scene::damage::region::DamageRegion;
@@ -49,11 +49,40 @@ fn count_clip_pairs(cmds: &RecordedPaint) -> ClipPairs {
     ClipPairs { pushes, pops }
 }
 
+/// A plain rectangle draw. Rects, shadows, and triangles all record as
+/// [`PaintCall::Quad`] now, and a shadow shares the rect *geometry* — so
+/// isolating a rectangle takes both tests: rect geometry, and a fill
+/// kind that isn't the shadow SDF.
+fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
+    match call {
+        PaintCall::Quad(p)
+            if matches!(p.geom, QuadGeom::Rect { .. }) && !p.fill_kind.is_shadow() =>
+        {
+            Some(p)
+        }
+        _ => None,
+    }
+}
+
+/// The shadow half of the same split.
+fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
+    match call {
+        PaintCall::Quad(p) if p.fill_kind.is_shadow() => Some(p),
+        _ => None,
+    }
+}
+
+/// The logical-px paint rect of a rect-geometry quad.
+#[track_caller]
+fn quad_rect(p: &DrawQuadPayload) -> Rect {
+    match p.geom {
+        QuadGeom::Rect { rect, .. } => rect,
+        QuadGeom::Triangle { .. } => panic!("expected rect geometry, got a triangle"),
+    }
+}
+
 fn count_draw_rects(cmds: &RecordedPaint) -> usize {
-    cmds.calls
-        .iter()
-        .filter(|command| matches!(command, PaintCall::Rect(_)))
-        .count()
+    cmds.calls.iter().filter(|c| as_rect(c).is_some()).count()
 }
 
 #[test]
@@ -93,11 +122,11 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
 }
 
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a
-/// fill emits one DrawRect; an invisible Frame (no fill / stroke /
+/// fill emits one rect quad; an invisible Frame (no fill / stroke /
 /// shape) emits none — `ShapeRecord::is_noop` filters at `add_shape` time so
 /// the encoder sees no rectangle record in the tree. Degenerate Backgrounds
 /// (transparent + no stroke) and clip-only Surfaces (`Surface::clip_rect`)
-/// also emit zero `DrawRect`s — the encoder's `bg.is_noop()` guard at
+/// also emit zero rect quads — the encoder's `bg.is_noop()` guard at
 /// chrome-paint time filters them.
 #[test]
 fn baseline_draw_rect_count_cases() {
@@ -213,18 +242,15 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let rect_kinds: Vec<_> = cmds
         .calls
         .iter()
-        .filter_map(|command| match command {
-            PaintCall::Rect(payload) => Some(payload.fill_kind),
-            _ => None,
-        })
+        .filter_map(|command| as_rect(command).map(|p| p.fill_kind))
         .collect();
     assert!(
         rect_kinds.contains(&FillKind::SOLID),
-        "rounded rect must emit a plain DrawRect, got kinds {rect_kinds:?}",
+        "rounded rect must emit a plain-solid quad, got kinds {rect_kinds:?}",
     );
     assert!(
         rect_kinds.contains(&FillKind::SOLID.with_window()),
-        "windowed rect must emit a window-tagged DrawRect, got kinds {rect_kinds:?}",
+        "windowed rect must emit a window-tagged quad, got kinds {rect_kinds:?}",
     );
     // A Line rides the GPU curve pipeline (degenerate cubic), so it
     // emits a DrawCurve — not a DrawPolyline — and never touches the
@@ -263,7 +289,6 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::Shadow;
 
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::payload::DrawShadowPayload;
     use crate::shape::Shape;
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -298,26 +323,24 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
         });
     });
     let cmds = h.encode_paint();
-    let shadow_payloads: Vec<DrawShadowPayload> = cmds
-        .calls
-        .iter()
-        .filter_map(|command| match command {
-            PaintCall::Shadow(payload) => Some(*payload),
-            _ => None,
-        })
-        .collect();
+    let shadow_payloads: Vec<_> = cmds.calls.iter().filter_map(as_shadow).collect();
     assert_eq!(shadow_payloads.len(), 2, "drop and inset shadow cmds");
     let drop = shadow_payloads[0];
     let inset = shadow_payloads[1];
+    let (drop_rect, inset_rect) = (quad_rect(drop), quad_rect(inset));
 
     assert_eq!(drop.fill_kind, FillKind::SHADOW_DROP);
-    assert_eq!(drop.rect.size, Size::new(78.0, 88.0));
-    assert_eq!(drop.rect.min - inset.rect.min, Vec2::new(-22.0, -20.0));
+    assert_eq!(drop_rect.size, Size::new(78.0, 88.0));
+    assert_eq!(drop_rect.min - inset_rect.min, Vec2::new(-22.0, -20.0));
     assert_eq!(drop.fill_axis.lanes(), [0.0, 0.0, 8.0, -1.0]);
-    assert_eq!(drop.color, ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5)));
+    assert_eq!(drop.fill, ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5)));
+    // A shadow's whole edge is its blur — the merged payload must carry
+    // no stroke, or the shared quad path would paint one.
+    assert_eq!(drop.stroke.color, ColorF16::TRANSPARENT);
+    assert_eq!(drop.stroke.width, 0.0);
 
     assert_eq!(inset.fill_kind, FillKind::SHADOW_INSET);
-    assert_eq!(inset.rect.size, Size::new(30.0, 40.0));
+    assert_eq!(inset_rect.size, Size::new(30.0, 40.0));
     assert_eq!(inset.fill_axis.lanes(), [2.0, 4.0, 8.0, -2.0]);
 }
 
@@ -393,7 +416,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
 
 /// Pin: a clip-only Surface (no painted background) still emits a
 /// PushClip/PopClip pair so children get clipped, while contributing zero
-/// `DrawRect`s of its own.
+/// rect quads of its own.
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -454,7 +477,7 @@ fn clip_emits_balanced_push_pop() {
         .calls
         .iter()
         .enumerate()
-        .filter_map(|(i, command)| matches!(command, PaintCall::Rect(_)).then_some(i))
+        .filter_map(|(i, command)| as_rect(command).map(|_| i))
         .collect();
     assert!(!draw_idxs.is_empty());
     for &di in &draw_idxs {
@@ -574,21 +597,23 @@ fn screen_rects_by_fill(cmds: &RecordedPaint) -> Vec<(ColorF16, Rect)> {
                 clip = Some(intersected);
             }
             PaintCall::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
-            PaintCall::Rect(p) => {
-                let screen = t.apply_rect(p.rect);
+            // Rectangles only — shadows and triangles ride the same
+            // call now, and `as_rect` is what still separates them.
+            call if as_rect(call).is_some() => {
+                let p = as_rect(call).unwrap();
+                let screen = t.apply_rect(quad_rect(p));
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
                     None => screen,
                 };
                 out.push((p.fill, visible));
             }
-            PaintCall::Shadow(_)
+            PaintCall::Quad(_)
             | PaintCall::Text(_)
             | PaintCall::Mesh(_)
             | PaintCall::Polyline(_)
             | PaintCall::Image { .. }
-            | PaintCall::Curve(_)
-            | PaintCall::Triangle(_) => {}
+            | PaintCall::Curve(_) => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");
@@ -677,7 +702,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         .iter()
         .find(|(c, _)| *c == v_color_f16)
         .map(|(_, r)| *r)
-        .expect("visible node should emit a DrawRect");
+        .expect("visible node should emit a rect quad");
     let v_hit = h.ui.response_for(v_id).rect.expect("visible has hit rect");
     assert_eq!(v_screen, v_hit, "encoder vs hit-index rect for V");
 
@@ -693,7 +718,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let h_id = WidgetId::from_hash("H");
     assert!(
         !drawn.iter().any(|(c, _)| *c == h_color_f16),
-        "hidden node must not emit a DrawRect"
+        "hidden node must not emit a rect quad"
     );
     assert!(h.ui.response_for(h_id).rect.is_some());
 
@@ -1064,7 +1089,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
 ///   parent (Canvas, Fixed 50×50) at (0..50, 0..50)
 ///   └── child (Frame, Fixed 40×40) `.position(60, 0)` → (60..100, 0..40)
 /// Damage = (60..100, 0..40) — exactly the child's rect, no overlap
-/// with the parent's own rect. The child MUST emit a DrawRect.
+/// with the parent's own rect. The child MUST emit a rect quad.
 #[test]
 fn damage_filter_includes_descendant_overflowing_parent_rect() {
     let mut h = UiHarness::new(UVec2::new(400, 400));

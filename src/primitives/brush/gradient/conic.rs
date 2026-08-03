@@ -4,6 +4,7 @@ use crate::primitives::brush::gradient::{
     FillAxis, GradientBuilderCore, Interp, Spread, gradient_tag,
 };
 use crate::primitives::color::ColorU8;
+use crate::primitives::nan::NanCheck;
 use glam::Vec2;
 
 /// Conic (sweep) gradient — paints colour by sweeping the parametric
@@ -110,5 +111,13 @@ gradient_common!(ConicGradient);
 impl From<ConicGradientBuilder> for ConicGradient {
     fn from(builder: ConicGradientBuilder) -> Self {
         builder.build()
+    }
+}
+/// Stops carry no float (see `LinearGradient`'s impl), so only the
+/// geometry is checked.
+impl NanCheck for ConicGradient {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.center.has_nan() || self.start_angle.is_nan()
     }
 }

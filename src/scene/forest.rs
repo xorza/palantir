@@ -270,7 +270,9 @@ impl Forest {
     }
 
     /// Append a `GpuView` shape (a
-    /// [`ShapeRecord::GpuView`](crate::scene::shapes::record::ShapeRecord::GpuView))
+    /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
+    /// sourced from an
+    /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView))
     /// to the active
     /// node. Only the redraw `epoch` rides the shape — the view's `id` + app
     /// `paint` live in `Ui::gpu_views` keyed by the owner's `WidgetId`; this is

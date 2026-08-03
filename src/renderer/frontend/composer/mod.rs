@@ -1,17 +1,16 @@
 use crate::display::Display;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::{ColorF16, ColorU8};
+use crate::primitives::color::ColorU8;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
-use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
-    DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
+    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
+    DrawTextPayload, PushClipPayload, QuadGeom,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
@@ -741,6 +740,22 @@ pub(crate) struct ComposeSession<'a> {
     current_transform: TranslateScale,
 }
 
+/// A quad-tier draw reduced to physical space — everything
+/// [`ComposeSession::quad`]'s per-shape half derives, and its shared
+/// half consumes. `corners` and `fill_axis` are the two `Quad` lanes
+/// whose meaning depends on the shape: corner radii + brush/shadow axis
+/// for a rect, packed corner points + third point/radius for a triangle.
+#[derive(Debug)]
+struct PackedQuad {
+    phys_rect: Rect,
+    /// Viewport-clamped integer bounds — what culling and the group's
+    /// overlap tracking test against.
+    urect: URect,
+    corners: Corners,
+    fill_axis: FillAxis,
+    stroke_width: f32,
+}
+
 /// A draw's rect in the two forms every rect-shaped handler needs, from
 /// [`ComposeSession::scaled_rect`].
 #[derive(Debug)]
@@ -869,54 +884,117 @@ impl PaintSink for ComposeSession<'_> {
             .expect("PopTransform without matching PushTransform");
     }
 
-    fn rect(&mut self, p: DrawRectPayload) {
-        let ScaledRect {
-            phys: phys_rect,
-            urect: quad_urect,
-        } = self.scaled_rect(p.rect);
-        // Clear fold: an opaque solid sharp unclipped quad
-        // covering the whole viewport paints exactly what
-        // `LoadOp::Clear(fill)` would — every covered pixel
-        // is deep inside the SDF (coverage exactly 1.0), so
-        // the outputs are bit-identical. And being opaque
-        // over every pixel, it hides *everything painted
-        // before it*. So: discard the whole scene composed
-        // so far and record the fill as the pass clear —
-        // the frame effectively starts at the last such
-        // cover. The root window background is the common
-        // case (cover at position 0, nothing to discard); a
-        // fullscreen page/panel painted over an underlay
-        // drops the entire hidden underlay too. The active
-        // clip must be empty: a scissored cover only hides
-        // its scissor, and an empty scissor state also
-        // guarantees no group in flight references
-        // `rounded_clips` state that `discard` wipes.
-        if self.composer.current_scissor.is_none()
-            && self.composer.current_chain.len == 0
-            && p.fill_kind == FillKind::SOLID
-            && p.fill.is_opaque()
-            && noop_f32(p.stroke_width)
-            && p.corners.approx_zero()
-            && phys_rect.min.x <= EPS
-            && phys_rect.min.y <= EPS
-            && phys_rect.max().x >= self.out.viewport_phys_f.x - EPS
-            && phys_rect.max().y >= self.out.viewport_phys_f.y - EPS
-        {
-            self.composer.discard_composed(self.out);
-            self.out.clear_override = Some(p.fill.unpack());
-            return;
-        }
+    fn quad(&mut self, p: DrawQuadPayload) {
+        let phys_scale = self.current_transform.scale * self.display.scale_factor;
+        // Reduce the geometry to physical space. Each arm owns both
+        // reused `Quad` lanes: a rect fills them with scaled corner
+        // radii and its brush/shadow axis, a triangle with its packed
+        // corner points. Everything after this point is shared.
+        let packed = match p.geom {
+            QuadGeom::Rect { rect, corners } => {
+                let ScaledRect {
+                    phys: phys_rect,
+                    urect,
+                } = self.scaled_rect(rect);
+                // Clear fold: an opaque solid sharp unclipped quad
+                // covering the whole viewport paints exactly what
+                // `LoadOp::Clear(fill)` would — every covered pixel
+                // is deep inside the SDF (coverage exactly 1.0), so
+                // the outputs are bit-identical. And being opaque
+                // over every pixel, it hides *everything painted
+                // before it*. So: discard the whole scene composed
+                // so far and record the fill as the pass clear —
+                // the frame effectively starts at the last such
+                // cover. The root window background is the common
+                // case (cover at position 0, nothing to discard); a
+                // fullscreen page/panel painted over an underlay
+                // drops the entire hidden underlay too. The active
+                // clip must be empty: a scissored cover only hides
+                // its scissor, and an empty scissor state also
+                // guarantees no group in flight references
+                // `rounded_clips` state that `discard` wipes.
+                //
+                // Only a rect can reach this: the `SOLID` test rules
+                // out shadows and triangles, which carry their own
+                // `FillKind`.
+                if self.composer.current_scissor.is_none()
+                    && self.composer.current_chain.len == 0
+                    && p.fill_kind == FillKind::SOLID
+                    && p.fill.is_opaque()
+                    && noop_f32(p.stroke.width)
+                    && corners.approx_zero()
+                    && phys_rect.min.x <= EPS
+                    && phys_rect.min.y <= EPS
+                    && phys_rect.max().x >= self.out.viewport_phys_f.x - EPS
+                    && phys_rect.max().y >= self.out.viewport_phys_f.y - EPS
+                {
+                    self.composer.discard_composed(self.out);
+                    self.out.clear_override = Some(p.fill.unpack());
+                    return;
+                }
+                PackedQuad {
+                    phys_rect,
+                    urect,
+                    corners: corners.scaled_by(phys_scale),
+                    // Live shadow parameters are logical-px scalars;
+                    // scale them so the shader's `local` coords line
+                    // up. A gradient axis is already unit-space and
+                    // passes through untouched.
+                    fill_axis: if p.fill_kind.is_shadow() {
+                        p.fill_axis.scaled(phys_scale)
+                    } else {
+                        p.fill_axis
+                    },
+                    stroke_width: p.stroke.width * phys_scale,
+                }
+            }
+            QuadGeom::Triangle {
+                origin,
+                a,
+                b,
+                c,
+                radius,
+            } => {
+                let scale = self.display.scale_factor;
+                // Fold owner origin + active transform, scale to physical
+                // px. No pixel-snap — the SDF handles sub-pixel placement;
+                // snapping the covering rect would only shift the AA band.
+                let xf = |q: Vec2| self.current_transform.apply_point(q + origin) * scale;
+                let (a, b, c) = (xf(a), xf(b), xf(c));
+                let radius_phys = (radius * phys_scale).max(0.0);
+                // Covering AABB: the rounded shape (the SDF offsets the
+                // triangle outward by `radius` to round its corners) plus
+                // the ½px AA fringe. The stroke sits on the *inner* edge
+                // (like a rounded rect), so it adds no outward reach.
+                let lo = a.min(b).min(c);
+                let hi = a.max(b).max(c);
+                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + 0.5);
+                // Pack the three points in rect-local coords (0..size,
+                // matching the shader's `in.local`) + the corner radius
+                // into the reused `corners` / `fill_axis` lanes;
+                // `FillKind::TRIANGLE` tells the shader to read them as a
+                // triangle SDF rather than rounded-rect radii / gradient
+                // axis.
+                let al = a - phys_rect.min;
+                let bl = b - phys_rect.min;
+                let cl = c - phys_rect.min;
+                PackedQuad {
+                    urect: urect_from_phys(phys_rect.min, phys_rect.max(), self.display.physical),
+                    phys_rect,
+                    corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
+                    fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
+                    stroke_width: (p.stroke.width * phys_scale).max(0.0),
+                }
+            }
+        };
         // Clip-cull: skip emitting the quad when it sits
         // entirely outside the active scissor. The GPU
         // would scissor it away anyway; this saves the
         // `quads.push` + per-quad math.
-        if self.composer.cull_bounds(quad_urect) {
+        if self.composer.cull_bounds(packed.urect) {
             return;
         }
-        self.composer.quad_forces_flush(quad_urect, self.out);
-        let phys_scale = self.current_transform.scale * self.display.scale_factor;
-        let phys_radius = p.corners.scaled_by(phys_scale);
-        let stroke_width_phys = p.stroke_width * phys_scale;
+        self.composer.quad_forces_flush(packed.urect, self.out);
         // Fragment fast path: a solid, sharp, stroke-less
         // quad whose physical rect is pixel-aligned
         // rasterizes only interior fragments (SDF coverage
@@ -926,13 +1004,14 @@ impl PaintSink for ComposeSession<'_> {
         // approx: exactness is what makes the skip
         // bitwise-identical (host pixel snapping yields
         // exact integers when active; unsnapped fractional
-        // rects keep the full SDF for edge AA).
-        let pmax = phys_rect.max();
+        // rects keep the full SDF for edge AA). `SOLID`
+        // again keeps shadows and triangles out.
+        let pmax = packed.phys_rect.max();
         let fast = p.fill_kind == FillKind::SOLID
-            && noop_f32(stroke_width_phys)
-            && phys_radius.approx_zero()
-            && phys_rect.min.x.is_integral()
-            && phys_rect.min.y.is_integral()
+            && noop_f32(packed.stroke_width)
+            && packed.corners.approx_zero()
+            && packed.phys_rect.min.x.is_integral()
+            && packed.phys_rect.min.y.is_integral()
             && pmax.x.is_integral()
             && pmax.y.is_integral();
         let fill_kind = if fast {
@@ -941,21 +1020,25 @@ impl PaintSink for ComposeSession<'_> {
             p.fill_kind
         };
         self.out.quads.push(Quad {
-            rect: phys_rect,
+            rect: packed.phys_rect,
             fill: p.fill,
-            corners: phys_radius,
-            stroke_color: p.stroke_color,
-            stroke_width: stroke_width_phys,
+            corners: packed.corners,
+            stroke_color: p.stroke.color,
+            stroke_width: packed.stroke_width,
             fill_kind,
             fill_lut_row: p.fill_lut_row,
-            fill_axis: p.fill_axis,
+            fill_axis: packed.fill_axis,
         });
+        // Opaque-cover annotation, again `SOLID`-only — which is what
+        // keeps it off the two shapes that would be wrong to record: a
+        // shadow's blur reaches past its rect, and a triangle covers
+        // only its interior, not the whole `rect`.
         if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
-            let inscribed = phys_rect.inscribed_for_corners(phys_radius);
-            let stroke_inset = if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
+            let inscribed = packed.phys_rect.inscribed_for_corners(packed.corners);
+            let stroke_inset = if noop_f32(packed.stroke_width) || p.stroke.color.is_opaque() {
                 0.0
             } else {
-                stroke_width_phys
+                packed.stroke_width
             };
             let aa_inset = if fast { 0.0 } else { AA_RADIUS };
             let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
@@ -964,82 +1047,6 @@ impl PaintSink for ComposeSession<'_> {
                 self.composer.occlusion.record_opaque(idx, cover);
             }
         }
-    }
-
-    fn shadow(&mut self, p: DrawShadowPayload) {
-        let ScaledRect {
-            phys: phys_rect,
-            urect: quad_urect,
-        } = self.scaled_rect(p.rect);
-        if self.composer.cull_bounds(quad_urect) {
-            return;
-        }
-        self.composer.quad_forces_flush(quad_urect, self.out);
-        let phys_scale = self.current_transform.scale * self.display.scale_factor;
-        let phys_radius = p.corners.scaled_by(phys_scale);
-        // Live shadow parameters are logical-px scalars; scale
-        // them so the shader's `local` coords line up.
-        let fill_axis = p.fill_axis.scaled(phys_scale);
-        self.out.quads.push(Quad {
-            rect: phys_rect,
-            fill: p.color,
-            corners: phys_radius,
-            stroke_color: ColorF16::TRANSPARENT,
-            stroke_width: 0.0,
-            fill_kind: p.fill_kind,
-            fill_lut_row: LutRow::FALLBACK,
-            fill_axis,
-        });
-    }
-
-    fn triangle(&mut self, p: DrawTrianglePayload) {
-        let scale = self.display.scale_factor;
-        let viewport_phys = self.display.physical;
-        // Fold owner origin + active transform, scale to physical
-        // px. No pixel-snap — the SDF handles sub-pixel placement;
-        // snapping the covering rect would only shift the AA band.
-        let phys_scale = self.current_transform.scale * scale;
-        let xf = |q: Vec2| self.current_transform.apply_point(q + p.origin) * scale;
-        let a = xf(p.a);
-        let b = xf(p.b);
-        let c = xf(p.c);
-        let radius_phys = (p.radius * phys_scale).max(0.0);
-        let stroke_phys = (p.stroke_width * phys_scale).max(0.0);
-        // Covering AABB: the rounded shape (the SDF offsets the
-        // triangle outward by `radius` to round its corners) plus
-        // the ½px AA fringe. The stroke sits on the *inner* edge
-        // (like a rounded rect), so it adds no outward reach.
-        let lo = a.min(b).min(c);
-        let hi = a.max(b).max(c);
-        let pad = radius_phys + 0.5;
-        let rect = Rect::from_min_max(lo, hi).inflated(pad);
-        let tri_urect = urect_from_phys(rect.min, rect.max(), viewport_phys);
-        // Triangle is a quad-tier draw (lowest paint kind), so it
-        // culls + flushes exactly like `DrawRect`.
-        if self.composer.cull_bounds(tri_urect) {
-            return;
-        }
-        self.composer.quad_forces_flush(tri_urect, self.out);
-        // Pack the three points in rect-local coords (0..size,
-        // matching the shader's `in.local`) + the corner radius
-        // into the reused `corners` / `fill_axis` lanes;
-        // `FillKind::TRIANGLE` tells the shader to read them as a
-        // triangle SDF rather than rounded-rect radii / gradient
-        // axis. No occlusion annotation — a triangle covers only
-        // its interior, not the whole `rect`.
-        let al = a - rect.min;
-        let bl = b - rect.min;
-        let cl = c - rect.min;
-        self.out.quads.push(Quad {
-            rect,
-            fill: p.fill,
-            corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
-            stroke_color: p.stroke_color,
-            stroke_width: stroke_phys,
-            fill_kind: FillKind::TRIANGLE,
-            fill_lut_row: LutRow::FALLBACK,
-            fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
-        });
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -1058,7 +1065,7 @@ impl PaintSink for ComposeSession<'_> {
             size: p.bbox.size,
         });
         // Mesh skips snapping (matches polyline/curve); route
-        // through the shared scaler so the cull tracks `DrawRect`
+        // through the shared scaler so the cull tracks the quad tier
         // instead of open-coding `* scale`.
         let phys_bbox = world_bbox.scaled_by(scale, false);
         let fringe = Vec2::splat(0.5);

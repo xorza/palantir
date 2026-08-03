@@ -61,7 +61,7 @@ fn add_blink_shape(ui: &mut Ui, half: Duration) {
 /// every per-id store. Instead of panicking, `SeenIds::record`
 /// disambiguates the second one (same path as auto-id collisions),
 /// `Forest` pairs both colliding nodes via `Forest.collisions`, and
-/// the encoder emits a magenta `DrawRect` at each colliding node's
+/// the encoder emits a magenta stroked rect at each colliding node's
 /// arranged rect after the regular paint walk.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
@@ -1793,7 +1793,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             .calls
             .iter()
             .filter_map(|command| match command {
-                PaintCall::Rect(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
+                PaintCall::Quad(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
                     Some(payload.fill_lut_row)
                 }
                 _ => None,

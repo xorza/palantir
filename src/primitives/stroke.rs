@@ -1,6 +1,7 @@
 use crate::primitives::approx::canon_bits;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::primitives::nan::NanCheck;
 use palantir_anim_derive::Animatable;
 
 /// Solid stroke paint.
@@ -45,5 +46,11 @@ impl std::hash::Hash for Stroke {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.color.hash(state);
         state.write_u32(canon_bits(self.width));
+    }
+}
+impl NanCheck for Stroke {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.color.has_nan() || self.width.is_nan()
     }
 }

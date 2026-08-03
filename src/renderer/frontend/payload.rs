@@ -36,12 +36,8 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::texture_id::TextureId;
-use crate::primitives::{
-    color::{Color, ColorF16},
-    corners::Corners,
-    rect::Rect,
-};
-use crate::scene::shapes::paint::CurveBasis;
+use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
+use crate::scene::shapes::paint::{CurveBasis, ShapeStroke};
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::shaped_ref::ShapedTextRef;
@@ -64,19 +60,6 @@ pub(crate) enum BrushSource {
 }
 
 impl BrushSource {
-    /// `Gradient.is_noop()` is always `false` — the all-transparent-
-    /// stops case is filtered by `Brush::is_noop` *before* lowering,
-    /// and the lowered form drops the stops. A gradient slipping past
-    /// the upstream gate would paint a useless transparent quad; the
-    /// alpha blend produces nothing visible, so correctness is intact.
-    #[inline]
-    pub(crate) fn is_noop(self) -> bool {
-        match self {
-            Self::Solid(c) => c.is_noop(),
-            Self::Gradient(_) => false,
-        }
-    }
-
     /// Lower to the GPU fill fields shared by every draw-rect/curve
     /// payload: a `Solid` carries its colour with the `SOLID` kind and
     /// the magenta fallback row; a `Gradient` zeroes the colour (the
@@ -119,55 +102,109 @@ pub(crate) struct PushClipPayload {
     pub(crate) corners: Corners,
 }
 
-/// Brush metadata packed into draw-rect payloads. `fill_kind` low byte
-/// is the kind tag; bits 8..16 carry `Spread` for gradient variants.
-/// `fill_lut_row` is the pre-registered gradient atlas row (set at
-/// shape lowering time), or [`LutRow::FALLBACK`] for solid fills.
-/// `fill_axis` carries gradient geometry packed at lowering. `fill:
-/// ColorF16` is the solid colour when `kind == SOLID`; zeroed for
-/// gradients (the atlas row supplies the colour). Storing as
-/// `ColorF16` (8 B linear-RGB) vs. 16 B `Color` saves 8 B per rect
-/// payload — the composer decodes via `Color::from(f16)` at `Quad`
-/// write time.
+/// The geometry half of a [`DrawQuadPayload`] — everything the composer
+/// needs to derive the instance's physical rect and its two reused
+/// lanes. Rectangles, windowed rectangles, and box-shadows all arrive
+/// as an already-resolved rect, so they share one variant; a triangle
+/// is the one shape whose covering rect only exists *after* its points
+/// are transformed, so it carries the points instead.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DrawRectPayload {
-    pub(crate) rect: Rect,
-    pub(crate) corners: Corners,
+pub(crate) enum QuadGeom {
+    /// A logical-px paint rect + corner radii. For a drop shadow the
+    /// rect is the offset source inflated by `3σ + max(spread, 0)`; for
+    /// an inset shadow it is the source, and `corners` carries the
+    /// *source* shape's radii either way.
+    Rect { rect: Rect, corners: Corners },
+    /// Owner-local corner points and corner rounding. The composer
+    /// folds `origin` (the owner-rect top-left) + the active
+    /// push-transform before scaling to physical px, then derives the
+    /// covering AABB (the points inflated by `radius + AA fringe`) and
+    /// packs the physical points into the `corners` / `fill_axis` lanes.
+    Triangle {
+        origin: glam::Vec2,
+        a: glam::Vec2,
+        b: glam::Vec2,
+        c: glam::Vec2,
+        radius: f32,
+    },
+}
+
+impl QuadGeom {
+    /// Whether this geometry covers no pixels on its own. A triangle
+    /// always answers `false`: its covering rect doesn't exist until the
+    /// composer transforms the points, and degenerate corners are
+    /// already filtered at the authoring boundary by
+    /// `TriangleShape::is_noop`.
+    #[inline]
+    fn is_paint_empty(&self) -> bool {
+        match self {
+            Self::Rect { rect, .. } => rect.is_paint_empty(),
+            Self::Triangle { .. } => false,
+        }
+    }
+}
+
+/// One quad-tier draw: a rounded rect, a windowed rect, a box-shadow,
+/// or a rounded triangle. All four lower to a single `Quad` instance on
+/// the one quad pipeline, so they share this payload and differ only in
+/// [`geom`](Self::geom) and which SDF `fill_kind` selects.
+///
+/// `fill_kind`'s low byte is the kind tag; bits 8..16 carry `Spread` for
+/// gradient variants. `fill_lut_row` is the pre-registered gradient
+/// atlas row (set at shape lowering time), or [`LutRow::FALLBACK`] for
+/// everything else. `fill_axis` carries gradient geometry packed at
+/// lowering, or — for a shadow — `(0, 0, σ, spread)` for drops and
+/// `(offset.x, offset.y, σ, spread)` for insets in logical px, which the
+/// composer scales to physical px so the shader's `local` coords line
+/// up. A triangle's `fill_axis` is unread; the composer overwrites both
+/// reused lanes from the transformed points.
+///
+/// `fill: ColorF16` is the solid colour when `kind == SOLID` (and the
+/// tint when it's a shadow); zeroed for gradients, where the atlas row
+/// supplies the colour. Storing as `ColorF16` (8 B linear-RGB) vs. 16 B
+/// `Color` saves 8 B per payload — the composer decodes via
+/// `Color::from(f16)` at `Quad` write time.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct DrawQuadPayload {
+    pub(crate) geom: QuadGeom,
     /// Linear-RGB fill (straight alpha). Zeroed for gradients; the
     /// atlas row at `fill_lut_row` supplies the colour in that case.
     pub(crate) fill: ColorF16,
-    pub(crate) stroke_color: ColorF16,
-    pub(crate) stroke_width: f32,
+    /// Normalized by [`ShapeStroke::normalized`] on the way in, so
+    /// [`ShapeStroke::NONE`] here means "no stroke" exactly.
+    pub(crate) stroke: ShapeStroke,
     pub(crate) fill_kind: FillKind,
     pub(crate) fill_lut_row: LutRow,
     pub(crate) fill_axis: FillAxis,
 }
 
-/// Box-shadow paint payload. A drop-shadow `rect` is the offset source
-/// inflated by `3σ + max(spread, 0)`; an inset-shadow `rect` is the source.
-/// `corners` carries the *source* shape's corner radii. `color` is the
-/// shadow tint. `fill_kind` is `FillKind::SHADOW_DROP` or
-/// `SHADOW_INSET`. `fill_axis` carries `(0, 0, σ, spread)` for drops and
-/// `(offset.x, offset.y, σ, spread)` for insets in logical px; the
-/// composer scales these to physical px so the shader's `local` coords line up.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DrawShadowPayload {
-    pub(crate) rect: Rect,
-    pub(crate) corners: Corners,
-    pub(crate) color: ColorF16,
-    pub(crate) fill_kind: FillKind,
-    pub(crate) fill_axis: FillAxis,
-}
-
-impl DrawShadowPayload {
-    /// Paints nothing when: zero-extent paint rect or fully
-    /// transparent tint. Shadow params themselves (`fill_axis`) are
-    /// not gated: a zero-σ drop shadow can still paint a hard-edged
-    /// shifted rect; the `Shape::Shadow::is_noop`
-    /// authoring boundary catches the "no visible effect" cases.
+impl DrawQuadPayload {
+    /// Paints nothing when the geometry covers no pixels, or when
+    /// neither the fill nor the stroke can put down a texel.
+    ///
+    /// Shadow parameters themselves (`fill_axis`) are not gated: a
+    /// zero-σ drop shadow still paints a hard-edged shifted rect, and
+    /// the `Shape::Shadow::is_noop` authoring boundary is what catches
+    /// the "no visible effect" cases.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty() || self.color.is_noop()
+        self.geom.is_paint_empty() || (self.fill_is_noop() && self.stroke.is_noop())
+    }
+
+    /// A gradient's colour lane is zeroed by
+    /// [`BrushSource::to_gpu_fields`] (the atlas row supplies the
+    /// colour), so only a non-gradient fill can be judged by its
+    /// colour — testing it blind would read every gradient as
+    /// transparent and drop the draw.
+    ///
+    /// A gradient is therefore never a no-op here. It doesn't need to
+    /// be: the all-transparent-stops case is filtered by
+    /// `Brush::is_noop` *before* lowering, and one slipping past that
+    /// gate would paint a useless transparent quad whose alpha blend
+    /// produces nothing visible, so correctness is intact either way.
+    #[inline]
+    fn fill_is_noop(&self) -> bool {
+        !self.fill_kind.is_gradient() && self.fill.is_noop()
     }
 }
 
@@ -294,17 +331,23 @@ pub(crate) struct DrawImagePayload {
     /// directly with the bilinear sampler.
     pub(crate) flags: u32,
     /// Whether this draw composites a `GpuView`'s off-screen target
-    /// rather than a registered image. Private — set only through
-    /// [`Self::image`] / [`Self::gpu_view`]. The sink receives the paint
-    /// callback alongside the payload; this only tells [`Self::is_noop`]
-    /// not to null-skip a framework-painted texture. `handle` carries the
-    /// view's stable `TextureId` either way, so the draw + cache path
-    /// stays identical to an image.
-    gpu_view: bool,
+    /// rather than a registered image. **Written in exactly one place** —
+    /// [`PaintSink::draw_image`], from `paint.is_some()` — so the flag
+    /// cannot disagree with whether a paint callback actually rode
+    /// along. It only tells [`Self::is_noop`] not to null-skip a
+    /// framework-painted texture; `handle` carries the view's stable
+    /// `TextureId` either way, so the draw + cache path stays identical
+    /// to an image.
+    ///
+    /// [`PaintSink::draw_image`]: crate::renderer::frontend::paint_sink::PaintSink::draw_image
+    pub(crate) gpu_view: bool,
 }
 
 impl DrawImagePayload {
-    /// An ordinary image draw — no off-screen target.
+    /// An image draw. `gpu_view` starts `false` and is decided by the
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)
+    /// gate; callers pass the paint callback there rather than flagging
+    /// the payload themselves.
     #[inline]
     pub(crate) fn image(
         rect: Rect,
@@ -322,21 +365,6 @@ impl DrawImagePayload {
             handle,
             flags,
             gpu_view: false,
-        }
-    }
-
-    /// A `GpuView` composite over its full arranged `rect`: full UV,
-    /// untinted, sampling the view's stable `handle`.
-    #[inline]
-    pub(crate) fn gpu_view(rect: Rect, handle: TextureId) -> Self {
-        Self {
-            rect,
-            uv_min: glam::Vec2::ZERO,
-            uv_size: glam::Vec2::ONE,
-            tint: ColorF16::from(Color::WHITE),
-            handle,
-            flags: 0,
-            gpu_view: true,
         }
     }
 
@@ -379,35 +407,6 @@ pub(crate) struct DrawCurvePayload {
     /// Gradient atlas row when `fill_kind` is a gradient, else
     /// [`LutRow::FALLBACK`].
     pub(crate) fill_lut_row: LutRow,
-}
-
-/// Rounded-triangle payload. The three corner points `a`/`b`/`c` are stored
-/// **owner-local**; the composer folds in `origin` (owner-rect top-left) + the
-/// active push-transform before scaling to physical px, then derives the
-/// covering AABB (from the points inflated by `radius + AA fringe`) and packs
-/// the physical points into a `Quad` with `FillKind::TRIANGLE`.
-/// `fill` is the solid fill; `stroke_color` / `stroke_width` the inner-edge
-/// stroke. `radius` rounds all three corners (`0.0` = sharp).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DrawTrianglePayload {
-    pub(crate) origin: glam::Vec2,
-    pub(crate) a: glam::Vec2,
-    pub(crate) b: glam::Vec2,
-    pub(crate) c: glam::Vec2,
-    /// Solid linear-RGB fill (straight alpha).
-    pub(crate) fill: ColorF16,
-    pub(crate) stroke_color: ColorF16,
-    pub(crate) radius: f32,
-    pub(crate) stroke_width: f32,
-}
-
-impl DrawTrianglePayload {
-    /// Paints nothing when: nothing paints when the fill is
-    /// transparent *and* the stroke is a no-op (transparent or zero width).
-    #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
-        self.fill.is_noop() && (self.stroke_color.is_noop() || noop_f32(self.stroke_width))
-    }
 }
 
 impl DrawCurvePayload {

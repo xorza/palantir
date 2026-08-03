@@ -256,12 +256,12 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     // ...so b's offset includes hidden's width + both gaps.
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
-    // ...but emits no DrawRect.
+    // ...but emits no quad.
     let cmds = h.encode_paint();
     let draws = cmds
         .calls
         .iter()
-        .filter(|command| matches!(command, PaintCall::Rect(_)))
+        .filter(|command| matches!(command, PaintCall::Quad(_)))
         .count();
     assert_eq!(draws, 2, "only the two Visible frames should paint");
 }

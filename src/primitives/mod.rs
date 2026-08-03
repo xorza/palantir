@@ -10,6 +10,7 @@ pub(crate) mod half_simd;
 pub(crate) mod image;
 pub(crate) mod interned_str;
 pub(crate) mod mesh;
+pub(crate) mod nan;
 pub(crate) mod num;
 pub(crate) mod rect;
 pub(crate) mod serde;

@@ -25,8 +25,10 @@ use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::forest::Forest;
 use crate::scene::record_store::RecordedGradient;
-use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush};
-use crate::scene::shapes::record::{ShapeRecord, shadow_paint_rect_local};
+use crate::scene::shapes::paint::{
+    ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush, shadow_paint_rect_local,
+};
+use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
@@ -216,8 +218,8 @@ struct LayerCtx<'a> {
     gradient_resolver: &'a mut GradientResolver,
     paint_anim_cursor: PaintAnimCursor<'a>,
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
-    /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
-    /// stable `TextureId` + paint callback up here by the owner node's id.
+    /// An `ImageSource::GpuView` carries only its epoch; the arm looks the
+    /// view's stable `TextureId` + paint callback up here by the owner node's id.
     gpu_views: &'a WidgetIdMap<GpuViewEntry>,
     damage_filter: Option<&'a DamageRegion>,
     /// Logical-px inflation applied to each node's `subtree_paint_rect`
@@ -309,21 +311,47 @@ fn emit_one_shape<S: PaintSink>(
         return;
     }
     match shape {
-        ShapeRecord::Rect {
-            kind,
-            local_rect,
-            corners,
-            fill,
-            stroke,
-            ..
-        } => {
-            let r = resolve_local_rect(owner_rect, *local_rect);
-            let src = ctx.brush_source(*fill);
-            match kind {
-                RectKind::Rounded => out.draw_rect(r, *corners, src, *stroke),
-                RectKind::Windowed => out.draw_rect_window(r, *corners, src, *stroke),
+        // The three quad-tier shapes resolve their geometry against the
+        // owner rect and hand it to the one `PaintSink` quad path; from
+        // the payload down they are a single draw.
+        ShapeRecord::Quad(shape) => match shape {
+            QuadShape::Rect {
+                kind,
+                local_rect,
+                corners,
+                fill,
+                stroke,
+                ..
+            } => {
+                let r = resolve_local_rect(owner_rect, *local_rect);
+                let src = ctx.brush_source(*fill);
+                match kind {
+                    RectKind::Rounded => out.draw_rect(r, *corners, src, *stroke),
+                    RectKind::Windowed => out.draw_rect_window(r, *corners, src, *stroke),
+                }
             }
-        }
+            QuadShape::Shadow {
+                local_rect,
+                corners,
+                shadow,
+            } => emit_shadow(out, owner_rect, *local_rect, *corners, shadow),
+            QuadShape::Triangle {
+                a,
+                b,
+                c,
+                radius,
+                fill,
+                stroke,
+                bbox: _,
+            } => {
+                // Corner points are owner-local; the composer folds `origin` +
+                // the active transform and derives the covering AABB. Solid
+                // fill only — the reused quad lanes have no room for a gradient.
+                // Stroke noop-normalization happens inside `draw_triangle`
+                // (`PaintSink`'s provided half is the single canonical gate).
+                out.draw_triangle(owner_rect.min, [*a, *b, *c], *fill, *radius, *stroke)
+            }
+        },
         ShapeRecord::Text {
             local_origin,
             text,
@@ -394,11 +422,6 @@ fn emit_one_shape<S: PaintSink>(
                 join: *join,
             });
         }
-        ShapeRecord::Shadow {
-            local_rect,
-            corners,
-            shadow,
-        } => emit_shadow(out, owner_rect, *local_rect, *corners, shadow),
         ShapeRecord::Mesh {
             local_rect,
             tint,
@@ -449,40 +472,39 @@ fn emit_one_shape<S: PaintSink>(
                 fill_lut_row: fill.lut_row,
             });
         }
-        ShapeRecord::Triangle {
-            a,
-            b,
-            c,
-            radius,
-            fill,
-            stroke,
-            bbox: _,
-        } => {
-            // Corner points are owner-local; the composer folds `origin` +
-            // the active transform and derives the covering AABB. Solid
-            // fill only — the reused quad lanes have no room for a gradient.
-            // Stroke noop-normalization happens inside `draw_triangle`
-            // (`PaintSink`'s provided half is the single canonical gate).
-            out.draw_triangle(owner_rect.min, [*a, *b, *c], *fill, *radius, *stroke);
-        }
         ShapeRecord::Image {
             local_rect,
             tint,
-            id,
-            size,
+            source,
             fit,
             min_filter,
             mag_filter,
         } => {
             let base = resolve_local_rect(owner_rect, *local_rect);
-            // Dims baked into the record — no registry borrow.
-            // `size == ZERO` makes `resolve_fit` fall through to the base
-            // rect + full UV.
+            // The one thing the two sources don't share: where the
+            // texture comes from. A registered image carries its id +
+            // intrinsic dims inline (no registry borrow); a `GpuView`
+            // looks its stable target up in `Ui::gpu_views` by the owner
+            // node's `WidgetId` and hands back the app paint callback,
+            // which rides alongside the payload so the sink can list the
+            // off-screen target in `frame_targets`. A view reports an
+            // all-zero intrinsic size, which makes `resolve_fit` fall
+            // through to the base rect + full UV — the full-rect,
+            // untinted composite a view has always emitted.
+            // `epoch` only affects the shape hash (damage), not the draw.
+            let (handle, size, paint) = match source {
+                ImageSource::Texture { id, size } => (*id, *size, None),
+                ImageSource::GpuView { epoch: _ } => {
+                    let wid = ctx.tree.records.widget_id()[id.idx()];
+                    let view = &ctx.gpu_views[&wid];
+                    (view.texture_id, glam::UVec2::ZERO, Some(&view.paint))
+                }
+            };
             let Resolved {
                 rect,
                 uv_min,
                 uv_size,
-            } = resolve_fit(base, *size, *fit);
+            } = resolve_fit(base, size, *fit);
             let mut flags = 0;
             if matches!(*fit, ImageFit::Tile { .. }) {
                 flags |= IMG_FLAG_TILED;
@@ -493,22 +515,10 @@ fn emit_one_shape<S: PaintSink>(
             if *mag_filter == ImageFilter::Nearest {
                 flags |= IMG_FLAG_MAG_NEAREST;
             }
-            out.draw_image(DrawImagePayload::image(
-                rect, uv_min, uv_size, *tint, *id, flags,
-            ));
-        }
-        ShapeRecord::GpuView { epoch: _ } => {
-            // A `GpuView` composites exactly like any image — full arranged
-            // rect, untinted, full UV, sampling the view's stable `id` from
-            // the shared texture cache (all encapsulated in `gpu_view`). The
-            // view's `id` + app `paint` callback live in `Ui::gpu_views`, keyed
-            // by the owner node's `WidgetId`; the callback rides alongside
-            // the payload so the sink can list the off-screen target in
-            // `frame_targets`.
-            // `epoch` only affects the shape hash (damage), not the draw.
-            let wid = ctx.tree.records.widget_id()[id.idx()];
-            let view = &ctx.gpu_views[&wid];
-            out.draw_gpu_view(owner_rect, view.texture_id, &view.paint);
+            out.draw_image(
+                DrawImagePayload::image(rect, uv_min, uv_size, *tint, handle, flags),
+                paint,
+            );
         }
     }
 }
@@ -680,7 +690,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
 }
 
 /// Shared shadow emit. Chrome branch (`Background::shadow`,
-/// `local_rect = None`) and shape-buffer branch (`ShapeRecord::Shadow`,
+/// `local_rect = None`) and shape-buffer branch (`QuadShape::Shadow`,
 /// owner-relative `local_rect`) both route here so the
 /// `shadow_paint_rect_local` translation + fill-axis packing
 /// can't drift between the two views.
