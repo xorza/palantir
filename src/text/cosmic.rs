@@ -31,7 +31,7 @@ use crate::text::key::TextShapeKey;
 use crate::text::render::{
     GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
 };
-use crate::text::wrap::LineFit;
+use crate::text::wrap::{LineFit, WrapFloor};
 use crate::text::{FontFamily, FontWeight, TextRoot, TextShapeRequest};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
@@ -354,20 +354,31 @@ impl CosmicMeasure {
         })
     }
 
-    #[profiling::function]
-    pub(super) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
+    pub(super) fn shape(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         match (request.key.fit(), request.key.max_width_px()) {
             (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
-            _ => self.measure_wrapped(request),
+            _ => self.measure_wrapped(request, floor),
         }
     }
 
-    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
+    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        debug_assert!(
+            floor == WrapFloor::Skip || request.key.max_width_px().is_none(),
+            "the wrap floor is a property of the unbounded root",
+        );
         if request.text.is_empty() {
             return TextRoot::ZERO;
         }
         let key = request.key;
         if let Some(hit) = self.cache_hit(key) {
+            // A resident entry shaped by a policy that didn't want the
+            // floor still owes it to one that does.
+            if floor == WrapFloor::Scan && hit.intrinsic_min.is_none() {
+                return TextRoot {
+                    intrinsic_min: Some(self.scan_wrap_floor(key)),
+                    ..hit
+                };
+            }
             return hit;
         }
 
@@ -391,12 +402,7 @@ impl CosmicMeasure {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let geometry = shaped_geometry(
-            &buffer,
-            key.max_width_px()
-                .is_none()
-                .then_some(&mut self.break_scratch),
-        );
+        let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
         self.insert(key, buffer, geometry);
         geometry.root
     }
@@ -472,7 +478,9 @@ impl CosmicMeasure {
             // branch cannot overrun `width`.
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            shaped_geometry(&buffer, None).root.size
+            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
+                .root
+                .size
         } else {
             // The cut spends advances measured in the *whole* run's shaping,
             // but the prefix reshapes in its own context: a joining script's
@@ -519,7 +527,9 @@ impl CosmicMeasure {
                     None,
                 );
                 buffer.shape_until_scroll(&mut self.font_system, false);
-                let size = shaped_geometry(&buffer, None).root.size;
+                let size = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
+                    .root
+                    .size;
                 if size.w <= width || cut == 0 {
                     break size;
                 }
@@ -535,7 +545,9 @@ impl CosmicMeasure {
         let geometry = ShapedGeometry {
             root: TextRoot {
                 size,
-                intrinsic_min: 0.0,
+                // Genuinely zero, not unscanned: a truncated run can
+                // shrink to nothing.
+                intrinsic_min: Some(0.0),
                 single_line: true,
             },
             left: 0.0,
@@ -591,7 +603,7 @@ impl CosmicMeasure {
             return None;
         }
         if self.cache_hit(request.key).is_none() {
-            self.shape(request);
+            self.shape(request, WrapFloor::Skip);
         }
         Some(
             self.shaped_run(request.key)
@@ -620,6 +632,26 @@ impl CosmicMeasure {
                 keep_until,
             },
         );
+    }
+
+    /// Scan the wrap floor for a resident entry that was shaped without
+    /// one, memoizing it so the next asker pays nothing.
+    ///
+    /// Disjoint field borrows: the buffer comes out of `cache` while
+    /// `break_scratch` is borrowed alongside it, which only holds written
+    /// out here rather than behind a `&mut self` helper.
+    fn scan_wrap_floor(&mut self, key: TextShapeKey) -> f32 {
+        let breaks = &mut self.break_scratch;
+        let entry = self
+            .cache
+            .get_mut(&key)
+            .expect("a cache hit must still be resident");
+        if let Some(floor) = entry.root.intrinsic_min {
+            return floor;
+        }
+        let floor = intrinsic_min_width(&entry.buffer, breaks);
+        entry.root.intrinsic_min = Some(floor);
+        floor
     }
 
     /// A cached entry's [`TextRoot`] for `key`, or `None` on a miss.
@@ -839,12 +871,9 @@ struct ShapedGeometry {
 }
 
 /// Measure a shaped `buffer`: the union of its lines' glyph spans (ceil'd)
-/// plus the widest unbreakable segment, the floor the wrap path uses when
-/// a parent commits a narrower width. Passing `breaks` opts into the
-/// text-length-proportional segment scan (it doubles as that scan's
-/// scratch); bounded shapes pass `None` — their floor comes from the
-/// unbounded root — and report `0.0`, the inert reading
-/// [`CacheEntry::root`] documents.
+/// plus, when `floor` asks for it, the widest unbreakable segment the wrap
+/// path uses as a floor once a parent commits a narrower width. `breaks`
+/// is that scan's scratch, untouched when it is skipped.
 ///
 /// Width is `right - left` across every line, not `right` alone. Cosmic
 /// anchors a line wherever its alignment and direction put it, so the
@@ -856,7 +885,7 @@ struct ShapedGeometry {
 /// Glyphless lines are skipped rather than contributing a zero-width span
 /// at 0, which would drag `left` back to the origin for a block that
 /// starts elsewhere.
-fn shaped_geometry(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedGeometry {
+fn shaped_geometry(buffer: &Buffer, floor: WrapFloor, breaks: &mut Vec<u32>) -> ShapedGeometry {
     let mut left = f32::INFINITY;
     let mut right = f32::NEG_INFINITY;
     let mut total_h = 0.0_f32;
@@ -879,7 +908,7 @@ fn shaped_geometry(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedGeom
     ShapedGeometry {
         root: TextRoot {
             size: Size::new(width.ceil(), total_h.ceil()),
-            intrinsic_min: breaks.map_or(0.0, |breaks| intrinsic_min_width(buffer, breaks)),
+            intrinsic_min: (floor == WrapFloor::Scan).then(|| intrinsic_min_width(buffer, breaks)),
             single_line: runs <= 1,
         },
         left,

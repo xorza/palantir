@@ -36,7 +36,7 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::key::TextShapeKey;
-use crate::text::wrap::{LineFit, TextWrap};
+use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{TextRoot, TextShapeRequest, TextShaper};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -97,12 +97,17 @@ impl TextSystem {
     /// The run's natural shape, for the intrinsic pass. `TextWrap`'s
     /// min/max-content demands are pure functions of it.
     #[inline]
-    pub(crate) fn root(&mut self, slot: TextRunSlot, request: TextShapeRequest<'_>) -> TextRoot {
+    pub(crate) fn root(
+        &mut self,
+        slot: TextRunSlot,
+        request: TextShapeRequest<'_>,
+        wrap_policy: TextWrap,
+    ) -> TextRoot {
         debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
         if request.text.is_empty() {
             return TextRoot::ZERO;
         }
-        self.refresh(slot, request).root
+        self.refresh(slot, request, wrap_policy.floor_scan()).root
     }
 
     /// The run's extent at a committed width, plus the key of the shaped
@@ -129,7 +134,7 @@ impl TextSystem {
         if let Some(width) = available_width_px {
             debug_assert!(width.is_finite());
         }
-        let entry = self.refresh(slot, request);
+        let entry = self.refresh(slot, request, wrap_policy.floor_scan());
         let root = entry.root;
         let wrap = entry.wrap;
 
@@ -158,7 +163,7 @@ impl TextSystem {
                 }
                 // Second row lookup, paid only when the committed width
                 // actually moved — dwarfed by the reshape above it.
-                self.refresh(slot, request).wrap = WrapSlot {
+                self.refresh(slot, request, WrapFloor::Skip).wrap = WrapSlot {
                     key: slot_key,
                     size,
                 };
@@ -169,7 +174,19 @@ impl TextSystem {
     }
 
     /// Reuse row for `slot`, reshaped if it answers a different run.
-    fn refresh(&mut self, slot: TextRunSlot, request: TextShapeRequest<'_>) -> &mut TextReuseEntry {
+    ///
+    /// `floor` is the row's own freshness axis on top of the key.
+    /// The unbounded key says nothing about wrap policy, so a row filled
+    /// by a policy that skipped the wrap-floor scan answers the same key
+    /// as one that needs it — and would hand back a `None` floor. Asking
+    /// the shaper again backfills it from the resident buffer without
+    /// reshaping.
+    fn refresh(
+        &mut self,
+        slot: TextRunSlot,
+        request: TextShapeRequest<'_>,
+        floor: WrapFloor,
+    ) -> &mut TextReuseEntry {
         // Disjoint field borrows: the shaper stays readable while the map
         // is borrowed mutably. That only holds inside one body, which is
         // why callers copy what they need out of the row before reaching
@@ -177,7 +194,7 @@ impl TextSystem {
         let shaper = &self.shaper;
         let fresh = || TextReuseEntry {
             key: request.key,
-            root: shaper.shape_root(request),
+            root: shaper.shape_root(request, floor),
             wrap: WrapSlot::EMPTY,
             hot: true,
         };
@@ -194,6 +211,9 @@ impl TextSystem {
             }
         } else {
             entry.hot = true;
+            if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
+                entry.root = shaper.shape_root(request, WrapFloor::Scan);
+            }
         }
         entry
     }
@@ -325,7 +345,7 @@ pub(crate) mod internals {
             wrap_policy: TextWrap,
         ) -> TestMeasure {
             let request = shape.unbounded_request(text);
-            let root = self.root(slot, request);
+            let root = self.root(slot, request, wrap_policy);
             let shaped = self.measure(slot, request, wrap_policy, shape.halign, shape.max_width_px);
             TestMeasure {
                 size: shaped.measured,

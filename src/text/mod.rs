@@ -37,7 +37,7 @@ use crate::text::cosmic::CosmicMeasure;
 use crate::text::key::TextShapeKey;
 use crate::text::probe::TextLayoutProbe;
 use crate::text::render::TextRenderSession;
-use crate::text::wrap::LineFit;
+use crate::text::wrap::{LineFit, WrapFloor};
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
@@ -227,7 +227,7 @@ impl TextShaper {
         let size = if request.text.is_empty() {
             Size::ZERO
         } else {
-            inner.dispatch(request).size
+            inner.dispatch(request, WrapFloor::Skip).size
         };
         TextLayoutProbe::new(size, request, inner)
     }
@@ -235,12 +235,18 @@ impl TextShaper {
     /// Shape a run at its natural width. `TextSystem` calls this on a
     /// reuse-slot miss; the shaper's own content cache may still hit, so
     /// this is "no reuse slot", not "reshape".
-    pub(crate) fn shape_root(&self, request: TextShapeRequest<'_>) -> TextRoot {
+    ///
+    /// `floor` opts into the segment scan behind
+    /// [`TextRoot::intrinsic_min`]; only `WrapWithOverflow` reads it, and
+    /// it dominates the cost of a shape, so everyone else leaves it off.
+    /// Passing [`WrapFloor::Scan`] for a root already shaped without one
+    /// backfills it from the resident buffer rather than reshaping.
+    pub(crate) fn shape_root(&self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         debug_assert!(
             request.key.max_width_px().is_none(),
             "a root shape must be unbounded",
         );
-        self.inner.borrow_mut().dispatch(request)
+        self.inner.borrow_mut().dispatch(request, floor)
     }
 
     /// Shape a run against a committed width. Only its extent survives —
@@ -251,7 +257,10 @@ impl TextShaper {
             request.key.max_width_px().is_some(),
             "a bounded shape needs a committed width",
         );
-        self.inner.borrow_mut().dispatch(request).size
+        self.inner
+            .borrow_mut()
+            .dispatch(request, WrapFloor::Skip)
+            .size
     }
 
     /// Report that `key` is no longer reachable through the reuse slot
@@ -305,15 +314,15 @@ impl ShaperInner {
     /// Bypass-cache dispatch. Test builds tally it into `measure_calls` —
     /// cosmic may still hit its shaped-buffer cache, so the counter tracks
     /// dispatches, not reshapes.
-    fn dispatch(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
+    fn dispatch(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         #[cfg(any(test, feature = "internals"))]
         {
             self.measure_calls += 1;
         }
         match self.cosmic.as_mut() {
-            Some(cosmic) => cosmic.shape(request),
+            Some(cosmic) => cosmic.shape(request, floor),
             #[cfg(any(test, feature = "internals"))]
-            None => mono::internals::measure(request),
+            None => mono::internals::measure(request, floor),
             // The mono metric is gated out of production, and so is the
             // only constructor that could put us here.
             #[cfg(not(any(test, feature = "internals")))]
@@ -336,7 +345,15 @@ pub(crate) struct TextRoot {
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.
-    intrinsic_min: f32,
+    ///
+    /// `None` when the run was shaped without the scan that produces it —
+    /// see [`TextWrap::floor_scan`]. A shaped buffer is shared by
+    /// every run with the same text and face regardless of wrap policy, so
+    /// one that never asked for the floor can be the one that populates
+    /// the cache entry. Storing the absence rather than `0.0` is what
+    /// keeps that from silently reading as "no unbreakable segment" to a
+    /// later `WrapWithOverflow` run over the same string.
+    intrinsic_min: Option<f32>,
     /// `true` when the shaped result is one visual line. Gates
     /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
     /// whose natural width fits the committed width needs no Clip/Ellipsis
@@ -345,12 +362,23 @@ pub(crate) struct TextRoot {
 }
 
 impl TextRoot {
-    /// Successful empty-text shape.
+    /// Successful empty-text shape. Its floor is genuinely zero rather
+    /// than unscanned — there is nothing to scan.
     const ZERO: Self = Self {
         size: Size::ZERO,
-        intrinsic_min: 0.0,
+        intrinsic_min: Some(0.0),
         single_line: true,
     };
+
+    /// The wrap floor, for the one policy that reads it.
+    ///
+    /// Panics if the run was shaped without the scan: that means
+    /// [`TextWrap::floor_scan`] and the policy actually asking have
+    /// drifted apart, which is a wiring bug rather than bad data.
+    fn wrap_floor(&self) -> f32 {
+        self.intrinsic_min
+            .expect("WrapWithOverflow must shape its root with the wrap-floor scan")
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -358,7 +386,7 @@ pub(crate) mod internals {
     #![allow(dead_code)]
     use crate::text::key::TextShapeKey;
     use crate::text::probe::{Caret, TextLayoutProbe};
-    use crate::text::wrap::LineFit;
+    use crate::text::wrap::{LineFit, WrapFloor};
     use crate::text::*;
 
     #[derive(Clone, Copy, Debug)]
@@ -401,11 +429,21 @@ pub(crate) mod internals {
     pub(crate) struct TestMeasure {
         pub(crate) size: Size,
         pub(crate) key: TextShapeKey,
-        pub(crate) intrinsic_min: f32,
+        /// `None` when the run was shaped by a policy that skips the
+        /// wrap-floor scan — see [`TextRoot::intrinsic_min`].
+        pub(crate) intrinsic_min: Option<f32>,
         pub(crate) single_line: bool,
     }
 
     impl TestMeasure {
+        /// The scanned wrap floor, for tests that assert on it. Panics
+        /// if the run was shaped without the scan — mirrors
+        /// [`TextRoot::wrap_floor`].
+        pub(crate) fn wrap_floor(&self) -> f32 {
+            self.intrinsic_min
+                .expect("this measurement was shaped without the wrap-floor scan")
+        }
+
         fn new(root: TextRoot, key: TextShapeKey) -> Self {
             Self {
                 size: root.size,
@@ -429,7 +467,15 @@ pub(crate) mod internals {
             } else {
                 request.key
             };
-            TestMeasure::new(self.shape(request), key)
+            // The wrap-floor tests measure through this helper, so it
+            // asks for the floor on every root it shapes — but the floor
+            // is an unbounded-root property, so a bounded request skips
+            // it exactly as production does.
+            let floor = match request.key.max_width_px() {
+                Some(_) => WrapFloor::Skip,
+                None => WrapFloor::Scan,
+            };
+            TestMeasure::new(self.shape(request, floor), key)
         }
 
         /// Truncating-fit measure. Named apart from the production
@@ -462,7 +508,7 @@ pub(crate) mod internals {
                 TestMeasure {
                     size: probe.size,
                     key,
-                    intrinsic_min: 0.0,
+                    intrinsic_min: None,
                     single_line: true,
                 }
             })

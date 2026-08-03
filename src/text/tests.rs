@@ -8,7 +8,7 @@ use crate::text::key::{ShapedTextRef, TextShapeKey};
 use crate::text::mono;
 use crate::text::probe;
 use crate::text::system::{TextRunSlot, TextSystem};
-use crate::text::wrap::{LineFit, TextWrap};
+use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::*;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 use rustc_hash::FxHashSet;
@@ -67,7 +67,7 @@ fn mono_shape(
         None => request,
     };
     // Mono mints no shaped buffer, so every run it measures is invalid.
-    let root = mono::internals::measure(request);
+    let root = mono::internals::measure(request, WrapFloor::Scan);
     TestMeasure {
         size: root.size,
         key: TextShapeKey::INVALID,
@@ -510,7 +510,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             FontWeight::Regular,
         );
         let slot = slot_at(widget_id, ordinal as u16);
-        let unbounded = text.root(slot, request);
+        let unbounded = text.root(slot, request, case.wrap);
         let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
         assert_eq!(resolved.measured, case.measured, "{case:?}");
         assert_eq!(
@@ -542,6 +542,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
     let empty_root = text.root(
         slot_at(widget_id, cases.len() as u16),
         TextShapeRequest::unbounded("", 16.0, 16.0, FontFamily::Sans, FontWeight::Regular),
+        TextWrap::Ellipsis,
     );
     assert_eq!(TextWrap::Ellipsis.min_content(&empty_root), Size::ZERO);
     assert_eq!(TextWrap::Ellipsis.max_content(&empty_root), Size::ZERO);
@@ -855,7 +856,11 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     let r = c.measure("", ui_shape(16.0));
     assert_eq!(r.size, Size::ZERO);
     assert!(r.key.is_invalid());
-    assert_eq!(r.intrinsic_min, 0.0);
+    assert_eq!(
+        r.intrinsic_min,
+        Some(0.0),
+        "empty text has a genuinely zero floor, not an unscanned one",
+    );
     // `buffer_for(INVALID)` must return None — even after measuring,
     // no buffer was cached for the empty input.
     assert!(c.shaped_run(r.key).is_none());
@@ -864,7 +869,10 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     let calls = shaper.measure_calls();
     let r = shaper.measure("", ui_shape(16.0));
     assert_eq!(r.size, Size::ZERO);
-    assert_eq!(r.intrinsic_min, 0.0);
+    assert_eq!(
+        r.intrinsic_min, None,
+        "the probe helper never scans a floor"
+    );
     assert_eq!(shaper.measure_calls(), calls);
 }
 
@@ -1109,19 +1117,19 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
         let full = c.measure(text, shape);
         let segment = c.measure(widest, shape);
         assert!(
-            full.intrinsic_min < full.size.w,
+            full.wrap_floor() < full.size.w,
             "{text:?} must break somewhere: floor {} vs total width {}",
-            full.intrinsic_min,
+            full.wrap_floor(),
             full.size.w,
         );
         // Kerning across a break can shift the in-run segment width a
         // little against its standalone measurement, so allow ±15%.
-        let rel_err = (full.intrinsic_min - segment.intrinsic_min).abs() / segment.intrinsic_min;
+        let rel_err = (full.wrap_floor() - segment.wrap_floor()).abs() / segment.wrap_floor();
         assert!(
             rel_err < 0.15,
             "{text:?} floor ({}) must be the width of {widest:?} ({}), rel_err = {rel_err}",
-            full.intrinsic_min,
-            segment.intrinsic_min,
+            full.wrap_floor(),
+            segment.wrap_floor(),
         );
     }
 
@@ -1129,9 +1137,9 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     // nor hangs — its own advance counts toward the segment.
     let nbsp = c.measure("aaa\u{a0}bbb", shape);
     assert!(
-        (nbsp.intrinsic_min - nbsp.size.w).abs() < 2.0,
+        (nbsp.wrap_floor() - nbsp.size.w).abs() < 2.0,
         "no-break space must keep one segment: floor {} vs width {}",
-        nbsp.intrinsic_min,
+        nbsp.wrap_floor(),
         nbsp.size.w,
     );
 
@@ -1140,9 +1148,9 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     // differ by sub-pixel kerning / ceil rounding — allow 2 px.
     let hello = c.measure("hello", shape);
     assert!(
-        (hello.intrinsic_min - hello.size.w).abs() < 2.0,
+        (hello.wrap_floor() - hello.size.w).abs() < 2.0,
         "single word: intrinsic_min ({}) ≈ size.w ({})",
-        hello.intrinsic_min,
+        hello.wrap_floor(),
         hello.size.w,
     );
 
@@ -1158,7 +1166,7 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     );
     assert!(bounded.size.h > full.size.h, "60 px must force a wrap");
     assert_eq!(
-        bounded.intrinsic_min, 0.0,
+        bounded.intrinsic_min, None,
         "bounded shapes must not pay the segment scan",
     );
 }
@@ -1404,7 +1412,8 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
         elided.size.h,
     );
     assert_eq!(
-        elided.intrinsic_min, 0.0,
+        elided.intrinsic_min,
+        Some(0.0),
         "an elided run has zero min floor"
     );
     let zero_width = measure_truncated(
@@ -1727,7 +1736,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
         clipped.size.h,
     );
     assert_eq!(
-        clipped.intrinsic_min, 0.0,
+        clipped.intrinsic_min,
+        Some(0.0),
         "a clipped run has zero min floor"
     );
     // Clip and ellipsis cut to the same cap but bake different strings (the
@@ -1777,11 +1787,15 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     let elided = mono_shape(long, 16.0, 16.0, Some(w), LineFit::Ellipsis);
     assert_eq!(elided.size.w, w, "elided mono caps at the width");
     assert_eq!(elided.size.h, 16.0, "elided mono is one line");
-    assert_eq!(elided.intrinsic_min, 0.0, "elided mono has zero floor");
+    assert_eq!(
+        elided.intrinsic_min,
+        Some(0.0),
+        "elided mono has zero floor"
+    );
     let wrapped = mono_shape(long, 16.0, 16.0, Some(w), LineFit::Wrap);
     assert!(wrapped.size.h > 16.0, "wrap grows height across lines");
     assert!(
-        wrapped.intrinsic_min > 0.0,
+        wrapped.wrap_floor() > 0.0,
         "wrap keeps a longest-word floor"
     );
 }
@@ -2669,4 +2683,65 @@ fn caret_and_hit_test_round_trip_in_block_local_space() {
         );
         assert_eq!(hit, byte, "byte {byte} at x = {} round-trips", caret.x);
     }
+}
+
+/// The wrap floor is scanned only for the policy that reads it, and is
+/// backfilled when a cheaper policy reached the shared buffer first.
+///
+/// The unbounded key carries no wrap policy, so one shaped buffer answers
+/// every run with the same text and face. A `Wrap` run therefore populates
+/// the entry a `WrapWithOverflow` run will hit — and if "not scanned" were
+/// stored as `0.0`, that second run would read a zero floor and let a long
+/// word break instead of overflowing. It is only wrong when two policies
+/// share a string, which is exactly the case a single-policy test misses.
+#[test]
+fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
+    let mut text = TextSystem::new(TextShaper::new());
+    let wid = WidgetId::from_hash("wrap-floor");
+    // One long unbreakable word, so the floor is well clear of both zero
+    // and the full run width.
+    let content = "a extraordinarily b";
+    let request =
+        || TextShapeRequest::unbounded(content, 16.0, 19.2, FontFamily::Sans, FontWeight::Regular);
+
+    // The five policies that never read the floor leave it unscanned —
+    // this is the saving, and it is what makes the backfill necessary.
+    let plain = text.root(slot_at(wid, 0), request(), TextWrap::Wrap);
+    assert_eq!(
+        plain.intrinsic_min, None,
+        "Wrap must not pay for a floor it never reads",
+    );
+
+    // A second slot over the same string now hits the buffer the first run
+    // shaped, so the floor cannot come from shaping — it has to be scanned
+    // against the resident buffer.
+    let overflow = text.root(slot_at(wid, 1), request(), TextWrap::WrapWithOverflow);
+    let floor = overflow.wrap_floor();
+    assert!(
+        floor > 0.0 && floor < overflow.size.w,
+        "backfilled floor {floor} must be a real segment width inside the \
+         run's {} px, not a zero left behind by the Wrap run",
+        overflow.size.w,
+    );
+
+    // Same value as a shaper that scanned from the start, so the backfill
+    // is the real scan and not an approximation.
+    let fresh = TextSystem::new(TextShaper::new())
+        .root(slot_at(wid, 0), request(), TextWrap::WrapWithOverflow)
+        .wrap_floor();
+    assert_eq!(floor, fresh, "backfilled floor must equal a fresh scan");
+
+    // And the policy change is picked up on the *same* slot too: the row's
+    // key is unchanged, so only the floor's absence can trigger the refill.
+    let same_slot = text.root(slot_at(wid, 0), request(), TextWrap::WrapWithOverflow);
+    assert_eq!(same_slot.wrap_floor(), fresh, "same-slot policy change");
+
+    // The floor is what WrapWithOverflow floors its shaping width at, so a
+    // committed width below it must be raised — the behaviour a zero floor
+    // would silently lose.
+    assert_eq!(
+        TextWrap::WrapWithOverflow.target_width(1.0, &overflow),
+        floor,
+    );
+    assert_eq!(TextWrap::Wrap.target_width(1.0, &overflow), 1.0);
 }

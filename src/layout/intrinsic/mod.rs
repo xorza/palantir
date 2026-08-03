@@ -320,6 +320,7 @@ fn leaf(
                 ordinal: ts.ordinal,
             },
             ts.shape_request(),
+            ts.wrap,
         );
         for (req, slot) in range.requested(query) {
             let run = match req {
