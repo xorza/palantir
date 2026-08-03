@@ -32,7 +32,7 @@ use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::scene::tree::record::NodeId;
 use crate::shape::rect::RectKind;
-use crate::text::key::ShapedTextRef;
+use crate::text::shaped_ref::ShapedTextRef;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`

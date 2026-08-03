@@ -35,7 +35,8 @@ use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Node, Salt};
 use crate::scene::tree::paint_anims::PaintAnim;
-use crate::text::run::{TextProbe, TextRun};
+use crate::text::probe::TextProbe;
+use crate::text::run::TextRun;
 use crate::{InternedStr, TextInput};
 
 use crate::primitives::widget_id::WidgetId;

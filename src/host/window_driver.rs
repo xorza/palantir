@@ -660,7 +660,7 @@ mod output_validity_tests {
     use crate::primitives::color::Color;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::plan::{RenderKind, RenderPlan};
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::window::{WindowConfig, WindowToken};
 
@@ -900,7 +900,7 @@ mod record_store_tests {
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
     use crate::shape::polyline::PolylineColors;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;
     use crate::widgets::panel::Panel;

@@ -14,8 +14,10 @@ mod internals {
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextDrawRow;
     use crate::scene::record_store::RecordStore;
-    use crate::text::key::ShapedTextRef;
-    use crate::text::{FontFamily, FontWeight, TextShapeRequest, TextShaper};
+    use crate::text::request::TextShapeRequest;
+    use crate::text::shaped_ref::ShapedTextRef;
+    use crate::text::shaper::TextShaper;
+    use crate::text::{FontFamily, FontWeight};
     use glam::{UVec2, Vec2};
 
     #[allow(clippy::too_many_arguments)]
@@ -100,7 +102,7 @@ mod gpu_regression {
     use crate::renderer::backend::text::tests::internals::make_inner_run;
     use crate::renderer::render_buffer::text::TextDrawRow;
     use crate::scene::record_store::RecordStore;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
     use glam::{UVec2, Vec2};
 
     const PHYSICAL: UVec2 = UVec2::new(640, 480);

@@ -258,7 +258,7 @@ mod tests {
     use crate::host::shared::HostShared;
     use crate::host::window_driver::WindowDriver;
     use crate::host::winit::window::FramePresent;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
     use crate::window::{CursorIcon, Vsync, WindowCommands, WindowConfig, WindowToken};
 
     #[test]

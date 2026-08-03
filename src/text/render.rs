@@ -7,8 +7,8 @@
 //! never opens one.
 
 use crate::primitives::urect::URect;
-use crate::text::TextShapeRequest;
 use crate::text::cosmic::CosmicMeasure;
+use crate::text::request::TextShapeRequest;
 use cosmic_text::{CacheKey, SubpixelBin};
 use glam::Vec2;
 use std::cell::RefMut;

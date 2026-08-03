@@ -10,7 +10,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
-use crate::text::probe::Caret;
+use crate::text::layout_probe::Caret;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};

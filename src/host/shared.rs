@@ -5,7 +5,7 @@
 use crate::common::clipboard::Clipboard;
 use crate::renderer::backend::BackendResources;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
-use crate::text::TextShaper;
+use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
 use std::num::NonZeroU32;
 
@@ -43,7 +43,7 @@ pub(crate) mod internals {
 
     use crate::common::clipboard::Clipboard;
     use crate::host::shared::HostShared;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
 
     impl HostShared {
         /// Resources over a memory clipboard, for tests that drive a
@@ -62,7 +62,7 @@ mod tests {
     use crate::diagnostics::DebugOverlayConfig;
     use crate::host::shared::HostShared;
     use crate::primitives::image::Image;
-    use crate::text::TextShaper;
+    use crate::text::shaper::TextShaper;
 
     #[test]
     fn diagnostics_are_shared_across_capability_bundles() {

@@ -51,7 +51,7 @@ use crate::renderer::frontend::payload::{
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::scene::shapes::paint::ShapeStroke;
-use crate::text::key::ShapedTextRef;
+use crate::text::shaped_ref::ShapedTextRef;
 
 /// Sink for one frame's lowered paint operations, in authoring order.
 /// See the module docs for the required/provided split.
