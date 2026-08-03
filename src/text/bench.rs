@@ -50,6 +50,26 @@ fn measure_truncated_width(
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
 }
 
+/// [`measure_truncated_width`] at a caller-chosen face, for the arm that
+/// interleaves them.
+fn measure_truncated_face(
+    text_system: &mut TextSystem,
+    slot: TextRunSlot,
+    text: &str,
+    width: f32,
+    font_size_px: f32,
+    weight: FontWeight,
+) -> ShapedText {
+    let request = TextShapeRequest::unbounded(
+        text,
+        font_size_px,
+        font_size_px * 1.2,
+        FontFamily::Sans,
+        weight,
+    );
+    text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
+}
+
 /// A/B for the `TextSystem` reuse-slot layer: steady-state
 /// `TextSystem::measure` hits vs the raw shaper dispatches the
 /// layer-less design would issue per frame — one unbounded probe for
@@ -320,7 +340,79 @@ fn drag_frame(
     measured
 }
 
+/// The truncation *miss* path, which is where the ellipsis-advance memo
+/// is consulted: every frame commits a fresh width, so the cut is redone
+/// and the "…" reservation asked for again.
+///
+/// Two arms, because the memo's whole question is how many faces a frame
+/// interleaves. `one_face` is the easy case any memo handles. `two_faces`
+/// alternates a body style with a heavier heading — a header above its
+/// detail row, a tree sized per depth — which is the order record
+/// traversal actually produces, and which a single-slot memo misses on
+/// every call.
+///
+/// The label is long enough that the cut keeps a short prefix: that is
+/// the asymmetry `measure_truncated` is built around, since the whole
+/// string is shaped once into the cached unbounded probe and only the
+/// prefix is reshaped per width.
+fn bench_ellipsis_churn(c: &mut Criterion) {
+    const HEADING_PX: f32 = 20.0;
+    let shaper = TextShaper::new();
+    let mut group = c.benchmark_group("text_shape/ellipsis_width_churn");
+
+    let mut text = TextSystem::new(shaper.clone());
+    let slot = TextRunSlot {
+        widget_id: WidgetId::from_hash("text-shape-ellipsis-churn"),
+        ordinal: 0,
+    };
+    let mut step = 0u32;
+    group.bench_function("one_face", |b| {
+        b.iter(|| {
+            let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
+            step = step.wrapping_add(1);
+            let measured = measure_truncated_width(&mut text, slot, TEXT, width);
+            text.end_frame(&FxHashSet::default());
+            black_box(measured.measured)
+        });
+    });
+
+    let mut text = TextSystem::new(shaper.clone());
+    let slots = [
+        TextRunSlot {
+            widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-body"),
+            ordinal: 0,
+        },
+        TextRunSlot {
+            widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-head"),
+            ordinal: 0,
+        },
+    ];
+    let mut step = 0u32;
+    group.bench_function("two_faces", |b| {
+        b.iter(|| {
+            let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
+            step = step.wrapping_add(1);
+            // Body then heading, the way a row records: with one memo
+            // slot each of these evicts the other's face.
+            let body =
+                measure_truncated_face(&mut text, slots[0], TEXT, width, 14.0, FontWeight::Regular);
+            let head = measure_truncated_face(
+                &mut text,
+                slots[1],
+                TEXT,
+                width,
+                HEADING_PX,
+                FontWeight::Bold,
+            );
+            text.end_frame(&FxHashSet::default());
+            black_box((body.measured, head.measured))
+        });
+    });
+    group.finish();
+}
+
 pub fn bench(c: &mut Criterion) {
     bench_reuse_layer(c);
     bench_resize_drag(c);
+    bench_ellipsis_churn(c);
 }

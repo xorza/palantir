@@ -56,6 +56,9 @@ const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf
 
 const RECYCLE_POOL_CAP: usize = 128;
 
+/// Faces [`CosmicMeasure::ellipsis`] remembers the "…" advance for.
+const ELLIPSIS_MEMO_SLOTS: usize = 4;
+
 /// Frames a *probationary* entry survives before
 /// [`CosmicMeasure::end_frame`] drops it: one inserted and never looked
 /// up, or one [superseded](CosmicMeasure::supersede) after its reuse
@@ -187,9 +190,10 @@ struct CacheEntry {
     /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
     /// text backend can build a `TextArea` without reshaping.
     buffer: Buffer,
-    /// What this buffer measured to. Bounded entries carry a zero floor
-    /// and a single-line flag describing the resolve, both inert — only
-    /// the unbounded root's copy is ever read back.
+    /// What this buffer measured to. A bounded entry's floor is `None`
+    /// and its single-line flag describes the resolve rather than the
+    /// run; both are inert, since only the unbounded root's copy is ever
+    /// read back.
     root: TextRoot,
     /// x of the block's left edge in buffer space — what every reader
     /// subtracts to put the block's own origin at 0.
@@ -249,13 +253,28 @@ pub(super) struct CosmicMeasure {
     /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
     /// line, shaping, and layout allocations when the buffer is reset.
     recycle_pool: Vec<Buffer>,
-    /// Trailing advance of "…" for the most recent face.
+    /// Trailing advance of "…" for the last few faces asked about.
     ///
-    /// One slot, not a map: a frame draws its ellipsized labels in one or
-    /// two text styles, so this hits nearly always, and a miss is a single
-    /// glyph through a recycled buffer. Nothing to bound, evict, or clear —
-    /// the slot is simply overwritten.
-    ellipsis: Option<EllipsisMemo>,
+    /// A fixed set of slots, not a map: a frame draws its ellipsized
+    /// labels in a handful of text styles, and a miss is a single glyph
+    /// through a recycled buffer. Nothing to bound, evict, or clear —
+    /// the round-robin victim is simply overwritten.
+    ///
+    /// One slot was not enough. It held only the *last* face, so any
+    /// record order that interleaves two — header and detail rows, a
+    /// tree sized per depth, regular beside bold in one row — missed on
+    /// every single truncation. Measured on
+    /// `text_shape/ellipsis_width_churn`: the `two_faces` arm runs
+    /// 3.85 µs on one slot against 2.82 µs on four, a 27% cut, while
+    /// `one_face` is unchanged inside noise — so the extra slots cost
+    /// nothing in the easy case. Four covers the interleavings a frame
+    /// actually produces, and a lookup is four compares against a
+    /// `Copy` struct.
+    ellipsis: [Option<EllipsisMemo>; ELLIPSIS_MEMO_SLOTS],
+    /// Next slot [`Self::ellipsis_advance`] overwrites on a miss.
+    /// Round-robin rather than LRU: with four slots and a frame's worth
+    /// of faces, tracking recency costs more than the miss it saves.
+    ellipsis_next: usize,
     /// Retained scratch for the truncated string
     /// [`Self::measure_truncated`] builds on a miss (cut prefix +
     /// optional `…`). Misses are the hot case — a continuous width drag
@@ -296,7 +315,8 @@ impl CosmicMeasure {
             frame: 0,
             expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + 1),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
-            ellipsis: None,
+            ellipsis: [None; ELLIPSIS_MEMO_SLOTS],
+            ellipsis_next: 0,
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
             logical_order: Vec::new(),
@@ -638,8 +658,10 @@ impl CosmicMeasure {
     /// Only the *opening* budget: [`Self::measure_truncated`] verifies the
     /// shaped result against the committed width either way, so a stale or
     /// imprecise reservation costs retries, never correctness. What it buys
-    /// is measured — dropping the memo entirely costs ~29% on the
-    /// truncation-miss path (`text_shape/ellipsis_width_churn`).
+    /// is measured on `text_shape/ellipsis_width_churn`, whose arms hold
+    /// the width churning so every frame is a truncation miss and the
+    /// reservation is asked for again. See [`CosmicMeasure::ellipsis`]
+    /// for what the slot count buys there.
     fn ellipsis_advance(
         &mut self,
         size_q: u32,
@@ -653,8 +675,11 @@ impl CosmicMeasure {
             weight_q: weight as u8,
             advance: 0.0,
         };
-        if let Some(memo) = self.ellipsis
-            && memo.same_face(&want)
+        if let Some(memo) = self
+            .ellipsis
+            .iter()
+            .flatten()
+            .find(|memo| memo.same_face(&want))
         {
             return memo.advance;
         }
@@ -663,7 +688,9 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
         let advance = first_line_right(&buffer);
         recycle_buffer(&mut self.recycle_pool, buffer);
-        self.ellipsis = Some(EllipsisMemo { advance, ..want });
+        self.probe.ellipsis_misses.bump();
+        self.ellipsis[self.ellipsis_next] = Some(EllipsisMemo { advance, ..want });
+        self.ellipsis_next = (self.ellipsis_next + 1) % ELLIPSIS_MEMO_SLOTS;
         advance
     }
 
@@ -701,7 +728,7 @@ impl CosmicMeasure {
         // First frame on which the entry is dead, matching the sweep's
         // own `keep_until < frame` test.
         self.expiry.schedule(key, keep_until + 1);
-        self.cache.insert(
+        let displaced = self.cache.insert(
             key,
             CacheEntry {
                 buffer,
@@ -710,6 +737,12 @@ impl CosmicMeasure {
                 keep_until,
             },
         );
+        // Unreachable today — every caller checks `cache_hit` first, so a
+        // key is inserted once — but the pool must not silently leak a
+        // buffer the moment a second insert path appears.
+        if let Some(old) = displaced {
+            recycle_buffer(&mut self.recycle_pool, old.buffer);
+        }
     }
 
     /// Scan the wrap floor for a resident entry that was shaped without
@@ -914,7 +947,15 @@ pub(super) fn fitting_prefix(
 ) -> usize {
     order.clear();
     order.extend(0..count as u32);
-    order.sort_unstable_by_key(|&i| glyph(i as usize).start);
+    // Visual order *is* logical order for an LTR run, which is nearly
+    // every run this shapes. Checking costs one key call per glyph;
+    // sorting costs `n log n` of them, since `sort_unstable_by_key`
+    // re-invokes the key rather than caching it. The cut itself only
+    // ever reads a short prefix, so on a long single-line run — a file
+    // path, a log line — the skipped sort was the dominant term.
+    if !order.is_sorted_by_key(|&i| glyph(i as usize).start) {
+        order.sort_unstable_by_key(|&i| glyph(i as usize).start);
+    }
     let mut cut = 0usize;
     let mut used = 0.0_f32;
     for (pos, &i) in order.iter().enumerate() {
