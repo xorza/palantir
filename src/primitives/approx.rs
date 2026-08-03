@@ -108,23 +108,6 @@ pub(crate) const fn noop_f16_bits(bits: u16) -> bool {
     (bits & ABS_MASK) <= EPS_BITS
 }
 
-/// True if an f16 stored as `u16` bits is NaN — exponent all ones with
-/// a non-zero mantissa, i.e. strictly above the infinity pattern once
-/// the sign bit is masked off.
-///
-/// Split out from [`noop_f16_bits`] because the two answer different
-/// questions and want opposite verdicts on NaN: `noop_f16_bits` backs
-/// `Corners::approx_zero`, a **fast-path** test where treating NaN as
-/// zero would route it *into* the sharp-corner shortcut, while
-/// `ColorF16::is_noop` is a **paint** test where a NaN must read as
-/// invisible so the draw is dropped. Paint predicates OR the two.
-#[inline]
-pub(crate) const fn nan_f16_bits(bits: u16) -> bool {
-    const NAN_EXP: u16 = 0x7C00;
-    const ABS_MASK: u16 = 0x7FFF;
-    (bits & ABS_MASK) > NAN_EXP
-}
-
 /// True if an f16 stored as `u16` bits is within `EPS` below 1.0 (or
 /// above). Mirror of `noop_f16_bits` for the opacity end of the
 /// scale: positive f16 values are monotonic in their bit
@@ -270,6 +253,36 @@ mod tests {
                 .is_noop(),
             ),
             ("Mesh::is_noop", nan_mesh.is_noop()),
+            // Chrome has no record-level gate to fall back on — it does
+            // not pass through `Shapes::add` — so these four are the
+            // only thing standing between a NaN `Background` and the
+            // shader.
+            (
+                "ColorF16::is_noop/red",
+                ColorF16::from(Color::rgba(N, 0.0, 0.0, 1.0)).is_noop(),
+            ),
+            (
+                "Color::is_noop/red",
+                Color::rgba(N, 0.0, 0.0, 1.0).is_noop(),
+            ),
+            (
+                "LoweredShadow::is_noop/blur",
+                crate::scene::shapes::paint::LoweredShadow::from(Shadow {
+                    color: Color::WHITE,
+                    blur: N,
+                    ..Shadow::default()
+                })
+                .is_noop(),
+            ),
+            (
+                "LoweredShadow::is_noop/offset",
+                crate::scene::shapes::paint::LoweredShadow::from(Shadow {
+                    color: Color::WHITE,
+                    offset: Vec2::new(N, 0.0),
+                    ..Shadow::default()
+                })
+                .is_noop(),
+            ),
         ];
 
         let missed: Vec<&str> = cases
