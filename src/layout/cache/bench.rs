@@ -418,6 +418,74 @@ fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str) {
     });
 }
 
+/// Rows in the virtualized-list arms — a plausible viewport's worth, and
+/// enough that a per-descriptor rebuild is visible against frame noise.
+const SCROLL_ROWS: usize = 96;
+
+/// One frame of a virtualized list showing rows `first .. first + ROWS`.
+///
+/// The window slides by one row per frame, so the *set* of recorded
+/// `WidgetId`s changes every frame even though the count never does —
+/// which is the shape that matters here, not the row content.
+fn build_scroll_window(ui: &mut Ui, first: usize) {
+    Panel::vstack()
+        .id_salt("scroll-root")
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            for row in first..first + SCROLL_ROWS {
+                Panel::hstack()
+                    .id_salt(row)
+                    .size((Sizing::FILL, Sizing::fixed(18.0)))
+                    .show(ui, |_ui| {});
+            }
+        });
+}
+
+/// The virtualized-list path: what a scroll costs the measure cache
+/// against what the same tree costs when it holds still.
+///
+/// `MeasureSnapshot::refresh_snapshots` reuses its retained `WidgetId`
+/// map only while the captured descriptor id *sequence* is unchanged,
+/// approximated by an ordered fold. A scrolling window changes that
+/// sequence every frame, so the map is rebuilt from scratch — one hash
+/// insert per descriptor — every frame the gesture lasts.
+///
+/// The two arms differ in nothing but whether the window moves, so the
+/// gap between them is the rebuild plus whatever else a changed id set
+/// costs. Rebuild counts are reported for both, because the wall-clock
+/// gap alone would not say which of those two it is.
+fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
+    let make = || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
+
+    for (name, stride) in [("static", 0usize), ("scrolling", 1)] {
+        let mut h = make();
+        let mut first = 0usize;
+        for _ in 0..8 {
+            let _ = h.frame(|ui| build_scroll_window(ui, first));
+            first += stride;
+        }
+        let before = h.ui.layout_engine.cache.snapshot_rebuilds;
+        const FRAMES: usize = 64;
+        for _ in 0..FRAMES {
+            let _ = h.frame(|ui| build_scroll_window(ui, first));
+            first += stride;
+        }
+        eprintln!(
+            "[caches] virtual_scroll/{name}: {} snapshot rebuilds over {FRAMES} frames \
+             ({SCROLL_ROWS} rows)",
+            h.ui.layout_engine.cache.snapshot_rebuilds - before,
+        );
+
+        group.bench_function(format!("virtual_scroll/{name}"), |b| {
+            b.iter(|| {
+                let r = h.frame(|ui| build_scroll_window(ui, first));
+                first += stride;
+                black_box(r)
+            });
+        });
+    }
+}
+
 pub fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("caches");
 
@@ -447,6 +515,7 @@ pub fn bench(c: &mut Criterion) {
         build_broad,
     );
     bench_broad_localized(&mut group, "broad/measure");
+    bench_virtual_scroll(&mut group);
     bench_cache_workload(
         &mut group,
         "grid/intrinsic",
