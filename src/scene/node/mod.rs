@@ -294,6 +294,13 @@ impl Node {
     /// `Forest::open_node`) so `Node` itself never carries a
     /// resolved id.
     #[inline(always)]
+    /// Shred this node into its SoA columns — the tail of the
+    /// per-widget recording chain, after which the node is dead.
+    ///
+    /// Consumes `self` to say exactly that: the caller has no reason to
+    /// read the node again, and handing over the 120 B lets the whole
+    /// chain feed it forward rather than keep a live copy alongside the
+    /// columns.
     pub(super) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
