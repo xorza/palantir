@@ -10,8 +10,8 @@ use crate::primitives::span::Span;
 use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    CurveBasis, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
+    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
+    DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
@@ -25,6 +25,7 @@ use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
 use crate::scene::record_store::RecordPayloads;
+use crate::scene::shapes::paint::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT, stroked_bbox};
 use crate::shape::style::{LineCap, LineJoin};

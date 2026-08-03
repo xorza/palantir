@@ -12,8 +12,8 @@ use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, CurveBasis, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, ResolvedGradient,
+    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -107,9 +107,9 @@ fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
 /// distance from `c` to the bbox's corners. The composer applies
 /// stroke reach after this rotation-invariant sweep, so its cull and
 /// overlap tracking stay correct at every angle — and the square keeps
-/// `bbox.center() == c`, the pivot contract the
-/// composer's Spin arms rotate about (points for `DrawPolyline`,
-/// control points for `DrawCurve`, center + angles for `DrawArc`).
+/// `bbox.center() == c`, the pivot contract the composer's Spin arms
+/// rotate about: points for `DrawPolyline`, and for `DrawCurve` either
+/// the control points or the centre + angles, per its `CurveBasis`.
 fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
     if rotation == 0.0 {
         return bbox;
@@ -423,10 +423,7 @@ fn emit_one_shape<S: PaintSink>(
             });
         }
         ShapeRecord::Curve {
-            p0,
-            p1,
-            p2,
-            p3,
+            basis,
             width,
             fill,
             fill_grad_hash: _,
@@ -435,49 +432,14 @@ fn emit_one_shape<S: PaintSink>(
         } => {
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px. Curves carry no
-            // gradient axis, so `fill.axis` goes unread.
+            // gradient axis, so `fill.axis` goes unread. The basis
+            // crosses verbatim — record and payload share the type, so
+            // both bases' cull, spin, and sub-instance sizing stay one
+            // code path from here through the composer.
             let fill = ctx.brush_source(*fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
             out.draw_curve(DrawCurvePayload {
-                basis: CurveBasis::Cubic {
-                    p0: *p0,
-                    p1: *p1,
-                    p2: *p2,
-                    p3: *p3,
-                },
-                bbox: spin_bbox(owner_rect, *bbox, rotation),
-                origin: owner_rect.min,
-                rotation,
-                color: fill.color,
-                width: *width,
-                cap: *cap,
-                fill_kind: fill.kind,
-                fill_lut_row: fill.lut_row,
-            });
-        }
-        ShapeRecord::Arc {
-            center,
-            radius,
-            a0,
-            a1,
-            width,
-            fill,
-            fill_grad_hash: _,
-            cap,
-            bbox,
-        } => {
-            // Same owner-local convention as `Curve` — and the same
-            // payload, which is what keeps the two bases' cull, spin,
-            // and sub-instance sizing one code path in the composer.
-            let fill = ctx.brush_source(*fill).to_gpu_fields();
-            let rotation = paint_mod.rotation;
-            out.draw_curve(DrawCurvePayload {
-                basis: CurveBasis::Arc {
-                    center: *center,
-                    radius: *radius,
-                    a0: *a0,
-                    a1: *a1,
-                },
+                basis: *basis,
                 bbox: spin_bbox(owner_rect, *bbox, rotation),
                 origin: owner_rect.min,
                 rotation,

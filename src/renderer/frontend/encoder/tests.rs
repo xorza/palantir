@@ -17,14 +17,14 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::frontend::payload::{BrushSource, CurveBasis, PushClipPayload};
+use crate::renderer::frontend::payload::{BrushSource, PushClipPayload};
 use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::record_store::{GradientId, RecordedGradient};
-use crate::scene::shapes::paint::ShapeBrush;
+use crate::scene::shapes::paint::{CurveBasis, ShapeBrush};
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};

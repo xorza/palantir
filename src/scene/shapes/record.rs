@@ -8,7 +8,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
-use crate::scene::shapes::paint::{LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
+use crate::scene::shapes::paint::{CurveBasis, LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::wrap::TextWrap;
@@ -173,29 +173,28 @@ pub(crate) enum ShapeRecord {
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
     },
-    /// Native GPU bezier curve. Four control points (quadratics
-    /// promote to cubic at lowering, lines degenerate to one — see
-    /// `shapes::lower`). Stored owner-local; the
-    /// composer adds the owner origin + active transform at compose
-    /// time and uploads to a per-instance buffer. No joins
+    /// Native GPU stroke — a cubic Bézier or an exact circular arc, per
+    /// [`CurveBasis`] (quadratics promote to cubic at lowering, lines
+    /// degenerate to one — see `shapes::lower`). One record kind, because
+    /// everything outside `basis` is shared: the same pipeline, cap model,
+    /// gradient-along-`t` sampling, and deferred stroke bound. Stored
+    /// owner-local; the composer adds the owner origin + active transform
+    /// at compose time and uploads to a per-instance buffer. No joins
     /// (single-segment primitive); `fill` and `cap` are documented on
     /// their fields. `bbox` is the tight owner-local centerline AABB;
     /// damage and composition apply the shared raster-aware stroke
     /// inflation after transforms are known.
     Curve {
-        p0: Vec2,
-        p1: Vec2,
-        p2: Vec2,
-        p3: Vec2,
+        basis: CurveBasis,
         width: f32,
         /// Lowered stroke fill. Solid colour stays inline; `Linear`
         /// gradient content rides as a `RecordedGradient` indexed by
         /// `ShapeBrush::Gradient` and resolves its atlas row on encode.
-        /// The gradient is sampled along the curve parameter `t` (p0 →
-        /// p3) in the shader — the `LinearGradient::angle` from authoring
-        /// is intentionally ignored, because the curve carries its own
-        /// 1-D parameter. The authoring type cannot contain radial or
-        /// conic gradients.
+        /// The gradient is sampled in the shader along the curve
+        /// parameter `t` — p0 → p3 for a cubic, a0 → a1 for an arc — so
+        /// the `LinearGradient::angle` from authoring is intentionally
+        /// ignored: the stroke carries its own 1-D parameter. The
+        /// authoring type cannot contain radial or conic gradients.
         fill: ShapeBrush,
         /// Pre-computed content hash of `fill` when it's a gradient,
         /// `0` for solid — same context-free-hash trick as
@@ -223,26 +222,6 @@ pub(crate) enum ShapeRecord {
         /// Solid linear-RGB fill (straight alpha).
         fill: ColorF16,
         stroke: ShapeStroke,
-        bbox: Rect,
-    },
-    /// Native GPU circular arc — the exact-circle sibling of
-    /// [`ShapeRecord::Curve`], sharing its pipeline, cap model, and
-    /// gradient-along-t sampling. `center` is owner-local; `a0`/`a1`
-    /// are the start/end angles in radians (screen convention: 0 = +x,
-    /// y-down ⇒ increasing = clockwise; `a1 < a0` for a negative
-    /// sweep). `bbox` is the tight owner-local centerline AABB, using
-    /// the same deferred stroke-bound contract as `Curve`.
-    Arc {
-        center: Vec2,
-        radius: f32,
-        a0: f32,
-        a1: f32,
-        width: f32,
-        /// See [`ShapeRecord::Curve::fill`] — same solid/linear-only
-        /// contract, gradient sampled along the sweep.
-        fill: ShapeBrush,
-        fill_grad_hash: u64,
-        cap: LineCap,
         bbox: Rect,
     },
     /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
@@ -295,7 +274,7 @@ pub(crate) fn shadow_paint_rect_local(
 
 impl ShapeRecord {
     /// Owner-local bbox used as the basis for cascade's screen-space paint
-    /// bound. `Polyline` / `Curve` / `Arc` return their tight centerline
+    /// bound. `Polyline` / `Curve` return their tight centerline
     /// bbox because stroke width and the physical-pixel AA fringe are applied
     /// after the bbox reaches screen space. Drop shadows include their full
     /// local extent via [`shadow_paint_rect_local`]; the remaining shapes
@@ -322,9 +301,7 @@ impl ShapeRecord {
                     shadow.inset(),
                 )
             }
-            ShapeRecord::Polyline { bbox, .. }
-            | ShapeRecord::Curve { bbox, .. }
-            | ShapeRecord::Arc { bbox, .. } => *bbox,
+            ShapeRecord::Polyline { bbox, .. } | ShapeRecord::Curve { bbox, .. } => *bbox,
             ShapeRecord::Triangle { bbox, .. } => *bbox,
             // A mesh's vertex hull can exceed the owner rect (rotated /
             // overflowing meshes), so it must report that hull — like
@@ -368,10 +345,14 @@ impl ShapeRecord {
     /// **This match is the sole source of those numbers**; the enum's
     /// own `repr` discriminant is unread, so reordering variants cannot
     /// move a hash. A number is frozen once it has shipped in a saved
-    /// document — give a new variant the next free one. 9 is retired: it
-    /// was `WindowedRect` before that folded into
-    /// [`ShapeRecord::Rect`]'s `kind`, and reissuing it would collide
-    /// with hashes still cached from before the merge.
+    /// document — give a new variant the next free one. Two are retired,
+    /// both to folded-away variants whose numbers would now collide with
+    /// hashes cached from before their merge: 9 was `WindowedRect`,
+    /// folded into [`ShapeRecord::Rect`]'s `kind`, and 10 was `Arc`,
+    /// folded into [`ShapeRecord::Curve`]'s
+    /// [`basis`](crate::scene::shapes::paint::CurveBasis). Arcs hash
+    /// under 6 now, told apart from cubics by
+    /// [`CurveBasis::tag`](crate::scene::shapes::paint::CurveBasis::tag).
     pub(crate) const fn tag(&self) -> u8 {
         match self {
             ShapeRecord::Rect { .. } => 0,
@@ -383,7 +364,6 @@ impl ShapeRecord {
             ShapeRecord::Curve { .. } => 6,
             ShapeRecord::GpuView { .. } => 7,
             ShapeRecord::Triangle { .. } => 8,
-            ShapeRecord::Arc { .. } => 10,
         }
     }
 }
@@ -446,9 +426,9 @@ mod tests {
     /// [`ShapeRecord::tag`] is the only source of the hash's leading
     /// discriminant byte, so its numbers have to be pairwise distinct
     /// and frozen once shipped. Two variants sharing a tag would differ
-    /// only by whatever their field schedules don't have in common — and
-    /// `Curve` / `Arc` schedule nearly the same fields, so such a
-    /// collision would land somewhere it actually matters.
+    /// only by whatever their field schedules don't have in common, which
+    /// for the stroke kinds is very little — the reason
+    /// [`CurveBasis::tag`] exists now that arcs hash under `Curve`.
     ///
     /// The `repr` discriminants that used to sit on the variants looked
     /// like they enforced this. They never did: they pin their *own*
@@ -462,7 +442,8 @@ mod tests {
     fn shape_record_tags_are_distinct_and_pinned() {
         let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
         let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 1.0));
-        // 9 is absent on purpose — retired with `WindowedRect`.
+        // 9 and 10 are absent on purpose — retired with `WindowedRect`
+        // and `Arc` when each folded into a surviving variant.
         let table = [
             (
                 0,
@@ -541,10 +522,12 @@ mod tests {
             (
                 6,
                 ShapeRecord::Curve {
-                    p0: Vec2::ZERO,
-                    p1: Vec2::ZERO,
-                    p2: Vec2::ZERO,
-                    p3: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::ZERO,
+                        p1: Vec2::ZERO,
+                        p2: Vec2::ZERO,
+                        p3: Vec2::ZERO,
+                    },
                     width: 1.0,
                     fill,
                     fill_grad_hash: 0,
@@ -565,20 +548,6 @@ mod tests {
                     bbox: Rect::ZERO,
                 },
             ),
-            (
-                10,
-                ShapeRecord::Arc {
-                    center: Vec2::ZERO,
-                    radius: 1.0,
-                    a0: 0.0,
-                    a1: 1.0,
-                    width: 1.0,
-                    fill,
-                    fill_grad_hash: 0,
-                    cap: LineCap::Butt,
-                    bbox: Rect::ZERO,
-                },
-            ),
         ];
 
         let mut seen = Vec::with_capacity(table.len());
@@ -594,6 +563,40 @@ mod tests {
             );
             seen.push(*expected);
         }
+
+        // Both bases share the `Curve` tag — that's the merge. The
+        // basis byte, not the record tag, is what keeps their hashes
+        // apart (see `curve_and_arc_bases_hash_apart`).
+        let arc = ShapeRecord::Curve {
+            basis: CurveBasis::Arc {
+                center: Vec2::ZERO,
+                radius: 1.0,
+                a0: 0.0,
+                a1: 1.0,
+            },
+            width: 1.0,
+            fill,
+            fill_grad_hash: 0,
+            cap: LineCap::Butt,
+            bbox: Rect::ZERO,
+        };
+        assert_eq!(arc.tag(), 6, "an arc-basis curve tags as `Curve`");
+        assert_ne!(
+            CurveBasis::Cubic {
+                p0: Vec2::ZERO,
+                p1: Vec2::ZERO,
+                p2: Vec2::ZERO,
+                p3: Vec2::ZERO,
+            }
+            .tag(),
+            CurveBasis::Arc {
+                center: Vec2::ZERO,
+                radius: 1.0,
+                a0: 0.0,
+                a1: 1.0,
+            }
+            .tag(),
+        );
     }
 
     #[test]
@@ -729,6 +732,59 @@ mod tests {
             compute_record_hash(&rounded),
             compute_record_hash(&windowed)
         );
+    }
+
+    /// Cubics and arcs share [`ShapeRecord::Curve`]'s tag byte, so the
+    /// basis byte is the only thing separating their hashes — and the
+    /// arc's own fields have to reach the hasher through the merged
+    /// arm. A collision either way would make damage diff skip a
+    /// repaint when a stroke changes shape.
+    #[test]
+    fn curve_and_arc_bases_hash_apart() {
+        let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
+        let curve = |basis| ShapeRecord::Curve {
+            basis,
+            width: 2.0,
+            fill,
+            fill_grad_hash: 0,
+            cap: LineCap::Butt,
+            bbox: Rect::ZERO,
+        };
+        let arc = |center, radius, a0, a1| {
+            curve(CurveBasis::Arc {
+                center,
+                radius,
+                a0,
+                a1,
+            })
+        };
+        let baseline = arc(Vec2::ZERO, 4.0, 0.0, 1.0);
+
+        // Every field the two bases don't share is identical here, so
+        // only `CurveBasis::tag` can tell these two apart.
+        assert_ne!(
+            compute_record_hash(&baseline),
+            compute_record_hash(&curve(CurveBasis::Cubic {
+                p0: Vec2::ZERO,
+                p1: Vec2::ZERO,
+                p2: Vec2::ZERO,
+                p3: Vec2::ZERO,
+            })),
+            "a degenerate cubic must not collide with an arc",
+        );
+
+        for (label, other) in [
+            ("center", arc(Vec2::new(1.0, 0.0), 4.0, 0.0, 1.0)),
+            ("radius", arc(Vec2::ZERO, 5.0, 0.0, 1.0)),
+            ("a0", arc(Vec2::ZERO, 4.0, 0.5, 1.0)),
+            ("a1", arc(Vec2::ZERO, 4.0, 0.0, 1.5)),
+        ] {
+            assert_ne!(
+                compute_record_hash(&baseline),
+                compute_record_hash(&other),
+                "arc `{label}` escaped the hash schedule",
+            );
+        }
     }
 
     #[test]
