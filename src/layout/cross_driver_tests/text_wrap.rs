@@ -1029,11 +1029,10 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
 
     // Now drag the share. Every frame commits a fresh whole-pixel width.
     //
-    // The first changed frame is a transition: the steady frames above
-    // left the reuse row cold (never measured, so swept at end of frame),
-    // so it is rebuilt with an empty wrap slot and has no previous width
-    // to demote. From the second change on the row stays hot and every
-    // replaced width is superseded.
+    // Every changed frame demotes the width it replaced, including the
+    // first one after the still frames above — reuse rows outlive a frame
+    // they were not measured in, so the wrap slot is still there to say
+    // which key to supersede.
     let mut shapes = 0;
     let mut supersedes = 0;
     for frame in 0..12 {
@@ -1058,10 +1057,9 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
         "the drag must actually be reshaping ({shapes})"
     );
     assert_eq!(
-        supersedes,
-        shapes - 1,
-        "every replaced width but the first must be demoted, or the drag \
-         ages on the protected window",
+        supersedes, shapes,
+        "every replaced width must be demoted, or the drag ages on the \
+         protected window",
     );
 
     // Twelve distinct widths, but retention tracks the probation window.

@@ -1276,14 +1276,18 @@ fn bounded_identity_cache_keys_width_and_halign() {
     );
 }
 
-/// A reuse row lives exactly one frame of non-use: `end_frame` drops
-/// every row whose hot bit wasn't set during the frame, with no size
-/// threshold gating the pass. The old exponential ladder held cold rows
-/// until the map crossed a power-of-two rung (256 at minimum), so a
-/// three-row window swept nothing — the second phase here is what that
-/// version could not do.
+/// A reuse row outlives the frames it is not used in, and goes only with
+/// its widget.
+///
+/// It used to go after one unused frame. That lost the wrap slot — the
+/// only record of which bounded key the row last answered — and with it
+/// the `supersede` that demotes the key when the width next moves. Since
+/// the layout measure cache short-circuits whole subtrees, a steadily
+/// redrawing run never touches its row at all, so the slot was being
+/// discarded constantly and every stop-start of a drag leaked a buffer
+/// onto the long window.
 #[test]
-fn end_frame_drops_every_row_not_used_this_frame() {
+fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     let mut text = TextSystem::mono();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
@@ -1295,14 +1299,14 @@ fn end_frame_drops_every_row_not_used_this_frame() {
     text.end_frame(&FxHashSet::default());
     assert_eq!(text.entry_count(), 3, "rows used this frame all survive");
 
-    // Second frame touches only `a`'s first row. Three rows is far below
-    // the old ladder's floor, so all three used to survive.
+    // Second frame touches only `a`'s first row. The untouched two stay:
+    // being unused for a frame is what a measure-cache hit looks like, not
+    // evidence the run is gone.
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     text.end_frame(&FxHashSet::default());
-    assert_eq!(text.entry_count(), 1);
-    assert!(text.has_entry(a, 0), "row re-shaped this frame stays hot");
-    assert!(!text.has_entry(a, 1), "untouched sibling row goes");
-    assert!(!text.has_entry(b, 0), "untouched row of another widget too");
+    assert_eq!(text.entry_count(), 3, "an unused frame drops nothing");
+    assert!(text.has_entry(a, 1), "untouched sibling row survives");
+    assert!(text.has_entry(b, 0), "untouched row of another widget too");
 
     // A removed widget's rows go even when hot, in the same retain pass
     // that drops cold ones.
@@ -2446,17 +2450,22 @@ fn scrolled_away_run_keeps_the_protected_window() {
     );
 
     // What that saved, stated as a contrast: past the protected window
-    // the same return costs both shapes.
+    // the buffer is genuinely gone and has to be rebuilt.
     for _ in 0..cosmic::PROTECTED_KEEP_FRAMES + 1 {
         frame_end(&mut text);
     }
     assert!(!shaper.has_cosmic_buffer(key), "premise: the window lapsed");
     let before = shaper.cache_counts();
-    assert_eq!(drive(&mut text, slot(wid), "row content", Some(200.0)), key);
+    assert_eq!(
+        drive_visible(&mut text, &shaper, slot(wid), "row content", Some(200.0)),
+        key
+    );
     assert_eq!(
         (shaper.cache_counts() - before).shapes,
-        2,
-        "a cold return reshapes root and bounded alike",
+        1,
+        "a cold return rebuilds the buffer the renderer replays — and only \
+         that: the reuse row still holds both measurements, so layout asks \
+         for nothing",
     );
 }
 
@@ -2582,14 +2591,15 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
         "premise: the shared buffer is demoted by a's move",
     );
 
-    // The cost is bounded at one reshape — `b` recovers on its next ask.
+    // The cost is bounded at one reshape — `b` recovers on its next ask,
+    // and only for the buffer: its reuse row kept both measurements.
     let before = shaper.cache_counts();
-    let recovered = drive(&mut text, b, "—", Some(60.0));
+    let recovered = drive_visible(&mut text, &shaper, b, "—", Some(60.0));
     assert_eq!(recovered, shared);
     assert_eq!(
         (shaper.cache_counts() - before).shapes,
-        2,
-        "recovery costs one root and one bounded reshape — no more",
+        1,
+        "recovery costs one reshape — no more",
     );
 }
 

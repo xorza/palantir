@@ -10,26 +10,25 @@
 //! cannot be mistaken for a wrapping floor it never scanned for.
 //!
 //! These slots are a second cache in front of the shaper's own
-//! content-keyed one. `text_shape/reuse_layer/*` (`src/text/bench.rs`)
-//! replays 64 steady-state runs per frame both ways, ending the frame
-//! each iteration so the row retain the slots cost is counted too:
+//! content-keyed one, and **retention is what they are for**, not speed.
 //!
-//! ```text
-//!               through the slots   straight to the shaper
-//!  single-line        406 ns                559 ns          1.38x
-//!  wrapped            970 ns              1,012 ns          1.04x
-//! ```
+//! A row holds the last bounded key its run answered, and that is the
+//! only record of which buffer to [demote](TextShaper::supersede) when
+//! the committed width moves. Supersession has no other source — it is
+//! what makes the shaped-buffer cache's probation window reachable at
+//! all (see `cosmic::PROBATION_KEEP_FRAMES`), so a resize drag stays
+//! bounded because these rows exist. Deleting the layer would take the
+//! drag bound with it, whatever a throughput benchmark says.
 //!
-//! **The wrapped case is now a wash, and it used to be the strongest
-//! argument for the layer** — this doc previously recorded 0.92 µs
-//! against 2.33 µs there. The slot numbers still reproduce; both
-//! dispatch arms have roughly halved since, so the shared map got
-//! cheaper rather than the slots getting dearer. The reasoning behind
-//! the layer is unchanged — a wrapped run without a slot to hold its
-//! bounded result costs two dispatches a frame, the unbounded root plus
-//! the width resolve, each hashing a 24-byte key — but it no longer buys
-//! what it did, and `bench_shared_content` (below) is now the clearer
-//! justification. Worth re-deciding rather than inheriting.
+//! **Rows are not a steady-state optimisation, because in steady state
+//! they are not consulted.** The layout measure cache short-circuits
+//! whole subtrees (`layout/pass.rs`), so a run that redraws unchanged
+//! never reaches `TextSystem` at all. The rows earn their keep exactly
+//! while something is *changing* — a drag, typing — which is also when
+//! supersession matters. `text_shape/reuse_layer/*` (`src/text/bench.rs`)
+//! measures 64 runs replayed straight through the layer every frame,
+//! which is not a shape the engine produces; read it as an upper bound
+//! on dispatch cost, not as the layer's value.
 
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
@@ -80,18 +79,31 @@ impl TextSystem {
         }
     }
 
-    /// Drop every row not used this frame, and every row belonging to a
-    /// widget that vanished. Unconditional: the previous size-pressure
-    /// ladder only ran the `retain` once the map crossed a power-of-two
-    /// rung, which made one frame in many pay for all of them. A row is
-    /// a hint — [`Self::measure`] revalidates it and a miss just costs
-    /// one refresh dispatch — so holding cold rows buys nothing a
-    /// reconstruction can't.
+    /// Drop every row belonging to a widget that vanished.
+    ///
+    /// Rows used to go on a per-frame `hot` bit as well, on the reasoning
+    /// that a row is only a hint and reconstructing one costs a single
+    /// refresh dispatch. That is true of the *root*, and false of the
+    /// wrap slot: the slot is the only record of which bounded key this
+    /// row last answered, and [`Self::measure`] needs it to
+    /// [`supersede`](TextShaper::supersede) that key when the width
+    /// moves. Dropping it loses the demotion, and the buffer it should
+    /// have demoted ages on the long window instead.
+    ///
+    /// That mattered because the rows go cold constantly: the layout
+    /// measure cache short-circuits whole subtrees, so a steadily
+    /// redrawing run never touches its row at all. Under the `hot` sweep
+    /// a run therefore lost its slot after one still frame, and the next
+    /// width change — the first frame of a drag — had nothing to demote.
+    /// A jerky drag paid that once per stop-start.
+    ///
+    /// Keeping rows for live widgets bounds them by the widget's peak
+    /// text-ordinal count, which is a handful per widget, and `removed`
+    /// still sweeps whole widgets as they leave the tree.
     pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
         self.shaper.end_frame();
-        self.entries.retain(|(widget_id, _), entry| {
-            !removed.contains(widget_id) && std::mem::take(&mut entry.hot)
-        });
+        self.entries
+            .retain(|(widget_id, _), _| !removed.contains(widget_id));
     }
 
     /// The run's natural shape, for the intrinsic pass. `TextWrap`'s
@@ -196,7 +208,6 @@ impl TextSystem {
             key: request.key,
             root: shaper.shape_root(request, floor),
             wrap: WrapSlot::EMPTY,
-            hot: true,
         };
         let entry = self
             .entries
@@ -209,11 +220,8 @@ impl TextSystem {
             if let Some(bounded) = stale.wrap.key.bound(stale.key) {
                 shaper.supersede(bounded);
             }
-        } else {
-            entry.hot = true;
-            if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
-                entry.root = shaper.shape_root(request, WrapFloor::Scan);
-            }
+        } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
+            entry.root = shaper.shape_root(request, WrapFloor::Scan);
         }
         entry
     }
@@ -244,7 +252,6 @@ struct TextReuseEntry {
     key: TextShapeKey,
     root: TextRoot,
     wrap: WrapSlot,
-    hot: bool,
 }
 
 /// What distinguishes one bounded resolve of a row from another.
