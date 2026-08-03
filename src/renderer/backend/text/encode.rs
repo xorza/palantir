@@ -297,6 +297,17 @@ pub(super) struct TextEncoder {
     /// Drawable glyph instances accumulated across this frame's
     /// batches.
     pub(super) instances: Vec<GlyphInstance>,
+    /// Whether a run this frame hit a full atlas, and whether that has
+    /// been reported since the last frame that didn't.
+    ///
+    /// Starvation is not corruption — the glyph is skipped, the run is
+    /// refused as a template, and it re-encodes next frame — but it is
+    /// silent, self-inflicted slowness with a visible hole in the text,
+    /// and nothing else in the pipeline would say so. Edge-triggered
+    /// because it recurs per glyph per run per frame; logging each one
+    /// would bury the signal in its own noise.
+    starved_this_frame: bool,
+    starved_reported: bool,
 }
 
 impl TextEncoder {
@@ -306,6 +317,8 @@ impl TextEncoder {
             cache: EncodedCache::default(),
             placed: Vec::new(),
             instances: Vec::new(),
+            starved_this_frame: false,
+            starved_reported: false,
         }
     }
 
@@ -357,6 +370,26 @@ impl TextEncoder {
         true
     }
 
+    /// Report the first starved run of an episode, so a full atlas is
+    /// visible in a log rather than only as missing glyphs and a frame
+    /// that quietly re-encodes everything.
+    #[cold]
+    fn note_atlas_starved(&mut self) {
+        self.starved_this_frame = true;
+        if self.starved_reported {
+            return;
+        }
+        self.starved_reported = true;
+        let bindings = self.atlas.bindings();
+        tracing::warn!(
+            mask_px = bindings.atlas_px[1],
+            color_px = bindings.atlas_px[0],
+            live_glyphs = self.atlas.cache.len(),
+            "glyph atlas is full and cannot grow further; affected runs \
+             drop glyphs and re-encode every frame until pressure clears",
+        );
+    }
+
     /// Frame teardown: take the shaper's `frame` clock into the atlas and
     /// sweep both caches against it.
     pub(super) fn end_frame(&mut self, frame: u64) {
@@ -364,6 +397,12 @@ impl TextEncoder {
         self.cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
+        // A frame that fit everything closes the episode, so a later
+        // recurrence is reported again rather than swallowed forever.
+        if !self.starved_this_frame {
+            self.starved_reported = false;
+        }
+        self.starved_this_frame = false;
     }
 
     /// Encode one run that missed the encoded cache: extract its glyph
@@ -439,6 +478,10 @@ impl TextEncoder {
                 atlas_slot: idx,
                 generation: slot.generation,
             });
+        }
+
+        if starved {
+            self.note_atlas_starved();
         }
 
         // The caller already filtered invalid keys; valid-key here is a

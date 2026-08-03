@@ -5,6 +5,34 @@ use std::hash::Hash;
 use std::hash::Hasher as _;
 use std::panic::Location;
 
+/// Identity hasher for [`WidgetIdMap`]: a [`WidgetId`] is already a
+/// hash, so re-hashing it would only cost cycles.
+///
+/// **This depends on a property of [`crate::common::hash::Hasher`] that
+/// nothing else in the crate states.** hashbrown derives both the bucket
+/// index and the control byte from the *low* bits of what `finish`
+/// returns, and `finish` here returns the `WidgetId` verbatim — so every
+/// `WidgetIdMap` is only well-distributed because `FxHasher::finish`
+/// rotates its high-entropy multiplicative bits down before returning
+/// them. That rotate is a rustc-hash 2.x behaviour added for exactly
+/// this reason; 1.x returns the accumulator raw, and its low bits are
+/// weak.
+///
+/// So swapping the id hasher, or letting rustc-hash 1.x win version
+/// resolution (it is still reachable in the workspace lock through
+/// another crate), would silently cluster every one of these maps —
+/// a large, diffuse slowdown with no test failure and no wrong answer to
+/// trace back.
+///
+/// There is deliberately no test pinning this. The obvious one — throw
+/// n ids into n buckets and assert the occupancy — measures the wrong
+/// thing: sequential ids are the *best* case for a raw multiplicative
+/// accumulator, whose low bits are then a perfect permutation mod 2^k,
+/// so the 1.x behaviour this warns about would score *better* than the
+/// 2.x behaviour it depends on. Anything that genuinely discriminates
+/// has to pin rustc-hash's internal mix, which would break on any
+/// point release that retunes it. A comment that a reader will see
+/// beats a test that passes for the wrong reason.
 #[derive(Debug, Default)]
 pub(crate) struct IdHasher(u64);
 

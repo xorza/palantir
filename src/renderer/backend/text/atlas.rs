@@ -21,6 +21,23 @@ const INITIAL_MASK_ATLAS_SIZE: u32 = 1024;
 const INITIAL_COLOR_ATLAS_SIZE: u32 = 256;
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
+/// Hard ceiling on a side's backing texture, whatever the device allows.
+///
+/// [`GlyphAtlas::grow`] used to stop only at `max_texture_dimension_2d`,
+/// which on desktop adapters is routinely 16384 — a 256 MB mask or a
+/// 1 GB colour atlas, for text. Nothing observed reaches that, but the
+/// failure mode if anything did is far worse than the alternative:
+/// refusing to grow yields `Rasterized::AtlasFull`, whose only cost is
+/// that the run re-encodes each frame instead of being cached.
+///
+/// 16 MiB is `2^24`, and both `bytes_per_pixel` values are powers of
+/// two, so [`growth_ceiling`] divides and square-roots to an exact
+/// power-of-two side on either: a 4096² mask or a 2048² colour atlas.
+/// The measured `text_atlas/cache_churn` working set is 3700 glyphs in
+/// a 2048² mask, so the mask ceiling is roughly 4x the largest set any
+/// bench here produces.
+const MAX_ATLAS_BYTE_BUDGET: u64 = 16 << 20;
+
 /// Byte budget below which [`GlyphAtlas::allocate`] grows a side rather
 /// than evicting from it.
 ///
@@ -564,12 +581,13 @@ impl GlyphAtlas {
     /// shared encoder. etagere preserves rects on `packer.grow`, so
     /// the cache stays valid — no re-rasterization.
     fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
+        let ceiling = growth_ceiling(self.max_texture_dimension_2d, content);
         let side = &mut self.sides[content as usize];
-        if side.size >= self.max_texture_dimension_2d {
+        if side.size >= ceiling {
             return false;
         }
         self.probe.grows.bump();
-        let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(self.max_texture_dimension_2d);
+        let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(ceiling);
         let new_texture = make_texture(device, content.format(), new_size, content.label());
         let old_size = side.size;
         let old_texture = std::mem::replace(&mut side.texture, new_texture);
@@ -615,6 +633,16 @@ impl Side {
             pending_grow: None,
         }
     }
+}
+
+/// Largest side length a `content` atlas will grow to: whichever of the
+/// device maximum and [`MAX_ATLAS_BYTE_BUDGET`] binds first.
+///
+/// A free function taking the device limit rather than a method, so the
+/// arithmetic is testable without a `wgpu::Device`.
+fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType) -> u32 {
+    let by_bytes = (MAX_ATLAS_BYTE_BUDGET / u64::from(content.bytes_per_pixel())).isqrt() as u32;
+    max_texture_dimension_2d.min(by_bytes)
 }
 
 /// Settle one drained non-drawing ticket: `Some(due)` to re-file it,
@@ -869,6 +897,38 @@ mod tests {
         // double free — that is what makes an early or duplicate fire safe.
         assert_eq!(refile(&mut cache, &mut free, key(1)), None);
         assert_eq!(free, vec![0, 1]);
+    }
+
+    /// Growth stops at the byte budget, not at whatever the adapter
+    /// happens to allow — the whole point of the ceiling.
+    ///
+    /// The exactness matters: 16 MiB is `2^24` and both pixel sizes are
+    /// powers of two, so the ceiling lands on a power-of-two side and
+    /// the doubling sequence reaches it precisely rather than stopping
+    /// one short or clamping to an odd size.
+    #[test]
+    fn growth_stops_at_the_byte_budget_not_the_device_limit() {
+        for device_max in [8192, 16384, 32768] {
+            assert_eq!(
+                growth_ceiling(device_max, ContentType::Mask),
+                4096,
+                "16 MiB of 1-byte pixels is 4096², whatever device_max={device_max} allows",
+            );
+            assert_eq!(
+                growth_ceiling(device_max, ContentType::Color),
+                2048,
+                "16 MiB of 4-byte pixels is 2048², device_max={device_max}",
+            );
+        }
+        // Both ceilings are exactly the budget, so neither wastes half a
+        // doubling nor overshoots it.
+        for (content, side) in [(ContentType::Mask, 4096u64), (ContentType::Color, 2048)] {
+            let bytes = side * side * u64::from(content.bytes_per_pixel());
+            assert_eq!(bytes, MAX_ATLAS_BYTE_BUDGET, "{content:?}");
+        }
+        // A device meaner than the budget still binds.
+        assert_eq!(growth_ceiling(1024, ContentType::Mask), 1024);
+        assert_eq!(growth_ceiling(512, ContentType::Color), 512);
     }
 
     #[test]
