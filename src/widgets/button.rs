@@ -73,21 +73,16 @@ impl<'a> Button<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.widget.id();
-        let look = WidgetTheme::resolve(
-            ui,
-            id,
-            &mut entry.widget.node,
-            &entry.state,
-            (),
-            self.style,
-            |t| &t.button,
-        );
+        let id = entry.id();
+        let look =
+            WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), self.style, |t| {
+                &t.button
+            });
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        entry.widget.record(ui, Some(&look.background), |ui| {
+        entry.record(ui, Some(&look.background), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(Shape::Text {

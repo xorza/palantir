@@ -25,7 +25,6 @@ use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
-use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
@@ -33,7 +32,7 @@ use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
-use crate::scene::node::{Node, Salt};
+use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
@@ -673,45 +672,16 @@ impl Ui {
     /// call claims it. Dropping the `Widget` without recording leaves
     /// the slot dangling (a second same-salt widget this frame would
     /// reuse the id); recording twice panics.
+    /// **The one resolver.** A widget whose recorded root is
+    /// framework-built — `Modal`'s backdrop, `Scroll`'s outer wrapper,
+    /// `TextEdit`'s measured frame — resolves here on the node it was
+    /// handed, then overwrites [`Widget::node`] with the root it
+    /// actually records once the id has unlocked the state to build it.
+    /// The id is the part that must not move; the node is explicitly
+    /// open until `record` consumes it.
     #[must_use = "record the widget with Widget::record"]
     pub fn widget(&mut self, node: Node) -> Widget {
-        Widget::new(self.widget_id(node.salt), node)
-    }
-
-    /// Resolve `salt` to this frame's disambiguated id **without**
-    /// staging a node.
-    ///
-    /// [`Self::widget`] is this plus somewhere to keep the node until
-    /// [`Widget::record`] consumes it, and is what a widget that records
-    /// the node it was given should use. This is for the ones whose
-    /// recorded root is framework-built instead: `Modal` records a
-    /// backdrop and demotes the caller's node to its card, `Scroll`
-    /// records an outer wrapper and demotes it to the viewport. Both
-    /// take their identity from the caller's salt but never record the
-    /// node it arrived on, and staging it only to overwrite the slot
-    /// read as though the two were connected.
-    ///
-    /// Reserves this frame's occurrence slot exactly as `widget` does,
-    /// so the matching [`Self::node`] call still has to happen once.
-    pub(crate) fn widget_id(&mut self, salt: Salt) -> WidgetId {
-        self.forest.widget_id(salt)
-    }
-
-    /// Open a node under an id [`Self::widget_id`] resolved (directly,
-    /// or through [`Self::widget`]), run its body, and close it — the
-    /// recording half of [`Widget::record`]. The id is final; no further
-    /// `SeenIds` work here.
-    pub(crate) fn node<R>(
-        &mut self,
-        id: WidgetId,
-        node: Node,
-        chrome: Option<&Background>,
-        f: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
-        self.forest.open_node(id, node, chrome);
-        let r = f(self);
-        self.forest.close_node();
-        r
+        Widget::new(self.forest.widget_id(node.salt), node)
     }
 
     /// Snapshot of input/cascade state for a widget. `rect` and

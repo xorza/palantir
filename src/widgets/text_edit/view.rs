@@ -6,8 +6,6 @@ use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::layout_probe::Caret;
@@ -16,6 +14,7 @@ use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
 use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::ops::Range;
 use std::time::Duration;
@@ -368,7 +367,6 @@ pub(super) struct CaretPaint {
 
 #[derive(Debug)]
 pub(super) struct PaintInput<'a> {
-    pub(super) node: Node,
     pub(super) chrome: Background,
     pub(super) text: &'a str,
     pub(super) placeholder: &'a str,
@@ -381,11 +379,14 @@ pub(super) struct PaintInput<'a> {
     pub(super) caret: Option<CaretPaint>,
 }
 
-pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
-    let mut node = input.node;
+/// Applies the measured minimums to `widget`'s staged node, then
+/// records it. The node arrives on the widget rather than in
+/// [`PaintInput`] so there is one copy of it, not two to keep in step.
+pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
     let layout = input.geometry.layout;
     let ctx = layout.ctx;
     if !ctx.multiline {
+        let node = &mut widget.node;
         let min_size = node.min_size.get_or_insert(Size::ZERO);
         min_size.h = min_size.h.max(ctx.line_height_px + ctx.padding.vert());
         if node.size.unwrap_or_default().w().is_hug() {
@@ -396,7 +397,7 @@ pub(super) fn record(ui: &mut Ui, id: WidgetId, input: PaintInput<'_>) {
         }
     }
 
-    ui.node(id, node, Some(&input.chrome), |ui| {
+    widget.record(ui, Some(&input.chrome), |ui| {
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
         let block_offset = input.geometry.block_offset;
         let text_origin = Vec2::new(
