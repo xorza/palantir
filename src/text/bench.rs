@@ -80,7 +80,8 @@ fn measure_truncated_face(
 /// each frame either way.
 ///
 /// The frame boundary belongs in the measured section because the reuse
-/// layer's cost is not only its per-run lookup: `TextSystem::end_frame`
+/// layer's cost is not only its per-run lookup:
+/// `TextSystem::end_full_record`
 /// retains every row it holds, once a frame, and the layer-less arms
 /// have no rows to retain. Leaving it out hands the layer a discount on
 /// the very comparison meant to justify it.
@@ -122,7 +123,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
                     None,
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_full_record(&FxHashSet::default());
         });
     });
 
@@ -159,7 +160,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
                     Some(WRAP_W),
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_full_record(&FxHashSet::default());
         });
     });
 
@@ -223,7 +224,7 @@ fn bench_shared_content(c: &mut Criterion) {
                     Some(WRAP_W),
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_full_record(&FxHashSet::default());
         });
     });
 
@@ -249,7 +250,7 @@ fn bench_shared_content(c: &mut Criterion) {
                     Some(widths[i % 2]),
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_full_record(&FxHashSet::default());
         });
     });
 }
@@ -336,7 +337,7 @@ fn drag_frame(
         text: TEXT,
         key: measured.key,
     });
-    text.end_frame(&FxHashSet::default());
+    text.end_full_record(&FxHashSet::default());
     measured
 }
 
@@ -371,7 +372,7 @@ fn bench_ellipsis_churn(c: &mut Criterion) {
             let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
             step = step.wrapping_add(1);
             let measured = measure_truncated_width(&mut text, slot, TEXT, width);
-            text.end_frame(&FxHashSet::default());
+            text.end_full_record(&FxHashSet::default());
             black_box(measured.measured)
         });
     });
@@ -404,7 +405,7 @@ fn bench_ellipsis_churn(c: &mut Criterion) {
                 HEADING_PX,
                 FontWeight::Bold,
             );
-            text.end_frame(&FxHashSet::default());
+            text.end_full_record(&FxHashSet::default());
             black_box((body.measured, head.measured))
         });
     });

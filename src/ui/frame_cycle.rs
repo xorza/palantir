@@ -107,6 +107,12 @@ impl<'a> FrameCycle<'a> {
                 // unrouted event can still land here with the sticky
                 // arrival flag set even though no queue accepted it.
                 self.ui.input.drain_per_frame_queues();
+                // The one piece of frame teardown a paint-only frame
+                // still owes: the shared text clock. `finalize_frame`
+                // would tick it, but this arm never gets there, and a
+                // frozen clock stops the glyph atlas evicting at all —
+                // see `TextSystem::end_paint_only`.
+                self.ui.layout_engine.text.end_paint_only();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
@@ -349,7 +355,7 @@ impl<'a> FrameCycle<'a> {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
-        self.ui.layout_engine.text.end_frame(removed);
+        self.ui.layout_engine.text.end_full_record(removed);
         self.ui.state.sweep_removed(removed);
         self.ui.anim.sweep_removed(removed);
         // Evict views whose widget vanished this frame; the backend frees the

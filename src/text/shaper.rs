@@ -55,7 +55,8 @@ pub(crate) struct ShaperInner {
     /// One counter because the two sides tick on different events and
     /// no pair of separately-incremented counters can be kept in step:
     /// this one advances on the record path
-    /// (`TextSystem::end_frame`, `FullRecord` frames only), while the
+    /// (`TextSystem::end_full_record`, plus the bare clock tick a
+    /// `PaintOnly` frame owes through `end_paint_only`), while the
     /// backend's caches are swept on the submit path, which also runs
     /// for `PaintOnly` frames and can run more than once per frame
     /// (offscreen targets). Equal retention *constants* over unequal
@@ -208,7 +209,8 @@ impl TextShaper {
     }
 
     /// Advance the shared frame clock and bound the reconstructible
-    /// cosmic buffer LRU. Called by `TextSystem::end_frame`, so it runs
+    /// cosmic buffer LRU. Called by both of `TextSystem`'s frame
+    /// teardowns, so it runs
     /// once per window per recorded frame; the cache sweep is a no-op on
     /// the mono fallback but the clock ticks either way, since the
     /// backend's caches read it through [`Self::frame`].
