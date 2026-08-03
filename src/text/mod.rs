@@ -43,6 +43,7 @@ use std::rc::Rc;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+mod cache_probe;
 mod cosmic;
 pub(crate) mod key;
 mod mono;
@@ -257,6 +258,17 @@ impl TextShaper {
             "a bounded shape needs a committed width",
         );
         self.inner.borrow_mut().dispatch(request).size
+    }
+
+    /// Report that `key` is no longer reachable through the reuse slot
+    /// that owned it, so its buffer ages on the short window instead of
+    /// the long one. `TextSystem` is the only caller — it holds the
+    /// slot table that makes the distinction — and the mono fallback
+    /// shapes no buffers, so this is a no-op there.
+    pub(crate) fn supersede(&self, key: TextShapeKey) {
+        if let Some(cosmic) = self.inner.borrow_mut().cosmic.as_mut() {
+            cosmic.supersede(key);
+        }
     }
 
     /// Whether this shaper produces shaped buffers the renderer can replay.
@@ -508,6 +520,48 @@ pub(crate) mod internals {
             self.inner.borrow().measure_calls
         }
 
+        /// Shaped buffers currently resident.
+        pub(crate) fn cosmic_cache_len(&self) -> usize {
+            self.inner
+                .borrow()
+                .cosmic
+                .as_ref()
+                .map_or(0, CosmicMeasure::cache_len)
+        }
+
+        /// Snapshot of the shaped-buffer cache's tallies. Copied out
+        /// rather than borrowed so a test can hold a "before" reading
+        /// across calls that need the shaper again.
+        #[cfg(test)]
+        pub(crate) fn cache_counts(&self) -> CacheCounts {
+            let inner = self.inner.borrow();
+            let probe = &inner
+                .cosmic
+                .as_ref()
+                .expect("cache counts require a cosmic text shaper")
+                .probe;
+            CacheCounts {
+                shapes: probe.shapes(),
+                hits: probe.hits(),
+                supersedes: probe.supersedes(),
+                expiries: probe.expiries(),
+            }
+        }
+
+        /// The lookup `TextEncoder::encode_run` performs on an
+        /// encoded-cache miss: restore the shaped buffer if it aged out,
+        /// and promote it onto the protected window if it is resident.
+        ///
+        /// Tests that model a *rendered* frame need this. Layout only
+        /// ever inserts, so without the render half a buffer is never
+        /// looked up and the protected window is unreachable — which is
+        /// exactly the asymmetry `PROBATION_KEEP_FRAMES` documents.
+        pub(crate) fn render_ensure(&self, request: TextShapeRequest<'_>) {
+            if let Some(cosmic) = self.inner.borrow_mut().cosmic.as_mut() {
+                cosmic.ensure_buffer(request);
+            }
+        }
+
         pub(crate) fn has_cosmic_buffer(&self, key: TextShapeKey) -> bool {
             self.inner
                 .borrow()
@@ -525,6 +579,32 @@ pub(crate) mod internals {
                 .as_mut()
                 .expect("cosmic buffer eviction requires a cosmic text shaper")
                 .drop_all_buffers();
+        }
+    }
+
+    /// One reading of the shaped-buffer cache's tallies. Subtract two to
+    /// get what a span of frames did — the counters accumulate for the
+    /// life of the shaper.
+    #[cfg(test)]
+    #[derive(Clone, Copy, Debug)]
+    pub(crate) struct CacheCounts {
+        pub(crate) shapes: u32,
+        pub(crate) hits: u32,
+        pub(crate) supersedes: u32,
+        pub(crate) expiries: u32,
+    }
+
+    #[cfg(test)]
+    impl std::ops::Sub for CacheCounts {
+        type Output = Self;
+
+        fn sub(self, base: Self) -> Self {
+            Self {
+                shapes: self.shapes - base.shapes,
+                hits: self.hits - base.hits,
+                supersedes: self.supersedes - base.supersedes,
+                expiries: self.expiries - base.expiries,
+            }
         }
     }
 
