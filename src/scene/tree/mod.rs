@@ -351,19 +351,12 @@ impl Tree {
         &mut self,
         scratch: &mut RecordingScratch,
         widget_id: WidgetId,
-        mut node: Node,
+        node: Node,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
         // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
         // arena ceiling), which asserts for this same id below.
         let new_id = NodeId(self.records.len() as u32);
-
-        if matches!(node.clip, Some(ClipMode::Rounded)) {
-            let radius_zero = chrome.is_none_or(|c| c.bg.corners.approx_zero());
-            if radius_zero {
-                node.clip = Some(ClipMode::Rect);
-            }
-        }
 
         let parent_frame = scratch.open_frames.last().copied();
 
@@ -375,6 +368,15 @@ impl Tree {
             });
         }
         let mut cols = node.into_columns(widget_id);
+        // A rounded clip with no radius to round is a plain scissor.
+        // Applied to the recorded flags rather than to the node, because
+        // this is the only hop that sees both the node's request and the
+        // chrome supplying the radius.
+        if cols.attrs.clip_mode() == ClipMode::Rounded
+            && chrome.is_none_or(|c| c.bg.corners.approx_zero())
+        {
+            cols.attrs.set_clip(ClipMode::Rect);
+        }
         // Decoded once — the def-handle asserts and the self-Grid stamp
         // below all want it, and `meta` is immutable past `into_columns`
         // (only `padding` is rewritten, by the stroke inflation).
