@@ -47,6 +47,7 @@ use crate::primitives::widget_id::WidgetId;
 pub(crate) struct PhaseTimings {
     pub(crate) measure_ns: u64,
     pub(crate) arrange_ns: u64,
+    pub(crate) capture_ns: u64,
 }
 
 /// An open timing span. Zero-sized and free outside `internals`, so the
@@ -139,6 +140,27 @@ impl LayoutProbe {
         #[cfg(feature = "internals")]
         {
             self.phase_timings.measure_ns += span.elapsed_ns();
+        }
+    }
+
+    /// Snapshot capture — [`MeasureCache::capture_tree`] plus
+    /// [`MeasureCache::finish_frame`]. The third layout phase, and the
+    /// one that used to be invisible: both run outside the measure and
+    /// arrange spans, so a frame's layout time was under-reported by
+    /// however much the snapshot cost.
+    ///
+    /// It is the phase whose *share* grows as the cache works better —
+    /// capture is O(nodes) on any changed frame, while measure shrinks
+    /// to the subtrees that actually missed. `broad/measure/localized`
+    /// is the shape that makes that visible.
+    ///
+    /// [`MeasureCache::capture_tree`]: crate::layout::cache::MeasureCache
+    /// [`MeasureCache::finish_frame`]: crate::layout::cache::MeasureCache
+    #[inline]
+    pub(crate) fn add_capture(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
+        #[cfg(feature = "internals")]
+        {
+            self.phase_timings.capture_ns += span.elapsed_ns();
         }
     }
 

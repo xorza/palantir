@@ -518,6 +518,7 @@ impl LayoutEngine {
                     pass.note_arrange(arrange_span);
                 }
             }
+            let capture_span = PhaseSpan::start();
             if self.cache_rebuild {
                 self.cache.capture_tree(
                     tree,
@@ -533,6 +534,7 @@ impl LayoutEngine {
                     },
                 );
             }
+            self.scratch.probe.add_capture(capture_span);
             // Container text is paint-only; its wrap width exists only
             // after arrange, so it gets its own pass over the owners the
             // rollup already identified.
@@ -549,9 +551,11 @@ impl LayoutEngine {
                 pass.shape_text_runs(node, available_w, runs);
             }
         }
+        let finish_span = PhaseSpan::start();
         if self.cache_rebuild {
             self.cache.finish_frame();
         }
+        self.scratch.probe.add_capture(finish_span);
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
