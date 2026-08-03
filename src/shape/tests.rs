@@ -145,6 +145,31 @@ fn text_noop_rejects_invalid_metrics() {
         ("infinite line height", 16.0, f32::INFINITY, true),
     ];
 
+    // `local_origin` is the one Text scalar `text_metrics_valid` does
+    // not cover, and it is checked here rather than at the record gate
+    // on purpose: lowering interns the string into the text arena, so a
+    // shape dropped afterwards would have paid for that and left the
+    // bytes behind.
+    for (label, local_origin, expected_noop) in [
+        ("no origin", None, false),
+        ("finite origin", Some(Vec2::new(1.0, 2.0)), false),
+        ("NaN origin x", Some(Vec2::new(f32::NAN, 2.0)), true),
+        ("NaN origin y", Some(Vec2::new(1.0, f32::NAN)), true),
+    ] {
+        let shape = Shape::Text {
+            local_origin,
+            text: store.intern_str("visible"),
+            color: Color::WHITE,
+            font_size_px: 16.0,
+            line_height_px: 19.2,
+            wrap: TextWrap::SingleLine,
+            align: Align::TOP_LEFT,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+        };
+        assert_eq!(shape.is_noop(), expected_noop, "{label}");
+    }
+
     for (label, font_size_px, line_height_px, expected_noop) in cases {
         let shape = Shape::Text {
             local_origin: None,

@@ -32,6 +32,12 @@ impl TriangleShape {
 
     pub(super) fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.stroke.is_noop())
+            // A NaN corner falls out of this for free — the area
+            // arithmetic propagates it and `noop_f32` reads NaN as
+            // invisible. `radius` gets no such cover, and lowering
+            // launders it (`radius.max(0.0)` is `0.0` for NaN), so it
+            // has to be named.
+            || self.radius.is_nan()
             || triangle_paint_empty(self.a, self.b, self.c)
     }
 }
