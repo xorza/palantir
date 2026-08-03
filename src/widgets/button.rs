@@ -63,7 +63,7 @@ impl<'a> Button<'a> {
     }
 
     /// Position of the label glyphs inside the button's arranged rect.
-    /// Distinct from [`Configure::align`], which positions the *button*
+    /// Distinct from [`Configure::align`](crate::Configure::align), which positions the *button*
     /// inside its parent's slot. Default: [`Align::CENTER`].
     pub fn text_align(mut self, a: Align) -> Self {
         self.label_align = a;

@@ -96,7 +96,7 @@ impl<'a> Text<'a> {
     }
 
     /// Position of the glyph bbox inside this text widget's arranged
-    /// rect. Distinct from [`Configure::align`], which positions the
+    /// rect. Distinct from [`Configure::align`](crate::Configure::align), which positions the
     /// *widget* inside its parent's slot. Only meaningful when the
     /// widget has Fixed size larger than the text's measured size;
     /// otherwise the widget hugs its content and there's no slack to

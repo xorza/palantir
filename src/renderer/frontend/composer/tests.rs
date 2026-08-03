@@ -2141,6 +2141,46 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     );
 }
 
+/// The consuming end of the encoder's pivot contract. `spin_bbox`
+/// guarantees a spun payload's bbox is the rotation-invariant *square*
+/// whose centre is the pivot; the composer reads `bbox.center()` as
+/// that pivot and has no other way to know it. A payload that carries a
+/// rotation without having gone through `spin_bbox` would spin about
+/// the wrong point and paint subtly-wrong pixels, so `spin_pivot`
+/// debug-asserts the square rather than trusting the producer.
+///
+/// The producer half is covered by
+/// `encoder::tests::spun_*_bbox_is_rotation_invariant_square_about_owner_centre`;
+/// this is the half that catches a *new* emit path skipping it.
+#[test]
+#[should_panic(expected = "is not the rotation-invariant square")]
+fn spun_payload_with_unsquared_bbox_trips_the_pivot_contract() {
+    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::scene::shapes::paint::CurveBasis;
+    use std::f32::consts::FRAC_PI_2;
+    run(
+        |b, _arena| {
+            b.draw_curve(DrawCurvePayload {
+                // 100×40 — a centerline bbox that never went through
+                // `spin_bbox`, so its centre is not the owner-box pivot.
+                bbox: rect(0.0, 0.0, 100.0, 40.0),
+                origin: Vec2::ZERO,
+                rotation: FRAC_PI_2,
+                basis: CurveBasis::Cubic {
+                    p0: Vec2::new(70.0, 20.0),
+                    p1: Vec2::new(70.0, 15.0),
+                    p2: Vec2::new(60.0, 10.0),
+                    p3: Vec2::new(50.0, 10.0),
+                },
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..Default::default()
+            });
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+}
+
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use crate::renderer::frontend::payload::DrawCurvePayload;

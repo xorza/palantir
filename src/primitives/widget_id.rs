@@ -171,7 +171,7 @@ impl WidgetId {
     /// Stable across frames as long as the call site is unchanged.
     ///
     /// Hashes the caller's `(file, line, column)` through the crate's
-    /// FxHash-backed [`Hasher`].
+    /// FxHash-backed `Hasher`.
     /// `Location::caller()` resolves at *runtime*, so this runs on every
     /// widget constructor call — with a byte-serial FNV-1a over the file
     /// path it was the single largest record-pass cost in the frame

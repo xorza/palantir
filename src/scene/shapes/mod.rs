@@ -55,13 +55,12 @@ impl Shapes {
     /// span-stamping for the variable-length variants (polyline /
     /// mesh) whose payload bytes land on the [`RecordStore`].
     ///
-    /// Single canonical noop gate for the shape buffer — drops any
-    /// shape whose authoring inputs would emit no visible pixels
-    /// before lowering runs. Mirrors `PaintSink::draw_*`'s emit-time
-    /// gate: caller code can pass anything, the storage layer
-    /// canonicalises. Saves the per-shape lowering cost (payload
-    /// staging, mesh hashing, text shaping downstream) that the
-    /// emit-time gate alone wouldn't.
+    /// Drops any shape whose authoring inputs would emit no visible
+    /// pixels, before lowering runs — the shape buffer's half of tier 2
+    /// (see [`paint_sink`](crate::renderer::frontend::paint_sink) for
+    /// the policy). Saves the per-shape lowering cost — payload
+    /// staging, mesh hashing, text shaping downstream — which the
+    /// emit-time gate cannot, having already paid it.
     /// Returns the index of the pushed `ShapeRecord` in `self.records`,
     /// or `None` if the shape was dropped as a no-op. Callers that want
     /// to attach side data keyed by shape-index (e.g. paint-anim

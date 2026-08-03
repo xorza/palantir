@@ -26,7 +26,7 @@ pub struct MenuItemTheme {
     pub padding: Spacing,
     /// Default margin around one row. `ZERO` by default: rows stack
     /// flush inside the menu's own padding and
-    /// [`ContextMenuTheme::gap`] is what opens a gutter between them.
+    /// [`ContextMenuTheme::gap`](crate::ContextMenuTheme::gap) is what opens a gutter between them.
     pub margin: Spacing,
     /// Minimum gutter between the label and its right-aligned shortcut
     /// hint. The row is `SpaceBetween`, so this is the floor the two

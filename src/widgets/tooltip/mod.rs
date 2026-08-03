@@ -59,7 +59,7 @@ fn global_state_id() -> WidgetId {
 /// triggers by default. Pass `.show_when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
 ///
-/// Implements [`Configure`], so the bubble takes `.padding(...)`,
+/// Implements [`Configure`](crate::Configure), so the bubble takes `.padding(...)`,
 /// `.max_size(...)`, `.size(...)`, `.margin(...)` and the rest like any
 /// other widget. Identity defaults to the trigger's id — a tooltip has
 /// no call site of its own worth keying on — but an explicit `.id(...)`

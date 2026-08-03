@@ -676,6 +676,31 @@ fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
+/// Owner-local point a spun stroke rotates about — **the consuming end
+/// of the encoder's pivot contract**, shared by the curve and polyline
+/// paths so the two cannot drift apart.
+///
+/// `spin_bbox` (encoder) replaces a spun shape's centerline bbox with
+/// the smallest square centred on the owner-box centre, precisely so
+/// that `bbox.center()` *is* the pivot here — see it for the producer
+/// side and the reason the square is rotation-invariant.
+///
+/// The `debug_assert` is what keeps the two ends honest: a square bbox
+/// is the observable half of that contract, so an encoder path that
+/// emits a non-zero `rotation` without routing through `spin_bbox`
+/// trips here instead of silently spinning about the wrong point. Debug
+/// only — this runs per spun shape per frame.
+#[inline]
+fn spin_pivot(bbox: Rect, rotation: f32) -> Vec2 {
+    debug_assert!(
+        rotation == 0.0 || (bbox.size.w - bbox.size.h).abs() <= 1.0e-3 * bbox.size.w.max(1.0),
+        "spun payload bbox {:?} is not the rotation-invariant square `spin_bbox` produces — \
+         its centre is not the spin pivot",
+        bbox.size,
+    );
+    bbox.center()
+}
+
 /// Physical-px painted bounds for a stroked shape's owner-local
 /// centerline `bbox`. Folds `origin` + the active transform into physical space,
 /// applies the shared stroke/cap/join/AA bound once, then clamps to the
@@ -1150,12 +1175,10 @@ impl PaintSink for ComposeSession<'_> {
         // would warp the traced shape; the AA fringe lives in the
         // shader.
         let to_phys = |q: Vec2| xform.apply_point(q + p.origin) * scale;
-        // Paint-time spin is about the payload-bbox centre, which the
-        // encoder guarantees is the owner-box pivot whenever
-        // `rotation != 0` (see `spin_bbox`). Both bases below rotate
-        // about it exactly — a Bézier by affine invariance, a circle by
-        // moving its centre and shifting both angles.
-        let pivot = p.bbox.center();
+        // Both bases below rotate about the pivot exactly — a Bézier by
+        // affine invariance, a circle by moving its centre and shifting
+        // both angles.
+        let pivot = spin_pivot(p.bbox, p.rotation);
         let rotor = (p.rotation != 0.0).then(|| Vec2::from_angle(p.rotation));
         // Style lanes are basis-independent; each arm below fills in
         // the geometry and its own `kind`.
@@ -1288,15 +1311,10 @@ impl PaintSink for ComposeSession<'_> {
                     .map(|&q| self.current_transform.apply_point(q + p.origin) * scale),
             );
         } else {
-            // Spin: rotate each owner-local point about the
-            // bbox centre before placing it via the ancestor
-            // transform, so the shape rotates in place. The
-            // encoder replaced the payload bbox with a
-            // rotation-invariant square CENTRED on the spin
-            // pivot (the owner-box centre), so `bbox.center()`
-            // is the pivot by construction — keep the two
-            // ends of that contract in sync.
-            let pivot = p.bbox.center();
+            // Spin: rotate each owner-local point about the pivot
+            // before placing it via the ancestor transform, so the
+            // shape rotates in place.
+            let pivot = spin_pivot(p.bbox, p.rotation);
             let rotor = Vec2::from_angle(p.rotation);
             self.composer
                 .polyline

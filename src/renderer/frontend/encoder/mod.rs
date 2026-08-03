@@ -100,16 +100,15 @@ fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
     }
 }
 
-/// Payload bbox for a possibly-spinning stroke shape. A spun shape
-/// sweeps a disc about the owner-box centre `c`, so when
+/// Payload bbox for a possibly-spinning stroke shape — **the producing
+/// end of the spin pivot contract** (stated in the payload module doc).
+///
+/// A spun shape sweeps a disc about the owner-box centre `c`, so when
 /// `rotation != 0` the lowered centerline bbox is replaced by the
 /// smallest square centred on `c` that contains it: half-extent = max
-/// distance from `c` to the bbox's corners. The composer applies
-/// stroke reach after this rotation-invariant sweep, so its cull and
-/// overlap tracking stay correct at every angle — and the square keeps
-/// `bbox.center() == c`, the pivot contract the composer's Spin arms
-/// rotate about: points for `DrawPolyline`, and for `DrawCurve` either
-/// the control points or the centre + angles, per its `CurveBasis`.
+/// distance from `c` to the bbox's corners. That square is what makes
+/// `bbox.center() == c` hold downstream, which is the only way the
+/// composer can recover the pivot.
 fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
     if rotation == 0.0 {
         return bbox;

@@ -7,6 +7,30 @@
 //! injected trailing padding to satisfy that. Nothing serializes them
 //! now, so the layout is the compiler's to choose and fields can be
 //! ordinary enums rather than `u8` newtypes.
+//!
+//! ## The spin pivot contract
+//!
+//! Stated once here because it binds two payload fields across three
+//! tiers, and the three used to restate it separately.
+//!
+//! `DrawPolylinePayload` and `DrawCurvePayload` each carry a `bbox`
+//! and a `rotation`. **Whenever `rotation != 0`, `bbox` is not the
+//! shape's centerline AABB** — the encoder's `spin_bbox` has replaced
+//! it with the smallest square centred on the owner-box centre that
+//! still contains that AABB. Two things follow, and both are relied on:
+//!
+//! - The square is rotation-invariant, so the composer's cull and
+//!   overlap tracking stay correct at every angle. Stroke reach is
+//!   applied after it, in physical space.
+//! - `bbox.center()` **is** the spin pivot, by construction. It is the
+//!   only way the composer can recover the pivot: the owner rect is
+//!   long gone by then.
+//!
+//! Producer: `spin_bbox` (encoder), covered by
+//! `encoder::tests::spun_*_bbox_is_rotation_invariant_square_about_owner_centre`.
+//! Consumer: `spin_pivot` (composer), which debug-asserts the square so
+//! a future emit path that skips `spin_bbox` trips instead of spinning
+//! about the wrong point.
 
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
@@ -136,7 +160,7 @@ pub(crate) struct DrawShadowPayload {
 }
 
 impl DrawShadowPayload {
-    /// Canonical noop predicate — zero-extent paint rect or fully
+    /// Paints nothing when: zero-extent paint rect or fully
     /// transparent tint. Shadow params themselves (`fill_axis`) are
     /// not gated: a zero-σ drop shadow can still paint a hard-edged
     /// shifted rect; the `Shape::Shadow::is_noop`
@@ -155,7 +179,7 @@ pub(crate) struct DrawTextPayload {
 }
 
 impl DrawTextPayload {
-    /// Canonical noop predicate for this payload — zero-extent rect
+    /// Paints nothing when: zero-extent rect
     /// or fully transparent color. See [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)
     /// for the noop policy.
     #[inline]
@@ -181,12 +205,11 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
     pub(crate) width: f32,
-    /// Paint-time rotation (radians) about `bbox.center()` (owner-local),
-    /// applied to each point before the ancestor transform. `0.0` = none,
-    /// the common case. Set from a [`PaintAnim::Spin`] sample; the
-    /// encoder widens the centerline `bbox` to the rotation-invariant
-    /// owner box so the scissor cull stays correct and its centre is
-    /// the spin pivot.
+    /// Paint-time rotation (radians) about `bbox.center()`, applied to
+    /// each point before the ancestor transform. `0.0` = none, the
+    /// common case. Set from a [`PaintAnim::Spin`] sample. Non-zero
+    /// means `bbox` is the widened square the pivot contract describes
+    /// — see the module doc.
     ///
     /// [`PaintAnim::Spin`]: crate::scene::tree::paint_anims::PaintAnim::Spin
     pub(crate) rotation: f32,
@@ -200,7 +223,7 @@ pub(crate) struct DrawPolylinePayload {
 }
 
 impl DrawPolylinePayload {
-    /// Canonical noop predicate — fewer than two points (no
+    /// Paints nothing when: fewer than two points (no
     /// segments) or a non-paintable stroke width. **Does not** check
     /// color noop-ness: per-point / per-segment colours live in
     /// spans on the record store, and an O(n) read here would
@@ -237,7 +260,7 @@ pub(crate) struct DrawMeshPayload {
 }
 
 impl DrawMeshPayload {
-    /// Canonical noop predicate — empty vertex buffer, fewer than
+    /// Paints nothing when: empty vertex buffer, fewer than
     /// one full triangle, an index count that isn't a multiple of 3,
     /// or fully transparent tint.
     #[inline]
@@ -317,7 +340,7 @@ impl DrawImagePayload {
         }
     }
 
-    /// Canonical noop predicate — zero-extent rect, fully transparent tint,
+    /// Paints nothing when: zero-extent rect, fully transparent tint,
     /// or null handle (paints no pixels, no texture to sample). A
     /// `GpuView` is never null-skipped — its texture is framework-painted
     /// this frame, not a registered image that could have been dropped.
@@ -333,12 +356,10 @@ impl DrawImagePayload {
 /// `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is the
 /// owner-local centerline AABB; the composer applies the shared
 /// stroke/cap/AA bound in physical space for culling and overlap.
-/// `rotation` is the paint-time spin angle sampled from
-/// `PaintAnim::Spin` — non-zero only when the encoder replaced `bbox`
-/// with the rotation-invariant square whose centre is the spin pivot
-/// (same contract as `DrawPolylinePayload`). The composer spins about
-/// that pivot: exact for a Bézier by affine invariance, and for a
-/// circle by rotating the centre and shifting both angles.
+/// `rotation` carries the spin angle under the pivot contract in the
+/// module doc; the composer rotates about that pivot exactly — a Bézier
+/// by affine invariance, a circle by moving its centre and shifting
+/// both angles.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) basis: CurveBasis,
@@ -381,7 +402,7 @@ pub(crate) struct DrawTrianglePayload {
 }
 
 impl DrawTrianglePayload {
-    /// Canonical noop predicate — nothing paints when the fill is
+    /// Paints nothing when: nothing paints when the fill is
     /// transparent *and* the stroke is a no-op (transparent or zero width).
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
@@ -390,7 +411,7 @@ impl DrawTrianglePayload {
 }
 
 impl DrawCurvePayload {
-    /// Canonical noop predicate — zero/negative stroke width, a
+    /// Paints nothing when: zero/negative stroke width, a
     /// degenerate arc radius (nothing to trace), or a solid fill that's
     /// fully transparent. Gradient fills always paint (the
     /// all-transparent-stops case is caught by `Brush::is_noop` before

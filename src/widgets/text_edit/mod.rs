@@ -142,7 +142,7 @@ impl<'a> TextEdit<'a> {
     /// single-line, `Align::TOP_LEFT` for multi-line. Overflow clamps
     /// the offset to zero on each axis so caret + horizontal scroll
     /// keep working when the text exceeds the inner rect. Distinct
-    /// from [`Configure::align`], which positions the *widget* inside
+    /// from [`Configure::align`](crate::Configure::align), which positions the *widget* inside
     /// its parent's stack slot.
     pub fn text_align(mut self, a: Align) -> Self {
         self.text_align = Some(a);

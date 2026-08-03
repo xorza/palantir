@@ -105,10 +105,7 @@ impl std::hash::Hash for GradientStops {
     /// Swapping the halves carries exactly the same information and costs
     /// the same one write; it just puts the varying bytes where the
     /// multiply can spread them. Pinned by
-    /// [`hash_spreads_across_buckets_for_structured_palettes`].
-    ///
-    /// [`hash_spreads_across_buckets_for_structured_palettes`]:
-    ///     self::tests::hash_spreads_across_buckets_for_structured_palettes
+    /// `tests::hash_spreads_across_buckets_for_structured_palettes`.
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write_u8(self.len() as u8);
