@@ -268,7 +268,7 @@ impl EncodedCache {
     /// It used to be a `retain` over the whole table, which is uniform
     /// but uniformly proportional to the working set — a text-heavy
     /// frame paid for every resident row to discover that none had
-    /// lapsed, and audit F6 measured ~11 µs at 24k rows. Draining
+    /// lapsed — measured at ~11 µs for 24k rows. Draining
     /// [`Self::expiry`] keeps the every-frame cadence and drops the
     /// proportionality: what a frame pays for is what came due on it.
     ///
@@ -484,9 +484,9 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 /// The constraint against the shaped-buffer window is an *ordering*,
 /// not an equality: a buffer has to outlive the encoded entry that
 /// would come asking for it, or a miss silently pays to reshape. This
-/// window being shorter satisfies that with room to spare — see
-/// [`WINDOWS_ARE_ORDERED`], which is what stops a later edit from
-/// inverting it.
+/// window being shorter satisfies that with room to spare, and the
+/// `const _` assertion below is what stops a later edit from inverting
+/// it.
 ///
 /// It used to be *equal*, which cost population for nothing.
 /// `EncodedKey` folds `scale_q` and (through [`TextShapeKey`])

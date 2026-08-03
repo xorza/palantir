@@ -4,9 +4,9 @@
 //!
 //! On the narrow gate: these counters were added to size a probation
 //! tier for gesture churn, which the measurement then argued *against*
-//! building for now — so the only reader is the retention test in
-//! `encode.rs`, and `BenchOnly` would be the speculative widening that
-//! gate's doc warns off.
+//! building for now — so every reader is a test in `encode/tests.rs`,
+//! and `BenchOnly` would be the speculative widening that gate's doc
+//! warns off.
 //!
 //! ## What this exists to separate
 //!

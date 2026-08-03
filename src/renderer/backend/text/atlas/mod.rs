@@ -68,8 +68,9 @@ const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 /// Frames a non-drawing entry (`alloc: None`) survives unused.
 /// `evict_one` skips them — there is no rectangle to deallocate — so
 /// every whitespace or rejected glyph at every scale rung would
-/// otherwise accumulate forever and bloat its linear scan. 512 ≈ 8 s at
-/// 60 fps, far outside any flicker.
+/// otherwise accumulate forever, lengthening the slab the clock hand
+/// walks without ever offering it a victim. 512 ≈ 8 s at 60 fps, far
+/// outside any flicker.
 ///
 /// A per-entry deadline on [`GlyphAtlas::unallocated_expiry`], not a
 /// cadence. It used to be a periodic `cache.retain` over the whole glyph
@@ -207,13 +208,15 @@ pub(super) struct GlyphAtlas {
     max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(super) bind_group_dirty: bool,
-    /// Evictions performed, growths performed, and — the number audit
-    /// F2 turns on — cache entries *examined* choosing a victim.
+    /// Evictions performed, growths performed, and slots *examined*
+    /// choosing a victim.
     ///
-    /// `evict_one` is O(live glyphs) and `allocate` calls it in a loop,
-    /// so the eviction count alone understates the cost by whatever the
-    /// cache happens to hold. `scanned` is the product that actually
-    /// bills, and the only one that says whether this atlas reaches the
+    /// `allocate` calls `evict_one` in a loop, so the eviction count
+    /// alone says nothing about what victim selection cost. `examined`
+    /// is the product that actually bills, and the only one that says
+    /// whether the clock is behaving — it should track evictions almost
+    /// one-for-one. It is also the number that says whether this atlas
+    /// reaches the
     /// region where F2's curve matters.
     pub(super) probe: AtlasProbe,
 
@@ -823,15 +826,19 @@ fn make_texture(
 /// benchmark and test builds.
 ///
 /// `BenchOnly` rather than `TestOnly`: the question these answer — does a
-/// real workload drive the atlas into the regime where `evict_one`'s
-/// linear scan bills — is only reachable from `text_atlas`, which the
-/// `internals` feature gates.
+/// real workload drive the atlas into the regime where eviction bills at
+/// all — is only reachable from `text_atlas`, which the `internals`
+/// feature gates.
 #[derive(Debug, Default)]
 pub(super) struct AtlasProbe {
     pub(super) evictions: BenchOnly<u32>,
     pub(super) grows: BenchOnly<u32>,
-    /// Cache entries walked by `eviction_candidate`, summed. The product
-    /// F2 is about.
+    /// Slots the clock hand walked past, summed over every call. Divided
+    /// by [`Self::evictions`] this is the hand's average stride, which is
+    /// the whole health check on the policy: a healthy thrash state
+    /// stops on the first or second slot, and a number that climbs
+    /// toward the slab length means the skip conditions are rejecting
+    /// nearly everything.
     pub(super) evict_scans: BenchOnly<u64>,
 }
 
