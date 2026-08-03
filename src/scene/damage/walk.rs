@@ -28,6 +28,27 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::record::NodeId;
 
+/// Damage the overlap of every pair of rows whose relative paint order
+/// flipped, given the pairing [`PaintSnapArena::diff_changed_leg`] left
+/// and the per-row extents [`LayerWalk::build_row_extents`] resolved.
+///
+/// A free function over its two inputs so the pair enumeration can be
+/// measured and tested without a tree or a cascade behind it.
+fn emit_inverted_overlaps_into(out: &mut Vec<Rect>, matched: &[u32], extents: &[Rect]) {
+    for j2 in 1..matched.len() {
+        let p2 = matched[j2];
+        if p2 == ROW_UNMATCHED {
+            continue;
+        }
+        for (j1, &p1) in matched.iter().enumerate().take(j2) {
+            if p1 == ROW_UNMATCHED || p1 < p2 {
+                continue;
+            }
+            push_screen(out, extents[j1].intersect(extents[j2]));
+        }
+    }
+}
+
 /// One open ancestor on the diff walk's parent stack.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ParentFrame {
@@ -383,22 +404,11 @@ impl LayerWalk<'_> {
     /// sub-EPS overlap sliver paints nothing; neither earns a merge slot.
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
-        let matched = self.arena.matched_positions();
-        for j2 in 1..matched.len() {
-            let p2 = matched[j2];
-            if p2 == ROW_UNMATCHED {
-                continue;
-            }
-            for (j1, &p1) in matched.iter().enumerate().take(j2) {
-                if p1 == ROW_UNMATCHED || p1 < p2 {
-                    continue;
-                }
-                push_screen(
-                    self.raw_rects,
-                    self.order_extents[j1].intersect(self.order_extents[j2]),
-                );
-            }
-        }
+        emit_inverted_overlaps_into(
+            self.raw_rects,
+            self.arena.matched_positions(),
+            self.order_extents,
+        );
     }
 
     /// Screen-space extent per row of `node`'s paint span, in row order:
