@@ -46,6 +46,21 @@ pub(super) struct EncodedProbe {
     /// than dropped. The per-frame drain cost, and the number a
     /// probation tier is meant to cut.
     pub(super) refiles: TestOnly<u32>,
+    /// Rows that took a recycled block off a free list.
+    ///
+    /// Paired with [`Self::block_allocs`], this is the whole health
+    /// check on the block allocator: recycling is what replaced the
+    /// arena compaction, and it only holds if a gesture's rows keep
+    /// landing in size classes their predecessors freed. `reuses`
+    /// climbing while `allocs` stays flat is the statement "the arena
+    /// has reached its working set and stopped growing".
+    pub(super) block_reuses: TestOnly<u32>,
+    /// Rows that had to extend the arena because their size class had no
+    /// free block. Expected during warm-up and whenever a genuinely new
+    /// row length appears; a workload where this never settles is one
+    /// whose row lengths keep drifting across class boundaries, and its
+    /// arena grows to the sum of every class's peak.
+    pub(super) block_allocs: TestOnly<u32>,
 }
 
 /// Reads are gated with the counters themselves.
@@ -57,6 +72,8 @@ impl EncodedProbe {
             hits: self.hits.count(),
             expiries: self.expiries.count(),
             refiles: self.refiles.count(),
+            block_reuses: self.block_reuses.count(),
+            block_allocs: self.block_allocs.count(),
         }
     }
 }
@@ -72,6 +89,8 @@ pub(crate) struct EncodedCounts {
     pub(crate) hits: u32,
     pub(crate) expiries: u32,
     pub(crate) refiles: u32,
+    pub(crate) block_reuses: u32,
+    pub(crate) block_allocs: u32,
 }
 
 #[cfg(test)]
@@ -84,6 +103,8 @@ impl std::ops::Sub for EncodedCounts {
             hits: self.hits - base.hits,
             expiries: self.expiries - base.expiries,
             refiles: self.refiles - base.refiles,
+            block_reuses: self.block_reuses - base.block_reuses,
+            block_allocs: self.block_allocs - base.block_allocs,
         }
     }
 }

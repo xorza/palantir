@@ -65,7 +65,17 @@ pub(crate) struct ExpiryWheel<K> {
 
 impl<K: Copy + Debug> ExpiryWheel<K> {
     /// A wheel that can hold a ticket up to `horizon` frames past the
-    /// frame filing it.
+    /// most recently **drained** frame.
+    ///
+    /// Drained, not filed — the two differ for an owner that schedules
+    /// during a frame and sweeps at its end, which is every owner here.
+    /// Such an owner files against a `drained_through` still one frame
+    /// behind, so its horizon is its retention window plus two, not plus
+    /// one. Getting it wrong is not a correctness bug — a deadline past
+    /// the ring is clamped inward and fires early, and an early ticket
+    /// costs one re-file — but it silently turns a cache that should
+    /// file one ticket per row per window into one that re-files every
+    /// row every window.
     ///
     /// Rounded up to a power of two so the bucket index is a mask rather
     /// than a division — this runs per filed ticket. One spare slot

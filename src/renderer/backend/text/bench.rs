@@ -50,15 +50,16 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::queue::Queue;
 use crate::renderer::backend::text::TextBackend;
-use crate::renderer::backend::text::encode::internals::SweepBench;
+use crate::renderer::backend::text::encode::internals::{ChurnBench, SweepBench};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
+use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::request::TextShapeRequest;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::{FontFamily, FontWeight};
-use criterion::{BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use pollster::FutureExt;
 use std::hint::black_box;
@@ -756,22 +757,86 @@ pub fn bench(c: &mut Criterion) {
 
     group.finish();
 
-    // Prices the encoded cache's per-frame maintenance on its own. It
-    // runs on every frame by design — a cadence gate would trade uniform
-    // cost for a periodic spike — so this is the number that has to stay
-    // small, and `stable_keys_cpu` can't resolve it (a few percent of
-    // that workload, under this machine's run-to-run drift).
-    //
-    // 12 glyphs per row matches what the 512-row stable scene actually
-    // leaves in the arena (~11.8).
-    let mut group = c.benchmark_group("encoded_cache_sweep");
+    bench_encoded_cache(c);
+}
+
+/// The encoded cache's per-frame maintenance, priced on its own in the
+/// two steady states a real frame is ever in. Both run CPU-only: the
+/// `text_atlas` arms above can't resolve either (a few percent of those
+/// workloads, under this machine's run-to-run drift).
+///
+/// - **`steady`** — a static text-heavy scene. Nothing expires, so every
+///   fired ticket finds its row live and re-files. This is the drain
+///   path a still frame pays, and it runs on every frame by design: a
+///   cadence gate would trade uniform cost for a periodic spike, so this
+///   is the number that has to stay small. 12 glyphs per row matches
+///   what the 512-row stable scene actually leaves in the arena (~11.8).
+/// - **`churn`** — a zoom or width drag. Every run is re-keyed, so every
+///   frame settles a full complement of rows and expires the one from a
+///   window ago. This is the only arm that executes `settle`'s
+///   allocate-and-copy at all — the per-row cost the block allocator
+///   introduced when it replaced an arena append with a copy out of
+///   `pending`.
+///
+/// The two are not redundant: they drive opposite branches of the drain
+/// closure, `refiles` against `expiries`, and only one of them allocates.
+///
+/// **Neither guards uniformity, and neither can.** The compaction the
+/// block allocator replaced was amortised free — one frame in 122 paying
+/// 122x — so a mean or a median showed nothing and the whole defect
+/// lived in the tail. What guards the shape is
+/// `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates`,
+/// which asserts zero allocations and a constant arena outright. These
+/// arms guard the *constant*.
+fn bench_encoded_cache(c: &mut Criterion) {
+    let mut group = c.benchmark_group("encoded_cache");
     group.measurement_time(Duration::from_secs(2));
+
     for rows in [128u32, 512] {
         let mut fixture = SweepBench::new(rows, 12);
         assert_eq!(fixture.sweep_steady(), rows as usize);
-        group.bench_with_input(BenchmarkId::from_parameter(rows), &rows, |b, _| {
+        group.bench_with_input(BenchmarkId::new("steady", rows), &rows, |b, _| {
             b.iter(|| black_box(fixture.sweep_steady()));
         });
     }
+
+    // Two sizes, not three: per-glyph cost is flat once the fixed
+    // per-frame overhead stops dominating (measured 413 Melem/s at
+    // 50x25 against 431 at 200x40), so a middle arm prices nothing the
+    // ends don't. The small one is overhead-dominated; the large one is
+    // the 6.8 MB-arena shape the block-allocator measurements were taken
+    // at, and the only one where cache pressure could show.
+    //
+    // Warmed past the retention window first, because the interesting
+    // state is the saturated one — before that the arena is still
+    // growing and every row is a fresh block rather than a recycled one,
+    // which is the opposite of what a gesture pays in steady state.
+    // Warmed against `RENDERED_RUN_KEEP_FRAMES` rather than the encoded
+    // window itself: that constant is the documented *ceiling* on this
+    // one, so twice it saturates the population whatever the encoded
+    // window is later tuned to, and this arm needs no edit to follow it.
+    for (runs, glyphs) in [(8u32, 12u32), (200, 40)] {
+        let mut fixture = ChurnBench::new(runs, glyphs);
+        for _ in 0..RENDERED_RUN_KEEP_FRAMES * 2 {
+            fixture.churn_frame();
+        }
+        let saturated = fixture.arena_len();
+        group.throughput(Throughput::Elements((runs * glyphs) as u64));
+        group.bench_with_input(
+            BenchmarkId::new("churn", format!("{runs}x{glyphs}")),
+            &runs,
+            |b, _| b.iter(|| black_box(fixture.churn_frame())),
+        );
+        // The property the number is priced against: a saturated gesture
+        // recycles, so the measured frames must not have grown the
+        // arena. A regression here invalidates the number rather than
+        // merely changing it.
+        assert_eq!(
+            fixture.arena_len(),
+            saturated,
+            "{runs}x{glyphs}: the measured frames grew the arena",
+        );
+    }
+
     group.finish();
 }

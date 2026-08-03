@@ -95,9 +95,10 @@ const ELLIPSIS_MEMO_SLOTS: usize = 4;
 /// demotion signal. It does not work, for a measured reason.
 /// `EncodedKey` embeds [`TextShapeKey`], so a width drag mints a fresh
 /// encoded entry every frame and those live
-/// [`RENDERED_RUN_KEEP_FRAMES`](crate::text::RENDERED_RUN_KEEP_FRAMES).
-/// An encoded entry holding its buffer *strongly* therefore pins
-/// `runs x 120` of them — worse than what this window achieves, and the
+/// `ENCODED_CACHE_KEEP_FRAMES` — a shorter window than this one, but
+/// still one with no probation tier under it. An encoded entry holding
+/// its buffer *strongly* therefore pins `runs × (that window + 1)` of
+/// them, an order of magnitude past what this window achieves, and the
 /// exact growth it was added to stop. Holding it *weakly* keeps the drag
 /// bounded but leaves buffers dying under live encoded entries, so the
 /// whole restore path (`ShapedTextRef`, `TextSource`,
@@ -108,10 +109,11 @@ pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// Frames a *protected* entry — one that has been looked up at least once
 /// since insertion — survives untouched.
 ///
-/// Sourced from [`crate::text::RENDERED_RUN_KEEP_FRAMES`] so it cannot
-/// drift from the encoded-run cache's window: that cache is what
-/// generates the render-side lookups this one exists to answer, so a
-/// buffer has to outlive the encoded entry that would come asking.
+/// Sourced from [`crate::text::RENDERED_RUN_KEEP_FRAMES`], which is the
+/// *ceiling* the encoded-run cache's window stays under rather than a
+/// value it shares: that cache is what generates the render-side
+/// lookups this one exists to answer, so a buffer has to outlive the
+/// encoded entry that would come asking.
 pub(super) const PROTECTED_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRAMES;
 
 /// The cached unbounded shape a truncating fit cuts from.
@@ -315,7 +317,7 @@ impl CosmicMeasure {
             swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
             frame: 0,
-            expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + 1),
+            expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + 2),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
