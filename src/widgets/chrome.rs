@@ -13,7 +13,9 @@ use crate::ui::Ui;
 /// `Panel`/`Grid`/`Popup` (theme slot `panel_background` / `panel_clip`):
 /// an explicit `.background(...)` wins, otherwise the theme default
 /// fills in; the clip default only applies when the caller did not configure
-/// clipping. Returns the chrome to pass to [`Ui::node`].
+/// clipping. Returns the chrome to pass to [`Widget::record`].
+///
+/// [`Widget::record`]: crate::widgets::widget::Widget::record
 pub(super) fn resolve_container(
     node: &mut Node,
     explicit: Option<Background>,

@@ -262,7 +262,7 @@ impl<'a> DragValue<'a> {
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
         let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.widget.id();
+        let id = entry.id();
 
         // Focused + editable + enabled: the inline text editor owns the
         // frame. Pass the chip's last *pre-transform* rect (logical px,
@@ -363,17 +363,11 @@ impl<'a> DragValue<'a> {
         // mode's editor defaults to — so the two modes stay in sync
         // under a global restyle.
         let chip = self.style.map(|s| &s.chip);
-        let look = WidgetTheme::resolve(
-            ui,
-            id,
-            &mut entry.widget.node,
-            &entry.state,
-            (),
-            chip,
-            |t| &t.drag_value.chip,
-        );
+        let look = WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), chip, |t| {
+            &t.drag_value.chip
+        });
 
-        entry.widget.record(ui, Some(&look.background), |ui| {
+        entry.record(ui, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text,

@@ -54,7 +54,7 @@ pub(crate) struct ToggleChrome<'a> {
 /// cross-centering, the box chrome, the label leaf — lives here.
 ///
 /// The row `HStack` node (sense + salt already set) rides in
-/// `entry.widget`. `body` runs inside the box child and is handed the
+/// `entry`. `body` runs inside the box child and is handed the
 /// box's resolved chrome: `Switch` measures its knob inset against the
 /// *animating* stroke width, which is why the background is passed in
 /// rather than re-derived from the theme.
@@ -65,7 +65,7 @@ pub(crate) fn toggle_row<'ui, 'text>(
     label: TextInput<'text>,
     body: impl FnOnce(&mut Ui, &Background),
 ) -> Response<'ui> {
-    let id = entry.widget.id();
+    let id = entry.id();
     let row_gap = chrome
         .style
         .unwrap_or_else(|| (chrome.slot)(&ui.theme))
@@ -73,7 +73,7 @@ pub(crate) fn toggle_row<'ui, 'text>(
     let mut look = WidgetTheme::resolve(
         ui,
         id,
-        &mut entry.widget.node,
+        &mut entry.node,
         &entry.state,
         chrome.on,
         chrome.style,
@@ -83,10 +83,10 @@ pub(crate) fn toggle_row<'ui, 'text>(
         look.background.corners = Corners::all(radius);
     }
 
-    entry.widget.node.gaps.set_gap(row_gap);
-    entry.widget.node.child_align = Align::v(VAlign::Center);
+    entry.node.gaps.set_gap(row_gap);
+    entry.node.child_align = Align::v(VAlign::Center);
 
-    entry.widget.record(ui, None, |ui| {
+    entry.record(ui, None, |ui| {
         ui.widget(chrome.boxed.id(id.with("box")))
             .record(ui, Some(&look.background), |ui| body(ui, &look.background));
 

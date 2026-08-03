@@ -84,7 +84,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .node();
             cases.push(("rounded", n, ClipMode::Rounded, true));
 
-            // Background + clip_rounded with zero radius — Ui::node downgrades.
+            // Background + clip_rounded with zero radius — open_node downgrades.
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)

@@ -101,7 +101,7 @@ impl<'a> Splitter<'a> {
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> Response<'u> {
         let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.widget.id();
+        let id = entry.id();
         let state = &entry.state;
 
         let theme = self.style.unwrap_or(&ui.theme.splitter);
@@ -183,8 +183,8 @@ impl<'a> Splitter<'a> {
         let cross_tracks = [Track::fill()];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
         let grid_def_id = ui.forest.push_grid_def(rows, cols, 0.0, 0.0);
-        entry.widget.node.set_grid_def(grid_def_id);
-        entry.widget.record(ui, None, |ui| {
+        entry.node.set_grid_def(grid_def_id);
+        entry.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
             let mut rule = Node::leaf()

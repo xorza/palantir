@@ -68,21 +68,16 @@ impl<'a> ComboBox<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.widget.id();
+        let id = entry.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = WidgetTheme::resolve(
-            ui,
-            id,
-            &mut entry.widget.node,
-            &entry.state,
-            (),
-            self.style,
-            |t| &t.button,
-        );
+        let look =
+            WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), self.style, |t| {
+                &t.button
+            });
 
         let geom = ui.theme.combo_box.clone();
-        let node = &mut entry.widget.node;
+        let node = &mut entry.node;
         node.justify = Justify::SpaceBetween;
         node.child_align = Align::v(VAlign::Center);
         node.gaps.set_gap(geom.row_gap);
@@ -104,7 +99,7 @@ impl<'a> ComboBox<'a> {
         // options aren't `'static`, so they route through `Ui::intern`.
         let label = ui.intern(chosen);
 
-        entry.widget.record(ui, Some(&look.background), |ui| {
+        entry.record(ui, Some(&look.background), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)

@@ -21,10 +21,10 @@ use palantir_anim_derive::Animatable;
 /// `Stroke` directly through `Stroke::ZERO`; paint-time `is_noop`
 /// filtering catches both authored and animation-decayed no-ops.
 // `Background` is intentionally **not `Copy`** — it's 168 B and was
-// previously threaded by value through `Ui::node` →
+// previously threaded by value through `Widget::record` →
 // `Forest::open_node` → `Tree::open_node` → `shapes::lower::background`. Each
 // hop forced 6+ `vmovups` of stack copy, totalling ~35 % of
-// `Ui::node`'s self-time in the `frame` bench. The chain now
+// the node opener's self-time in the `frame` bench. The chain now
 // takes `&Background`; the matching `Animatable` supertrait relaxed
 // to `Clone` (not `Copy`) so the animation path doesn't bring
 // auto-`Copy` back in through the trait bound.

@@ -16,14 +16,10 @@
 //!
 //! ## Resets and who re-asserts them
 //!
-//! Three per-pass resets happen in `record_pass`, deliberately there
-//! and not per frame: the input watch set, the cursor request, and the
-//! forest's trees + record payloads. All three are re-asserted by the
-//! closure that runs after them, so a `PaintOnly` frame — which runs no
-//! closure — must keep the previous frame's values rather than reset to
-//! defaults it has nobody to refill from. The retained-across-frames
-//! state (clock, wake queue, cross-frame widget state, animation rows)
-//! is reset nowhere and swept once per frame in `finalize_frame`.
+//! Per-pass resets live in [`FrameCycle::begin_pass`], which documents
+//! the shared rule; the once-per-frame sweep lives in `finalize_frame`.
+//! Which of the two a given piece of state belongs to is decided by one
+//! question — does the user closure re-assert it?
 
 use crate::app::App;
 use crate::display;
@@ -263,20 +259,7 @@ impl<'a> FrameCycle<'a> {
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in [`Self::run`]).
     fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
-        {
-            profiling::scope!("Ui::pre_record");
-            // `forest.pre_record` clears both its trees and the retained
-            // payloads their shape records index into.
-            self.ui.forest.pre_record();
-            // Rebuild record-scoped input ownership and wake watches;
-            // PaintOnly frames skip this so their last wake set persists.
-            self.ui.input.begin_record(&self.ui.cascade);
-            // Like the watch set, the cursor request is
-            // re-asserted by whoever still wants it this pass; reset
-            // here (not per frame) so PaintOnly frames keep the last
-            // recorded cursor instead of flickering back to the arrow.
-            self.ui.window_requests.cursor = CursorIcon::default();
-        }
+        self.begin_pass();
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
         // engine forces its rect to the surface — silently overriding
@@ -300,6 +283,32 @@ impl<'a> FrameCycle<'a> {
         self.ui.forest.close_node();
         self.post_record();
         action_flag
+    }
+
+    /// Open the pass: clear everything the user closure is about to
+    /// refill. Opening half of [`Self::post_record`].
+    ///
+    /// **All three resets share one lifetime** — per *pass*, not per
+    /// frame — and one reason to live here: each is re-asserted by the
+    /// closure that runs immediately after, so a `PaintOnly` frame,
+    /// which runs no closure, must keep the previous frame's values
+    /// rather than clear to defaults it has nobody to refill from. A
+    /// watch set, cursor, or tree cleared per *frame* would flicker back
+    /// to its default on the first paint-only frame. Anything that is
+    /// **not** re-asserted by the closure belongs in `finalize_frame`'s
+    /// once-per-frame sweep instead — clock, wake queue, cross-frame
+    /// widget state, animation rows.
+    ///
+    /// A fourth per-pass reset goes here, and nowhere else.
+    fn begin_pass(&mut self) {
+        profiling::scope!("Ui::pre_record");
+        // Clears both the trees and the retained payloads their shape
+        // records index into.
+        self.ui.forest.pre_record();
+        // Record-scoped input ownership and wake watches.
+        self.ui.input.begin_record(&self.ui.cascade);
+        // Re-asserted by whoever still wants the cursor this pass.
+        self.ui.window_requests.cursor = CursorIcon::default();
     }
 
     /// Record-half of a pass: finalize hashes, run measure / arrange,

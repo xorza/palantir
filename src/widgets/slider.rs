@@ -61,7 +61,7 @@ impl<'a> Slider<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.widget.id();
+        let id = entry.id();
         let state = &entry.state;
 
         let theme = self.style.unwrap_or(&ui.theme.slider);
@@ -92,7 +92,7 @@ impl<'a> Slider<'a> {
         let rail_bg = Background::rounded(rail_color, pill);
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
-        let node = &mut entry.widget.node;
+        let node = &mut entry.node;
         node.size
             .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
         node.child_align = Align::v(VAlign::Center);
@@ -101,7 +101,7 @@ impl<'a> Slider<'a> {
         // track, so its position tracks the resolved width without this
         // widget knowing that width at record time.
         let [filled, remainder] = Sizing::split(fraction);
-        entry.widget.record(ui, None, |ui| {
+        entry.record(ui, None, |ui| {
             let rail = Sizing::fixed(rail_h);
             chrome::leaf(ui, id.with("fill"), (filled, rail), Some(&fill_bg));
             let knob = Sizing::fixed(knob);

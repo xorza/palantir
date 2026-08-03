@@ -84,19 +84,21 @@ impl<'a> Stepper<'a> {
         // lingering `String` alloc).
         let label = ui.intern(self.value.to_string());
 
-        // 2) Open the container and record its three children.
-        widget.record(ui, None, |ui| {
-            step_button(ui, minus_id, minus, Glyph::Minus);
-            Text::new(label)
-                .id(id.with("value"))
-                .text_align(Align::v(VAlign::Center))
-                .show(ui);
-            step_button(ui, plus_id, plus, Glyph::Plus);
-        });
-
-        // 3) Hand back a Response for the container so callers can chain
+        // 2) Open the container, record its three children, and hand back
+        //    a Response for the container so callers can chain
         //    `.hovered` etc.; the `&mut i32` mutation is the real effect.
-        widget.response(ui)
+        //    `show` is `record` plus that response — recording consumes
+        //    the `Widget`, which is what stops a second record.
+        widget
+            .show(ui, None, |ui| {
+                step_button(ui, minus_id, minus, Glyph::Minus);
+                Text::new(label)
+                    .id(id.with("value"))
+                    .text_align(Align::v(VAlign::Center))
+                    .show(ui);
+                step_button(ui, plus_id, plus, Glyph::Plus);
+            })
+            .response
     }
 }
 

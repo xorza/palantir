@@ -16,7 +16,7 @@ use crate::primitives::color::{Color, ColorU8};
 // carry 40 B of inline stops and the whole enum is 60 B. The
 // recording chain used to thread `Brush` (often inside `Background`)
 // through 3-4 functions per chromed widget by value; auto-`Copy` hid
-// an O(N) of `vmovups` per frame in `Ui::node`. Hot paths
+// an O(N) of `vmovups` per frame in the node opener. Hot paths
 // now pass `&Brush` / `&Background`; explicit `.clone()` at the
 // remaining duplication sites keeps the cost auditable. See
 // `Animatable`'s `Clone` (not `Copy`) supertrait for the matching

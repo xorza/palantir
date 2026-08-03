@@ -287,7 +287,7 @@ impl<'a> MenuItem<'a> {
         // row's body records only decorative `Text` leaves, so the state
         // is identical before and after the node records.
         let mut entry = WidgetEntry::enter(ui, self.node);
-        let id = entry.widget.id();
+        let id = entry.id();
         let disabled = entry.state.disabled;
 
         // Row-only scalars first, off a borrow that ends before
@@ -299,15 +299,10 @@ impl<'a> MenuItem<'a> {
         let shortcut_color = item.shortcut;
         let gap = item.gap;
 
-        let look = WidgetTheme::resolve(
-            ui,
-            id,
-            &mut entry.widget.node,
-            &entry.state,
-            (),
-            self.style,
-            |t| &t.context_menu.item,
-        );
+        let look =
+            WidgetTheme::resolve(ui, id, &mut entry.node, &entry.state, (), self.style, |t| {
+                &t.context_menu.item
+            });
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the
@@ -317,7 +312,7 @@ impl<'a> MenuItem<'a> {
             ..text_style.clone()
         };
 
-        let node = &mut entry.widget.node;
+        let node = &mut entry.node;
         // Hug+Stretch+SpaceBetween: row hugs content (the default
         // `Sizes` — respects an explicit `.size(...)`), arrange
         // stretches to widest row, label/shortcut pin to opposite
@@ -358,7 +353,7 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        entry.widget.record(ui, Some(&look.background), body);
+        entry.record(ui, Some(&look.background), body);
 
         if shortcut_fired {
             entry.mark_clicked();
