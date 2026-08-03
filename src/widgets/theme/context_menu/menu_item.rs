@@ -41,8 +41,20 @@ pub struct MenuItemTheme {
 }
 
 impl MenuItemTheme {
+    /// `shortcut` is a bare `Color`, not a `TextStyle` — the hint is
+    /// painted at the row label's size. Destructured so a new field
+    /// fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.looks.for_each_text(f);
+        let Self {
+            looks,
+            shortcut: _,
+            padding: _,
+            margin: _,
+            gap: _,
+            anim: _,
+        } = self;
+        looks.for_each_text(f);
     }
 
     /// Pick the visual state: `active` = pressed.

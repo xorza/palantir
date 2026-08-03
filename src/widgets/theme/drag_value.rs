@@ -46,9 +46,12 @@ impl DragValueTheme {
         Self { chip, editor }
     }
 
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.chip.for_each_text(f);
-        self.editor.for_each_text(f);
+        let Self { chip, editor } = self;
+        chip.for_each_text(f);
+        editor.for_each_text(f);
     }
 
     /// One palette drives both halves — the chip from the standard

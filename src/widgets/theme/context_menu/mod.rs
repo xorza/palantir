@@ -48,8 +48,18 @@ pub struct ContextMenuTheme {
 
 impl ContextMenuTheme {
     /// `panel` / `separator` are chrome only; the rows carry the text.
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.item.for_each_text(f);
+        let Self {
+            item,
+            panel: _,
+            padding: _,
+            min_width: _,
+            gap: _,
+            separator: _,
+        } = self;
+        item.for_each_text(f);
     }
 
     /// Reround the panel and re-nest the row chips inside it. Both radii

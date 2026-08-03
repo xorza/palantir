@@ -66,8 +66,15 @@ impl WidgetLook {
 
     /// Visit this look's overriding `TextStyle`, if any. An unset look
     /// inherits `Theme::text` (visited separately), so it carries none.
+    ///
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        if let Some(t) = &mut self.text {
+        let Self {
+            text,
+            background: _,
+        } = self;
+        if let Some(t) = text {
             f(t);
         }
     }

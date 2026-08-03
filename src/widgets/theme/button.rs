@@ -81,8 +81,16 @@ impl ButtonTheme {
     }
 
     /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.looks.for_each_text(f);
+        let Self {
+            looks,
+            padding: _,
+            margin: _,
+            anim: _,
+        } = self;
+        looks.for_each_text(f);
     }
 
     /// Flat "menu-trigger" preset. Use for `Button`s that act as

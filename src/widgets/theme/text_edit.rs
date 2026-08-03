@@ -51,8 +51,22 @@ pub struct TextEditTheme {
 }
 
 impl TextEditTheme {
+    /// `placeholder` / `caret` / `selection` are bare `Color`s, not
+    /// `TextStyle`s — they take their size from the resolved look.
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.looks.for_each_text(f);
+        let Self {
+            looks,
+            placeholder: _,
+            caret: _,
+            caret_width: _,
+            selection: _,
+            padding: _,
+            margin: _,
+            anim: _,
+        } = self;
+        looks.for_each_text(f);
     }
 
     /// Pick the visual state: `active` = focused. Disabled wins over

@@ -63,9 +63,25 @@ pub struct ToggleTheme {
 }
 
 impl ToggleTheme {
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.unchecked.for_each_text(f);
-        self.checked.for_each_text(f);
+        let Self {
+            unchecked,
+            checked,
+            indicator: _,
+            box_size: _,
+            indicator_stroke: _,
+            check_pts: _,
+            indicator_inset: _,
+            row_gap: _,
+            track_aspect: _,
+            padding: _,
+            margin: _,
+            anim: _,
+        } = self;
+        unchecked.for_each_text(f);
+        checked.for_each_text(f);
     }
 
     /// [`Self::check_pts`] scaled to [`Self::box_size`] — the polyline

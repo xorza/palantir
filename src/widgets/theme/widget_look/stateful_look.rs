@@ -37,11 +37,19 @@ impl StatefulLook {
         }
     }
 
+    /// Destructured so a new state fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.normal.for_each_text(f);
-        self.hovered.for_each_text(f);
-        self.active.for_each_text(f);
-        self.disabled.for_each_text(f);
+        let Self {
+            normal,
+            hovered,
+            active,
+            disabled,
+        } = self;
+        normal.for_each_text(f);
+        hovered.for_each_text(f);
+        active.for_each_text(f);
+        disabled.for_each_text(f);
     }
 
     /// The four looks in pick order, for restyling every state at once.
