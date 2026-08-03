@@ -46,12 +46,16 @@
 //! `RecordedPaint::replay` is the one place that does, and only because
 //! its input already passed.
 //!
-//! Exception: [`PaintSink::draw_polyline`] doesn't gate on colour. Its
-//! colors live in spans (`PerSegment` can mix one solid stop with N
-//! transparent), and an O(n) read on every emit would dominate the
-//! per-call cost. Colour noops are caught by `Shape::Polyline::is_noop`
-//! at tier 2 instead; the payload's own `is_noop` still gates
-//! degenerate geometry (point count / width).
+//! Exception: [`PaintSink::draw_polyline`] gates on nothing, and
+//! *asserts* instead. Its colours live in spans (`PerSegment` can mix
+//! one solid stop with N transparent), so an O(n) read on every emit
+//! would dominate the per-call cost — those are caught by
+//! `Shape::Polyline::is_noop` at tier 2. Its geometry conditions are
+//! caught there too, and unlike every other payload's they are
+//! authoring-derived, so nothing between the two tiers can invalidate
+//! them. That makes a degenerate polyline here a broken contract rather
+//! than a value to filter, which is what an assert says and a silent
+//! `return` does not.
 //!
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
@@ -282,9 +286,30 @@ pub(crate) trait PaintSink {
     /// caller invariant enforced upstream by
     /// `PolylineColors::assert_matches` in `Shapes::add`.
     fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
-        if payload.is_noop() {
-            return;
-        }
+        // Asserted, not gated — the one payload whose no-op conditions
+        // are *already guaranteed* when it gets here, so a failure is a
+        // broken contract rather than a value to filter.
+        //
+        // Both conditions are authoring-derived and unchanged by
+        // lowering: `PolylineShape::is_noop` rejects `< 2` points and a
+        // non-painting width before `Shapes::add` lowers anything, and
+        // the encoder forwards the record's span length and width
+        // verbatim. The other payloads gate instead of asserting
+        // because theirs are layout *outputs* — a rect resolved from
+        // the owner's arranged box, a text extent from the shaped
+        // measure — which can legitimately collapse to nothing.
+        //
+        // Safe to demote: the composer handles a degenerate polyline by
+        // emitting no geometry (pinned by
+        // `degenerate_polyline_emits_nothing_rather_than_panicking`), so
+        // release behaviour is unchanged — it just stops paying two
+        // comparisons per polyline per frame to re-establish something
+        // upstream already proved.
+        debug_assert!(
+            !payload.is_noop(),
+            "degenerate polyline reached the sink — `PolylineShape::is_noop` \
+             should have dropped it: {payload:?}",
+        );
         self.polyline(payload);
     }
 }
@@ -310,7 +335,7 @@ mod tests {
     use std::rc::Rc;
 
     #[test]
-    fn polyline_payload_gate_uses_the_canonical_scalar_noop_policy() {
+    fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
         use crate::primitives::approx::EPS;
 
         #[derive(Debug)]

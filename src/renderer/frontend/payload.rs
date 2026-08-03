@@ -260,14 +260,21 @@ pub(crate) struct DrawPolylinePayload {
 }
 
 impl DrawPolylinePayload {
-    /// Paints nothing when: fewer than two points (no
-    /// segments) or a non-paintable stroke width. **Does not** check
-    /// color noop-ness: per-point / per-segment colours live in
-    /// spans on the record store, and an O(n) read here would
-    /// dominate the per-call cost. Color noop is filtered at the
-    /// `Shape::Polyline::is_noop` authoring boundary instead. The
-    /// bbox can legitimately be zero-area (horizontal / vertical
-    /// line) and still paint stroke pixels, so it's not gated either.
+    /// Paints nothing when: fewer than two points (no segments) or a
+    /// non-paintable stroke width.
+    ///
+    /// Unlike its siblings this is an **invariant**, not a filter —
+    /// `PaintSink::draw_polyline` asserts it rather than gating on it,
+    /// because both conditions are authoring-derived and already
+    /// guaranteed by `Shape::Polyline::is_noop`. See that method for
+    /// why the two differ.
+    ///
+    /// **Does not** check colour noop-ness: per-point / per-segment
+    /// colours live in spans on the record store, and an O(n) read here
+    /// would dominate the per-call cost. Colour noop is filtered at the
+    /// `Shape::Polyline::is_noop` authoring boundary instead. The bbox
+    /// can legitimately be zero-area (horizontal / vertical line) and
+    /// still paint stroke pixels, so it isn't checked either.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         self.points_len < 2 || noop_f32(self.width)
