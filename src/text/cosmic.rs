@@ -34,8 +34,8 @@ use crate::text::render::{
 use crate::text::wrap::{LineFit, WrapFloor};
 use crate::text::{FontFamily, FontWeight, TextRoot, TextShapeRequest};
 use cosmic_text::{
-    Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
-    SwashCache, SwashContent, Weight, fontdb,
+    Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Ellipsize, EllipsizeHeightLimit, Family,
+    FontSystem, LayoutRun, Metrics, Shaping, SwashCache, SwashContent, Weight, Wrap, fontdb,
 };
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -197,27 +197,9 @@ pub(super) struct CosmicMeasure {
     /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
     /// line, shaping, and layout allocations when the buffer is reset.
     recycle_pool: Vec<Buffer>,
-    /// Trailing advance of "…" for the most recent face.
-    ///
-    /// One slot, not a map: a frame draws its ellipsized labels in one or
-    /// two text styles, so this hits nearly always, and a miss is a single
-    /// glyph through a recycled buffer. Nothing to bound, evict, or clear —
-    /// the slot is simply overwritten.
-    ellipsis: Option<EllipsisMemo>,
-    /// Retained scratch for the truncated string
-    /// [`Self::measure_truncated`] builds on a miss (cut prefix +
-    /// optional `…`). Misses are the hot case — a continuous width drag
-    /// mints a fresh quantized target per label per frame — so building
-    /// into a retained buffer keeps that path free of `String` allocs,
-    /// while the unbounded probe itself comes from `cache`.
-    truncate_scratch: String,
     /// Retained scratch for [`collect_break_offsets`], so the unbounded
     /// shape's segment scan allocates nothing per miss.
     break_scratch: Vec<u32>,
-    /// Retained scratch holding the truncation probe's glyph indices in
-    /// logical order — visual order is what the shaped run gives us, and
-    /// truncation needs the logical prefix.
-    logical_order: Vec<u32>,
     /// Shape / hit / supersede / expire tallies. Zero-sized outside
     /// tests.
     pub(super) probe: CacheProbe,
@@ -244,10 +226,7 @@ impl CosmicMeasure {
             frame: 0,
             next_expiry: u64::MAX,
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
-            ellipsis: None,
-            truncate_scratch: String::new(),
             break_scratch: Vec::new(),
-            logical_order: Vec::new(),
             probe: CacheProbe::default(),
         }
     }
@@ -299,7 +278,7 @@ impl CosmicMeasure {
         let bounds_top = bounds.y as f32;
         let bounds_bot = (bounds.y + bounds.h) as f32;
         let mut culled = false;
-        for run in buffer.layout_runs() {
+        for run in visible_runs(buffer, request.key.fit()) {
             if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
                 culled = true;
                 continue;
@@ -354,22 +333,27 @@ impl CosmicMeasure {
         })
     }
 
+    /// Shape `request` and cache the buffer, or answer from cache.
+    ///
+    /// One path for every fit. A truncating fit differs only in how the
+    /// buffer is configured — glyph wrapping so cosmic cuts the line at
+    /// the committed width, plus its own ellipsis if the fit asks for one
+    /// — and in that only the first layout run counts. Cutting the text
+    /// ourselves and reshaping the prefix, which is what this used to do,
+    /// had to re-verify and retire clusters in a loop because a prefix
+    /// reshapes in a different context than the run it came from; cosmic
+    /// wraps glyphs it has *already* shaped, so that whole class of error
+    /// cannot arise.
+    #[profiling::function]
     pub(super) fn shape(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
-        match (request.key.fit(), request.key.max_width_px()) {
-            (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
-            _ => self.measure_wrapped(request, floor),
-        }
-    }
-
-    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        let key = request.key;
         debug_assert!(
-            floor == WrapFloor::Skip || request.key.max_width_px().is_none(),
+            floor == WrapFloor::Skip || key.max_width_px().is_none(),
             "the wrap floor is a property of the unbounded root",
         );
         if request.text.is_empty() {
             return TextRoot::ZERO;
         }
-        let key = request.key;
         if let Some(hit) = self.cache_hit(key) {
             // A resident entry shaped by a policy that didn't want the
             // floor still owes it to one that does.
@@ -382,17 +366,17 @@ impl CosmicMeasure {
             return hit;
         }
 
+        let fit = key.fit();
         let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
-        let mut buffer = self.acquire_buffer(metrics, key.max_width_px());
+        let mut buffer = self.acquire_buffer(metrics, key.max_width_px(), fit);
         // Per-line alignment travels through cosmic's `set_text`
-        // `alignment` slot — that's the canonical entry point and
-        // applies the align to every parsed buffer line in one
-        // shot. Iterating `buffer.lines.iter_mut().set_align` after
-        // `set_text` is the older API surface and tends to no-op on
-        // freshly populated lines in 0.18+. Per-line align is only
-        // meaningful with a finite wrap target (cosmic uses it as the
-        // line width); without one we pass `None` so single-line
-        // editors keep their widget-side `dx` placement.
+        // `alignment` slot — that's the canonical entry point and applies
+        // the align to every parsed buffer line in one shot. Per-line
+        // align is only meaningful with a finite wrap target (cosmic uses
+        // it as the line width); without one we pass `None` so
+        // single-line editors keep their widget-side `dx` placement. A
+        // truncating fit reaches here with `HAlign::Auto` — `bounded`
+        // nulls it — so it passes `None` too.
         let alignment = key.max_width_px().and_then(|_| cosmic_align(key.halign()));
         buffer.set_text(
             request.text,
@@ -402,193 +386,17 @@ impl CosmicMeasure {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
-        self.insert(key, buffer, geometry);
-        geometry.root
-    }
-
-    /// Shape `text` as a single line truncated to fit `w`. Truncation is
-    /// cluster-precise: the cached unbounded shape gives per-glyph advances,
-    /// [`fitting_prefix`] cuts after the last fully paid-for cluster, then we
-    /// shape the (possibly truncated) prefix on one **natural** line — no
-    /// per-line align. The committed width only decides the cut; the encoder
-    /// positions/aligns the single line, so the measured extent is the glyph
-    /// width, not `w` (binding to `w` + center align would inflate a
-    /// fits-anyway label to ~half the box). `LineFit::Ellipsis` reserves room
-    /// for and appends a trailing `…`; `LineFit::Clip` cuts flush to `w`
-    /// with no marker. The buffer caches under a fit-discriminated key (so it
-    /// can't collide with the wrapped buffer — or the other truncation mode —
-    /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
-    /// to nothing.
-    ///
-    /// The shaped prefix is verified against `w` and retires a further
-    /// cluster until it fits, so the measured extent never exceeds the
-    /// committed width — the cut alone cannot guarantee that, since
-    /// reshaping the prefix changes its shaping context.
-    fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
-        let key = request.key;
-        let fit = key.fit();
-        let width = key
-            .max_width_px()
-            .expect("measure_truncated requires a finite width");
-        debug_assert!(
-            matches!(fit, LineFit::Clip | LineFit::Ellipsis),
-            "measure_truncated requires Clip or Ellipsis",
-        );
-        if request.text.is_empty() {
-            return TextRoot::ZERO;
-        }
-        if let Some(hit) = self.cache_hit(key) {
-            return hit;
-        }
-        let unbounded = request.unbounded_version();
-        self.ensure_buffer(unbounded);
-        let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
-        let family = key.family();
-        let weight = key.weight();
-        let attrs = attrs_for(family, weight);
-        // Reserve the ellipsis width only when we'll append one; a plain
-        // clip cuts flush to the full available width. Resolved before
-        // borrowing the probe, since shaping "…" needs `&mut self`.
-        let mut append_ellipsis = false;
-        let avail = if matches!(fit, LineFit::Ellipsis) {
-            let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
-            append_ellipsis = ellipsis_w <= width;
-            (width - ellipsis_w).max(0.0)
-        } else {
-            width
-        };
-        let probe_key = unbounded.key;
-        let fits_whole = {
-            let probe = &self
-                .cache
-                .get(&probe_key)
-                .expect("truncation requires the cached unbounded shape")
-                .buffer;
-            first_line_right(probe) <= width && probe.layout_runs().nth(1).is_none()
-        };
-
-        // Shape unbounded on one line: the cut already fit it to `w`, and the
-        // encoder owns single-line placement. Binding to `Some(w)` + align
-        // would measure the aligned glyph position, inflating a fits-anyway
-        // label toward the box width.
-        let mut buffer = self.acquire_buffer(metrics, None);
-        let size = if fits_whole {
-            // Re-shaping the identical text reproduces the probe, so this
-            // branch cannot overrun `width`.
-            buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
-            buffer.shape_until_scroll(&mut self.font_system, false);
-            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
-                .root
-                .size
-        } else {
-            // The cut spends advances measured in the *whole* run's shaping,
-            // but the prefix reshapes in its own context: a joining script's
-            // last letter is exposed at a new word end and takes a final form
-            // wider than the medial one the budget paid for. So verify the
-            // shaped result, and while it overruns, retire one more cluster.
-            // `max_end` makes every retry strictly shorter, so the sequence
-            // bottoms out at the empty prefix.
-            let mut max_end = usize::MAX;
-            loop {
-                let cut = {
-                    let probe = &self
-                        .cache
-                        .get(&probe_key)
-                        .expect("truncation requires the cached unbounded shape")
-                        .buffer;
-                    match probe.layout_runs().next() {
-                        Some(run) => fitting_prefix(
-                            run.glyphs.len(),
-                            |i| ClusterGlyph {
-                                start: run.glyphs[i].start,
-                                end: run.glyphs[i].end,
-                                advance: run.glyphs[i].w,
-                            },
-                            &mut self.logical_order,
-                            avail,
-                            max_end,
-                        ),
-                        None => 0,
-                    }
-                };
-                self.truncate_scratch.clear();
-                self.truncate_scratch
-                    .push_str(request.text[..cut].trim_end());
-                if append_ellipsis {
-                    self.truncate_scratch.push('…');
-                }
-                // `set_text` resets the buffer in place, so a retry reuses
-                // the line, shaping, and layout allocations it just filled.
-                buffer.set_text(
-                    self.truncate_scratch.as_str(),
-                    &attrs,
-                    Shaping::Advanced,
-                    None,
-                );
-                buffer.shape_until_scroll(&mut self.font_system, false);
-                let size = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
-                    .root
-                    .size;
-                if size.w <= width || cut == 0 {
-                    break size;
-                }
-                max_end = cut;
-            }
-        };
-
-        // Truncated runs are one natural line by construction: the cut
-        // prefix comes from the unbounded probe's first layout run, and a
-        // truncated run can shrink to nothing, so its floor is zero.
-        // The prefix reshapes on an unbounded buffer with no per-line
-        // align, so its block already starts at 0.
-        let geometry = ShapedGeometry {
-            root: TextRoot {
-                size,
-                // Genuinely zero, not unscanned: a truncated run can
-                // shrink to nothing.
-                intrinsic_min: Some(0.0),
-                single_line: true,
-            },
-            left: 0.0,
-        };
-        self.insert(key, buffer, geometry);
-        geometry.root
-    }
-
-    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
-    /// the last face asked about.
-    ///
-    /// Only the *opening* budget: [`Self::measure_truncated`] verifies the
-    /// shaped result against the committed width either way, so a stale or
-    /// imprecise reservation costs retries, never correctness. What it buys
-    /// is measured — dropping the memo entirely costs ~29% on the
-    /// truncation-miss path (`text_shape/ellipsis_width_churn`).
-    fn ellipsis_advance(
-        &mut self,
-        size_q: u32,
-        metrics: Metrics,
-        family: FontFamily,
-        weight: FontWeight,
-    ) -> f32 {
-        let want = EllipsisMemo {
-            size_q,
-            family_q: family as u8,
-            weight_q: weight as u8,
-            advance: 0.0,
-        };
-        if let Some(memo) = self.ellipsis
-            && memo.same_face(&want)
+        let mut geometry = shaped_geometry(&buffer, fit, floor, &mut self.break_scratch);
+        if let Some(width) = key.max_width_px()
+            && fit != LineFit::Wrap
         {
-            return memo.advance;
+            // A truncating run occupies at most the width it was cut to.
+            // Cosmic overruns only when even the ellipsis does not fit,
+            // and a run that narrow is scissored to the box anyway.
+            geometry.root.size.w = geometry.root.size.w.min(width);
         }
-        let mut buffer = self.acquire_buffer(metrics, None);
-        buffer.set_text("…", &attrs_for(family, weight), Shaping::Advanced, None);
-        buffer.shape_until_scroll(&mut self.font_system, false);
-        let advance = first_line_right(&buffer);
-        recycle_buffer(&mut self.recycle_pool, buffer);
-        self.ellipsis = Some(EllipsisMemo { advance, ..want });
-        advance
+        self.insert(key, buffer, geometry);
+        geometry.root
     }
 
     /// Restore a missing shaped buffer from the retained source text and
@@ -615,11 +423,7 @@ impl CosmicMeasure {
     /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
     fn insert(&mut self, key: TextShapeKey, buffer: Buffer, geometry: ShapedGeometry) {
         // Counted here rather than per `shape_until_scroll` so one
-        // cached run is one tally: `measure_truncated`'s back-off can
-        // reshape a prefix several times to land inside the committed
-        // width, and a workload test cares that the run was shaped, not
-        // how many attempts the cut took. The memoized ellipsis probe
-        // shapes without inserting and is deliberately not counted.
+        // cached run is one tally, whatever the fit did to get there.
         self.probe.shape();
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
         self.next_expiry = self.next_expiry.min(keep_until);
@@ -701,12 +505,29 @@ impl CosmicMeasure {
         }
     }
 
-    fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>) -> Buffer {
+    /// A buffer configured for `fit`, from the recycle pool when one is
+    /// free.
+    ///
+    /// Wrap and ellipsize are set on every acquisition, never left to the
+    /// default: a recycled buffer carries whatever the last run set, so
+    /// skipping either would let a truncating shape hand its glyph
+    /// wrapping to the next wrapped one.
+    fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>, fit: LineFit) -> Buffer {
         let mut buffer = match self.recycle_pool.pop() {
             Some(buffer) => buffer,
             None => Buffer::new(&mut self.font_system, metrics),
         };
         buffer.set_metrics_and_size(metrics, width, None);
+        buffer.set_wrap(match fit {
+            LineFit::Wrap => Wrap::WordOrGlyph,
+            // Cut mid-word: a truncating run keeps whatever fits the
+            // committed width, not whole words.
+            LineFit::Clip | LineFit::Ellipsis => Wrap::Glyph,
+        });
+        buffer.set_ellipsize(match fit {
+            LineFit::Wrap | LineFit::Clip => Ellipsize::None,
+            LineFit::Ellipsis => Ellipsize::End(EllipsizeHeightLimit::Lines(1)),
+        });
         buffer
     }
 
@@ -764,103 +585,6 @@ impl std::fmt::Debug for CosmicMeasure {
     }
 }
 
-/// Memoized trailing advance of "…" for one face.
-#[derive(Clone, Copy, Debug)]
-struct EllipsisMemo {
-    size_q: u32,
-    family_q: u8,
-    weight_q: u8,
-    advance: f32,
-}
-
-impl EllipsisMemo {
-    /// Whether both were shaped from the same face at the same size.
-    fn same_face(&self, other: &Self) -> bool {
-        self.size_q == other.size_q
-            && self.family_q == other.family_q
-            && self.weight_q == other.weight_q
-    }
-}
-
-/// One shaped glyph reduced to what the truncation cut reads: the source
-/// bytes it covers and the advance it costs.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct ClusterGlyph {
-    pub(super) start: usize,
-    pub(super) end: usize,
-    pub(super) advance: f32,
-}
-
-/// Longest logical byte prefix of `count` shaped glyphs whose advances sum
-/// within `avail` and stay below `max_end`. `order` is retained scratch,
-/// refilled with the glyph indices sorted into logical order; `glyph` reads
-/// one glyph by its original (visual-order) index.
-///
-/// The result is always strictly below `max_end`, so passing the previous
-/// answer retires at least one more cluster — that is what makes
-/// [`CosmicMeasure::measure_truncated`]'s back-off terminate. Pass
-/// `usize::MAX` for an unbounded first cut.
-///
-/// Glyphs arrive in visual order, so a glyph's `x` follows the reading
-/// direction rather than the logical prefix — an RTL run's first glyph sits
-/// at the *right* edge and its trailing edges descend. Summing advances in
-/// logical order instead makes `text[..cut]` the prefix that fits whichever
-/// way the run reads.
-///
-/// One grapheme cluster can shape to several glyphs sharing a byte range
-/// (flag and ZWJ emoji, Indic conjuncts), so the prefix only advances past a
-/// cluster once every glyph covering it is paid for. Committing mid-cluster
-/// would claim bytes whose advance the budget never covered, and the prefix
-/// would reshape wider than `avail`.
-pub(super) fn fitting_prefix(
-    count: usize,
-    glyph: impl Fn(usize) -> ClusterGlyph,
-    order: &mut Vec<u32>,
-    avail: f32,
-    max_end: usize,
-) -> usize {
-    order.clear();
-    order.extend(0..count as u32);
-    order.sort_unstable_by_key(|&i| glyph(i as usize).start);
-    let mut cut = 0usize;
-    let mut used = 0.0_f32;
-    for (pos, &i) in order.iter().enumerate() {
-        let g = glyph(i as usize);
-        // Ends are non-decreasing in logical order, so once one reaches the
-        // bound no later glyph can be committed either.
-        if g.end >= max_end {
-            break;
-        }
-        used += g.advance;
-        if used > avail {
-            break;
-        }
-        let cluster_paid = order
-            .get(pos + 1)
-            .is_none_or(|&next| glyph(next as usize).start >= g.end);
-        if cluster_paid {
-            cut = g.end;
-        }
-    }
-    cut
-}
-
-/// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is
-/// its leftmost) of a shaped buffer's first layout run, or `0.0` when
-/// empty — the rendered width of one line.
-///
-/// Both callers work on unbounded buffers, whose lines start at 0, so the
-/// right edge is the width. [`shaped_geometry`] spans `left..right`
-/// instead because it also measures width-bounded buffers, which cosmic
-/// may anchor away from the origin.
-fn first_line_right(buffer: &Buffer) -> f32 {
-    buffer
-        .layout_runs()
-        .next()
-        .and_then(|r| r.glyphs.iter().map(|g| g.x + g.w).reduce(f32::max))
-        .unwrap_or(0.0)
-}
-
 /// Measured geometry of a shaped `buffer`: the run's own extent plus the
 /// block origin every reader normalizes against.
 #[derive(Clone, Copy, Debug)]
@@ -870,7 +594,23 @@ struct ShapedGeometry {
     left: f32,
 }
 
-/// Measure a shaped `buffer`: the union of its lines' glyph spans (ceil'd)
+/// Layout runs a `fit` actually paints: all of them for `Wrap`, and only
+/// the first for a truncating fit.
+///
+/// Cosmic glyph-wraps the whole string when told to cut, so a truncating
+/// buffer holds every line the text would occupy and line 0 is the one
+/// that fits the committed width. Every reader — measurement, glyph
+/// extraction, probe geometry — goes through here so none of them can
+/// disagree about where the run ends.
+pub(super) fn visible_runs(buffer: &Buffer, fit: LineFit) -> impl Iterator<Item = LayoutRun<'_>> {
+    let limit = match fit {
+        LineFit::Wrap => usize::MAX,
+        LineFit::Clip | LineFit::Ellipsis => 1,
+    };
+    buffer.layout_runs().take(limit)
+}
+
+/// Measure a shaped `buffer`: the union of its painted lines' glyph spans (ceil'd)
 /// plus, when `floor` asks for it, the widest unbreakable segment the wrap
 /// path uses as a floor once a parent commits a narrower width. `breaks`
 /// is that scan's scratch, untouched when it is skipped.
@@ -885,12 +625,17 @@ struct ShapedGeometry {
 /// Glyphless lines are skipped rather than contributing a zero-width span
 /// at 0, which would drag `left` back to the origin for a block that
 /// starts elsewhere.
-fn shaped_geometry(buffer: &Buffer, floor: WrapFloor, breaks: &mut Vec<u32>) -> ShapedGeometry {
+fn shaped_geometry(
+    buffer: &Buffer,
+    fit: LineFit,
+    floor: WrapFloor,
+    breaks: &mut Vec<u32>,
+) -> ShapedGeometry {
     let mut left = f32::INFINITY;
     let mut right = f32::NEG_INFINITY;
     let mut total_h = 0.0_f32;
     let mut runs = 0usize;
-    for run in buffer.layout_runs() {
+    for run in visible_runs(buffer, fit) {
         runs += 1;
         total_h = total_h.max(run.line_top + run.line_height);
         for glyph in run.glyphs {
