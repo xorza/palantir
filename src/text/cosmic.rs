@@ -45,6 +45,7 @@ use cosmic_text::{
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
+use tinyvec::ArrayVec;
 
 /// Bundled fonts shipped with the crate. Inter is the default UI /
 /// proportional body font; JetBrains Mono is the monospace. Both ship as
@@ -265,16 +266,17 @@ pub(super) struct CosmicMeasure {
     /// tree sized per depth, regular beside bold in one row — missed on
     /// every single truncation. Measured on
     /// `text_shape/ellipsis_width_churn`: the `two_faces` arm runs
-    /// 3.85 µs on one slot against 2.82 µs on four, a 27% cut, while
+    /// 3.85 µs on one slot against 2.77 µs on four, a 28% cut, while
     /// `one_face` is unchanged inside noise — so the extra slots cost
     /// nothing in the easy case. Four covers the interleavings a frame
     /// actually produces, and a lookup is four compares against a
     /// `Copy` struct.
-    ellipsis: [Option<EllipsisMemo>; ELLIPSIS_MEMO_SLOTS],
-    /// Next slot [`Self::ellipsis_advance`] overwrites on a miss.
-    /// Round-robin rather than LRU: with four slots and a frame's worth
-    /// of faces, tracking recency costs more than the miss it saves.
-    ellipsis_next: usize,
+    /// Newest first: a miss pushes to the front and drops the back, so
+    /// the entry evicted is the one shaped longest ago and the linear
+    /// scan meets the most recently shaped face first. With four
+    /// entries the shift is three 12-byte copies, cheaper than the
+    /// cursor an in-place ring would need.
+    ellipsis: ArrayVec<[EllipsisMemo; ELLIPSIS_MEMO_SLOTS]>,
     /// Retained scratch for the truncated string
     /// [`Self::measure_truncated`] builds on a miss (cut prefix +
     /// optional `…`). Misses are the hot case — a continuous width drag
@@ -315,8 +317,7 @@ impl CosmicMeasure {
             frame: 0,
             expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + 1),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
-            ellipsis: [None; ELLIPSIS_MEMO_SLOTS],
-            ellipsis_next: 0,
+            ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
             logical_order: Vec::new(),
@@ -675,12 +676,7 @@ impl CosmicMeasure {
             weight_q: weight as u8,
             advance: 0.0,
         };
-        if let Some(memo) = self
-            .ellipsis
-            .iter()
-            .flatten()
-            .find(|memo| memo.same_face(&want))
-        {
+        if let Some(memo) = self.ellipsis.iter().find(|memo| memo.same_face(&want)) {
             return memo.advance;
         }
         let mut buffer = self.acquire_buffer(metrics, None);
@@ -689,8 +685,11 @@ impl CosmicMeasure {
         let advance = first_line_right(&buffer);
         recycle_buffer(&mut self.recycle_pool, buffer);
         self.probe.ellipsis_misses.bump();
-        self.ellipsis[self.ellipsis_next] = Some(EllipsisMemo { advance, ..want });
-        self.ellipsis_next = (self.ellipsis_next + 1) % ELLIPSIS_MEMO_SLOTS;
+        // `insert` panics at capacity, so retire the oldest first.
+        if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
+            self.ellipsis.pop();
+        }
+        self.ellipsis.insert(0, EllipsisMemo { advance, ..want });
         advance
     }
 
@@ -886,7 +885,12 @@ impl std::fmt::Debug for CosmicMeasure {
 }
 
 /// Memoized trailing advance of "…" for one face.
-#[derive(Clone, Copy, Debug)]
+///
+/// `Default` only to satisfy `tinyvec`'s `Array` bound — it fills the
+/// unused tail of [`CosmicMeasure::ellipsis`], which `len` keeps out of
+/// every read. A zeroed memo could not match a live face anyway:
+/// `quantize_metric` floors `size_q` at 1.
+#[derive(Clone, Copy, Debug, Default)]
 struct EllipsisMemo {
     size_q: u32,
     family_q: u8,
